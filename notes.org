@@ -47,7 +47,7 @@
       to app and have to app hand off buffer to another device,
       potentially without looking at some or any of the buffer
 
-* Zero-copy event queues
+* Zero-copy data queues
     - replaces socket, file descriptor abstractions
     - open(), accept() returns an event queue (id)
     - has concept of granularity (not just a stream of data)
@@ -57,15 +57,15 @@
     - use user-level page tables and a directed TLB shoot-down to
       reduce cost of setting COW
 ***** Interface
+    - qid = socket(ip)
     - qid = open(file)
-    - qid = listen()
     - qid = accept(qid)
-    - insert(qid, scatter gather array)
+    - insert(qid, sga)
     - *sga = head(qid)
     - *sga = dequeue(qid)
-    - filter(qid, *filter_func)
-    - merge(qid, qid)
-    - sort(qid, *sort_func)
+    - qid = filter(qid, *filter_func)
+    - qid = merge(qid, qid)
+    - qid = sort(qid, *sort_func)
 * Benefits
 *** No copying latency (at least 2K cycles for a 4K page)
 *** Less cache pollution
