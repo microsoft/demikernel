@@ -1,0 +1,4 @@
+[submodule "apps/tapir"]
+	path = apps/tapir
+	url = git@github.com:UWSysLab/tapir.git
+	branch = io-queue

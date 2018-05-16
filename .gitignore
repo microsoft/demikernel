@@ -1,0 +1,5 @@
+Download/
+build/
+tmp/
+CMakeFiles/
+CMakeCache.txt
