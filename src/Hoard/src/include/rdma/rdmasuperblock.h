@@ -1,0 +1,78 @@
+// -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
+/***********************************************************************
+ *
+ * include/rdmasuperblock.h
+ *   Super block type that can handle RDMA accesses
+ *
+ * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ **********************************************************************/
+ 
+#ifndef _RDMA_SUPERBLOCK_H_
+#define _RDMA_SUPERBLOCK_H_
+
+#include "rdmasuperblockheader.h"
+#include "rdmaheap.h"
+
+namespace Zeus {
+
+    template <class LockType,
+              int SuperblockSize,
+              class HeapType>
+    class RdmaSuperblock : public Hoard::HoardSuperblockExtensible<LockType,
+                                                                   SuperblockSize,
+                                                                   HeapType,
+                                                                   Zeus::RdmaSuperblockHeader<LockType,
+                                                                                              SuperblockSize,
+                                                                                              HeapType>,
+                                                                   Zeus::RdmaSuperblock<LockType,
+                                                                                        SuperblockSize,
+                                                                                        HeapType>> {
+
+    public:
+        RdmaSuperblock (size_t size)
+            : Hoard::HoardSuperblockExtensible<LockType,
+                                               SuperblockSize,
+                                               HeapType,
+                                               Zeus::RdmaSuperblockHeader<LockType,
+                                                                          SuperblockSize,
+                                                                          HeapType>,
+                                               Zeus::RdmaSuperblock<LockType,
+                                                                    SuperblockSize,
+                                                                    HeapType> > (size) {
+            struct ibv_mr *mr =
+                ibv_reg_mr(Zeus::rdmaglobalpd,
+                           this->_buf,
+                           size,
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+            this->_header.setRdmaMr(mr);
+        };
+
+        ibv_mr* getRdmaMr() { return this->_header.getRdmaMr();
+            return this->_header.getRdmaMr();
+        };
+    };
+
+} // namespace zeus
+              
+#endif /* _RDMA_SUPERBLOCK_H_ */

@@ -2,3 +2,6 @@
 	path = apps/tapir
 	url = git@github.com:UWSysLab/tapir.git
 	branch = io-queue
+[submodule "src/Hoard"]
+	path = src/Hoard
+	url = git@github.com:iyzhang/Hoard.git
