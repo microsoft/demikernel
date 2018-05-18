@@ -38,7 +38,9 @@
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
 
-typedef std::unique_ptr<void *> ioptr;
+namespace Zeus {
+    
+typedef void * ioptr;
 
 struct sgarray {
     size_t num_buffers;
@@ -49,18 +51,19 @@ struct sgarray {
 ioptr iomalloc(size_t size);
 
 // network functions
-int socket(int domain, int type, int protocol);
-int listen(int fd, int backlog);
-int bind(int qd, struct sockaddr *saddr, size_t size);
-int accept(int qd, struct sockaddr *saddr, size_t size);
-int connect(struct sockaddr *saddr, size_t size);
+ int queue(int domain, int type, int protocol);
+ int listen(int fd, int backlog);
+ int bind(int qd, struct sockaddr *saddr, socklen_t size);
+ int accept(int qd, struct sockaddr *saddr, socklen_t *size);
+ int connect(int qd, struct sockaddr *saddr, socklen_t size);
 
 // eventually file functions
 // int open() ..
 
-int push(int qd, struct sga *bufs);
-int pop(int qd, struct sga **bufs);
-int peek(int qd, struct sga **bufs);
+int push(int qd, struct sgarray *bufs);
+int pop(int qd, struct sgarray *bufs);
+int peek(int qd, struct sgarray *bufs);
 int qd2fd(int qd);
 
+} // namespace Zeus
 #endif /* _IO_QUEUE_H_ */

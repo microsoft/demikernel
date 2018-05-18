@@ -60,4 +60,4 @@ target_link_libraries(zeus_rdma ${HOARD_LIBRARIES})
 
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_POSIX_LIB})
-target_link_libraries(zeus_posix ${HOARD_LIBRARIES})
+target_link_libraries(zeus_posix)

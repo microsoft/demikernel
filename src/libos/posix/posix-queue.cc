@@ -30,23 +30,27 @@
 
 #include "posix-queue.h"
 
+using namespace Zeus::POSIX;
+
 LibIOQueue libqueue;
 
 int socket(int domain, int type, int protocol)
 {
     int fd = socket(domain, type, protocol);
+
     return fd > 0 ? libqueue.NewQueue(fd)->qd : fd;
 }
 
-int bind(int qd, struct sockaddr *saddr, size_t size)
+int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return bind(qd, saddr, size);
 }
 
 int
-accept(int qd, struct sockaddr *saddr, size_t size)
+accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     int fd = accept(qd, saddr, size);
+
     return fd > 0 ? libqueue.NewQueue(fd)->qd : fd;
 }
 
@@ -58,10 +62,9 @@ listen(int qd, int backlog)
         
 
 int
-connect(struct sockaddr *saddr, size_t size)
+connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    int fd = connect(saddr, size);
-    return fd > 0 ? libqueue.NewQueue(fd)->qd : fd;
+    return connect(qd, saddr, size);
 }
 
 int
@@ -70,11 +73,11 @@ qd2fd(int qd) {
 }
 
 int
-push(int qd, struct sga *bufs)
+push(int qd, struct Zeus::sgarray *bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
     if (q != NULL) {
-        q->queue.push_back(bufs);
+        q->queue.push_back(*bufs);
         return 0;
     } else {
         return -1;
@@ -82,7 +85,7 @@ push(int qd, struct sga *bufs)
 }
 
 int
-pop(int qd, struct sga **bufs)
+pop(int qd, struct Zeus::sgarray *bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
     if (q != NULL && !q->queue.empty()) {
@@ -95,7 +98,7 @@ pop(int qd, struct sga **bufs)
 }
 
 int
-peek(int qd, struct sga **bufs)
+peek(int qd, struct Zeus::sgarray *bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
     if (q != NULL && !q->queue.empty()) {

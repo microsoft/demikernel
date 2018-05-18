@@ -37,10 +37,11 @@
 #include <map>
 
 namespace Zeus {
+namespace POSIX {
 
 struct IOQueue {
     int qd; // queue descriptor = file descriptor
-    std::list<sga*> queue;
+    std::list<struct sgarray> queue;
 };
 
 
@@ -55,5 +56,6 @@ class LibIOQueue
     
     
 };
+} // namespace POSIX
 } // namespace Zeus
 #endif /* _LIB_POSIX_QUEUE_H_ */

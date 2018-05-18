@@ -38,14 +38,15 @@
 #include <rdma/rdma_cma.h>
 
 namespace Zeus {
+namespace RDMA {
     
 struct IOQueue {
     int qd; // io queue descriptor = file descriptor
     int fd; // matching file descriptor
     struct rdma_cm_id *id;
-    int type;
+    rdma_port_space type;
 
-    std::list<sga*> queue;
+    std::list<sgarray> queue;
 };
 
 
@@ -53,13 +54,13 @@ class LibIOQueue
 {
  private:
     std::map<int, IOQueue*> queues;
-
+    uint64_t qd = 1;
+    
  public:
-    IOQueue* NewQueue(int fd, struct rdma_cm_id *id, int type);
-    IOQueue* FindQueue(int qd);
-    
-    
+    IOQueue* NewQueue(int fd, struct rdma_cm_id *id, rdma_port_space type);
+    IOQueue* FindQueue(int qd);    
 };
 
+} // namespace RDMA
 } // namespace Zeus
 #endif /* _LIB_RDMA_QUEUE_H_ */

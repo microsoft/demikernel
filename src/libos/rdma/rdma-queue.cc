@@ -31,270 +31,17 @@
 #include "rdma-queue.h"
 #include "Hoard/src/include/rdma/rdmaheap.h"
 
+using namespace Zeus::RDMA;
+
 static LibIOQueue libqueue;
 
-int
+inline rdma_port_space
 translateType(int type) {
-    switch (protocol) {
-    case SOCK_STREAM:
-        return RDMA_PS_TCP;
-    case SOCK_DGRAM:
-        return RDMA_PS_UDP;
-    }
-}
-
-
-int
-socket(int domain, int type, int protocol)
-{
-    // Create a RDMA channel for events on this link
-    struct rdma_cm_id *id;
-    int rdmatype = translateType(type);
-    struct rdma_event_channel *channel;
-
-    // Create a RDMA channel for events on this link
-    if((channel = rdma_create_event_channel()) == 0) {
-        fprintf(stderr, "Could not create RDMA event channel: %s",
-                strerror(errno));
-        return -1;
-    }
-
-    if ((rdma_create_id(channel, &id, rdmacontext, rdmatype)) != 0) {
-        fprintf(stderr,
-                "Could not create RDMA communications manager: %s",
-                strerror(errno));
-        return -1;
-    }
-
-    //get file descriptor
-    int fd = channel->fd;
-    
-    return libqueue.NewQueue(fd, id, rdmatype)->qd;
+    return type == SOCK_STREAM ? RDMA_PS_TCP : RDMA_PS_UDP;
 }
 
 int
-bind(int qd, struct sockaddr *saddr, size_t size)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (rdma_bind(q->id, backlog) != 0) {
-        fprintf(stderr,
-                "Could not listen on RDMA connection: %s",
-                strerror(errno));
-        return errno;
-    }
-    return 0;
-}
-
-int
-listen(int qd, int backlog)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q == NULL) {
-        fprintf(stderr, "Invalid Queue Descriptor");
-        return EINVAL;
-    }
-    
-    // Listen for connections
-    if (rdma_listen(q->id, backlog) != 0) {
-        fprintf(stderr,
-                "Could not listen on RDMA connection: %s",
-                strerror(errno));
-        return errno;
-    }
-    return 0;
-}
- 
-int
-accept(int qd, struct sockaddr *saddr, size_t size)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q == NULL) {
-        fprintf(stderr, "Invalid Queue Descriptor");
-        return EINVAL;
-    }
-    struct rdma_cm_event *event;
-
-    if (rdma_get_cm_event(q->channel, &event) == 0) {
-        if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
-            struct rdma_cm_id *newid = event->id;
-            rdma_ack_cm_event(channel, &event);
-            // get the address of the other end
-            *saddr = rdma_get_peer_addr(newid);
-            // must be TCP if using accept
-            int newqd = libqueue.NewRdmaQueue(id, RDMA_PS_TCP);
-            int res = ConnectRdma(libqueue.FindQueue(newqd));
-            if (res != newqd) {
-                return res;
-            }
-            
-            // Accept the connection
-            struct rdma_conn_param params;
-            memset(&params, 0, sizeof(params));
-            params.initiator_depth = params.responder_resources = 1;
-            params.rnr_retry_count = 7; /* infinite retry */
-            if ((rdma_accept(event->id, &params)) != 0) {
-                fprintf(stderr,
-                        "Could not accept RDMA connection: %s",
-                        strerror(errno));
-                ibv_destroy_comp_channel(id->send_cq_channel);
-                ibv_destroy_cq(id->send_cq);
-                return errno;
-            }
-            return newqd;
-        } else {
-            rdma_ack_cm_event(channel, &event);
-        }
-    }
-    return EAGAIN;
-}
-
-int
-connect(int qd, struct sockaddr *saddr, size_t size)
-{
-    struct rdma_conn_param params;    
-    struct rdma_cm_event *event;
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q == NULL) {
-        fprintf(stderr, "Invalid Queue Descriptor");
-        return EINVAL;
-    }
-    struct rdma_cm_id *id = q->id;
-    struct rdma_event_channel *channel = q->id->channel;
-
-    // Convert regular address into an rdma address
-    if (rdma_resolve_addr(id, NULL, saddr, 1) != 0) {
-        fprintf(stderr,
-                "Could not resolve IP to an RDMA address: %s",
-                strerror(errno));
-        return errno;
-    }
-
-    // Wait for address resolution
-    rdma_get_cm_event(channel, &event);
-    if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
-        fprintf(stderr,
-                "Could not resolve IP to an RDMA address: %s",
-                strerror(errno));
-        rdma_ack_cm_event(event);
-        return errno;
-    }
-    rdma_ack_cm_event(event);
-
-    // Find path to rdma address
-    if ((res = rdma_resolve_route(id, 1)) != 0) {
-        fprintf(stderr,
-                "Could not resolve RDMA address to path: %s",
-                strerror(errno));
-        return errno;
-    }
-
-    // Wait for path resolution
-    rdma_get_cm_event(channel, &event);
-    if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
-        fprintf(stderr,
-                "Could not resolve RDMA address to path: %s",
-                strerror(errno));
-        rdma_ack_cm_event(event);
-        return errno
-    }
-    rdma_ack_cm_event(event);
-
-    // set up pair queues etc.
-    int res = libqueue.ConnectRdma(q);
-
-    if (res != qd) {
-        return res;
-    }
-    
-    // Actually connect
-    memset(&params, 0, sizeof(params));
-    params.initiator_depth = params.responder_resources = 1;
-    params.rnr_retry_count = 7; /* infinite retry */
-    
-    if ((res = rdma_connect(id, &params)) != 0) {
-        fprintf(stderr,
-                "Could not connect RDMA: %s",
-                strerror(errno));
-        return errno;
-    }
-
-    // Wait for rdma connection setup to complete
-    rdma_get_cm_event(channel, &event);
-    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
-        fprintf(stderr,
-                "Could not connect RDMA: %s",
-                strerror(errno));
-        rdma_ack_cm_event(event);
-        return errno;
-    }
-    rdma_ack_cm_event(event);
-    return qd;
-}
-
-int
-qd2fd(int qd)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    return q == NULL ? EINVAL : q->fd;
-}
-
-int
-push(int qd, struct sga *bufs)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL) {
-        q->queue.push_back(bufs);
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
-int
-pop(int qd, struct sga **bufs)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
-        q->queue.pop_front();
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
-int
-peek(int qd, struct sga **bufs)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
-
-IOQueue*
-LibRdmaQueue::NewQueue(int fd)
-{
-    IOQueue *newQ = new IOQueue();
-    newQ->qd = qd++;
-    newQ->fd = fd;
-    queues[newQ->qd] = newQ;
-    return newQ;
-}
-
-IOQueue*
-LibRdmaQueue::FindQueue(int qd)
-{
-    auto it = queues.find(qd); 
-    return it == queues.end() ? NULL : it->second;
-}
-
-int
-LibRdmaQueue::ConnectRdma(IOQueue *q)
+ConnectRdma(IOQueue *q)
 {
     rdma_cm_id *id = q->id;
     struct ibv_qp_init_attr qp_attr;
@@ -302,7 +49,7 @@ LibRdmaQueue::ConnectRdma(IOQueue *q)
     struct ibv_cq *cq;
 
     // Create a completion channel
-    if ((channel = ibv_create_comp_channel(rdmacontext)) == NULL) {
+    if ((channel = ibv_create_comp_channel(Zeus::rdmacontext)) == NULL) {
         fprintf(stderr,
                 "Could not listen on RDMA connection: %s",
                 strerror(errno));
@@ -310,7 +57,7 @@ LibRdmaQueue::ConnectRdma(IOQueue *q)
     }
         
     // Create a completion queue
-    if ((cq = ibv_create_cq(rdmacontext,
+    if ((cq = ibv_create_cq(Zeus::rdmacontext,
                             // double the queue depth to accommondate sends and receives
                             MAX_QUEUE_DEPTH << 1,
                             NULL, channel, 0)) == NULL) {
@@ -344,7 +91,7 @@ LibRdmaQueue::ConnectRdma(IOQueue *q)
     qp_attr.cap.max_send_sge = MAX_SGARRAY_SIZE;
     qp_attr.cap.max_recv_sge = MAX_SGARRAY_SIZE;
     // create a queue pair for this connection
-    if (rdma_create_qp(id, info->pd, &qp_attr) != 0) {
+    if (rdma_create_qp(id, Zeus::rdmaglobalpd, &qp_attr) != 0) {
         fprintf(stderr,
                 "Could not create queue pair for RDMA connection: %s",
                 strerror(errno));
@@ -358,8 +105,261 @@ LibRdmaQueue::ConnectRdma(IOQueue *q)
     id->recv_cq_channel = channel;
     id->send_cq = cq;
     id->recv_cq = cq;
-    int q->fd = channel->fd;
+    q->fd = channel->fd;
     
     return q->qd;
 }
 
+int
+queue(int domain, int type, int protocol)
+{
+    // Create a RDMA channel for events on this link
+    struct rdma_cm_id *id;
+    rdma_port_space rdmatype = translateType(type);
+    struct rdma_event_channel *channel;
+
+    // Create a RDMA channel for events on this link
+    if((channel = rdma_create_event_channel()) == 0) {
+        fprintf(stderr, "Could not create RDMA event channel: %s",
+                strerror(errno));
+        return -1;
+    }
+
+    if ((rdma_create_id(channel, &id, Zeus::rdmacontext, rdmatype)) != 0) {
+        fprintf(stderr,
+                "Could not create RDMA communications manager: %s",
+                strerror(errno));
+        return -1;
+    }
+
+    //get file descriptor
+    int fd = channel->fd;
+    
+    return libqueue.NewQueue(fd, id, rdmatype)->qd;
+}
+
+int
+bind(int qd, struct sockaddr *saddr, socklen_t size)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (rdma_bind_addr(q->id, saddr) != 0) {
+        fprintf(stderr,
+                "Could not listen on RDMA connection: %s",
+                strerror(errno));
+        return errno;
+    }
+    return 0;
+}
+
+int
+listen(int qd, int backlog)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q == NULL) {
+        fprintf(stderr, "Invalid Queue Descriptor");
+        return EINVAL;
+    }
+    
+    // Listen for connections
+    if (rdma_listen(q->id, backlog) != 0) {
+        fprintf(stderr,
+                "Could not listen on RDMA connection: %s",
+                strerror(errno));
+        return errno;
+    }
+    return 0;
+}
+ 
+int
+accept(int qd, struct sockaddr *saddr, socklen_t *size)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q == NULL) {
+        fprintf(stderr, "Invalid Queue Descriptor");
+        return EINVAL;
+    }
+    struct rdma_cm_event *event;
+    struct rdma_event_channel *channel = q->id->channel;
+
+    if (rdma_get_cm_event(channel, &event) == 0) {
+        if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
+            struct rdma_cm_id *newid = event->id;
+            rdma_ack_cm_event(event);
+            // get the address of the other end
+            *saddr = *rdma_get_peer_addr(newid);
+            *size = sizeof(struct sockaddr);
+            // must be TCP if using accept
+            IOQueue *newq = libqueue.NewQueue(newid->channel->fd,
+                                              newid, RDMA_PS_TCP);
+            int res = ConnectRdma(newq);
+            if (res <= 0) {
+                return res;
+            }
+            
+            // Accept the connection
+            struct rdma_conn_param params;
+            memset(&params, 0, sizeof(params));
+            params.initiator_depth = params.responder_resources = 1;
+            params.rnr_retry_count = 7; /* infinite retry */
+            if ((rdma_accept(newid, &params)) != 0) {
+                fprintf(stderr,
+                        "Could not accept RDMA connection: %s",
+                        strerror(errno));
+                ibv_destroy_comp_channel(newid->send_cq_channel);
+                ibv_destroy_cq(newid->send_cq);
+                return errno;
+            }
+            return newq->qd;
+        } else {
+            rdma_ack_cm_event(event);
+        }
+    }
+    return EAGAIN;
+}
+
+int
+connect(int qd, struct sockaddr *saddr, socklen_t size)
+{
+    struct rdma_conn_param params;    
+    struct rdma_cm_event *event;
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q == NULL) {
+        fprintf(stderr, "Invalid Queue Descriptor");
+        return EINVAL;
+    }
+    struct rdma_cm_id *id = q->id;
+    struct rdma_event_channel *channel = q->id->channel;
+
+    // Convert regular address into an rdma address
+    if (rdma_resolve_addr(id, NULL, saddr, 1) != 0) {
+        fprintf(stderr,
+                "Could not resolve IP to an RDMA address: %s",
+                strerror(errno));
+        return errno;
+    }
+
+    // Wait for address resolution
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
+        fprintf(stderr,
+                "Could not resolve IP to an RDMA address: %s",
+                strerror(errno));
+        rdma_ack_cm_event(event);
+        return errno;
+    }
+    rdma_ack_cm_event(event);
+
+    // Find path to rdma address
+    if (rdma_resolve_route(id, 1) != 0) {
+        fprintf(stderr,
+                "Could not resolve RDMA address to path: %s",
+                strerror(errno));
+        return errno;
+    }
+
+    // Wait for path resolution
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
+        fprintf(stderr,
+                "Could not resolve RDMA address to path: %s",
+                strerror(errno));
+        rdma_ack_cm_event(event);
+        return errno;
+    }
+    rdma_ack_cm_event(event);
+
+    // set up pair queues etc.
+    int res = ConnectRdma(q);
+
+    if (res != qd) {
+        return res;
+    }
+    
+    // Actually connect
+    memset(&params, 0, sizeof(params));
+    params.initiator_depth = params.responder_resources = 1;
+    params.rnr_retry_count = 7; /* infinite retry */
+    
+    if ((res = rdma_connect(id, &params)) != 0) {
+        fprintf(stderr,
+                "Could not connect RDMA: %s",
+                strerror(errno));
+        return errno;
+    }
+
+    // Wait for rdma connection setup to complete
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+        fprintf(stderr,
+                "Could not connect RDMA: %s",
+                strerror(errno));
+        rdma_ack_cm_event(event);
+        return errno;
+    }
+    rdma_ack_cm_event(event);
+    return qd;
+}
+
+inline int
+qd2fd(int qd)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    return q == NULL ? EINVAL : q->fd;
+}
+
+int
+push(int qd, struct Zeus::sgarray *bufs)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q != NULL) {
+        q->queue.push_back(*bufs);
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+int
+pop(int qd, struct Zeus::sgarray *bufs)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q != NULL && !q->queue.empty()) {
+        *bufs = q->queue.front();
+        q->queue.pop_front();
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+int
+peek(int qd, struct Zeus::sgarray *bufs)
+{
+    IOQueue *q = libqueue.FindQueue(qd);
+    if (q != NULL && !q->queue.empty()) {
+        *bufs = q->queue.front();
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+
+IOQueue*
+LibIOQueue::NewQueue(int fd, rdma_cm_id *id, rdma_port_space type)
+{
+    IOQueue *newQ = new IOQueue();
+    newQ->qd = qd++;
+    newQ->fd = fd;
+    newQ->id = id;
+    newQ->type = type;
+    queues[newQ->qd] = newQ;
+    return newQ;
+}
+
+IOQueue*
+LibIOQueue::FindQueue(int qd)
+{
+    auto it = queues.find(qd); 
+    return it == queues.end() ? NULL : it->second;
+}
