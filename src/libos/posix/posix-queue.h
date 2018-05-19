@@ -36,24 +36,13 @@
 #include <list>
 #include <map>
 
+#define BUFFER_SIZE 1024
+
 namespace Zeus {
 namespace POSIX {
 
-struct IOQueue {
-    int qd; // queue descriptor = file descriptor
-    std::list<struct sgarray> queue;
-};
-
-
 class LibIOQueue
 {
- private:
-    std::map<int, IOQueue*> queues;
-
- public:
-    IOQueue* NewQueue(int fd);
-    IOQueue* FindQueue(int qd);
-    
     
 };
 } // namespace POSIX

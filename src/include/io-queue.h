@@ -34,7 +34,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <memory>
-
+    
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
 
@@ -42,9 +42,14 @@ namespace Zeus {
     
 typedef void * ioptr;
 
+struct sgelem {
+    ioptr buf;
+    size_t len;
+};
+    
 struct sgarray {
-    size_t num_buffers;
-    ioptr bufs[];
+    size_t num_bufs;
+    sgelem bufs[MAX_SGARRAY_SIZE];
 };
 
 // memory allocation
@@ -60,9 +65,8 @@ ioptr iomalloc(size_t size);
 // eventually file functions
 // int open() ..
 
-int push(int qd, struct sgarray *bufs);
-int pop(int qd, struct sgarray *bufs);
-int peek(int qd, struct sgarray *bufs);
+int push(int qd, struct sgarray &bufs);
+int pop(int qd, struct sgarray &bufs);
 int qd2fd(int qd);
 
 } // namespace Zeus

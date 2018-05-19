@@ -29,16 +29,16 @@
  **********************************************************************/
 
 #include "posix-queue.h"
+#include <unistd.h>
 
-using namespace Zeus::POSIX;
+namespace Zeus {
 
+using namespace POSIX;
 LibIOQueue libqueue;
 
-int socket(int domain, int type, int protocol)
+int queue(int domain, int type, int protocol)
 {
-    int fd = socket(domain, type, protocol);
-
-    return fd > 0 ? libqueue.NewQueue(fd)->qd : fd;
+    return socket(domain, type, protocol);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -49,9 +49,7 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 int
 accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    int fd = accept(qd, saddr, size);
-
-    return fd > 0 ? libqueue.NewQueue(fd)->qd : fd;
+    return ::accept(qd, saddr, size);
 }
 
 int
@@ -73,56 +71,39 @@ qd2fd(int qd) {
 }
 
 int
-push(int qd, struct Zeus::sgarray *bufs)
+push(int qd, struct Zeus::sgarray &bufs)
 {
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL) {
-        q->queue.push_back(*bufs);
-        return 0;
-    } else {
-        return -1;
+    size_t total = 0;
+
+    // qd is same as fd
+    for (int i = 0; i < bufs.num_bufs; i++) {
+        size_t count = write(qd, bufs.bufs[i].buf,
+                             bufs.bufs[i].len);
+        if (count < bufs.bufs[i].len) {
+            return errno;
+        }
+        total += count;
     }
+    return total;
 }
 
 int
-pop(int qd, struct Zeus::sgarray *bufs)
+pop(int qd, struct Zeus::sgarray &bufs)
 {
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
-        q->queue.pop_front();
-        return 0;
-    } else {
-        return -1;
-    }
+    int num_bufs = 0;
+    size_t count, total = 0;
+    do {
+        ioptr buf = malloc(BUFFER_SIZE);
+        count = read(qd, buf, BUFFER_SIZE);
+        if (count < 0) {
+            return errno;
+        }
+        bufs.bufs[num_bufs].buf = buf;
+        bufs.bufs[num_bufs].len = count;
+        total += count;
+    } while (count == BUFFER_SIZE &&
+             num_bufs < MAX_SGARRAY_SIZE);
+    return total;
 }
 
-int
-peek(int qd, struct Zeus::sgarray *bufs)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
-
-IOQueue*
-LibIOQueue::NewQueue(int fd)
-{
-    IOQueue *newQ = new IOQueue();
-    newQ->qd = fd;
-    queues[newQ->qd] = newQ;
-    return newQ;
-}
-
-IOQueue*
-LibIOQueue::FindQueue(int qd)
-{
-    auto it = queues.find(qd); 
-    return it == queues.end() ? NULL : it->second;
-}
-
+} // namespace Zeus

@@ -1,6 +1,6 @@
 # Zeus libOS code
 
-cmake_minimum_required (VERSION 3.8.2)
+cmake_minimum_required (VERSION 3.7.2)
 project (Zeus C CXX)
 
 # ----------------------------------------------------
@@ -30,16 +30,16 @@ include_directories(${ZEUS_SOURCE_DIR})
 
 # Hoard
 set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/Hoard/src/)
-ExternalProject_Add(Hoard
-  PREFIX ${HOARD_LIBRARY}
-  DOWNLOAD_COMMAND ""
-  CONFIGURE_COMMAND ""
-  UPDATE_DISCONNECTED 1
-  BUILD_COMMAND "make"
-  INSTALL_COMMAND ""
-  SOURCE_DIR ${HOARD_LIBRARY}
-  BINARY_DIR ${HOARD_LIBRARY}
-  )
+#ExternalProject_Add(Hoard
+ # PREFIX ${HOARD_LIBRARY}
+ # DOWNLOAD_COMMAND ""
+ # CONFIGURE_COMMAND ""
+ # UPDATE_DISCONNECTED 1
+  # BUILD_COMMAND "make"
+  # INSTALL_COMMAND ""
+  # SOURCE_DIR ${HOARD_LIBRARY}
+  # BINARY_DIR ${HOARD_LIBRARY}
+  # )
 include_directories(${HOARD_LIBRARY})
 
 

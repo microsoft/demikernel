@@ -308,11 +308,11 @@ qd2fd(int qd)
 }
 
 int
-push(int qd, struct Zeus::sgarray *bufs)
+push(int qd, struct Zeus::sgarray &bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
     if (q != NULL) {
-        q->queue.push_back(*bufs);
+        q->queue.push_back(bufs);
         return 0;
     } else {
         return -1;
@@ -320,30 +320,17 @@ push(int qd, struct Zeus::sgarray *bufs)
 }
 
 int
-pop(int qd, struct Zeus::sgarray *bufs)
+pop(int qd, struct Zeus::sgarray &bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
     if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
+        bufs = q->queue.front();
         q->queue.pop_front();
         return 0;
     } else {
         return -1;
     }
 }
-
-int
-peek(int qd, struct Zeus::sgarray *bufs)
-{
-    IOQueue *q = libqueue.FindQueue(qd);
-    if (q != NULL && !q->queue.empty()) {
-        *bufs = q->queue.front();
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
 
 IOQueue*
 LibIOQueue::NewQueue(int fd, rdma_cm_id *id, rdma_port_space type)
