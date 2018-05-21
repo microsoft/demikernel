@@ -43,7 +43,7 @@ int queue(int domain, int type, int protocol)
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    return bind(qd, saddr, size);
+    return ::bind(qd, saddr, size);
 }
 
 int
@@ -55,14 +55,14 @@ accept(int qd, struct sockaddr *saddr, socklen_t *size)
 int
 listen(int qd, int backlog)
 {
-    return listen(qd, backlog);
+    return ::listen(qd, backlog);
 }
         
 
 int
 connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    return connect(qd, saddr, size);
+    return ::connect(qd, saddr, size);
 }
 
 int
