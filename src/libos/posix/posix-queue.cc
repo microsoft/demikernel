@@ -38,7 +38,7 @@ LibIOQueue libqueue;
 
 int queue(int domain, int type, int protocol)
 {
-    return socket(domain, type, protocol);
+    return ::socket(domain, type, protocol);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -80,7 +80,7 @@ push(int qd, struct Zeus::sgarray &bufs)
         size_t count = write(qd, bufs.bufs[i].buf,
                              bufs.bufs[i].len);
         if (count < bufs.bufs[i].len) {
-            return errno;
+            return -1;
         }
         total += count;
     }
@@ -96,13 +96,16 @@ pop(int qd, struct Zeus::sgarray &bufs)
         ioptr buf = malloc(BUFFER_SIZE);
         count = read(qd, buf, BUFFER_SIZE);
         if (count < 0) {
-            return errno;
+            return -errno;
         }
-        bufs.bufs[num_bufs].buf = buf;
+        bufs.bufs[num_bufs].buf = realloc(buf, count);
         bufs.bufs[num_bufs].len = count;
+
         total += count;
+        num_bufs++;
     } while (count == BUFFER_SIZE &&
              num_bufs < MAX_SGARRAY_SIZE);
+    bufs.num_bufs = num_bufs;
     return total;
 }
 
