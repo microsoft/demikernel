@@ -37,12 +37,16 @@
 #include <map>
 
 #define BUFFER_SIZE 1024
+#define MAGIC 0x10102010
 
 namespace Zeus {
 namespace POSIX {
 
 class LibIOQueue
 {
+    std::list<sgarray &> outgoing;
+    std::list<sgarray &> incoming;
+
     
 };
 } // namespace POSIX

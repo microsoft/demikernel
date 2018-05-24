@@ -75,10 +75,25 @@ push(int qd, struct Zeus::sgarray &bufs)
 {
     size_t total = 0;
 
+    uint32_t magic = MAGIC;
+    uint32_t size = bufs.num_bufs;
+    size_t count; 
+    if (write(qd, magic, sizeof(uint32_t)) < sizeof(uint32_t)) {
+        return -1;
+    }
+    if (write(qd, size, sizeof(uint32_t)) < sizeof(uint32_t)) {
+        return -1;
+    }    
     // qd is same as fd
     for (int i = 0; i < bufs.num_bufs; i++) {
-        size_t count = write(qd, bufs.bufs[i].buf,
-                             bufs.bufs[i].len);
+        // stick in size header
+        count = write(qd, bufs.bufs[i].len, sizeof(size_t));
+        if (count < sizeof(size_t)) {
+            return -1;
+        }
+        // write buffer
+        count = write(qd, bufs.bufs[i].buf,
+                      bufs.bufs[i].len);
         if (count < bufs.bufs[i].len) {
             return -1;
         }
@@ -92,17 +107,27 @@ pop(int qd, struct Zeus::sgarray &bufs)
 {
     int num_bufs = 0;
     size_t count, total = 0;
-    do {
-        ioptr buf = malloc(BUFFER_SIZE);
-        count = read(qd, buf, BUFFER_SIZE);
-        if (count < 0) {
-            return -errno;
-        }
-        bufs.bufs[num_bufs].buf = realloc(buf, count);
-        bufs.bufs[num_bufs].len = count;
+    ioptr buf = malloc(BUFFER_SIZE);
+    
+    count = read(qd, buf, BUFFER_SIZE);
+    if (count < 0) {
+        return -errno;
+    }
 
-        total += count;
-        num_bufs++;
+    uint8_t *ptr = (uint8_t *)buf;
+    if (*(uint32_t *)ptr == MAGIC) {
+        ptr += sizeof(uint32_t);
+        bufs.num_bufs = *(uint32_t *)ptr;
+        ptr += sizeof(uint32_t);
+        
+        for (int i = 0; i < bufs.num_bufs; i++) {
+            buf.bufs[i].len = *(size_t *)ptr;
+            ptr += sizeof(size_t);
+            buf.bufs[i].buf = ptr;
+            ptr += buf.bufs[i].len;
+        }
+    }
+      
     } while (count == BUFFER_SIZE &&
              num_bufs < MAX_SGARRAY_SIZE);
     bufs.num_bufs = num_bufs;

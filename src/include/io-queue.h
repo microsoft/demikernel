@@ -48,7 +48,7 @@ struct sgelem {
 };
     
 struct sgarray {
-    size_t num_bufs;
+    int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
 };
 
