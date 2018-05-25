@@ -30,7 +30,7 @@
 
 #include "posix-queue.h"
 #include <unistd.h>
-
+#include <assert.h>
 namespace Zeus {
 
 using namespace POSIX;
@@ -71,66 +71,117 @@ qd2fd(int qd) {
 }
 
 int
-push(int qd, struct Zeus::sgarray &bufs)
+push(int qd, struct Zeus::sgarray &sga)
 {
-    size_t total = 0;
+    size_t count, total = 0;
 
     uint32_t magic = MAGIC;
-    uint32_t size = bufs.num_bufs;
-    size_t count; 
-    if (write(qd, magic, sizeof(uint32_t)) < sizeof(uint32_t)) {
+    uint32_t num = sga.num_bufs;
+    uint32_t totalLen = 0;
+
+    if (write(qd, &magic, sizeof(uint32_t)) < sizeof(uint32_t)) {
         return -1;
     }
-    if (write(qd, size, sizeof(uint32_t)) < sizeof(uint32_t)) {
+    // calculate size
+    for (int i = 0; i < sga.num_bufs; i++) {
+        totalLen += sga.bufs[i].len;
+    }
+    totalLen += sizeof(size_t) * num;
+    totalLen += sizeof(uint32_t);
+        
+    if (write(qd, &totalLen, sizeof(uint32_t)) < sizeof(uint32_t)) {
         return -1;
-    }    
-    // qd is same as fd
-    for (int i = 0; i < bufs.num_bufs; i++) {
+    }
+
+    if (write(qd, &num, sizeof(uint32_t)) < sizeof(uint32_t)) {
+        return -1;
+    }
+
+    
+    // write buffers
+    for (int i = 0; i < sga.num_bufs; i++) {
         // stick in size header
-        count = write(qd, bufs.bufs[i].len, sizeof(size_t));
+        count = write(qd, &sga.bufs[i].len, sizeof(size_t));
         if (count < sizeof(size_t)) {
             return -1;
         }
         // write buffer
-        count = write(qd, bufs.bufs[i].buf,
-                      bufs.bufs[i].len);
-        if (count < bufs.bufs[i].len) {
+        count = write(qd, sga.bufs[i].buf,
+                      sga.bufs[i].len);
+        if (count < sga.bufs[i].len) {
             return -1;
         }
         total += count;
     }
     return total;
 }
-
-int
-pop(int qd, struct Zeus::sgarray &bufs)
-{
-    int num_bufs = 0;
-    size_t count, total = 0;
-    ioptr buf = malloc(BUFFER_SIZE);
     
-    count = read(qd, buf, BUFFER_SIZE);
-    if (count < 0) {
-        return -errno;
+int
+pop(int qd, struct Zeus::sgarray &sga)
+{
+    size_t total = 0;
+    uint8_t *ptr;
+    void *buf = libqueue.inConns[qd].buf;
+    size_t count = libqueue.inConns[qd].count;
+
+    // if we aren't already working on a buffer, allocate one
+    if (buf == NULL) {
+        buf = malloc(BUFFER_SIZE);
+        count = 0;
     }
 
-    uint8_t *ptr = (uint8_t *)buf;
-    if (*(uint32_t *)ptr == MAGIC) {
-        ptr += sizeof(uint32_t);
-        bufs.num_bufs = *(uint32_t *)ptr;
-        ptr += sizeof(uint32_t);
-        
-        for (int i = 0; i < bufs.num_bufs; i++) {
-            buf.bufs[i].len = *(size_t *)ptr;
-            ptr += sizeof(size_t);
-            buf.bufs[i].buf = ptr;
-            ptr += buf.bufs[i].len;
+    // if we don't have a full header in our buffer, then get one
+    if (count < sizeof(uint32_t) * 2) {
+        count += read(qd, (uint8_t *)buf + count,
+                      sizeof(uint32_t) * 2 - count);
+
+        // we still don't have a header
+        if (count < sizeof(uint32_t) * 2) {
+            // try again later
+            return 0;
         }
     }
-      
-    } while (count == BUFFER_SIZE &&
-             num_bufs < MAX_SGARRAY_SIZE);
-    bufs.num_bufs = num_bufs;
+
+    // go to the beginning of the buffer to check the header
+    ptr = (uint8_t *)buf;
+    uint32_t magic = *(uint32_t *)ptr;
+    if (magic != MAGIC) {
+        // not a correctly formed packet
+        free(buf);
+        buf = NULL;
+        count = 0;
+        return -1;
+    }
+    ptr += sizeof(magic);
+    uint32_t totalLen = *(uint32_t *)ptr;
+    ptr += sizeof(totalLen);
+
+    // grab the rest of the packet
+    if (count < sizeof(uint32_t) * 2 + totalLen) {
+        count += read(qd, (uint8_t *)buf + count, 
+                      totalLen + sizeof(uint32_t) * 2 - count);
+
+        // try again later
+        if (count < totalLen + sizeof(uint32_t) * 2) {
+            return 0;
+        }
+        // shorten the buffer
+        buf = realloc(buf, totalLen + sizeof(uint32_t) * 2);    
+    }
+
+    // now we have the whole buffer, start reading data
+    sga.num_bufs = *(uint32_t *)ptr;
+    ptr += sizeof(uint32_t);
+
+    for (int i = 0; i < sga.num_bufs; i++) {
+        sga.bufs[i].len = *(size_t *)ptr;
+        ptr += sizeof(size_t);
+        sga.bufs[i].buf = (ioptr)ptr;
+        ptr += sga.bufs[i].len;
+        total += sga.bufs[i].len;
+    }
+    buf = NULL;
+    count = 0;
     return total;
 }
 

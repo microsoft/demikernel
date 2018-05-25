@@ -44,8 +44,15 @@ namespace POSIX {
 
 class LibIOQueue
 {
-    std::list<sgarray &> outgoing;
-    std::list<sgarray &> incoming;
+public:
+    struct conn {
+        // currently used incoming buffer
+        void *buf = NULL;
+        // valid data in current buffer
+        size_t count = 0;
+    };
+
+    std::map<int, struct conn> inConns;
 
     
 };
