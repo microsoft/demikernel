@@ -31,6 +31,7 @@
 #include "posix-queue.h"
 #include <unistd.h>
 #include <assert.h>
+#include <string.h>
 namespace Zeus {
 
 using namespace POSIX;
@@ -124,9 +125,11 @@ pop(int qd, struct Zeus::sgarray &sga)
     void *buf = libqueue.inConns[qd].buf;
     size_t count = libqueue.inConns[qd].count;
 
+    printf("Found message %lx %lu\n", buf, count);
     // if we aren't already working on a buffer, allocate one
     if (buf == NULL) {
         buf = malloc(BUFFER_SIZE);
+        memset(buf, 0, BUFFER_SIZE);
         count = 0;
     }
 
@@ -138,6 +141,9 @@ pop(int qd, struct Zeus::sgarray &sga)
         // we still don't have a header
         if (count < sizeof(uint32_t) * 2) {
             // try again later
+            libqueue.inConns[qd].buf = buf;
+            libqueue.inConns[qd].count = count;
+            fprintf(stderr, "No header buf=%lx count=%lu\n", buf, count);
             return 0;
         }
     }
@@ -147,22 +153,27 @@ pop(int qd, struct Zeus::sgarray &sga)
     uint32_t magic = *(uint32_t *)ptr;
     if (magic != MAGIC) {
         // not a correctly formed packet
+        fprintf(stderr, "Could not find magic %lx\n", magic);
+        libqueue.inConns[qd].buf = NULL;
         free(buf);
-        buf = NULL;
-        count = 0;
+        libqueue.inConns[qd].count = 0;
         return -1;
     }
     ptr += sizeof(magic);
     uint32_t totalLen = *(uint32_t *)ptr;
     ptr += sizeof(totalLen);
+    printf("Found message of size %lu %lu\n", totalLen, count);
 
-    // grab the rest of the packet
+    // grabthe rest of the packet
     if (count < sizeof(uint32_t) * 2 + totalLen) {
         count += read(qd, (uint8_t *)buf + count, 
                       totalLen + sizeof(uint32_t) * 2 - count);
 
         // try again later
         if (count < totalLen + sizeof(uint32_t) * 2) {
+            printf("Couldn't find rest of message, %u %lu\n", totalLen, count);
+            libqueue.inConns[qd].buf = buf;
+            libqueue.inConns[qd].count = count;
             return 0;
         }
         // shorten the buffer
@@ -180,8 +191,9 @@ pop(int qd, struct Zeus::sgarray &sga)
         ptr += sga.bufs[i].len;
         total += sga.bufs[i].len;
     }
-    buf = NULL;
-    count = 0;
+    libqueue.inConns[qd].buf = NULL;
+    libqueue.inConns[qd].count = 0;
+    fprintf(stderr, "Returned size %lu\n", total);
     return total;
 }
 
