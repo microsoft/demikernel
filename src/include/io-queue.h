@@ -65,8 +65,8 @@ ioptr iomalloc(size_t size);
 // eventually file functions
 // int open() ..
 
-int push(int qd, struct sgarray &bufs);
-int pop(int qd, struct sgarray &bufs);
+ssize_t push(int qd, struct sgarray &bufs);
+ssize_t pop(int qd, struct sgarray &bufs);
 int qd2fd(int qd);
 
 } // namespace Zeus

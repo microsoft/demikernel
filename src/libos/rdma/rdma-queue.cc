@@ -307,7 +307,7 @@ qd2fd(int qd)
     return q == NULL ? EINVAL : q->fd;
 }
 
-int
+ssize_t
 push(int qd, struct Zeus::sgarray &bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
@@ -319,7 +319,7 @@ push(int qd, struct Zeus::sgarray &bufs)
     }
 }
 
-int
+ssize_t
 pop(int qd, struct Zeus::sgarray &bufs)
 {
     IOQueue *q = libqueue.FindQueue(qd);
