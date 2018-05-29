@@ -25,7 +25,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 # Include and link directories
 # ---------------------------------------------------------
 
-set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/src)
+set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/os)
 include_directories(${ZEUS_SOURCE_DIR}/include)
 
 # Hoard
@@ -37,8 +37,8 @@ include_directories(${HOARD_LIBRARY}/include)
 # Source files
 # ---------------------------------------------------------
 
-add_subdirectory(${ZEUS_SOURCE_DIR}/src/rdma)
-add_subdirectory(${ZEUS_SOURCE_DIR}/src/posix)
+add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
 
 # ---------------------------------------------------------
 # Build targets
