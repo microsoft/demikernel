@@ -25,7 +25,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 # Include and link directories
 # ---------------------------------------------------------
 
-set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/os)
+set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 
 # Hoard
