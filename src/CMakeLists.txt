@@ -16,9 +16,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
 # ----------------------------------------------------
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -fstack-protector -Wall \
-  -Wno-uninitialized -O3 -DNASSERT -lrdmacm -libverbs")
+  -Wno-uninitialized -O3 -DNASSERT")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
-   -std=c++11 -fPIC -Wall -lrdmacm -libverbs")
+   -std=c++11 -fPIC -Wall")
    set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
 
 # ---------------------------------------------------------
@@ -54,10 +54,12 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libos/posix)
 # Build targets
 # ---------------------------------------------------------
 
-add_library(zeus_rdma SHARED
-  ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${HOARD_LIBRARIES})
-
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_POSIX_LIB})
 target_link_libraries(zeus_posix)
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
+set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
+add_library(zeus_rdma SHARED
+  ${SRC_ZEUS_RDMA_LIB})
+target_link_libraries(zeus_rdma ${HOARD_LIBRARIES})

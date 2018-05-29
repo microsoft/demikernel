@@ -28,7 +28,7 @@
  *
  **********************************************************************/
  
-#ifndef _LIB_POSIX_QUEUE_H
+#ifndef _LIB_POSIX_QUEUE_H_
 #define _LIB_POSIX_QUEUE_H_
 
 #include "include/io-queue.h"

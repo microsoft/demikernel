@@ -159,7 +159,7 @@ pop(int qd, struct Zeus::sgarray &sga)
     uint64_t magic = *(uint64_t *)ptr;
     if (magic != MAGIC) {
         // not a correctly formed packet
-        fprintf(stderr, "Could not find magic %lx\n", magic);
+        fprintf(stderr, "Could not find magic %llx\n", magic);
         exit(-1);
         return -1;
     }
