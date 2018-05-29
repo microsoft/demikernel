@@ -25,30 +25,20 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 # Include and link directories
 # ---------------------------------------------------------
 
-set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR})
-include_directories(${ZEUS_SOURCE_DIR})
+set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/src)
+include_directories(${ZEUS_SOURCE_DIR}/include)
 
 # Hoard
-set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/Hoard/src/)
-#ExternalProject_Add(Hoard
- # PREFIX ${HOARD_LIBRARY}
- # DOWNLOAD_COMMAND ""
- # CONFIGURE_COMMAND ""
- # UPDATE_DISCONNECTED 1
-  # BUILD_COMMAND "make"
-  # INSTALL_COMMAND ""
-  # SOURCE_DIR ${HOARD_LIBRARY}
-  # BINARY_DIR ${HOARD_LIBRARY}
-  # )
-include_directories(${HOARD_LIBRARY})
+set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/memhoard)
+include_directories(${HOARD_LIBRARY}/include)
 
 
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
 
-add_subdirectory(${ZEUS_SOURCE_DIR}/libos/rdma)
-add_subdirectory(${ZEUS_SOURCE_DIR}/libos/posix)
+add_subdirectory(${ZEUS_SOURCE_DIR}/src/rdma)
+add_subdirectory(${ZEUS_SOURCE_DIR}/src/posix)
 
 # ---------------------------------------------------------
 # Build targets
@@ -56,7 +46,7 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libos/posix)
 
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_POSIX_LIB})
-target_link_libraries(zeus_posix)
+target_link_libraries(zeus_posix ${HOARD_LIBRARIES})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
