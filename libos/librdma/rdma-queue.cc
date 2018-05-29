@@ -29,7 +29,7 @@
  **********************************************************************/
 
 #include "rdma-queue.h"
-#include "Hoard/src/include/rdma/rdmaheap.h"
+#include "libos/memhoard/include/rdma/rdmaheap.h"
 
 using namespace Zeus::RDMA;
 
