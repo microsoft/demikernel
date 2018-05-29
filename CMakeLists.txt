@@ -26,7 +26,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 # ---------------------------------------------------------
 
 set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/os)
-include_directories(${ZEUS_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR})
 
 # Hoard
 set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/memhoard)
