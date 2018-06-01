@@ -45,10 +45,10 @@ typedef struct Sgelem{
     size_t len;
 }zeus_sgelem;
     
-typedef struct Sgarry{
+typedef struct Sgarray{
     int num_bufs;
     zeus_sgelem bufs[C_MAX_SGARRAY_SIZE];
-}zeus_sgarry;
+}zeus_sgarray;
 
 // memory allocation
 //ioptr zeus_iomalloc(size_t size);
@@ -66,8 +66,8 @@ extern "C" {
     // eventually file functions
     // int open() ..
 
-    ssize_t zeus_push(int qd, zeus_sgarry * bufs);
-    ssize_t zeus_pop(int qd, zeus_sgarry * bufs);
+    ssize_t zeus_push(int qd, zeus_sgarray * bufs);
+    ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
     int zeus_qd2fd(int qd);
 
 #ifdef __cplusplus

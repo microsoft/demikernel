@@ -22,19 +22,28 @@ int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size){
 
 // eventually file functions
 // int open() ..
+//
 
-ssize_t zeus_push(int qd, zeus_sgarry * bufs){
+void zeus_sgarray_transform(zeus_sgarray * c_sga, Zeus::sgarray * sga){
+    sga->num_bufs = c_sga->num_bufs;
+    for(int i = 0; i < c_sga->num_bufs; i++){
+         (sga->bufs[i]).len = (c_sga->bufs[i]).len;
+         (sga->bufs[i]).buf = (c_sga->bufs[i]).buf;
+    }
+}
+
+ssize_t zeus_push(int qd, zeus_sgarray * bufs){
     Zeus::sgarray sga;
-    sga.num_bufs = bufs->num_bufs;
-    sga.bufs[0].buf = (Zeus::ioptr)&((bufs->bufs)[0]);
+    zeus_sgarray_transform(bufs, &sga);
     return Zeus::push(qd, sga);
 }
-ssize_t zeus_pop(int qd, zeus_sgarry * bufs){
+
+ssize_t zeus_pop(int qd, zeus_sgarray * bufs){
     Zeus::sgarray sga;
-    sga.num_bufs = bufs->num_bufs;
-    sga.bufs[0].buf = (Zeus::ioptr)&((bufs->bufs)[0]);
+    zeus_sgarray_transform(bufs, &sga);
     return Zeus::pop(qd, sga);
 }
+
 int zeus_qd2fd(int qd){
     return Zeus::qd2fd(qd);
 }
