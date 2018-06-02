@@ -57,17 +57,22 @@ ioptr iomalloc(size_t size);
 
 // network functions
  int queue(int domain, int type, int protocol);
- int listen(int fd, int backlog);
+ int listen(int qd, int backlog);
  int bind(int qd, struct sockaddr *saddr, socklen_t size);
  int accept(int qd, struct sockaddr *saddr, socklen_t *size);
  int connect(int qd, struct sockaddr *saddr, socklen_t size);
 
 // eventually file functions
 // int open() ..
+// other functions
 
-ssize_t push(int qd, struct sgarray &bufs);
-ssize_t pop(int qd, struct sgarray &bufs);
+ssize_t push(int qd, struct sgarray &sga);
+ssize_t pop(int qd, struct sgarray &sga);
 int qd2fd(int qd);
+
+// eventually queue functions
+// int merge(int qd1, int qd2);
+// int filter(int qd, bool (*filter)(struct sgarray &sga));
 
 } // namespace Zeus
 #endif /* _IO_QUEUE_H_ */
