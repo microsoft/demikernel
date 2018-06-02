@@ -45,9 +45,8 @@
 #pragma clang diagnostic ignored "-Wunused-variable"
 #endif
 
-#define HEADER_MAGIC 0b10010000
-#define IN_USE 0b00000001
-#define PINNED 0b00000010
+#define MAX_PINNED 100
+#define IN_USE 1
 
 namespace Zeus {
 
@@ -111,30 +110,25 @@ namespace Zeus {
                 assert (getSize(ptr) >= _objectSize);
                 assert ((size_t) ptr % Alignment == 0);
             }
-            // set up meta-data header
-            auto * _header = reinterpret_cast<char *>(ptr);
-            *_header = (char)HEADER_MAGIC;
-            // set in use bit
-            *_header |= IN_USE;
             return ptr;
         }
 
         inline void free (void * ptr) {
             assert ((size_t) ptr % Alignment == 0);
             assert (isValid());
-            auto * _header = reinterpret_cast<char *>(ptr);
-            assert((*_header & HEADER_MAGIC) == HEADER_MAGIC);
-            if (*_header | PINNED) {
-                // pinned for I/O, do not free
-                assert(*_header & IN_USE);
-                // clear in use bit
-                *_header &= ~IN_USE;
-            } else {
-                _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(ptr));
-                _objectsFree++;
-                if (_objectsFree == _totalObjects) {
-                    clear();
+            for (int i = 0; i < MAX_PINNED; i++) {
+                if ((_pinned[i] & ~(uint64_t)IN_USE) == (uint64_t)ptr) {
+                    // found to be pinned, mark as free
+                    assert(_pinned[i] & IN_USE == 1);
+                    _pinned[i] &= ~(uint64_t)IN_USE;
+                    return;
                 }
+            }
+            // not found to be pinned, free
+            _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(ptr));
+            _objectsFree++;
+            if (_objectsFree == _totalObjects) {
+                clear();
             }
         }
 
@@ -169,31 +163,35 @@ namespace Zeus {
 
         inline void pin (void * ptr) {
             assert(isValid());
-            void * _obj = normalize(ptr);
-            auto * _header = reinterpret_cast<char *>(_obj);
-            assert((*_header & HEADER_MAGIC) == HEADER_MAGIC);
-            assert(*_header & IN_USE);
-            // set pin bit
-            *_header |= PINNED;
+            uint64_t _obj = (uint64_t)normalize(ptr);
+            for (int i = 0; i < MAX_PINNED; i++) {
+                if (_pinned[i] == 0) {
+                    // Assume lower bit is 0 after normalization
+                    _pinned[i] = _obj | (uint64_t)IN_USE;
+                    return;
+                }
+            }
+            assert(0);
         }
 
         inline void unpin (void * ptr) {
             assert(isValid());
-            void * _obj = normalize(ptr);
-            auto * _header = reinterpret_cast<char *>(_obj);
-            assert((*_header & HEADER_MAGIC) == HEADER_MAGIC);
-            // clear pin bit
-            *_header &= ~PINNED;
-            // free if not in use
-            if ((*_header | IN_USE) == 0) {
-                *_header = 0;
-                _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(_obj));
-                _objectsFree++;
-                if (_objectsFree == _totalObjects) {
-                    clear();
+            uint64_t _obj = (uint64_t)normalize(ptr);
+            for (int i = 0; i < MAX_PINNED; i++) {
+                if ((_pinned[i] & ~(uint64_t)IN_USE) == _obj) {
+                    if ((_pinned[i] & (uint64_t)IN_USE) == 0) {
+                        // free
+                        _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(_obj));
+                        _objectsFree++;
+                        if (_objectsFree == _totalObjects) {
+                            clear();
+                        }
+                    }           
+                    _pinned[i] = 0;
+                    return;
                 }
             }
-
+            assert(i != MAX_PINNED);
         }
                 
         size_t getSize (void * ptr) const {
@@ -323,7 +321,8 @@ namespace Zeus {
         /// The cursor into the buffer following the header.
         char * _position;
 
-        void *pinned[100];
+        uint64_t _pinned[MAX_PINNED];
+        
         /// The list of freed objects.
         FreeSLList _freeList;
     };
