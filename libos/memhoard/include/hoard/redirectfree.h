@@ -29,6 +29,7 @@
 #define HOARD_REDIRECTFREE_H
 
 #include "heaplayers.h"
+#include "basehoardmanager.h"
 
 namespace Hoard {
 
@@ -75,7 +76,7 @@ namespace Hoard {
 
       // Find out who the owner is.
 
-      typedef BaseHoardManager<SuperblockType> * baseHeapType;
+      typedef Hoard::BaseHoardManager<SuperblockType> * baseHeapType;
       baseHeapType owner;
 
       s->lock();

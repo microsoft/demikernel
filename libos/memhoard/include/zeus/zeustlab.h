@@ -33,19 +33,19 @@
  */
 
 
-#ifndef HOARD_HOARDTLAB_H
-#define HOARD_HOARDTLAB_H
+#ifndef ZEUS_ZEUSTLAB_H
+#define ZEUS_ZEUSTLAB_H
 
-#include "hoardheap.h"
+#include "zeusheap.h"
 #include "heapmanager.h"
 #include "tlab.h"
-#include "hoardconstants.h"
+#include "hoard/hoardconstants.h"
 
 #include "heaplayers.h"
 
-namespace Hoard {
+namespace Zeus {
   
-    // HOARD_MMAP_PROTECTION_MASK defines the protection flags used for
+    // ZEUS_MMAP_PROTECTION_MASK defines the protection flags used for
     // freshly-allocated memory. The default case is that heap memory is
     // NOT executable, thus preventing the class of attacks that inject
     // executable code on the heap.
@@ -55,21 +55,21 @@ namespace Hoard {
     // doing dynamic code generation into malloc'd space).
   
 #if HL_EXECUTABLE_HEAP
-#define HOARD_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE | PROT_EXEC)
+#define ZEUS_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE | PROT_EXEC)
 #else
-#define HOARD_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE)
+#define ZEUS_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE)
 #endif
 
     //
-    // The base Hoard heap.
+    // The base Zeus heap.
     //
   
-    class HoardHeapType :
-        public HeapManager<TheLockType, HoardHeap<MaxThreads, NumHeaps> > {
+    class ZeusHeapType :
+        public Zeus::HeapManager<TheLockType, ZeusHeap<Hoard::MaxThreads, Hoard::NumHeaps> > {
     };
   
     // Just an abbreviation.
-    typedef HoardHeapType::SuperblockType::Header TheHeader;
+    typedef ZeusHeapType::SuperblockType::Header TheHeader;
   
     //
     // The thread-local 'allocation buffers' (TLABs), which is a bit of a
@@ -77,14 +77,14 @@ namespace Hoard {
     // right.
     //
 
-    typedef ThreadLocalAllocationBuffer<HL::bins<TheHeader, SUPERBLOCK_SIZE>::NUM_BINS,
+    typedef Hoard::ThreadLocalAllocationBuffer<HL::bins<TheHeader, SUPERBLOCK_SIZE>::NUM_BINS,
                                         HL::bins<TheHeader, SUPERBLOCK_SIZE>::getSizeClass,
                                         HL::bins<TheHeader, SUPERBLOCK_SIZE>::getClassSize,
-                                        LargestSmallObject,
-                                        MAX_MEMORY_PER_TLAB,
-                                        HoardHeapType::SuperblockType,
+                                        Hoard::LargestSmallObject,
+                                        Hoard::MAX_MEMORY_PER_TLAB,
+                                        ZeusHeapType::SuperblockType,
                                         SUPERBLOCK_SIZE,
-                                        HoardHeapType>
+                                        ZeusHeapType>
     TLABBase;
 
     
@@ -93,6 +93,6 @@ namespace Hoard {
     void unpin(void *ptr);
 }
 
-typedef HL::ANSIWrapper<Hoard::TLABBase> TheCustomHeapType;
+typedef HL::ANSIWrapper<Zeus::TLABBase> TheCustomHeapType;
 
 #endif

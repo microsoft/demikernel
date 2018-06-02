@@ -25,15 +25,15 @@
 
 */
 
-#ifndef HOARD_HOARDSUPERBLOCK_H
-#define HOARD_HOARDSUPERBLOCK_H
+#ifndef ZEUS_ZEUSSUPERBLOCK_H
+#define ZEUS_ZEUSSUPERBLOCK_H
 
 #include <cassert>
 #include <cstdlib>
 
 #include "heaplayers.h"
 
-namespace Hoard {
+namespace Zeus {
 
     template <class LockType,
               int SuperblockSize,
@@ -41,21 +41,21 @@ namespace Hoard {
               template <class LockType_,
                         int SuperblockSize_,
                         typename HeapType_> class Header_>
-    class HoardSuperblock {
+    class ZeusSuperblock {
     public:
 
-        HoardSuperblock (size_t sz)
+        ZeusSuperblock (size_t sz)
             : _header (sz, BufferSize)
         {
             assert (_header.isValid());
-            assert (this == (HoardSuperblock *)
+            assert (this == (ZeusSuperblock *)
                     (((size_t) this) & ~((size_t) SuperblockSize-1)));
         }
     
         /// @brief Find the start of the superblock by bitmasking.
         /// @note  All superblocks <em>must</em> be naturally aligned, and powers of two.
-        static inline HoardSuperblock * getSuperblock (void * ptr) {
-            return (HoardSuperblock *)
+        static inline ZeusSuperblock * getSuperblock (void * ptr) {
+            return (ZeusSuperblock *)
                 (((size_t) ptr) & ~((size_t) SuperblockSize-1));
         }
 
@@ -141,23 +141,23 @@ namespace Hoard {
             _header.setOwner (o);
         }
     
-        inline HoardSuperblock * getNext() const {
+        inline ZeusSuperblock * getNext() const {
             assert (_header.isValid());
             return _header.getNext();
         }
 
-        inline HoardSuperblock * getPrev() const {
+        inline ZeusSuperblock * getPrev() const {
             assert (_header.isValid());
             return _header.getPrev();
         }
     
-        inline void setNext (HoardSuperblock * f) {
+        inline void setNext (ZeusSuperblock * f) {
             assert (_header.isValid());
             assert (f != this);
             _header.setNext (f);
         }
     
-        inline void setPrev (HoardSuperblock * f) {
+        inline void setPrev (ZeusSuperblock * f) {
             assert (_header.isValid());
             assert (f != this);
             _header.setPrev (f);
@@ -177,6 +177,14 @@ namespace Hoard {
             return ptr2;
         }
 
+        inline void pin (void * ptr) {
+            _header.pin(ptr);
+        }
+
+        inline void unpin (void * ptr) {
+            _header.unpin(ptr);
+        }
+        
         typedef Header_<LockType, SuperblockSize, HeapType> Header;
 
     private:
@@ -184,8 +192,8 @@ namespace Hoard {
     
         // Disable copying and assignment.
     
-        HoardSuperblock (const HoardSuperblock&);
-        HoardSuperblock& operator=(const HoardSuperblock&);
+        ZeusSuperblock (const ZeusSuperblock&);
+        ZeusSuperblock& operator=(const ZeusSuperblock&);
     
         enum { BufferSize = SuperblockSize - sizeof(Header) };
     

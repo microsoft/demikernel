@@ -25,8 +25,8 @@
 
 */
 
-#ifndef HOARD_HOARDHEAP_H
-#define HOARD_HOARDHEAP_H
+#ifndef ZEUS_ZEUSHEAP_H
+#define ZEUS_ZEUSHEAP_H
 
 #include <assert.h>
 
@@ -42,21 +42,21 @@ using namespace HL;
 #define EMPTINESS_CLASSES 8
 
 
-// Hoard-specific layers
+// Zeus-specific layers
 
 #include "thresholdheap.h"
-#include "../pinnable/pinnable/manager.h"
+#include "zeus/heapmanager.h"
 #include "addheaderheap.h"
 #include "threadpoolheap.h"
 #include "redirectfree.h"
 #include "ignoreinvalidfree.h"
 #include "conformantheap.h"
-#include "../pinnable/pinnablesuperblock.h"
-#include "../pinnable/pinnablesuperblockheader.h"
+#include "zeussuperblock.h"
+#include "zeussuperblockheader.h"
 #include "lockmallocheap.h"
 #include "alignedsuperblockheap.h"
 #include "alignedmmap.h"
-#include "globalheap.h"
+#include "zeus/globalheap.h"
 
 #include "thresholdsegheap.h"
 #include "geometricsizeclass.h"
@@ -69,7 +69,7 @@ using namespace HL;
 #if defined(_WIN32)
 typedef HL::WinLockType TheLockType;
 #elif defined(__APPLE__)
-// NOTE: On older versions of the Mac OS, Hoard CANNOT use Posix locks,
+// NOTE: On older versions of the Mac OS, Zeus CANNOT use Posix locks,
 // since they may call malloc themselves. However, as of Snow Leopard,
 // that problem seems to have gone away. Nonetheless, we use Mac-specific locks.
 typedef HL::MacLockType TheLockType;
@@ -84,15 +84,19 @@ typedef HL::SpinLockType TheLockType;
 #pragma clang diagnostic ignored "-Wunused-variable"
 #endif
 
-namespace Hoard {
+namespace Zeus {
 
-    class MmapSource : public AlignedMmap<SUPERBLOCK_SIZE, TheLockType> {};
+    class MmapSource : public Hoard::AlignedMmap<SUPERBLOCK_SIZE, TheLockType> {};
   
     //
     // There is just one "global" heap, shared by all of the per-process heaps.
     //
 
-    typedef GlobalHeap<SUPERBLOCK_SIZE, PinnableSuperblockHeader, EMPTINESS_CLASSES, MmapSource, TheLockType>
+    typedef Zeus::GlobalHeap<SUPERBLOCK_SIZE,
+                             ZeusSuperblockHeader,
+                             EMPTINESS_CLASSES,
+                             MmapSource,
+                             TheLockType>
     TheGlobalHeap;
   
     //
@@ -101,7 +105,7 @@ namespace Hoard {
     // moves a (nearly or completely empty) superblock to the global heap.
     //
 
-    class hoardThresholdFunctionClass {
+    class zeusThresholdFunctionClass {
     public:
         inline static bool function (unsigned int u,
                                      unsigned int a,
@@ -111,7 +115,7 @@ namespace Hoard {
               Returns 1 iff we've crossed the emptiness threshold:
 	
               U < A - 2S   &&   U < EMPTINESS_CLASSES-1/EMPTINESS_CLASSES * A
-	
+              
             */
             auto r = ((EMPTINESS_CLASSES * u) < ((EMPTINESS_CLASSES-1) * a)) && ((u < a - (2 * SUPERBLOCK_SIZE) / objSize));
             return r;
@@ -121,32 +125,32 @@ namespace Hoard {
 
     class SmallHeap;
   
-    //  typedef Hoard::HoardSuperblockHeader<TheLockType, SUPERBLOCK_SIZE, SmallHeap> HSHeader;
-    typedef PinnableSuperblock<TheLockType,
-                               SUPERBLOCK_SIZE,
-                               SmallHeap,
-                               PinnableSuperblockHeader> SmallSuperblockType;
+    //  typedef Zeus::ZeusSuperblockHeader<TheLockType, SUPERBLOCK_SIZE, SmallHeap> HSHeader;
+    typedef ZeusSuperblock<TheLockType,
+                           SUPERBLOCK_SIZE,
+                           SmallHeap,
+                           ZeusSuperblockHeader> SmallSuperblockType;
 
     //
     // The heap that manages small objects.
     //
     class SmallHeap : 
-        public ConformantHeap<
-        PinnableManager<AlignedSuperblockHeap<TheLockType, SUPERBLOCK_SIZE, MmapSource>,
-                        TheGlobalHeap,
-                        SmallSuperblockType,
-                        EMPTINESS_CLASSES,
-                        TheLockType,
-                        hoardThresholdFunctionClass,
-                        SmallHeap> > 
+        public Hoard::ConformantHeap<
+        ZeusManager<Hoard::AlignedSuperblockHeap<TheLockType, SUPERBLOCK_SIZE, MmapSource>,
+                    TheGlobalHeap,
+                    SmallSuperblockType,
+                    EMPTINESS_CLASSES,
+                    TheLockType,
+                    zeusThresholdFunctionClass,
+                    SmallHeap> > 
     {};
 
     class BigHeap;
 
-    typedef HoardSuperblock<TheLockType,
-                            SUPERBLOCK_SIZE,
-                            BigHeap,
-                            Hoard::PinnableSuperblockHeader>
+    typedef ZeusSuperblock<TheLockType,
+                           SUPERBLOCK_SIZE,
+                           BigHeap,
+                           ZeusSuperblockHeader>
     BigSuperblockType;
 
     // The heap that manages large objects.
@@ -156,7 +160,7 @@ namespace Hoard {
     // Old version: slow and now deprecated. Returns every large object
     // back to the system immediately.
     typedef ConformantHeap<HL::LockedHeap<TheLockType,
-                                          AddHeaderHeap<BigSuperblockType,
+                                          Hoard::AddHeaderHeap<BigSuperblockType,
                                                         SUPERBLOCK_SIZE,
                                                         MmapSource > > >
     bigHeapType;
@@ -167,19 +171,19 @@ namespace Hoard {
     // than the above (around 400x in some tests).  Keeps the amount of
     // retained memory at no more than X% more than currently allocated.
 
-    class objectSource : public AddHeaderHeap<BigSuperblockType,
+    class objectSource : public Hoard::AddHeaderHeap<BigSuperblockType,
                                               SUPERBLOCK_SIZE,
                                               MmapSource> {};
 
     typedef HL::ThreadHeap<64, HL::LockedHeap<TheLockType,
-                                              ThresholdSegHeap<25,      // % waste
-                                                               1048576, // at least 1MB in any heap
-                                                               80,      // num size classes
-                                                               GeometricSizeClass<20>::size2class,
-                                                               GeometricSizeClass<20>::class2size,
-                                                               GeometricSizeClass<20>::MaxObjectSize,
-                                                               AdaptHeap<DLList, objectSource>,
-                                                               objectSource> > >
+                                              Hoard::ThresholdSegHeap<25,      // % waste
+                                                                      1048576, // at least 1MB in any heap
+                                                                      80,      // num size classes
+                                                                      Hoard::GeometricSizeClass<20>::size2class,
+                                                                      Hoard::GeometricSizeClass<20>::class2size,
+                                                                      Hoard::GeometricSizeClass<20>::MaxObjectSize,
+                                                                      AdaptHeap<DLList, objectSource>,
+                                                                      objectSource> > >
     bigHeapType;
 #endif
 
@@ -191,9 +195,9 @@ namespace Hoard {
     //
     // Each thread has its own heap for small objects.
     //
-    class PerThreadHoardHeap :
-        public RedirectFree<LockMallocHeap<SmallHeap>,
-                            SmallSuperblockType> {
+    class PerThreadZeusHeap :
+        public Hoard::RedirectFree<Hoard::LockMallocHeap<SmallHeap>,
+                                   SmallSuperblockType> {
     private:
         void nothing() {
             _dummy[0] = _dummy[0];
@@ -204,20 +208,20 @@ namespace Hoard {
   
 
     template <int N, int NH>
-    class HoardHeap :
+    class ZeusHeap :
         public HL::ANSIWrapper<
-        IgnoreInvalidFree<
-            HL::HybridHeap<Hoard::BigObjectSize,
-                           ThreadPoolHeap<N, NH, Hoard::PerThreadHoardHeap>,
-                           Hoard::BigHeap> > >
+        Hoard::IgnoreInvalidFree<
+            HL::HybridHeap<Zeus::BigObjectSize,
+                           Hoard::ThreadPoolHeap<N, NH, Zeus::PerThreadZeusHeap>,
+                           Zeus::BigHeap> > >
     {
     public:
     
-        enum { BIG_OBJECT = Hoard::BigObjectSize };
+        enum { BIG_OBJECT = Zeus::BigObjectSize };
     
-        HoardHeap() {
-            enum { BIG_HEADERS = sizeof(Hoard::BigSuperblockType::Header),
-                   SMALL_HEADERS = sizeof(Hoard::SmallSuperblockType::Header)};
+        ZeusHeap() {
+            enum { BIG_HEADERS = sizeof(Zeus::BigSuperblockType::Header),
+                   SMALL_HEADERS = sizeof(Zeus::SmallSuperblockType::Header)};
             static_assert(BIG_HEADERS == SMALL_HEADERS,
                           "Headers must be the same size.");
         }

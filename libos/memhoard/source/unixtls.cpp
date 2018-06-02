@@ -65,9 +65,9 @@
 #include <utility>
 
 
-#include "hoard/hoardtlab.h"
+#include "zeus/zeustlab.h"
 
-extern Hoard::HoardHeapType * getMainHoardHeap();
+extern Zeus::ZeusHeapType * getMainZeusHeap();
 
 #if defined(USE_THREAD_KEYWORD)
 
@@ -89,7 +89,7 @@ static TheCustomHeapType * initializeCustomHeap() __attribute__((constructor));
 static TheCustomHeapType * initializeCustomHeap() {
   auto tlab = theTLAB;
   if (tlab == nullptr) {
-    new (reinterpret_cast<char *>(&tlabBuffer)) TheCustomHeapType(getMainHoardHeap());
+    new (reinterpret_cast<char *>(&tlabBuffer)) TheCustomHeapType(getMainZeusHeap());
     tlab = reinterpret_cast<TheCustomHeapType *>(&tlabBuffer);
     theTLAB = tlab;
   }
@@ -127,10 +127,10 @@ static pthread_once_t key_once = PTHREAD_ONCE_INIT;
 static void deleteThatHeap(void * p) {
   auto * heap = reinterpret_cast<TheCustomHeapType *>(p);
   heap->clear();
-  getMainHoardHeap()->free(reinterpret_cast<void *>(heap));
+  getMainZeusHeap()->free(reinterpret_cast<void *>(heap));
 
   // Relinquish the assigned heap.
-  getMainHoardHeap()->releaseHeap();
+  getMainZeusHeap()->releaseHeap();
   //  pthread_setspecific(theHeapKey, nullptr);
 }
 
@@ -160,8 +160,8 @@ static TheCustomHeapType * initializeCustomHeap() {
   assert(pthread_getspecific(theHeapKey) == nullptr);
   // Allocate a per-thread heap.
   size_t sz = sizeof(TheCustomHeapType) + sizeof(double);
-  auto * mh = reinterpret_cast<char *>(getMainHoardHeap()->malloc(sz));
-  auto heap = new (mh) TheCustomHeapType(getMainHoardHeap());
+  auto * mh = reinterpret_cast<char *>(getMainZeusHeap()->malloc(sz));
+  auto heap = new (mh) TheCustomHeapType(getMainZeusHeap());
   // Store it in the appropriate thread-local area.
   pthread_setspecific(theHeapKey, reinterpret_cast<void *>(heap));
   return heap;
@@ -203,7 +203,7 @@ static void exitRoutine() {
   auto * heap = initializeCustomHeap();
 
   // Relinquish the assigned heap.
-  getMainHoardHeap()->releaseHeap();
+  getMainZeusHeap()->releaseHeap();
 
   // Clear the heap (via its destructor).
   heap->~TheCustomHeapType();
@@ -217,7 +217,7 @@ static void exitRoutine() {
 extern "C" {
   static inline void * startMeUp(void * a) {
     initializeCustomHeap();
-    getMainHoardHeap()->findUnusedHeap();
+    getMainZeusHeap()->findUnusedHeap();
     auto * z = (pair<threadFunctionType, void *> *) a;
     
     auto f   = z->first;

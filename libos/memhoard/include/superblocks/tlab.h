@@ -44,135 +44,157 @@
 
 namespace Hoard {
 
-  template <int NumBins,
-	    int (*getSizeClass) (size_t),
-	    size_t (*getClassSize) (int),
-	    size_t LargestObject,
-	    size_t LocalHeapThreshold,
-	    class SuperblockType,
-	    unsigned int SuperblockSize,
-	    class ParentHeap>
+    template <int NumBins,
+              int (*getSizeClass) (size_t),
+              size_t (*getClassSize) (int),
+              size_t LargestObject,
+              size_t LocalHeapThreshold,
+              class SuperblockType,
+              unsigned int SuperblockSize,
+              class ParentHeap>
 
-  class ThreadLocalAllocationBuffer {
+    class ThreadLocalAllocationBuffer {
 
-    enum { DesiredAlignment = HL::MallocInfo::Alignment };
+        enum { DesiredAlignment = HL::MallocInfo::Alignment };
 
-  public:
+    public:
 
-    enum { Alignment = ParentHeap::Alignment };
+        enum { Alignment = ParentHeap::Alignment };
 
-    ThreadLocalAllocationBuffer (ParentHeap * parent)
-      : _parentHeap (parent),
-      	_localHeapBytes (0)
-    {
-      static_assert(gcd<Alignment, DesiredAlignment>::value == DesiredAlignment,
-		    "Alignment mismatch.");
-      static_assert((Alignment >= 2 * sizeof(size_t)),
-		    "Alignment must be enough to hold two pointers.");
-    }
+        ThreadLocalAllocationBuffer (ParentHeap * parent)
+            : _parentHeap (parent),
+              _localHeapBytes (0)
+        {
+            static_assert(gcd<Alignment, DesiredAlignment>::value == DesiredAlignment,
+                          "Alignment mismatch.");
+            static_assert((Alignment >= 2 * sizeof(size_t)),
+                          "Alignment must be enough to hold two pointers.");
+        }
 
-    ~ThreadLocalAllocationBuffer() {
-      clear();
-    }
+        ~ThreadLocalAllocationBuffer() {
+            clear();
+        }
 
-    inline static size_t getSize (void * ptr) {
-      return getSuperblock(ptr)->getSize (ptr);
-    }
+        inline static size_t getSize (void * ptr) {
+            return getSuperblock(ptr)->getSize (ptr);
+        }
 
-    inline void * malloc (size_t sz) {
+        inline void * malloc (size_t sz) {
 #if 0
-      if (sz < Alignment) {
-      	sz = Alignment;
-      }
+            if (sz < Alignment) {
+                sz = Alignment;
+            }
 #endif
-      // Get memory from the local heap,
-      // and deduct that amount from the local heap bytes counter.
-      if (sz <= LargestObject) {
-      	auto c = getSizeClass (sz);
-      	auto * ptr = _localHeap(c).get();
-      	if (ptr) {
-      	  assert (_localHeapBytes >= sz);
-      	  _localHeapBytes -= getClassSize (c); // sz; 
-      	  assert (getSize(ptr) >= sz);
-      	  assert ((size_t) ptr % Alignment == 0);
-      	  return ptr;
-      	}
-      }
+            // Get memory from the local heap,
+            // and deduct that amount from the local heap bytes counter.
+            if (sz <= LargestObject) {
+                auto c = getSizeClass (sz);
+                auto * ptr = _localHeap(c).get();
+                if (ptr) {
+                    assert (_localHeapBytes >= sz);
+                    _localHeapBytes -= getClassSize (c); // sz; 
+                    assert (getSize(ptr) >= sz);
+                    assert ((size_t) ptr % Alignment == 0);
+                    return ptr;
+                }
+            }
 
-      // No more local memory (for this size, at least).
-      // Now get the memory from our parent.
-      auto * ptr = _parentHeap->malloc (sz);
-      assert ((size_t) ptr % Alignment == 0);
-      return ptr;
-    }
+            // No more local memory (for this size, at least).
+            // Now get the memory from our parent.
+            auto * ptr = _parentHeap->malloc (sz);
+            assert ((size_t) ptr % Alignment == 0);
+            return ptr;
+        }
 
 
-    inline void free (void * ptr) {
-      auto * s = getSuperblock (ptr);
-      // If this isn't a valid superblock, just return.
+        inline void free (void * ptr) {
+            auto * s = getSuperblock (ptr);
+            // If this isn't a valid superblock, just return.
 
-      if (s->isValidSuperblock()) {
+            if (s->isValidSuperblock()) {
 
-      	ptr = s->normalize (ptr);
-      	auto sz = s->getObjectSize ();
+                ptr = s->normalize (ptr);
+                auto sz = s->getObjectSize ();
 
-      	if ((sz <= LargestObject) && (sz + _localHeapBytes <= LocalHeapThreshold)) {
-      	  // Free small objects locally, unless we are out of space.
+                if ((sz <= LargestObject) && (sz + _localHeapBytes <= LocalHeapThreshold)) {
+                    // Free small objects locally, unless we are out of space.
 
-      	  assert (getSize(ptr) >= sizeof(HL::SLList::Entry *));
-      	  auto c = getSizeClass (sz);
+                    assert (getSize(ptr) >= sizeof(HL::SLList::Entry *));
+                    auto c = getSizeClass (sz);
 
-      	  _localHeap(c).insert ((HL::SLList::Entry *) ptr);
-      	  _localHeapBytes += getClassSize(c); // sz;
+                    _localHeap(c).insert ((HL::SLList::Entry *) ptr);
+                    _localHeapBytes += getClassSize(c); // sz;
       	  
-      	} else {
+                } else {
 
-      	  // Free it to the parent.
-      	  _parentHeap->free (ptr);
-      	}
+                    // Free it to the parent.
+                    _parentHeap->free (ptr);
+                }
 
-      } else {
-      	// Illegal pointer.
-      }
-    }
+            } else {
+                // Illegal pointer.
+            }
+        }
 
-    void clear() {
-      // Free every object to the 'parent' heap.
-      int i = NumBins - 1;
-      while ((_localHeapBytes > 0) && (i >= 0)) {
-      	auto sz = getClassSize (i);
-      	while (!_localHeap(i).isEmpty()) {
-      	  auto * e = _localHeap(i).get();
-      	  _parentHeap->free (e);
-      	  _localHeapBytes -= sz;
-      	}
-      	i--;
-      }
-    }
+        inline void pin (void * ptr) {
+            auto * s = getSuperblock (ptr);
+            // If this isn't a valid superblock, just return.
 
-    static inline SuperblockType * getSuperblock (void * ptr) {
-      return SuperblockType::getSuperblock (ptr);
-    }
+            if (s->isValidSuperblock()) {
+                s->pin(ptr);
+            } else {
+                // illegal pointer
+            }
+        }
 
-  private:
+        inline void unpin (void * ptr) {
+            auto * s = getSuperblock (ptr);
+            // If this isn't a valid superblock, just return.
 
-    // Disable assignment and copying.
+            if (s->isValidSuperblock()) {
+                s->unpin(ptr);
+            } else {
+                // illegal pointer
+            }
+        }
 
-    ThreadLocalAllocationBuffer (const ThreadLocalAllocationBuffer&);
-    ThreadLocalAllocationBuffer& operator=(const ThreadLocalAllocationBuffer&);
+        void clear() {
+            // Free every object to the 'parent' heap.
+            int i = NumBins - 1;
+            while ((_localHeapBytes > 0) && (i >= 0)) {
+                auto sz = getClassSize (i);
+                while (!_localHeap(i).isEmpty()) {
+                    auto * e = _localHeap(i).get();
+                    _parentHeap->free (e);
+                    _localHeapBytes -= sz;
+                }
+                i--;
+            }
+        }
 
-    /// Padding to prevent false sharing and ensure alignment.
-    double _pad[128 / sizeof(double)];
+        static inline SuperblockType * getSuperblock (void * ptr) {
+            return SuperblockType::getSuperblock (ptr);
+        }
 
-    /// This heap's 'parent' (where to go for more memory).
-    ParentHeap * _parentHeap;
+    private:
 
-    /// The number of bytes we currently have on this thread.
-    size_t _localHeapBytes;
+        // Disable assignment and copying.
 
-    /// The local heap itself.
-    Array<NumBins, HL::SLList> _localHeap;
-  };
+        ThreadLocalAllocationBuffer (const ThreadLocalAllocationBuffer&);
+        ThreadLocalAllocationBuffer& operator=(const ThreadLocalAllocationBuffer&);
+
+        /// Padding to prevent false sharing and ensure alignment.
+        double _pad[128 / sizeof(double)];
+
+        /// This heap's 'parent' (where to go for more memory).
+        ParentHeap * _parentHeap;
+
+        /// The number of bytes we currently have on this thread.
+        size_t _localHeapBytes;
+
+        /// The local heap itself.
+        Array<NumBins, HL::SLList> _localHeap;
+    };
 
 }
 

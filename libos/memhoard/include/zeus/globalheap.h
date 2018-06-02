@@ -25,13 +25,13 @@
 
 */
 
-#ifndef HOARD_GLOBALHEAP_H
-#define HOARD_GLOBALHEAP_H
+#ifndef ZEUS_GLOBALHEAP_H
+#define ZEUS_GLOBALHEAP_H
 
-#include "hoardsuperblock.h"
+#include "zeus/zeussuperblock.h"
 #include "processheap.h"
 
-namespace Hoard {
+namespace Zeus {
 
     template <size_t SuperblockSize,
               template <class LockType_,
@@ -64,7 +64,7 @@ namespace Hoard {
                             LockType,
                             bogusThresholdFunctionClass,
                             MmapSource> SuperHeap;
-        typedef HoardSuperblock<LockType,
+        typedef ZeusSuperblock<LockType,
                                 SuperblockSize,
                                 GlobalHeap,
                                 Header_> SuperblockType;

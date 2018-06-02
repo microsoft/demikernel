@@ -68,7 +68,7 @@ Heap-Layers:
 # Include directories
 #
 
-INCLUDES = -I. -Iinclude -Iinclude/util -Iinclude/hoard -Iinclude/superblocks -IHeap-Layers
+INCLUDES = -I. -Iinclude -Iinclude/util -Iinclude/hoard -Iinclude/zeus -Iinclude/superblocks -IHeap-Layers
 
 WIN_INCLUDES = /I. /Iinclude /Iinclude/util /Iinclude/hoard /Iinclude/superblocks /IHeap-Layers
 

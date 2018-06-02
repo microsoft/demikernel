@@ -35,7 +35,7 @@
 
 #include "VERSION.h"
 
-#define versionMessage "Using the Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
+#define versionMessage "Using the Zeus-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
 
 #include "heaplayers.h"
 
@@ -69,44 +69,44 @@ volatile bool anyThreadCreated = true;
 volatile bool anyThreadCreated = false;
 #endif
 
-namespace Hoard {
+namespace Zeus {
   
-  // HOARD_MMAP_PROTECTION_MASK defines the protection flags used for
-  // freshly-allocated memory. The default case is that heap memory is
-  // NOT executable, thus preventing the class of attacks that inject
-  // executable code on the heap.
-  // 
-  // While this is not recommended, you can define HL_EXECUTABLE_HEAP as
-  // 1 in heaplayers/heaplayers.h if you really need to (i.e., you're
-  // doing dynamic code generation into malloc'd space).
+    // ZEUS_MMAP_PROTECTION_MASK defines the protection flags used for
+    // freshly-allocated memory. The default case is that heap memory is
+    // NOT executable, thus preventing the class of attacks that inject
+    // executable code on the heap.
+    // 
+    // While this is not recommended, you can define HL_EXECUTABLE_HEAP as
+    // 1 in heaplayers/heaplayers.h if you really need to (i.e., you're
+    // doing dynamic code generation into malloc'd space).
   
 #if HL_EXECUTABLE_HEAP
-#define HOARD_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE | PROT_EXEC)
+#define ZEUS_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE | PROT_EXEC)
 #else
-#define HOARD_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE)
+#define ZEUS_MMAP_PROTECTION_MASK (PROT_READ | PROT_WRITE)
 #endif
 
-} // namespace Hoard
+} // namespace Zeus
 
-#include "hoardtlab.h"
+#include "zeustlab.h"
 
 //
-// The base Hoard heap.
+// The base Zeus heap.
 //
 
 
-/// Maintain a single instance of the main Hoard heap.
+/// Maintain a single instance of the main Zeus heap.
 
-Hoard::HoardHeapType * getMainHoardHeap() {
-  // This function is C++ magic that ensures that the heap is
-  // initialized before its first use. First, allocate a static buffer
-  // to hold the heap.
+Zeus::ZeusHeapType * getMainZeusHeap() {
+    // This function is C++ magic that ensures that the heap is
+    // initialized before its first use. First, allocate a static buffer
+    // to hold the heap.
 
-  static double thBuf[sizeof(Hoard::HoardHeapType) / sizeof(double) + 1];
+    static double thBuf[sizeof(Zeus::ZeusHeapType) / sizeof(double) + 1];
 
-  // Now initialize the heap into that buffer.
-  static auto * th = new (thBuf) Hoard::HoardHeapType;
-  return th;
+    // Now initialize the heap into that buffer.
+    static auto * th = new (thBuf) Zeus::ZeusHeapType;
+    return th;
 }
 
 TheCustomHeapType * getCustomHeap();
@@ -119,48 +119,56 @@ extern bool isCustomHeapInitialized();
 
 extern "C" {
 
-  void * xxmalloc (size_t sz) {
-    if (isCustomHeapInitialized()) {
-      void * ptr = getCustomHeap()->malloc (sz);
-      if (ptr == nullptr) {
-	fprintf(stderr, "INTERNAL FAILURE.\n");
-	abort();
-      }
-      return ptr;
-    }
-    // We still haven't initialized the heap. Satisfy this memory
-    // request from the local buffer.
-    void * ptr = initBufferPtr;
-    initBufferPtr += sz;
-    if (initBufferPtr > initBuffer + MAX_LOCAL_BUFFER_SIZE) {
-      abort();
-    }
-    {
-      static bool initialized = false;
-      if (!initialized) {
-	initialized = true;
+    void * xxmalloc (size_t sz) {
+        if (isCustomHeapInitialized()) {
+            void * ptr = getCustomHeap()->malloc (sz);
+            if (ptr == nullptr) {
+                fprintf(stderr, "INTERNAL FAILURE.\n");
+                abort();
+            }
+            return ptr;
+        }
+        // We still haven't initialized the heap. Satisfy this memory
+        // request from the local buffer.
+        void * ptr = initBufferPtr;
+        initBufferPtr += sz;
+        if (initBufferPtr > initBuffer + MAX_LOCAL_BUFFER_SIZE) {
+            abort();
+        }
+        {
+            static bool initialized = false;
+            if (!initialized) {
+                initialized = true;
 #if !defined(_WIN32)
-	fprintf(stderr, versionMessage);
+                fprintf(stderr, versionMessage);
 #endif
-      }
+            }
+        }
+        return ptr;
     }
-    return ptr;
-  }
 
-  void xxfree (void * ptr) {
-    getCustomHeap()->free (ptr);
-  }
+    void xxfree (void * ptr) {
+        getCustomHeap()->free (ptr);
+    }
 
-  size_t xxmalloc_usable_size (void * ptr) {
-    return getCustomHeap()->getSize (ptr);
-  }
+    size_t xxmalloc_usable_size (void * ptr) {
+        return getCustomHeap()->getSize (ptr);
+    }
 
-  void xxmalloc_lock() {
-    // Undefined for Hoard.
-  }
+    void xxmalloc_lock() {
+        // Undefined for Zeus.
+    }
 
-  void xxmalloc_unlock() {
-    // Undefined for Hoard.
-  }
+    void xxmalloc_unlock() {
+        // Undefined for Zeus.
+    }
 
-} // namespace Hoard
+    void pin(void * ptr) {
+        getCustomHeap()->pin (ptr);
+    }
+
+    void unpin(void * ptr) {
+        getCustomHeap()->unpin (ptr);
+    }
+   
+} // namespace Zeus

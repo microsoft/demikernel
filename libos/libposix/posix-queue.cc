@@ -29,6 +29,7 @@
  **********************************************************************/
 
 #include "posix-queue.h"
+#include "../memhoard/include/zeus/zeustlab.h"
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
@@ -89,6 +90,7 @@ push(int qd, struct Zeus::sgarray &sga)
     for (int i = 0; i < sga.num_bufs; i++) {
         totalLen += sga.bufs[i].len;
         totalLen += sizeof(sga.bufs[i].len);
+        Zues::pin(sga.bufs[i].buf);
     }
     totalLen += sizeof(num);
     count = write(qd, &totalLen, sizeof(uint64_t));
@@ -113,6 +115,7 @@ push(int qd, struct Zeus::sgarray &sga)
         // write buffer
         count = write(qd, (void *)sga.bufs[i].buf,
                       sga.bufs[i].len);
+        Zues::unpin(sga.bufs[i].buf);
         if (count < 0 || (size_t)count < sga.bufs[i].len) {
             fprintf(stderr, "Could not write sga buf\n");
             return -1;
