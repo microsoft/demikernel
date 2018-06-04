@@ -32,6 +32,8 @@
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+#include <errno.h>
+
 namespace Zeus {
 
 using namespace POSIX;
@@ -64,6 +66,12 @@ int
 connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return ::connect(qd, saddr, size);
+}
+
+int
+close(int qd)
+{
+    return ::close(qd);
 }
 
 int
@@ -143,15 +151,18 @@ pop(int qd, struct Zeus::sgarray &sga)
                                  headerSize - count);
         
         // we still don't have a header
-        if (res < 0 ||
-            (count + (size_t)res < headerSize)) {
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < headerSize))) {
             // try again later
             libqueue.inConns[qd].buf = buf;
             libqueue.inConns[qd].count =
                 (res > 0) ? count + res : count;
             return 0;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
         }
-        count += res;
     }
 
     // go to the beginning of the buffer to check the header
@@ -174,14 +185,18 @@ pop(int qd, struct Zeus::sgarray &sga)
                            totalLen + headerSize - count);
 
         // try again later
-        if (res < 0 ||
-            (count + (size_t)res < totalLen + headerSize)) {
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
+            // try again later
             libqueue.inConns[qd].buf = buf;
             libqueue.inConns[qd].count =
-                (res < 0) ? count : count + res;
+                (res > 0) ? count + res : count;
             return 0;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
         }
-        count += res;
     }
 
     // now we have the whole buffer, start reading data
