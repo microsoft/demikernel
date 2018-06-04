@@ -56,12 +56,13 @@ struct sgarray {
 ioptr iomalloc(size_t size);
 
 // network functions
- int queue(int domain, int type, int protocol);
- int listen(int qd, int backlog);
- int bind(int qd, struct sockaddr *saddr, socklen_t size);
- int accept(int qd, struct sockaddr *saddr, socklen_t *size);
- int connect(int qd, struct sockaddr *saddr, socklen_t size);
-
+int queue(int domain, int type, int protocol);
+int listen(int qd, int backlog);
+int bind(int qd, struct sockaddr *saddr, socklen_t size);
+int accept(int qd, struct sockaddr *saddr, socklen_t *size);
+int connect(int qd, struct sockaddr *saddr, socklen_t size);
+int close(int qd);
+          
 // eventually file functions
 // int open() ..
 // other functions
