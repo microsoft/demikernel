@@ -58,7 +58,10 @@ ssize_t zeus_pop(int qd, zeus_sgarray * bufs){
     printf("zeus_pop\n");
     Zeus::sgarray sga;
     ssize_t n = Zeus::pop(qd, sga);
-    sgarray_cpp2c(&sga, bufs);
+    printf("return from pop()\n");
+    if (n > 0){
+        sgarray_cpp2c(&sga, bufs);
+    }
     return n;
 }
 
