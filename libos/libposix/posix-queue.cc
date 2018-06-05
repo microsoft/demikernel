@@ -68,6 +68,32 @@ connect(int qd, struct sockaddr *saddr, socklen_t size)
 }
 
 int
+open(const char *pathname, int flags)
+{
+    int fd = ::open(pathname, flags);
+    if (fd > 0) 
+        info[fd].isFile = true;
+    return fd;
+}
+
+int
+open(const char *pathname, int flags, mode_t mode);
+    int fd = ::open(pathname, flags, mode);
+    if (fd > 0) 
+        info[fd].isFile = true;
+    return fd;
+}
+
+int
+creat(const char *pathname, mode_t mode)
+{
+    int fd = ::creat(pathname, mode);
+    if (fd > 0)
+        info[fd].isFile = true;
+    return fd;
+}
+    
+int
 qd2fd(int qd) {
     return qd;
 }

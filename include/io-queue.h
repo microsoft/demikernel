@@ -63,7 +63,10 @@ ioptr iomalloc(size_t size);
  int connect(int qd, struct sockaddr *saddr, socklen_t size);
 
 // eventually file functions
-// int open() ..
+int open(const char *pathname, int flags);
+int open(const char *pathname, int flags, mode_t mode);
+int creat(const char *pathname, mode_t mode);
+
 // other functions
 
 ssize_t push(int qd, struct sgarray &sga);

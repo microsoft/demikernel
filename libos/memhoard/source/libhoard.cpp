@@ -171,4 +171,4 @@ extern "C" {
         getCustomHeap()->unpin (ptr);
     }
    
-} // namespace Zeus
+} // extern C
