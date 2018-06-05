@@ -29,27 +29,32 @@ set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 
 # Hoard
-set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/memhoard)
+set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/common/mem)
 include_directories(${HOARD_LIBRARY}/include)
+add_custom_target(hoard ALL make
+                  COMMAND mv libhoard.* ${PROJECT_SOURCE_DIR}
+                  WORKING_DIRECTORY ${HOARD_LIBRARY})
+
 
 
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
 
+# Zeus lib os code
+add_subdirectory(${ZEUS_SOURCE_DIR}/common)
 add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 
 # ---------------------------------------------------------
 # Build targets
 # ---------------------------------------------------------
 
-add_library(zeus_posix SHARED
-  ${SRC_ZEUS_POSIX_LIB})
-target_link_libraries(zeus_posix ${HOARD_LIBRARIES})
+# posix shared library
+add_library(zeus_posix SHARED ${SRC_ZEUS_POSIX_LIB})
 
+# set up rdma flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
-add_library(zeus_rdma SHARED
-  ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${HOARD_LIBRARIES})
+add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
