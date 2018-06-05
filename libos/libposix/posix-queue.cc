@@ -29,7 +29,7 @@
  **********************************************************************/
 
 #include "posix-queue.h"
-#include "../memhoard/include/zeus/zeustlab.h"
+#include "zeus/zeustlab.h"
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
