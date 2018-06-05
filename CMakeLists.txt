@@ -28,15 +28,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 
-# Hoard
-set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/common/mem)
-include_directories(${HOARD_LIBRARY}/include)
-add_custom_target(hoard ALL make
-                  COMMAND mv libhoard.* ${PROJECT_SOURCE_DIR}
-                  WORKING_DIRECTORY ${HOARD_LIBRARY})
-
-
-
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
@@ -51,6 +42,18 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 # Build targets
 # ---------------------------------------------------------
 
+# Hoard
+set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/common/mem)
+include_directories(${HOARD_LIBRARY}/include)
+add_custom_target(hoard ALL make
+                  COMMAND mv libhoard.* ${PROJECT_SOURCE_DIR}
+                  WORKING_DIRECTORY ${HOARD_LIBRARY})
+
+set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)
+add_custom_target(tapir
+                  COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
+                  WORKING_DIRECTORY ${TAPIR_APP_DIR})
+                  
 # posix shared library
 add_library(zeus_posix SHARED ${SRC_ZEUS_POSIX_LIB})
 
