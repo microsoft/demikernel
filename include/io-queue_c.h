@@ -28,55 +28,50 @@
  *
  **********************************************************************/
  
-#ifndef _IO_QUEUE_H_
-#define _IO_QUEUE_H_
+#ifndef _IO_QUEUE_C_H_
+#define _IO_QUEUE_C_H_
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <memory>
+//#include <memory>
     
-#define MAX_QUEUE_DEPTH 40
-#define MAX_SGARRAY_SIZE 10
+#define C_MAX_QUEUE_DEPTH 40
+#define C_MAX_SGARRAY_SIZE 10
 
-namespace Zeus {
-    
-typedef void * ioptr;
+typedef void * zeus_ioptr;
 
-struct sgelem {
-    ioptr buf;
+typedef struct Sgelem{
+    zeus_ioptr buf;
     size_t len;
-};
+}zeus_sgelem;
     
-struct sgarray {
+typedef struct Sgarray{
     int num_bufs;
-    sgelem bufs[MAX_SGARRAY_SIZE];
-};
+    zeus_sgelem bufs[C_MAX_SGARRAY_SIZE];
+}zeus_sgarray;
 
 // memory allocation
-ioptr iomalloc(size_t size);
+//ioptr zeus_iomalloc(size_t size);
 
-// network functions
-int queue(int domain, int type, int protocol);
-int listen(int qd, int backlog);
-int bind(int qd, struct sockaddr *saddr, socklen_t size);
-int accept(int qd, struct sockaddr *saddr, socklen_t *size);
-int connect(int qd, struct sockaddr *saddr, socklen_t size);
-int close(int qd);
-          
-// eventually file functions
-int open(const char *pathname, int flags);
-int open(const char *pathname, int flags, mode_t mode);
-int creat(const char *pathname, mode_t mode);
+#ifdef __cplusplus
+extern "C" {
+#endif
+    // network functions
+    int zeus_queue(int domain, int type, int protocol);
+    int zeus_listen(int fd, int backlog);
+    int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
+    int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
+    int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
 
-// other functions
+    // eventually file functions
+    // int open() ..
 
-ssize_t push(int qd, struct sgarray &sga);
-ssize_t pop(int qd, struct sgarray &sga);
-int qd2fd(int qd);
+    ssize_t zeus_push(int qd, zeus_sgarray * bufs);
+    ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
+    int zeus_qd2fd(int qd);
 
-// eventually queue functions
-// int merge(int qd1, int qd2);
-// int filter(int qd, bool (*filter)(struct sgarray &sga));
+#ifdef __cplusplus
+}
+#endif
 
-} // namespace Zeus
-#endif /* _IO_QUEUE_H_ */
+#endif /* _IO_QUEUE_C_H_ */

@@ -45,15 +45,16 @@ namespace POSIX {
 class LibIOQueue
 {
 public:
-    struct conn {
+    struct qInfo {
+        bool isFile = false;
         // currently used incoming buffer
         void *buf = NULL;
         // valid data in current buffer
         size_t count = 0;
     };
 
-    std::map<int, struct conn> inConns;
-
+    std::map<int, struct qInfo> info;
+    
     
 };
 } // namespace POSIX
