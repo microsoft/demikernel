@@ -30,6 +30,7 @@
 
 #include "posix-queue.h"
 #include <unistd.h>
+#include <fcntl.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -74,7 +75,7 @@ open(const char *pathname, int flags)
     // use the fd as qd
     int qd = ::open(pathname, flags);
     if (qd > 0) 
-        info[qd].isFile = true;
+        libqueue.info[qd].isFile = true;
     return qd;
 }
 
@@ -84,7 +85,7 @@ open(const char *pathname, int flags, mode_t mode)
     // use the fd as qd
     int qd = ::open(pathname, flags, mode);
     if (qd > 0) 
-        info[qd].isFile = true;
+        libqueue.info[qd].isFile = true;
     return qd;
 }
 
@@ -94,7 +95,7 @@ creat(const char *pathname, mode_t mode)
     // use the fd as qd
     int qd = ::creat(pathname, mode);
     if (qd > 0)
-        info[qd].isFile = true;
+        libqueue.info[qd].isFile = true;
     return qd;
 }
     
@@ -112,7 +113,7 @@ qd2fd(int qd) {
 ssize_t
 push(int qd, struct Zeus::sgarray &sga)
 {
-    if (info[qd].isFile) {
+    if (libqueue.info[qd].isFile) {
         // pushing to files not implemented yet
         return 0;
     } else {
@@ -168,13 +169,13 @@ push(int qd, struct Zeus::sgarray &sga)
 ssize_t
 pop(int qd, struct Zeus::sgarray &sga)
 {
-    if (info[qd].isFile) {
+    if (libqueue.info[qd].isFile) {
         return 0;
     } else {
         size_t total = 0;
         uint8_t *ptr;
-        void *buf = libqueue.inConns[qd].buf;
-        size_t count = libqueue.inConns[qd].count;
+        void *buf = libqueue.info[qd].buf;
+        size_t count = libqueue.info[qd].count;
         size_t headerSize = sizeof(uint64_t) * 2;
 
         // if we aren't already working on a buffer, allocate one
@@ -192,8 +193,8 @@ pop(int qd, struct Zeus::sgarray &sga)
             if ((res < 0 && errno == EAGAIN) ||
                 (res >= 0 && (count + (size_t)res < headerSize))) {
                 // try again later
-                libqueue.inConns[qd].buf = buf;
-                libqueue.inConns[qd].count =
+                libqueue.info[qd].buf = buf;
+                libqueue.info[qd].count =
                     (res > 0) ? count + res : count;
                 return 0;
             } else if (res < 0) {
@@ -226,8 +227,8 @@ pop(int qd, struct Zeus::sgarray &sga)
             if ((res < 0 && errno == EAGAIN) ||
                 (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
                 // try again later
-                libqueue.inConns[qd].buf = buf;
-                libqueue.inConns[qd].count =
+                libqueue.info[qd].buf = buf;
+                libqueue.info[qd].count =
                     (res > 0) ? count + res : count;
                 return 0;
             } else if (res < 0) {
@@ -248,8 +249,8 @@ pop(int qd, struct Zeus::sgarray &sga)
             ptr += sga.bufs[i].len;
             total += sga.bufs[i].len;
         }
-        libqueue.inConns[qd].buf = NULL;
-        libqueue.inConns[qd].count = 0;
+        libqueue.info[qd].buf = NULL;
+        libqueue.info[qd].count = 0;
         return total;
     }
 }

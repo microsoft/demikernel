@@ -61,7 +61,9 @@ add_custom_target(tapir-clean
 # posix shared library
 add_library(zeus_posix SHARED ${SRC_ZEUS_POSIX_LIB})
 
+if (NOT ${APPLE})
 # set up rdma flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
+endif()
