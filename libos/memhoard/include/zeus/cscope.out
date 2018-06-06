@@ -1,4 +1,4 @@
-cscope 15 $HOME/proj/datacenter-OS/src/libos/memhoard/include/zeus               0000100581
+cscope 15 $HOME/proj/datacenter-OS/src/libos/memhoard/include/zeus               0000100447
 	@globalheap.h
 
 28 #iâdeà
@@ -1612,11 +1612,11 @@ pÝ
 	@zeusmanager.h
 
 28 #iâdeà
-HOARD_HOARDMANAGER_H
+ZEUS_ZEUSMANAGER_H
 
 
 29 
-	#HOARD_HOARDMANAGER_H
+	#ZEUS_ZEUSMANAGER_H
 
 
 	)
@@ -4022,30 +4022,24 @@ ignÜed
  "-Wunused-variable"
 
 48 
-	#HEADER_MAGIC
- 0b10010000
+	#MAX_PINNED
+ 100
 
 	)
 
 49 
 	#IN_USE
- 0b00000001
+ 1
 
 	)
 
-50 
-	#PINNED
- 0b00000010
-
-	)
-
-52 
+51 
 Çme¥aû
  
 	gZeus
  {
 
-54 
+53 
 	g‹m¶©e
  <
 þass
@@ -4053,17 +4047,17 @@ ignÜed
 	gLockTy³
 ,
 
-55 
+54 
 	gSu³rblockSize
 ,
 
-56 
+55 
 ty³Çme
  
 	gH—pTy³
 ,
 
-57 
+56 
 	g‹m¶©e
  <
 þass
@@ -4071,29 +4065,29 @@ ty³Çme
 	gLockTy³_
 ,
 
-58 
+57 
 	gSu³rblockSize_
 ,
 
-59 
+58 
 ty³Çme
  
 	gH—pTy³_
 >
 
-60 
+59 
 þass
  
 	gH—d”_
 >
 
-61 
+60 
 þass
  
 	gZeusSu³rblock
 ;
 
-63 
+62 
 	g‹m¶©e
  <
 þass
@@ -4101,23 +4095,23 @@ ty³Çme
 	gLockTy³
 ,
 
-64 
+63 
 	gSu³rblockSize
 ,
 
-65 
+64 
 ty³Çme
  
 	gH—pTy³
 >
 
-66 
+65 
 þass
  
 	gZeusSu³rblockH—d”
 ;
 
-68 
+67 
 	g‹m¶©e
  <
 þass
@@ -4125,33 +4119,33 @@ ty³Çme
 	gLockTy³
 ,
 
-69 
+68 
 	gSu³rblockSize
 ,
 
-70 
+69 
 ty³Çme
  
 	gH—pTy³
 >
 
-71 þas 
+70 þas 
 	cZeusSu³rblockH—d”H–³r
  {
 
-72 
+71 
 	gpublic
 :
 
-74 ’um { 
+73 ’um { 
 Alignm’t
  = 16 };
 
-76 
+75 
 	gpublic
 :
 
-78 
+77 
 ZeusSu³rblock
 <
 	tLockTy³
@@ -4165,7 +4159,7 @@ ZeusSu³rblock
 	tBlockTy³
 ;
 
-80 
+79 
 ZeusSu³rblockH—d”H–³r
  (
 size_t
@@ -4177,7 +4171,7 @@ bufãrSize
 ¡¬t
 )
 
-81 : 
+80 : 
 _magicNumb”
  (
 MAGIC_NUMBER
@@ -4187,19 +4181,19 @@ size_t
 this
 ),
 
-82 
+81 
 _objeùSize
  (
 sz
 ),
 
-83 
+82 
 _objeùSizeIsPow”OfTwo
  (!(
 sz
  & (sz - 1)) && sz),
 
-84 
+83 
 _tÙ®Objeùs
  ((è(
 bufãrSize
@@ -4207,49 +4201,49 @@ bufãrSize
 sz
 )),
 
-85 
+84 
 _owÃr
  (
 nuÎ±r
 ),
 
-86 
+85 
 _´ev
  (
 nuÎ±r
 ),
 
-87 
+86 
 _Ãxt
  (
 nuÎ±r
 ),
 
-88 
+87 
 _»­abËObjeùs
  (
 _tÙ®Objeùs
 ),
 
-89 
+88 
 _objeùsF»e
  (
 _tÙ®Objeùs
 ),
 
-90 
+89 
 _¡¬t
  (
 ¡¬t
 ),
 
-91 
+90 
 _pos™iÚ
  (
 ¡¬t
 )
 
-93 
+92 
 as£¹
  ((
 HL
@@ -4263,7 +4257,7 @@ size_t
 ¡¬t
 ) == (size_t) start));
 
-94 
+93 
 as£¹
  (
 _objeùSize
@@ -4271,7 +4265,7 @@ _objeùSize
 Alignm’t
 );
 
-95 
+94 
 as£¹
  ((
 _tÙ®Objeùs
@@ -4281,35 +4275,35 @@ _objeùSize
 Alignm’t
  == 0));
 
-98 
+97 
 	gvœtu®
  ~
 ZeusSu³rblockH—d”H–³r
 () {
 
-99 
+98 
 þ—r
 ();
 
-102 
+101 
 šlše
  * 
 m®loc
 () {
 
-103 
+102 
 as£¹
  (
 isV®id
 ());
 
-104 * 
+103 * 
 	g±r
  = 
 »­AÎoc
 ();
 
-105 
+104 
 as£¹
  ((
 ±r
@@ -4321,17 +4315,17 @@ size_t
 Alignm’t
  == 0));
 
-106 ià(!
+105 ià(!
 	g±r
 ) {
 
-107 
+106 
 	g±r
  = 
 ä“Li¡AÎoc
 ();
 
-108 
+107 
 as£¹
  ((
 ±r
@@ -4343,13 +4337,13 @@ size_t
 Alignm’t
  == 0));
 
-110 ià(
+109 ià(
 	g±r
  !ð
 nuÎ±r
 ) {
 
-111 
+110 
 as£¹
  (
 g‘Size
@@ -4359,7 +4353,7 @@ g‘Size
 _objeùSize
 );
 
-112 
+111 
 as£¹
  ((
 size_t
@@ -4369,31 +4363,11 @@ size_t
 Alignm’t
  == 0);
 
-115 autØ* 
-	g_h—d”
- = 
-»š‹½»t_ÿ¡
-<*>(
-±r
-);
-
-116 *
-	g_h—d”
- = ()
-HEADER_MAGIC
-;
-
-118 *
-	g_h—d”
- |ð
-IN_USE
-;
-
-119  
+113  
 	g±r
 ;
 
-122 
+116 
 šlše
  
 ä“
@@ -4401,7 +4375,7 @@ IN_USE
 ±r
 ) {
 
-123 
+117 
 as£¹
  ((
 size_t
@@ -4411,49 +4385,53 @@ size_t
 Alignm’t
  == 0);
 
-124 
+118 
 as£¹
  (
 isV®id
 ());
 
-125 autØ* 
-	g_h—d”
- = 
-»š‹½»t_ÿ¡
-<*>(
+119 
+	gi
+ = 0; i < 
+	gMAX_PINNED
+; i++) {
+
+120 ià((
+	g_pšÃd
+[
+i
+] & ~(
+	gušt64_t
+)
+	gIN_USE
+è=ð(
+ušt64_t
+)
 ±r
-);
-
-126 
-as£¹
-((*
-_h—d”
- & 
-HEADER_MAGIC
-) == HEADER_MAGIC);
-
-127 ià(*
-	g_h—d”
- | 
-	gPINNED
 ) {
 
-129 
+122 
 as£¹
-(*
-_h—d”
- & 
+(
+_pšÃd
+[
+i
+] & 
 IN_USE
-);
+ == 1);
 
-131 *
-	g_h—d”
- &ð~
+123 
+	g_pšÃd
+[
+i
+] &ð~(
+ušt64_t
+)
 IN_USE
 ;
 
-133 
+128 
 	g_ä“Li¡
 .
 š£¹
@@ -4467,49 +4445,49 @@ EÁry
 ±r
 ));
 
-134 
+129 
 	g_objeùsF»e
 ++;
 
-135 ià(
+130 ià(
 	g_objeùsF»e
  =ð
 _tÙ®Objeùs
 ) {
 
-136 
+131 
 þ—r
 ();
 
-141 
+135 
 þ—r
 () {
 
-142 
+136 
 as£¹
  (
 isV®id
 ());
 
-144 
+138 
 	g_ä“Li¡
 .
 þ—r
 ();
 
-146 
+140 
 	g_objeùsF»e
  = 
 _tÙ®Objeùs
 ;
 
-147 
+141 
 	g_»­abËObjeùs
  = 
 _tÙ®Objeùs
 ;
 
-148 
+142 
 	g_pos™iÚ
  = (*è(
 HL
@@ -4523,7 +4501,7 @@ size_t
 _¡¬t
 ));
 
-152 
+146 
 INLINE
  * 
 nÜm®ize
@@ -4531,13 +4509,13 @@ nÜm®ize
 ±r
 ) const {
 
-153 
+147 
 as£¹
  (
 isV®id
 ());
 
-154 autØ
+148 autØ
 	goff£t
  = (
 size_t
@@ -4547,15 +4525,15 @@ size_t
 _¡¬t
 ;
 
-155 * 
+149 * 
 	gp
 ;
 
-162 ià(
+156 ià(
 	g_objeùSizeIsPow”OfTwo
 ) {
 
-163 
+157 
 	gp
  = (*è((
 size_t
@@ -4567,7 +4545,7 @@ off£t
 _objeùSize
  - 1)));
 
-165 
+159 
 	gp
  = (*è((
 size_t
@@ -4579,11 +4557,11 @@ off£t
 _objeùSize
 ));
 
-167  
+161  
 	gp
 ;
 
-170 
+164 
 šlše
  
 pš
@@ -4591,51 +4569,51 @@ pš
 ±r
 ) {
 
-171 
+165 
 as£¹
 (
 isV®id
 ());
 
-172 * 
+166 
+ušt64_t
+ 
 	g_obj
- = 
+ = (ušt64_t)
 nÜm®ize
 (
 ±r
 );
 
-173 autØ* 
-	g_h—d”
- = 
-»š‹½»t_ÿ¡
-<*>(
+167 
+	gi
+ = 0; i < 
+	gMAX_PINNED
+; i++) {
+
+168 ià(
+	g_pšÃd
+[
+i
+] == 0) {
+
+170 
+_pšÃd
+[
+i
+] = 
 _obj
-);
+ | (
+ušt64_t
+)
+IN_USE
+;
 
 174 
 as£¹
-((*
-_h—d”
- & 
-HEADER_MAGIC
-) == HEADER_MAGIC);
+(0);
 
-175 
-as£¹
-(*
-_h—d”
- & 
-IN_USE
-);
-
-177 *
-	g_h—d”
- |ð
-PINNED
-;
-
-180 
+177 
 šlše
  
 uÅš
@@ -4643,54 +4621,52 @@ uÅš
 ±r
 ) {
 
-181 
+178 
 as£¹
 (
 isV®id
 ());
 
-182 * 
+179 
+ušt64_t
+ 
 	g_obj
- = 
+ = (ušt64_t)
 nÜm®ize
 (
 ±r
 );
 
-183 autØ* 
-	g_h—d”
- = 
-»š‹½»t_ÿ¡
-<*>(
-_obj
-);
+180 
+	gi
+ = 0; i < 
+	gMAX_PINNED
+; i++) {
 
-184 
-as£¹
-((*
-_h—d”
- & 
-HEADER_MAGIC
-) == HEADER_MAGIC);
-
-186 *
-	g_h—d”
- &ð~
-PINNED
-;
-
-188 ià((*
-	g_h—d”
- | 
+181 ià((
+	g_pšÃd
+[
+i
+] & ~(
+	gušt64_t
+)
 	gIN_USE
+è=ð
+_obj
+) {
+
+182 ià((
+_pšÃd
+[
+i
+] & (
+ušt64_t
+)
+IN_USE
 ) == 0) {
 
-189 *
-_h—d”
- = 0;
-
-190 
-	g_ä“Li¡
+184 
+_ä“Li¡
 .
 š£¹
  (
@@ -4703,21 +4679,31 @@ EÁry
 _obj
 ));
 
-191 
+185 
 	g_objeùsF»e
 ++;
 
-192 ià(
+186 ià(
 	g_objeùsF»e
  =ð
 _tÙ®Objeùs
 ) {
 
-193 
+187 
 þ—r
 ();
 
-199 
+190 
+	g_pšÃd
+[
+i
+] = 0;
+
+194 
+as£¹
+(0);
+
+197 
 size_t
  
 g‘Size
@@ -4725,13 +4711,13 @@ g‘Size
 ±r
 ) const {
 
-200 
+198 
 as£¹
  (
 isV®id
 ());
 
-201 autØ
+199 autØ
 	goff£t
  = (
 size_t
@@ -4741,17 +4727,17 @@ size_t
 _¡¬t
 ;
 
-202 
+200 
 size_t
  
 	gÃwSize
 ;
 
-203 ià(
+201 ià(
 	g_objeùSizeIsPow”OfTwo
 ) {
 
-204 
+202 
 	gÃwSize
  = 
 _objeùSize
@@ -4759,7 +4745,7 @@ _objeùSize
 off£t
  & (_objectSize - 1));
 
-206 
+204 
 	gÃwSize
  = 
 _objeùSize
@@ -4767,47 +4753,47 @@ _objeùSize
 off£t
  % _objectSize);
 
-208  
+206  
 	gÃwSize
 ;
 
-211 
+209 
 size_t
  
 g‘ObjeùSize
 () const {
 
-212  
+210  
 	g_objeùSize
 ;
 
-215 
+213 
 g‘TÙ®Objeùs
 () const {
 
-216  
+214  
 	g_tÙ®Objeùs
 ;
 
-219 
+217 
 g‘ObjeùsF»e
 () const {
 
-220  
+218  
 	g_objeùsF»e
 ;
 
-223 
+221 
 H—pTy³
  * 
 g‘OwÃr
 () const {
 
-224  
+222  
 	g_owÃr
 ;
 
-227 
+225 
 £tOwÃr
  (
 H—pTy³
@@ -4815,19 +4801,19 @@ H—pTy³
 o
 ) {
 
-228 
+226 
 	g_owÃr
  = 
 o
 ;
 
-231 
+229 
 boÞ
  
 isV®id
 () const {
 
-232  (
+230  (
 	g_magicNumb”
  =ð(
 MAGIC_NUMBER
@@ -4837,27 +4823,27 @@ size_t
 this
 ));
 
-235 
+233 
 BlockTy³
  * 
 g‘Next
 () const {
 
-236  
+234  
 	g_Ãxt
 ;
 
-239 
+237 
 BlockTy³
 * 
 g‘P»v
 () const {
 
-240  
+238  
 	g_´ev
 ;
 
-243 
+241 
 £tNext
  (
 BlockTy³
@@ -4865,13 +4851,13 @@ BlockTy³
 n
 ) {
 
-244 
+242 
 	g_Ãxt
  = 
 n
 ;
 
-247 
+245 
 £tP»v
  (
 BlockTy³
@@ -4879,37 +4865,37 @@ BlockTy³
 p
 ) {
 
-248 
+246 
 	g_´ev
  = 
 p
 ;
 
-251 
+249 
 lock
 () {
 
-252 
+250 
 	g_theLock
 .
 lock
 ();
 
-255 
+253 
 uÆock
 () {
 
-256 
+254 
 	g_theLock
 .
 uÆock
 ();
 
-259 
+257 
 	g´iv©e
 :
 
-261 
+259 
 MALLOC_FUNCTION
  
 INLINE
@@ -4917,29 +4903,29 @@ INLINE
 »­AÎoc
 () {
 
-262 
+260 
 as£¹
  (
 isV®id
 ());
 
-263 
+261 
 as£¹
  (
 _pos™iÚ
 );
 
-265 ià(
+263 ià(
 	g_»­abËObjeùs
  > 0) {
 
-266 autØ* 
+264 autØ* 
 	g±r
  = 
 _pos™iÚ
 ;
 
-267 
+265 
 	g_pos™iÚ
  = 
 ±r
@@ -4947,15 +4933,15 @@ _pos™iÚ
 _objeùSize
 ;
 
-268 
+266 
 	g_»­abËObjeùs
 --;
 
-269 
+267 
 	g_objeùsF»e
 --;
 
-270 
+268 
 as£¹
  ((
 size_t
@@ -4965,15 +4951,15 @@ size_t
 Alignm’t
  == 0);
 
-271  
+269  
 	g±r
 ;
 
-273  
+271  
 	gnuÎ±r
 ;
 
-277 
+275 
 MALLOC_FUNCTION
  
 INLINE
@@ -4981,13 +4967,13 @@ INLINE
 ä“Li¡AÎoc
 () {
 
-278 
+276 
 as£¹
  (
 isV®id
 ());
 
-280 autØ* 
+278 autØ* 
 	g±r
  = 
 »š‹½»t_ÿ¡
@@ -4997,89 +4983,97 @@ _ä“Li¡
 g‘
 ());
 
-281 ià(
+279 ià(
 	g±r
 ) {
 
-282 
+280 
 as£¹
  (
 _objeùsF»e
  >= 1);
 
-283 
+281 
 	g_objeùsF»e
 --;
 
-285  
+283  
 	g±r
 ;
 
-288 ’um { 
+286 ’um { 
 	gMAGIC_NUMBER
  = 0xcafed00d };
 
-291 cÚ¡ 
+289 cÚ¡ 
 size_t
  
 	g_magicNumb”
 ;
 
-294 cÚ¡ 
+292 cÚ¡ 
 size_t
  
 	g_objeùSize
 ;
 
-297 cÚ¡ 
+295 cÚ¡ 
 boÞ
  
 	g_objeùSizeIsPow”OfTwo
 ;
 
-300 cÚ¡ 
+298 cÚ¡ 
 	g_tÙ®Objeùs
 ;
 
-303 
+301 
 LockTy³
  
 	g_theLock
 ;
 
-306 
+304 
 H—pTy³
  * 
 	g_owÃr
 ;
 
-309 
+307 
 BlockTy³
 * 
 	g_´ev
 ;
 
-312 
+310 
 BlockTy³
 * 
 	g_Ãxt
 ;
 
-315 
+313 
 	g_»­abËObjeùs
 ;
 
-318 
+316 
 	g_objeùsF»e
 ;
 
-321 cÚ¡ * 
+319 cÚ¡ * 
 	g_¡¬t
 ;
 
-324 * 
+322 * 
 	g_pos™iÚ
 ;
+
+324 
+ušt64_t
+ 
+	g_pšÃd
+[
+MAX_PINNED
+];
 
 327 
 F»eSLLi¡
@@ -5234,24 +5228,28 @@ ZEUS_ZEUSTLAB_H
 "
 
 41 
+	~"Žab.h
+"
+
+42 
 	~"hßrd/hßrdcÚ¡ªts.h
 "
 
-43 
+44 
 	~"h—¶ay”s.h
 "
 
-45 
+46 
 Çme¥aû
  
 	gZeus
  {
 
-56 #ià
+57 #ià
 HL_EXECUTABLE_HEAP
 
 
-57 
+58 
 	#ZEUS_MMAP_PROTECTION_MASK
  (
 PROT_READ
@@ -5263,7 +5261,7 @@ PROT_EXEC
 
 	)
 
-59 
+60 
 	#ZEUS_MMAP_PROTECTION_MASK
  (
 PROT_READ
@@ -5273,13 +5271,13 @@ PROT_WRITE
 
 	)
 
-66 
+67 
 þass
  
 	gZeusH—pTy³
  :
 
-67 
+68 
 public
  
 Zeus
@@ -5297,7 +5295,7 @@ MaxTh»ads
 NumH—ps
 > > {
 
-71 
+72 
 	gZeusH—pTy³
 ::
 	tSu³rblockTy³
@@ -5307,7 +5305,7 @@ NumH—ps
 	tTheH—d”
 ;
 
-79 
+80 
 	gHßrd
 ::
 	tTh»adLoÿlAÎoÿtiÚBufãr
@@ -5323,7 +5321,7 @@ NumH—ps
 	tNUM_BINS
 ,
 
-80 
+81 
 	tHL
 ::
 	tbšs
@@ -5335,7 +5333,7 @@ NumH—ps
 	tg‘SizeCÏss
 ,
 
-81 
+82 
 	tHL
 ::
 	tbšs
@@ -5347,49 +5345,37 @@ NumH—ps
 	tg‘CÏssSize
 ,
 
-82 
+83 
 	tHßrd
 ::
 	tL¬ge¡Sm®lObjeù
 ,
 
-83 
+84 
 	tHßrd
 ::
 	tMAX_MEMORY_PER_TLAB
 ,
 
-84 
+85 
 	tZeusH—pTy³
 ::
 	tSu³rblockTy³
 ,
 
-85 
+86 
 	tSUPERBLOCK_SIZE
 ,
 
-86 
+87 
 	tZeusH—pTy³
 >
 
-87 
+88 
 	tTLABBa£
 ;
 
-91 
-pš
-(*
-±r
-);
-
-92 
-uÅš
-(*
-±r
-);
-
-95 
+91 
 	gHL
 ::
 	tANSIW¿µ”

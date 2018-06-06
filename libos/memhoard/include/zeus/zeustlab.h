@@ -78,19 +78,14 @@ namespace Zeus {
     //
 
     typedef Hoard::ThreadLocalAllocationBuffer<HL::bins<TheHeader, SUPERBLOCK_SIZE>::NUM_BINS,
-                                        HL::bins<TheHeader, SUPERBLOCK_SIZE>::getSizeClass,
-                                        HL::bins<TheHeader, SUPERBLOCK_SIZE>::getClassSize,
-                                        Hoard::LargestSmallObject,
-                                        Hoard::MAX_MEMORY_PER_TLAB,
-                                        ZeusHeapType::SuperblockType,
-                                        SUPERBLOCK_SIZE,
-                                        ZeusHeapType>
+                                               HL::bins<TheHeader, SUPERBLOCK_SIZE>::getSizeClass,
+                                               HL::bins<TheHeader, SUPERBLOCK_SIZE>::getClassSize,
+                                               Hoard::LargestSmallObject,
+                                               Hoard::MAX_MEMORY_PER_TLAB,
+                                               ZeusHeapType::SuperblockType,
+                                               SUPERBLOCK_SIZE,
+                                               ZeusHeapType>
     TLABBase;
-
-    
-    // Irene: adding pin and unpin operations
-    void pin(void *ptr);
-    void unpin(void *ptr);
 }
 
 typedef HL::ANSIWrapper<Zeus::TLABBase> TheCustomHeapType;

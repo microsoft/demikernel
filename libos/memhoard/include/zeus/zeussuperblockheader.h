@@ -191,7 +191,7 @@ namespace Zeus {
                     return;
                 }
             }
-            assert(i != MAX_PINNED);
+            assert(0);
         }
                 
         size_t getSize (void * ptr) const {

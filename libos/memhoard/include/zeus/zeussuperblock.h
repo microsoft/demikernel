@@ -178,10 +178,12 @@ namespace Zeus {
         }
 
         inline void pin (void * ptr) {
+            printf("Pinning block %lx", ptr);
             _header.pin(ptr);
         }
 
         inline void unpin (void * ptr) {
+            printf("Unpinning block %lx", ptr);
             _header.unpin(ptr);
         }
         

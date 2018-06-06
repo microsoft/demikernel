@@ -31,6 +31,10 @@ include_directories(${PROJECT_SOURCE_DIR})
 # Hoard
 set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/memhoard)
 include_directories(${HOARD_LIBRARY}/include)
+include_directories(${HOARD_LIBRARY}/include/hoard)
+include_directories(${HOARD_LIBRARY}/include/superblocks)
+include_directories(${HOARD_LIBRARY}/include/util)
+include_directories(${HOARD_LIBRARY}/Heap-Layers)
 
 
 # ---------------------------------------------------------
@@ -46,10 +50,10 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
 
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_POSIX_LIB})
-target_link_libraries(zeus_posix ${HOARD_LIBRARIES})
+target_link_libraries(zeus_posix ${HOARD_LIBRARY})
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED
   ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${HOARD_LIBRARIES})
+target_link_libraries(zeus_rdma ${HOARD_LIBRARY})
