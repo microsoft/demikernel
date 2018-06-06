@@ -55,7 +55,7 @@ add_custom_target(tapir
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
 add_custom_target(tapir-clean
-                  COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make clean
+                  COMMAND make clean
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
 # posix shared library
