@@ -125,7 +125,6 @@ push(int qd, struct Zeus::sgarray &sga)
     uint64_t totalLen = 0;
 
     count = write(qd, &magic, sizeof(uint64_t));
-    printf("write: %lu\n", (size_t)count);
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
         fprintf(stderr, "Could not write magic\n");
         return -1;
@@ -138,7 +137,6 @@ push(int qd, struct Zeus::sgarray &sga)
     }
     totalLen += sizeof(num);
     count = write(qd, &totalLen, sizeof(uint64_t));
-    printf("write: %lu totallen: %lu\n", (size_t)count, totalLen);
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
         fprintf(stderr, "Could not write total length\n");
         return -1;
@@ -184,7 +182,6 @@ pop(int qd, struct Zeus::sgarray &sga)
 
     // if we aren't already working on a buffer, allocate one
     if (buf == NULL) {
-        printf("Alloc\n");
         buf = malloc(headerSize);
         count = 0;
     }
@@ -193,7 +190,6 @@ pop(int qd, struct Zeus::sgarray &sga)
     if (count < headerSize) {
         ssize_t res = read(qd, (uint8_t *)buf + count, 
                            headerSize - count);
-        printf("Read: %lu\n", (size_t)res);
         // we still don't have a header
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < headerSize))) {
@@ -227,7 +223,6 @@ pop(int qd, struct Zeus::sgarray &sga)
         buf = realloc(buf, totalLen + headerSize);    
         ssize_t res = read(qd, (uint8_t *)buf + count,
                            totalLen + headerSize - count);
-        printf("Read: %lu\n", (size_t)res);
         // try again later
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
