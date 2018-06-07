@@ -117,28 +117,52 @@ push(int qd, struct Zeus::sgarray &sga)
     if (libqueue.info[qd].isFile) {
         // pushing to files not implemented yet
         return 0;
-    } else {
-        ssize_t count, total = 0;
+    }
+    ssize_t count, total = 0;
 
-        uint64_t magic = MAGIC;
-        uint64_t num = sga.num_bufs;
-        uint64_t totalLen = 0;
+    uint64_t magic = MAGIC;
+    uint64_t num = sga.num_bufs;
+    uint64_t totalLen = 0;
 
-        count = write(qd, &magic, sizeof(uint64_t));
-        if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-            fprintf(stderr, "Could not write magic\n");
+    count = write(qd, &magic, sizeof(uint64_t));
+    printf("write: %lu\n", (size_t)count);
+    if (count < 0 || (size_t)count < sizeof(uint64_t)) {
+        fprintf(stderr, "Could not write magic\n");
+        return -1;
+    }
+    // calculate size
+    for (int i = 0; i < sga.num_bufs; i++) {
+        totalLen += (uint64_t)sga.bufs[i].len;
+        totalLen += sizeof(uint64_t);
+        pin((void *)sga.bufs[i].buf);
+    }
+    totalLen += sizeof(num);
+    count = write(qd, &totalLen, sizeof(uint64_t));
+    printf("write: %lu totallen: %lu\n", (size_t)count, totalLen);
+    if (count < 0 || (size_t)count < sizeof(uint64_t)) {
+        fprintf(stderr, "Could not write total length\n");
+        return -1;
+    }
+    count = write(qd, &num, sizeof(uint64_t));
+    if (count < 0 || (size_t)count < sizeof(uint64_t)) {
+        fprintf(stderr, "Could not write sga entries\n");
+        return -1;
+    }
+    
+    // write buffers
+    for (int i = 0; i < sga.num_bufs; i++) {
+        // stick in size header
+        count = write(qd, &sga.bufs[i].len, sizeof(uint64_t));
+        if (count < 0 || (size_t)count < sizeof(sga.bufs[i].len)) {
+            fprintf(stderr, "Could not write sga entry len\n");
             return -1;
         }
-        // calculate size
-        for (int i = 0; i < sga.num_bufs; i++) {
-            totalLen += sga.bufs[i].len;
-            totalLen += sizeof(sga.bufs[i].len);
-            pin((void *)sga.bufs[i].buf);
-        }
-        totalLen += sizeof(num);
-        count = write(qd, &totalLen, sizeof(uint64_t));
-        if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-            fprintf(stderr, "Could not write total length\n");
+        // write buffer
+        count = write(qd, (void *)sga.bufs[i].buf,
+                      sga.bufs[i].len);
+        unpin((void *)sga.bufs[i].buf);
+        if (count < 0 || (size_t)count < sga.bufs[i].len) {
+            fprintf(stderr, "Could not write sga buf\n");
             return -1;
         }
         count = write(qd, &num, sizeof(uint64_t));
@@ -146,7 +170,7 @@ push(int qd, struct Zeus::sgarray &sga)
             fprintf(stderr, "Could not write sga entries\n");
             return -1;
         }
-    
+        
         // write buffers
         for (int i = 0; i < sga.num_bufs; i++) {
             // stick in size header
@@ -158,39 +182,15 @@ push(int qd, struct Zeus::sgarray &sga)
             // write buffer
             count = write(qd, (void *)sga.bufs[i].buf,
                           sga.bufs[i].len);
-            unpin((void *)sga.bufs[i].buf);
+            unpin(sga.bufs[i].buf);
             if (count < 0 || (size_t)count < sga.bufs[i].len) {
                 fprintf(stderr, "Could not write sga buf\n");
                 return -1;
             }
-            count = write(qd, &num, sizeof(uint64_t));
-            if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-                fprintf(stderr, "Could not write sga entries\n");
-                return -1;
-            }
-        
-            // write buffers
-            for (int i = 0; i < sga.num_bufs; i++) {
-                // stick in size header
-                count = write(qd, &sga.bufs[i].len, sizeof(sga.bufs[i].len));
-                if (count < 0 || (size_t)count < sizeof(sga.bufs[i].len)) {
-                    fprintf(stderr, "Could not write sga entry len\n");
-                    return -1;
-                }
-                // write buffer
-                count = write(qd, (void *)sga.bufs[i].buf,
-                              sga.bufs[i].len);
-                unpin(sga.bufs[i].buf);
-                if (count < 0 || (size_t)count < sga.bufs[i].len) {
-                    fprintf(stderr, "Could not write sga buf\n");
-                    return -1;
-                }
-                total += count;
-            }
-            return total;
+            total += count;
         }
-    }
-        
+        return total;
+    }        
 }
     
 ssize_t
@@ -198,88 +198,89 @@ pop(int qd, struct Zeus::sgarray &sga)
 {
     if (libqueue.info[qd].isFile) {
         return 0;
-    } else {
-        size_t total = 0;
-        uint8_t *ptr;
-        void *buf = libqueue.info[qd].buf;
-        size_t count = libqueue.info[qd].count;
-        size_t headerSize = sizeof(uint64_t) * 2;
-
-        // if we aren't already working on a buffer, allocate one
-        if (buf == NULL) {
-            buf = malloc(headerSize);
-            count = 0;
-        }
-
-        // if we don't have a full header in our buffer, then get one
-        if (count < headerSize) {
-            ssize_t res = read(qd, (uint8_t *)buf + count, 
-                               headerSize - count);
-        
-            // we still don't have a header
-            if ((res < 0 && errno == EAGAIN) ||
-                (res >= 0 && (count + (size_t)res < headerSize))) {
-                // try again later
-                libqueue.info[qd].buf = buf;
-                libqueue.info[qd].count =
-                    (res > 0) ? count + res : count;
-                return 0;
-            } else if (res < 0) {
-                return res;
-            } else {            
-                count += res;
-            }
-        }
-
-        // go to the beginning of the buffer to check the header
-        ptr = (uint8_t *)buf;
-        uint64_t magic = *(uint64_t *)ptr;
-        if (magic != MAGIC) {
-            // not a correctly formed packet
-            fprintf(stderr, "Could not find magic %llx\n", magic);
-            exit(-1);
-            return -1;
-        }
-        ptr += sizeof(magic);
-        uint64_t totalLen = *(uint64_t *)ptr;
-        ptr += sizeof(totalLen);
-        
-        // grabthe rest of the packet
-        if (count < headerSize + totalLen) {
-            buf = realloc(buf, totalLen + headerSize);    
-            ssize_t res = read(qd, (uint8_t *)buf + count,
-                               totalLen + headerSize - count);
-            
-            // try again later
-            if ((res < 0 && errno == EAGAIN) ||
-                (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
-                // try again later
-                libqueue.info[qd].buf = buf;
-                libqueue.info[qd].count =
-                    (res > 0) ? count + res : count;
-                return 0;
-            } else if (res < 0) {
-                return res;
-            } else {            
-                count += res;
-            }
-        }
-
-        // now we have the whole buffer, start reading data
-        ptr = (uint8_t *)buf + headerSize;
-        sga.num_bufs = *(uint64_t *)ptr;
-        ptr += sizeof(uint64_t);
-        for (int i = 0; i < sga.num_bufs; i++) {
-            sga.bufs[i].len = *(size_t *)ptr;
-            ptr += sizeof(size_t);
-            sga.bufs[i].buf = (ioptr)ptr;
-            ptr += sga.bufs[i].len;
-            total += sga.bufs[i].len;
-        }
-        libqueue.info[qd].buf = NULL;
-        libqueue.info[qd].count = 0;
-        return total;
     }
+    size_t total = 0;
+    uint8_t *ptr;
+    void *buf = libqueue.info[qd].buf;
+    size_t count = libqueue.info[qd].count;
+    size_t headerSize = sizeof(uint64_t) * 2;
+
+    // if we aren't already working on a buffer, allocate one
+    if (buf == NULL) {
+        printf("Alloc\n");
+        buf = malloc(headerSize);
+        count = 0;
+    }
+
+    // if we don't have a full header in our buffer, then get one
+    if (count < headerSize) {
+        ssize_t res = read(qd, (uint8_t *)buf + count, 
+                           headerSize - count);
+        printf("Read: %lu\n", (size_t)res);
+        // we still don't have a header
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < headerSize))) {
+            // try again later
+            libqueue.info[qd].buf = buf;
+            libqueue.info[qd].count =
+                (res > 0) ? count + res : count;
+            return 0;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
+        }
+    }
+
+    // go to the beginning of the buffer to check the header
+    ptr = (uint8_t *)buf;
+    uint64_t magic = *(uint64_t *)ptr;
+    if (magic != MAGIC) {
+        // not a correctly formed packet
+        fprintf(stderr, "Could not find magic %llx\n", magic);
+        exit(-1);
+        return -1;
+    }
+    ptr += sizeof(magic);
+    uint64_t totalLen = *(uint64_t *)ptr;
+    ptr += sizeof(totalLen);
+        
+    // grabthe rest of the packet
+    if (count < headerSize + totalLen) {
+        buf = realloc(buf, totalLen + headerSize);    
+        ssize_t res = read(qd, (uint8_t *)buf + count,
+                           totalLen + headerSize - count);
+        printf("Read: %lu\n", (size_t)res);
+        // try again later
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
+            // try again later
+            libqueue.info[qd].buf = buf;
+            libqueue.info[qd].count =
+                (res > 0) ? count + res : count;
+            return 0;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
+        }
+    }
+
+    // now we have the whole buffer, start reading data
+    ptr = (uint8_t *)buf + headerSize;
+    sga.num_bufs = *(uint64_t *)ptr;
+    ptr += sizeof(uint64_t);
+    for (int i = 0; i < sga.num_bufs; i++) {
+        sga.bufs[i].len = *(size_t *)ptr;
+        ptr += sizeof(uint64_t);
+        sga.bufs[i].buf = (ioptr)ptr;
+        ptr += sga.bufs[i].len;
+        total += sga.bufs[i].len;
+    }
+    libqueue.info[qd].buf = NULL;
+    libqueue.info[qd].count = 0;
+    return total;
+
 }
 
 } // namespace Zeus
