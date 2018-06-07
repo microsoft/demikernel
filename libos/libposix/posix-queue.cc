@@ -165,32 +165,9 @@ push(int qd, struct Zeus::sgarray &sga)
             fprintf(stderr, "Could not write sga buf\n");
             return -1;
         }
-        count = write(qd, &num, sizeof(uint64_t));
-        if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-            fprintf(stderr, "Could not write sga entries\n");
-            return -1;
-        }
-        
-        // write buffers
-        for (int i = 0; i < sga.num_bufs; i++) {
-            // stick in size header
-            count = write(qd, &sga.bufs[i].len, sizeof(sga.bufs[i].len));
-            if (count < 0 || (size_t)count < sizeof(sga.bufs[i].len)) {
-                fprintf(stderr, "Could not write sga entry len\n");
-                return -1;
-            }
-            // write buffer
-            count = write(qd, (void *)sga.bufs[i].buf,
-                          sga.bufs[i].len);
-            unpin(sga.bufs[i].buf);
-            if (count < 0 || (size_t)count < sga.bufs[i].len) {
-                fprintf(stderr, "Could not write sga buf\n");
-                return -1;
-            }
-            total += count;
-        }
-        return total;
-    }        
+        total += count;
+    }
+    return total;        
 }
     
 ssize_t
