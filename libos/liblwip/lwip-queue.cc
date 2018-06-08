@@ -2878,6 +2878,71 @@ lcore_main(void)
 	}
 }
 
+static void sock_recved_udp_packet(void *arg)
+{
+    struct recv_udp_args *args = arg;
+    assert(inpkt != NULL);
+    assert(inpkt->next == NULL);
+
+    // Process headers
+    struct ip_hdr *iphdr = (struct ip_hdr *)(inpkt->payload + SIZEOF_ETH_HDR);
+
+    assert(IPH_PROTO(iphdr) == IP_PROTO_UDP);
+
+    struct udp_hdr *udphdr = (struct udp_hdr *)(inpkt->payload + SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4));
+    size_t hdr_len = SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4) + sizeof(struct udp_hdr);
+    uint8_t *payload = inpkt->payload + hdr_len;
+    uint16_t pkt_len = htons(udphdr->len) - sizeof(struct udp_hdr);
+    assert(args->buf != NULL);      // No accept() allowed
+
+    // Fill in src_addr if provided
+    if(args->src_addr != NULL) {
+        struct sockaddr_in *addr = (struct sockaddr_in *)args->src_addr;
+
+        assert(*args->addrlen >= sizeof(struct sockaddr_in));
+        memset(addr, 0, sizeof(struct sockaddr_in));
+        addr->sin_len = sizeof(struct sockaddr_in);
+        addr->sin_family = AF_INET;
+        addr->sin_port = udphdr->src;
+        addr->sin_addr.s_addr = iphdr->src.addr;
+        *args->addrlen = sizeof(struct sockaddr_in);
+    }
+
+    // It's a recvfrom!
+    if(args->len != 0) {
+#ifdef DEBUG_LATENCIES
+    if(memcache_transactions[0] < POSIX_TRANSA) {
+        protocol_binary_request_no_extras *mypayload = (void *)payload + UDP_HEADLEN;
+        memcache_times[0][memcache_transactions[0]] = get_time() - mypayload->message.header.request.opaque;
+        memcache_transactions[0]++;
+    }
+#endif
+
+        args->recv_len = MIN(args->len, pkt_len);
+        memcpy(args->buf, payload, args->recv_len);
+
+#ifdef DEBUG_LATENCIES
+    if(memcache_transactions[1] < POSIX_TRANSA) {
+        protocol_binary_request_no_extras *mypayload = (void *)payload + UDP_HEADLEN;
+        memcache_times[1][memcache_transactions[1]] = get_time() - mypayload->message.header.request.opaque;
+        memcache_transactions[1]++;
+    }
+#endif
+
+#ifdef DEBUG_LATENCIES
+        rx_packets_available++;
+#endif
+        errval_t err = rx_register_buffer_fn_ptr(inpkt->pa, inpkt->payload, inpkt);
+        assert(err_is_ok(err));
+    } else {
+        args->recv_len = pkt_len;
+        *((void **)args->buf) = payload;
+        *args->inpkt = inpkt;
+    }
+
+    // Input packet is consumed in stack
+    inpkt = NULL;
+}
 /*
  * The lcore main. This is the main thread that does the work, reading from an
  * input port and writing to an output port.
@@ -2888,8 +2953,8 @@ pop(int qd, struct Zeus::sgarray &sga)
 	uint8_t portid;
 	unsigned nb_rx;
 	struct rte_mbuf *m;
+	void* buf;
 
-    if (pending)
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
 	 * for best performance.
@@ -2903,19 +2968,33 @@ pop(int qd, struct Zeus::sgarray &sga)
     if (likely(nb_rx == 0)) {
         return 0;
     } else {
-        for (int i = 0; i < nb_rx; i++) {
+        assert(nb_rx == 1);
             
-        inpkt = rte_mbuf->
-         process_udp
-        
+		// inpkt = m->buf_addr;
+		uint8_t* packet= rte_pktmbuf_mtod(m, uint8_t*)
+		// buf = malloc(m->data_len);
+
+		// Process headers
+		struct ip_hdr *iphdr = (struct ip_hdr *)(payload + SIZEOF_ETH_HDR);
+
+		assert(IPH_PROTO(iphdr) == IP_PROTO_UDP);
+
+		struct udp_hdr *udphdr = (struct udp_hdr *)(packet + SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4));
+		size_t hdr_len = SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4) + sizeof(struct udp_hdr);
+		uint8_t *payload = packet + hdr_len;
+		uint16_t pkt_len = htons(udphdr->len) - sizeof(struct udp_hdr);
+
+		buf = malloc(pkt_len);
 
 
+		// It's a recvfrom!
+		if(args->len != 0) {
+			memcpy(buf, payload, pkt_len);
 
-			if (m->ol_flags & PKT_RX_IEEE1588_PTP)
-				parse_ptp_frames(portid, m);
-
-			rte_pktmbuf_free(m);
 		}
+
+
+		rte_pktmbuf_free(m);
 	}
 }
 
