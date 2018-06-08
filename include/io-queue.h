@@ -63,19 +63,19 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int connect(int qd, struct sockaddr *saddr, socklen_t size);
 int close(int qd);
           
-// eventually file functions
+// file functions
 int open(const char *pathname, int flags);
 int open(const char *pathname, int flags, mode_t mode);
 int creat(const char *pathname, mode_t mode);
 
 // other functions
-
 ssize_t push(int qd, struct sgarray &sga);
 ssize_t pop(int qd, struct sgarray &sga);
 int qd2fd(int qd);
-
+ssize_t wait(int qd);
+        
 // eventually queue functions
-// int merge(int qd1, int qd2);
+int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));
 
 } // namespace Zeus
