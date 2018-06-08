@@ -7,4 +7,4 @@
 	url = git@github.com:iyzhang/Hoard.git
 [submodule "apps/redis"]
 	path = apps/redis
-	url = https://github.com/jingliu9/redis.git
+	url = git@github.com:jingliu9/redis.git

@@ -38,6 +38,8 @@
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
 
+#define ZEUS_IO_ERR_NO (-9)
+
 namespace Zeus {
     
 typedef void * ioptr;

@@ -36,6 +36,7 @@
 #include <string.h>
 #include <errno.h>
 
+
 namespace Zeus {
 
 using namespace POSIX;
@@ -190,6 +191,9 @@ pop(int qd, struct Zeus::sgarray &sga)
     if (count < headerSize) {
         ssize_t res = read(qd, (uint8_t *)buf + count, 
                            headerSize - count);
+        if(res == 0){
+            return 0;
+        }
         // we still don't have a header
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < headerSize))) {
@@ -197,7 +201,7 @@ pop(int qd, struct Zeus::sgarray &sga)
             libqueue.info[qd].buf = buf;
             libqueue.info[qd].count =
                 (res > 0) ? count + res : count;
-            return 0;
+            return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
             return res;
         } else {            
@@ -223,6 +227,9 @@ pop(int qd, struct Zeus::sgarray &sga)
         buf = realloc(buf, totalLen + headerSize);    
         ssize_t res = read(qd, (uint8_t *)buf + count,
                            totalLen + headerSize - count);
+        if(res == 0) {
+            return 0;
+        }
         // try again later
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
@@ -230,7 +237,7 @@ pop(int qd, struct Zeus::sgarray &sga)
             libqueue.info[qd].buf = buf;
             libqueue.info[qd].count =
                 (res > 0) ? count + res : count;
-            return 0;
+            return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
             return res;
         } else {            
