@@ -81,3 +81,9 @@ add_custom_target(tapir-clean
                   COMMAND make clean
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
+set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/redis)
+add_custom_target(redis
+                  COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
+                  WORKING_DIRECTORY ${TAPIR_APP_DIR})
+
+
