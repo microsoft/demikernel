@@ -35,7 +35,7 @@ void sgarray_c2cpp(zeus_sgarray * c_sga, Zeus::sgarray * sga){
          (sga->bufs[i]).len = (c_sga->bufs[i]).len;
          (sga->bufs[i]).buf = (c_sga->bufs[i]).buf;
     }
-    printf("sgarray_c2cpp() return\n");
+    //printf("sgarray_c2cpp() return\n");
 }
 
 void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
@@ -44,21 +44,22 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
         (c_sga->bufs[i]).len = (sga->bufs[i]).len;
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
     }
-    printf("sgarray_cpp2c() return\n");
+    //printf("sgarray_cpp2c() return\n");
 }
 
 ssize_t zeus_push(int qd, zeus_sgarray * bufs){
-    printf("zeus_push\n");
     Zeus::sgarray sga;
     sgarray_c2cpp(bufs, &sga);
-    return Zeus::push(qd, sga);
+    ssize_t n = Zeus::push(qd, sga);
+    //printf("zeus_push() will return: %zd\n",n);
+    return n;
 }
 
 ssize_t zeus_pop(int qd, zeus_sgarray * bufs){
-    printf("zeus_pop\n");
+    //printf("zeus_pop\n");
     Zeus::sgarray sga;
     ssize_t n = Zeus::pop(qd, sga);
-    printf("return from pop()\n");
+    //printf("return from pop() n:%zd\n", n);
     if (n > 0){
         sgarray_cpp2c(&sga, bufs);
     }

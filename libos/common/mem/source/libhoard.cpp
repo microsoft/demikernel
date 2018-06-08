@@ -38,6 +38,7 @@
 #define versionMessage "Using the Zeus-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
 
 #include "heaplayers.h"
+#include "include/zeus/libzeus.h"
 
 // The undef below ensures that any pthread_* calls get strong
 // linkage.  Otherwise, our versions here won't replace them.  It is

@@ -38,6 +38,9 @@
 #define C_MAX_QUEUE_DEPTH 40
 #define C_MAX_SGARRAY_SIZE 10
 
+
+#define C_ZEUS_IO_ERR_NO (-9)
+
 typedef void * zeus_ioptr;
 
 typedef struct Sgelem{

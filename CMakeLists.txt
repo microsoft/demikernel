@@ -28,6 +28,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 
+
+# Hoard
+Set(HOARD_DIR ${ZEUS_SOURCE_DIR}/common/mem)
+include_directories(${HOARD_DIR}/include)
+include_directories(${HOARD_DIR}/include/hoard)
+include_directories(${HOARD_DIR}/include/superblocks)
+include_directories(${HOARD_DIR}/include/util)
+include_directories(${HOARD_DIR}/include/zeus)
+include_directories(${HOARD_DIR}/Heap-Layers)
+
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
@@ -42,12 +52,25 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 # Build targets
 # ---------------------------------------------------------
 
-# Hoard
-set(HOARD_LIBRARY ${ZEUS_SOURCE_DIR}/common/mem)
-include_directories(${HOARD_LIBRARY}/include)
-add_custom_target(hoard ALL make
+# hoard target
+add_custom_target(hoard ALL
+                  COMMAND make
                   COMMAND mv libhoard.* ${PROJECT_SOURCE_DIR}
-                  WORKING_DIRECTORY ${HOARD_LIBRARY})
+                  WORKING_DIRECTORY ${HOARD_DIR})
+
+# POSIX libos target
+add_library(zeus_posix SHARED
+  ${SRC_ZEUS_POSIX_LIB} ${SRC_ZEUS_COMMON_LIB})
+target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
+
+# RDMA libos target
+if (NOT ${APPLE})
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
+set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
+add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
+target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so)
+endif()
+
 
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)
 add_custom_target(tapir
@@ -58,12 +81,9 @@ add_custom_target(tapir-clean
                   COMMAND make clean
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
-# posix shared library
-add_library(zeus_posix SHARED ${SRC_ZEUS_POSIX_LIB})
+set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/redis)
+add_custom_target(redis
+                  COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
+                  WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
-if (NOT ${APPLE})
-# set up rdma flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
-set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
-add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
-endif()
+
