@@ -60,7 +60,7 @@ add_custom_target(hoard ALL
 
 # POSIX libos target
 add_library(zeus_posix SHARED
-  ${SRC_ZEUS_POSIX_LIB})
+  ${SRC_ZEUS_POSIX_LIB} ${SRC_ZEUS_COMMON_LIB})
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 
 # RDMA libos target
