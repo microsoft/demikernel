@@ -29,6 +29,8 @@
  **********************************************************************/
 
 #include "posix-queue.h"
+#include "common/library.h"
+// hoard include
 #include "libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
@@ -40,7 +42,7 @@
 namespace Zeus {
 
 using namespace POSIX;
-LibIOQueue libqueue;
+Zeus::QueueLibrary<PosixQueue> lib;
 
 int queue(int domain, int type, int protocol)
 {
@@ -77,7 +79,7 @@ open(const char *pathname, int flags)
     // use the fd as qd
     int qd = ::open(pathname, flags);
     if (qd > 0) 
-        libqueue.info[qd].isFile = true;
+        lib.queues[qd].type = FILE_Q;
     return qd;
 }
 
@@ -87,7 +89,7 @@ open(const char *pathname, int flags, mode_t mode)
     // use the fd as qd
     int qd = ::open(pathname, flags, mode);
     if (qd > 0) 
-        libqueue.info[qd].isFile = true;
+        lib.queues[qd].type = FILE_Q;
     return qd;
 }
 
@@ -97,7 +99,7 @@ creat(const char *pathname, mode_t mode)
     // use the fd as qd
     int qd = ::creat(pathname, mode);
     if (qd > 0)
-        libqueue.info[qd].isFile = true;
+        lib.queues[qd].type = FILE_Q;
     return qd;
 }
     
@@ -115,7 +117,7 @@ qd2fd(int qd) {
 ssize_t
 push(int qd, struct Zeus::sgarray &sga)
 {
-    if (libqueue.info[qd].isFile) {
+    if (lib.queues[qd].type == FILE_Q) {
         // pushing to files not implemented yet
         return 0;
     }
@@ -172,13 +174,13 @@ push(int qd, struct Zeus::sgarray &sga)
 ssize_t
 pop(int qd, struct Zeus::sgarray &sga)
 {
-    if (libqueue.info[qd].isFile) {
+    if (lib.queues[qd].type == FILE_Q) {
         return 0;
     }
     size_t total = 0;
     uint8_t *ptr;
-    void *buf = libqueue.info[qd].buf;
-    size_t count = libqueue.info[qd].count;
+    void *buf = lib.queues[qd].buf;
+    size_t count = lib.queues[qd].count;
     size_t headerSize = sizeof(uint64_t) * 2;
 
     // if we aren't already working on a buffer, allocate one
@@ -198,8 +200,8 @@ pop(int qd, struct Zeus::sgarray &sga)
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < headerSize))) {
             // try again later
-            libqueue.info[qd].buf = buf;
-            libqueue.info[qd].count =
+            lib.queues[qd].buf = buf;
+            lib.queues[qd].count =
                 (res > 0) ? count + res : count;
             return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
@@ -207,6 +209,7 @@ pop(int qd, struct Zeus::sgarray &sga)
         } else {            
             count += res;
         }
+
     }
 
     // go to the beginning of the buffer to check the header
@@ -234,8 +237,8 @@ pop(int qd, struct Zeus::sgarray &sga)
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
             // try again later
-            libqueue.info[qd].buf = buf;
-            libqueue.info[qd].count =
+            lib.queues[qd].buf = buf;
+            lib.queues[qd].count =
                 (res > 0) ? count + res : count;
             return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
@@ -256,8 +259,8 @@ pop(int qd, struct Zeus::sgarray &sga)
         ptr += sga.bufs[i].len;
         total += sga.bufs[i].len;
     }
-    libqueue.info[qd].buf = NULL;
-    libqueue.info[qd].count = 0;
+    lib.queues[qd].buf = NULL;
+    lib.queues[qd].count = 0;
     return total;
 
 }
