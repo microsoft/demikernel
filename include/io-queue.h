@@ -43,6 +43,7 @@
 namespace Zeus {
     
 typedef void * ioptr;
+typedef int qtoken;
 
 struct sgelem {
     ioptr buf;
@@ -65,19 +66,27 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int connect(int qd, struct sockaddr *saddr, socklen_t size);
 int close(int qd);
           
-// eventually file functions
+// file functions
 int open(const char *pathname, int flags);
 int open(const char *pathname, int flags, mode_t mode);
 int creat(const char *pathname, mode_t mode);
 
 // other functions
+qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
+qtoken pop(int qd, struct sgarray &sga) // if return 0, then already ready and in sga
+ssize_t wait(qtoken *qts, size_t num_qts);
+ssize_t wait_all(qtoken *qts, size_t num_qts);
+// identical to a push, followed by a wait on the returned qtoken
+ssize_t blocking_push(int qd, struct sgarray &sga);
+// identical to a pop, followed by a wait on the returned qtoken
+ssize_t blocking_pop(int qd, struct sgarray &sga); 
 
-ssize_t push(int qd, struct sgarray &sga);
-ssize_t pop(int qd, struct sgarray &sga);
+// returns the file descriptor associated with
+// the queue descriptor if the queue is an io queue
 int qd2fd(int qd);
 
 // eventually queue functions
-// int merge(int qd1, int qd2);
+int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));
 
 } // namespace Zeus
