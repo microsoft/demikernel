@@ -55,10 +55,19 @@ Zeus::QueueLibrary<LWIPQueue> lib;
 uint8_t portid;
 struct rte_mempool *mbuf_pool;
 
+int bind(int qd, struct sockaddr *saddr, socklen_t size)
+{
+    return 0;
+}
+
 
 ssize_t
 pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
 {
+    if (lib.queues[qd].type == FILE_Q) {
+        return 0;
+    }
+
     LWIPQueue queue = lib.queues[qd];
     ssize_t short_size = 0;
     struct rte_mbuf* pkts[sga.num_bufs];
@@ -113,6 +122,10 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
 ssize_t
 popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
 {
+    if (lib.queues[qd].type == FILE_Q) {
+        return 0;
+    }
+
     uint8_t portid;
     unsigned nb_rx;
     struct rte_mbuf *m;

@@ -12,6 +12,8 @@
 #include "common/queue.h"
 #include <list>
 #include <map>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 namespace Zeus {
 namespace LWIP {
