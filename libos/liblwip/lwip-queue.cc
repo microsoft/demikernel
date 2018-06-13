@@ -27,10 +27,12 @@
 #include "common/library.h"
 
 
-#define NUM_MBUFS            8191
-#define MBUF_CACHE_SIZE       250
-#define RX_RING_SIZE 128
-#define TX_RING_SIZE 512
+#define NUM_MBUFS               8191
+#define MBUF_CACHE_SIZE         250
+#define RX_RING_SIZE            128
+#define TX_RING_SIZE            512
+#define UDP_PROTOCOL            0x11
+#define IP_PROTOCOL             0x0800
 
 namespace Zeus {
 
@@ -43,21 +45,42 @@ static const struct ether_addr ether_multicast = {
     .addr_bytes = {0x01, 0x1b, 0x19, 0x0, 0x0, 0x0}
 };
 
-struct pkt_udp_headers {
-    struct eth_hdr eth;
-    struct ip_hdr ip;
-    struct udp_hdr udp;
-} __attribute__ ((packed));
+struct udp_hdr {
+    uint16_t src;
+    uint16_t dst;
+    uint16_t len;
+    uint16_t chksum;
+};
+
+struct ip_hdr {
+    uint8_t v_hl;
+    uint8_t tos;
+    uint16_t len;
+    uint16_t id;
+    uint16_t offset;
+#define IP_RF 0x8000U        /* reserved fragment flag */
+#define IP_DF 0x4000U        /* dont fragment flag */
+#define IP_MF 0x2000U        /* more fragments flag */
+#define IP_OFFMASK 0x1fffU   /* mask for fragmenting bits */
+    uint8_t ttl;
+    uint8_t proto;
+    uint16_t chksum;
+    uint32_t src;
+    uint32_t dst;
+};
 
 
 
 Zeus::QueueLibrary<LWIPQueue> lib;
-uint8_t portid;
+uint8_t port_id;
 struct rte_mempool *mbuf_pool;
 
-int bind(int qd, struct sockaddr *saddr, socklen_t size)
+int bind(int qd, struct sockaddr *addr, socklen_t size)
 {
-    return 0;
+    LWIPQueue queue = lib.queues[qd];
+    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+    queue.bound_addr = saddr;
+    queue.is_bound = true;
 }
 
 
@@ -69,11 +92,15 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
     }
 
     LWIPQueue queue = lib.queues[qd];
-    ssize_t short_size = 0;
+    struct udp_hdr* udp_hdr;
+    struct ip_hdr* ip_hdr;
+    struct ether_hdr* eth_hdr;
+    ssize_t data_len = 0;
     struct rte_mbuf* pkts[sga.num_bufs];
+    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+
     struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
     struct rte_mbuf* oldp = hdr;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
 
     for(int i = 0; i < sga.num_bufs; i++) {
         pkts[i] = rte_pktmbuf_alloc(mbuf_pool);
@@ -83,28 +110,26 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
         newp->buf_len = sga[i].len;
         newp->next = NULL;
         oldp->next = newp;
-        short_size += sga[i].len;
+        data_len += sga[i].len;
         oldp = newp;
         pin((void *)sga.bufs[i].buf);
     }
 
     // Slap UDP/IP/Ethernet headers in front
-    struct pkt_udp_headers udp_hdr
+    struct pkt_udp_headers udp_hdr;
     hdr->buf_len = sizeof(struct pkt_udp_headers);
     hdr->buf_addr = &udp_hdr;
-    hdr->pkt_len = short_size + sizeof(struct pkt_udp_headers);
-    hdr->data_len = short_size + sizeof(struct pkt_udp_headers);
+    hdr->pkt_len = data_len + sizeof(struct pkt_udp_headers);
+    hdr->data_len = data_len + sizeof(struct pkt_udp_headers);
 
     // Fine-tune headers
     assert(saddr->sin_family == AF_INET);
     udp_hdr->ip.dest.addr = saddr->sin_addr.s_addr;
     udp_hdr->udp.dest = saddr->sin_port;
-    struct peer *peer = peers_get_from_ip(udp_hdr->ip.dest.addr);
-    udp_hdr->eth.dest = peer->mac;
-    assert(sock->bound_addr.sin_port != 0);
-    udp_hdr->udp.src = sock->bound_addr.sin_port;
-    udp_hdr->udp.len = htons(short_size + sizeof(struct udp_hdr));
-    udp_hdr->ip._len = htons(short_size + sizeof(struct udp_hdr) + IP_HLEN);
+    assert(queue.bound_addr.sin_port != 0);
+    udp_hdr->udp.src = queue.bound_addr.sin_port;
+    udp_hdr->udp.len = htons(data_len + sizeof(struct udp_hdr));
+    udp_hdr->ip._len = htons(data_len + sizeof(struct udp_hdr) + IP_HLEN);
 
     // Hardware IP header checksumming on
     udp_hdr->ip._chksum = 0;
@@ -116,7 +141,7 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
     // Else, data might be overwritten by application before card can send it.
     /* while(!e1000n_queue_empty()) thread_yield(); */
 
-    return short_size;
+    return data_len;
 }
 
 ssize_t
@@ -126,54 +151,68 @@ popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
         return 0;
     }
 
-    uint8_t portid;
+    LWIPQueue queue = lib.queues[qd];
+
     unsigned nb_rx;
     struct rte_mbuf *m;
     void* buf;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+    struct udp_hdr *udp_hdr;
+    struct ip_hdr *ip_hdr;
+    struct ether_hdr *eth_hdr;
+    uint16_t eth_type;
+    uint8_t ip_type;
 
-    /*
-     * Check that the port is on the same NUMA node as the polling thread
-     * for best performance.
-     */
-    printf("\nCore %u Waiting for SYNC packets. [Ctrl+C to quit]\n",
-            rte_lcore_id());
-
-    /* Run until the application is quit or killed. */
-    nb_rx = rte_eth_rx_burst(portid, 0, &m, 1);
+    nb_rx = rte_eth_rx_burst(port_id, 0, &m, 1);
 
     if (likely(nb_rx == 0)) {
         return 0;
     } else {
         assert(nb_rx == 1);
             
-        // inpkt = m->buf_addr;
-        uint8_t* packet= rte_pktmbuf_mtod(m, uint8_t*)
-        // buf = malloc(m->data_len);
+        // strip ethernet header
+        eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
+        eth_type = rte_be_to_cpu_16(eth_hdr->ether_type);
+        assert(eth_type == IP_PROTOCOL);
 
-        // Process headers
-        struct ip_hdr *iphdr = (struct ip_hdr *)(packet + SIZEOF_ETH_HDR);
+        // strip IP header
+        ip_hdr = (struct ip_hdr *)(rte_pktmbuf_mtod(m, char *)
+                    + sizeof(struct ether_hdr));
+        ip_type = rte_be_to_cpu_8(ip_hdr->proto);
+        assert(ip_type == UDP_PROTOCOL);
+        if (queue.is_bound) {
+            assert(ip_hdr->dst == queue.bound_addr.sin_addr);
+        }
 
-        assert(IPH_PROTO(iphdr) == IP_PROTO_UDP);
+        // strip UDP header
+        udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(m, char *)
+                    + sizeof(struct ether_hdr) + sizeof(struct ip_hdr));
+        uint16_t port = udp_hdr->dst;
+        if (queue.is_bound) {
+            assert(port == queue.bound_addr.sin_port);
+        }
 
-        struct udp_hdr *udphdr = (struct udp_hdr *)(packet + SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4));
-        size_t hdr_len = SIZEOF_ETH_HDR + (IPH_HL(iphdr) * 4) + sizeof(struct udp_hdr);
-        uint8_t *payload = packet + hdr_len;
-        uint16_t pkt_len = htons(udphdr->len) - sizeof(struct udp_hdr);
+        // grab actual data
+        void* payload = (void*)(rte_pktmbuf_mtod(m, char *)
+                + sizeof(struct ether_hdr) + sizeof(struct ip_hdr) + sizeof(struct udp_hdr));
+        uint16_t data_len = m->pkt_len - sizeof(struct ether_hdr) - sizeof(struct ip_hdr) - sizeof(struct udp_hdr);
 
-        buf = malloc(pkt_len);
+        // copy data to buffer
+        // TODO: Remove copy if possible?
+        buf = malloc(data_len);
+        memcpy(buf, payload, data_len);
 
-        // It's a recvfrom!
-        memcpy(buf, payload, pkt_len);
-
+        // fill in src addr
         memset(saddr, 0, sizeof(struct sockaddr_in));
         saddr->sin_len = sizeof(struct sockaddr_in);
         saddr->sin_family = AF_INET;
-        saddr->sin_port = udphdr->src;
-        saddr->sin_addr.s_addr = iphdr->src.addr;
+        saddr->sin_port = udp_hdr->src;
+        saddr->sin_addr.s_addr = ip_hdr->src.addr;
 
 
         rte_pktmbuf_free(m);
+
+        return (ssize_t)data_len;
     }
 }
 
