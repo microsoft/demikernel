@@ -21,7 +21,7 @@ namespace LWIP {
 class LWIPQueue : public Zeus::Queue {
 public:
     bool is_bound = false;
-    sockaddr_in bound_addr;
+    struct sockaddr_in bound_addr;
 };
 
 } // namespace LWIP
