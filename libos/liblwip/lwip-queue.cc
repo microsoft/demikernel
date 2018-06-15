@@ -11,8 +11,8 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include <sys/socket.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
@@ -45,17 +45,51 @@ namespace Zeus {
 
 using namespace LWIP;
 
-// The sga to send or receive across the network
-// Assumption: This will fit in a single packet (which includes
-// the ethernet, IPv4, and UDP headers)
-struct sga_msg {
-    int num_bufs;
-    //TODO: Represent sga buffers
+struct rte_eth_rxmode rx_mode = {
+    .max_rx_pkt_len = ETHER_MAX_LEN, /**< Default maximum frame length. */
+    .split_hdr_size = 0,
+    .header_split   = 0, /**< Header Split disabled. */
+    .hw_ip_checksum = 0, /**< IP checksum offload disabled. */
+    .hw_vlan_filter = 1, /**< VLAN filtering enabled. */
+    .hw_vlan_strip  = 1, /**< VLAN strip enabled. */
+    .hw_vlan_extend = 0, /**< Extended VLAN disabled. */
+    .jumbo_frame    = 0, /**< Jumbo Frame Support disabled. */
+    .hw_strip_crc   = 1, /**< CRC stripping by hardware enabled. */
+    .hw_timestamp   = 0, /**< HW timestamp enabled. */
 };
 
 static const struct rte_eth_conf port_conf_default = {
-    .rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
+    .rxmode = rx_mode
 };
+
+
+struct mac2ip {
+    struct ether_addr mac;
+    uint32_t ip;
+};
+
+static struct mac2ip ip_config[] = {
+    {   //ens4f0
+        .mac.addr_bytes = "\x50\x6b\x4b\x48\xf8\xfa",
+        .ip = 0x0c0c0c04,       // 12.12.12.4
+    },
+    {
+        // ens4f1
+        .mac.addr_bytes = "\x50\x6b\x4b\x48\xf8\xfb",
+        .ip = 0x0c0c0c05,       // 12.12.12.5
+    },
+};
+
+uint8_t* ip_to_mac(in_addr_t ip)
+{
+    for (int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
+        struct mac2ip *e = &ip_config[i];
+        if (ip == e->ip) {
+            return e->mac;
+        }
+    }
+    return NULL;
+}
 
 Zeus::QueueLibrary<LWIPQueue> lib;
 uint8_t port_id;
@@ -150,8 +184,7 @@ void lwip_init()
         rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
     }
 
-    /* Check that there is an even number of ports to send/receive on. */
-    nb_ports = rte_eth_dev_count_available();
+    nb_ports = rte_eth_dev_count();
 
     // Create pool of memory for ring buffers
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
@@ -167,7 +200,7 @@ void lwip_init()
     }
 
     /* Initialize all ports. */
-    for (int portid = 0; portid < nb_ports; portid++) {
+    for (uint8_t portid = 0; portid < nb_ports; portid++) {
         if (port_init(portid, mbuf_pool) != 0) {
             rte_exit(EXIT_FAILURE,
                      "Cannot init port %"PRIu8 "\n",
@@ -194,6 +227,7 @@ int bind(int qd, struct sockaddr *addr, socklen_t size)
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     queue.bound_addr = saddr;
     queue.is_bound = true;
+    return 0;
 }
 
 
@@ -208,22 +242,21 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
     struct udp_hdr* udp_hdr;
     struct ipv4_hdr* ip_hdr;
     struct ether_hdr* eth_hdr;
-    struct sga_msg* msg;
-    ssize_t data_len = 0;
+    uint32_t data_len = 0;
     struct rte_mbuf* pkts[sga.num_bufs];
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
 
-    struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
+
+    struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
 
     // set up Ethernet header
-    eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
-    rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-    //TODO: eth destination mac addr?
-    //eth_hdr->d_addr = ???;
+    eth_hdr = rte_pktmbuf_mtod(hdr, struct ether_hdr*);
+    eth_hdr->s_addr = ip_to_mac(queue.bound_addr.sin_addr.s_addr);
+    eth_hdr->d_addr = ip_to_mac(saddr->sin_addr.s_addr);
     eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_IPv4);
 
     // st up IP header
-    ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(pkt, char *)
+    ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(hdr, char *)
             + sizeof(struct ether_hdr));
     memset(ip_hdr, 0, sizeof(struct ipv4_hdr));
     ip_hdr->version_ihl = IP_VHL_DEF;
@@ -234,30 +267,42 @@ pushto(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
     ip_hdr->packet_id = 0;
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
     ip_hdr->src_addr = queue.bound_addr.sin_addr.s_addr;
-    ip_hdr->total_length = RTE_CPU_TO_BE_16(data_len + sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
+    ip_hdr->total_length = rte_cpu_to_be_16(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
     ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
 
     // set up UDP header
-    udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
+    udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(hdr, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
     udp_hdr->dst_port = saddr->sin_port;
     udp_hdr->src_port = queue.bound_addr.sin_port;
-    udp_hdr->dgram_len = RTE_CPU_TO_BE_16(data_len + sizeof(struct udp_hdr));
+    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(struct udp_hdr));
     udp_hdr->dgram_cksum = 0;
 
-    msg = (struct sga_msg *)(rte_pktmbuf_mtod(pkt, char *)
-            + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
-    msg->num_bufs = sga.num_bufs;
-
     // Fill in packet fields
-    pkt->pkt_len = data_len + sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct ether_hdr);
-    pkt->data_len = data_len + sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct ether_hdr);;
-    pkt->nb_segs = 1;
-    pkt->l2_len = sizeof(struct ether_hdr);
-    pkt->l3_len = sizeof(struct ipv4_hdr);
+    hdr->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct ether_hdr);;
+    hdr->nb_segs = 1;
+    hdr->l2_len = sizeof(struct ether_hdr);
+    hdr->l3_len = sizeof(struct ipv4_hdr);
 
-    rte_eth_tx_burst(port_id, 0,  &pkt, sga.num_bufs + 1);
-    return data_len;
+    struct rte_mbuf* cur = hdr;
+    for (int i = 0; i < sga.num_bufs; i++) {
+        pkts[i] = rte_pktmbuf_alloc(mbuf_pool);
+
+        //TODO: Remove copy if possible (may involve changing DPDK memory management
+        memcpy(rte_pktmbuf_mtod(pkts[i], void*), sga.bufs[i].buf, sga.bufs[i].len);
+        pkts[i]->data_len = sga.bufs[i].len;
+
+        data_len += sga.bufs[i].len;
+        pkts[i]->next = NULL;
+        cur->next = pkts[i];
+        cur = pkts[i];
+        hdr->nb_segs += 1;
+    }
+
+    hdr->pkt_len = hdr->data_len + data_len;
+
+    rte_eth_tx_burst(port_id, 0,  &hdr, sga.num_bufs + 1);
+    return (ssize_t)data_len;
 }
 
 ssize_t
@@ -273,12 +318,12 @@ popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
     struct rte_mbuf *m;
     void* buf;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
-    struct sga_msg *msg;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
     struct ether_hdr *eth_hdr;
     uint16_t eth_type;
     uint8_t ip_type;
+    ssize_t data_len = 0;
 
     nb_rx = rte_eth_rx_burst(port_id, 0, &m, 1);
 
@@ -288,7 +333,7 @@ popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
         assert(nb_rx == 1);
             
         // check ethernet header
-        eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
+        eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
         eth_type = rte_be_to_cpu_16(eth_hdr->ether_type);
         assert(eth_type == ETHER_TYPE_IPv4);
 
@@ -305,13 +350,18 @@ popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
         uint16_t port = udp_hdr->dst_port;
         assert(port == queue.bound_addr.sin_port);
 
-        // grab actual data
-        msg = (struct sga_msg*)(rte_pktmbuf_mtod(m, char *)
-                + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
-        sga.num_bufs = msg->num_bufs;
 
-        uint16_t data_len = m->pkt_len - sizeof(struct ether_hdr) - sizeof(struct ipv4_hdr) - sizeof(struct udp_hdr);
+        sga.num_bufs = m->nb_segs - 1;
 
+        // first segment in packet is just the headers, so we skip it
+        struct rte_mbuf* cur = m->next;
+        for (int i = 0; i < m->nb_segs - 1; i++) {
+            //TODO: Remove copy if possible (may involve changing DPDK memory management
+            memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
+            sga.bufs[i].len = cur->data_len;
+            data_len += cur->data_len;
+            cur = cur->next;
+        }
 
         // fill in src addr
         memset(saddr, 0, sizeof(struct sockaddr_in));
@@ -322,7 +372,7 @@ popfrom(int qd, struct Zeus::sgarray &sga, struct sockaddr* addr)
 
         rte_pktmbuf_free(m);
 
-        return (ssize_t)data_len;
+        return data_len;
     }
 }
 
