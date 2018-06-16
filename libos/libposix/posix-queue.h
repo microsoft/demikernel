@@ -31,21 +31,49 @@
 #ifndef _LIB_POSIX_QUEUE_H_
 #define _LIB_POSIX_QUEUE_H_
 
-#include "include/io-queue.h"
 #include "common/queue.h"
+#include "common/library.h"
 #include <list>
 #include <map>
 
 namespace Zeus {
 namespace POSIX {
 
-class PosixQueue : public Zeus::Queue {
-public:
+class PosixQueue : public Queue {
+private:
     // currently used incoming buffer
-    void *buf = NULL;
+    void *incoming;
     // valid data in current buffer
-    size_t count = 0;
+    size_t incoming_count;
+    // queued scatter gather arrays
+
+public:
+    PosixQueue(BasicQueueType type, int qd) :
+        Queue(type, qd), incoming(NULL), incoming_count(0) {};
+
+    // network functions
+    static int queue(int domain, int type, int protocol);
+    int listen(int backlog);
+    int bind(struct sockaddr *saddr, socklen_t size);
+    int accept(struct sockaddr *saddr, socklen_t *size);
+    int connect(struct sockaddr *saddr, socklen_t size);
+    int close();
+          
+    // file functions
+    static int open(const char *pathname, int flags);
+    static int open(const char *pathname, int flags, mode_t mode);
+    static int creat(const char *pathname, mode_t mode);
+
+    // other functions
+    ssize_t flush(struct sgarray &sga); // if return 0, then already complete
+    ssize_t pull(struct sgarray &sga); // if return 0, then already ready and in sga
+    
+    // returns the file descriptor associated with
+    // the queue descriptor if the queue is an io queue
+    int fd();
 };
+
+Zeus::QueueLibrary<PosixQueue> lib;    
 
 } // namespace POSIX
 } // namespace Zeus

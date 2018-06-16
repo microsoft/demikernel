@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/posix/posix-queue.h
+ * libos/posix/posix-queue.cc
  *   POSIX implementation of Zeus queue interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
@@ -34,95 +34,190 @@
 #include "libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
 
 
 namespace Zeus {
+namespace POSIX {
 
-using namespace POSIX;
-Zeus::QueueLibrary<PosixQueue> lib;
-
-int queue(int domain, int type, int protocol)
+int
+PosixQueue::queue(int domain, int type, int protocol)
 {
-    return ::socket(domain, type, protocol);
+    int qd = ::socket(domain, type, protocol);
+
+    // Always put it in non-blocking mode
+    if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
+    // If TCP, turn off Nagle's algorithm!
+    if (protocol == SOCK_STREAM) {
+        // Set TCP_NODELAY
+        int n = 1;
+        if (setsockopt(qd, IPPROTO_TCP,
+                       TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
+            fprintf(stderr, 
+                    "Failed to set TCP_NODELAY on Zeus connecting socket");
+        }
+    }
+    return qd;
 }
 
-int bind(int qd, struct sockaddr *saddr, socklen_t size)
+int
+PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
     return ::bind(qd, saddr, size);
 }
 
 int
-accept(int qd, struct sockaddr *saddr, socklen_t *size)
+PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     return ::accept(qd, saddr, size);
 }
 
 int
-listen(int qd, int backlog)
+PosixQueue::listen(int backlog)
 {
     return ::listen(qd, backlog);
 }
         
 
 int
-connect(int qd, struct sockaddr *saddr, socklen_t size)
+PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     return ::connect(qd, saddr, size);
 }
 
 int
-open(const char *pathname, int flags)
+PosixQueue::open(const char *pathname, int flags)
 {
     // use the fd as qd
-    int qd = ::open(pathname, flags);
-    if (qd > 0) 
-        lib.queues[qd].type = FILE_Q;
-    return qd;
+    return ::open(pathname, flags);
 }
 
 int
-open(const char *pathname, int flags, mode_t mode)
+PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::open(pathname, flags, mode);
-    if (qd > 0) 
-        lib.queues[qd].type = FILE_Q;
-    return qd;
+    return ::open(pathname, flags, mode);
 }
 
 int
-creat(const char *pathname, mode_t mode)
+PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::creat(pathname, mode);
-    if (qd > 0)
-        lib.queues[qd].type = FILE_Q;
-    return qd;
+    return ::creat(pathname, mode);
 }
     
 int
-close(int qd)
+PosixQueue::close()
 {
     return ::close(qd);
 }
 
 int
-qd2fd(int qd) {
+PosixQueue::fd() {
     return qd;
+}
+    
+
+ssize_t
+PosixQueue::flush(sgarray &sga) {
+    size_t total = 0;
+    uint8_t *ptr;
+    void *buf = incoming;
+    size_t count = incoming_count;
+    size_t headerSize = sizeof(uint64_t) * 2;
+
+    // if we aren't already working on a buffer, allocate one
+    if (buf == NULL) {
+        buf = malloc(headerSize);
+        count = 0;
+    }
+
+    // if we don't have a full header in our buffer, then get one
+    if (count < headerSize) {
+        ssize_t res = read(qd, (uint8_t *)buf + count, 
+                           headerSize - count);
+        if(res == 0){
+            return 0;
+        }
+        // we still don't have a header
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < headerSize))) {
+            // try again later
+            incoming = buf;
+            incoming_count =
+                (res > 0) ? count + res : count;
+            return ZEUS_IO_ERR_NO;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
+        }
+
+    }
+
+    // go to the beginning of the buffer to check the header
+    ptr = (uint8_t *)buf;
+    uint64_t magic = *(uint64_t *)ptr;
+    if (magic != MAGIC) {
+        // not a correctly formed packet
+        fprintf(stderr, "Could not find magic %llx\n", magic);
+        exit(-1);
+        return -1;
+    }
+    ptr += sizeof(magic);
+    uint64_t totalLen = *(uint64_t *)ptr;
+    ptr += sizeof(totalLen);
+        
+    // grabthe rest of the packet
+    if (count < headerSize + totalLen) {
+        buf = realloc(buf, totalLen + headerSize);    
+        ssize_t res = read(qd, (uint8_t *)buf + count,
+                           totalLen + headerSize - count);
+        if(res == 0) {
+            return 0;
+        }
+        // try again later
+        if ((res < 0 && errno == EAGAIN) ||
+            (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
+            // try again later
+            incoming = buf;
+            incoming_count =
+                (res > 0) ? count + res : count;
+            return ZEUS_IO_ERR_NO;
+        } else if (res < 0) {
+            return res;
+        } else {            
+            count += res;
+        }
+    }
+
+    // now we have the whole buffer, start reading data
+    ptr = (uint8_t *)buf + headerSize;
+    sga.num_bufs = *(uint64_t *)ptr;
+    ptr += sizeof(uint64_t);
+    for (int i = 0; i < sga.num_bufs; i++) {
+        sga.bufs[i].len = *(size_t *)ptr;
+        ptr += sizeof(uint64_t);
+        sga.bufs[i].buf = (ioptr)ptr;
+        ptr += sga.bufs[i].len;
+        total += sga.bufs[i].len;
+    }
+    incoming = NULL;
+    incoming_count = 0;
+    return total;
 }
 
 ssize_t
-push(int qd, struct Zeus::sgarray &sga)
-{
-    if (lib.queues[qd].type == FILE_Q) {
-        // pushing to files not implemented yet
-        return 0;
-    }
+PosixQueue::pull(sgarray &sga) {
     ssize_t count, total = 0;
-
     uint64_t magic = MAGIC;
     uint64_t num = sga.num_bufs;
     uint64_t totalLen = 0;
@@ -171,98 +266,4 @@ push(int qd, struct Zeus::sgarray &sga)
     return total;        
 }
     
-ssize_t
-pop(int qd, struct Zeus::sgarray &sga)
-{
-    if (lib.queues[qd].type == FILE_Q) {
-        return 0;
-    }
-    size_t total = 0;
-    uint8_t *ptr;
-    void *buf = lib.queues[qd].buf;
-    size_t count = lib.queues[qd].count;
-    size_t headerSize = sizeof(uint64_t) * 2;
-
-    // if we aren't already working on a buffer, allocate one
-    if (buf == NULL) {
-        buf = malloc(headerSize);
-        count = 0;
-    }
-
-    // if we don't have a full header in our buffer, then get one
-    if (count < headerSize) {
-        ssize_t res = read(qd, (uint8_t *)buf + count, 
-                           headerSize - count);
-        if(res == 0){
-            return 0;
-        }
-        // we still don't have a header
-        if ((res < 0 && errno == EAGAIN) ||
-            (res >= 0 && (count + (size_t)res < headerSize))) {
-            // try again later
-            lib.queues[qd].buf = buf;
-            lib.queues[qd].count =
-                (res > 0) ? count + res : count;
-            return ZEUS_IO_ERR_NO;
-        } else if (res < 0) {
-            return res;
-        } else {            
-            count += res;
-        }
-
-    }
-
-    // go to the beginning of the buffer to check the header
-    ptr = (uint8_t *)buf;
-    uint64_t magic = *(uint64_t *)ptr;
-    if (magic != MAGIC) {
-        // not a correctly formed packet
-        fprintf(stderr, "Could not find magic %llx\n", magic);
-        exit(-1);
-        return -1;
-    }
-    ptr += sizeof(magic);
-    uint64_t totalLen = *(uint64_t *)ptr;
-    ptr += sizeof(totalLen);
-        
-    // grabthe rest of the packet
-    if (count < headerSize + totalLen) {
-        buf = realloc(buf, totalLen + headerSize);    
-        ssize_t res = read(qd, (uint8_t *)buf + count,
-                           totalLen + headerSize - count);
-        if(res == 0) {
-            return 0;
-        }
-        // try again later
-        if ((res < 0 && errno == EAGAIN) ||
-            (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
-            // try again later
-            lib.queues[qd].buf = buf;
-            lib.queues[qd].count =
-                (res > 0) ? count + res : count;
-            return ZEUS_IO_ERR_NO;
-        } else if (res < 0) {
-            return res;
-        } else {            
-            count += res;
-        }
-    }
-
-    // now we have the whole buffer, start reading data
-    ptr = (uint8_t *)buf + headerSize;
-    sga.num_bufs = *(uint64_t *)ptr;
-    ptr += sizeof(uint64_t);
-    for (int i = 0; i < sga.num_bufs; i++) {
-        sga.bufs[i].len = *(size_t *)ptr;
-        ptr += sizeof(uint64_t);
-        sga.bufs[i].buf = (ioptr)ptr;
-        ptr += sga.bufs[i].len;
-        total += sga.bufs[i].len;
-    }
-    lib.queues[qd].buf = NULL;
-    lib.queues[qd].count = 0;
-    return total;
-
-}
-
 } // namespace Zeus

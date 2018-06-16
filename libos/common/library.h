@@ -2,7 +2,7 @@
 /***********************************************************************
  *
  * common/library.h
- *   Zeus general-purpose queue library implementation
+ *   Generic libos implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -34,7 +34,7 @@
 #include "include/io-queue.h"
 
 #include <list>
-#include <map>
+#include <unordered_map>
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
@@ -44,11 +44,20 @@ namespace Zeus {
 template <class QueueType>
 class QueueLibrary
 {
-            
+    std::unordered_map<int, QueueType&> queues;
+    std::unordered_map<qtoken, int> pending;
+    
 public:
-    std::map<int, QueueType> queues;
-    
-    
+
+    QueueLibrary();
+
+    // returns true on success and false on failure
+    void InsertQueue(QueueType queue);
+    void RemoveQueue(int qd);
+    bool HasQueue(int qd);
+    QueueType& GetQueue(int qd);
+    qtoken GetNewToken();
+
 };
 
 } // namespace Zeus
