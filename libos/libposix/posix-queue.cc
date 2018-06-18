@@ -127,11 +127,16 @@ PosixQueue::fd() {
     
 
 ssize_t
-PosixQueue::push(qtoken qt, sgarray &sga) {
+PosixQueue::pop(qtoken qt, sgarray &sga) {
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        pending[qt] = PendingRequest{false, 0, NULL, 0, &sga};
+    }
+    PendingRequest &req = pending[qt];
     size_t total = 0;
     uint8_t *ptr;
-    void *buf = incoming;
-    size_t count = incoming_count;
+    void *buf = req.buf;
+    size_t count = req.buf_size;
     size_t headerSize = sizeof(uint64_t) * 2;
 
     // if we aren't al::ready working on a buffer, allocate one
@@ -151,8 +156,8 @@ PosixQueue::push(qtoken qt, sgarray &sga) {
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < headerSize))) {
             // try again later
-            incoming = buf;
-            incoming_count =
+            req.buf = buf;
+            req.buf_size =
                 (res > 0) ? count + res : count;
             return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
@@ -188,8 +193,8 @@ PosixQueue::push(qtoken qt, sgarray &sga) {
         if ((res < 0 && errno == EAGAIN) ||
             (res >= 0 && (count + (size_t)res < totalLen + headerSize))) {
             // try again later
-            incoming = buf;
-            incoming_count =
+            req.buf = buf;
+            req.buf_size =
                 (res > 0) ? count + res : count;
             return ZEUS_IO_ERR_NO;
         } else if (res < 0) {
@@ -210,20 +215,27 @@ PosixQueue::push(qtoken qt, sgarray &sga) {
         ptr += sga.bufs[i].len;
         total += sga.bufs[i].len;
     }
-    incoming = NULL;
-    incoming_count = 0;
+    req.buf = NULL;
+    req.buf_size = 0;
+    req.isDone = true;
+    req.res = total;
     return total;
 }
 
 ssize_t
-PosixQueue::pop(qtoken qt, sgarray &sga) {
+PosixQueue::push(qtoken qt, sgarray &sga) {
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        pending[qt] = PendingRequest{false, 0, NULL, 0, &sga};
+    }
+    PendingRequest &req = pending[qt];
     ssize_t count, total = 0;
     uint64_t magic = MAGIC;
     uint64_t num = sga.num_bufs;
     uint64_t totalLen = 0;
 
     count = ::write(qd, &magic, sizeof(uint64_t));
-    if (count < 0 || (size_t)count < sizeof(uint64_t)) {
+    if ((size_t)count < sizeof(uint64_t)) {
         fprintf(stderr, "Could not ::write magic\n");
         return -1;
     }
@@ -234,6 +246,7 @@ PosixQueue::pop(qtoken qt, sgarray &sga) {
         pin((void *)sga.bufs[i].buf);
     }
     totalLen += sizeof(num);
+    req.buf_size = totalLen;
     count = ::write(qd, &totalLen, sizeof(uint64_t));
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
         fprintf(stderr, "Could not ::write total length\n");
@@ -263,19 +276,31 @@ PosixQueue::pop(qtoken qt, sgarray &sga) {
         }
         total += count;
     }
+    req.res = total;
+    req.isDone = true;
     return total;        
 }
 
 ssize_t
 PosixQueue::wait(qtoken qt, struct sgarray &sga)
 {
-    return 0;
+    auto it = pending.find(qt);
+    assert(it != pending.end());
+    PendingRequest &req = pending[qt];
+        
+    if (IS_PUSH(qt)) {
+        while (!req.isDone) push(qt, *req.sga);
+        return req.res;
+    } else {
+        while (!req.isDone) pop(qt, sga);
+        return req.res;
+    }
 }
 
 ssize_t
 PosixQueue::poll(qtoken qt, struct sgarray &sga)
 {
-    return -1;
+    return 1;
 }
 } // namespace POSIX    
 } // namespace Zeus

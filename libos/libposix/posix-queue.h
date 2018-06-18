@@ -41,16 +41,23 @@ namespace POSIX {
 
 class PosixQueue : public Queue {
 private:
-    // currently used incoming buffer
-    void *incoming;
-    // valid data in current buffer
-    size_t incoming_count;
+    struct PendingRequest {
+        bool isDone;
+        ssize_t res;
+        // currently used incoming buffer
+        void *buf;
+        // valid data in current buffer
+        size_t buf_size;
+        struct sgarray *sga;
+    };
+    
     // queued scatter gather arrays
+    std::map<qtoken, struct PendingRequest> pending;
 
 public:
-    PosixQueue() : Queue(), incoming(NULL), incoming_count(0) { };
+    PosixQueue() : Queue(){ };
     PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), incoming(NULL), incoming_count(0) {};
+        Queue(type, qd) {};
 
     // network functions
     static int queue(int domain, int type, int protocol);
