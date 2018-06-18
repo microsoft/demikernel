@@ -56,25 +56,25 @@ public:
     void SetType(BasicQueueType t) { type = t; };
     
     // network functions
-    static int queue(int domain, int type, int protocol) { return 0; };
-    int listen(int backlog) { return 0; };
-    int bind(struct sockaddr *saddr, socklen_t size) { return 0; };
-    int accept(struct sockaddr *saddr, socklen_t *size) { return 0; };
-    int connect(struct sockaddr *saddr, socklen_t size) { return 0; };
-    int close() { return 0; };
+    static int queue(int domain, int type, int protocol);
+    int listen(int backlog);
+    int bind(struct sockaddr *saddr, socklen_t size);
+    int accept(struct sockaddr *saddr, socklen_t *size);
+    int connect(struct sockaddr *saddr, socklen_t size);
+    int close();
           
     // file functions
-    static int open(const char *pathname, int flags) { return 0; };
-    static int open(const char *pathname, int flags, mode_t mode) { return 0; };
-    static int creat(const char *pathname, mode_t mode) { return 0; };
+    static int open(const char *pathname, int flags);
+    static int open(const char *pathname, int flags, mode_t mode);
+    static int creat(const char *pathname, mode_t mode);
 
     // other functions
-    ssize_t flush(struct sgarray &sga) { return 0; }; // if return 0, then already complete
-    ssize_t pull(struct sgarray &sga) { return 0; }; // if return 0, then already ready and in sga
+    ssize_t write(struct sgarray &sga); // if return 0, then already complete
+    ssize_t read(struct sgarray &sga); // if return 0, then already ready and in sga
     
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd() { return 0; };
+    int fd();
 };
 
 } // namespace Zeus

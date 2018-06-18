@@ -38,9 +38,9 @@ thread_local static uint64_t queue_counter = 0;
 thread_local static uint64_t token_counter = 0;
 
 template<class QueueType>
-QueueLibrary<QueueType>::QueueLibrary<QueueType>()
+QueueLibrary<QueueType>::QueueLibrary()
 {
-    uint64 hash = std::hash<std::thread::id>(std::this_thread::get_id());
+    uint64_t hash = std::hash<std::thread::id>(std::this_thread::get_id());
     queue_counter = hash << 32;
     token_counter = hash << 48;
 }
@@ -103,70 +103,81 @@ QueueLibrary<QueueType>::RemoveQueue(int qd)
 // ================================================
 
 // create network queue
-int queue(int domain, int type, int protocol)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::queue(int domain, int type, int protocol)
 {
-    int qd = QueueType.queue(domain, type, protocol);
+    int qd = QueueType::queue(domain, type, protocol);
     if (qd > 0)
         InsertQueue(QueueType(NETWORK_Q, qd));
     return qd;
 }
 
-int bind(int qd, struct sockaddr *saddr, socklen_t size)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return queues[qd].bind(saddr, size);
 }
 
-int
-accept(int qd, struct sockaddr *saddr, socklen_t *size)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return queues[qd].accept(saddr, size);
 }
 
-int
-listen(int qd, int backlog)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::listen(int qd, int backlog)
 {
     return queues[qd].listen(backlog);
 }
         
 
-int
-connect(int qd, struct sockaddr *saddr, socklen_t size)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    return queues.[qd].connect(saddr, size);
+    return queues[qd].connect(saddr, size);
 }
 
-int
-open(const char *pathname, int flags)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::open(const char *pathname, int flags)
 {
     // use the fd as qd
-    int qd = QueueType.open(pathname, flags);
+    int qd = QueueType::open(pathname, flags);
     if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
+        InsertQueue(QueueType(FILE_Q, qd));
     return qd;
 }
 
-int
-open(const char *pathname, int flags, mode_t mode)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    int qd = QueueType.open(pathname, flags, mode);
+    int qd = QueueType::open(pathname, flags, mode);
     if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
+        InsertQueue(QueueType(FILE_Q, qd));
     return qd;
 }
 
-int
-creat(const char *pathname, mode_t mode)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    int qd = QueueType.creat(pathname, mode);
+    int qd = QueueType::creat(pathname, mode);
     if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
+        InsertQueue(QueueType(FILE_Q, qd));
     return qd;
 }
     
-int
-close(int qd)
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::close(int qd)
 {
     if (!HasQueue(qd))
         return -1;
@@ -177,16 +188,18 @@ close(int qd)
     return res;
 }
 
-int
-qd2fd(int qd) {
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::qd2fd(int qd) {
     if (!HasQueue(qd))
         return -1;
     return queues[qd].fd();
 }
     
 // TODO: Actually buffer somewhere
-qtoken
-push(int qd, struct Zeus::sgarray &sga)
+template<class QueueType>
+inline qtoken
+QueueLibrary<QueueType>::push(int qd, struct Zeus::sgarray &sga)
 {
     if (!HasQueue(qd))
         return -1;
@@ -200,8 +213,9 @@ push(int qd, struct Zeus::sgarray &sga)
     return GetNewToken(qd);
 }
 
-qtoken
-pop(int qd, struct Zeus::sgarray &sga)
+template<class QueueType>
+inline qtoken
+QueueLibrary<QueueType>::pop(int qd, struct Zeus::sgarray &sga)
 {
  
     if (!HasQueue(qd))
@@ -216,17 +230,38 @@ pop(int qd, struct Zeus::sgarray &sga)
     return GetNewToken(qd);
 }
 
-ssize_t
-wait_any(qtoken qts[], size_t num_qts)
+template<class QueueType>
+inline ssize_t
+QueueLibrary<QueueType>::wait_any(qtoken qts[], size_t num_qts)
 {
-    
+    return 0;
 }
 
-ssize_t
-wait_all(qtoken qts[], size_t num_qts)
+template<class QueueType>
+inline ssize_t
+QueueLibrary<QueueType>::wait_all(qtoken qts[], size_t num_qts)
 {
-    
+    return 0;
 }
 
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::merge(int qd1, int qd2)
+{
+    if (!HasQueue(qd1) || !HasQueue(qd2))
+        return -1;
+
+    return 0;
+}
+
+template<class QueueType>
+inline int
+QueueLibrary<QueueType>::filter(int qd, bool (*filter)(struct sgarray &sga))
+{
+    if (!HasQueue(qd))
+        return -1;
+
+    return 0;
+}
   
 } // namespace Zeus

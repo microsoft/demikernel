@@ -64,6 +64,7 @@ add_custom_target(hoard ALL
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_POSIX_LIB} ${SRC_ZEUS_COMMON_LIB})
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(zeus_posix hoard)
 
 # RDMA libos target
 if (NOT ${APPLE})

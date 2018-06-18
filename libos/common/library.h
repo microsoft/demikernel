@@ -32,7 +32,7 @@
 #define _COMMON_LIBRARY_H_
 
 #include "include/io-queue.h"
-
+#include "queue.h"
 #include <list>
 #include <unordered_map>
 
@@ -48,15 +48,36 @@ class QueueLibrary
     std::unordered_map<qtoken, int> pending;
     
 public:
-
     QueueLibrary();
-
+    typedef QueueType TheQueueType;
+    
     // returns true on success and false on failure
     void InsertQueue(QueueType queue);
     void RemoveQueue(int qd);
     bool HasQueue(int qd);
     QueueType& GetQueue(int qd);
-    qtoken GetNewToken();
+    qtoken GetNewToken(int qd);
+    QueueType& NewQueue(BasicQueueType type);
+    
+    // Generic I/O functions
+    int queue(int domain, int type, int protocol);
+    int listen(int qd, int backlog);
+    int bind(int qd, struct sockaddr *saddr, socklen_t size);
+    int accept(int qd, struct sockaddr *saddr, socklen_t *size);
+    int connect(int qd, struct sockaddr *saddr, socklen_t size);
+    int close(int qd);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
+    qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
+    qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
+    ssize_t wait_any(qtoken qts[], size_t num_qts);
+    ssize_t wait_all(qtoken qts[], size_t num_qts);
+    ssize_t blocking_push(int qd, struct sgarray &sga);
+    ssize_t blocking_pop(int qd, struct sgarray &sga); 
+    int qd2fd(int qd);
+    int merge(int qd1, int qd2);
+    int filter(int qd, bool (*filter)(struct sgarray &sga));
 
 };
 

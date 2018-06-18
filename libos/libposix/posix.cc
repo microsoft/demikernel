@@ -1,8 +1,8 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/posix/posix-queue.cc
- *   POSIX implementation of Zeus queue interface
+ * libos/libposix/posix.cc
+ *   POSIX implementation of libos interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -28,140 +28,92 @@
  *
  **********************************************************************/
 
-#include "posix-queue.h"
 #include "common/library.h"
 #include "include/io-queue.h"
+#include "posix-queue.h"
 
-using namespace
-
-// ================================================
-// Generic interfaces to libOS syscalls
-// ================================================
-
-// create network queue
+namespace Zeus {
+QueueLibrary<POSIX::PosixQueue> lib;
+    
 int queue(int domain, int type, int protocol)
 {
-    int qd = QueueType.queue(domain, type, protocol);
-    if (qd > 0)
-        InsertQueue(QueueType(NETWORK_Q, qd));
-    return qd;
+    return lib.queue(domain, type, protocol);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    return queues[qd].bind(saddr, size);
+    return lib.bind(qd, saddr, size);
 }
 
-int
-accept(int qd, struct sockaddr *saddr, socklen_t *size)
+int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    return queues[qd].accept(saddr, size);
+    return lib.accept(qd, saddr, size);
 }
 
-int
-listen(int qd, int backlog)
+int listen(int qd, int backlog)
 {
-    return queues[qd].listen(backlog);
+    return lib.listen(qd, backlog);
 }
         
 
-int
-connect(int qd, struct sockaddr *saddr, socklen_t size)
+int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-    return queues.[qd].connect(saddr, size);
+    return lib.connect(qd, saddr, size);
 }
 
-int
-open(const char *pathname, int flags)
+int open(const char *pathname, int flags)
 {
-    // use the fd as qd
-    int qd = QueueType.open(pathname, flags);
-    if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
-    return qd;
+    return lib.open(pathname, flags);
 }
 
-int
-open(const char *pathname, int flags, mode_t mode)
+int open(const char *pathname, int flags, mode_t mode)
 {
-    // use the fd as qd
-    int qd = QueueType.open(pathname, flags, mode);
-    if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
-    return qd;
+    return lib.open(pathname, flags, mode);
 }
 
-int
-creat(const char *pathname, mode_t mode)
+int creat(const char *pathname, mode_t mode)
 {
-    // use the fd as qd
-    int qd = QueueType.creat(pathname, mode);
-    if (qd > 0)
-        InsertQueue(PosixQueue(FILE_Q, qd));
-    return qd;
+    return lib.creat(pathname, mode);
 }
     
-int
-close(int qd)
+int close(int qd)
 {
-    if (!HasQueue(qd))
-        return -1;
-
-    QueueType &queue = GetQueue(qd);
-    int res = queue.close();
-    RemoveQueue(qd);    
-    return res;
+    return lib.close(qd);
 }
 
-int
-qd2fd(int qd) {
-    if (!HasQueue(qd))
-        return -1;
-    return queues[qd].fd();
+int qd2fd(int qd)
+{
+    return lib.qd2fd(qd);
 }
     
-// TODO: Actually buffer somewhere
-qtoken
-push(int qd, struct Zeus::sgarray &sga)
+qtoken push(int qd, struct Zeus::sgarray &sga)
 {
-    if (!HasQueue(qd))
-        return -1;
-
-    QueueType &queue = GetQueue(qd);
-    if (queue.type == FILE_Q)
-        // pushing to files not implemented yet
-        return 0;
-   
-    queue.Push(sga);
-    return GetNewToken(qd);
+    return lib.push(qd, sga);
 }
 
-qtoken
-pop(int qd, struct Zeus::sgarray &sga)
+qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
- 
-    if (!HasQueue(qd))
-        return -1;
-    
-    QueueType &queue = GetQueue(qd);
-    if (queue.type == FILE_Q)
-        // pushing to files not implemented yet
-        return 0;
-
-    queue.Receive(sga);
-    return GetNewToken(qd);
+    return lib.pop(qd, sga);
 }
 
-ssize_t
-wait_any(qtoken qts[], size_t num_qts)
+ssize_t wait_any(qtoken qts[], size_t num_qts)
 {
-    
+    return lib.wait_any(qts, num_qts);
 }
 
-ssize_t
-wait_all(qtoken qts[], size_t num_qts)
+ssize_t wait_all(qtoken qts[], size_t num_qts)
 {
-    
+    return lib.wait_all(qts, num_qts);
 }
 
-  
+int merge(int qd1, int qd2)
+{
+    return lib.merge(qd1, qd2);
+}
+
+int filter(int qd, bool (*filter)(struct sgarray &sga))
+{
+    return lib.filter(qd, filter);
+}
+
+} // namespace Zeus

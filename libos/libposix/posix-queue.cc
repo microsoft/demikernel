@@ -43,7 +43,7 @@
 
 namespace Zeus {
 namespace POSIX {
-
+    
 int
 PosixQueue::queue(int domain, int type, int protocol)
 {
@@ -127,14 +127,14 @@ PosixQueue::fd() {
     
 
 ssize_t
-PosixQueue::flush(sgarray &sga) {
+PosixQueue::read(sgarray &sga) {
     size_t total = 0;
     uint8_t *ptr;
     void *buf = incoming;
     size_t count = incoming_count;
     size_t headerSize = sizeof(uint64_t) * 2;
 
-    // if we aren't already working on a buffer, allocate one
+    // if we aren't al::ready working on a buffer, allocate one
     if (buf == NULL) {
         buf = malloc(headerSize);
         count = 0;
@@ -142,7 +142,7 @@ PosixQueue::flush(sgarray &sga) {
 
     // if we don't have a full header in our buffer, then get one
     if (count < headerSize) {
-        ssize_t res = read(qd, (uint8_t *)buf + count, 
+        ssize_t res = ::read(qd, (uint8_t *)buf + count, 
                            headerSize - count);
         if(res == 0){
             return 0;
@@ -179,7 +179,7 @@ PosixQueue::flush(sgarray &sga) {
     // grabthe rest of the packet
     if (count < headerSize + totalLen) {
         buf = realloc(buf, totalLen + headerSize);    
-        ssize_t res = read(qd, (uint8_t *)buf + count,
+        ssize_t res = ::read(qd, (uint8_t *)buf + count,
                            totalLen + headerSize - count);
         if(res == 0) {
             return 0;
@@ -199,7 +199,7 @@ PosixQueue::flush(sgarray &sga) {
         }
     }
 
-    // now we have the whole buffer, start reading data
+    // now we have the whole buffer, start ::reading data
     ptr = (uint8_t *)buf + headerSize;
     sga.num_bufs = *(uint64_t *)ptr;
     ptr += sizeof(uint64_t);
@@ -216,15 +216,15 @@ PosixQueue::flush(sgarray &sga) {
 }
 
 ssize_t
-PosixQueue::pull(sgarray &sga) {
+PosixQueue::write(sgarray &sga) {
     ssize_t count, total = 0;
     uint64_t magic = MAGIC;
     uint64_t num = sga.num_bufs;
     uint64_t totalLen = 0;
 
-    count = write(qd, &magic, sizeof(uint64_t));
+    count = ::write(qd, &magic, sizeof(uint64_t));
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-        fprintf(stderr, "Could not write magic\n");
+        fprintf(stderr, "Could not ::write magic\n");
         return -1;
     }
     // calculate size
@@ -234,36 +234,36 @@ PosixQueue::pull(sgarray &sga) {
         pin((void *)sga.bufs[i].buf);
     }
     totalLen += sizeof(num);
-    count = write(qd, &totalLen, sizeof(uint64_t));
+    count = ::write(qd, &totalLen, sizeof(uint64_t));
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-        fprintf(stderr, "Could not write total length\n");
+        fprintf(stderr, "Could not ::write total length\n");
         return -1;
     }
-    count = write(qd, &num, sizeof(uint64_t));
+    count = ::write(qd, &num, sizeof(uint64_t));
     if (count < 0 || (size_t)count < sizeof(uint64_t)) {
-        fprintf(stderr, "Could not write sga entries\n");
+        fprintf(stderr, "Could not ::write sga entries\n");
         return -1;
     }
     
-    // write buffers
+    // ::write buffers
     for (int i = 0; i < sga.num_bufs; i++) {
         // stick in size header
-        count = write(qd, &sga.bufs[i].len, sizeof(uint64_t));
+        count = ::write(qd, &sga.bufs[i].len, sizeof(uint64_t));
         if (count < 0 || (size_t)count < sizeof(sga.bufs[i].len)) {
-            fprintf(stderr, "Could not write sga entry len\n");
+            fprintf(stderr, "Could not ::write sga entry len\n");
             return -1;
         }
-        // write buffer
-        count = write(qd, (void *)sga.bufs[i].buf,
+        // ::write buffer
+        count = ::write(qd, (void *)sga.bufs[i].buf,
                       sga.bufs[i].len);
         unpin((void *)sga.bufs[i].buf);
         if (count < 0 || (size_t)count < sga.bufs[i].len) {
-            fprintf(stderr, "Could not write sga buf\n");
+            fprintf(stderr, "Could not ::write sga buf\n");
             return -1;
         }
         total += count;
     }
     return total;        
 }
-    
+} // namespace POSIX    
 } // namespace Zeus

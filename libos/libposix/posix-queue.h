@@ -65,15 +65,13 @@ public:
     static int creat(const char *pathname, mode_t mode);
 
     // other functions
-    ssize_t flush(struct sgarray &sga); // if return 0, then already complete
-    ssize_t pull(struct sgarray &sga); // if return 0, then already ready and in sga
+    ssize_t read(struct sgarray &sga); // if return 0, then already complete
+    ssize_t write(struct sgarray &sga); // if return 0, then already ready and in sga
     
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
     int fd();
 };
-
-Zeus::QueueLibrary<PosixQueue> lib;    
 
 } // namespace POSIX
 } // namespace Zeus
