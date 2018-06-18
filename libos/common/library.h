@@ -50,7 +50,7 @@ namespace Zeus {
 template <class QueueType>
 class QueueLibrary
 {
-    std::unordered_map<int, QueueType&> queues;
+    std::unordered_map<int, QueueType> queues;
     std::unordered_map<qtoken, int> pending;
     
 public:
@@ -85,7 +85,7 @@ public:
 
     QueueType& NewQueue(BasicQueueType type) {
         int qd = queue_counter++;
-        queues[qd] = QueueType(type, qd);
+        queues[qd] = new QueueType(type, qd);
         return queues[qd];
     };
 
@@ -168,7 +168,8 @@ public:
     int qd2fd(int qd) {
         if (!HasQueue(qd))
             return -1;
-        return queues[qd].fd();
+        QueueType &q = GetQueue(qd);
+        return q.fd();
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
