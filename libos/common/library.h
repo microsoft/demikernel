@@ -40,7 +40,8 @@
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
-
+#define PUSH_MASK 0x1
+#define IS_PUSH(t) t & PUSH_MASK
 thread_local static uint64_t queue_counter = 0;
 thread_local static uint64_t token_counter = 0;
 
@@ -70,13 +71,14 @@ public:
     };
 
     QueueType& GetQueue(int qd) {
-        QueueType &q = queues[qd];
         assert(HasQueue(qd));
-        return q;
+        return queues.at(qd);
     };
     
-    qtoken GetNewToken(int qd) {
+    qtoken GetNewToken(int qd, bool isPush) {
         qtoken t = token_counter++;
+        if (isPush)
+            t << 1 | PUSH_MASK
         pending[t] = qd;
         return t;
     };
@@ -172,33 +174,87 @@ public:
         QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // pushing to files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, true);
+        ssize_t res = queue.push(t, sga);
+        // if push returns 0, then the sga is enqueued, but not pushed
+        if (res == 0) {
+            return t;
+        } else {
+            // if push returns something else, then sga has been
+            // successfully pushed
             return 0;
-   
-        queue.write(sga);
-        return GetNewToken(qd);
+        }
     };
 
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
- 
         if (!HasQueue(qd))
             return -1;
         
         QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
-            // pushing to files not implemented yet
+            // popping from files not implemented yet
+            return -1;
+
+        ssize_t res = queue.pop(sga);
+        if (res == 0) {
+            return GetNewToken(qd, false);
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
             return 0;
+        }
+    };
+
+    ssize_t wait(qtoken qt, struct sgarray &sga) {
+        auto it = pending.find(qt);
+        assert(it != pending.end());
+        int qd = it->second;
+        assert(HasQueue(qd));
+
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // waiting on files not implemented yet
+            return 0;
+
+        return queue.wait(qt, sga); 
+    }
+
+    ssize_t wait_any(qtoken qts[],
+                     size_t num_qts,
+                     struct sgarray &sga) {
+        ssize_t res = 0;
+        QueueType &qs[num_qts];
+        for (int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qt);
+            assert(it != pending.end());
+            qs[i] = GetQueue(it->second);
+        }
         
-        queue.read(sga);
-        return GetNewToken(qd);
-    };
+        while (res == 0) {
+            for (int i = 0; i < num_qts; i++) {
+                res = qs[i].poll(qts[num_qt], sga);
+                if (res != 0) break;
+            }
+        }
 
-    ssize_t wait_any(qtoken qts[], size_t num_qts) {
-        return 0;
+        return res;
     };
-
-    ssize_t wait_all(qtoken qts[], size_t num_qts) {
-        return 0;
-    };
+            
+    ssize_t wait_all(qtoken qts[],
+                     size_t num_qts,
+                     struct sgarray &sgas[]) {
+        ssize_t res = 0;
+        for (int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qt);
+            assert(it != pending.end());
+            QueueType q = GetQueue(it->second);
+            ssize_t r = q.wait(qts[i], sga[i]);
+            if (r > 0) res += r;
+        }
+        return res;
+    }
 
     int merge(int qd1, int qd2) {
         if (!HasQueue(qd1) || !HasQueue(qd2))
