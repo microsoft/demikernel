@@ -256,7 +256,7 @@ public:
         for (unsigned int i = 0; i < num_qts; i++) {
             auto it = pending.find(qts[i]);
             assert(it != pending.end());
-            QueueType q = GetQueue(it->second);
+            QueueType &q = GetQueue(it->second);
             ssize_t r = q.wait(qts[i], sgas[i]);
             if (r > 0) res += r;
         }
