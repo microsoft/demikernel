@@ -78,7 +78,7 @@ public:
     qtoken GetNewToken(int qd, bool isPush) {
         qtoken t = token_counter++;
         if (isPush)
-            t << 1 | PUSH_MASK
+            t = t << 1 | PUSH_MASK;
         pending[t] = qd;
         return t;
     };
@@ -197,9 +197,10 @@ public:
             // popping from files not implemented yet
             return -1;
 
-        ssize_t res = queue.pop(sga);
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.pop(t, sga);
         if (res == 0) {
-            return GetNewToken(qd, false);
+            return t;
         } else {
             // if push returns something else, then sga has been
             // successfully popped and result is in sga
@@ -221,20 +222,21 @@ public:
         return queue.wait(qt, sga); 
     }
 
-    ssize_t wait_any(qtoken qts[],
+    ssize_t wait_any(qtoken *qts,
                      size_t num_qts,
                      struct sgarray &sga) {
         ssize_t res = 0;
-        QueueType &qs[num_qts];
-        for (int i = 0; i < num_qts; i++) {
-            auto it = pending.find(qt);
+        QueueType *qs[num_qts];
+        for (unsigned int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qts[i]);
             assert(it != pending.end());
-            qs[i] = GetQueue(it->second);
+            auto it2 = queues.find(it->second);
+            qs[i] = &it2->second;
         }
         
         while (res == 0) {
-            for (int i = 0; i < num_qts; i++) {
-                res = qs[i].poll(qts[num_qt], sga);
+            for (unsigned int i = 0; i < num_qts; i++) {
+                res = qs[i]->poll(qts[i], sga);
                 if (res != 0) break;
             }
         }
@@ -242,15 +244,15 @@ public:
         return res;
     };
             
-    ssize_t wait_all(qtoken qts[],
+    ssize_t wait_all(qtoken *qts,
                      size_t num_qts,
-                     struct sgarray &sgas[]) {
+                     struct sgarray *sgas) {
         ssize_t res = 0;
-        for (int i = 0; i < num_qts; i++) {
-            auto it = pending.find(qt);
+        for (unsigned int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qts[i]);
             assert(it != pending.end());
             QueueType q = GetQueue(it->second);
-            ssize_t r = q.wait(qts[i], sga[i]);
+            ssize_t r = q.wait(qts[i], sgas[i]);
             if (r > 0) res += r;
         }
         return res;

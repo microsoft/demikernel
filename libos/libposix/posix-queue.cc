@@ -127,7 +127,7 @@ PosixQueue::fd() {
     
 
 ssize_t
-PosixQueue::read(sgarray &sga) {
+PosixQueue::push(qtoken qt, sgarray &sga) {
     size_t total = 0;
     uint8_t *ptr;
     void *buf = incoming;
@@ -216,7 +216,7 @@ PosixQueue::read(sgarray &sga) {
 }
 
 ssize_t
-PosixQueue::write(sgarray &sga) {
+PosixQueue::pop(qtoken qt, sgarray &sga) {
     ssize_t count, total = 0;
     uint64_t magic = MAGIC;
     uint64_t num = sga.num_bufs;
@@ -264,6 +264,18 @@ PosixQueue::write(sgarray &sga) {
         total += count;
     }
     return total;        
+}
+
+ssize_t
+PosixQueue::wait(qtoken qt, struct sgarray &sga)
+{
+    return 0;
+}
+
+ssize_t
+PosixQueue::poll(qtoken qt, struct sgarray &sga)
+{
+    return -1;
 }
 } // namespace POSIX    
 } // namespace Zeus

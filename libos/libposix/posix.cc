@@ -96,14 +96,14 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
-ssize_t wait_any(qtoken qts[], size_t num_qts)
+ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
 {
-    return lib.wait_any(qts, num_qts);
+    return lib.wait_any(qts, num_qts, sga);
 }
 
-ssize_t wait_all(qtoken qts[], size_t num_qts)
+ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas)
 {
-    return lib.wait_all(qts, num_qts);
+    return lib.wait_all(qts, num_qts, sgas);
 }
 
 int merge(int qd1, int qd2)
