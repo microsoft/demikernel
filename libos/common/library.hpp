@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/common/library.cc
+ * libos/common/library.hpp
  *   Generic library implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>

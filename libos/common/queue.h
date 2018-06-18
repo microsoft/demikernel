@@ -49,6 +49,7 @@ protected:
     int qd;
 
 public:
+    Queue() : type(NETWORK_Q), qd(0) { };
     Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };
     int GetQD() { return qd; };
     BasicQueueType GetType() { return type; };

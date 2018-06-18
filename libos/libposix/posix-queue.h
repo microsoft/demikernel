@@ -48,6 +48,7 @@ private:
     // queued scatter gather arrays
 
 public:
+    PosixQueue() : Queue() { };
     PosixQueue(BasicQueueType type, int qd) :
         Queue(type, qd), incoming(NULL), incoming_count(0) {};
 
