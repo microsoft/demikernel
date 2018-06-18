@@ -112,19 +112,23 @@ public:
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
-        return queues[qd].bind(saddr, size);
+        QueueType &q = GetQueue(qd);
+        return q.bind(saddr, size);
     };
 
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
-        return queues[qd].accept(saddr, size);
+        QueueType &q = GetQueue(qd);
+        return q.accept(saddr, size);
     };
 
     int listen(int qd, int backlog) {
-        return queues[qd].listen(backlog);
+        QueueType &q = GetQueue(qd);
+        return q.listen(backlog);
     };
 
     int connect(int qd, struct sockaddr *saddr, socklen_t size) {
-        return queues[qd].connect(saddr, size);
+        QueueType &q = GetQueue(qd);
+        return q.connect(saddr, size);
     };
 
     int open(const char *pathname, int flags) {
