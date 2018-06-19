@@ -18,7 +18,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -fstack-protector -Wall \
   -Wno-uninitialized -O3 -DNASSERT")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
-   -std=c++11 -fPIC -Wall")
+   -std=c++11 -fPIC -Wall -Wl,-zdefs")
    set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
 
 # ---------------------------------------------------------
@@ -32,7 +32,7 @@ include_directories(${ZEUS_SOURCE_DIR})
 
 
 # Hoard
-Set(HOARD_DIR ${ZEUS_SOURCE_DIR}/common/mem)
+set(HOARD_DIR ${ZEUS_SOURCE_DIR}/common/mem)
 include_directories(${HOARD_DIR}/include)
 include_directories(${HOARD_DIR}/include/hoard)
 include_directories(${HOARD_DIR}/include/superblocks)
@@ -63,8 +63,9 @@ add_custom_target(hoard ALL
 
 # POSIX libos target
 add_library(zeus_posix SHARED
-  ${SRC_ZEUS_POSIX_LIB} ${SRC_ZEUS_COMMON_LIB})
+  ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_POSIX_LIB})
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(zeus_posix hoard)
 
 add_library(zeus_lwip SHARED
   ${SRC_ZEUS_LWIP_LIB} ${SRC_ZEUS_COMMON_LIB})
@@ -83,7 +84,8 @@ set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)
 add_custom_target(tapir
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
-
+add_dependencies(tapir zeus_posix)
+                
 add_custom_target(tapir-clean
                   COMMAND make clean
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})

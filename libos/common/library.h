@@ -2,7 +2,7 @@
 /***********************************************************************
  *
  * common/library.h
- *   Zeus general-purpose queue library implementation
+ *   Generic libos implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -32,23 +32,300 @@
 #define _COMMON_LIBRARY_H_
 
 #include "include/io-queue.h"
-
+#include "queue.h"
 #include <list>
-#include <map>
+#include <unordered_map>
+#include <thread>
+#include <assert.h>
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
+#define PUSH_MASK 0x1
+#define IS_PUSH(t) t & PUSH_MASK
+thread_local static uint64_t queue_counter = 0;
+thread_local static uint64_t token_counter = 0;
 
 namespace Zeus {
 
 template <class QueueType>
 class QueueLibrary
 {
-            
+    std::unordered_map<int, QueueType> queues;
+    std::unordered_map<qtoken, int> pending;
+    
 public:
-    std::map<int, QueueType> queues;
+
+    QueueLibrary() {
+        std::hash<std::thread::id> hasher;
+        uint64_t hash = hasher(std::this_thread::get_id());
+        queue_counter = hash << 32;
+        token_counter = hash << 48;
+    };
+
+    // ================================================
+    // Queue Management functions
+    // ================================================
+
+    int HasQueue(int qd) {
+        return queues.find(qd) != queues.end();
+    };
+
+    QueueType& GetQueue(int qd) {
+        assert(HasQueue(qd));
+        return queues.at(qd);
+    };
     
+    qtoken GetNewToken(int qd, bool isPush) {
+        qtoken t;
+        do {
+            t = token_counter++;
+        } while (t != 0 && t != -1);
+        
+        if (isPush)
+            t = t << 1 | PUSH_MASK;
+        pending[t] = qd;
+        return t;
+    };
+
+    QueueType& NewQueue(BasicQueueType type) {
+        int qd = queue_counter++;
+        queues[qd] = new QueueType(type, qd);
+        return queues[qd];
+    };
+
+    void InsertQueue(QueueType q) {
+        assert(queues.find(q.GetQD()) == queues.end());
+        queues[q.GetQD()] = q;
+    };
+
+
+    void RemoveQueue(int qd) {
+        assert(queues.find(qd) == queues.end());
+        queues.erase(qd);    
+    };
+
+    // ================================================
+    // Generic interfaces to libOS syscalls
+    // ================================================
+
+    int queue(int domain, int type, int protocol) {
+        int qd = QueueType::queue(domain, type, protocol);
+        if (qd > 0)
+            InsertQueue(QueueType(NETWORK_Q, qd));
+        return qd;
+    };
+
+    int bind(int qd, struct sockaddr *saddr, socklen_t size) {
+        QueueType &q = GetQueue(qd);
+        return q.bind(saddr, size);
+    };
+
+    int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
+        QueueType &q = GetQueue(qd);
+        return q.accept(saddr, size);
+    };
+
+    int listen(int qd, int backlog) {
+        QueueType &q = GetQueue(qd);
+        return q.listen(backlog);
+    };
+
+    int connect(int qd, struct sockaddr *saddr, socklen_t size) {
+        QueueType &q = GetQueue(qd);
+        int newqd = q.connect(saddr, size);
+        if (newqd > 0)
+            InsertQueue(QueueType(NETWORK_Q, newqd));
+        return newqd;
+    };
+
+    int open(const char *pathname, int flags) {
+        // use the fd as qd
+        int qd = QueueType::open(pathname, flags);
+        if (qd > 0)
+            InsertQueue(QueueType(FILE_Q, qd));
+        return qd;
+    };
+
+    int open(const char *pathname, int flags, mode_t mode) {
+        // use the fd as qd
+        int qd = QueueType::open(pathname, flags, mode);
+        if (qd > 0)
+            InsertQueue(QueueType(FILE_Q, qd));
+        return qd;
+    };
+
+    int creat(const char *pathname, mode_t mode) {
+        // use the fd as qd
+        int qd = QueueType::creat(pathname, mode);
+        if (qd > 0)
+            InsertQueue(QueueType(FILE_Q, qd));
+        return qd;
+    };
     
+    int close(int qd) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        int res = queue.close();
+        RemoveQueue(qd);    
+        return res;
+    };
+
+    int qd2fd(int qd) {
+        if (!HasQueue(qd))
+            return -1;
+        QueueType &q = GetQueue(qd);
+        return q.fd();
+    };
+    
+    qtoken push(int qd, struct Zeus::sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // pushing to files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, true);
+        ssize_t res = queue.push(t, sga);
+        // if push returns 0, then the sga is enqueued, but not pushed
+        if (res == 0) {
+            return t;
+        } else {
+            // if push returns something else, then sga has been
+            // successfully pushed
+            return 0;
+        }
+    };
+
+    qtoken pop(int qd, struct Zeus::sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.pop(t, sga);
+        if (res == 0) {
+            return t;
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
+            return 0;
+        }
+    };
+
+    ssize_t wait(qtoken qt, struct sgarray &sga) {
+        auto it = pending.find(qt);
+        assert(it != pending.end());
+        int qd = it->second;
+        assert(HasQueue(qd));
+
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // waiting on files not implemented yet
+            return 0;
+
+        return queue.wait(qt, sga); 
+    }
+
+    ssize_t wait_any(qtoken *qts,
+                     size_t num_qts,
+                     struct sgarray &sga) {
+        ssize_t res = 0;
+        QueueType *qs[num_qts];
+        for (unsigned int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qts[i]);
+            assert(it != pending.end());
+            auto it2 = queues.find(it->second);
+            qs[i] = &it2->second;
+        }
+        
+        while (res == 0) {
+            for (unsigned int i = 0; i < num_qts; i++) {
+                res = qs[i]->poll(qts[i], sga);
+                if (res != 0) break;
+            }
+        }
+
+        return res;
+    };
+            
+    ssize_t wait_all(qtoken *qts,
+                     size_t num_qts,
+                     struct sgarray *sgas) {
+        ssize_t res = 0;
+        for (unsigned int i = 0; i < num_qts; i++) {
+            auto it = pending.find(qts[i]);
+            assert(it != pending.end());
+            QueueType &q = GetQueue(it->second);
+            ssize_t r = q.wait(qts[i], sgas[i]);
+            if (r > 0) res += r;
+        }
+        return res;
+    }
+
+    ssize_t blocking_push(int qd,
+                          struct sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.push(t, sga);
+        if (res == 0) {
+            return wait(t, sga);
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
+            return res;
+        }
+    }
+
+    ssize_t blocking_pop(int qd,
+                         struct sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.pop(t, sga);
+        if (res == 0) {
+            return wait(t, sga);
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
+            return res;
+        }
+    }
+    
+    int merge(int qd1, int qd2) {
+        if (!HasQueue(qd1) || !HasQueue(qd2))
+            return -1;
+
+        return 0;
+    };
+
+    int filter(int qd, bool (*filter)(struct sgarray &sga)) {
+        if (!HasQueue(qd))
+            return -1;
+
+        return 0;
+    };
+
 };
 
 } // namespace Zeus

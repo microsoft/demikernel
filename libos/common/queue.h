@@ -34,22 +34,49 @@
 #include "include/io-queue.h"
 
 namespace Zeus {
-
+    
 enum BasicQueueType {
     NETWORK_Q,
     FILE_Q,
     MERGED_Q,
     FILTERED_Q
 };
-     
 
 class Queue
 {
-
-public:
+protected:
     BasicQueueType type;
     int qd;
+
+public:
+    Queue() : type(NETWORK_Q), qd(0) { };
+    Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };
+    int GetQD() { return qd; };
+    BasicQueueType GetType() { return type; };
+    void SetQD(int q) { qd = q; };
+    void SetType(BasicQueueType t) { type = t; };
     
+    // network functions
+    static int queue(int domain, int type, int protocol);
+    int listen(int backlog);
+    int bind(struct sockaddr *saddr, socklen_t size);
+    int accept(struct sockaddr *saddr, socklen_t *size);
+    int connect(struct sockaddr *saddr, socklen_t size);
+    int close();
+          
+    // file functions
+    static int open(const char *pathname, int flags);
+    static int open(const char *pathname, int flags, mode_t mode);
+    static int creat(const char *pathname, mode_t mode);
+
+    // other functions
+    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already ready and in sga
+    ssize_t wait(qtoken qt, struct sgarray &sga);
+    ssize_t poll(qtoken qt, struct sgarray &sga);
+    // returns the file descriptor associated with
+    // the queue descriptor if the queue is an io queue
+    int fd();
 };
 
 } // namespace Zeus

@@ -43,11 +43,13 @@
 namespace Zeus {
     
 typedef void * ioptr;
-typedef int qtoken;
-
+typedef int qtoken;    
+    
 struct sgelem {
     ioptr buf;
     size_t len;
+    // for file operations
+    uint64_t addr;
 };
     
 struct sgarray {
@@ -56,7 +58,7 @@ struct sgarray {
 };
 
 // memory allocation
-ioptr iomalloc(size_t size);
+//ioptr iomalloc(size_t size);
 
 // network functions
 int queue(int domain, int type, int protocol);
@@ -73,9 +75,10 @@ int creat(const char *pathname, mode_t mode);
 
 // other functions
 qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
-qtoken pop(int qd, struct sgarray &sga) // if return 0, then already ready and in sga
-ssize_t wait(qtoken *qts, size_t num_qts);
-ssize_t wait_all(qtoken *qts, size_t num_qts);
+qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
+ssize_t wait(qtoken qt, struct sgarray &sga);
+ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray sga);
+ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);
 // identical to a pop, followed by a wait on the returned qtoken

@@ -31,20 +31,55 @@
 #ifndef _LIB_POSIX_QUEUE_H_
 #define _LIB_POSIX_QUEUE_H_
 
-#include "include/io-queue.h"
 #include "common/queue.h"
+#include "common/library.h"
 #include <list>
 #include <map>
 
 namespace Zeus {
 namespace POSIX {
 
-class PosixQueue : public Zeus::Queue {
+class PosixQueue : public Queue {
+private:
+    struct PendingRequest {
+        bool isDone;
+        ssize_t res;
+        // currently used incoming buffer
+        void *buf;
+        // valid data in current buffer
+        size_t buf_size;
+        struct sgarray *sga;
+    };
+    
+    // queued scatter gather arrays
+    std::map<qtoken, struct PendingRequest> pending;
+
 public:
-    // currently used incoming buffer
-    void *buf = NULL;
-    // valid data in current buffer
-    size_t count = 0;
+    PosixQueue() : Queue(){ };
+    PosixQueue(BasicQueueType type, int qd) :
+        Queue(type, qd) {};
+
+    // network functions
+    static int queue(int domain, int type, int protocol);
+    int listen(int backlog);
+    int bind(struct sockaddr *saddr, socklen_t size);
+    int accept(struct sockaddr *saddr, socklen_t *size);
+    int connect(struct sockaddr *saddr, socklen_t size);
+    int close();
+          
+    // file functions
+    static int open(const char *pathname, int flags);
+    static int open(const char *pathname, int flags, mode_t mode);
+    static int creat(const char *pathname, mode_t mode);
+
+    // other functions
+    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already ready and in sga
+    ssize_t wait(qtoken qt, struct sgarray &sga);
+    ssize_t poll(qtoken qt, struct sgarray &sga);
+    // returns the file descriptor associated with
+    // the queue descriptor if the queue is an io queue
+    int fd();
 };
 
 } // namespace POSIX
