@@ -48,6 +48,8 @@ typedef int qtoken;
 struct sgelem {
     ioptr buf;
     size_t len;
+    // for file operations
+    uint64_t addr;
 };
     
 struct sgarray {

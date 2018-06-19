@@ -48,14 +48,7 @@ int
 PosixQueue::queue(int domain, int type, int protocol)
 {
     int qd = ::socket(domain, type, protocol);
-
-    // Always put it in non-blocking mode
-    if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
-        fprintf(stderr,
-                "Failed to set O_NONBLOCK on outgoing Zeus socket");
-    }
-
-    // If TCP, turn off Nagle's algorithm!
+    
     if (protocol == SOCK_STREAM) {
         // Set TCP_NODELAY
         int n = 1;
@@ -77,20 +70,55 @@ PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
-    return ::accept(qd, saddr, size);
+    int newqd = ::accept(qd, saddr, size);
+
+    // Always put it in non-blocking mode
+    if (fcntl(newqd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+    // Set TCP_NODELAY
+    int n = 1;
+    if (setsockopt(newqd, IPPROTO_TCP,
+                   TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
+        fprintf(stderr, 
+                "Failed to set TCP_NODELAY on Zeus connecting socket");
+    }
+    return newqd;
 }
 
 int
 PosixQueue::listen(int backlog)
 {
-    return ::listen(qd, backlog);
+    int res = ::listen(qd, backlog);
+    if (res == 0) {
+        // Always put it in non-blocking mode
+        if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+            fprintf(stderr,
+                    "Failed to set O_NONBLOCK on outgoing Zeus socket");
+        }
+        return res;
+    } else {
+        return errno;
+    }
 }
         
 
 int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-    return ::connect(qd, saddr, size);
+    int res = ::connect(qd, saddr, size);
+    fprintf(stderr, "res = %lu errno=%s", res, strerror(errno));
+    if (res == 0) {
+        // Always put it in non-blocking mode
+        if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+            fprintf(stderr,
+                    "Failed to set O_NONBLOCK on outgoing Zeus socket");
+        }
+        return res;
+    } else {
+        return errno;
+    }
 }
 
 int

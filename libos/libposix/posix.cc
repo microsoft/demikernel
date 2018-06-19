@@ -55,7 +55,6 @@ int listen(int qd, int backlog)
     return lib.listen(qd, backlog);
 }
         
-
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.connect(qd, saddr, size);
@@ -96,6 +95,11 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
+ssize_t wait(qtoken qt, struct sgarray &sga)
+{
+    return lib.wait(qt, sga);
+}
+
 ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, sga);
@@ -104,6 +108,16 @@ ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
 ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas)
 {
     return lib.wait_all(qts, num_qts, sgas);
+}
+
+ssize_t blocking_push(int qd, struct sgarray &sga)
+{
+    return lib.blocking_push(qd, sga);
+}
+
+ssize_t blocking_pop(int qd, struct sgarray &sga)
+{
+    return lib.blocking_pop(qd, sga);
 }
 
 int merge(int qd1, int qd2)

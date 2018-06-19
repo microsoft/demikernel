@@ -76,7 +76,11 @@ public:
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
-        qtoken t = token_counter++;
+        qtoken t;
+        do {
+            t = token_counter++;
+        } while (t != 0 && t != -1);
+        
         if (isPush)
             t = t << 1 | PUSH_MASK;
         pending[t] = qd;
@@ -128,7 +132,10 @@ public:
 
     int connect(int qd, struct sockaddr *saddr, socklen_t size) {
         QueueType &q = GetQueue(qd);
-        return q.connect(saddr, size);
+        int newqd = q.connect(saddr, size);
+        if (newqd > 0)
+            InsertQueue(QueueType(NETWORK_Q, newqd));
+        return newqd;
     };
 
     int open(const char *pathname, int flags) {
@@ -263,6 +270,48 @@ public:
         return res;
     }
 
+    ssize_t blocking_push(int qd,
+                          struct sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.push(t, sga);
+        if (res == 0) {
+            return wait(t, sga);
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
+            return res;
+        }
+    }
+
+    ssize_t blocking_pop(int qd,
+                         struct sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.pop(t, sga);
+        if (res == 0) {
+            return wait(t, sga);
+        } else {
+            // if push returns something else, then sga has been
+            // successfully popped and result is in sga
+            return res;
+        }
+    }
+    
     int merge(int qd1, int qd2) {
         if (!HasQueue(qd1) || !HasQueue(qd2))
             return -1;
