@@ -235,6 +235,7 @@ void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
     sgarray &sga = req.sga;
+    printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
     if (req.header[0] != MAGIC) {
         req.header[0] = MAGIC;
@@ -251,12 +252,12 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     if (req.num_bytes < sizeof(req.header)) {
         ssize_t count = ::write(qd,
                         &req.header + req.num_bytes,
-                        sizeof(uint64_t) - req.num_bytes);
+                        sizeof(req.header) - req.num_bytes);
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;
             } else {
-                fprintf(stderr, "Could not write header\n");
+                fprintf(stderr, "Could not write header: %s\n", strerror(errno));
                 req.isDone = true;
                 req.res = count;
                 return;
@@ -267,11 +268,13 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
             return;
         }
     }
+
+    assert(req.num_bytes >= sizeof(req.header));
     
     // write sga
     uint64_t dataSize = req.header[1];
     uint64_t offset = sizeof(req.header);
-    if (req.num_bytes < dataSize) {
+    if (req.num_bytes < dataSize + sizeof(req.header)) {
         for (int i = 0; i < sga.num_bufs; i++) {
             if (req.num_bytes < offset + sizeof(uint64_t)) {
                 // stick in size header
@@ -281,7 +284,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         return;
                     } else {
-                        fprintf(stderr, "Could not write data\n");
+                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
                         req.isDone = true;
                         req.res = count;
                         return;
@@ -300,7 +303,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         return;
                     } else {
-                        fprintf(stderr, "Could not write data\n");
+                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
                         req.isDone = true;
                         req.res = count;
                         return;
@@ -314,6 +317,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
             offset += sga.bufs[i].len;
         }
     }
+
     req.res = dataSize - (sga.num_bufs * sizeof(uint64_t));
     req.isDone = true;
 }
@@ -343,24 +347,26 @@ PosixQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
         }            
     }
-    printf("Processed %lu requests", done);
+    //printf("Processed %lu requests", done);
 }
     
 ssize_t
 PosixQueue::Enqueue(qtoken qt, sgarray &sga)
 {
     auto it = pending.find(qt);
-    PendingRequest &req = it->second;
+    PendingRequest req;
     if (it == pending.end()) {
         req = PendingRequest();
+        req.sga = sga;
         pending[qt] = req;
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
         // non-blocking
         if (workQ.front() == qt) ProcessQ(1);
+    } else {
+        req = it->second;
     }
-    
     if (req.isDone) {
         return req.res;
     } else {

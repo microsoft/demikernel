@@ -41,7 +41,7 @@ namespace POSIX {
 
 class PosixQueue : public Queue {
 private:
-    class PendingRequest {
+    struct PendingRequest {
     public:
         bool isDone;
         ssize_t res;
@@ -73,7 +73,7 @@ private:
 public:
     PosixQueue() : Queue(), workQ{} { };
     PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd) {};
+        Queue(type, qd), workQ{}  {};
 
     // network functions
     static int queue(int domain, int type, int protocol);
