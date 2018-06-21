@@ -79,7 +79,7 @@ public:
         qtoken t;
         do {
             t = token_counter++;
-        } while (t != 0 && t != -1);
+        } while (t == 0 || t == -1);
         
         if (isPush)
             t = t << 1 | PUSH_MASK;
@@ -122,7 +122,10 @@ public:
 
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
         QueueType &q = GetQueue(qd);
-        return q.accept(saddr, size);
+        int newqd = q.accept(saddr, size);
+        if (newqd != -1) 
+            InsertQueue(QueueType(NETWORK_Q, newqd));
+        return newqd;
     };
 
     int listen(int qd, int backlog) {
