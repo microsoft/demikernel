@@ -45,50 +45,33 @@ namespace Zeus {
 
 using namespace LWIP;
 
-struct rte_eth_rxmode rx_mode = {
-    .max_rx_pkt_len = ETHER_MAX_LEN, /**< Default maximum frame length. */
-    .split_hdr_size = 0,
-    .header_split   = 0, /**< Header Split disabled. */
-    .hw_ip_checksum = 0, /**< IP checksum offload disabled. */
-    .hw_vlan_filter = 1, /**< VLAN filtering enabled. */
-    .hw_vlan_strip  = 1, /**< VLAN strip enabled. */
-    .hw_vlan_extend = 0, /**< Extended VLAN disabled. */
-    .jumbo_frame    = 0, /**< Jumbo Frame Support disabled. */
-    .hw_strip_crc   = 1, /**< CRC stripping by hardware enabled. */
-    .hw_timestamp   = 0, /**< HW timestamp enabled. */
-};
-
-static const struct rte_eth_conf port_conf_default = {
-    .rxmode = rx_mode
-};
-
-
 struct mac2ip {
     struct ether_addr mac;
     uint32_t ip;
 };
 
 static struct mac2ip ip_config[] = {
-    {   //ens4f0
-        .mac.addr_bytes = "\x50\x6b\x4b\x48\xf8\xfa",
-        .ip = 0x0c0c0c04,       // 12.12.12.4
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
+            0x0c0c0c04,       // 12.12.12.4
     },
-    {
-        // ens4f1
-        .mac.addr_bytes = "\x50\x6b\x4b\x48\xf8\xfb",
-        .ip = 0x0c0c0c05,       // 12.12.12.5
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
+            0x0c0c0c05,       // 12.12.12.5
     },
+};
+
+static const struct ether_addr ether_multicast = {
+    .addr_bytes = {0x01, 0x1b, 0x19, 0x0, 0x0, 0x0}
 };
 
 struct ether_addr ip_to_mac(in_addr_t ip)
 {
-    for (int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
+    for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
         struct mac2ip *e = &ip_config[i];
         if (ip == e->ip) {
             return e->mac;
         }
     }
-    return NULL;
+    return ether_multicast;
 }
 
 uint8_t port_id;
@@ -122,13 +105,15 @@ static inline int
 port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 {
     struct rte_eth_dev_info dev_info;
-    struct rte_eth_conf port_conf = port_conf_default;
+    struct rte_eth_conf port_conf;
     const uint16_t rx_rings = 1;
     const uint16_t tx_rings = 1;
     int retval;
     uint16_t q;
     uint16_t nb_rxd = RX_RING_SIZE;
     uint16_t nb_txd = TX_RING_SIZE;
+
+    port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
 
     if (port >= rte_eth_dev_count()) {
         return -1;
@@ -209,7 +194,7 @@ void lwip_init()
     for (uint8_t portid = 0; portid < nb_ports; portid++) {
         if (port_init(portid, mbuf_pool) != 0) {
             rte_exit(EXIT_FAILURE,
-                     "Cannot init port %"PRIu8 "\n",
+                     "Cannot init port %d\n",
                      portid);
         }
     }
@@ -231,7 +216,7 @@ int
 LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
 {
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
-    bound_addr = saddr;
+    bound_addr = *saddr;
     is_bound = true;
     return 0;
 }
@@ -319,7 +304,6 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 {
     unsigned nb_rx;
     struct rte_mbuf *m;
-    void* buf;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
@@ -344,7 +328,7 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
         ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr));
         ip_type = ip_hdr->next_proto_id;
-        assert(ip_hdr->dst_addr == bound_addr.sin_addr);
+        assert(ip_hdr->dst_addr == bound_addr.sin_addr.s_addr);
         assert(ip_type == IPPROTO_UDP);
 
         // check UDP header
@@ -360,7 +344,7 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
         struct rte_mbuf* cur = m->next;
         for (int i = 0; i < m->nb_segs - 1; i++) {
             //TODO: Remove copy if possible (may involve changing DPDK memory management
-            sga.bufs[i] = malloc((size_t)cur->data_len);
+            sga.bufs[i].buf = malloc((size_t)cur->data_len);
             memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
             sga.bufs[i].len = cur->data_len;
             data_len += cur->data_len;
@@ -379,12 +363,13 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     }
 }
 
-ssize_t wait(qtoken qt, struct sgarray &sga)
+ssize_t LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
     //TODO:
     return 0;
 }
-ssize_t poll(qtoken qt, struct sgarray &sga)
+
+ssize_t LWIPQueue::poll(qtoken qt, struct sgarray &sga)
 {
     //TODO:
     return 0;
