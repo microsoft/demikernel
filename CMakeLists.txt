@@ -29,7 +29,7 @@ set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${ZEUS_SOURCE_DIR})
 include_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/include)
-link_directories(/home/amanda/dpdk-stable-17.08.2/x86_64/native-linuxapp-gcc/lib)
+link_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/lib)
 
 
 

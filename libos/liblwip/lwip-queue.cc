@@ -129,6 +129,11 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
         return retval;
     }
 
+    retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
+    if (retval != 0) {
+        return retval;
+    }
+
     /* Allocate and set up 1 RX queue per Ethernet port. */
     for (q = 0; q < rx_rings; q++) {
         retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
