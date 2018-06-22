@@ -26,7 +26,6 @@
 #include <rte_ip.h>
 #include <rte_udp.h>
 #include <rte_ether.h>
-#include <rte_byteorder.h>
 
 #include "lwip-queue.h"
 #include "common/library.h"
@@ -42,13 +41,13 @@
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 
 namespace Zeus {
-
-using namespace LWIP;
+namespace LWIP {
 
 struct mac2ip {
     struct ether_addr mac;
     uint32_t ip;
 };
+
 
 static struct mac2ip ip_config[] = {
     {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
@@ -59,11 +58,18 @@ static struct mac2ip ip_config[] = {
     },
 };
 
+
 static const struct ether_addr ether_multicast = {
     .addr_bytes = {0x01, 0x1b, 0x19, 0x0, 0x0, 0x0}
 };
 
-struct ether_addr ip_to_mac(in_addr_t ip)
+
+uint8_t port_id;
+struct rte_mempool *mbuf_pool;
+
+
+struct ether_addr
+ip_to_mac(in_addr_t ip)
 {
     for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
         struct mac2ip *e = &ip_config[i];
@@ -73,9 +79,6 @@ struct ether_addr ip_to_mac(in_addr_t ip)
     }
     return ether_multicast;
 }
-
-uint8_t port_id;
-struct rte_mempool *mbuf_pool;
 
 
 static inline uint16_t
@@ -96,6 +99,7 @@ ip_sum(const unaligned_uint16_t *hdr, int hdr_len)
 
     return ~sum;
 }
+
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -121,11 +125,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
-    if (retval != 0) {
-        return retval;
-    }
-
-    retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
         return retval;
     }
@@ -165,7 +164,9 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-void lwip_init()
+
+void
+lwip_init()
 {
     unsigned nb_ports;
 
@@ -205,12 +206,21 @@ void lwip_init()
     }
 }
 
+
 int
 LWIPQueue::queue(int domain, int type, int protocol)
 {
     //TODO
     return 0;
 }
+
+
+int
+LWIPQueue::listen(int backlog)
+{
+    return 0;
+}
+
 
 int
 LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
@@ -221,9 +231,60 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
     return 0;
 }
 
-int LWIPQueue::close()
+
+int
+LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
+{
+    return 0;
+}
+
+
+int
+LWIPQueue::connect(struct sockaddr *saddr, socklen_t size)
+{
+    return 0;
+}
+
+
+int
+LWIPQueue::close()
 {
     //TODO
+    return 0;
+}
+
+
+int
+LWIPQueue::open(const char *pathname, int flags)
+{
+    return 0;
+}
+
+
+int
+LWIPQueue::open(const char *pathname, int flags, mode_t mode)
+{
+    return 0;
+}
+
+
+int
+LWIPQueue::creat(const char *pathname, mode_t mode)
+{
+    return 0;
+}
+
+
+ssize_t
+LWIPQueue::push(qtoken qt, struct sgarray &sga)
+{
+    return 0;
+}
+
+
+ssize_t
+LWIPQueue::pop(qtoken qt, struct sgarray &sga)
+{
     return 0;
 }
 
@@ -238,14 +299,13 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     struct rte_mbuf* pkts[sga.num_bufs];
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
 
-
     struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
 
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(hdr, struct ether_hdr*);
     eth_hdr->s_addr = ip_to_mac(bound_addr.sin_addr.s_addr);
     eth_hdr->d_addr = ip_to_mac(saddr->sin_addr.s_addr);
-    eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_IPv4);
+    eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
 
     // set up IP header
     ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(hdr, char *)
@@ -259,16 +319,16 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     ip_hdr->packet_id = 0;
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
     ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
-    ip_hdr->total_length = rte_cpu_to_be_16(sizeof(struct udp_hdr)
+    ip_hdr->total_length = htons(sizeof(struct udp_hdr)
                                 + sizeof(struct ipv4_hdr));
-    ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
+    ip_hdr->hdr_checksum = htons(ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr)));
 
     // set up UDP header
     udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(hdr, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
     udp_hdr->dst_port = saddr->sin_port;
     udp_hdr->src_port = bound_addr.sin_port;
-    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(struct udp_hdr));
+    udp_hdr->dgram_len = htons(sizeof(struct udp_hdr));
     udp_hdr->dgram_cksum = 0;
 
     // Fill in packet fields
@@ -296,8 +356,10 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     hdr->pkt_len = hdr->data_len + data_len;
 
     rte_eth_tx_burst(port_id, 0,  &hdr, 1);
+
     return (ssize_t)data_len;
 }
+
 
 ssize_t
 LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
@@ -311,6 +373,7 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     uint16_t eth_type;
     uint8_t ip_type;
     ssize_t data_len = 0;
+    uint16_t port;
 
     nb_rx = rte_eth_rx_burst(port_id, 0, &m, 1);
 
@@ -321,7 +384,7 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
             
         // check ethernet header
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
-        eth_type = rte_be_to_cpu_16(eth_hdr->ether_type);
+        eth_type = ntohs(eth_hdr->ether_type);
         assert(eth_type == ETHER_TYPE_IPv4);
 
         // check IP header
@@ -334,7 +397,7 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
         // check UDP header
         udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
-        uint16_t port = udp_hdr->dst_port;
+        port = udp_hdr->dst_port;
         assert(port == bound_addr.sin_port);
 
 
@@ -363,17 +426,28 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     }
 }
 
-ssize_t LWIPQueue::wait(qtoken qt, struct sgarray &sga)
+
+ssize_t
+LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
     //TODO:
     return 0;
 }
 
-ssize_t LWIPQueue::poll(qtoken qt, struct sgarray &sga)
+
+ssize_t
+LWIPQueue::poll(qtoken qt, struct sgarray &sga)
 {
     //TODO:
     return 0;
 }
 
 
-} //namespace ZEUS
+int
+LWIPQueue::fd()
+{
+    return 0;
+}
+
+} // namespace LWIP
+} // namespace ZEUS

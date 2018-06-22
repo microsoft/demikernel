@@ -28,8 +28,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${ZEUS_SOURCE_DIR})
-include_directories(/home/amanda//dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/include)
-link_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/lib)
+include_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/include)
+link_directories(/home/amanda/dpdk-stable-17.08.2/x86_64/native-linuxapp-gcc/lib)
 
 
 
@@ -69,9 +69,8 @@ add_library(zeus_posix SHARED
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_posix hoard)
 
-set( DPDK_LIB "-Wl,--whole-archive -lrte_mbuf  -lrte_eal -lrte_mempool -lrte_ring -lrte_ethdev -Wl,--no-whole-archive" )
+set( DPDK_LIB "-Wl,--whole-archive -lnuma -lpthread -ldl -lrte_mbuf  -lrte_eal -lrte_mempool -lrte_ring -lrte_ethdev -Wl,--no-whole-archive" )
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
-set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-export-dynamic")
 add_library(zeus_lwip SHARED
   ${SRC_ZEUS_LWIP_LIB} ${SRC_ZEUS_COMMON_LIB})
 target_link_libraries(zeus_lwip ${PROJECT_SOURCE_DIR}/libhoard.so ${DPDK_LIB})
