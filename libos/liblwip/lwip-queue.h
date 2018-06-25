@@ -19,6 +19,16 @@ namespace LWIP {
 
 class LWIPQueue : public Queue {
 private:
+    struct PendingRequest {
+        bool isDone;
+        ssize_t res;
+        struct sockaddr* addr;
+        struct sgarray *sga;
+    };
+
+    // queued scatter gather arrays
+    std::map<qtoken, struct PendingRequest> pending;
+
     bool is_bound = false;
     struct sockaddr_in bound_addr;
 

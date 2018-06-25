@@ -171,7 +171,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 
 
 void
-lwip_init()
+init()
 {
     unsigned nb_ports;
 
@@ -297,6 +297,12 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 {
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        pending[qt] = PendingRequest{false, 0, addr, &sga};
+    }
+    PendingRequest &req = pending[qt];
+
     struct udp_hdr* udp_hdr;
     struct ipv4_hdr* ip_hdr;
     struct ether_hdr* eth_hdr;
@@ -362,6 +368,9 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 
     rte_eth_tx_burst(port_id, 0,  &hdr, 1);
 
+    req.res = data_len;
+    req.isDone = true;
+
     return (ssize_t)data_len;
 }
 
@@ -369,6 +378,12 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 ssize_t
 LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 {
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        pending[qt] = PendingRequest{false, 0, addr, &sga};
+    }
+    PendingRequest &req = pending[qt];
+
     unsigned nb_rx;
     struct rte_mbuf *m;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
@@ -427,6 +442,9 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 
         rte_pktmbuf_free(m);
 
+        req.isDone = true;
+        req.res = data_len;
+
         return data_len;
     }
 }
@@ -435,8 +453,17 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 ssize_t
 LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
-    //TODO:
-    return 0;
+    auto it = pending.find(qt);
+    assert(it != pending.end());
+    PendingRequest &req = pending[qt];
+
+    if (IS_PUSH(qt)) {
+        while (!req.isDone) pushto(qt, *req.sga, req.addr);
+        return req.res;
+    } else {
+        while (!req.isDone) popfrom(qt, sga, req.addr);
+        return req.res;
+    }
 }
 
 
@@ -444,7 +471,7 @@ ssize_t
 LWIPQueue::poll(qtoken qt, struct sgarray &sga)
 {
     //TODO:
-    return 0;
+    return 1;
 }
 
 
