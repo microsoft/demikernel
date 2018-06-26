@@ -220,47 +220,6 @@ public:
         }
     };
 
-    qtoken pushto(int qd, struct Zeus::sgarray &sga, sockaddr *addr) {
-        if (!HasQueue(qd))
-            return -1;
-
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // pushing to files not implemented yet
-            return -1;
-
-        qtoken t = GetNewToken(qd, true);
-        ssize_t res = queue.pushto(t, sga, addr);
-        // if push returns 0, then the sga is enqueued, but not pushed
-        if (res == 0) {
-            return t;
-        } else {
-            // if push returns something else, then sga has been
-            // successfully pushed
-            return 0;
-        }
-    };
-
-    qtoken popfrom(int qd, struct Zeus::sgarray &sga, sockaddr * addr) {
-        if (!HasQueue(qd))
-            return -1;
-
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // popping from files not implemented yet
-            return -1;
-
-        qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.popfrom(t, sga, addr);
-        if (res == 0) {
-            return t;
-        } else {
-            // if push returns something else, then sga has been
-            // successfully popped and result is in sga
-            return 0;
-        }
-    };
-
     ssize_t wait(qtoken qt, struct sgarray &sga) {
         auto it = pending.find(qt);
         assert(it != pending.end());
@@ -344,48 +303,6 @@ public:
 
         qtoken t = GetNewToken(qd, false);
         ssize_t res = queue.pop(t, sga);
-        if (res == 0) {
-            return wait(t, sga);
-        } else {
-            // if push returns something else, then sga has been
-            // successfully popped and result is in sga
-            return res;
-        }
-    }
-    
-    ssize_t blocking_pushto(int qd,
-                          struct sgarray &sga, sockaddr *addr) {
-        if (!HasQueue(qd))
-            return -1;
-
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // popping from files not implemented yet
-            return -1;
-
-        qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.pushto(t, sga, addr);
-        if (res == 0) {
-            return wait(t, sga);
-        } else {
-            // if push returns something else, then sga has been
-            // successfully popped and result is in sga
-            return res;
-        }
-    }
-
-    ssize_t blocking_popfrom(int qd,
-                         struct sgarray &sga, sockaddr *addr) {
-        if (!HasQueue(qd))
-            return -1;
-
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // popping from files not implemented yet
-            return -1;
-
-        qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.popfrom(t, sga, addr);
         if (res == 0) {
             return wait(t, sga);
         } else {

@@ -22,8 +22,6 @@ private:
     struct PendingRequest {
         bool isDone;
         ssize_t res;
-        struct sockaddr* addr;
-        struct sgarray *sga;
     };
 
     // queued scatter gather arrays
@@ -51,10 +49,8 @@ public:
     static int creat(const char *pathname, mode_t mode);
 
     // other functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already ready and in sga
-    ssize_t pushto(qtoken qt, struct sgarray &sga, struct sockaddr* addr); // if return 0, then already complete
-    ssize_t popfrom(qtoken qt, struct sgarray &sga, struct sockaddr* addr); // if return 0, then already ready and in sga
+    ssize_t push(qtoken qt, struct sgarray &sga);
+    ssize_t pop(qtoken qt, struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
 

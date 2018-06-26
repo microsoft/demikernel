@@ -215,7 +215,8 @@ init()
 int
 LWIPQueue::queue(int domain, int type, int protocol)
 {
-    //TODO
+    assert(domain == AF_INET);
+    assert(type == SOCK_DGRAM);
     return 0;
 }
 
@@ -230,6 +231,7 @@ LWIPQueue::listen(int backlog)
 int
 LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
 {
+    assert(size == sizeof(struct sockaddr_in));
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     bound_addr = *saddr;
     is_bound = true;
@@ -283,23 +285,9 @@ LWIPQueue::creat(const char *pathname, mode_t mode)
 ssize_t
 LWIPQueue::push(qtoken qt, struct sgarray &sga)
 {
-    return 0;
-}
-
-
-ssize_t
-LWIPQueue::pop(qtoken qt, struct sgarray &sga)
-{
-    return 0;
-}
-
-
-ssize_t
-LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
-{
     auto it = pending.find(qt);
     if (it == pending.end()) {
-        pending[qt] = PendingRequest{false, 0, addr, &sga};
+        pending[qt] = PendingRequest{false, 0};
     }
     PendingRequest &req = pending[qt];
 
@@ -308,7 +296,7 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
     struct ether_hdr* eth_hdr;
     uint32_t data_len = 0;
     struct rte_mbuf* pkts[sga.num_bufs];
-    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+    struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
 
     struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
 
@@ -376,17 +364,17 @@ LWIPQueue::pushto(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
 
 
 ssize_t
-LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
+LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
-        pending[qt] = PendingRequest{false, 0, addr, &sga};
+        pending[qt] = PendingRequest{false, 0};
     }
     PendingRequest &req = pending[qt];
 
     unsigned nb_rx;
     struct rte_mbuf *m;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+    struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
     struct ether_hdr *eth_hdr;
@@ -434,11 +422,13 @@ LWIPQueue::popfrom(qtoken qt, struct Zeus::sgarray &sga, struct sockaddr* addr)
             cur = cur->next;
         }
 
-        // fill in src addr
-        memset(saddr, 0, sizeof(struct sockaddr_in));
-        saddr->sin_family = AF_INET;
-        saddr->sin_port = udp_hdr->src_port;
-        saddr->sin_addr.s_addr = ip_hdr->src_addr;
+        if (saddr != NULL){
+            // fill in src addr
+            memset(saddr, 0, sizeof(struct sockaddr_in));
+            saddr->sin_family = AF_INET;
+            saddr->sin_port = udp_hdr->src_port;
+            saddr->sin_addr.s_addr = ip_hdr->src_addr;
+        }
 
         rte_pktmbuf_free(m);
 
@@ -458,10 +448,10 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
     PendingRequest &req = pending[qt];
 
     if (IS_PUSH(qt)) {
-        while (!req.isDone) pushto(qt, *req.sga, req.addr);
+        while (!req.isDone) push(qt, sga);
         return req.res;
     } else {
-        while (!req.isDone) popfrom(qt, sga, req.addr);
+        while (!req.isDone) pop(qt, sga);
         return req.res;
     }
 }

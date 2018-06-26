@@ -95,16 +95,6 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
-qtoken pushto(int qd, struct Zeus::sgarray &sga, sockaddr *addr)
-{
-    return lib.pushto(qd, sga, addr);
-}
-
-qtoken popfrom(int qd, struct Zeus::sgarray &sga, sockaddr *addr)
-{
-    return lib.popfrom(qd, sga, addr);
-}
-
 ssize_t wait(qtoken qt, struct sgarray &sga)
 {
     return lib.wait(qt, sga);

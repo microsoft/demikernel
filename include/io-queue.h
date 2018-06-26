@@ -55,6 +55,7 @@ struct sgelem {
 struct sgarray {
     int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
+    struct sockaddr addr;
 };
 
 // memory allocation
