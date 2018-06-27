@@ -93,5 +93,7 @@ int qd2fd(int qd);
 int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));
 
+int init();
+
 } // namespace Zeus
 #endif /* _IO_QUEUE_H_ */

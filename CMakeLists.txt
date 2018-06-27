@@ -28,8 +28,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 set(ZEUS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libos)
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${ZEUS_SOURCE_DIR})
-include_directories(/usr/local/include/dpdk)
-link_directories(/usr/local/lib)
+include_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/include)
+link_directories(/home/amanda/dpdk-stable-17.08.2/x86_64-native-linuxapp-gcc/lib)
 
 
 
@@ -52,6 +52,7 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 add_subdirectory(${ZEUS_SOURCE_DIR}/liblwip)
+add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
 
 # ---------------------------------------------------------
 # Build targets
@@ -69,7 +70,7 @@ add_library(zeus_posix SHARED
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_posix hoard)
 
-set( DPDK_LIB "-Wl,--whole-archive -lnuma -lpthread -ldl -lrte_mbuf  -lrte_eal -lrte_mempool -lrte_ring -lrte_ethdev -Wl,--no-whole-archive" )
+set( DPDK_LIB "-Wl,--whole-archive -lnuma -lpthread -ldl -lrte_mbuf  -lrte_eal -lrte_mempool -lrte_mempool_ring -lrte_ring -lrte_ethdev -lrte_kvargs -lrte_pmd_mlx5 -libverbs -Wl,--no-whole-archive" )
 add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 add_library(zeus_lwip SHARED
   ${SRC_ZEUS_LWIP_LIB} ${SRC_ZEUS_COMMON_LIB})
@@ -99,4 +100,9 @@ add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
+# tests target
+add_executable(client ${PROJECT_SOURCE_DIR}/tests/udp_client.cpp)
+target_link_libraries(client ${PROJECT_SOURCE_DIR}/libzeus_lwip.so)
 
+add_executable(server ${PROJECT_SOURCE_DIR}/tests/udp_server.cpp)
+target_link_libraries(server ${PROJECT_SOURCE_DIR}/libzeus_lwip.so)

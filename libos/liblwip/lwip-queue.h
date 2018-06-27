@@ -57,6 +57,8 @@ public:
     int fd();
 };
 
+int lwip_init();
+
 } // namespace LWIP
 } // namespace Zeus
 
