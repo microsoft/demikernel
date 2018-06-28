@@ -57,7 +57,7 @@ public:
     int fd();
 };
 
-int lwip_init();
+int lwip_init(int argc, char* argv[]);
 
 } // namespace LWIP
 } // namespace Zeus

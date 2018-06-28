@@ -35,9 +35,9 @@
 namespace Zeus {
 static QueueLibrary<LWIP::LWIPQueue> lib;
 
-int init()
+int init(int argc, char* argv[])
 {
-    return LWIP::lwip_init();
+    return LWIP::lwip_init(argc, argv);
 }
 
 int queue(int domain, int type, int protocol)
