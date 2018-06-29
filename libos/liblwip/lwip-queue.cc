@@ -66,6 +66,7 @@ static const struct ether_addr ether_broadcast = {
 
 uint8_t port_id;
 struct rte_mempool *mbuf_pool;
+struct rte_eth_conf port_conf;
 
 
 struct ether_addr
@@ -109,7 +110,6 @@ static inline int
 port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 {
     struct rte_eth_dev_info dev_info;
-    struct rte_eth_conf port_conf;
     const uint16_t rx_rings = 1;
     const uint16_t tx_rings = 1;
     int retval;
@@ -206,6 +206,7 @@ lwip_init(int argc, char* argv[])
     //printf("counting devices\n");
     nb_ports = rte_eth_dev_count();
     printf("counted [%d] devices\n", nb_ports);
+    assert(nb_ports == 1);
 
     if (nb_ports <= 0) {
         rte_exit(EXIT_FAILURE, "No probed ethernet devices\n");
@@ -324,6 +325,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
+        printf("push: New pending request: %d\n", qt);
         pending[qt] = PendingRequest{false, 0};
     }
     PendingRequest &req = pending[qt];
@@ -334,6 +336,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     uint32_t data_len = 0;
     struct rte_mbuf* pkts[sga.num_bufs];
     struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
+    uint16_t ret;
 
     //printf("allocating header packet\n");
     struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
@@ -344,7 +347,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     // set up Ethernet header
     //printf("setting up ethernet header\n");
     eth_hdr = rte_pktmbuf_mtod(hdr, struct ether_hdr*);
-    eth_hdr->s_addr = ip_to_mac(bound_addr.sin_addr.s_addr);
+    rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
     printf("push: eth src addr: %x:%x:%x:%x:%x:%x\n", eth_hdr->s_addr.addr_bytes[0],
                                                       eth_hdr->s_addr.addr_bytes[1],
                                                       eth_hdr->s_addr.addr_bytes[2],
@@ -358,8 +361,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
                                                       eth_hdr->d_addr.addr_bytes[3],
                                                       eth_hdr->d_addr.addr_bytes[4],
                                                       eth_hdr->d_addr.addr_bytes[5]);
-    eth_hdr->ether_type = ETHER_TYPE_IPv4;
-
+    eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
     // set up IP header
     //printf("setting up IP header\n");
     ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(hdr, char *)
@@ -394,9 +396,9 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     // Fill in packet fields
     hdr->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
                                 + sizeof(struct ether_hdr);
+    hdr->pkt_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
+                                + sizeof(struct ether_hdr);
     hdr->nb_segs = 1;
-    hdr->l2_len = sizeof(struct ether_hdr);
-    hdr->l3_len = sizeof(struct ipv4_hdr);
 
     struct rte_mbuf* cur = hdr;
     //printf("setting up sg array packets\n");
@@ -407,6 +409,10 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
         //TODO: Remove copy if possible (may involve changing DPDK memory management
         memcpy(rte_pktmbuf_mtod(pkts[i], void*), sga.bufs[i].buf, sga.bufs[i].len);
         pkts[i]->data_len = sga.bufs[i].len;
+        hdr->pkt_len += sga.bufs[i].len;
+
+        printf("push: packet segment [%d] contents: %s\n", i,
+                                        (char*)rte_pktmbuf_mtod(pkts[i], char*));
 
         data_len += sga.bufs[i].len;
         pkts[i]->next = NULL;
@@ -415,14 +421,18 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
         hdr->nb_segs += 1;
     }
 
-    hdr->pkt_len = hdr->data_len + data_len;
+    printf("push: pkt hdr len: %d\n", hdr->data_len);
+    printf("push: pkt data len: %d\tsga data len: %d\n", hdr->pkt_len, data_len);
+    printf("push: pkt segments: %d\n", hdr->nb_segs);
 
     //printf("sending packets\n");
-    rte_eth_tx_burst(port_id, 0,  &hdr, 1);
+    ret = rte_eth_tx_burst(port_id, 0,  &hdr, 1);
+    assert(ret == 1);
     //printf("sent packets\n");
 
     req.res = data_len;
     req.isDone = true;
+    printf("push: completed request: %d\n", qt);
 
     return (ssize_t)data_len;
 }
@@ -433,6 +443,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
+        printf("pop: New pending request: %d\n", qt);
         pending[qt] = PendingRequest{false, 0};
     }
     PendingRequest &req = pending[qt];
@@ -462,7 +473,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
         // check ethernet header
         //printf("checking ethernet header\n");
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
-        eth_type = eth_hdr->ether_type;
+        eth_type = ntohs(eth_hdr->ether_type);
 
         if (eth_type != ETHER_TYPE_IPv4) {
             printf("pop: Not an IPv4 Packet\n");
@@ -511,6 +522,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
             sga.bufs[i].buf = malloc((size_t)cur->data_len);
             memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
             sga.bufs[i].len = cur->data_len;
+            printf("pop: packet segment [%d] contents: %s\n", i, (char*)sga.bufs[i].buf);
             data_len += cur->data_len;
             cur = cur->next;
         }
@@ -529,6 +541,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
         req.isDone = true;
         req.res = data_len;
 
+        printf("pop: completed request: %d\n", qt);
         return data_len;
     }
 }

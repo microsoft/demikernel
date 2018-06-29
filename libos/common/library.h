@@ -82,7 +82,7 @@ public:
         } while (t == 0 || t == -1);
         
         if (isPush)
-            t = t << 1 | PUSH_MASK;
+            t = t | PUSH_MASK;
         pending[t] = qd;
         return t;
     };
