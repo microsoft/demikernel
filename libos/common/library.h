@@ -100,7 +100,7 @@ public:
 
 
     void RemoveQueue(int qd) {
-        assert(queues.find(qd) == queues.end());
+        assert(queues.find(qd) != queues.end());
         queues.erase(qd);    
     };
 

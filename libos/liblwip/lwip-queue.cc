@@ -26,6 +26,7 @@
 #include <rte_ip.h>
 #include <rte_udp.h>
 #include <rte_ether.h>
+#include <rte_memcpy.h>
 
 #include "lwip-queue.h"
 #include "common/library.h"
@@ -59,7 +60,7 @@ static struct mac2ip ip_config[] = {
 };
 
 
-static const struct ether_addr ether_broadcast = {
+static struct ether_addr ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 };
 
@@ -69,16 +70,16 @@ struct rte_mempool *mbuf_pool;
 struct rte_eth_conf port_conf;
 
 
-struct ether_addr
+struct ether_addr*
 ip_to_mac(in_addr_t ip)
 {
-    for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
+   for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
         struct mac2ip *e = &ip_config[i];
         if (ip == e->ip) {
-            return e->mac;
+            return &e->mac;
         }
     }
-    return ether_broadcast;
+    return &ether_broadcast;
 }
 
 
@@ -184,16 +185,6 @@ lwip_init(int argc, char* argv[])
     int ret;
     uint8_t portid;
 
-    /* initialize the rte env first, what a waste of implementation effort!  */
-    /*char *argv[] = {"",
-                    "-l",
-                    "1",
-                    "-m",
-                    "256",
-                    "--no-shconf",
-                    "--file-prefix"};
-    const int argc = 6; */
-
     //printf("initializing environment\n");
     ret = rte_eal_init(argc, argv);
     //printf("environment initialized\n");
@@ -239,7 +230,6 @@ lwip_init(int argc, char* argv[])
         }
     }
     printf("port_id is %d\n", port_id);
-
 
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
@@ -337,6 +327,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     struct rte_mbuf* pkts[sga.num_bufs];
     struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
     uint16_t ret;
+    struct rte_eth_stats stats;
 
     //printf("allocating header packet\n");
     struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
@@ -354,7 +345,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
                                                       eth_hdr->s_addr.addr_bytes[3],
                                                       eth_hdr->s_addr.addr_bytes[4],
                                                       eth_hdr->s_addr.addr_bytes[5]);
-    eth_hdr->d_addr = ip_to_mac(saddr->sin_addr.s_addr);
+    ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
     printf("push: eth dst addr: %x:%x:%x:%x:%x:%x\n", eth_hdr->d_addr.addr_bytes[0],
                                                       eth_hdr->d_addr.addr_bytes[1],
                                                       eth_hdr->d_addr.addr_bytes[2],
@@ -407,7 +398,7 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
         assert(pkts[i] != NULL);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
-        memcpy(rte_pktmbuf_mtod(pkts[i], void*), sga.bufs[i].buf, sga.bufs[i].len);
+        rte_memcpy(rte_pktmbuf_mtod(pkts[i], void*), sga.bufs[i].buf, sga.bufs[i].len);
         pkts[i]->data_len = sga.bufs[i].len;
         hdr->pkt_len += sga.bufs[i].len;
 
@@ -428,6 +419,13 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     //printf("sending packets\n");
     ret = rte_eth_tx_burst(port_id, 0,  &hdr, 1);
     assert(ret == 1);
+
+    if (rte_eth_stats_get(port_id, &stats) < 0) {
+        printf("push: Error getting stats\n");
+    }
+    assert(stats.opackets == 1);
+    assert(stats.oerrors == 0);
+    printf("push: transmitted bytes: %lu\n", stats.obytes);
     //printf("sent packets\n");
 
     req.res = data_len;
@@ -458,10 +456,31 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
     uint8_t ip_type;
     ssize_t data_len = 0;
     uint16_t port;
+    struct rte_eth_stats stats;
 
     //printf("receiving packets\n");
     nb_rx = rte_eth_rx_burst(port_id, 0, &m, 1);
     //printf("received packets\n");
+
+    if (rte_eth_stats_get(port_id, &stats) < 0) {
+        printf("pop: Error getting stats\n");
+    }
+
+    if (stats.imissed > 0) {
+        printf("pop: Packet dropped due to lack of RX queue space\n");
+    }
+
+    if (stats.ierrors > 0) {
+        printf("pop: Packet received with errors\n");
+    }
+
+    if (stats.ipackets > 0) {
+        printf("pop: Received [%lu] packets\n", stats.ipackets);
+    }
+
+    if (stats.rx_nombuf > 0) {
+        printf("pop: mbuf allocation failure\n");
+    }
 
     if (likely(nb_rx == 0)) {
         //printf("no packets received\n");
@@ -520,7 +539,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
         for (int i = 0; i < m->nb_segs - 1; i++) {
             //TODO: Remove copy if possible (may involve changing DPDK memory management
             sga.bufs[i].buf = malloc((size_t)cur->data_len);
-            memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
+            rte_memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
             sga.bufs[i].len = cur->data_len;
             printf("pop: packet segment [%d] contents: %s\n", i, (char*)sga.bufs[i].buf);
             data_len += cur->data_len;
