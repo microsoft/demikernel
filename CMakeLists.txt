@@ -40,6 +40,16 @@ include_directories(${HOARD_DIR}/include/util)
 include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
+# mtcp
+set(DPDK_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/dpdk/)
+set(MTCP_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/mtcp/)
+include_directories(${MTCP_DIR}/include)
+#link_directories(${MTCP_DIR}/lib)
+#include_directories(${DPDK_DIR}/include)
+#link_directories(${DPDK_DIR}/lib)
+#execute_process(COMMAND cat ${DPDK_DIR}/lib/ldflags.txt OUTPUT_VARIABLE DPDK_LD_FLAGS)
+#execute_process(COMMAND cat ${DPDK_DIR}/include/cflags.txt OUTPUT_VARIABLE DPDK_CFLAGS)
+
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
@@ -48,6 +58,7 @@ include_directories(${HOARD_DIR}/Heap-Layers)
 add_subdirectory(${ZEUS_SOURCE_DIR}/common)
 add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libmtcp)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 
 # ---------------------------------------------------------
@@ -65,6 +76,18 @@ add_library(zeus_posix SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_POSIX_LIB})
 target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_posix hoard)
+
+# MTCP libos target
+add_library(zeus_mtcp STATIC
+    ${MTCP_DIR}/lib/libmtcp.a ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_MTCP_LIB})
+#set_target_properties(zeus_mtcp PROPERTIES COMPILE_FLAGS ${DPDK_CFLAGS})
+target_link_libraries(zeus_mtcp ${PROJECT_SOURCE_DIR}/libhoard.so)
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS "-pthread -lrt -march=native -export-dynamic")
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS ${MTCP_DIR}/lib/libmtcp.a)
+#target_link_libraries(zeus_mtcp ${MTCP_DIR}/lib/libmtcp.a)
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS "-lnuma -lmtcp -lpthread -lrt -ld")
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS ${DPDK_LD_FLAGS})
+add_dependencies(zeus_mtcp hoard)
 
 # RDMA libos target
 if (NOT ${APPLE})
