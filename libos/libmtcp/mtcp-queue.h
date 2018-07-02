@@ -70,6 +70,8 @@ private:
     // queued scatter gather arrays
     std::map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;
+    // queue and events
+    uint32_t mtcp_evts;
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
@@ -77,9 +79,13 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    MTCPQueue() : Queue(), workQ{} { };
+    MTCPQueue() : Queue(), workQ{} {
+        mtcp_evts = 0;
+    };
     MTCPQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
+        Queue(type, qd), workQ{}  {
+            mtcp_evts = 0;
+        };
 
     // network functions
     static int queue(int domain, int type, int protocol);
