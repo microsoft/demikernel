@@ -52,6 +52,7 @@ static int mtcp_ep;
 static char mtcp_conf_name[] = "libos.conf";
 static bool mtcp_env_initialized = false;
 
+
 //void libos_mtcp_signal_handler(int signum){
     // NIY
 //}
@@ -88,8 +89,13 @@ int mtcp_env_init(){
 int
 MTCPQueue::queue(int domain, int type, int protocol)
 {
+    printf("mtcp_queue\n");
+    if (!mtcp_env_initialized) {
+        printf("init mtcp env\n");
+        mtcp_env_init();
+    }
     int qd = mtcp_socket(mctx, domain, type, protocol);
-    // check qd?
+    // check qd?, not let the application check qd
     return qd;
 }
 
@@ -111,7 +117,10 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 
     if (newqd != -1) {
         // Always put it in non-blocking mode
-        mtcp_setsock_nonblock(mctx, newqd);
+        int ret = mtcp_setsock_nonblock(mctx, newqd);
+        if (ret < 0) {
+            fprintf(stderr, "error accept() cannot set nonblock\n");
+        }
         // prepare for read msg
         ev.events = MTCP_EPOLLIN;
         ev.data.sockid = newqd;
@@ -136,10 +145,19 @@ MTCPQueue::listen(int backlog)
 int
 MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
+    struct mtcp_epoll_event ev;
     int res = mtcp_connect(mctx, qd, saddr, size);
     fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
+        int ret = mtcp_setsock_nonblock(mctx, qd);
+        if(ret < 0){
+            fprintf(stderr, "connect() cannot set the socket to nonblock\n");
+        }
+        ev.events = MTCP_EPOLLOUT;
+        mtcp_evts |= ev.events;
+        ev.data.sockid = qd;
+        mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_ADD, qd, &ev);
         return res;
     } else {
         return errno;
@@ -170,6 +188,8 @@ MTCPQueue::creat(const char *pathname, mode_t mode)
 int
 MTCPQueue::close()
 {
+    mtcp_evts = 0;
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_DEL, qd, NULL);
     return mtcp_close(mctx, qd);
 }
 
@@ -184,7 +204,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
 {
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = mtcp_read(mctx, qd,(char*)((uint8_t *)&req.buf + req.num_bytes),
+        ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes),
                              sizeof(req.header) - req.num_bytes);
         // we still don't have a header
         if (count < 0) {
@@ -395,12 +415,22 @@ MTCPQueue::Enqueue(qtoken qt, sgarray &sga)
 ssize_t
 MTCPQueue::push(qtoken qt, struct sgarray &sga)
 {
+    struct mtcp_epoll_event ev;
+    ev.events = MTCP_EPOLLOUT | mtcp_evts;
+    ev.data.sockid = qd;
+    mtcp_evts = ev.events;
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
     return Enqueue(qt, sga);
 }
     
 ssize_t
 MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 {
+    struct mtcp_epoll_event ev;
+    ev.events = MTCP_EPOLLIN | mtcp_evts;
+    ev.data.sockid = qd;
+    mtcp_evts = ev.events;
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
     return Enqueue(qt, sga);
 }
     
