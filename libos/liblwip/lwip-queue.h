@@ -25,10 +25,13 @@ private:
     };
 
     // queued scatter gather arrays
-    std::map<qtoken, struct PendingRequest> pending;
+    std::map<qtoken, struct PendingRequest*> pending;
 
     bool is_bound = false;
     struct sockaddr_in bound_addr;
+
+    ssize_t push(struct sgarray &sga, struct PendingRequest *req);
+    ssize_t pop(struct sgarray &sga, struct PendingRequest *req);
 
 public:
     LWIPQueue() : Queue(){ };

@@ -102,6 +102,14 @@ ip_sum(const unaligned_uint16_t *hdr, int hdr_len)
     return ~sum;
 }
 
+static inline void
+print_ether_addr(const char *what, struct ether_addr *eth_addr)
+{
+    char buf[ETHER_ADDR_FMT_SIZE];
+    ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, eth_addr);
+    printf("%s%s\n", what, buf);
+}
+
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -119,14 +127,13 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     uint16_t nb_txd = TX_RING_SIZE;
 
     port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
+    port_conf.rxmode.enable_scatter = 1;
 
     if (port >= rte_eth_dev_count()) {
-        //printf("invalid port \n");
         return -1;
     }
 
     /* Configure the Ethernet device. */
-    //printf("configuring device\n");
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
         return retval;
@@ -139,7 +146,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     }
 
     /* Allocate and set up 1 RX queue per Ethernet port. */
-    //printf("set up RX queues\n");
     for (q = 0; q < rx_rings; q++) {
         retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
                     rte_eth_dev_socket_id(port), NULL, mbuf_pool);
@@ -150,7 +156,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     }
 
     /* Allocate and set up 1 TX queue per Ethernet port. */
-    //printf("set up TX queues\n");
     for (q = 0; q < tx_rings; q++) {
         /* Setup txq_flags */
         struct rte_eth_txconf *txconf;
@@ -167,13 +172,11 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     }
 
     /* Start the Ethernet port. */
-    //printf("starting device\n");
     retval = rte_eth_dev_start(port);
     if (retval < 0) {
         return retval;
     }
 
-    //printf("port initialized\n");
     return 0;
 }
 
@@ -185,18 +188,14 @@ lwip_init(int argc, char* argv[])
     int ret;
     uint8_t portid;
 
-    //printf("initializing environment\n");
     ret = rte_eal_init(argc, argv);
-    //printf("environment initialized\n");
 
     if (ret < 0) {
         rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
         return -1;
     }
 
-    //printf("counting devices\n");
     nb_ports = rte_eth_dev_count();
-    printf("counted [%d] devices\n", nb_ports);
     assert(nb_ports == 1);
 
     if (nb_ports <= 0) {
@@ -204,7 +203,6 @@ lwip_init(int argc, char* argv[])
     }
 
     // Create pool of memory for ring buffers
-    //printf("allocating mbuf pool\n");
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
                                         NUM_MBUFS * nb_ports,
                                         MBUF_CACHE_SIZE,
@@ -216,10 +214,8 @@ lwip_init(int argc, char* argv[])
         rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
         return -1;
     }
-    //printf("mbuf pool allocated\n");
 
     /* Initialize all ports. */
-    //printf("initializing ports\n");
     for (portid = 0; portid < nb_ports; portid++) {
         port_id = portid;
         if (port_init(portid, mbuf_pool) != 0) {
@@ -229,13 +225,11 @@ lwip_init(int argc, char* argv[])
             return -1;
         }
     }
-    printf("port_id is %d\n", port_id);
 
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
     }
 
-    //printf("initialization complete\n");
     return 0;
 }
 
@@ -309,53 +303,42 @@ LWIPQueue::creat(const char *pathname, mode_t mode)
     return 0;
 }
 
-
 ssize_t
-LWIPQueue::push(qtoken qt, struct sgarray &sga)
+LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
 {
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        printf("push: New pending request: %d\n", qt);
-        pending[qt] = PendingRequest{false, 0};
-    }
-    PendingRequest &req = pending[qt];
-
     struct udp_hdr* udp_hdr;
     struct ipv4_hdr* ip_hdr;
     struct ether_hdr* eth_hdr;
     uint32_t data_len = 0;
-    struct rte_mbuf* pkts[sga.num_bufs];
     struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
     uint16_t ret;
-    struct rte_eth_stats stats;
 
-    //printf("allocating header packet\n");
-    struct rte_mbuf* hdr = rte_pktmbuf_alloc(mbuf_pool);
-    //printf("header packet allocated\n");
+    struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
 
-    assert(hdr != NULL);
+    assert(pkt != NULL);
+
+    // packet layout order is (from outside -> in):
+    // ether_hdr
+    // ipv4_hdr
+    // udp_hdr
+    // sga.num_bufs
+    // sga.buf[0].len
+    // sga.buf[0].buf
+    // sga.buf[1].len
+    // sga.buf[1].buf
+    // ...
+
 
     // set up Ethernet header
-    //printf("setting up ethernet header\n");
-    eth_hdr = rte_pktmbuf_mtod(hdr, struct ether_hdr*);
+    eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
     rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-    printf("push: eth src addr: %x:%x:%x:%x:%x:%x\n", eth_hdr->s_addr.addr_bytes[0],
-                                                      eth_hdr->s_addr.addr_bytes[1],
-                                                      eth_hdr->s_addr.addr_bytes[2],
-                                                      eth_hdr->s_addr.addr_bytes[3],
-                                                      eth_hdr->s_addr.addr_bytes[4],
-                                                      eth_hdr->s_addr.addr_bytes[5]);
+    print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
     ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
-    printf("push: eth dst addr: %x:%x:%x:%x:%x:%x\n", eth_hdr->d_addr.addr_bytes[0],
-                                                      eth_hdr->d_addr.addr_bytes[1],
-                                                      eth_hdr->d_addr.addr_bytes[2],
-                                                      eth_hdr->d_addr.addr_bytes[3],
-                                                      eth_hdr->d_addr.addr_bytes[4],
-                                                      eth_hdr->d_addr.addr_bytes[5]);
+    print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
+
     // set up IP header
-    //printf("setting up IP header\n");
-    ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(hdr, char *)
+    ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(pkt, char *)
             + sizeof(struct ether_hdr));
     memset(ip_hdr, 0, sizeof(struct ipv4_hdr));
     ip_hdr->version_ihl = IP_VHL_DEF;
@@ -364,91 +347,86 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
     ip_hdr->time_to_live = IP_DEFTTL;
     ip_hdr->next_proto_id = IPPROTO_UDP;
     ip_hdr->packet_id = 0;
-    ip_hdr->dst_addr = saddr->sin_addr.s_addr;
-    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
     ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
     printf("push: ip src addr: %x\n", ip_hdr->src_addr);
+    ip_hdr->dst_addr = saddr->sin_addr.s_addr;
+    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
     ip_hdr->total_length = sizeof(struct udp_hdr)
                                 + sizeof(struct ipv4_hdr);
     ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr,
                                   sizeof(struct ipv4_hdr));
 
     // set up UDP header
-    //printf("setting up UDP header\n");
-    udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(hdr, char *)
+    udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
-    udp_hdr->dst_port = saddr->sin_port;
-    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
     udp_hdr->src_port = bound_addr.sin_port;
     printf("push: udp src port: %d\n", udp_hdr->src_port);
+    udp_hdr->dst_port = saddr->sin_port;
+    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
     // Fill in packet fields
-    hdr->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
+    pkt->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
                                 + sizeof(struct ether_hdr);
-    hdr->pkt_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
+    pkt->pkt_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
                                 + sizeof(struct ether_hdr);
-    hdr->nb_segs = 1;
+    pkt->nb_segs = 1;
 
-    struct rte_mbuf* cur = hdr;
-    //printf("setting up sg array packets\n");
+    uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
+            + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
+    *ptr = sga.num_bufs;
+    printf("push: sga num_bufs: %d\n", *ptr);
+    ptr += sizeof(uint64_t);
+    pkt->data_len += sizeof(uint64_t);
+    pkt->pkt_len += sizeof(uint64_t);
+
     for (int i = 0; i < sga.num_bufs; i++) {
-        pkts[i] = rte_pktmbuf_alloc(mbuf_pool);
-        assert(pkts[i] != NULL);
+        *ptr = sga.bufs[i].len;
+        printf("push: buf [%d] len: %d\n", i, *ptr);
+        ptr += sizeof(sga.bufs[i].len);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
-        rte_memcpy(rte_pktmbuf_mtod(pkts[i], void*), sga.bufs[i].buf, sga.bufs[i].len);
-        pkts[i]->data_len = sga.bufs[i].len;
-        hdr->pkt_len += sga.bufs[i].len;
-
+        rte_memcpy(ptr, sga.bufs[i].buf, sga.bufs[i].len);
         printf("push: packet segment [%d] contents: %s\n", i,
-                                        (char*)rte_pktmbuf_mtod(pkts[i], char*));
-
+                                        (char*)ptr);
+        ptr += sga.bufs[i].len;
+        pkt->data_len += sga.bufs[i].len + sizeof(sga.bufs[i].len);
+        pkt->pkt_len += sga.bufs[i].len + sizeof(sga.bufs[i].len);
         data_len += sga.bufs[i].len;
-        pkts[i]->next = NULL;
-        cur->next = pkts[i];
-        cur = pkts[i];
-        hdr->nb_segs += 1;
     }
 
-    printf("push: pkt hdr len: %d\n", hdr->data_len);
-    printf("push: pkt data len: %d\tsga data len: %d\n", hdr->pkt_len, data_len);
-    printf("push: pkt segments: %d\n", hdr->nb_segs);
+    printf("push: pkt len: %d\n", pkt->data_len);
 
-    //printf("sending packets\n");
-    ret = rte_eth_tx_burst(port_id, 0,  &hdr, 1);
+    ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     assert(ret == 1);
 
-    if (rte_eth_stats_get(port_id, &stats) < 0) {
-        printf("push: Error getting stats\n");
-    }
-    assert(stats.opackets == 1);
-    assert(stats.oerrors == 0);
-    printf("push: transmitted bytes: %lu\n", stats.obytes);
-    //printf("sent packets\n");
-
-    req.res = data_len;
-    req.isDone = true;
-    printf("push: completed request: %d\n", qt);
+    req->res = data_len;
+    req->isDone = true;
 
     return (ssize_t)data_len;
 }
 
-
 ssize_t
-LWIPQueue::pop(qtoken qt, struct sgarray &sga)
+LWIPQueue::push(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
-        printf("pop: New pending request: %d\n", qt);
-        pending[qt] = PendingRequest{false, 0};
+        printf("push: New pending request: %d\n", qt);
+        pending[qt] = new PendingRequest{false, 0};
     }
-    PendingRequest &req = pending[qt];
+    struct PendingRequest *req = pending[qt];
 
+    return push(sga, req);
+}
+
+ssize_t
+LWIPQueue::pop( struct sgarray &sga, PendingRequest *req)
+{
     unsigned nb_rx;
     struct rte_mbuf *m;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
+    struct sockaddr *addr = &sga.addr;
+    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
     struct ether_hdr *eth_hdr;
@@ -456,43 +434,32 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
     uint8_t ip_type;
     ssize_t data_len = 0;
     uint16_t port;
-    struct rte_eth_stats stats;
 
-    //printf("receiving packets\n");
-    nb_rx = rte_eth_rx_burst(port_id, 0, &m, 1);
-    //printf("received packets\n");
-
-    if (rte_eth_stats_get(port_id, &stats) < 0) {
-        printf("pop: Error getting stats\n");
-    }
-
-    if (stats.imissed > 0) {
-        printf("pop: Packet dropped due to lack of RX queue space\n");
-    }
-
-    if (stats.ierrors > 0) {
-        printf("pop: Packet received with errors\n");
-    }
-
-    if (stats.ipackets > 0) {
-        printf("pop: Received [%lu] packets\n", stats.ipackets);
-    }
-
-    if (stats.rx_nombuf > 0) {
-        printf("pop: mbuf allocation failure\n");
-    }
+    //TODO: Why 4 for nb_pkts?
+    nb_rx = rte_eth_rx_burst(port_id, 0, &m, 4);
 
     if (likely(nb_rx == 0)) {
-        //printf("no packets received\n");
         return 0;
     } else {
         assert(nb_rx == 1);
-        printf("pop: one packet received\n");
-            
+
+        // packet layout order is (from outside -> in):
+        // ether_hdr
+        // ipv4_hdr
+        // udp_hdr
+        // sga.num_bufs
+        // sga.buf[0].len
+        // sga.buf[0].buf
+        // sga.buf[1].len
+        // sga.buf[1].buf
+        // ...
+
         // check ethernet header
-        //printf("checking ethernet header\n");
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
         eth_type = ntohs(eth_hdr->ether_type);
+
+        print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
+        print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
 
         if (eth_type != ETHER_TYPE_IPv4) {
             printf("pop: Not an IPv4 Packet\n");
@@ -500,14 +467,15 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
         }
 
         // check IP header
-        //printf("checking IP header\n");
         ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr));
         ip_type = ip_hdr->next_proto_id;
+        printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
+        printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
 
         if (is_bound) {
             if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
-                printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
+                printf("pop: not for me: ip dst addr: %x\n", ip_hdr->dst_addr);
                 return 0;
             }
         }
@@ -518,51 +486,73 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
         }
 
         // check UDP header
-        //printf("checking UDP header\n");
         udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
         port = udp_hdr->dst_port;
 
+        printf("pop: udp src port: %d\n", udp_hdr->src_port);
+        printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
+
         if (is_bound) {
             if (port != bound_addr.sin_port) {
-                printf("pop: udp dst port: %d", udp_hdr->dst_port);
+                printf("pop: not for me: udp dst port: %d", udp_hdr->dst_port);
                 return 0;
             }
         }
 
+        uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
+                + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
+        sga.num_bufs = *(uint64_t*)ptr;
+        printf("pop: sga num_bufs: %d\n", sga.num_bufs);
+        ptr += sizeof(uint64_t);
+        data_len = 0;
 
-        sga.num_bufs = m->nb_segs - 1;
+        for (int i = 0; i < sga.num_bufs; i++) {
+            sga.bufs[i].len = *(size_t *)ptr;
+            printf("pop: buf [%d] len: %lu\n", i, sga.bufs[i].len);
+            sga.bufs[i].buf = malloc((size_t)sga.bufs[i].len);
+            ptr += sizeof(uint64_t);
 
-        // first segment in packet is just the headers, so we skip it
-        struct rte_mbuf* cur = m->next;
-        //printf("processing sg array\n");
-        for (int i = 0; i < m->nb_segs - 1; i++) {
             //TODO: Remove copy if possible (may involve changing DPDK memory management
-            sga.bufs[i].buf = malloc((size_t)cur->data_len);
-            rte_memcpy(sga.bufs[i].buf, rte_pktmbuf_mtod(cur, void*), (size_t)cur->data_len);
-            sga.bufs[i].len = cur->data_len;
-            printf("pop: packet segment [%d] contents: %s\n", i, (char*)sga.bufs[i].buf);
-            data_len += cur->data_len;
-            cur = cur->next;
+            rte_memcpy(sga.bufs[i].buf, (ioptr)ptr, sga.bufs[i].len);
+            printf("pop: packet segment [%d] contents: %s\n", i,
+                                            (char*)sga.bufs[i].buf);
+            ptr += sga.bufs[i].len;
+            data_len += sga.bufs[i].len;
         }
 
+        printf("pop: pkt len: %d\n", m->pkt_len);
+
         if (saddr != NULL){
-            // fill in src addr
-            //printf("filling in src addr\n");
             memset(saddr, 0, sizeof(struct sockaddr_in));
             saddr->sin_family = AF_INET;
             saddr->sin_port = udp_hdr->src_port;
+            printf("pop: saddr port: %d\n", saddr->sin_port);
             saddr->sin_addr.s_addr = ip_hdr->src_addr;
+            printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
         }
 
         rte_pktmbuf_free(m);
 
-        req.isDone = true;
-        req.res = data_len;
+        req->isDone = true;
+        req->res = data_len;
 
-        printf("pop: completed request: %d\n", qt);
         return data_len;
     }
+}
+
+
+ssize_t
+LWIPQueue::pop(qtoken qt, struct sgarray &sga)
+{
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        printf("pop: New pending request: %d\n", qt);
+        pending[qt] = new PendingRequest{false, 0};
+    }
+    struct PendingRequest *req = pending[qt];
+
+    return pop(sga, req);
 }
 
 
@@ -571,16 +561,22 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest &req = pending[qt];
+    PendingRequest *req = pending[qt];
 
     if (IS_PUSH(qt)) {
         printf("waiting on push: token: %d\n", qt);
-        while (!req.isDone) push(qt, sga);
-        return req.res;
+        while (!req->isDone) {
+            push(sga, req);
+        }
+        printf("wait: push done\n");
+        return req->res;
     } else {
         printf("waiting on pop: token: %d\n", qt);
-        while (!req.isDone) pop(qt, sga);
-        return req.res;
+        while (!req->isDone) {
+            pop(sga, req);
+        }
+        printf("wait: pop done\n");
+        return req->res;
     }
 }
 
