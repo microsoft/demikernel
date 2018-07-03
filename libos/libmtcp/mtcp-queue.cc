@@ -113,7 +113,11 @@ int
 MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     struct mtcp_epoll_event ev;
+    //fprintf(stderr, "@@@@@@@ before mtcp_accept\n");
+    printf("@@@@@@ before accept\n");
     int newqd = mtcp_accept(mctx, qd, saddr, size);
+    printf("@@@@@@ after accept\n");
+    //fprintf(stderr, "@@@@@@@ after mtcp_accept\n");
 
     if (newqd != -1) {
         // Always put it in non-blocking mode
@@ -134,6 +138,10 @@ MTCPQueue::listen(int backlog)
 {
     int res = mtcp_listen(mctx, qd, backlog);
     if (res == 0) {
+        int ret = mtcp_setsock_nonblock(mctx, qd);
+        if(ret < 0) {
+            fprintf(stderr, "error set listen socket\n");
+        }
         return res;
     } else {
         fprintf(stderr, "error listen %d\n", qd);
@@ -147,7 +155,7 @@ MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     struct mtcp_epoll_event ev;
     int res = mtcp_connect(mctx, qd, saddr, size);
-    fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
+    fprintf(stderr, "res = %i errno= %s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, qd);
@@ -202,6 +210,7 @@ MTCPQueue::fd()
 void
 MTCPQueue::ProcessIncoming(PendingRequest &req)
 {
+    printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
         ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes),
@@ -275,7 +284,7 @@ void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
     sgarray &sga = req.sga;
-    printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
+    printf("ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
     // set up header
     if (req.header[0] != MAGIC) {
         req.header[0] = MAGIC;
