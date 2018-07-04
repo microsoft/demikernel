@@ -79,10 +79,12 @@ public:
         qtoken t;
         do {
             t = token_counter++;
-        } while (t == 0 || t == -1);
+        //} while (t == 0 || t == -1);
+        } while ( t == -1);
         
         if (isPush)
             t = t << 1 | PUSH_MASK;
+        printf("GetNewToken: qd:%d, isPush:%d token:%d\n", qd, isPush, t);
         pending[t] = qd;
         return t;
     };
