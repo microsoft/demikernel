@@ -155,7 +155,7 @@ MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     struct mtcp_epoll_event ev;
     int res = mtcp_connect(mctx, qd, saddr, size);
-    fprintf(stderr, "res = %i errno= %s", res, strerror(errno));
+    fprintf(stderr, "connect() res = %i errno= %s\n", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, qd);
@@ -330,13 +330,14 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     // write sga
     uint64_t dataSize = req.header[1];
     uint64_t offset = sizeof(req.header);
+    printf("dataSize:%d\n", dataSize);
     if (req.num_bytes < dataSize + sizeof(req.header)) {
         for (int i = 0; i < sga.num_bufs; i++) {
             if (req.num_bytes < offset + sizeof(uint64_t)) {
                 // stick in size header
-                ssize_t count = mtcp_write(mctx, qd,(char*) (&sga.bufs[i].len + (req.num_bytes - offset)),
+                ssize_t count = mtcp_write(mctx, qd, (char*) (&sga.bufs[i].len + (req.num_bytes - offset)),
                                 sizeof(uint64_t) - (req.num_bytes - offset));
-                printf("mtcp_write:330 count:%d\n", count);
+                printf("1-mtcp_write(): count:%d req.num_bytes:%d offset:%d\n", count, req.num_bytes, offset);
                 if (count < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         return;
@@ -354,9 +355,8 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
             }
             offset += sizeof(uint64_t);
             if (req.num_bytes < offset + sga.bufs[i].len) {
-                ssize_t count = mtcp_write(mctx, qd, (char*) (&sga.bufs[i].buf + (req.num_bytes - offset)),
-                                sga.bufs[i].len - (req.num_bytes - offset)); 
-                printf("mtcp_write:350 count:%d\n", count);
+                ssize_t count = mtcp_write(mctx, qd, (char*) (sga.bufs[i].buf + (req.num_bytes - offset)), sga.bufs[i].len - (req.num_bytes - offset)); 
+                printf("2-mtcp_write(): count:%d\n", count);
                 if (count < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         return;
