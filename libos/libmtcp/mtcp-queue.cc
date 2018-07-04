@@ -213,8 +213,9 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes),
-                             sizeof(req.header) - req.num_bytes);
+        ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        printf("0-mtcp_read() count:%d\n", count);
         // we still don't have a header
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -248,8 +249,8 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        ssize_t count = mtcp_read(mctx, qd, (char*)((int8_t *)req.buf + offset),
-                               dataLen - offset);
+        ssize_t count = mtcp_read(mctx, qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
+        printf("1-mtcp_read() count:%d\n", count);
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;
@@ -269,14 +270,21 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)req.buf;
     req.sga.num_bufs = req.header[2];
+    printf("num_bufs:%d\n", req.header[2]);
     for (int i = 0; i < req.sga.num_bufs; i++) {
         req.sga.bufs[i].len = *(size_t *)ptr;
+        printf("len:%d\n", req.sga.bufs[i].len);
         ptr += sizeof(uint64_t);
         req.sga.bufs[i].buf = (ioptr)ptr;
+        char read_str[100];
+        memcpy(read_str, req.sga.bufs[i].buf, req.sga.bufs[i].len);
+        read_str[req.sga.bufs[i].len] = '\0';
+        printf("read str:%s , first%c\n", read_str, read_str[0]);
         ptr += req.sga.bufs[i].len;
     }
     req.isDone = true;
     req.res = dataLen - (req.sga.num_bufs * sizeof(uint64_t));
+    printf("End ProcessIncoming\n");
     return;
 }
     
@@ -300,7 +308,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     // write header
     if (req.num_bytes < sizeof(req.header)) {
         ssize_t count = mtcp_write(mctx, qd, (char*) (&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
-        printf("write header: count:%d\n", count);
+        printf("mtcp_write() for header: count%d\n", count);
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;
@@ -377,6 +385,7 @@ MTCPQueue::ProcessQ(size_t maxRequests)
 {
     size_t done = 0;
 
+    printf("ProcessQ()\n");
     while (!workQ.empty() && done < maxRequests) {
         qtoken qt = workQ.front();
         auto it = pending.find(qt);
@@ -388,8 +397,10 @@ MTCPQueue::ProcessQ(size_t maxRequests)
         
         PendingRequest &req = pending[qt]; 
         if (IS_PUSH(qt)) {
+            printf("isPush\n");
             ProcessOutgoing(req);
         } else {
+            printf("isPop\n");
             ProcessIncoming(req);
         }
 
@@ -432,6 +443,7 @@ MTCPQueue::push(qtoken qt, struct sgarray &sga)
     ev.data.sockid = qd;
     mtcp_evts = ev.events;
     mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
+    printf("MTCPQueue::push() qt:%d\n", qt);
     return Enqueue(qt, sga);
 }
     
@@ -443,6 +455,7 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
     ev.data.sockid = qd;
     mtcp_evts = ev.events;
     mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
+    printf("MTCPQueue::pop() qt:%d\n", qt);
     return Enqueue(qt, sga);
 }
     
