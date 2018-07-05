@@ -269,6 +269,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)req.buf;
+    printf("req.buf:%p\n", req.buf);
     req.sga.num_bufs = req.header[2];
     printf("num_bufs:%d\n", req.header[2]);
     printf("sga addr:%p\n", (void*) &req.sga);
@@ -452,12 +453,24 @@ ssize_t
 MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 {
     struct mtcp_epoll_event ev;
+    ssize_t ret;
     ev.events = MTCP_EPOLLIN | mtcp_evts;
     ev.data.sockid = qd;
     mtcp_evts = ev.events;
     mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
     printf("MTCPQueue::pop() qt:%d\n", qt);
-    return Enqueue(qt, sga);
+    ret = Enqueue(qt, sga);
+    if (ret == 0){
+        // read success, feed the result sgarray
+        auto it = pending.find(qt);
+        assert(it != pending.end());
+        sga.num_bufs = (it->second).sga.num_bufs;
+        for(int i = 0; i < sga.num_bufs; i++){
+            sga.bufs[i].buf = (it->second).sga.bufs[i].buf;
+            sga.bufs[i].len = (it->second).sga.bufs[i].len;
+        }
+    }
+    return ret;
 }
     
 ssize_t
