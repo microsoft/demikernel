@@ -271,15 +271,16 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     uint8_t *ptr = (uint8_t *)req.buf;
     req.sga.num_bufs = req.header[2];
     printf("num_bufs:%d\n", req.header[2]);
+    printf("sga addr:%p\n", (void*) &req.sga);
     for (int i = 0; i < req.sga.num_bufs; i++) {
         req.sga.bufs[i].len = *(size_t *)ptr;
-        printf("len:%d\n", req.sga.bufs[i].len);
+        printf("req.sga.bufs[%d].len:%d\n", i, req.sga.bufs[i].len);
         ptr += sizeof(uint64_t);
         req.sga.bufs[i].buf = (ioptr)ptr;
         char read_str[100];
         memcpy(read_str, req.sga.bufs[i].buf, req.sga.bufs[i].len);
         read_str[req.sga.bufs[i].len] = '\0';
-        printf("read str:%s , first%c\n", read_str, read_str[0]);
+        printf("read str:%s , first character:%c\n", read_str, read_str[0]);
         ptr += req.sga.bufs[i].len;
     }
     req.isDone = true;
@@ -292,7 +293,7 @@ void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
     sgarray &sga = req.sga;
-    printf("ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
+    printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
     // set up header
     if (req.header[0] != MAGIC) {
         req.header[0] = MAGIC;
