@@ -11,7 +11,7 @@
 #include "include/io-queue.h"
 #include "common/queue.h"
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <netinet/in.h>
 
 namespace Zeus {
@@ -20,20 +20,29 @@ namespace LWIP {
 class LWIPQueue : public Queue {
 private:
     struct PendingRequest {
+    public:
         bool isDone;
         ssize_t res;
         struct sgarray *sga;
+
+        PendingRequest() :
+            isDone(false),
+            res(0),
+            sga(NULL) { };
     };
 
     // queued scatter gather arrays
-    std::map<qtoken, struct PendingRequest*> pending;
+    std::unordered_map<qtoken, struct PendingRequest> pending;
+    std::list<qtoken> workQ;
 
     bool is_bound = false;
     struct sockaddr_in bound_addr;
 
-    ssize_t push(struct sgarray &sga, struct PendingRequest *req);
-    ssize_t pop(struct sgarray &sga, struct PendingRequest *req);
     int bind();
+    void ProcessOutgoing(PendingRequest &req);
+    void ProcessIncoming(PendingRequest &req);
+    void ProcessQ(size_t maxRequests);
+    ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
     LWIPQueue() : Queue(){ };

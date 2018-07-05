@@ -278,15 +278,15 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
             port = 1024;
         }
     }
+
     if (bound_addr.sin_addr.s_addr == 0) {
         struct ether_addr my_mac;
         rte_eth_macaddr_get(port_id, &my_mac);
         bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
     }
+
     is_bound = true;
 
-    //printf("bind: bound to addr %x\n", bound_addr.sin_addr.s_addr);
-    //printf("bind: bound to port %d\n", bound_addr.sin_port);
     return 0;
 }
 
@@ -298,12 +298,11 @@ LWIPQueue::bind()
     if (port > 65535) {
         port = 1024;
     }
+
     struct ether_addr my_mac;
     rte_eth_macaddr_get(port_id, &my_mac);
     bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
     is_bound = true;
-    //printf("bind: bound to addr %x\n", bound_addr.sin_addr.s_addr);
-    //printf("bind: bound to port %d\n", bound_addr.sin_port);
     return 0;
 }
 
@@ -349,8 +348,9 @@ LWIPQueue::creat(const char *pathname, mode_t mode)
     return 0;
 }
 
-ssize_t
-LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
+
+void
+LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 {
     assert(is_init);
 
@@ -362,7 +362,7 @@ LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
     struct ipv4_hdr* ip_hdr;
     struct ether_hdr* eth_hdr;
     uint32_t data_len = 0;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)&sga.addr;
+    struct sockaddr_in* saddr = (struct sockaddr_in*)&req.sga->addr;
     uint16_t ret;
 
     struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
@@ -384,9 +384,9 @@ LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
     rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-    //print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
+    print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
     ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
-    //print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
+    print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
 
     // set up IP header
@@ -400,9 +400,9 @@ LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
     ip_hdr->next_proto_id = IPPROTO_UDP;
     ip_hdr->packet_id = 0;
     ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
-    //printf("push: ip src addr: %x\n", ip_hdr->src_addr);
+    printf("push: ip src addr: %x\n", ip_hdr->src_addr);
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
-    //printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
+    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
     ip_hdr->total_length = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr);
     ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
 
@@ -410,9 +410,9 @@ LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
     udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
     udp_hdr->src_port = bound_addr.sin_port;
-    //printf("push: udp src port: %d\n", udp_hdr->src_port);
+    printf("push: udp src port: %d\n", udp_hdr->src_port);
     udp_hdr->dst_port = saddr->sin_port;
-    //printf("push: udp dst port: %d\n", udp_hdr->dst_port);
+    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
@@ -425,65 +425,44 @@ LWIPQueue::push(struct sgarray &sga, struct PendingRequest *req)
 
     uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
             + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-    *ptr = sga.num_bufs;
-    //printf("push: sga num_bufs: %d\n", *ptr);
+    *ptr = req.sga->num_bufs;
+    printf("push: sga num_bufs: %d\n", *ptr);
     ptr += sizeof(uint64_t);
     pkt->data_len += sizeof(uint64_t);
     pkt->pkt_len += sizeof(uint64_t);
 
-    for (int i = 0; i < sga.num_bufs; i++) {
-        *ptr = sga.bufs[i].len;
-        //printf("push: buf [%d] len: %d\n", i, *ptr);
-        ptr += sizeof(sga.bufs[i].len);
+    for (int i = 0; i < req.sga->num_bufs; i++) {
+        *ptr = req.sga->bufs[i].len;
+        printf("push: buf [%d] len: %d\n", i, *ptr);
+        ptr += sizeof(req.sga->bufs[i].len);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
-        rte_memcpy(ptr, sga.bufs[i].buf, sga.bufs[i].len);
-        //printf("push: packet segment [%d] contents: %s\n", i,
-        //                                (char*)ptr);
-        ptr += sga.bufs[i].len;
-        pkt->data_len += sga.bufs[i].len + sizeof(sga.bufs[i].len);
-        pkt->pkt_len += sga.bufs[i].len + sizeof(sga.bufs[i].len);
-        data_len += sga.bufs[i].len;
+        rte_memcpy(ptr, req.sga->bufs[i].buf, req.sga->bufs[i].len);
+        printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
+        ptr += req.sga->bufs[i].len;
+        pkt->data_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
+        pkt->pkt_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
+        data_len += req.sga->bufs[i].len;
     }
 
-    //printf("push: pkt len: %d\n", pkt->data_len);
+    printf("push: pkt len: %d\n", pkt->data_len);
 
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     assert(ret == 1);
 
-    req->res = data_len;
-    req->isDone = true;
-
-    return (ssize_t)data_len;
+    req.res = data_len;
+    req.isDone = true;
 }
 
-ssize_t
-LWIPQueue::push(qtoken qt, struct sgarray &sga)
-{
-    assert(is_init);
 
-    if (!is_bound) {
-        bind();
-    }
-
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        //printf("push: New pending request: %d\n", qt);
-        pending[qt] = new PendingRequest{false, 0};
-    }
-    struct PendingRequest *req = pending[qt];
-
-    return push(sga, req);
-}
-
-ssize_t
-LWIPQueue::pop( struct sgarray &sga, PendingRequest *req)
+void
+LWIPQueue::ProcessIncoming(PendingRequest &req)
 {
     assert(is_init);
 
     unsigned nb_rx;
     struct rte_mbuf *m;
-    struct sockaddr *addr = &sga.addr;
+    struct sockaddr *addr = &req.sga->addr;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
@@ -497,10 +476,8 @@ LWIPQueue::pop( struct sgarray &sga, PendingRequest *req)
     nb_rx = rte_eth_rx_burst(port_id, 0, &m, 4);
 
     if (likely(nb_rx == 0)) {
-        return 0;
+        return;
     } else {
-        assert(nb_rx == 1);
-
         // packet layout order is (from outside -> in):
         // ether_hdr
         // ipv4_hdr
@@ -516,31 +493,31 @@ LWIPQueue::pop( struct sgarray &sga, PendingRequest *req)
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
         eth_type = ntohs(eth_hdr->ether_type);
 
-        //print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
-        //print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
+        print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
+        print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
 
         if (eth_type != ETHER_TYPE_IPv4) {
-            //printf("pop: Not an IPv4 Packet\n");
-            return 0;
+            printf("pop: Not an IPv4 Packet\n");
+            return;
         }
 
         // check IP header
         ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr));
         ip_type = ip_hdr->next_proto_id;
-        //printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
-        //printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
+        printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
+        printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
 
         if (is_bound) {
             if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
-                //printf("pop: not for me: ip dst addr: %x\n", ip_hdr->dst_addr);
-                return 0;
+                printf("pop: not for me: ip dst addr: %x\n", ip_hdr->dst_addr);
+                return;
             }
         }
 
         if (ip_type != IPPROTO_UDP) {
-            //printf("pop: Not a UDP Packet\n");
-            return 0;
+            printf("pop: Not a UDP Packet\n");
+            return;
         }
 
         // check UDP header
@@ -548,54 +525,116 @@ LWIPQueue::pop( struct sgarray &sga, PendingRequest *req)
                     + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
         port = udp_hdr->dst_port;
 
-        //printf("pop: udp src port: %d\n", udp_hdr->src_port);
-        //printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
+        printf("pop: udp src port: %d\n", udp_hdr->src_port);
+        printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
 
         if (is_bound) {
             if (port != bound_addr.sin_port) {
-                //printf("pop: not for me: udp dst port: %d", udp_hdr->dst_port);
-                return 0;
+                printf("pop: not for me: udp dst port: %d", udp_hdr->dst_port);
+                return;
             }
         }
 
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-        sga.num_bufs = *(uint64_t*)ptr;
-        //printf("pop: sga num_bufs: %d\n", sga.num_bufs);
+        req.sga->num_bufs = *(uint64_t*)ptr;
+        printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
         ptr += sizeof(uint64_t);
         data_len = 0;
 
-        for (int i = 0; i < sga.num_bufs; i++) {
-            sga.bufs[i].len = *(size_t *)ptr;
-            //printf("pop: buf [%d] len: %lu\n", i, sga.bufs[i].len);
-            sga.bufs[i].buf = malloc((size_t)sga.bufs[i].len);
+        for (int i = 0; i < req.sga->num_bufs; i++) {
+            req.sga->bufs[i].len = *(size_t *)ptr;
+            printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
+            req.sga->bufs[i].buf = malloc((size_t)req.sga->bufs[i].len);
             ptr += sizeof(uint64_t);
 
             //TODO: Remove copy if possible (may involve changing DPDK memory management
-            rte_memcpy(sga.bufs[i].buf, (ioptr)ptr, sga.bufs[i].len);
-            //printf("pop: packet segment [%d] contents: %s\n", i, (char*)sga.bufs[i].buf);
-            ptr += sga.bufs[i].len;
-            data_len += sga.bufs[i].len;
+            rte_memcpy(req.sga->bufs[i].buf, (ioptr)ptr, req.sga->bufs[i].len);
+            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
+            ptr += req.sga->bufs[i].len;
+            data_len += req.sga->bufs[i].len;
         }
 
-        //printf("pop: pkt len: %d\n", m->pkt_len);
+        printf("pop: pkt len: %d\n", m->pkt_len);
 
         if (saddr != NULL){
             memset(saddr, 0, sizeof(struct sockaddr_in));
             saddr->sin_family = AF_INET;
             saddr->sin_port = udp_hdr->src_port;
-            //printf("pop: saddr port: %d\n", saddr->sin_port);
+            printf("pop: saddr port: %d\n", saddr->sin_port);
             saddr->sin_addr.s_addr = ip_hdr->src_addr;
-            //printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
+            printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
         }
 
         rte_pktmbuf_free(m);
 
-        req->isDone = true;
-        req->res = data_len;
-
-        return data_len;
+        req.isDone = true;
+        req.res = data_len;
     }
+}
+
+void
+LWIPQueue::ProcessQ(size_t maxRequests)
+{
+    size_t done = 0;
+
+    while (!workQ.empty() && done < maxRequests) {
+        qtoken qt = workQ.front();
+        auto it = pending.find(qt);
+        done++;
+        if (it == pending.end()) {
+            workQ.pop_front();
+            continue;
+        }
+
+        PendingRequest &req = pending[qt];
+        if (IS_PUSH(qt)) {
+            ProcessOutgoing(req);
+        } else {
+            ProcessIncoming(req);
+        }
+
+        if (req.isDone) {
+            workQ.pop_front();
+        }
+    }
+    //printf("Processed %lu requests", done);
+}
+
+
+ssize_t
+LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
+{
+    auto it = pending.find(qt);
+    PendingRequest req;
+    if (it == pending.end()) {
+        req = PendingRequest();
+        req.sga = &sga;
+        pending[qt] = req;
+        workQ.push_back(qt);
+
+        // let's try processing here because we know our sockets are
+        // non-blocking
+        if (workQ.front() == qt) ProcessQ(1);
+    } else {
+        req = it->second;
+    }
+    if (req.isDone) {
+        return req.res;
+    } else {
+        return 0;
+    }
+}
+
+ssize_t
+LWIPQueue::push(qtoken qt, struct sgarray &sga)
+{
+    assert(is_init);
+
+    if (!is_bound) {
+        bind();
+    }
+    return Enqueue(qt, sga);
 }
 
 
@@ -603,14 +642,7 @@ ssize_t
 LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 {
     assert(is_init);
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        //printf("pop: New pending request: %d\n", qt);
-        pending[qt] = new PendingRequest{false, 0};
-    }
-    struct PendingRequest *req = pending[qt];
-
-    return pop(sga, req);
+    return Enqueue(qt, sga);
 }
 
 
@@ -620,30 +652,25 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
     assert(is_init);
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest *req = pending[qt];
 
-    if (IS_PUSH(qt)) {
-        //printf("waiting on push: token: %d\n", qt);
-        while (!req->isDone) push(*req->sga, req);
-        //printf("wait: push done\n");
-        return req->res;
-    } else {
-        //printf("waiting on pop: token: %d\n", qt);
-        while (!req->isDone) pop(sga, req);
-        //printf("wait: pop done\n");
-        return req->res;
+    while(!it->second.isDone) {
+        ProcessQ(1);
     }
+
+    sga = *it->second.sga;
+    return it->second.res;
 }
 
 
 ssize_t
 LWIPQueue::poll(qtoken qt, struct sgarray &sga)
 {
+    assert(is_init);
     auto it = pending.find(qt);
     assert(it != pending.end());
-    if (it->second->isDone) {
-        sga = *it->second->sga;
-        return it->second->res;
+    if (it->second.isDone) {
+        sga = *it->second.sga;
+        return it->second.res;
     } else {
         return 0;
     }
