@@ -40,7 +40,7 @@
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
-#define PUSH_MASK 0x10000000
+#define PUSH_MASK 0x1
 #define IS_PUSH(t) t & PUSH_MASK
 thread_local static uint64_t queue_counter = 0;
 thread_local static uint64_t token_counter = 0;
@@ -81,8 +81,12 @@ public:
             t = token_counter++;
         } while (t == 0 || t == -1);
         
-        if (isPush)
-            t = t | PUSH_MASK;
+        if (isPush) {
+            t = t << 1 | PUSH_MASK;
+        }
+        else {
+            t = t << 1;
+        }
         pending[t] = qd;
         return t;
     };

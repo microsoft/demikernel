@@ -22,6 +22,7 @@ private:
     struct PendingRequest {
         bool isDone;
         ssize_t res;
+        struct sgarray *sga;
     };
 
     // queued scatter gather arrays
@@ -32,6 +33,7 @@ private:
 
     ssize_t push(struct sgarray &sga, struct PendingRequest *req);
     ssize_t pop(struct sgarray &sga, struct PendingRequest *req);
+    int bind();
 
 public:
     LWIPQueue() : Queue(){ };
