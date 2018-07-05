@@ -164,7 +164,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 {
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::read(qd, (uint8_t *)&req.buf + req.num_bytes,
+        ssize_t count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
                              sizeof(req.header) - req.num_bytes);
         // we still don't have a header
         if (count < 0) {
@@ -354,19 +354,16 @@ ssize_t
 PosixQueue::Enqueue(qtoken qt, sgarray &sga)
 {
     auto it = pending.find(qt);
-    PendingRequest req;
     if (it == pending.end()) {
-        req = PendingRequest();
-        req.sga = sga;
-        pending[qt] = req;
+        pending.insert(make_pair<qt, PendingRequest(sga)>);
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
         // non-blocking
         if (workQ.front() == qt) ProcessQ(1);
-    } else {
-        req = it->second;
     }
+    PendingRequest req = pending[qt];
+
     if (req.isDone) {
         return req.res;
     } else {

@@ -51,14 +51,15 @@ private:
         void *buf;
         // number of bytes processed so far
         size_t num_bytes;
-        struct sgarray sga;
+        struct sgarray &sga;
 
-        PendingRequest() :
+        PendingRequest(struct sgarray &sga) :
             isDone(false),
             res(0),
             header{0,0,0},
             buf(NULL),
-            num_bytes(0) { };            
+            num_bytes(0),
+            sga(sga) { };
     };
     
     // queued scatter gather arrays

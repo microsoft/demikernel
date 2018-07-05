@@ -43,7 +43,7 @@
 namespace Zeus {
     
 typedef void * ioptr;
-typedef int qtoken;    
+typedef int64_t qtoken;    
     
 struct sgelem {
     ioptr buf;
