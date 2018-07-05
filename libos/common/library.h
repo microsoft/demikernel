@@ -84,6 +84,8 @@ public:
         
         if (isPush)
             t = t << 1 | PUSH_MASK;
+        else
+            t = t << 1;
         printf("GetNewToken: qd:%d, isPush:%d token:%d\n", qd, isPush, t);
         pending[t] = qd;
         return t;

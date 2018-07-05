@@ -300,7 +300,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
         for (int i = 0; i < sga.num_bufs; i++) {
             req.header[1] += (uint64_t)sga.bufs[i].len;
             req.header[1] += sizeof(uint64_t);
-            //pin((void *)sga.bufs[i].buf);
+            pin((void *)sga.bufs[i].buf);
         }
         req.header[2] = req.sga.num_bufs;
     }
@@ -464,10 +464,12 @@ MTCPQueue::wait(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     assert(it != pending.end());
+    printf("MTCPQueue::wait(%d) isDone:%d\n", qt, it->second.isDone);
 
     while(!it->second.isDone) {
         ProcessQ(1);
     }
+    printf("wait() return\n");
 
     sga = it->second.sga;
     return it->second.res;
