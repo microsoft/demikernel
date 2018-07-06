@@ -34,7 +34,7 @@
 #include "common/queue.h"
 #include "common/library.h"
 #include <list>
-#include <map>
+#include <unordered_map>
 
 namespace Zeus {
 namespace POSIX {
@@ -63,7 +63,7 @@ private:
     };
     
     // queued scatter gather arrays
-    std::map<qtoken, PendingRequest> pending;
+    std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;
 
     void ProcessIncoming(PendingRequest &req);
