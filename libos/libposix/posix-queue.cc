@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/uio.h>
 
 
 namespace Zeus {
@@ -236,88 +237,67 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
-    if (req.header[0] != MAGIC) {
-        req.header[0] = MAGIC;
-        // calculate size
-        for (int i = 0; i < sga.num_bufs; i++) {
-            req.header[1] += (uint64_t)sga.bufs[i].len;
-            req.header[1] += sizeof(uint64_t);
-            pin((void *)sga.bufs[i].buf);
-        }
-        req.header[2] = req.sga.num_bufs;
+
+    struct iovec vsga[2*sga.num_bufs + 1];
+    uint64_t lens[sga.num_bufs];
+    size_t dataSize = 0;
+    size_t totalLen = 0;
+
+    // calculate size and fill in iov
+    for (int i = 0; i < sga.num_bufs; i++) {
+        lens[i] = sga.bufs[i].len;
+        vsga[2*i+1].iov_base = &lens[i];
+        vsga[2*i+1].iov_len = sizeof(uint64_t);
+        
+        vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
+        vsga[2*i+2].iov_len = sga.bufs[i].len;
+        
+        // add up actual data size
+        dataSize += (uint64_t)sga.bufs[i].len;
+        
+        // add up expected packet size minus header
+        totalLen += (uint64_t)sga.bufs[i].len;
+        totalLen += sizeof(uint64_t);
+        pin((void *)sga.bufs[i].buf);
     }
 
-    // write header
-    if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::write(qd,
-                                &req.header + req.num_bytes,
-                                sizeof(req.header) - req.num_bytes);
-        if (count < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return;
-            } else {
-                fprintf(stderr, "Could not write header: %s\n", strerror(errno));
-                req.isDone = true;
-                req.res = count;
-                return;
-            }
-        }
-        req.num_bytes += count;
-        if (req.num_bytes < sizeof(req.header)) {
+    // fill in header
+    req.header[0] = MAGIC;
+    req.header[1] = totalLen;
+    req.header[2] = req.sga.num_bufs;
+
+    // set up header at beginning of packet
+    vsga[0].iov_base = &req.header;
+    vsga[0].iov_len = sizeof(req.header);
+    totalLen += sizeof(req.header);
+
+    ssize_t count = ::writev(qd,
+                             vsga,
+                             2*sga.num_bufs +1);
+
+    // if error
+    if (count < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            fprintf(stderr, "Could not write header: %s\n", strerror(errno));
+            req.isDone = true;
+            req.res = count;
             return;
         }
     }
 
-    assert(req.num_bytes >= sizeof(req.header));
-    
-    // write sga
-    uint64_t dataSize = req.header[1];
-    uint64_t offset = sizeof(req.header);
-    if (req.num_bytes < dataSize + sizeof(req.header)) {
-        for (int i = 0; i < sga.num_bufs; i++) {
-            if (req.num_bytes < offset + sizeof(uint64_t)) {
-                // stick in size header
-                ssize_t count = ::write(qd, &sga.bufs[i].len + (req.num_bytes - offset),
-                                sizeof(uint64_t) - (req.num_bytes - offset));
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sizeof(uint64_t)) {
-                    return;
-                }
-            }
-            offset += sizeof(uint64_t);
-            if (req.num_bytes < offset + sga.bufs[i].len) {
-                ssize_t count = ::write(qd, (uint8_t *)sga.bufs[i].buf + (req.num_bytes - offset),
-                                sga.bufs[i].len - (req.num_bytes - offset)); 
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sga.bufs[i].len) {
-                    return;
-                }
-            }
-            offset += sga.bufs[i].len;
-        }
+    // otherwise
+    req.num_bytes += count;
+    if (req.num_bytes < totalLen) {
+        assert(req.num_bytes == 0);
+        return;
+    }
+    for (int i = 0; i < sga.num_bufs; i++) {
+        unpin((void *)sga.bufs[i].buf);
     }
 
-    req.res = dataSize - (sga.num_bufs * sizeof(uint64_t));
+    req.res = dataSize;
     req.isDone = true;
 }
     
