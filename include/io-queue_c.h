@@ -33,6 +33,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <stdint.h>
 //#include <memory>
     
 #define C_MAX_QUEUE_DEPTH 40
@@ -41,11 +42,18 @@
 
 #define C_ZEUS_IO_ERR_NO (-9)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef void * zeus_ioptr;
+typedef int64_t zeus_qtoken;
 
 typedef struct Sgelem{
     zeus_ioptr buf;
     size_t len;
+    // for file operations
+    uint64_t addr;
 }zeus_sgelem;
     
 typedef struct Sgarray{
@@ -56,22 +64,37 @@ typedef struct Sgarray{
 // memory allocation
 //ioptr zeus_iomalloc(size_t size);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-    // network functions
-    int zeus_queue(int domain, int type, int protocol);
-    int zeus_listen(int fd, int backlog);
-    int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
-    int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
-    int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
+// network functions
+int zeus_queue(int domain, int type, int protocol);
+int zeus_listen(int fd, int backlog);
+int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
+int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
+int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
 
-    // eventually file functions
-    // int open() ..
+// eventually file functions
+//int zeus_open(const char *pathname, int flags);  // C does not support
+int zeus_open(const char *pathname, int flags, mode_t mode);
+int zeus_creat(const char *pathname, mode_t mode);
 
-    ssize_t zeus_push(int qd, zeus_sgarray * bufs);
-    ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
-    int zeus_qd2fd(int qd);
+ssize_t zeus_push(int qd, zeus_sgarray * bufs);
+ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
+
+// other functions
+zeus_qtoken push(int qd, zeus_sgarray *sga); // if return 0, then already complete
+zeus_qtoken pop(int qd, zeus_sgarray *sga); // if return 0, then already ready and in sga
+ssize_t wait(zeus_qtoken qt, zeus_sgarray *sga);
+ssize_t wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
+ssize_t wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
+// identical to a push, followed by a wait on the returned zeus_qtoken
+ssize_t blocking_push(int qd, zeus_sgarray *sga);
+// identical to a pop, followed by a wait on the returned zeus_qtoken
+ssize_t blocking_pop(int qd, zeus_sgarray *sga); 
+
+
+int zeus_qd2fd(int qd);
+
+// eventually queue functions
+//int merge(int qd1, int qd2);
 
 #ifdef __cplusplus
 }
