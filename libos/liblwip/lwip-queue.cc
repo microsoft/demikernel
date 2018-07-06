@@ -384,9 +384,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
     rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-    print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
+    //print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
     ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
-    print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
+    //print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
 
     // set up IP header
@@ -400,9 +400,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     ip_hdr->next_proto_id = IPPROTO_UDP;
     ip_hdr->packet_id = 0;
     ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
-    printf("push: ip src addr: %x\n", ip_hdr->src_addr);
+    //printf("push: ip src addr: %x\n", ip_hdr->src_addr);
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
-    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
+    //printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
     ip_hdr->total_length = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr);
     ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
 
@@ -410,9 +410,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
     udp_hdr->src_port = bound_addr.sin_port;
-    printf("push: udp src port: %d\n", udp_hdr->src_port);
+    //printf("push: udp src port: %d\n", udp_hdr->src_port);
     udp_hdr->dst_port = saddr->sin_port;
-    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
+    //printf("push: udp dst port: %d\n", udp_hdr->dst_port);
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
@@ -426,26 +426,26 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
             + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
     *ptr = req.sga->num_bufs;
-    printf("push: sga num_bufs: %d\n", *ptr);
+    //printf("push: sga num_bufs: %d\n", *ptr);
     ptr += sizeof(uint64_t);
     pkt->data_len += sizeof(uint64_t);
     pkt->pkt_len += sizeof(uint64_t);
 
     for (int i = 0; i < req.sga->num_bufs; i++) {
         *ptr = req.sga->bufs[i].len;
-        printf("push: buf [%d] len: %d\n", i, *ptr);
+        //printf("push: buf [%d] len: %d\n", i, *ptr);
         ptr += sizeof(req.sga->bufs[i].len);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
         rte_memcpy(ptr, req.sga->bufs[i].buf, req.sga->bufs[i].len);
-        printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
+        //printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
         ptr += req.sga->bufs[i].len;
         pkt->data_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
         pkt->pkt_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
         data_len += req.sga->bufs[i].len;
     }
 
-    printf("push: pkt len: %d\n", pkt->data_len);
+    //printf("push: pkt len: %d\n", pkt->data_len);
 
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     assert(ret == 1);
@@ -460,7 +460,6 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 {
     assert(is_init);
 
-    unsigned nb_rx;
     struct rte_mbuf *m;
     struct sockaddr *addr = &req.sga->addr;
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
@@ -473,9 +472,13 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     uint16_t port;
 
     //TODO: Why 4 for nb_pkts?
-    nb_rx = rte_eth_rx_burst(port_id, 0, &m, 4);
+    if (num_packets == 0) {
+        // our packet buffer is empty, try to get some more from NIC
+        num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
+        pkt_idx = 0;
+    }
 
-    if (likely(nb_rx == 0)) {
+    if (likely(num_packets == 0)) {
         return;
     } else {
         // packet layout order is (from outside -> in):
@@ -489,12 +492,16 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         // sga.buf[1].buf
         // ...
 
+        m = pkt_buffer[pkt_idx];
+        pkt_idx += 1;
+        num_packets -= 1;
+
         // check ethernet header
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
         eth_type = ntohs(eth_hdr->ether_type);
 
-        print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
-        print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
+        //print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
+        //print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
 
         if (eth_type != ETHER_TYPE_IPv4) {
             printf("pop: Not an IPv4 Packet\n");
@@ -505,8 +512,8 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr));
         ip_type = ip_hdr->next_proto_id;
-        printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
-        printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
+        //printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
+        //printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
 
         if (is_bound) {
             if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
@@ -525,8 +532,8 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
                     + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
         port = udp_hdr->dst_port;
 
-        printf("pop: udp src port: %d\n", udp_hdr->src_port);
-        printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
+        //printf("pop: udp src port: %d\n", udp_hdr->src_port);
+        //printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
 
         if (is_bound) {
             if (port != bound_addr.sin_port) {
@@ -538,32 +545,32 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
         req.sga->num_bufs = *(uint64_t*)ptr;
-        printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
+        //printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
         ptr += sizeof(uint64_t);
         data_len = 0;
 
         for (int i = 0; i < req.sga->num_bufs; i++) {
             req.sga->bufs[i].len = *(size_t *)ptr;
-            printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
+            //printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
             req.sga->bufs[i].buf = malloc((size_t)req.sga->bufs[i].len);
             ptr += sizeof(uint64_t);
 
             //TODO: Remove copy if possible (may involve changing DPDK memory management
             rte_memcpy(req.sga->bufs[i].buf, (ioptr)ptr, req.sga->bufs[i].len);
-            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
+            //printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
             ptr += req.sga->bufs[i].len;
             data_len += req.sga->bufs[i].len;
         }
 
-        printf("pop: pkt len: %d\n", m->pkt_len);
+        //printf("pop: pkt len: %d\n", m->pkt_len);
 
         if (saddr != NULL){
             memset(saddr, 0, sizeof(struct sockaddr_in));
             saddr->sin_family = AF_INET;
             saddr->sin_port = udp_hdr->src_port;
-            printf("pop: saddr port: %d\n", saddr->sin_port);
+            //printf("pop: saddr port: %d\n", saddr->sin_port);
             saddr->sin_addr.s_addr = ip_hdr->src_addr;
-            printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
+            //printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
         }
 
         rte_pktmbuf_free(m);

@@ -17,6 +17,8 @@
 namespace Zeus {
 namespace LWIP {
 
+#define MAX_PKTS 4
+
 class LWIPQueue : public Queue {
 private:
     struct PendingRequest {
@@ -43,6 +45,10 @@ private:
     void ProcessIncoming(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
+
+    struct rte_mbuf *pkt_buffer[MAX_PKTS];
+    int num_packets = 0;
+    int pkt_idx = 0;
 
 public:
     LWIPQueue() : Queue(){ };
