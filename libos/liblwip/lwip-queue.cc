@@ -40,6 +40,7 @@
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
+#define DEBUG_ZEUS_LWIP 	0
 
 static uint16_t port = 1024;
 
@@ -116,6 +117,7 @@ ip_sum(const unaligned_uint16_t *hdr, int hdr_len)
     return ~sum;
 }
 
+#if DEBUG_ZEUS_LWIP
 static inline void
 print_ether_addr(const char *what, struct ether_addr *eth_addr)
 {
@@ -123,6 +125,7 @@ print_ether_addr(const char *what, struct ether_addr *eth_addr)
     ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, eth_addr);
     printf("%s%s\n", what, buf);
 }
+#endif
 
 
 /*
@@ -152,7 +155,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
         return retval;
     }
 
-    //printf("adjusting number of queues\n");
     retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
         return retval;
@@ -384,9 +386,13 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
     rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-    //print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
+#if DEBUG_ZEUS_LWIP
+    print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
+#endif
     ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
-    //print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
+#if DEBUG_ZEUS_LWIP
+    print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
+#endif
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
 
     // set up IP header
@@ -400,9 +406,13 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     ip_hdr->next_proto_id = IPPROTO_UDP;
     ip_hdr->packet_id = 0;
     ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
-    //printf("push: ip src addr: %x\n", ip_hdr->src_addr);
+#if DEBUG_ZEUS_LWIP
+    printf("push: ip src addr: %x\n", ip_hdr->src_addr);
+#endif
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
-    //printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
+#if DEBUG_ZEUS_LWIP
+    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
+#endif
     ip_hdr->total_length = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr);
     ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
 
@@ -410,9 +420,13 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
             + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
     udp_hdr->src_port = bound_addr.sin_port;
-    //printf("push: udp src port: %d\n", udp_hdr->src_port);
+#if DEBUG_ZEUS_LWIP
+    printf("push: udp src port: %d\n", udp_hdr->src_port);
+#endif
     udp_hdr->dst_port = saddr->sin_port;
-    //printf("push: udp dst port: %d\n", udp_hdr->dst_port);
+#if DEBUG_ZEUS_LWIP
+    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
+#endif
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
@@ -426,26 +440,34 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
             + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
     *ptr = req.sga->num_bufs;
-    //printf("push: sga num_bufs: %d\n", *ptr);
+#if DEBUG_ZEUS_LWIP
+    printf("push: sga num_bufs: %d\n", *ptr);
+#endif
     ptr += sizeof(uint64_t);
     pkt->data_len += sizeof(uint64_t);
     pkt->pkt_len += sizeof(uint64_t);
 
     for (int i = 0; i < req.sga->num_bufs; i++) {
         *ptr = req.sga->bufs[i].len;
-        //printf("push: buf [%d] len: %d\n", i, *ptr);
+#if DEBUG_ZEUS_LWIP
+        printf("push: buf [%d] len: %d\n", i, *ptr);
+#endif
         ptr += sizeof(req.sga->bufs[i].len);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
         rte_memcpy(ptr, req.sga->bufs[i].buf, req.sga->bufs[i].len);
-        //printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
+#if DEBUG_ZEUS_LWIP
+        printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
+#endif
         ptr += req.sga->bufs[i].len;
         pkt->data_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
         pkt->pkt_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
         data_len += req.sga->bufs[i].len;
     }
 
-    //printf("push: pkt len: %d\n", pkt->data_len);
+#if DEBUG_ZEUS_LWIP
+    printf("push: pkt len: %d\n", pkt->data_len);
+#endif
 
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     assert(ret == 1);
@@ -500,11 +522,15 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
         eth_type = ntohs(eth_hdr->ether_type);
 
-        //print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
-        //print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
+#if DEBUG_ZEUS_LWIP
+        print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
+        print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
+#endif
 
         if (eth_type != ETHER_TYPE_IPv4) {
+#if DEBUG_ZEUS_LWIP
             printf("pop: Not an IPv4 Packet\n");
+#endif
             return;
         }
 
@@ -512,18 +538,24 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
                     + sizeof(struct ether_hdr));
         ip_type = ip_hdr->next_proto_id;
-        //printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
-        //printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
+#if DEBUG_ZEUS_LWIP
+        printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
+        printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
+#endif
 
         if (is_bound) {
             if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+#if DEBUG_ZEUS_LWIP
                 printf("pop: not for me: ip dst addr: %x\n", ip_hdr->dst_addr);
+#endif
                 return;
             }
         }
 
         if (ip_type != IPPROTO_UDP) {
+#if DEBUG_ZEUS_LWIP
             printf("pop: Not a UDP Packet\n");
+#endif
             return;
         }
 
@@ -532,12 +564,16 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
                     + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
         port = udp_hdr->dst_port;
 
-        //printf("pop: udp src port: %d\n", udp_hdr->src_port);
-        //printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
+#if DEBUG_ZEUS_LWIP
+        printf("pop: udp src port: %d\n", udp_hdr->src_port);
+        printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
+#endif
 
         if (is_bound) {
             if (port != bound_addr.sin_port) {
+#if DEBUG_ZEUS_LWIP
                 printf("pop: not for me: udp dst port: %d", udp_hdr->dst_port);
+#endif
                 return;
             }
         }
@@ -545,32 +581,44 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
         req.sga->num_bufs = *(uint64_t*)ptr;
-        //printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
+#if DEBUG_ZEUS_LWIP
+        printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
+#endif
         ptr += sizeof(uint64_t);
         data_len = 0;
 
         for (int i = 0; i < req.sga->num_bufs; i++) {
             req.sga->bufs[i].len = *(size_t *)ptr;
-            //printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
+#if DEBUG_ZEUS_LWIP
+            printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
+#endif
             req.sga->bufs[i].buf = malloc((size_t)req.sga->bufs[i].len);
             ptr += sizeof(uint64_t);
 
             //TODO: Remove copy if possible (may involve changing DPDK memory management
             rte_memcpy(req.sga->bufs[i].buf, (ioptr)ptr, req.sga->bufs[i].len);
-            //printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
+#if DEBUG_ZEUS_LWIP
+            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
+#endif
             ptr += req.sga->bufs[i].len;
             data_len += req.sga->bufs[i].len;
         }
 
-        //printf("pop: pkt len: %d\n", m->pkt_len);
+#if DEBUG_ZEUS_LWIP
+        printf("pop: pkt len: %d\n", m->pkt_len);
+#endif
 
         if (saddr != NULL){
             memset(saddr, 0, sizeof(struct sockaddr_in));
             saddr->sin_family = AF_INET;
             saddr->sin_port = udp_hdr->src_port;
-            //printf("pop: saddr port: %d\n", saddr->sin_port);
+#if DEBUG_ZEUS_LWIP
+            printf("pop: saddr port: %d\n", saddr->sin_port);
+#endif
             saddr->sin_addr.s_addr = ip_hdr->src_addr;
-            //printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
+#if DEBUG_ZEUS_LWIP
+            printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
+#endif
         }
 
         rte_pktmbuf_free(m);
@@ -605,7 +653,6 @@ LWIPQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
         }
     }
-    //printf("Processed %lu requests", done);
 }
 
 

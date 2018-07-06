@@ -51,6 +51,7 @@ typedef struct Sgelem{
 typedef struct Sgarray{
     int num_bufs;
     zeus_sgelem bufs[C_MAX_SGARRAY_SIZE];
+    struct sockaddr addr;
 }zeus_sgarray;
 
 // memory allocation
