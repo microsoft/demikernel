@@ -40,6 +40,10 @@ private:
     bool is_bound = false;
     struct sockaddr_in bound_addr;
 
+    struct sockaddr_in *default_peer_addr = NULL;
+    bool has_default_peer = false;
+
+
     int bind();
     void ProcessOutgoing(PendingRequest &req);
     void ProcessIncoming(PendingRequest &req);
@@ -78,6 +82,7 @@ public:
 };
 
 int lwip_init(int argc, char* argv[]);
+int lwip_init();
 
 } // namespace LWIP
 } // namespace Zeus

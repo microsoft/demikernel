@@ -249,6 +249,13 @@ lwip_init(int argc, char* argv[])
     return 0;
 }
 
+int lwip_init()
+{
+	int argc = 1;
+	char* argv[] = {""};
+	return lwip_init(argc, argv);
+}
+
 
 int
 LWIPQueue::queue(int domain, int type, int protocol)
@@ -296,16 +303,10 @@ int
 LWIPQueue::bind()
 {
     assert(is_init);
-    bound_addr.sin_port = port++;
-    if (port > 65535) {
-        port = 1024;
-    }
-
-    struct ether_addr my_mac;
-    rte_eth_macaddr_get(port_id, &my_mac);
-    bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
-    is_bound = true;
-    return 0;
+    struct sockaddr_in *addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+    addr->sin_port = 0;
+    addr->sin_addr.s_addr = 0;
+    return bind((struct sockaddr*)addr, sizeof(sockaddr_in));
 }
 
 
@@ -319,6 +320,9 @@ LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 int
 LWIPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
+	assert(is_init);
+	default_peer_addr = (struct sockaddr_in*)saddr;
+	has_default_peer = true;
     return 0;
 }
 
@@ -326,6 +330,8 @@ LWIPQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 LWIPQueue::close()
 {
+	default_peer_addr = NULL;
+	has_default_peer = false;
     return 0;
 }
 
@@ -364,7 +370,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     struct ipv4_hdr* ip_hdr;
     struct ether_hdr* eth_hdr;
     uint32_t data_len = 0;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)&req.sga->addr;
+    struct sockaddr_in* saddr = has_default_peer ?
+    								default_peer_addr :
+									(struct sockaddr_in*)&req.sga->addr;
     uint16_t ret;
 
     struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
@@ -483,8 +491,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     assert(is_init);
 
     struct rte_mbuf *m;
-    struct sockaddr *addr = &req.sga->addr;
-    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
+    struct sockaddr_in* saddr = &req.sga->addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
     struct ether_hdr *eth_hdr;

@@ -34,6 +34,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <memory>
+#include <netinet/in.h>
+
     
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
@@ -55,7 +57,7 @@ struct sgelem {
 struct sgarray {
     int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
-    struct sockaddr addr;
+    struct sockaddr_in addr;
 };
 
 // memory allocation
@@ -94,6 +96,7 @@ int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));
 
 int init(int argc, char* argv[]);
+int init();
 
 } // namespace Zeus
 #endif /* _IO_QUEUE_H_ */

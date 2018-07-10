@@ -40,6 +40,11 @@ int init(int argc, char* argv[])
     return LWIP::lwip_init(argc, argv);
 }
 
+int init()
+{
+	return LWIP::lwip_init();
+}
+
 int queue(int domain, int type, int protocol)
 {
     return lib.queue(domain, type, protocol);
