@@ -199,6 +199,10 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 int
 lwip_init(int argc, char* argv[])
 {
+	if (is_init) {
+		return 0;
+	}
+
     unsigned nb_ports;
     int ret;
     uint8_t portid;
@@ -252,7 +256,7 @@ lwip_init(int argc, char* argv[])
 int lwip_init()
 {
 	int argc = 1;
-	char* argv[] = {""};
+	char* argv[] = {(char*)""};
 	return lwip_init(argc, argv);
 }
 
@@ -260,7 +264,9 @@ int lwip_init()
 int
 LWIPQueue::queue(int domain, int type, int protocol)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     assert(domain == AF_INET);
     assert(type == SOCK_DGRAM);
     return ++queue_counter;
@@ -277,7 +283,9 @@ LWIPQueue::listen(int backlog)
 int
 LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     assert(size == sizeof(struct sockaddr_in));
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     bound_addr = *saddr;
@@ -302,7 +310,9 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
 int
 LWIPQueue::bind()
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     struct sockaddr_in *addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
     addr->sin_port = 0;
     addr->sin_addr.s_addr = 0;
@@ -320,7 +330,9 @@ LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 int
 LWIPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-	assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
 	default_peer_addr = (struct sockaddr_in*)saddr;
 	has_default_peer = true;
     return 0;
@@ -360,7 +372,9 @@ LWIPQueue::creat(const char *pathname, mode_t mode)
 void
 LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
 
     if (!is_bound) {
         bind();
@@ -488,7 +502,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 void
 LWIPQueue::ProcessIncoming(PendingRequest &req)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
 
     struct rte_mbuf *m;
     struct sockaddr_in* saddr = &req.sga->addr;
@@ -690,7 +706,9 @@ LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
 ssize_t
 LWIPQueue::push(qtoken qt, struct sgarray &sga)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
 
     if (!is_bound) {
         bind();
@@ -702,7 +720,9 @@ LWIPQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     return Enqueue(qt, sga);
 }
 
@@ -710,7 +730,9 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     auto it = pending.find(qt);
     assert(it != pending.end());
 
@@ -726,7 +748,9 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::poll(qtoken qt, struct sgarray &sga)
 {
-    assert(is_init);
+    if (!is_init) {
+    	lwip_init();
+    }
     auto it = pending.find(qt);
     assert(it != pending.end());
     if (it->second.isDone) {
