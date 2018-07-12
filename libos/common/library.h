@@ -41,12 +41,19 @@
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
 #define PUSH_MASK 0x1
+#define TOKEN_MASK 0xFF00000
+#define QUEUE_MASK 0xFFFF0000
 #define IS_PUSH(t) t & PUSH_MASK
-thread_local static uint64_t queue_counter = 0;
-thread_local static uint64_t token_counter = 0;
+// qtoken format
+// | 16 bits = hash(thread_id) | 47 bits = token | 1 bit = push or pop |
 
 namespace Zeus {
 
+thread_local static int64_t queue_counter = 0;
+thread_local static int64_t token_counter = 0;
+thread_local static std::hash<std::thread::id> hasher;
+thread_local static uint64_t hash;
+    
 template <class QueueType>
 class QueueLibrary
 {
@@ -56,10 +63,9 @@ class QueueLibrary
 public:
 
     QueueLibrary() {
-        std::hash<std::thread::id> hasher;
-        uint64_t hash = hasher(std::this_thread::get_id());
-        queue_counter = hash << 32;
-        token_counter = hash << 48;
+        hash = hasher(std::this_thread::get_id());
+        queue_counter = hash & QUEUE_MASK;
+        token_counter = hash & TOKEN_MASK;
     };
 
     // ================================================
@@ -76,17 +82,14 @@ public:
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
-        qtoken t;
-        do {
-            t = token_counter++;
-        } while (t == 0 || t == -1);
-        
-        if (isPush) {
-            t = t << 1 | PUSH_MASK;
-        }
-        else {
-            t = t << 1;
-        }
+
+        qtoken t = (token_counter == -2) ?
+            // skip the range including -1 and 0
+            (token_counter += 4) :
+            (token_counter += 2);
+        if (isPush) t |= PUSH_MASK;
+        assert((t & TOKEN_MASK) == (hash & TOKEN_MASK));
+
         pending[t] = qd;
         return t;
     };

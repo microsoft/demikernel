@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/uio.h>
 
 
 namespace Zeus {
@@ -59,7 +60,6 @@ PosixQueue::queue(int domain, int type, int protocol)
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
         }
-        printf("Done setting no delay");
     }
     return qd;
 }
@@ -113,7 +113,7 @@ int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     int res = ::connect(qd, saddr, size);
-    fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
+    //fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
         if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
@@ -164,7 +164,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 {
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::read(qd, (uint8_t *)&req.buf + req.num_bytes,
+        ssize_t count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
                              sizeof(req.header) - req.num_bytes);
         // we still don't have a header
         if (count < 0) {
@@ -185,7 +185,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 
     if (req.header[0] != MAGIC) {
         // not a correctly formed packet
-        fprintf(stderr, "Could not find magic %llx\n", req.header[0]);
+        fprintf(stderr, "Could not find magic %lx\n", req.header[0]);
         req.isDone = true;
         req.res = -1;
         return;
@@ -235,90 +235,69 @@ void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
     sgarray &sga = req.sga;
-    printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
+    //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
-    if (req.header[0] != MAGIC) {
-        req.header[0] = MAGIC;
-        // calculate size
-        for (int i = 0; i < sga.num_bufs; i++) {
-            req.header[1] += (uint64_t)sga.bufs[i].len;
-            req.header[1] += sizeof(uint64_t);
-            pin((void *)sga.bufs[i].buf);
-        }
-        req.header[2] = req.sga.num_bufs;
+
+    struct iovec vsga[2*sga.num_bufs + 1];
+    uint64_t lens[sga.num_bufs];
+    size_t dataSize = 0;
+    size_t totalLen = 0;
+
+    // calculate size and fill in iov
+    for (int i = 0; i < sga.num_bufs; i++) {
+        lens[i] = sga.bufs[i].len;
+        vsga[2*i+1].iov_base = &lens[i];
+        vsga[2*i+1].iov_len = sizeof(uint64_t);
+        
+        vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
+        vsga[2*i+2].iov_len = sga.bufs[i].len;
+        
+        // add up actual data size
+        dataSize += (uint64_t)sga.bufs[i].len;
+        
+        // add up expected packet size minus header
+        totalLen += (uint64_t)sga.bufs[i].len;
+        totalLen += sizeof(uint64_t);
+        pin((void *)sga.bufs[i].buf);
     }
 
-    // write header
-    if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::write(qd,
-                        &req.header + req.num_bytes,
-                        sizeof(req.header) - req.num_bytes);
-        if (count < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return;
-            } else {
-                fprintf(stderr, "Could not write header: %s\n", strerror(errno));
-                req.isDone = true;
-                req.res = count;
-                return;
-            }
-        }
-        req.num_bytes += count;
-        if (req.num_bytes < sizeof(req.header)) {
+    // fill in header
+    req.header[0] = MAGIC;
+    req.header[1] = totalLen;
+    req.header[2] = req.sga.num_bufs;
+
+    // set up header at beginning of packet
+    vsga[0].iov_base = &req.header;
+    vsga[0].iov_len = sizeof(req.header);
+    totalLen += sizeof(req.header);
+
+    ssize_t count = ::writev(qd,
+                             vsga,
+                             2*sga.num_bufs +1);
+
+    // if error
+    if (count < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            fprintf(stderr, "Could not write header: %s\n", strerror(errno));
+            req.isDone = true;
+            req.res = count;
             return;
         }
     }
 
-    assert(req.num_bytes >= sizeof(req.header));
-    
-    // write sga
-    uint64_t dataSize = req.header[1];
-    uint64_t offset = sizeof(req.header);
-    if (req.num_bytes < dataSize + sizeof(req.header)) {
-        for (int i = 0; i < sga.num_bufs; i++) {
-            if (req.num_bytes < offset + sizeof(uint64_t)) {
-                // stick in size header
-                ssize_t count = ::write(qd, &sga.bufs[i].len + (req.num_bytes - offset),
-                                sizeof(uint64_t) - (req.num_bytes - offset));
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sizeof(uint64_t)) {
-                    return;
-                }
-            }
-            offset += sizeof(uint64_t);
-            if (req.num_bytes < offset + sga.bufs[i].len) {
-                ssize_t count = ::write(qd, &sga.bufs[i].buf + (req.num_bytes - offset),
-                                sga.bufs[i].len - (req.num_bytes - offset)); 
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sga.bufs[i].len) {
-                    return;
-                }
-            }
-            offset += sga.bufs[i].len;
-        }
+    // otherwise
+    req.num_bytes += count;
+    if (req.num_bytes < totalLen) {
+        assert(req.num_bytes == 0);
+        return;
+    }
+    for (int i = 0; i < sga.num_bufs; i++) {
+        unpin((void *)sga.bufs[i].buf);
     }
 
-    req.res = dataSize - (sga.num_bufs * sizeof(uint64_t));
+    req.res = dataSize;
     req.isDone = true;
 }
     
@@ -336,7 +315,7 @@ PosixQueue::ProcessQ(size_t maxRequests)
             continue;
         }
         
-        PendingRequest &req = pending[qt]; 
+        PendingRequest &req = it->second; 
         if (IS_PUSH(qt)) {
             ProcessOutgoing(req);
         } else {
@@ -351,23 +330,21 @@ PosixQueue::ProcessQ(size_t maxRequests)
 }
     
 ssize_t
-PosixQueue::Enqueue(qtoken qt, sgarray &sga)
+PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
-    PendingRequest req;
     if (it == pending.end()) {
-        req = PendingRequest();
-        req.sga = sga;
-        pending[qt] = req;
+        pending.insert(std::make_pair(qt, PendingRequest(sga)));
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
         // non-blocking
         if (workQ.front() == qt) ProcessQ(1);
-    } else {
-        req = it->second;
     }
+    PendingRequest &req = pending.find(qt)->second;
+
     if (req.isDone) {
+        assert(sga.num_bufs > 0);
         return req.res;
     } else {
         return 0;
@@ -395,8 +372,6 @@ PosixQueue::wait(qtoken qt, struct sgarray &sga)
     while(!it->second.isDone) {
         ProcessQ(1);
     }
-
-    sga = it->second.sga;
     return it->second.res;
 }
 
