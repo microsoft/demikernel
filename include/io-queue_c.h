@@ -82,13 +82,13 @@ ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
 // other functions
 zeus_qtoken push(int qd, zeus_sgarray *sga); // if return 0, then already complete
 zeus_qtoken pop(int qd, zeus_sgarray *sga); // if return 0, then already ready and in sga
-ssize_t wait(zeus_qtoken qt, zeus_sgarray *sga);
-ssize_t wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
-ssize_t wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
+ssize_t zeus_wait(zeus_qtoken qt, zeus_sgarray *sga);
+ssize_t zeus_wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
+ssize_t zeus_wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list);
 // identical to a push, followed by a wait on the returned zeus_qtoken
-ssize_t blocking_push(int qd, zeus_sgarray *sga);
+ssize_t zeus_blocking_push(int qd, zeus_sgarray *sga);
 // identical to a pop, followed by a wait on the returned zeus_qtoken
-ssize_t blocking_pop(int qd, zeus_sgarray *sga); 
+ssize_t zeus_blocking_pop(int qd, zeus_sgarray *sga); 
 
 
 int zeus_qd2fd(int qd);

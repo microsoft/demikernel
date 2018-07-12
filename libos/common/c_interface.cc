@@ -5,7 +5,7 @@
 #include "library.h"
 
 // debug print flag
-#define __DEBUG_c_interface_cc 1
+//#define __DEBUG_c_interface_cc 0
 
 
 /************************************************************************/
@@ -24,6 +24,7 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
     c_sga->num_bufs = sga->num_bufs;
     for(int i = 0; i < sga->num_bufs; i++){
         (c_sga->bufs[i]).len = (sga->bufs[i]).len;
+        printf("sgarray_cpp2c: i%d len:%d\n", i, (c_sga->bufs[i]).len);
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
@@ -89,19 +90,20 @@ zeus_qtoken zeus_push(int qd, zeus_sgarray *sga_ptr){
 }
 
 zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
-#ifdef __DEBUG_c_interface_cc
-    printf("zeus_pop\n");
-#endif
+//#ifdef __DEBUG_c_interface_cc
+    //printf("zeus_pop() qd:%d\n", qd);
+//#endif
     Zeus::sgarray sga;
     zeus_qtoken n = Zeus::pop(qd, sga);
     //printf("return from pop() n:%zd\n", n);
     if (n == 0){
+        printf("Zeus:pop() successs\n");
         sgarray_cpp2c(&sga, sga_ptr);
     }
     return n;
 }
 
-ssize_t wait(zeus_qtoken qt, zeus_sgarray *sga_ptr) {
+ssize_t zeus_wait(zeus_qtoken qt, zeus_sgarray *sga_ptr) {
     ssize_t ret;
     if (IS_PUSH(qt)){
         // wait for a push request
@@ -112,28 +114,28 @@ ssize_t wait(zeus_qtoken qt, zeus_sgarray *sga_ptr) {
         // wait for a pop request
         Zeus::sgarray sga;
         ret = Zeus::wait(qt, sga);
-        if(ret == 0){
+        if(ret >= 0){
             sgarray_cpp2c(&sga, sga_ptr);
         }
     }
     return ret;
 }
 
-ssize_t wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
+ssize_t zeus_wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
     return -1;
 }
 
-ssize_t wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
+ssize_t zeus_wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
     return -1;
 }
 
 // identical to a push, followed by a wait on the returned zeus_qtoken
-ssize_t blocking_push(int qd, zeus_sgarray *sga_ptr) {
+ssize_t zeus_blocking_push(int qd, zeus_sgarray *sga_ptr) {
     return -1;
 }
 
 // identical to a pop, followed by a wait on the returned zeus_qtoken
-ssize_t blocking_pop(int qd, zeus_sgarray *sga_ptr) {
+ssize_t zeus_blocking_pop(int qd, zeus_sgarray *sga_ptr) {
     return -1;
 }
 
