@@ -92,7 +92,16 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
-    return lib.pop(qd, sga);
+    //printf("posix.cc:pop input:%d\n", qd);
+    qtoken qt = lib.pop(qd, sga);
+    //printf("posix.cc: pop return qt:%d\n", qt);
+    return qt;
+}
+
+ssize_t light_pop(int qd, struct Zeus::sgarray &sga)
+{
+    ssize_t ret = lib.light_pop(qd, sga);
+    return ret;
 }
 
 ssize_t wait(qtoken qt, struct sgarray &sga)
