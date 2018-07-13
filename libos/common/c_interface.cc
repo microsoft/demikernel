@@ -4,6 +4,8 @@
 #include "include/io-queue.h"
 #include "library.h"
 
+#include <unistd.h>
+
 // debug print flag
 //#define __DEBUG_c_interface_cc 0
 
@@ -98,6 +100,18 @@ zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
     //printf("return from pop() n:%zd\n", n);
     if (n == 0){
         printf("Zeus:pop() successs\n");
+        sgarray_cpp2c(&sga, sga_ptr);
+    }
+    return n;
+}
+
+ssize_t zeus_light_pop(int qd, zeus_sgarray *sga_ptr){
+    Zeus::sgarray sga;
+    ssize_t n = Zeus::light_pop(qd, sga);
+    //printf("return from pop() n:%zd\n", n);
+    if (n > 0){
+        printf("Zeus:light_pop() successs\n");
+        //sleep(10);
         sgarray_cpp2c(&sga, sga_ptr);
     }
     return n;
