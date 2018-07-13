@@ -728,6 +728,40 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 
 
 ssize_t
+LWIPQueue::light_pop(qtoken qt, struct sgarray &sga)
+{
+    auto it = pending.find(qt);
+    PendingRequest req;
+    if (it == pending.end()) {
+    	req = PendingRequest();
+    	req.sga = &sga;
+    	pending.insert(std::make_pair(qt, req));
+    	it = pending.find(qt);
+        if(it == pending.end()){
+            printf("req not inserted\n");
+            exit(1);
+        }
+        req = it->second;
+        if (IS_PUSH(qt)) {
+            printf("Error light_pop, push request\n");
+            exit(1);
+        } else {
+            ProcessIncoming(req);
+        }
+        if (req.isDone){
+            return req.res;
+        }else{
+            return -1;
+        }
+    }else{
+        // qtoken found in q
+        fprintf(stderr, "Error, light_pop() found existing qtoken\n");
+        exit(1);
+    }
+}
+
+
+ssize_t
 LWIPQueue::wait(qtoken qt, struct sgarray &sga)
 {
     if (!is_init) {

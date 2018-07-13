@@ -105,6 +105,8 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
+
+
 ssize_t wait(qtoken qt, struct sgarray &sga)
 {
     return lib.wait(qt, sga);
@@ -128,6 +130,11 @@ ssize_t blocking_push(int qd, struct sgarray &sga)
 ssize_t blocking_pop(int qd, struct sgarray &sga)
 {
     return lib.blocking_pop(qd, sga);
+}
+
+ssize_t light_pop(int qd, struct sgarray &sga)
+{
+	return lib.light_pop(qd, sga);
 }
 
 int merge(int qd1, int qd2)
