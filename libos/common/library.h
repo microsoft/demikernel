@@ -37,6 +37,7 @@
 #include <unordered_map>
 #include <thread>
 #include <assert.h>
+#include <unistd.h>
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
@@ -73,7 +74,8 @@ public:
     // ================================================
 
     int HasQueue(int qd) {
-        return queues.find(qd) != queues.end();
+        int ret = (queues.find(qd) != queues.end());
+        return ret;
     };
 
     QueueType& GetQueue(int qd) {
@@ -87,6 +89,7 @@ public:
             (token_counter += 4) :
             (token_counter += 2);
         if (isPush) t |= PUSH_MASK;
+        //printf("GetNewTokan qd:%d\n", qd);
         assert((t & TOKEN_MASK) == (hash & TOKEN_MASK));
         pending[t] = qd;
         return t;
@@ -99,6 +102,7 @@ public:
     };
 
     void InsertQueue(QueueType q) {
+        printf("library.h/InsertQueue() qd: %d\n", q.GetQD());
         assert(queues.find(q.GetQD()) == queues.end());
         queues[q.GetQD()] = q;
     };
@@ -128,8 +132,10 @@ public:
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
         QueueType &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
-        if (newqd != -1) 
+        if (newqd != -1){
+            printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(QueueType(NETWORK_Q, newqd));
+        }
         return newqd;
     };
 
@@ -226,6 +232,21 @@ public:
             // successfully popped and result is in sga
             return 0;
         }
+    };
+
+    ssize_t light_pop(int qd, struct Zeus::sgarray &sga) {
+        //printf("call light_pop\n");
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q)
+            // popping from files not implemented yet
+            return -1;
+
+        qtoken t = GetNewToken(qd, false);
+        ssize_t res = queue.light_pop(t, sga);
+        return res;
     };
 
     ssize_t wait(qtoken qt, struct sgarray &sga) {
