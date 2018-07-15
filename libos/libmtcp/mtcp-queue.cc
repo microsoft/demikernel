@@ -472,6 +472,11 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
     }
     return ret;
 }
+
+ssize_t
+MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
+    return 0;
+}
     
 ssize_t
 MTCPQueue::wait(qtoken qt, struct sgarray &sga)
