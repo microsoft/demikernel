@@ -388,7 +388,7 @@ PosixQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
+PosixQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {

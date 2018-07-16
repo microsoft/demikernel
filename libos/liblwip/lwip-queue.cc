@@ -267,8 +267,8 @@ LWIPQueue::queue(int domain, int type, int protocol)
     if (!is_init) {
     	lwip_init();
     }
-    assert(domain == AF_INET);
-    assert(type == SOCK_DGRAM);
+//    assert(domain == AF_INET);
+//    assert(type == SOCK_DGRAM);
     return ++queue_counter;
 }
 
@@ -301,6 +301,8 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
         rte_eth_macaddr_get(port_id, &my_mac);
         bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
     }
+
+    printf("server addr: %x\tserver port: %d\n", bound_addr.sin_addr.s_addr, bound_addr.sin_port);
 
     is_bound = true;
 
@@ -696,9 +698,14 @@ LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
     } else {
         req = it->second;
     }
+
+    req = pending[qt];
+
     if (req.isDone) {
+    	printf("req is done\n");
         return req.res;
     } else {
+    	printf("req is not done\n");
         return 0;
     }
 }
@@ -728,7 +735,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 
 
 ssize_t
-LWIPQueue::light_pop(qtoken qt, struct sgarray &sga)
+LWIPQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     PendingRequest req;

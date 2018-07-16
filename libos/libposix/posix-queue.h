@@ -92,7 +92,7 @@ public:
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
     ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t light_pop(qtoken qt, struct sgarray &sga);
+    ssize_t peek(qtoken qt, struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with

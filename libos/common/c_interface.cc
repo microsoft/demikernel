@@ -105,9 +105,9 @@ zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
     return n;
 }
 
-ssize_t zeus_light_pop(int qd, zeus_sgarray *sga_ptr){
+ssize_t zeus_peek(int qd, zeus_sgarray *sga_ptr){
     Zeus::sgarray sga;
-    ssize_t n = Zeus::light_pop(qd, sga);
+    ssize_t n = Zeus::peek(qd, sga);
     //printf("return from pop() n:%zd\n", n);
     if (n > 0){
         printf("Zeus:light_pop() successs\n");
@@ -155,6 +155,10 @@ ssize_t zeus_blocking_pop(int qd, zeus_sgarray *sga_ptr) {
 
 int zeus_qd2fd(int qd){
     return Zeus::qd2fd(qd);
+}
+
+int zeus_init(int argc, char* argv[]) {
+	return Zeus::init(argc, argv);
 }
 
 

@@ -98,9 +98,9 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return qt;
 }
 
-ssize_t light_pop(int qd, struct Zeus::sgarray &sga)
+ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
-    ssize_t ret = lib.light_pop(qd, sga);
+    ssize_t ret = lib.peek(qd, sga);
     return ret;
 }
 
@@ -137,6 +137,11 @@ int merge(int qd1, int qd2)
 int filter(int qd, bool (*filter)(struct sgarray &sga))
 {
     return lib.filter(qd, filter);
+}
+
+int init(int argc, char* argv[])
+{
+	return 0;
 }
 
 } // namespace Zeus

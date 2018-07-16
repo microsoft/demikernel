@@ -30,6 +30,7 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
+#include "include/io-queue_c.h"
 #include "lwip-queue.h"
 
 namespace Zeus {
@@ -132,9 +133,9 @@ ssize_t blocking_pop(int qd, struct sgarray &sga)
     return lib.blocking_pop(qd, sga);
 }
 
-ssize_t light_pop(int qd, struct sgarray &sga)
+ssize_t peek(int qd, struct sgarray &sga)
 {
-	return lib.light_pop(qd, sga);
+	return lib.peek(qd, sga);
 }
 
 int merge(int qd1, int qd2)
