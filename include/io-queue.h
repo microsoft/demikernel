@@ -60,6 +60,9 @@ struct sgarray {
 // memory allocation
 //ioptr iomalloc(size_t size);
 
+// regular queue
+int queue();
+    
 // network functions
 int queue(int domain, int type, int protocol);
 int listen(int qd, int backlog);

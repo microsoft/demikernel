@@ -35,6 +35,7 @@
 
 namespace Zeus {
 enum BasicQueueType {
+    BASIC,
     NETWORK_Q,
     FILE_Q,
     MERGED_Q,
@@ -43,6 +44,14 @@ enum BasicQueueType {
 
 class Queue
 {
+private:
+    // queued scatter gather arrays
+    std::unordered_map<qtoken, std::condition_variable> wakeup;
+    std::map<qtoken, sga&> finishedPops;
+    std::list<qtoken> pops;
+    std::list<sga&> pushes;
+    std::mutex qLock;
+    
 protected:
     BasicQueueType type;
     int qd;
@@ -69,10 +78,10 @@ public:
     static int creat(const char *pathname, mode_t mode);
 
     // data plane functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t wait(qtoken qt, struct sgarray &sga); // blocking wait on a request
-    ssize_t poll(qtoken qt, struct sgarray &sga); // non-blocking check on a request
+    ssize_t push(qtoken qt, struct sgarray &sga);
+    ssize_t pop(qtoken qt, struct sgarray &sga);
+    ssize_t wait(qtoken qt, struct sgarray &sga);
+    ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
     int fd();
