@@ -2,7 +2,11 @@
 /***********************************************************************
  *
  * common/library.h
+<<<<<<< HEAD
  *   Generic libos implementation
+=======
+ *   Zeus general-purpose queue library implementation
+>>>>>>> master
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -58,11 +62,11 @@ thread_local static uint64_t hash;
 template <class QueueType>
 class QueueLibrary
 {
-    std::unordered_map<int, QueueType> queues;
-    std::unordered_map<qtoken, int> pending;
     
 public:
-
+    std::unordered_map<int, QueueType> queues;
+    std::unordered_map<qtoken, int> pending;
+ 
     QueueLibrary() {
         hash = hasher(std::this_thread::get_id());
         queue_counter = hash & QUEUE_MASK;
@@ -354,7 +358,6 @@ public:
 
         return 0;
     };
-
 };
 
 } // namespace Zeus

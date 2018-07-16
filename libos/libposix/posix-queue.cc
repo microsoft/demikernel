@@ -43,8 +43,12 @@
 
 
 namespace Zeus {
+
 namespace POSIX {
     
+using namespace POSIX;
+Zeus::QueueLibrary<PosixQueue> lib;
+
 int
 PosixQueue::queue(int domain, int type, int protocol)
 {
@@ -130,21 +134,30 @@ int
 PosixQueue::open(const char *pathname, int flags)
 {
     // use the fd as qd
-    return ::open(pathname, flags);
+    int qd = ::open(pathname, flags);
+    if (qd > 0) 
+        lib.queues[qd].type = FILE_Q;
+    return qd;
 }
 
 int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    return ::open(pathname, flags, mode);
+    int qd = ::open(pathname, flags, mode);
+    if (qd > 0) 
+        lib.queues[qd].type = FILE_Q;
+    return qd;
 }
 
 int
 PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    return ::creat(pathname, mode);
+    int qd = ::creat(pathname, mode);
+    if (qd > 0)
+        lib.queues[qd].type = FILE_Q;
+    return qd;
 }
     
 int
@@ -175,7 +188,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
                 return;
             } else {
                 //fprintf(stderr, "Could not read header: %s\n", strerror(errno));
-                printf("will set isDone to true\n");
                 req.isDone = true;
                 req.res = count;
                 return;
@@ -231,7 +243,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         ptr += req.sga.bufs[i].len;
         char result[100];
         memcpy(result, req.sga.bufs[i].buf, req.sga.bufs[i].len);
-        printf("posix-quque.cc@@@@@@%d result:%s\n", req.sga.bufs[i].len, result);
     }
     req.isDone = true;
     req.res = dataLen - (req.sga.num_bufs * sizeof(uint64_t));
@@ -278,13 +289,11 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_base = &req.header;
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
-    printf("write dataSize:%d\n", dataSize);
-
+   
     ssize_t count = ::writev(qd,
                              vsga,
                              2*sga.num_bufs +1);
-    printf("return value of writev:%d\n", count);
-
+   
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -315,8 +324,7 @@ void
 PosixQueue::ProcessQ(size_t maxRequests)
 {
     size_t done = 0;
-    printf("PosixQueue:ProcessQ(num:%d)\n", maxRequests);
-
+   
     while (!workQ.empty() && done < maxRequests) {
         qtoken qt = workQ.front();
         auto it = pending.find(qt);
@@ -343,9 +351,9 @@ PosixQueue::ProcessQ(size_t maxRequests)
 ssize_t
 PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
+
     auto it = pending.find(qt);
     if (it == pending.end()) {
-        printf("will insert the request\n");
         pending.insert(std::make_pair(qt, PendingRequest(sga)));
         workQ.push_back(qt);
 
@@ -353,16 +361,11 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
         // non-blocking
         if (workQ.front() == qt) {
             ProcessQ(1);
-        }else {
-            printf("workQ.front() is not this one\n");
         }
-    }else{
-        printf("Enqueue, qt can be founded\n");
     }
     PendingRequest &req = pending.find(qt)->second;
 
     if (req.isDone) {
-        printf("Enqueue() req.is Done is true req.res:%d\n", req.res);
         assert(sga.num_bufs > 0);
         return req.res;
     } else {
@@ -374,16 +377,13 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 ssize_t
 PosixQueue::push(qtoken qt, struct sgarray &sga)
 {
-    printf("PosixQueue::push()\n");
     return Enqueue(qt, sga);
 }
     
 ssize_t
 PosixQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    printf("PosixQueue::pop() call qt :%ld\n", qt);
     ssize_t newqt = Enqueue(qt, sga);
-    printf("PosixQueue:pop() return %ld\n", newqt);
     return newqt;
 }
 
@@ -394,13 +394,11 @@ PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
     if (it == pending.end()) {
         pending.insert(std::make_pair(qt, PendingRequest(sga)));
         it = pending.find(qt);
-        if(it == pending.end()){
-            printf("req not inserted\n");
+        if (it == pending.end()){
             exit(1);
         }
         PendingRequest &req = it->second;
         if (IS_PUSH(qt)) {
-            printf("Error light_pop, push request\n");
             exit(1);
         } else {
             ProcessIncoming(req);
@@ -410,7 +408,7 @@ PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
         }else{
             return -1;
         }
-    }else{
+    } else {
         // qtoken found in q
         fprintf(stderr, "Error, light_pop() found existing qtoken\n");
         exit(1);
@@ -428,7 +426,6 @@ PosixQueue::wait(qtoken qt, struct sgarray &sga)
         ProcessQ(1);
     }
     ret = it->second.res;
-    printf("PosixQueue::wait() ret is:%d\n", ret);
     return ret;
 }
 

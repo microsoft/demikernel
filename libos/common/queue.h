@@ -34,7 +34,6 @@
 #include "include/io-queue.h"
 
 namespace Zeus {
-    
 enum BasicQueueType {
     NETWORK_Q,
     FILE_Q,
