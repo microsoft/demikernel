@@ -241,8 +241,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         ptr += sizeof(uint64_t);
         req.sga.bufs[i].buf = (ioptr)ptr;
         ptr += req.sga.bufs[i].len;
-        char result[100];
-        memcpy(result, req.sga.bufs[i].buf, req.sga.bufs[i].len);
     }
     req.isDone = true;
     req.res = dataLen - (req.sga.num_bufs * sizeof(uint64_t));
@@ -299,7 +297,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         } else {
-            fprintf(stderr, "Could not write header: %s\n", strerror(errno));
+            fprintf(stderr, "Could not write packet: %s\n", strerror(errno));
             req.isDone = true;
             req.res = count;
             return;
