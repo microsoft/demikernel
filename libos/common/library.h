@@ -62,11 +62,10 @@ thread_local static uint64_t hash;
 template <class QueueType>
 class QueueLibrary
 {
-    
-public:
     std::unordered_map<int, QueueType> queues;
     std::unordered_map<qtoken, int> pending;
- 
+    
+public:
     QueueLibrary() {
         hash = hasher(std::this_thread::get_id());
         queue_counter = hash & QUEUE_MASK;

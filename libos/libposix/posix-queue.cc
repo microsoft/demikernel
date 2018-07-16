@@ -45,9 +45,6 @@
 namespace Zeus {
 
 namespace POSIX {
-    
-using namespace POSIX;
-Zeus::QueueLibrary<PosixQueue> lib;
 
 int
 PosixQueue::queue(int domain, int type, int protocol)
@@ -135,8 +132,6 @@ PosixQueue::open(const char *pathname, int flags)
 {
     // use the fd as qd
     int qd = ::open(pathname, flags);
-    if (qd > 0) 
-        lib.queues[qd].type = FILE_Q;
     return qd;
 }
 
@@ -145,8 +140,6 @@ PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
     int qd = ::open(pathname, flags, mode);
-    if (qd > 0) 
-        lib.queues[qd].type = FILE_Q;
     return qd;
 }
 
@@ -155,8 +148,6 @@ PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
     int qd = ::creat(pathname, mode);
-    if (qd > 0)
-        lib.queues[qd].type = FILE_Q;
     return qd;
 }
     
