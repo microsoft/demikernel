@@ -55,6 +55,18 @@ struct sgelem {
 struct sgarray {
     int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
+
+    size_t copy(sgarray &sga) {
+        size_t len = 0;
+        num_bufs = sga.num_bufs;
+        for (int i = 0; i < sga.num_bufs; i++) {
+            bufs[i].len = sga.bufs[i].len;
+            len += sga.bufs[i].len;
+            bufs[i].buf = sga.bufs[i].buf;
+        }
+        return len;
+    };
+    
 };
 
 // memory allocation

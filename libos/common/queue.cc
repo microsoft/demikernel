@@ -41,15 +41,16 @@ Queue::push(qtoken qt, struct sgarray &sga)
     }
    
     std::lock_guard<std::mutex> lock(qLock);
-    if (!pops.empty()) {
-        qtoken pop = pops.front();
-        pops.pop_front();
+    if (!waiting.empty()) {
+        qtoken pop = waiting.front();
+        waiting.pop_front();
         auto it = wakeup.find(pop);
         if (it != wakeup.end()) {
             it->second.notify_all();
         }
-        wakeup.erase(it);
-        finishedPops.insert(sga);
+        finished[pop] = sga;
+    } else {
+        buffer.push_back(sga);
     }
     return len;
 }
@@ -57,27 +58,43 @@ Queue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 Queue::pop(qtoken qt, struct sgarray &sga) {
     size_t len = 0;
+    std::lock_guard<std::mutex> lock(qLock);
     // if we have a buffered push already
-    if (!pushes.empty()) {
-        SGArray &in = pushes.front();
-        sga.num_bufs = in.num_bufs;
-        for (int i = 0; i < in.num_bufs; i++) {
-            sga.bufs[i].len = in.bufs[i].len;
-            len += sga.bufs[i].len;
-            sga.bufs[i].buf = in.bufs[i].buf;
-        }
+    if (!buffer.empty()) {
+        len = sga.copy(buffer.front());
+        buffer.pop_front();
     } else {
-        pops.push_back(qt);
+        waiting.push_back(qt);
     }
     return len;
 }
    
 ssize_t
 Queue::wait(qtoken qt, struct sgarray &sga)
-    auto it = finishedPops.find(qt);
-    if (it == finishedPops.end()
-    while (it == finishedPops.end()) {
-        
-    ssize_t poll(qtoken qt, struct sgarray &sga); // non-blocking check on a request
-
+{
+    std::lock_guard<std::mutex> lock(qLock);
+    while ((auto it = finished.find(qt)) == finished.end()) {
+        wakeup[qt].wait();
+    }
+    wakeup.erase(it);
+    size_t len = sga.copy(it->second);
+    finished.erase(it);
+    return len;
+}
+    
+ssize_t
+Queue::poll(qtoken qt, struct sgarray &sga)
+{
+    size_t len = 0;
+    std::lock_guard<std::mutex> lock(qLock);
+    auto it = finished.find(qt);
+    if (it != finished.end()) {
+        len = sga.copy(it->second);
+        finished.erase(it);
+    }
+    return len;
 } // namespace Zeus
+
+
+
+       

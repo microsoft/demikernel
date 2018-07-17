@@ -34,6 +34,11 @@
 
 namespace Zeus {
 static QueueLibrary<POSIX::PosixQueue> lib;
+
+int queue()
+{
+    return lib.queue();
+}
     
 int queue(int domain, int type, int protocol)
 {

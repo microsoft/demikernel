@@ -32,6 +32,10 @@
 #define _COMMON_QUEUE_H_
 
 #include "include/io-queue.h"
+#include <unordered_map>
+#include <condition_variable>
+#include <mutex>
+#include <list>
 
 namespace Zeus {
 enum BasicQueueType {
@@ -47,9 +51,9 @@ class Queue
 private:
     // queued scatter gather arrays
     std::unordered_map<qtoken, std::condition_variable> wakeup;
-    std::map<qtoken, sga&> finishedPops;
-    std::list<qtoken> pops;
-    std::list<sga&> pushes;
+    std::unordered_map<qtoken, sgarray> finished;
+    std::list<qtoken> waiting;
+    std::list<sgarray> buffer;
     std::mutex qLock;
     
 protected:
@@ -80,6 +84,7 @@ public:
     // data plane functions
     ssize_t push(qtoken qt, struct sgarray &sga);
     ssize_t pop(qtoken qt, struct sgarray &sga);
+    ssize_t light_pop(qtoken qt, sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
