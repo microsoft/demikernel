@@ -377,7 +377,7 @@ PosixQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
+PosixQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
@@ -399,7 +399,7 @@ PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
         }
     } else {
         // qtoken found in q
-        fprintf(stderr, "Error, light_pop() found existing qtoken\n");
+        fprintf(stderr, "Error, peek() found existing qtoken\n");
         exit(1);
     }
 }

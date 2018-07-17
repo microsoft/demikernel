@@ -98,9 +98,9 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return qt;
 }
 
-ssize_t light_pop(int qd, struct Zeus::sgarray &sga)
+ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
-    ssize_t ret = lib.light_pop(qd, sga);
+    ssize_t ret = lib.peek(qd, sga);
     return ret;
 }
 
