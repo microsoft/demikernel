@@ -78,7 +78,7 @@ qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
 qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
 ssize_t light_pop(int qd, struct sgarray &sga);  // will not return qtoken
 ssize_t wait(qtoken qt, struct sgarray &sga);
-ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray *sgas);
+qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sgas);
 ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);

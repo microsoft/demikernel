@@ -109,7 +109,7 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
+qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, sga);
 }

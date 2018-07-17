@@ -266,7 +266,7 @@ public:
         return queue.wait(qt, sga); 
     }
 
-    ssize_t wait_any(qtoken *qts,
+    qtoken wait_any(qtoken *qts,
                      size_t num_qts,
                      struct sgarray &sga) {
         ssize_t res = 0;
