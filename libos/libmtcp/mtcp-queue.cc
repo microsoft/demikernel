@@ -96,6 +96,7 @@ MTCPQueue::queue(int domain, int type, int protocol)
     }
     int qd = mtcp_socket(mctx, domain, type, protocol);
     // check qd?, not let the application check qd
+    // TODO: set TCP_NODELAY use mtcp_interface here
     return qd;
 }
 
@@ -114,9 +115,9 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     struct mtcp_epoll_event ev;
     //fprintf(stderr, "@@@@@@@ before mtcp_accept\n");
-    printf("@@@@@@ before accept\n");
+    //printf("@@@@@@ before accept\n");
     int newqd = mtcp_accept(mctx, qd, saddr, size);
-    printf("@@@@@@ after accept\n");
+    //printf("@@@@@@ after accept\n");
     //fprintf(stderr, "@@@@@@@ after mtcp_accept\n");
 
     if (newqd != -1) {
@@ -397,7 +398,7 @@ MTCPQueue::ProcessQ(size_t maxRequests)
             continue;
         }
         
-        PendingRequest &req = pending[qt]; 
+        PendingRequest &req = it->second; 
         if (IS_PUSH(qt)) {
             printf("isPush\n");
             ProcessOutgoing(req);
@@ -416,25 +417,26 @@ MTCPQueue::ProcessQ(size_t maxRequests)
 ssize_t
 MTCPQueue::Enqueue(qtoken qt, sgarray &sga)
 {
-    auto it = pending.find(qt);
-    PendingRequest req;
+ 	auto it = pending.find(qt);
     if (it == pending.end()) {
-        req = PendingRequest();
-        req.sga = sga;
-        pending[qt] = req;
+        pending.insert(std::make_pair(qt, PendingRequest(sga)));
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
         // non-blocking
-        if (workQ.front() == qt) ProcessQ(1);
-    } else {
-        req = it->second;
+        if (workQ.front() == qt) {
+            ProcessQ(1);
+        }
     }
+    PendingRequest &req = pending.find(qt)->second;
+
     if (req.isDone) {
+        assert(sga.num_bufs > 0);
         return req.res;
     } else {
+        //printf("Enqueue() req.is Done = false will return 0\n");
         return 0;
-    }
+    } 
 }
 
 ssize_t
@@ -475,12 +477,35 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 
 ssize_t
 MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
-    return 0;
+    auto it = pending.find(qt);
+    if (it == pending.end()) {
+        pending.insert(std::make_pair(qt, PendingRequest(sga)));
+        it = pending.find(qt);
+        if (it == pending.end()){
+            exit(1);
+        }
+        PendingRequest &req = it->second;
+        if (IS_PUSH(qt)) {
+            exit(1);
+        } else {
+            ProcessIncoming(req);
+        }
+        if (req.isDone){
+            return req.res;
+        }else{
+            return -1;
+        }
+    } else {
+        // qtoken found in q
+        fprintf(stderr, "Error, peek() found existing qtoken\n");
+        exit(1);
+    }
 }
     
 ssize_t
 MTCPQueue::wait(qtoken qt, struct sgarray &sga)
 {
+	ssize_t ret;
     auto it = pending.find(qt);
     assert(it != pending.end());
     printf("MTCPQueue::wait(%d) isDone:%d\n", qt, it->second.isDone);
@@ -490,8 +515,10 @@ MTCPQueue::wait(qtoken qt, struct sgarray &sga)
     }
     printf("wait() return\n");
 
-    sga = it->second.sga;
-    return it->second.res;
+    //sga = it->second.sga;
+    // NOTE: not assign sga here, since I never wait for pop
+	ret = it->second.res;
+    return ret;
 }
 
 ssize_t

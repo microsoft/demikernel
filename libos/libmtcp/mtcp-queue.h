@@ -34,7 +34,7 @@
 #include "common/queue.h"
 #include "common/library.h"
 #include <list>
-#include <map>
+#include <unordered_map>
 
 #define MTCP_MAX_FLOW_NUM  (10000)
 #define MTCP_MAX_EVENTS (MTCP_MAX_FLOW_NUM * 3)
@@ -57,21 +57,19 @@ private:
         void *buf;
         // number of bytes processed so far
         size_t num_bytes;
-        //struct sgarray *sga_ptr;
-        struct sgarray sga;
+        struct sgarray &sga;
 
-        PendingRequest() :
-        //PendingRequest(struct sgarray &sga) :
+        PendingRequest(struct sgarray &input_sga) :
             isDone(false),
             res(0),
             header{0,0,0},
             buf(NULL),
-            num_bytes(0) {};
-            //sga(NULL) { };            
+            num_bytes(0),
+            sga(input_sga) { };            
     };
     
     // queued scatter gather arrays
-    std::map<qtoken, PendingRequest> pending;
+    std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;
     // queue and events
     uint32_t mtcp_evts;
