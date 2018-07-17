@@ -41,6 +41,7 @@
 #define MTCP_RCVBUF_SIZE (2*1024)
 #define MTCP_SNDBUF_SIZE (8*1024)
 
+//#define _LIBOS_MTCP_DEBUG_
 
 namespace Zeus {
 namespace MTCP {
