@@ -47,7 +47,7 @@ namespace Zeus {
 namespace POSIX {
 
 int
-PosixQueue::queue(int domain, int type, int protocol)
+PosixQueue::socket(int domain, int type, int protocol)
 {
     int qd = ::socket(domain, type, protocol);
 
