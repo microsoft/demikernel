@@ -42,6 +42,16 @@ include_directories(${HOARD_DIR}/include/util)
 include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
+# mtcp
+set(DPDK_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/dpdk/)
+set(MTCP_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/mtcp/)
+include_directories(${MTCP_DIR}/include)
+#link_directories(${MTCP_DIR}/lib)
+#include_directories(${DPDK_DIR}/include)
+#link_directories(${DPDK_DIR}/lib)
+#execute_process(COMMAND cat ${DPDK_DIR}/lib/ldflags.txt OUTPUT_VARIABLE DPDK_LD_FLAGS)
+#execute_process(COMMAND cat ${DPDK_DIR}/include/cflags.txt OUTPUT_VARIABLE DPDK_CFLAGS)
+
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
@@ -50,6 +60,7 @@ include_directories(${HOARD_DIR}/Heap-Layers)
 add_subdirectory(${ZEUS_SOURCE_DIR}/common)
 add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libmtcp)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 add_subdirectory(${ZEUS_SOURCE_DIR}/liblwip)
 add_subdirectory(${PROJECT_SOURCE_DIR}/tests)

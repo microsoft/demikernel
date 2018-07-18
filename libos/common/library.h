@@ -211,7 +211,6 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
-        	perror("library.h: push completed\n");
             return 0;
         }
     };

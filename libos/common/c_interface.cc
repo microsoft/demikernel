@@ -26,7 +26,9 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
     c_sga->num_bufs = sga->num_bufs;
     for(int i = 0; i < sga->num_bufs; i++){
         (c_sga->bufs[i]).len = (sga->bufs[i]).len;
+#ifdef __DEBUG_c_interface_cc
         printf("sgarray_cpp2c: i%d len:%d\n", i, (c_sga->bufs[i]).len);
+#endif
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
@@ -99,7 +101,9 @@ zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
     zeus_qtoken n = Zeus::pop(qd, sga);
     //printf("return from pop() n:%zd\n", n);
     if (n == 0){
+#ifdef __DEBUG_c_interface_cc
         printf("Zeus:pop() successs\n");
+#endif
         sgarray_cpp2c(&sga, sga_ptr);
     }
     return n;
@@ -110,7 +114,9 @@ ssize_t zeus_peek(int qd, zeus_sgarray *sga_ptr){
     ssize_t n = Zeus::peek(qd, sga);
     //printf("return from pop() n:%zd\n", n);
     if (n > 0){
+#ifdef __DEBUG_c_interface_cc
         printf("Zeus:light_pop() successs\n");
+#endif
         //sleep(10);
         sgarray_cpp2c(&sga, sga_ptr);
     }
