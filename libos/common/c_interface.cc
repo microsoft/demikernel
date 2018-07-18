@@ -41,7 +41,7 @@ int zeus_queue(int domain, int type, int protocol){
 #ifdef __DEBUG_c_interface_cc
     printf("zeus_queue\n");
 #endif
-    return Zeus::queue(domain, type, protocol);
+    return Zeus::socket(domain, type, protocol);
 }
 
 int zeus_listen(int fd, int backlog){

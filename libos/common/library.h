@@ -120,8 +120,8 @@ public:
     // Generic interfaces to libOS syscalls
     // ================================================
 
-    int queue(int domain, int type, int protocol) {
-        int qd = QueueType::queue(domain, type, protocol);
+    int socket(int domain, int type, int protocol) {
+        int qd = QueueType::socket(domain, type, protocol);
         if (qd > 0)
             InsertQueue(QueueType(NETWORK_Q, qd));
         return qd;
