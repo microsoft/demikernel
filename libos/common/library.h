@@ -121,8 +121,12 @@ public:
 
     int queue(int domain, int type, int protocol) {
         int qd = QueueType::queue(domain, type, protocol);
-        if (qd > 0)
-            InsertQueue(QueueType(NETWORK_Q, qd));
+        if (qd > 0) {
+            if (protocol == SOCK_STREAM) {
+                InsertQueue(QueueType(TCP_Q, qd));
+            } else {
+                InsertQueue(QueueType(UDP_Q, qd));
+            }
         return qd;
     };
 

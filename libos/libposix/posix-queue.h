@@ -31,73 +31,20 @@
 #ifndef _LIB_POSIX_QUEUE_H_
 #define _LIB_POSIX_QUEUE_H_
 
+#include "include/io-queue.h"
 #include "common/queue.h"
-#include "common/library.h"
 #include <list>
-#include <unordered_map>
+#include <map>
 
 namespace Zeus {
 namespace POSIX {
 
-class PosixQueue : public Queue {
-private:
-    struct PendingRequest {
-    public:
-        bool isDone;
-        ssize_t res;
-        // header = MAGIC, dataSize, SGA_num
-        uint64_t header[3];
-        // currently used incoming buffer
-        void *buf;
-        // number of bytes processed so far
-        size_t num_bytes;
-        struct sgarray &sga;
-
-        PendingRequest(struct sgarray &sga) :
-            isDone(false),
-            res(0),
-            header{0,0,0},
-            buf(NULL),
-            num_bytes(0),
-            sga(sga) { };
-    };
-    
-    // queued scatter gather arrays
-    std::unordered_map<qtoken, PendingRequest> pending;
-    std::list<qtoken> workQ;
-
-    void ProcessIncoming(PendingRequest &req);
-    void ProcessOutgoing(PendingRequest &req);
-    void ProcessQ(size_t maxRequests);
-    ssize_t Enqueue(qtoken qt, sgarray &sga);
-
+class PosixQueue : public Zeus::Queue {
 public:
-    PosixQueue() : Queue(), workQ{} { };
-    PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
-
-    // network functions
-    static int queue(int domain, int type, int protocol);
-    int listen(int backlog);
-    int bind(struct sockaddr *saddr, socklen_t size);
-    int accept(struct sockaddr *saddr, socklen_t *size);
-    int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
-          
-    // file functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
-
-    // data path functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t peek(qtoken qt, struct sgarray &sga);
-    ssize_t wait(qtoken qt, struct sgarray &sga);
-    ssize_t poll(qtoken qt, struct sgarray &sga);
-    // returns the file descriptor associated with
-    // the queue descriptor if the queue is an io queue
-    int fd();
+    // currently used incoming buffer
+    void *buf = NULL;
+    // valid data in current buffer
+    size_t count = 0;
 };
 
 } // namespace POSIX

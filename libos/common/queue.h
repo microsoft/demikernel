@@ -37,6 +37,8 @@ namespace Zeus {
     
 enum BasicQueueType {
     NETWORK_Q,
+    TCP_Q,
+    UDP_Q,
     FILE_Q,
     MERGED_Q,
     FILTERED_Q
