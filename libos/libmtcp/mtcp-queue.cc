@@ -98,7 +98,8 @@ MTCPQueue::queue(int domain, int type, int protocol)
     }
     int qd = mtcp_socket(mctx, domain, type, protocol);
     // check qd?, not let the application check qd
-    // TODO: set TCP_NODELAY use mtcp_interface here
+    int n = 1;
+    mtcp_setsockopt(mctx, qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
     return qd;
 }
 
@@ -123,6 +124,8 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
     //fprintf(stderr, "@@@@@@@ after mtcp_accept\n");
 
     if (newqd != -1) {
+        int n = 1;
+        mtcp_setsockopt(mctx, qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, newqd);
         if (ret < 0) {
