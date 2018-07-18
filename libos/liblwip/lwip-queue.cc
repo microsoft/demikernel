@@ -276,6 +276,7 @@ LWIPQueue::queue(int domain, int type, int protocol)
 int
 LWIPQueue::listen(int backlog)
 {
+	printf("========listen called===========\n");
     return 0;
 }
 
@@ -325,6 +326,7 @@ LWIPQueue::bind()
 int
 LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
+	printf("==============accept called=============\n");
     return 0;
 }
 
@@ -742,7 +744,7 @@ LWIPQueue::peek(qtoken qt, struct sgarray &sga)
     if (it == pending.end()) {
     	req = PendingRequest();
     	req.sga = &sga;
-    	pending.insert(std::make_pair(qt, req));
+    	pending[qt] = req;
     	it = pending.find(qt);
         if(it == pending.end()){
             printf("req not inserted\n");
@@ -756,8 +758,10 @@ LWIPQueue::peek(qtoken qt, struct sgarray &sga)
             ProcessIncoming(req);
         }
         if (req.isDone){
+        	printf("peek done\n");
             return req.res;
         }else{
+        	printf("peek not done\n");
             return -1;
         }
     }else{

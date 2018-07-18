@@ -174,10 +174,11 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
             req.buf = malloc(1024);
             assert(req.buf != NULL);
             
+            socklen_t size = sizeof(struct sockaddr_in);
             count = ::recvfrom(qd, req.buf, 1024, 0,
-                               &req.sga.addr, sizeof(req.sga.addr));
+                               (struct sockaddr*)&req.sga.addr, &size);
         } else {
-            ssize_t count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
+            count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
 
         }
@@ -201,7 +202,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 
         if (type == UDP_Q) {
             memcpy(&req.header, req.buf, sizeof(req.header));
-            req.buffer += sizeof(req.header);
+            req.buf += sizeof(req.header);
         }
     }
 
@@ -298,7 +299,8 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
 
-    if (connect(qd, sga.addr, sizeof(sga.addr)) < 0) {
+    const struct sockaddr* addr = (struct sockaddr*)&sga.addr;
+    if (::connect(qd, addr, sizeof(struct sockaddr_in)) < 0) {
         fprintf(stderr, "Could not connect to outgoing address");
         req.res = -1;
         req.isDone = true;
@@ -403,7 +405,7 @@ PosixQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-PosixQueue::light_pop(qtoken qt, struct sgarray &sga)
+PosixQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
