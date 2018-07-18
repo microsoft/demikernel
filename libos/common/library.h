@@ -100,10 +100,7 @@ public:
 
     QueueType& NewQueue(BasicQueueType type) {
         int qd = queue_counter++;
-        if (type == BASIC)
-            queues[qd] = new Queue(type, qd);
-        else
-            queues[qd] = new QueueType(type, qd);
+        queues[qd] = new QueueType(type, qd);
         return queues[qd];
     };
 
@@ -123,11 +120,6 @@ public:
     // Generic interfaces to libOS syscalls
     // ================================================
 
-    int queue() {
-        Queue &q = NewQueue(BASIC);
-        return q.GetQD();
-    }
-    
     int queue(int domain, int type, int protocol) {
         int qd = QueueType::queue(domain, type, protocol);
         if (qd > 0)
@@ -136,53 +128,54 @@ public:
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
-        Queue &q = GetQueue(qd);
+        QueueType &q = GetQueue(qd);
         return q.bind(saddr, size);
     };
 
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
-        Queue &q = GetQueue(qd);
+        QueueType &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd != -1){
+            printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(QueueType(NETWORK_Q, newqd));
         }
         return newqd;
     };
 
     int listen(int qd, int backlog) {
-        Queue &q = GetQueue(qd);
+        QueueType &q = GetQueue(qd);
         return q.listen(backlog);
     };
 
     int connect(int qd, struct sockaddr *saddr, socklen_t size) {
-        Queue &q = GetQueue(qd);
+        QueueType &q = GetQueue(qd);
         int newqd = q.connect(saddr, size);
         if (newqd > 0)
-            InsertQueue(Queue(NETWORK_Q, newqd));
+            InsertQueue(QueueType(NETWORK_Q, newqd));
         return newqd;
     };
 
     int open(const char *pathname, int flags) {
         // use the fd as qd
-        int qd = Queue::open(pathname, flags);
+        int qd = QueueType::open(pathname, flags);
         if (qd > 0)
-            InsertQueue(Queue(FILE_Q, qd));
+            InsertQueue(QueueType(FILE_Q, qd));
         return qd;
     };
 
     int open(const char *pathname, int flags, mode_t mode) {
         // use the fd as qd
-        int qd = Queue::open(pathname, flags, mode);
+        int qd = QueueType::open(pathname, flags, mode);
         if (qd > 0)
-            InsertQueue(Queue(FILE_Q, qd));
+            InsertQueue(QueueType(FILE_Q, qd));
         return qd;
     };
 
     int creat(const char *pathname, mode_t mode) {
         // use the fd as qd
-        int qd = Queue::creat(pathname, mode);
+        int qd = QueueType::creat(pathname, mode);
         if (qd > 0)
-            InsertQueue(Queue(FILE_Q, qd));
+            InsertQueue(QueueType(FILE_Q, qd));
         return qd;
     };
     
@@ -190,7 +183,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    
         return res;
@@ -199,7 +192,7 @@ public:
     int qd2fd(int qd) {
         if (!HasQueue(qd))
             return -1;
-        Queue &q = GetQueue(qd);
+        QueueType &q = GetQueue(qd);
         return q.fd();
     };
     
@@ -207,7 +200,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // pushing to files not implemented yet
             return -1;
@@ -228,7 +221,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
@@ -249,7 +242,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
@@ -265,7 +258,7 @@ public:
         int qd = it->second;
         assert(HasQueue(qd));
 
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // waiting on files not implemented yet
             return 0;
@@ -277,7 +270,7 @@ public:
                      size_t num_qts,
                      struct sgarray &sga) {
         ssize_t res = 0;
-        Queue *qs[num_qts];
+        QueueType *qs[num_qts];
         for (unsigned int i = 0; i < num_qts; i++) {
             auto it = pending.find(qts[i]);
             assert(it != pending.end());
@@ -302,7 +295,7 @@ public:
         for (unsigned int i = 0; i < num_qts; i++) {
             auto it = pending.find(qts[i]);
             assert(it != pending.end());
-            Queue &q = GetQueue(it->second);
+            QueueType &q = GetQueue(it->second);
             ssize_t r = q.wait(qts[i], sgas[i]);
             if (r > 0) res += r;
         }
@@ -314,7 +307,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
@@ -335,7 +328,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        Queue &queue = GetQueue(qd);
+        QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;

@@ -79,6 +79,38 @@ RdmaQueue::bind(struct sockaddr *saddr, socklen_t size)
 int
 RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
+
+    
+    RdmaQueue newQ = 
+    // set up connection
+    
+
+        if (transport->rdmaOutgoing.find(addr) == transport->rdmaOutgoing.end()) {
+            // can't find connection, so must be a new one
+            ASSERT(event->event == RDMA_CM_EVENT_CONNECT_REQUEST);
+
+            Debug("Accept callback from: %s:%u",
+                  inet_ntoa(sin->sin_addr),
+                  sin->sin_port);
+            // Set up queue pairs for the new connection
+            transport->ConnectRDMA(info->receiver, addr, event->id);
+            // Do no need to add libevent because the new connection
+            // shares a cm event queue with the listening socket
+        }
+        
+        case 
+        {
+            // Accept the connection
+            struct rdma_conn_param params;
+            memset(&params, 0, sizeof(params));
+            params.initiator_depth = params.responder_resources = 1;
+            params.rnr_retry_count = 7; /* infinite retry */
+            if ((rdma_accept(event->id, &params)) != 0) {
+                PWarning("Failed to accept incoming RDMA connection: %s",
+                         strerror(errno));
+            }
+        
+    
     int newqd = ::accept(qd, saddr, size);
     if (newqd != -1) {
         // Set TCP_NODELAY
