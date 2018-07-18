@@ -244,8 +244,8 @@ public:
         }
     };
 
-    ssize_t light_pop(int qd, struct Zeus::sgarray &sga) {
-        //printf("call light_pop\n");
+    ssize_t peek(int qd, struct Zeus::sgarray &sga) {
+        //printf("call peekp\n");
         if (!HasQueue(qd))
             return -1;
         
@@ -255,7 +255,7 @@ public:
             return -1;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.light_pop(t, sga);
+        ssize_t res = queue.peek(t, sga);
         return res;
     };
 
@@ -273,7 +273,7 @@ public:
         return queue.wait(qt, sga); 
     }
 
-    ssize_t wait_any(qtoken *qts,
+    qtoken wait_any(qtoken *qts,
                      size_t num_qts,
                      struct sgarray &sga) {
         ssize_t res = 0;
