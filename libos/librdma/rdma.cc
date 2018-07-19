@@ -40,9 +40,24 @@ int queue()
     return lib.queue();
 }
     
-int queue(int domain, int type, int protocol)
+int socket(int domain, int type, int protocol)
 {
-    return lib.queue(domain, type, protocol);
+    struct rdma_cm_id *id;
+    if (protocol == SOCK_STREAM) {
+        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_TCP)) != 0) {
+            fprintf("Could not create RDMA event id: %s", strerror(errno));
+            return -1;
+        }
+    } else {
+        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_UDP)) != 0) {
+            fprintf("Could not create RDMA event id: %s", strerror(errno));
+            return -1;
+        }
+    }
+    
+    int qd = lib.socket(domain, type, protocol);
+    lib.GetQueue(qd).setRdmaCM(id);
+    return qd;
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)

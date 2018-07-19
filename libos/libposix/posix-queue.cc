@@ -49,26 +49,27 @@ namespace POSIX {
 int
 PosixQueue::socket(int domain, int type, int protocol)
 {
-    int qd = ::socket(domain, type, protocol);
+    int _fd = ::socket(domain, type, protocol);
 
-    if (qd != -1) {
+    if (_fd > 0) {
         if (protocol == SOCK_STREAM) {
             // Set TCP_NODELAY
             int n = 1;
-            if (setsockopt(qd, IPPROTO_TCP,
+            if (setsockopt(_fd, IPPROTO_TCP,
                            TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
                 fprintf(stderr, 
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
         }
-    }
-    return qd;
+        return qd;
+    } else return _fd;
+
 }
 
 int
 PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::bind(qd, saddr, size);
+    int res = ::bind(_fd, saddr, size);
     if (res == 0) {
         return res;
     } else {
@@ -101,7 +102,7 @@ PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 int
 PosixQueue::listen(int backlog)
 {
-    int res = ::listen(qd, backlog);
+    int res = ::listen(_fd, backlog);
     if (res == 0) {
         return res;
     } else {
@@ -113,11 +114,11 @@ PosixQueue::listen(int backlog)
 int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::connect(qd, saddr, size);
+    int res = ::connect(_fd, saddr, size);
     //fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
-        if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+        if (fcntl(_fd, F_SETFL, O_NONBLOCK, 1)) {
             fprintf(stderr,
                     "Failed to set O_NONBLOCK on outgoing Zeus socket");
         }
@@ -130,37 +131,45 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::open(const char *pathname, int flags)
 {
-    // use the fd as qd
-    int qd = ::open(pathname, flags);
-    return qd;
+    _fd = ::open(pathname, flags);
+    if _fd > 0 return qd;
+    else return _fd;
 }
 
 int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::open(pathname, flags, mode);
-    return qd;
+    _fd = ::open(pathname, flags, mode);
+    if _fd > 0 return qd;
+    else return _fd;
 }
 
 int
 PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::creat(pathname, mode);
-    return qd;
+    _fd = ::creat(pathname, mode);
+    if _fd > return qd;
+    else return _fdd;
 }
     
 int
 PosixQueue::close()
 {
-    return ::close(qd);
+    return ::close(_fd);
 }
 
 int
 PosixQueue::fd()
 {
-    return qd;
+    return _fd;
+}
+
+void
+PosixQueue:set_fd(int fd)
+{
+    _fd = fd;
 }
 
 void
@@ -169,7 +178,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
+        ssize_t count = ::read(_fd, (uint8_t *)&req.header + req.num_bytes,
                              sizeof(req.header) - req.num_bytes);
         //printf("ProcessIncoming: first read :%d\n", count);
         // we still don't have a header
@@ -206,7 +215,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        ssize_t count = ::read(qd, (uint8_t *)req.buf + offset,
+        ssize_t count = ::read(_fd, (uint8_t *)req.buf + offset,
                                dataLen - offset);
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -244,7 +253,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
-    printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
+    printf("ProcessOutgoing _fd:%d num_bufs:%d\n", _fd, sga.num_bufs);
 
     struct iovec vsga[2*sga.num_bufs + 1];
     uint64_t lens[sga.num_bufs];
@@ -279,7 +288,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
-    ssize_t count = ::writev(qd,
+    ssize_t count = ::writev(_fd,
                              vsga,
                              2*sga.num_bufs +1);
    

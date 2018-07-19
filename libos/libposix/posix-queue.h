@@ -66,6 +66,8 @@ private:
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;
 
+    int _fd;
+
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);

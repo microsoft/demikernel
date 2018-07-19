@@ -100,8 +100,10 @@ public:
 
     QueueType& NewQueue(BasicQueueType type) {
         int qd = queue_counter++;
-        
-        queues[qd] = new QueueType(type, qd);
+        if (type == BASIC)
+            queues[qd] = new Queue(type, qd);
+        else
+            queues[qd] = new QueueType(type, qd);
         return queues[qd];
     };
 
@@ -122,13 +124,12 @@ public:
     // ================================================
 
     int queue() {
-        InsertQueue(Queue(BASIC));
+        return NewQueue.GetQD();
+    }
     
     int socket(int domain, int type, int protocol) {
-        int qd = QueueType::socket(domain, type, protocol);
-        if (qd > 0)
-            InsertQueue(QueueType(NETWORK_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(NETWORK_Q);
+        return q.socket(domain, type, protocol);
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
@@ -284,7 +285,7 @@ public:
         
         while (res == 0) {
             for (unsigned int i = 0; i < num_qts; i++) {
-                res = qs[i]->poll(qts[i], sga);
+                res = qs[i]->peek(qts[i], sga);
                 if (res != 0) break;
             }
         }

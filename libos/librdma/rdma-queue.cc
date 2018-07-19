@@ -47,26 +47,30 @@ namespace Zeus {
 namespace RDMA {
 
 int
-RdmaQueue(
+RdmaQueue::PostReceive()
+{
+    // post receive
+    struct ibv_recv_wr wr, *bad_wr = NULL;
+    struct ibv_sge sge;
+    void *buf = malloc(RECV_BUFFER_SIZE);
+    Debug("Post Receive bufsize %u %lx", buf->size, buf);
+    memset(&wr, 0, sizeof(wr));
+    wr.wr_id = (uint64_t)buf;
+    wr.sg_list = &sge;
+    wr.next = NULL;
+    wr.num_sge = 1;
+    sge.addr = (uintptr_t)buf->start;
+    sge.length = buf->size;
+    sge.lkey = buf->mr->lkey;
+    return ibv_post_recv(info->id->qp, &wr, &bad_wr);
+        
+}    
 
 int
-RdmaQueue::queue(int domain, int type, int protocol)
+RdmaQueue::socket(int domain, int type, int protocol)
 {
-    // Create a RDMA channel for events on this link
-    if((channel = rdma_create_event_channel()) == 0) {
-        fprintf(stderr,
-                "Could not create RDMA event channel: %s",
-                strerror(errno));
-        return -1;
-    }
-
-    if ((rdma_create_id(channel, &acceptID, NULL, RDMA_PS_TCP)) != 0) {
-        fprintf("Could not create RDMA event id: %s", strerror(errno));
-        return -1;
-    }
-    
     //get file descriptor
-    return channel->fd;
+    return 0;
 }
 
 int
@@ -152,14 +156,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     struct rdma_conn_param params;    
     struct rdma_cm_event *event;
 
-    // Create a communications manager for this link
-    if ((rdma_create_id(NULL, &id, NULL, RDMA_PS_TCP)) != 0) {
-        sprintf(stderr, "Could not create RDMA event id");
-        return -1;
-    }
-
     // Convert regular address into an rdma address
-    if ((res = rdma_resolve_addr(id, NULL, (sockaddr*)&dst.addr,1)) != 0) {
+    if ((res = rdma_resolve_addr(rdma_id, NULL, (sockaddr*)&dst.addr,1)) != 0) {
         sprintf(stderr, "Could not resolve IP to an RDMA address: %s",
                 strerror(errno));
         return -1;
@@ -533,6 +531,12 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     } else {
         return 0;
     }
+}
+
+void
+RdmaQueue::setRdmaCM(struct rdma_cm_id *cm)
+{
+    rmda_cm = cm;
 }
 
 
