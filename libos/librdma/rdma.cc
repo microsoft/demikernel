@@ -73,6 +73,8 @@ int listen(int qd, int backlog)
         
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
+
+    
     return lib.connect(qd, saddr, size);
 }
 
@@ -111,7 +113,7 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
      return lib.pop(qd, sga);
 }
 
-ssize_t light_pop(int qd, struct Zeus::sgarray &sga)
+ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
     return lib.light_pop(qd, sga);
 }

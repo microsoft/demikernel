@@ -61,7 +61,7 @@ namespace RDMA {
 
     // rdma data structures
     // connection manager for this connection queue
-    struct rdma_cm_id *id;
+    struct rdma_cm_id *rdma_id;
     
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);

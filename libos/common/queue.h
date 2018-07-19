@@ -67,9 +67,10 @@ public:
     BasicQueueType GetType() { return type; };
     void SetQD(int q) { qd = q; };
     void SetType(BasicQueueType t) { type = t; };
-    
+
+    int queue();
     // network control plane functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);

@@ -100,6 +100,7 @@ public:
 
     QueueType& NewQueue(BasicQueueType type) {
         int qd = queue_counter++;
+        
         queues[qd] = new QueueType(type, qd);
         return queues[qd];
     };
@@ -120,6 +121,9 @@ public:
     // Generic interfaces to libOS syscalls
     // ================================================
 
+    int queue() {
+        InsertQueue(Queue(BASIC));
+    
     int socket(int domain, int type, int protocol) {
         int qd = QueueType::socket(domain, type, protocol);
         if (qd > 0)

@@ -47,6 +47,9 @@ namespace Zeus {
 namespace RDMA {
 
 int
+RdmaQueue(
+
+int
 RdmaQueue::queue(int domain, int type, int protocol)
 {
     // Create a RDMA channel for events on this link
@@ -145,6 +148,73 @@ RdmaQueue::listen(int backlog)
 int
 RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
+    int res;
+    struct rdma_conn_param params;    
+    struct rdma_cm_event *event;
+
+    // Create a communications manager for this link
+    if ((rdma_create_id(NULL, &id, NULL, RDMA_PS_TCP)) != 0) {
+        sprintf(stderr, "Could not create RDMA event id");
+        return -1;
+    }
+
+    // Convert regular address into an rdma address
+    if ((res = rdma_resolve_addr(id, NULL, (sockaddr*)&dst.addr,1)) != 0) {
+        sprintf(stderr, "Could not resolve IP to an RDMA address: %s",
+                strerror(errno));
+        return -1;
+    }
+
+    // Wait for address resolution
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
+        Panic("Could not resolve to RDMA address");
+    }
+    rdma_ack_cm_event(event);
+
+    // set up connection queue pairs and info
+    ConnectRDMA(src, dst, id);
+
+    // Find path to rdma address
+    if ((res = rdma_resolve_route(id, 1)) != 0) {
+        Panic("Could not resolve route to RDMA address: %s", strerror(errno));
+    }
+
+    // Wait for path resolution
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
+        Panic("Could not resolve route to RDMA address");
+    }
+    rdma_ack_cm_event(event);
+
+    // Get channel
+    memset(&params, 0, sizeof(params));
+    params.initiator_depth = params.responder_resources = 1;
+    params.rnr_retry_count = 7; /* infinite retry */
+    
+    if ((res = rdma_connect(id, &params)) != 0) {
+        Panic("Could not connect RDMA: %s", strerror(errno));
+    }
+
+    // Wait for rdma connection setup to complete
+    rdma_get_cm_event(channel, &event);
+    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+        Panic("Could not connect to RDMA address ");
+    }
+    rdma_ack_cm_event(event);
+
+    auto kv = rdmaOutgoing.find(dst);
+    ASSERT(kv->second != NULL);    
+    RDMATransportRDMAListener *info = kv->second;
+
+    int fd = channel->fd;
+    // set up call back
+    
+    int flags = fcntl(fd, F_GETFL);
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK)) {
+        Panic("Failed to set O_NONBLOCK");
+    }
+
     int res = ::connect(qd, saddr, size);
     //fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
@@ -198,6 +268,7 @@ RdmaQueue::fd()
 void
 RdmaQueue::ProcessIncoming(PendingRequest &req)
 {
+    
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -212,7 +283,8 @@ RdmaQueue::ProcessIncoming(PendingRequest &req)
             } else {
                 //fprintf(stderr, "Could not read header: %s\n", strerror(errno));
                 req.isDone = true;
-                req.res = count;
+                req.res =
+                    count;
                 return;
             }
         }
@@ -409,7 +481,7 @@ RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-RdmaQueue::light_pop(qtoken qt, struct sgarray &sga)
+RdmaQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     if (it == pending.end()) {
