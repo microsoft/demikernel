@@ -121,6 +121,14 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
             fprintf(stderr,
                     "Failed to set O_NONBLOCK on outgoing Zeus socket");
         }
+        if (type == UDP_Q) {
+        	struct sockaddr_in* addr = (struct sockaddr_in*)saddr;
+        	connectAddr.sin_family = addr->sin_family;
+        	connectAddr.sin_addr.s_addr = addr->sin_addr.s_addr;
+        	connectAddr.sin_port = addr->sin_port;
+        	printf("connect: connecting to %x:%d\n", connectAddr.sin_addr.s_addr, connectAddr.sin_port);
+        	connected = true;
+        }
         return res;
     } else {
         return errno;
@@ -175,8 +183,12 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
             assert(req.buf != NULL);
             
             socklen_t size = sizeof(struct sockaddr_in);
-            count = ::recvfrom(qd, req.buf, 1024, 0,
-                               (struct sockaddr*)&req.sga.addr, &size);
+            struct sockaddr addr;
+            count = ::recvfrom(qd, req.buf, 1024, 0, &addr, &size);
+            req.sga->addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
+            req.sga->addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
+            if (count > 0)
+            	printf("processIncomming: received from %x:%d\n", req.sga->addr.sin_addr.s_addr, req.sga->addr.sin_port);
         } else {
             count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
@@ -246,22 +258,22 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)req.buf;
-    req.sga.num_bufs = req.header[2];
-    for (int i = 0; i < req.sga.num_bufs; i++) {
-        req.sga.bufs[i].len = *(size_t *)ptr;
+    req.sga->num_bufs = req.header[2];
+    for (int i = 0; i < req.sga->num_bufs; i++) {
+        req.sga->bufs[i].len = *(size_t *)ptr;
         ptr += sizeof(uint64_t);
-        req.sga.bufs[i].buf = (ioptr)ptr;
-        ptr += req.sga.bufs[i].len;
+        req.sga->bufs[i].buf = (ioptr)ptr;
+        ptr += req.sga->bufs[i].len;
     }
     req.isDone = true;
-    req.res = dataLen - (req.sga.num_bufs * sizeof(uint64_t));
+    req.res = dataLen - (req.sga->num_bufs * sizeof(uint64_t));
     return;
 }
     
 void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
-    sgarray &sga = req.sga;
+    sgarray sga = *(req.sga);
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
     printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
@@ -292,21 +304,38 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     // fill in header
     req.header[0] = MAGIC;
     req.header[1] = totalLen;
-    req.header[2] = req.sga.num_bufs;
+    req.header[2] = req.sga->num_bufs;
 
     // set up header at beginning of packet
     vsga[0].iov_base = &req.header;
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
 
-    const struct sockaddr* addr = (struct sockaddr*)&sga.addr;
-    if (::connect(qd, addr, sizeof(struct sockaddr_in)) < 0) {
-        fprintf(stderr, "Could not connect to outgoing address");
-        req.res = -1;
-        req.isDone = true;
-        return;
+    if (type == UDP_Q) {
+    	struct sockaddr* addr = connected ? (struct sockaddr*)&connectAddr
+    									  : (struct sockaddr*)&sga.addr;
+    	const char* msg = connected ? "connected" : "sgarray";
+    	printf("processOutgoing: used %s address\n", msg);
+    	struct sockaddr_in* temp = (struct sockaddr_in*)addr;
+    	printf("processOutgoing: connecting to %x:%d\n", temp->sin_addr.s_addr, temp->sin_port);
+		if (!connected && ::connect(qd, addr, sizeof(struct sockaddr_in)) != 0) {
+			fprintf(stderr, "Could not connect to outgoing address: %s\n", strerror(errno));
+			req.res = -1;
+			req.isDone = true;
+			return;
+		}
+		struct sockaddr_in* peer = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+		socklen_t l = sizeof(struct sockaddr_in);
+		if (::getpeername(qd, (struct sockaddr*)peer, &l) < 0) {
+			fprintf(stderr, "Could not get peer name: %s\n", strerror(errno));
+			req.res = -1;
+			req.isDone = true;
+			return;
+		}
+		else {
+			printf("processOutgoing: connected to %x:%d\n", peer->sin_addr.s_addr, peer->sin_port);
+		}
     }
-    
     ssize_t count = ::writev(qd,
                              vsga,
                              2*sga.num_bufs +1);
@@ -370,8 +399,11 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
     auto it = pending.find(qt);
+    PendingRequest req;
     if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
+        req = PendingRequest();
+        req.sga = &sga;
+        pending[qt] = req;
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
@@ -380,7 +412,7 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
             ProcessQ(1);
         }
     }
-    PendingRequest &req = pending.find(qt)->second;
+    req = pending.find(qt)->second;
 
     if (req.isDone) {
         assert(sga.num_bufs > 0);
@@ -408,19 +440,27 @@ ssize_t
 PosixQueue::peek(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
+    PendingRequest req;
     if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
-        it = pending.find(qt);
+    	req = PendingRequest();
+    	req.sga = &sga;
+    	pending[qt] = req;
+    	it = pending.find(qt);
         if (it == pending.end()){
             exit(1);
         }
-        PendingRequest &req = it->second;
+        req = it->second;
+        req.sga->addr.sin_addr.s_addr = sga.addr.sin_addr.s_addr;
+        req.sga->addr.sin_port = sga.addr.sin_port;
         if (IS_PUSH(qt)) {
             exit(1);
         } else {
             ProcessIncoming(req);
         }
         if (req.isDone){
+        	sga.addr.sin_addr.s_addr = req.sga->addr.sin_addr.s_addr;
+        	sga.addr.sin_port = req.sga->addr.sin_port;
+        	printf("peek: received from: %x:%d\n", sga.addr.sin_addr.s_addr, sga.addr.sin_port);
             return req.res;
         }else{
             return -1;
@@ -452,7 +492,7 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
     auto it = pending.find(qt);
     assert(it != pending.end());
     if (it->second.isDone) {
-        sga = it->second.sga;
+        sga = *(it->second.sga);
         return it->second.res;
     } else {
         return 0;

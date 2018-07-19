@@ -55,10 +55,10 @@ struct mac2ip {
 
 static struct mac2ip ip_config[] = {
     {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
-            0x0c0c0c04,       // 12.12.12.4
+            0x040c0c0c,       // 12.12.12.4
     },
     {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
-            0x0c0c0c05,       // 12.12.12.5
+            0x050c0c0c,       // 12.12.12.5
     },
 };
 
@@ -291,7 +291,7 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
     struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
     bound_addr = *saddr;
     if (bound_addr.sin_port == 0) {
-        bound_addr.sin_port = port++;
+        bound_addr.sin_port = htons(port++);
         if (port > 65535) {
             port = 1024;
         }
@@ -761,7 +761,7 @@ LWIPQueue::peek(qtoken qt, struct sgarray &sga)
         	printf("peek done\n");
             return req.res;
         }else{
-        	printf("peek not done\n");
+        	//printf("peek not done\n");
             return -1;
         }
     }else{

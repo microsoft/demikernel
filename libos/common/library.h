@@ -84,7 +84,6 @@ public:
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
-
         qtoken t = (token_counter == -2) ?
             // skip the range including -1 and 0
             (token_counter += 4) :
@@ -122,7 +121,7 @@ public:
     int queue(int domain, int type, int protocol) {
         int qd = QueueType::queue(domain, type, protocol);
         if (qd > 0) {
-            if (protocol == SOCK_STREAM) {
+            if (type == SOCK_STREAM) {
                 InsertQueue(QueueType(TCP_Q, qd));
             } else {
                 InsertQueue(QueueType(UDP_Q, qd));

@@ -51,15 +51,15 @@ private:
         void *buf;
         // number of bytes processed so far
         size_t num_bytes;
-        struct sgarray &sga;
+        struct sgarray *sga;
 
-        PendingRequest(struct sgarray &sga) :
+        PendingRequest() :
             isDone(false),
             res(0),
             header{0,0,0},
             buf(NULL),
             num_bytes(0),
-            sga(sga) { };
+            sga(NULL) { };
     };
     
     // queued scatter gather arrays
@@ -70,6 +70,9 @@ private:
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
+
+    struct sockaddr_in connectAddr;
+    bool connected = false;
 
 public:
     PosixQueue() : Queue(), workQ{} { };

@@ -114,6 +114,8 @@ add_custom_target(redis
 # tests target
 add_executable(client ${PROJECT_SOURCE_DIR}/tests/udp_client.cc)
 target_link_libraries(client ${PROJECT_SOURCE_DIR}/libzeus_lwip.so)
+add_dependencies(client zeus_lwip)
 
 add_executable(server ${PROJECT_SOURCE_DIR}/tests/udp_server.cc)
 target_link_libraries(server ${PROJECT_SOURCE_DIR}/libzeus_lwip.so)
+add_dependencies(server zeus_lwip)
