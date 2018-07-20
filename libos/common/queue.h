@@ -59,7 +59,7 @@ private:
 protected:
     BasicQueueType type;
     int qd;
-
+    
 public:
     Queue() : type(NETWORK_Q), qd(0) { };
     Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };
@@ -78,9 +78,9 @@ public:
     int close();
           
     // file control plane functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // data plane functions
     ssize_t push(qtoken qt, struct sgarray &sga);
@@ -91,6 +91,7 @@ public:
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
     int fd();
+    void set_fd(int fd);
 };
 
 } // namespace Zeus

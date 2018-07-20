@@ -37,7 +37,7 @@ Queue::push(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
     for (int i = 0; i < sga.num_bufs; i++) {
-        size += sga.bufs[i].len;
+        len += sga.bufs[i].len;
     }
    
     std::lock_guard<std::mutex> lock(qLock);
@@ -72,13 +72,16 @@ Queue::pop(qtoken qt, struct sgarray &sga) {
 ssize_t
 Queue::wait(qtoken qt, struct sgarray &sga)
 {
-    std::lock_guard<std::mutex> lock(qLock);
-    while ((auto it = finished.find(qt)) == finished.end()) {
-        wakeup[qt].wait();
+    std::unique_lock<std::mutex> lock(qLock);
+    auto it = finished.find(qt);
+    while (it == finished.end()) {
+        wakeup[qt].wait(lock);
+        it = finished.find(qt);
     }
-    wakeup.erase(it);
     size_t len = sga.copy(it->second);
+    wakeup.erase(qt);
     finished.erase(it);
+    lock.unlock();
     return len;
 }
     
@@ -93,6 +96,8 @@ Queue::poll(qtoken qt, struct sgarray &sga)
         finished.erase(it);
     }
     return len;
+}
+    
 } // namespace Zeus
 
 

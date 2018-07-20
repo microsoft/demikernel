@@ -76,10 +76,10 @@ private:
 public:
     PosixQueue() : Queue(), workQ{} { };
     PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
+        Queue(type, qd), workQ{}  { };
 
     // network functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -87,9 +87,9 @@ public:
     int close();
           
     // file functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
@@ -100,6 +100,7 @@ public:
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
     int fd();
+    void set_fd(int fd);
 };
 
 } // namespace POSIX
