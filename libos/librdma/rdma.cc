@@ -44,12 +44,12 @@ int socket(int domain, int type, int protocol)
 {
     struct rdma_cm_id *id;
     if (protocol == SOCK_STREAM) {
-        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_TCP)) != 0) {
+        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_TCP)) != 0) {
             fprintf("Could not create RDMA event id: %s", strerror(errno));
             return -1;
         }
     } else {
-        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_UDP)) != 0) {
+        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_UDP)) != 0) {
             fprintf("Could not create RDMA event id: %s", strerror(errno));
             return -1;
         }

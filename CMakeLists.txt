@@ -67,12 +67,10 @@ target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_posix hoard)
 
 # RDMA libos target
-if (NOT ${APPLE})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so)
-endif()
+target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/librdma/mem/libhoard.so)
 
 
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)

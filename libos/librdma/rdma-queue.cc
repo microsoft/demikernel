@@ -61,7 +61,7 @@ RdmaQueue::PostReceive()
     wr.num_sge = 1;
     sge.addr = (uintptr_t)buf;
     sge.length = RECV_BUFFER_SIZE;
-    sge.lkey = get_mr(buf)->lkey;
+    sge.lkey = rdma_get_mr(buf)->lkey;
     return ibv_post_recv(info->id->qp, &wr, &bad_wr);
         
 }
@@ -81,7 +81,7 @@ RdmaQueue::setupRdmaQP()
     qp_attr.cap.max_recv_sge = 1;
 
     // set up connection queue pairs
-    if (rdma_create_qp(rdma_id, NULL) != 0) {
+    if (rdma_create_qp(rdma_id, rdma_get_pd(), &qp_attr) != 0) {
         sprintf(stderr, "Could not create RDMA queue pairs: %s",
                 strerror(errno));
         return -errno;
@@ -107,8 +107,7 @@ RdmaQueue::setupRdmaQP()
     for (int i = 0; i < RECV_BUFFER_NUM; i++) {
         int ret = PostReceive();
         if (ret != 0) return ret;
-    }
-}
+    }}
 
 int
 RdmaQueue::socket(int domain, int type, int protocol)
@@ -268,7 +267,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest &req)
     uint64_t lens[sga.num_bufs];
     size_t dataSize = 0;
     size_t totalLen = 0;
-    uin32_t header_lkey = get_mr(&header)->lkey;
+    uin32_t header_lkey = rdma_get_mr(&header)->lkey;
 
     // calculate size and fill in iov
     for (int i = 0; i < sga.num_bufs; i++) {
@@ -279,7 +278,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest &req)
         
         vsga[2*i+2].address = (void *)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
-        vsga[2*i+2].lkey = get_mr(sga.bufs[i].buf)->lkey;
+        vsga[2*i+2].lkey = rdma_get_mr(sga.bufs[i].buf)->lkey;
         
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
