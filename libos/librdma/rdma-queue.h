@@ -37,30 +37,37 @@
 #include <rdma/rdma_cma.h>
 
 #define RECV_BUFFER_SIZE 1024
+#define RECV_BUFFER_NUM 4
 
 namespace Zeus {
 namespace RDMA {
 private:
     struct PendingRequest {
+        bool isEnqueued;
         bool isDone;
         // valid data size when done
         ssize_t res;
         // rdma buffer for receive
         void *buf;
+        // scatter gather array
+        struct sgarray &sga;
 
-        PendingRequest() :
+        PendingRequest(struct sgarray &sga) :
+            isEnqueued(false),
             isDone(false),
             res(0),
-            buf(NULL);
+            buf(NULL),
+            sga(sga) { };
     };
     
     // queued scatter gather arrays
+    std::list<void *> pendingRecv;
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;
 
     // rdma data structures
     // connection manager for this connection queue
-    struct rdma_cm_id *rdma_id;
+    struct rdma_cm_id *rdma_id = NULL;
     
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
@@ -68,8 +75,8 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    PosixQueue() : Queue(), workQ{} { };
-    PosixQueue(BasicQueueType type, int qd) :
+    RdmaQueue() : Queue(), workQ{} { };
+    RdmaQueue(BasicQueueType type, int qd) :
         Queue(type, qd), workQ{}  {};
 
     // network functions

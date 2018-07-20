@@ -255,7 +255,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     // set up header
     printf("ProcessOutgoing _fd:%d num_bufs:%d\n", _fd, sga.num_bufs);
 
-    struct iovec vsga[2*sga.num_bufs + 1];
+    struct iovec vsga[2 * sga.num_bufs + 1];
     uint64_t lens[sga.num_bufs];
     size_t dataSize = 0;
     size_t totalLen = 0;
