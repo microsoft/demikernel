@@ -67,31 +67,9 @@ RdmaQueue::PostReceive()
 }
 
 void
-RdmaQueue::SetupConnection()
+RdmaQueue::setupRdmaQP()
 {
     struct ibv_qp_init_attr qp_attr;
-    struct ibv_comp_channel *channel;
-    
-                
-    // Set up new queue pairs
-    // Allocate a protection domain
-    if ((pd = ibv_alloc_pd(id->verbs)) == NULL) {
-        delete info;
-        Panic("Failed to allocate pd");
-    }
-    // Create a completion channel
-    if ((channel = ibv_create_comp_channel(id->verbs)) == NULL) {
-        Panic("Could not create completion channel");
-    }
-    // Create a completion queue
-    if ((info->cq = ibv_create_cq(id->verbs, 40, NULL, channel, 0)) == NULL) {
-        Panic("Could not create completion channel");
-    }
-    // Set up the completion queue to notify on the channel for any events
-    if (ibv_req_notify_cq(info->cq, 0) != 0) {
-        Panic("Can't set up notifications");
-    }
-
     // Set up queue pair initial parameters
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_attr.send_cq = info->cq;
@@ -101,31 +79,35 @@ RdmaQueue::SetupConnection()
     qp_attr.cap.max_recv_wr = 20;
     qp_attr.cap.max_send_sge = 1;
     qp_attr.cap.max_recv_sge = 1;
-    if (rdma_create_qp(id, info->pd, &qp_attr) != 0) {
-        Panic("Could not create RDMA queue pair: %s", strerror(errno));
+
+    // set up connection queue pairs
+    if (rdma_create_qp(rdma_id, NULL) != 0) {
+        sprintf(stderr, "Could not create RDMA queue pairs: %s",
+                strerror(errno));
+        return -errno;
     }
 
-    info->id->send_cq_channel = channel;
-    info->id->recv_cq_channel = channel;
-    info->id->send_cq = info->cq;
-    info->id->recv_cq = info->cq;
-    
-    // Put the connection in non-blocking mode
-    int fd = channel->fd;
-    int flags = fcntl(fd, F_GETFL);
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK)) {
-        Panic("Failed to set O_NONBLOCK");
+    // put queue pairs in non-blocking mode
+    if (fcntl(id->send_cq_channel->fd,
+              F_SETFL,
+              fcntl(id->send_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
+        sprintf(stderr, "Could not put send completion queue into non-blocking mode",
+                strerror(errno));
+        return -errno;
+    }
+    if (fcntl(id->recv_cq_channel->fd,
+              F_SETFL,
+              fcntl(id->recv_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
+        sprintf(stderr, "Could not put receive completion queue into non-blocking mode",
+                strerror(errno));
+        return -errno;
     }
 
-    // finish set up for new connection
-    for (int i = 0; i < info->posted; i++) {
-        if (PostReceive(info) != 0) {
-            Panic("Can't post receive for %s:%u",
-                  inet_ntoa(dst.addr.sin_addr),
-                  dst.addr.sin_port);
-        }
+    // post receives
+    for (int i = 0; i < RECV_BUFFER_NUM; i++) {
+        int ret = PostReceive();
+        if (ret != 0) return ret;
     }
-
 }
 
 int
@@ -176,46 +158,6 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
     rdma_ack_cm_event(event);
 
-    struct ibv_qp_init_attr qp_attr;
-    // Set up queue pair initial parameters
-    memset(&qp_attr, 0, sizeof(qp_attr));
-    qp_attr.send_cq = info->cq;
-    qp_attr.recv_cq = info->cq;
-    qp_attr.qp_type = IBV_QPT_RC;
-    qp_attr.cap.max_send_wr = 20;
-    qp_attr.cap.max_recv_wr = 20;
-    qp_attr.cap.max_send_sge = 1;
-    qp_attr.cap.max_recv_sge = 1;
-
-    // set up connection queue pairs
-    if (rdma_create_qp(rdma_id, NULL) != 0) {
-        sprintf(stderr, "Could not create RDMA queue pairs: %s",
-                strerror(errno));
-        return -errno;
-    }
-
-    // put queue pairs in non-blocking mode
-    if (fcntl(id->send_cq_channel->fd,
-              F_SETFL,
-              fcntl(id->send_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
-        sprintf(stderr, "Could not put send completion queue into non-blocking mode",
-                strerror(errno));
-        return -errno;
-    }
-    if (fcntl(id->recv_cq_channel->fd,
-              F_SETFL,
-              fcntl(id->recv_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
-        sprintf(stderr, "Could not put receive completion queue into non-blocking mode",
-                strerror(errno));
-        return -errno;
-    }
-
-    // post receives
-    for (int i = 0; i < RECV_BUFFER_NUM; i++) {
-        int ret = PostReceive();
-        if (ret != 0) return ret;
-    }
-
     // Find path to rdma address
     if (rdma_resolve_route(rdma_id, 1) != 0) {
         sprintf(stderr,
@@ -231,6 +173,10 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
     rdma_ack_cm_event(event);
 
+    // Set up queue pairs and post receives
+    setupRdmaQP();
+
+    
     // Get channel
     memset(&params, 0, sizeof(params));
     params.initiator_depth = params.responder_resources = 1;
@@ -258,6 +204,27 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     return 0;
 }
 
+int
+RdmaQueue::close()
+{
+     struct rdma_event_channel *channel = rdma_id->channel;
+    if (rdma_destroy_qp(rdma_id) != 0) {
+        sprintf(stderr, "Could not destroy queue pair: %s", strerror(errno));
+        return -errno;
+    }
+
+    if (rdma_destroy_id(id) != 0) {
+        sprintf(stderr, "Could not destroy communication manager: %s", strerror(errno));
+        return -errno;
+    }
+
+    if (rdma_destroy_event_channel(channel) != 0) {
+        sprintf(stderr, "Could not destroy event channel: %s", strerror(errno));
+        return -errno;
+    }
+    return 0;
+}
+    
 int
 RdmaQueue::fd()
 {

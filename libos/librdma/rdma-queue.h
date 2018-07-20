@@ -105,6 +105,7 @@ public:
     int fd();
 
     void setRdmaCM(struct rdma_cm_id *id);
+    void setupRdmaQP();
 };
 
 } // namespace RDMA

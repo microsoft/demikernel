@@ -76,9 +76,29 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size)
                 strerror(errno));
         return -1;
     }
-    sockaddr_in *sin = (sockaddr_in *)rdma_get_peer_addr(event->id);
+    struct rdma_cm_id *newid = event->id;
     int newqd = lib.accept(qd, saddr, size);
-    
+    RdmaQueue &newQ = lib.GetQueue(newqd);
+
+    // set up the cm and queue pairs
+    newQ.setRdmaCM(event->id);
+    newQ.setupRdmaQP();
+
+    // accept the connection
+    struct rdma_conn_param params;
+    memset(&params, 0, sizeof(params));
+    params.initiator_depth = params.responder_resources = 1;
+    params.rnr_retry_count = 7; /* infinite retry */
+    if ((rdma_accept(newid, &params)) != 0) {
+        sprintf(stderr, "Failed to accept incoming RDMA connection: %s",
+                strerror(errno));
+        return -1;
+    }
+    // set up address
+    *saddr = rdma_get_peer_addr(newid);
+
+    rdma_ack_cm_event(event);
+    return newqd;
 }
 
 int listen(int qd, int backlog)
@@ -88,8 +108,6 @@ int listen(int qd, int backlog)
         
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-
-    
     return lib.connect(qd, saddr, size);
 }
 
