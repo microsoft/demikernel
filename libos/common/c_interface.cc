@@ -19,6 +19,7 @@ void sgarray_c2cpp(zeus_sgarray * c_sga, Zeus::sgarray * sga){
          (sga->bufs[i]).buf = (c_sga->bufs[i]).buf;
          (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
+    sga->addr.sin_family = AF_INET;
     sga->addr.sin_addr.s_addr = c_sga->addr.sin_addr.s_addr;
     sga->addr.sin_port = c_sga->addr.sin_port;
     //printf("sgarray_c2cpp() return\n");
@@ -34,6 +35,7 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
+    c_sga->addr.sin_family = AF_INET;
     c_sga->addr.sin_addr.s_addr = sga->addr.sin_addr.s_addr;
     c_sga->addr.sin_port = sga->addr.sin_port;
     //printf("sgarray_cpp2c() return\n");
@@ -81,6 +83,11 @@ int zeus_open(const char *pathname, int flags, mode_t mode) {
     return 0;
 }
 
+int zeus_close(int qd)
+{
+	return Zeus::close(qd);
+}
+
 int zeus_creat(const char *pathname, mode_t mode) {
     fprintf(stderr, "NIY\n");
     return 0;
@@ -93,7 +100,6 @@ zeus_qtoken zeus_push(int qd, zeus_sgarray *sga_ptr){
     Zeus::sgarray sga;
     sgarray_c2cpp(sga_ptr, &sga);
     zeus_qtoken n = Zeus::push(qd, sga);
-    //printf("zeus_push() will return: %zd\n",n);
     return n;
 }
 

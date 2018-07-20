@@ -40,6 +40,7 @@ int main()
 
     printf("server qd:\t%d\n", qd);
 
+
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(0x0c0c0c04);
     server.sin_port = htons(port);
@@ -49,29 +50,31 @@ int main()
         return -1;
     }
 
-    qt = Zeus::pop(qd, sga);
-    if (qt != 0) {
-    	printf("server: wait for pop\n");
-    	n = Zeus::wait(qt, sga);
-    	assert(n > 0);
+    while (1) {
+		qt = Zeus::pop(qd, sga);
+		if (qt != 0) {
+			printf("server: wait for pop\n");
+			n = Zeus::wait(qt, sga);
+			assert(n > 0);
+		}
+
+		assert(sga.num_bufs == 1);
+
+		printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+
+		sga.num_bufs = 1;
+		sga.bufs[0].len = 18;
+		sga.bufs[0].buf = (Zeus::ioptr)buf;
+
+		qt = Zeus::push(qd, sga);
+		if (qt != 0) {
+			printf("server: wait for push\n");
+			n = Zeus::wait(qt, sga);
+			assert(n > 0);
+		}
+
+		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
     }
-
-	assert(sga.num_bufs == 1);
-
-	printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
-
-	sga.num_bufs = 1;
-	sga.bufs[0].len = 18;
-	sga.bufs[0].buf = (Zeus::ioptr)buf;
-
-	qt = Zeus::push(qd, sga);
-	if (qt != 0) {
-		printf("server: wait for push\n");
-		n = Zeus::wait(qt, sga);
-		assert(n > 0);
-	}
-
-	printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
 
     Zeus::close(qd);
 

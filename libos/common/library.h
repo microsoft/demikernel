@@ -212,6 +212,8 @@ public:
         // if push returns 0, then the sga is enqueued, but not pushed
         if (res == 0) {
             return t;
+        } else  if (res < 0) {
+        	return res;
         } else {
             // if push returns something else, then sga has been
             // successfully pushed

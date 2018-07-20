@@ -40,7 +40,7 @@
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DEBUG_ZEUS_LWIP 	1
+#define DEBUG_ZEUS_LWIP 	0
 
 static uint16_t port = 1024;
 
@@ -276,7 +276,6 @@ LWIPQueue::queue(int domain, int type, int protocol)
 int
 LWIPQueue::listen(int backlog)
 {
-	printf("========listen called===========\n");
     return 0;
 }
 
@@ -303,8 +302,6 @@ LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
         bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
     }
 
-    printf("server addr: %x\tserver port: %d\n", bound_addr.sin_addr.s_addr, bound_addr.sin_port);
-
     is_bound = true;
 
     return 0;
@@ -326,7 +323,6 @@ LWIPQueue::bind()
 int
 LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
-	printf("==============accept called=============\n");
     return 0;
 }
 
@@ -677,7 +673,13 @@ LWIPQueue::ProcessQ(size_t maxRequests)
         }
 
         if (req.isDone) {
+        	if (req.res >= 0) {
+        		errno = 0;
+        	}
             workQ.pop_front();
+        }
+        else {
+        	errno = EAGAIN;
         }
     }
 }
@@ -704,10 +706,8 @@ LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
     req = pending[qt];
 
     if (req.isDone) {
-    	printf("req is done\n");
         return req.res;
     } else {
-    	printf("req is not done\n");
         return 0;
     }
 }
@@ -747,21 +747,20 @@ LWIPQueue::peek(qtoken qt, struct sgarray &sga)
     	pending[qt] = req;
     	it = pending.find(qt);
         if(it == pending.end()){
-            printf("req not inserted\n");
             exit(1);
         }
         req = it->second;
         if (IS_PUSH(qt)) {
-            printf("Error light_pop, push request\n");
+            fprintf(stderr, "Error light_pop, push request\n");
             exit(1);
         } else {
             ProcessIncoming(req);
         }
         if (req.isDone){
-        	printf("peek done\n");
+        	errno = 0;
             return req.res;
         }else{
-        	//printf("peek not done\n");
+        	errno = EAGAIN;
             return -1;
         }
     }else{

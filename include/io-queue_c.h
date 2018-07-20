@@ -72,6 +72,7 @@ int zeus_listen(int fd, int backlog);
 int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
 int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
+int zeus_close(int qd);
 
 // eventually file functions
 //int zeus_open(const char *pathname, int flags);  // C does not support
