@@ -32,8 +32,9 @@
 #define _LIB_RDMA_QUEUE_H_
 
 #include "include/io-queue.h"
+#include "common/queue.h"
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <rdma/rdma_cma.h>
 
 #define RECV_BUFFER_SIZE 1024
@@ -41,10 +42,13 @@
 
 namespace Zeus {
 namespace RDMA {
+
+class RdmaQueue : public Queue {
 private:
     struct PendingRequest {
         bool isEnqueued;
         bool isDone;
+        uint64_t header[3];
         // valid data size when done
         ssize_t res;
         // rdma buffer for receive
@@ -68,8 +72,9 @@ private:
     // rdma data structures
     // connection manager for this connection queue
     struct rdma_cm_id *rdma_id = NULL;
-    
-    void ProcessIncoming(PendingRequest &req);
+
+    int PostReceive();
+    void ProcessIncoming(PendingRequest &req, void *pendingRecv);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
@@ -80,7 +85,7 @@ public:
         Queue(type, qd), workQ{}  {};
 
     // network functions
-    static int queue(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -105,7 +110,8 @@ public:
     int fd();
 
     void setRdmaCM(struct rdma_cm_id *id);
-    void setupRdmaQP();
+    struct rdma_cm_id* getRdmaCM();
+    int setupRdmaQP();
 };
 
 } // namespace RDMA

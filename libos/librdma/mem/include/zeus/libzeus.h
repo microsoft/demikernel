@@ -3,9 +3,6 @@
 
 #include <rdma/rdma_cma.h>
 
-static struct ibv_context *rdma_context;
-static struct ibv_pd *rdma_globalpd;
-
 extern "C" {
 // Irene: adding pin and unpin operations
 void pin(void *ptr);

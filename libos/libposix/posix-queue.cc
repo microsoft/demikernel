@@ -31,7 +31,7 @@
 #include "posix-queue.h"
 #include "common/library.h"
 // hoard include
-#include "libzeus.h"
+#include "common/mem/include/zeus/libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>

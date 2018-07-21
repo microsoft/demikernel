@@ -91,18 +91,6 @@ namespace Zeus {
 
 #include "zeustlab.h"
 
-void init_rdma() {
-    int num_devices = 0;
-    struct ibv_device **devices = ibv_get_device_list(&num_devices);
-    if (num_devices > 0) {
-        rdma_context = ibv_open_device(*devices); 
-            rdma_globalpd = ibv_alloc_pd(rdma_context);
-    } else {
-        fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
-        abort();
-    }
-}
-
 //
 // The base Zeus heap.
 //
@@ -127,6 +115,21 @@ TheCustomHeapType * getCustomHeap();
 enum { MAX_LOCAL_BUFFER_SIZE = 256 * 131072 };
 static char initBuffer[MAX_LOCAL_BUFFER_SIZE];
 static char * initBufferPtr = initBuffer;
+
+static struct ibv_context *rdma_context;
+static struct ibv_pd *rdma_globalpd;
+
+void init_rdma() {
+    int num_devices = 0;
+    struct ibv_device **devices = ibv_get_device_list(&num_devices);
+    if (num_devices > 0) {
+        rdma_context = ibv_open_device(*devices); 
+            rdma_globalpd = ibv_alloc_pd(rdma_context);
+    } else {
+        fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
+        abort();
+    }
+}
 
 extern bool isCustomHeapInitialized();
 
