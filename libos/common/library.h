@@ -244,7 +244,8 @@ public:
             // popping from files not implemented yet
             return -1;
 
-        qtoken t = GetNewToken(qd, false);
+        //qtoken t = GetNewToken(qd, false);
+        qtoken t = 0;
         ssize_t res = queue.light_pop(t, sga);
         return res;
     };

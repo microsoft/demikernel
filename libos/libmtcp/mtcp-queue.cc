@@ -41,6 +41,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/time.h>
 
 
 namespace Zeus {
@@ -51,6 +52,13 @@ static int mtcp_ep;
 
 static char mtcp_conf_name[] = "libos.conf";
 static bool mtcp_env_initialized = false;
+
+static inline uint64_t jl_rdtsc(void)
+{
+    uint64_t eax, edx;
+    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
+    return (edx << 32) | eax;
+}
 
 
 //void libos_mtcp_signal_handler(int signum){
@@ -507,29 +515,24 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 
 ssize_t
 MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
-        it = pending.find(qt);
-        if (it == pending.end()){
-            exit(1);
-        }
-        PendingRequest &req = it->second;
-        if (IS_PUSH(qt)) {
-            exit(1);
-        } else {
-            ProcessIncoming(req);
-        }
+        //uint64_t rcd_start, rcd_end;
+        //uint64_t rcd_start1, rcd_end1;
+        //uint64_t rcd_pend;
+        //rcd_start = jl_rdtsc();
+        PendingRequest req = PendingRequest(sga);
+        //rcd_start1 = jl_rdtsc();
+        ProcessIncoming(req);
+        //rcd_end1 = jl_rdtsc();
+        //rcd_end = jl_rdtsc();
         if (req.isDone){
+            //fprintf(stderr, "time for light_pop:%lu\n", (rcd_end - rcd_start));
+            //if(rcd_end - rcd_start > 100000){
+            //    fprintf(stderr, "qtoken:%ld time forinsert():%lu time before ProcessIncoming:%lu, time for ProcessIncoming:%lu\n", (qt), (rcd_pend - rcd_start), (rcd_start1 - rcd_start), (rcd_end1 - rcd_start1));
+            //}
             return req.res;
         }else{
             return -1;
         }
-    } else {
-        // qtoken found in q
-        fprintf(stderr, "Error, peek() found existing qtoken\n");
-        exit(1);
-    }
 }
     
 ssize_t
