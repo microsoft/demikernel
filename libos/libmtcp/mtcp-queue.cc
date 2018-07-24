@@ -133,7 +133,7 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 
     if (newqd != -1) {
         int n = 1;
-        mtcp_setsockopt(mctx, qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
+        mtcp_setsockopt(mctx, newqd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, newqd);
         if (ret < 0) {
