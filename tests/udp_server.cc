@@ -9,6 +9,7 @@ uint16_t port = 12345;
 
 int main()
 {
+	errno = 0;
     int qd;
     ssize_t n;
     Zeus::qtoken qt;

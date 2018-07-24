@@ -6,7 +6,7 @@
 
 #include "../include/io-queue.h"
 
-#define USE_CONNECT		1
+#define USE_CONNECT		0
 
 uint16_t port = 12345;
 
@@ -23,6 +23,7 @@ static long long ustime(void) {
 
 int main()
 {
+	errno = 0;
     int qd;
     ssize_t n;
     Zeus::qtoken qt;
