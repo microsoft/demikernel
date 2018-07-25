@@ -515,15 +515,8 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 
 ssize_t
 MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
-        //uint64_t rcd_start, rcd_end;
-        //uint64_t rcd_start1, rcd_end1;
-        //uint64_t rcd_pend;
-        //rcd_start = jl_rdtsc();
         PendingRequest req = PendingRequest(sga);
-        //rcd_start1 = jl_rdtsc();
         ProcessIncoming(req);
-        //rcd_end1 = jl_rdtsc();
-        //rcd_end = jl_rdtsc();
         if (req.isDone){
             //fprintf(stderr, "time for light_pop:%lu\n", (rcd_end - rcd_start));
             //if(rcd_end - rcd_start > 100000){
