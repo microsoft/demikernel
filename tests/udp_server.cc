@@ -14,7 +14,6 @@ int main()
     ssize_t n;
     Zeus::qtoken qt;
     struct Zeus::sgarray sga;
-    char buf[18] = "hello from server";
     struct sockaddr_in server;
 
     char* argv[] = {(char*)"",
@@ -58,14 +57,11 @@ int main()
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
+		uint64_t start = Zeus::ustime();
 
-		assert(sga.num_bufs == 1);
+		//assert(sga.num_bufs == 1);
 
-		printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
-
-		sga.num_bufs = 1;
-		sga.bufs[0].len = 18;
-		sga.bufs[0].buf = (Zeus::ioptr)buf;
+		//printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
 
 		qt = Zeus::push(qd, sga);
 		if (qt != 0) {
@@ -74,7 +70,10 @@ int main()
 			assert(n > 0);
 		}
 
+		uint64_t end = Zeus::ustime();
+
 		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+		printf("recvd to sent latency: %lu\n",  end - start);
     }
 
     Zeus::close(qd);

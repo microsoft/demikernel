@@ -2,24 +2,12 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <assert.h>
-#include <sys/time.h>
 
 #include "../include/io-queue.h"
 
 #define USE_CONNECT		0
 
 uint16_t port = 12345;
-
-static long long ustime(void) {
-    struct timeval tv;
-    long long ust;
-
-    gettimeofday(&tv, NULL);
-    ust = ((long)tv.tv_sec)*1000000;
-    ust += tv.tv_usec;
-    return ust;
-}
-
 
 int main()
 {
@@ -28,7 +16,7 @@ int main()
     ssize_t n;
     Zeus::qtoken qt;
     struct Zeus::sgarray sga, res;
-    char buf[18] = "hello from client";
+    char buf[12] = "hello world";
     struct sockaddr_in server;
 
     char* argv[] = {(char*)"",
@@ -69,35 +57,29 @@ int main()
 #endif
 
     sga.num_bufs = 1;
-    sga.bufs[0].len = 18;
+    sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
-    long long start = ustime();
+	//n = Zeus::blocking_push(qd, sga);
+	//assert(n > 0);
+	qt = Zeus::push(qd, sga);
+	if (qt != 0) {
+		printf("client wait for push\n");
+		n = Zeus::wait(qt, sga);
+		assert(n > 0);
+	}
 
-    //n = Zeus::blocking_push(qd, sga);
-    //assert(n > 0);
-    qt = Zeus::push(qd, sga);
-    if (qt != 0) {
-    	printf("client wait for push\n");
-    	n = Zeus::wait(qt, sga);
-    	assert(n > 0);
-    }
+	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
-    printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+	qt = Zeus::pop(qd, res);
+	if (qt != 0) {
+		printf("client: wait for pop\n");
+		n = Zeus::wait(qt, res);
+		assert(n > 0);
+	}
 
-    qt = Zeus::pop(qd, res);
-    if (qt != 0) {
-    	printf("client: wait for pop\n");
-    	n = Zeus::wait(qt, res);
-    	assert(n > 0);
-    }
-
-    assert(res.num_bufs == 1);
-
-    long long latency = ustime() - start;
-
-    printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
-    printf("end-to-end latency: %lld\n", latency);
+	assert(res.num_bufs == 1);
+	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
 
     Zeus::close(qd);
 

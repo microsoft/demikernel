@@ -35,7 +35,9 @@
 #include <sys/socket.h>
 #include <memory>
 #include <netinet/in.h>
-
+#include <time.h>
+#include <sys/time.h>
+#include <string.h>
     
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
@@ -98,6 +100,25 @@ int merge(int qd1, int qd2);
 
 int init(int argc, char* argv[]);
 int init();
+
+static long long ustime(void) {
+    struct timeval tv;
+    long long ust;
+
+    gettimeofday(&tv, NULL);
+    ust = ((long)tv.tv_sec)*1000000;
+    ust += tv.tv_usec;
+    return ust;
+
+//	struct timespec ts;
+//	uint64_t ns;
+//
+//	clock_gettime(CLOCK_MONOTONIC, &ts);
+//	ns = ts.tv_sec * 1000000000;
+//	ns += ts.tv_nsec;
+//	return ns;
+}
+
 
 } // namespace Zeus
 #endif /* _IO_QUEUE_H_ */

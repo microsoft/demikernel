@@ -36,6 +36,8 @@
 #include <list>
 #include <unordered_map>
 
+#define DEBUG_POSIX_QUEUE	1
+
 namespace Zeus {
 namespace POSIX {
 
@@ -71,7 +73,6 @@ private:
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
-    struct sockaddr_in connectAddr;
     bool connected = false;
 
 public:

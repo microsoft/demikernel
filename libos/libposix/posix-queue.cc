@@ -61,12 +61,23 @@ PosixQueue::queue(int domain, int type, int protocol)
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
         }
-        else if (type == SOCK_DGRAM) {
-            if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
-                fprintf(stderr,
-                        "Failed to set O_NONBLOCK on outgoing Zeus socket");
-            }
-        }
+		else if (type == SOCK_DGRAM) {
+			if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+				fprintf(stderr,
+						"Failed to set O_NONBLOCK on outgoing Zeus socket");
+			}
+			int enable = 1;
+			if (setsockopt(qd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+			    fprintf(stderr, "Failed to set SO_REUSEADDR on Zeus socket: %s\n",
+			    		strerror(errno));
+			}
+			enable = 1;
+			if (setsockopt(qd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int)) < 0) {
+			    fprintf(stderr, "Failed to set SO_REUSEPORT on Zeus socket: %s\n",
+			    		strerror(errno));
+			}
+		}
+
     }
     return qd;
 }
@@ -127,13 +138,7 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
             fprintf(stderr,
                     "Failed to set O_NONBLOCK on outgoing Zeus socket");
         }
-        if (type == UDP_Q) {
-        	struct sockaddr_in* addr = (struct sockaddr_in*)saddr;
-        	connectAddr.sin_family = addr->sin_family;
-        	connectAddr.sin_addr.s_addr = addr->sin_addr.s_addr;
-        	connectAddr.sin_port = addr->sin_port;
-        	connected = true;
-        }
+        connected = true;
         return res;
     } else {
         return errno;
@@ -260,7 +265,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     }
 
     buf = (type == TCP_Q) ? req.buf : req.buf + sizeof(req.header);
-    
+
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)buf;
     req.sga->num_bufs = req.header[2];
@@ -270,7 +275,9 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         req.sga->bufs[i].buf = (ioptr)ptr;
         ptr += req.sga->bufs[i].len;
 
+#if DEBUG_POSIX_QUEUE
         printf("received: [%lu] bytes: %s\n", req.sga->bufs[i].len, (char*)req.sga->bufs[i].buf);
+#endif
     }
     if (req.buf != NULL) {
     	free(req.buf);
@@ -301,14 +308,15 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         
         vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
         vsga[2*i+2].iov_len = sga.bufs[i].len;
-        
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
         
         // add up expected packet size minus header
         totalLen += (uint64_t)sga.bufs[i].len;
         totalLen += sizeof(uint64_t);
+#if DEBUG_POSIX_QUEUE
         printf("sending:  [%lu] bytes: %s\n", (size_t)lens[i], (char*)vsga[2*i+2].iov_base);
+#endif
         pin((void *)sga.bufs[i].buf);
     }
 
@@ -323,16 +331,25 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     totalLen += sizeof(req.header);
 
     if (type == UDP_Q) {
-    	struct sockaddr* addr = connected ? (struct sockaddr*)&connectAddr
-    									  : (struct sockaddr*)&sga.addr;
-
-		if (!connected && ::connect(qd, addr, sizeof(struct sockaddr_in)) != 0) {
+    	struct sockaddr* addr = (struct sockaddr*)&req.sga->addr;
+  		if (!connected && ::connect(qd, addr, sizeof(struct sockaddr_in)) < 0) {
 			fprintf(stderr, "Could not connect to outgoing address: %s\n",
 					strerror(errno));
 			req.res = -1;
 			req.isDone = true;
 			return;
 		}
+  		struct sockaddr_in* peer = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+  		socklen_t size = sizeof(struct sockaddr_in);
+  		if (::getpeername(qd, (struct sockaddr*)peer, &size) < 0) {
+  			fprintf(stderr, "Could not get peer name: %s\n", strerror(errno));
+  			req.res = -1;
+  			req.isDone = true;
+  		}
+#if DEBUG_POSIX_QUEUE
+  		printf("connected to: %x:%d\n", peer->sin_addr.s_addr, peer->sin_port);
+#endif
+  		free(peer);
     }
     ssize_t count = ::writev(qd,
                              vsga,
@@ -349,6 +366,10 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
             return;
         }
     }
+
+#if DEBUG_POSIX_QUEUE
+    printf("%s\n", strerror(errno));
+#endif
 
     // otherwise
     req.num_bytes += count;
