@@ -317,10 +317,13 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
 void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
+    uint64_t rcd_tick = jl_rdtsc();
     sgarray &sga = req.sga;
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
 #endif
+
+#if 0     // use mtcp_write()
     // set up header
     if (req.header[0] != MAGIC) {
         req.header[0] = MAGIC;
@@ -410,6 +413,67 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 
     req.res = dataSize - (sga.num_bufs * sizeof(uint64_t));
     req.isDone = true;
+#endif  // end use mtcp_write
+struct iovec vsga[2*sga.num_bufs + 1];
+    uint64_t lens[sga.num_bufs];
+    size_t dataSize = 0;
+    size_t totalLen = 0;
+
+    // calculate size and fill in iov
+    for (int i = 0; i < sga.num_bufs; i++) {
+        lens[i] = sga.bufs[i].len;
+        vsga[2*i+1].iov_base = &lens[i];
+        vsga[2*i+1].iov_len = sizeof(uint64_t);
+        
+        vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
+        vsga[2*i+2].iov_len = sga.bufs[i].len;
+        
+        // add up actual data size
+        dataSize += (uint64_t)sga.bufs[i].len;
+        
+        // add up expected packet size minus header
+        totalLen += (uint64_t)sga.bufs[i].len;
+        totalLen += sizeof(uint64_t);
+        pin((void *)sga.bufs[i].buf);
+    }
+
+    // fill in header
+    req.header[0] = MAGIC;
+    req.header[1] = totalLen;
+    req.header[2] = req.sga.num_bufs;
+
+    // set up header at beginning of packet
+    vsga[0].iov_base = &req.header;
+    vsga[0].iov_len = sizeof(req.header);
+    totalLen += sizeof(req.header);
+   
+    ssize_t count = mtcp_writev(mctx, qd,  vsga, 2*sga.num_bufs +1);
+   
+    // if error
+    if (count < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            fprintf(stderr, "Could not write packet: %s\n", strerror(errno));
+            req.isDone = true;
+            req.res = count;
+            return;
+        }
+    }
+
+    // otherwise
+    req.num_bytes += count;
+    if (req.num_bytes < totalLen) {
+        assert(req.num_bytes == 0);
+        return;
+    }
+    for (int i = 0; i < sga.num_bufs; i++) {
+        unpin((void *)sga.bufs[i].buf);
+    }
+
+    req.res = dataSize;
+    req.isDone = true;
+    fprintf(stderr, "push success time (writev):%lu\n", rcd_tick);
 }
     
 void
@@ -515,17 +579,22 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 
 ssize_t
 MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
-        PendingRequest req = PendingRequest(sga);
-        ProcessIncoming(req);
-        if (req.isDone){
-            //fprintf(stderr, "time for light_pop:%lu\n", (rcd_end - rcd_start));
-            //if(rcd_end - rcd_start > 100000){
-            //    fprintf(stderr, "qtoken:%ld time forinsert():%lu time before ProcessIncoming:%lu, time for ProcessIncoming:%lu\n", (qt), (rcd_pend - rcd_start), (rcd_start1 - rcd_start), (rcd_end1 - rcd_start1));
-            //}
-            return req.res;
-        }else{
-            return -1;
+    uint64_t rcd_tick;
+    rcd_tick = jl_rdtsc();
+    PendingRequest req = PendingRequest(sga);
+    ProcessIncoming(req);
+    if (req.isDone){
+        //fprintf(stderr, "time for light_pop:%lu\n", (rcd_end - rcd_start));
+        //if(rcd_end - rcd_start > 100000){
+        //    fprintf(stderr, "qtoken:%ld time forinsert():%lu time before ProcessIncoming:%lu, time for ProcessIncoming:%lu\n", (qt), (rcd_pend - rcd_start), (rcd_start1 - rcd_start), (rcd_end1 - rcd_start1));
+        //}
+        if(req.res > 0){
+            fprintf(stderr, "light_pop  success size:%d time_before_read:%lu\n", req.res, rcd_tick);
         }
+        return req.res;
+    }else{
+        return -1;
+    }
 }
     
 ssize_t
