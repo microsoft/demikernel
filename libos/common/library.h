@@ -2,11 +2,7 @@
 /***********************************************************************
  *
  * common/library.h
-<<<<<<< HEAD
- *   Generic libos implementation
-=======
  *   Zeus general-purpose queue library implementation
->>>>>>> master
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -62,7 +58,7 @@ thread_local static uint64_t hash;
 template <class QueueType>
 class QueueLibrary
 {
-    std::unordered_map<int, QueueType> queues;
+    std::unordered_map<int, QueueType *> queues;
     std::unordered_map<qtoken, int> pending;
     
 public:
@@ -83,7 +79,7 @@ public:
 
     QueueType& GetQueue(int qd) {
         assert(HasQueue(qd));
-        return queues.at(qd);
+        return *(queues.at(qd));
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
@@ -101,22 +97,24 @@ public:
     QueueType& NewQueue(BasicQueueType type) {
         int qd = queue_counter++;
         if (type == BASIC)
-            queues[qd] = new Queue(type, qd);
+            queues[qd] = (QueueType *) new Queue(type, qd);
         else
             queues[qd] = new QueueType(type, qd);
-        return queues[qd];
+        return *queues[qd];
     };
 
-    void InsertQueue(QueueType q) {
-        printf("library.h/InsertQueue() qd: %d\n", q.GetQD());
-        assert(queues.find(q.GetQD()) == queues.end());
-        queues[q.GetQD()] = q;
+    void InsertQueue(QueueType *q) {
+        printf("library.h/InsertQueue() qd: %d\n", q->GetQD());
+        assert(queues.find(q->GetQD()) == queues.end());
+        queues[q->GetQD()] = q;
     };
 
 
     void RemoveQueue(int qd) {
-        assert(queues.find(qd) == queues.end());
-        queues.erase(qd);    
+        auto it = queues.find(qd);
+        assert(it != queues.end());
+        delete it->second;
+        queues.erase(it);    
     };
 
     // ================================================
@@ -124,12 +122,17 @@ public:
     // ================================================
 
     int queue() {
-        return NewQueue.GetQD();
+        return NewQueue(BASIC).GetQD();
     }
     
     int socket(int domain, int type, int protocol) {
         QueueType &q = NewQueue(NETWORK_Q);
-        return q.socket(domain, type, protocol);
+        int ret = q.socket(domain, type, protocol);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        }
+        return q.GetQD();
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
@@ -140,11 +143,15 @@ public:
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
         QueueType &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
-        if (newqd != -1){
+        if (newqd > 0){
             printf("will InsertQueue for newqd:%d\n", newqd);
-            InsertQueue(QueueType(NETWORK_Q, newqd));
+            InsertQueue(new QueueType(NETWORK_Q, newqd));
+            return newqd;
+        } else if (newqd < 0) {
+            return newqd;
+        } else {
+            return NewQueue(NETWORK_Q).GetQD();
         }
-        return newqd;
     };
 
     int listen(int qd, int backlog) {
@@ -156,32 +163,44 @@ public:
         QueueType &q = GetQueue(qd);
         int newqd = q.connect(saddr, size);
         if (newqd > 0)
-            InsertQueue(QueueType(NETWORK_Q, newqd));
+            InsertQueue(new QueueType(NETWORK_Q, newqd));
         return newqd;
     };
 
     int open(const char *pathname, int flags) {
         // use the fd as qd
-        int qd = QueueType::open(pathname, flags);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.open(pathname, flags);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
 
     int open(const char *pathname, int flags, mode_t mode) {
         // use the fd as qd
-        int qd = QueueType::open(pathname, flags, mode);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.open(pathname, flags, mode);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
 
     int creat(const char *pathname, mode_t mode) {
         // use the fd as qd
-        int qd = QueueType::creat(pathname, mode);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.creat(pathname, mode);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
     
     int close(int qd) {
@@ -325,13 +344,13 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
+        QueueType &q = GetQueue(qd);
+        if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.push(t, sga);
+        ssize_t res = q.push(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {
@@ -346,13 +365,13 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
+        QueueType &q = GetQueue(qd);
+        if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.pop(t, sga);
+        ssize_t res = q.pop(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {

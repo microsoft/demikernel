@@ -31,10 +31,13 @@
 #include "common/library.h"
 #include "include/io-queue.h"
 #include "rdma-queue.h"
+#include "librdma/mem/include/zeus/libzeus.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::RdmaQueue> lib;
+static QueueLibrary<RDMA::RdmaQueue> lib;
 
+using namespace RDMA;
+    
 int queue()
 {
     return lib.queue();
@@ -44,13 +47,13 @@ int socket(int domain, int type, int protocol)
 {
     struct rdma_cm_id *id;
     if (protocol == SOCK_STREAM) {
-        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_TCP)) != 0) {
-            fprintf("Could not create RDMA event id: %s", strerror(errno));
+        if ((rdma_create_id(NULL, &id, rdma_get_context(), RDMA_PS_TCP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
             return -1;
         }
     } else {
-        if ((rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_UDP)) != 0) {
-            fprintf("Could not create RDMA event id: %s", strerror(errno));
+        if ((rdma_create_id(NULL, &id, rdma_get_context(), RDMA_PS_UDP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
             return -1;
         }
     }
@@ -69,16 +72,36 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {    
     struct rdma_cm_event *event;
     RdmaQueue &q = lib.GetQueue(qd);
-    if (rdma_get_cm_event(q.id->channel, &event) != 0 ||
+    if (rdma_get_cm_event(q.getRdmaCM()->channel, &event) != 0 ||
         event->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
         fprintf(stderr,
                 "Could not get accept event %s",
                 strerror(errno));
         return -1;
     }
-    sockaddr_in *sin = (sockaddr_in *)rdma_get_peer_addr(event->id);
+    struct rdma_cm_id *newid = event->id;
     int newqd = lib.accept(qd, saddr, size);
-    
+    RdmaQueue &newQ = lib.GetQueue(newqd);
+
+    // set up the cm and queue pairs
+    newQ.setRdmaCM(event->id);
+    newQ.setupRdmaQP();
+
+    // accept the connection
+    struct rdma_conn_param params;
+    memset(&params, 0, sizeof(params));
+    params.initiator_depth = params.responder_resources = 1;
+    params.rnr_retry_count = 7; /* infinite retry */
+    if ((rdma_accept(newid, &params)) != 0) {
+        fprintf(stderr, "Failed to accept incoming RDMA connection: %s",
+                strerror(errno));
+        return -1;
+    }
+    // set up address
+    *saddr = *rdma_get_peer_addr(newid);
+
+    rdma_ack_cm_event(event);
+    return newqd;
 }
 
 int listen(int qd, int backlog)
@@ -88,8 +111,6 @@ int listen(int qd, int backlog)
         
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
-
-    
     return lib.connect(qd, saddr, size);
 }
 
@@ -130,7 +151,7 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
 
 ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
-    return lib.light_pop(qd, sga);
+    return lib.peek(qd, sga);
 }
 
 ssize_t wait(qtoken qt, struct sgarray &sga)

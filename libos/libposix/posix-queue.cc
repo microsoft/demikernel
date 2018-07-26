@@ -31,7 +31,7 @@
 #include "posix-queue.h"
 #include "common/library.h"
 // hoard include
-#include "libzeus.h"
+#include "common/mem/include/zeus/libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -132,7 +132,7 @@ int
 PosixQueue::open(const char *pathname, int flags)
 {
     _fd = ::open(pathname, flags);
-    if _fd > 0 return qd;
+    if (_fd > 0) return qd;
     else return _fd;
 }
 
@@ -141,7 +141,7 @@ PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
     _fd = ::open(pathname, flags, mode);
-    if _fd > 0 return qd;
+    if (_fd > 0) return qd;
     else return _fd;
 }
 
@@ -150,8 +150,8 @@ PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
     _fd = ::creat(pathname, mode);
-    if _fd > return qd;
-    else return _fdd;
+    if (_fd > 0) return qd;
+    else return _fd;
 }
     
 int
@@ -167,7 +167,7 @@ PosixQueue::fd()
 }
 
 void
-PosixQueue:set_fd(int fd)
+PosixQueue::set_fd(int fd)
 {
     _fd = fd;
 }
