@@ -101,22 +101,22 @@ int merge(int qd1, int qd2);
 int init(int argc, char* argv[]);
 int init();
 
-static long long ustime(void) {
-    struct timeval tv;
-    long long ust;
-
-    gettimeofday(&tv, NULL);
-    ust = ((long)tv.tv_sec)*1000000;
-    ust += tv.tv_usec;
-    return ust;
-
-//	struct timespec ts;
-//	uint64_t ns;
+static double zeus_ustime(void) {
+//    struct timeval tv;
+//    long long ust;
 //
-//	clock_gettime(CLOCK_MONOTONIC, &ts);
-//	ns = ts.tv_sec * 1000000000;
-//	ns += ts.tv_nsec;
-//	return ns;
+//    gettimeofday(&tv, NULL);
+//    ust = ((long)tv.tv_sec)*1000000;
+//    ust += tv.tv_usec;
+//    return ust;
+
+	struct timespec ts;
+	uint64_t ns;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	ns = ts.tv_sec * 1000000000;
+	ns += ts.tv_nsec;
+	return ns / 1000.0;
 }
 
 

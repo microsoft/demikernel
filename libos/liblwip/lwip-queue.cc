@@ -405,7 +405,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     // sga.buf[1].buf
     // ...
 
-    uint64_t start = ustime();
+    double start = zeus_ustime();
 
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
@@ -454,7 +454,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
-    uint64_t stack = ustime();
+    double stack = zeus_ustime();
 
     // Fill in packet fields
     pkt->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
@@ -473,7 +473,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     pkt->data_len += sizeof(uint64_t);
     pkt->pkt_len += sizeof(uint64_t);
 
-    uint64_t copy_start = ustime();
+    double copy_start = zeus_ustime();
 
     for (int i = 0; i < req.sga->num_bufs; i++) {
         *ptr = req.sga->bufs[i].len;
@@ -492,22 +492,25 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
         pkt->pkt_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
         data_len += req.sga->bufs[i].len;
     }
-    uint64_t copy_end = ustime();
+    double copy_end = zeus_ustime();
 
 #if DEBUG_ZEUS_LWIP
     printf("push: pkt len: %d\n", pkt->data_len);
 #endif
 
-    uint64_t send_start = ustime();
+    double send_start = zeus_ustime();
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
-    uint64_t send_end = ustime();
+    double send_end = zeus_ustime();
 
-    uint64_t end = ustime();
+    double end = zeus_ustime();
     assert(ret == 1);
 
 #if TIME_ZEUS_LWIP
-    printf("processOutgoing: \n\tNetwork Stack: %lu\n\tData Copy: %lu\n\tData Send: %lu\n\tTotal Latency: %lu\n",
-    		stack - start, copy_end - copy_start, send_end - send_start, end - start);
+    printf("processOutgoing: \n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tData Send: %4.2f\n\tTotal Latency: %4.2f\n",
+    		stack - start,
+			copy_end - copy_start,
+			send_end - send_start,
+			end - start);
 #endif
     req.res = data_len;
     req.isDone = true;
@@ -531,7 +534,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     ssize_t data_len = 0;
     uint16_t port;
 
-    uint64_t start = ustime();
+    double start = zeus_ustime();
 
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
@@ -558,7 +561,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         pkt_idx += 1;
         num_packets -= 1;
 
-        uint64_t recv_end = ustime();
+        double recv_end = zeus_ustime();
 
         // check ethernet header
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
@@ -620,7 +623,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
             }
         }
 
-        uint64_t stack = ustime();
+        double stack = zeus_ustime();
 
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
@@ -631,7 +634,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         ptr += sizeof(uint64_t);
         data_len = 0;
 
-        uint64_t copy_start = ustime();
+        double copy_start = zeus_ustime();
         for (int i = 0; i < req.sga->num_bufs; i++) {
             req.sga->bufs[i].len = *(size_t *)ptr;
 #if DEBUG_ZEUS_LWIP
@@ -649,7 +652,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
             data_len += req.sga->bufs[i].len;
         }
 
-        uint64_t copy_end = ustime();
+        double copy_end = zeus_ustime();
 
 #if DEBUG_ZEUS_LWIP
         printf("pop: pkt len: %d\n", m->pkt_len);
@@ -668,12 +671,15 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 #endif
         }
 
-        uint64_t end = ustime();
+        double end = zeus_ustime();
         rte_pktmbuf_free(m);
 
 #if TIME_ZEUS_LWIP
-        printf("processIncoming:\n\tRecv Time: %lu\n\tNetwork Stack: %lu\n\tData Copy: %lu\n\tTotal Latency: %lu\n",
-        		recv_end - start, stack - recv_end, copy_end - copy_start, end - start);
+        printf("processIncoming:\n\tRecv Time: %4.2f\n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tTotal Latency: %4.2f\n",
+        		recv_end - start,
+				stack - recv_end,
+				copy_end - copy_start,
+				end - start);
 #endif
 
         req.isDone = true;

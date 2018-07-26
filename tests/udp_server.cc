@@ -53,11 +53,11 @@ int main()
     while (1) {
 		qt = Zeus::pop(qd, sga);
 		if (qt != 0) {
-			printf("server: wait for pop\n");
+			//printf("server: wait for pop\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
-		uint64_t start = Zeus::ustime();
+		double start = Zeus::zeus_ustime();
 
 		//assert(sga.num_bufs == 1);
 
@@ -65,15 +65,15 @@ int main()
 
 		qt = Zeus::push(qd, sga);
 		if (qt != 0) {
-			printf("server: wait for push\n");
+			//printf("server: wait for push\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
 
-		uint64_t end = Zeus::ustime();
+		double end = Zeus::zeus_ustime();
 
-		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
-		printf("recvd to sent latency: %lu\n",  end - start);
+		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+		printf("recvd to sent latency: %4.2f\n",  end - start);
     }
 
     Zeus::close(qd);

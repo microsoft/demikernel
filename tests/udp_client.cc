@@ -5,7 +5,7 @@
 
 #include "../include/io-queue.h"
 
-#define USE_CONNECT		0
+#define USE_CONNECT		1
 
 uint16_t port = 12345;
 
@@ -60,28 +60,33 @@ int main()
     sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
+    uint64_t start = Zeus::zeus_ustime();
+
 	//n = Zeus::blocking_push(qd, sga);
 	//assert(n > 0);
 	qt = Zeus::push(qd, sga);
 	if (qt != 0) {
-		printf("client wait for push\n");
+		//printf("client wait for push\n");
 		n = Zeus::wait(qt, sga);
 		assert(n > 0);
 	}
 
-	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+	//printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
 	qt = Zeus::pop(qd, res);
 	if (qt != 0) {
-		printf("client: wait for pop\n");
+		//printf("client: wait for pop\n");
 		n = Zeus::wait(qt, res);
 		assert(n > 0);
 	}
 
-	assert(res.num_bufs == 1);
-	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+	uint64_t end = Zeus::zeus_ustime();
 
-    Zeus::close(qd);
+	assert(res.num_bufs == 1);
+	//printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+	printf("send to recv latency: %lu\n",  end - start);
+
+    //Zeus::close(qd);
 
     return 0;
 }

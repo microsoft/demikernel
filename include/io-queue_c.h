@@ -37,7 +37,6 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <string.h>
-#include <time.h>
 //#include <memory>
     
 #define C_MAX_QUEUE_DEPTH 40
@@ -105,24 +104,6 @@ int zeus_qd2fd(int qd);
 //int merge(int qd1, int qd2);
 
 int zeus_init(int argc, char* argv[]);
-
-static long long ustime(void) {
-	struct timeval tv;
-    long long ust;
-
-    gettimeofday(&tv, NULL);
-    ust = ((long)tv.tv_sec)*1000000;
-    ust += tv.tv_usec;
-    return ust;
-
-//	struct timespec ts;
-//	uint64_t ns;
-//
-//	clock_gettime(CLOCK_MONOTONIC, &ts);
-//	ns = ts.tv_sec * 1000000000;
-//	ns += ts.tv_nsec;
-//	return ns;
-}
 
 #ifdef __cplusplus
 }
