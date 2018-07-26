@@ -53,6 +53,12 @@ static int mtcp_ep;
 static char mtcp_conf_name[] = "libos.conf";
 static bool mtcp_env_initialized = false;
 
+static uint64_t rcd_read_start;
+static uint64_t rcd_read_end;
+
+static uint64_t rcd_write_start;
+static uint64_t rcd_write_end;
+
 static inline uint64_t jl_rdtsc(void)
 {
     uint64_t eax, edx;
@@ -322,99 +328,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
 #endif
-
-#if 0     // use mtcp_write()
-    // set up header
-    if (req.header[0] != MAGIC) {
-        req.header[0] = MAGIC;
-        // calculate size
-        for (int i = 0; i < sga.num_bufs; i++) {
-            req.header[1] += (uint64_t)sga.bufs[i].len;
-            req.header[1] += sizeof(uint64_t);
-            pin((void *)sga.bufs[i].buf);
-        }
-        req.header[2] = req.sga.num_bufs;
-    }
-
-    // write header
-    if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = mtcp_write(mctx, qd, (char*) (&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
-#ifdef _LIBOS_MTCP_DEBUG_
-        printf("mtcp_write() for header: count%d\n", count);
-#endif
-        if (count < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return;
-            } else {
-                fprintf(stderr, "Could not write header: %s\n", strerror(errno));
-                req.isDone = true;
-                req.res = count;
-                return;
-            }
-        }
-        req.num_bytes += count;
-        if (req.num_bytes < sizeof(req.header)) {
-            return;
-        }
-    }
-
-    assert(req.num_bytes >= sizeof(req.header));
-    
-    // write sga
-    uint64_t dataSize = req.header[1];
-    uint64_t offset = sizeof(req.header);
-#ifdef _LIBOS_MTCP_DEBUG_
-    printf("mtcp-quque.cc/ProcessOutgoing write sga dataSize:%d\n", dataSize);
-#endif
-    if (req.num_bytes < dataSize + sizeof(req.header)) {
-        for (int i = 0; i < sga.num_bufs; i++) {
-            if (req.num_bytes < offset + sizeof(uint64_t)) {
-                // stick in size header
-                ssize_t count = mtcp_write(mctx, qd, (char*) (&sga.bufs[i].len + (req.num_bytes - offset)),
-                                sizeof(uint64_t) - (req.num_bytes - offset));
-                //printf("1-mtcp_write(): count:%d req.num_bytes:%d offset:%d\n", count, req.num_bytes, offset);
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sizeof(uint64_t)) {
-                    return;
-                }
-            }
-            offset += sizeof(uint64_t);
-            if (req.num_bytes < offset + sga.bufs[i].len) {
-                ssize_t count = mtcp_write(mctx, qd, (char*) (sga.bufs[i].buf + (req.num_bytes - offset)), sga.bufs[i].len - (req.num_bytes - offset)); 
-                //printf("2-mtcp_write(): count:%d\n", count);
-                if (count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        return;
-                    } else {
-                        fprintf(stderr, "Could not write data: %s\n", strerror(errno));
-                        req.isDone = true;
-                        req.res = count;
-                        return;
-                    }
-                }
-                req.num_bytes += count;
-                if (req.num_bytes < offset + sga.bufs[i].len) {
-                    return;
-                }
-            }
-            offset += sga.bufs[i].len;
-        }
-    }
-
-    req.res = dataSize - (sga.num_bufs * sizeof(uint64_t));
-    req.isDone = true;
-#endif  // end use mtcp_write
-struct iovec vsga[2*sga.num_bufs + 1];
+    struct iovec vsga[2*sga.num_bufs + 1];
     uint64_t lens[sga.num_bufs];
     size_t dataSize = 0;
     size_t totalLen = 0;
@@ -473,7 +387,8 @@ struct iovec vsga[2*sga.num_bufs + 1];
 
     req.res = dataSize;
     req.isDone = true;
-    fprintf(stderr, "push success time (writev):%lu\n", rcd_tick);
+    uint64_t rcd_tick_end = jl_rdtsc();
+    fprintf(stderr, "ProcessOutgoing(writev) start:%lu end:%lu\n", rcd_tick, rcd_tick_end);
 }
     
 void
