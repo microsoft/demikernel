@@ -1,6 +1,6 @@
 # Zeus libOS code
 
-cmake_minimum_required (VERSION 3.7.2)
+cmake_minimum_required (VERSION 3.5.1)
 project (Zeus C CXX)
 
 # ----------------------------------------------------
@@ -93,11 +93,13 @@ add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
+
 # RDMA libos target
+if (UNIX)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
 target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/librdmahoard.so rdmacm ibverbs)
 add_dependencies(zeus_rdma rdmahoard)
-
+endif()
