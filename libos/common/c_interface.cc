@@ -137,20 +137,18 @@ ssize_t zeus_wait(zeus_qtoken qt, zeus_sgarray *sga_ptr) {
     return ret;
 }
 
-zeus_qtoken zeus_wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_ptr) {
-    zeus_qtoken ret_qt;
+ssize_t zeus_wait_any(zeus_qtoken qts[], size_t num_qts, int *offset, int *qd, zeus_sgarray *sga_ptr) {
+    ssize_t ret;
     Zeus::sgarray sga;
-    ret_qt = Zeus::wait_any(qts, num_qts, sga);
-    if(ret_qt < 1){
-        // invalid qt, return error
-        fprintf(stderr, "Zeus::wait() return bad qt :%ld\n", ret_qt);
-        return -1;
-    }
-    if(!(IS_PUSH(ret_qt))){
+    int _offset, _qd;
+    ret = Zeus::wait_any(qts, num_qts, _offset, _qd, sga);
+    *offset = _offset;
+    *qd = _qd;
+    if(ret > 0 && !IS_PUSH(qts[_offset])){
         // for successful zeus_pop(), copy the pointer to readed buf. into input
         sgarray_cpp2c(&sga, sga_ptr);
     }
-    return ret_qt;
+    return ret;
 }
 
 ssize_t zeus_wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {

@@ -461,8 +461,11 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
     PendingRequest &req = pending.find(qt)->second;
 
     if (req.isDone) {
+        int ret = req.res;
+        sga = req.sga;
+        pending.erase(qt);
         assert(sga.num_bufs > 0);
-        return req.res;
+        return ret;
     } else {
         //printf("Enqueue() req.is Done = false will return 0\n");
         return 0;
@@ -483,30 +486,15 @@ RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-RdmaQueue::peek(qtoken qt, struct sgarray &sga)
+RdmaQueue::peek(struct sgarray &sga)
 {
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
-        it = pending.find(qt);
-        if (it == pending.end()){
-            exit(1);
-        }
-        PendingRequest &req = it->second;
-        if (IS_PUSH(qt)) {
-            exit(1);
-        } else {
-            ProcessIncoming(req);
-        }
-        if (req.isDone){
-            return req.res;
-        }else{
-            return -1;
-        }
+    PendingRequest req(sga);
+    ProcessIncoming(req);
+    
+    if (req.isDone){
+        return req.res;
     } else {
-        // qtoken found in q
-        fprintf(stderr, "Error, light_pop() found existing qtoken\n");
-        exit(1);
+            return -1;
     }
 }
     
@@ -516,11 +504,14 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
     ssize_t ret;
     auto it = pending.find(qt);
     assert(it != pending.end());
-
-    while(!it->second.isDone) {
+    PendingRequest &req = it->second;
+    
+    while(!req.isDone) {
         ProcessQ(1);
     }
-    ret = it->second.res;
+    sga = req.sga;
+    ret = req.res
+    pending.erase(it);
     return ret;
 }
 
@@ -529,11 +520,20 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     assert(it != pending.end());
-    if (it->second.isDone) {
-        sga = it->second.sga;
-        return it->second.res;
+    PendingRequest &req = it->second;
+
+    if (IS_PUSH(qt)) {
+        ProcessOutgoing(req);
     } else {
-        return 0;
+        ProcessIncoming(req);
+    }
+
+    if (req.isDone){
+        int ret = req.res;
+        pending.erase(it);
+        return ret;
+    } else {
+        return -1;
     }
 }
 

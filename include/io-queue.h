@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <memory>
+#include <array>
     
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
@@ -93,8 +94,8 @@ qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
 qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
 ssize_t peek(int qd, struct sgarray &sga);  // will not return qtoken
 ssize_t wait(qtoken qt, struct sgarray &sga);
-qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sgas);
-ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas);
+ssize_t wait_any(qtoken tokens[], size_t num, int &offset, int &qd, struct sgarray &sga);
+ssize_t wait_all(qtoken tokens[], size_t num, struct sgarray *sgas[]);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);
 // identical to a pop, followed by a wait on the returned qtoken
