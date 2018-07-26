@@ -49,11 +49,21 @@ enum BasicQueueType {
 class Queue
 {
 private:
+    struct PendingRequest
+    {
+        bool isDone;
+        sgarray &sga;
+        std::condition_variable wakeup;
+
+        PendingRequest(struct sgarray &sga) :
+            isDone(false),
+            sga(sga) { };
+    };
+    
     // queued scatter gather arrays
-    std::unordered_map<qtoken, std::condition_variable> wakeup;
-    std::unordered_map<qtoken, sgarray> finished;
+    std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> waiting;
-    std::list<sgarray> buffer;
+    std::list<sgarray *> buffer;
     std::mutex qLock;
     
 protected:

@@ -33,8 +33,6 @@
 
 #include "common/queue.h"
 #include "common/library.h"
-#include <list>
-#include <unordered_map>
 
 namespace Zeus {
 namespace POSIX {
@@ -53,7 +51,7 @@ private:
         size_t num_bytes;
         struct sgarray &sga;
 
-        PendingRequest(struct sgarray &sga) :
+        PendingRequest(const struct sgarray &sga) :
             isDone(false),
             res(0),
             header{0,0,0},
