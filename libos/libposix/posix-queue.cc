@@ -425,10 +425,8 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
     assert(it != pending.end());
     PendingRequest &req = it->second;
 
-    if (IS_PUSH(qt)) {
-        ProcessOutgoing(req);
-    } else {
-        ProcessIncoming(req);
+    if (!req.isDone) {
+        ProcessQ(1);
     }
 
     if (req.isDone){

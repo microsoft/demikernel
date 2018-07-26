@@ -295,7 +295,7 @@ public:
                      int &qd,
                      struct sgarray &sga) {
         ssize_t res = 0;
-        QueueType *queues[num];
+        QueueType *waitingQs[num];
         for (unsigned int i = 0; i < num; i++) {
             auto it = pending.find(tokens[i]);
             assert(it != pending.end());
@@ -303,22 +303,22 @@ public:
             assert(it2 != queues.end());
             
             // do a quick check if something is ready
-            res = it2->second.poll(tokens[i], sga);
+            res = it2->second->poll(tokens[i], sga);
             if (res != 0) {
                 offset = i;
                 qd = it->second;
                 return res;
             }
-            queues[i] = &it2->second;
+            waitingQs[i] = it2->second;
         }
         
         while (true) {
             for (unsigned int i = 0; i < num; i++) {
-                QueueType &q = queues[i];
-                res = q.poll(tokens[i], sga);
+                QueueType *q = waitingQs[i];
+                res = q->poll(tokens[i], sga);
                 if (res != 0) {
                     offset = i;
-                    qd = q.GetQD();
+                    qd = q->GetQD();
                     return res;
                 }                    
             }
@@ -327,13 +327,14 @@ public:
             
     ssize_t wait_all(qtoken tokens[],
                      size_t num,
-                     struct sgarray *sgas[]) {
+                     struct sgarray **sgas) {
         ssize_t res = 0;
         for (unsigned int i = 0; i < num; i++) {
             auto it = pending.find(tokens[i]);
             assert(it != pending.end());
             QueueType &q = GetQueue(it->second);
-            ssize_t r = q.wait(tokens[i], sgas[i]);
+            
+            ssize_t r = q.wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }
         return res;

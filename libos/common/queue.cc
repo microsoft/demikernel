@@ -44,10 +44,10 @@ Queue::push(qtoken qt, struct sgarray &sga)
         qtoken pop = waiting.front();
         waiting.pop_front();
         auto it = pending.find(pop);
-        PendingRequest &req = it->second;
-        len = req.sga.copy(sga);
-        req.wakeup.notify_all();
-        req.isDone = true;
+        PendingRequest *req = it->second;
+        len = req->sga.copy(sga);
+        req->wakeup.notify_all();
+        req->isDone = true;
     } else {
         buffer.push_back(&sga);
     }
@@ -63,7 +63,8 @@ Queue::pop(qtoken qt, struct sgarray &sga) {
         len = sga.copy(*buffer.front());
         buffer.pop_front();
     } else {
-        pending.insert(std::make_pair<qtoken, PendingRequest>(qt, PendingRequest(sga)));
+        PendingRequest *req = new PendingRequest(sga);
+        pending.insert(std::make_pair<qtoken, PendingRequest *>(qt, req));
         waiting.push_back(qt);
     }
     return len;
@@ -76,13 +77,14 @@ Queue::wait(qtoken qt, struct sgarray &sga)
     lock.lock();
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest &req = it->second;
-    while (!req.isDone) {
-        req.wakeup.wait(lock);
+    PendingRequest *req = it->second;
+    while (!req->isDone) {
+        req->wakeup.wait(lock);
     }
-    size_t len = sga.copy(req.sga);
+    size_t len = sga.copy(req->sga);
     pending.erase(it);
     lock.unlock();
+    delete req;
     return len;
 }
     
@@ -93,11 +95,12 @@ Queue::poll(qtoken qt, struct sgarray &sga)
     std::lock_guard<std::mutex> lock(qLock);
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest &req = it->second;
+    PendingRequest *req = it->second;
 
-    if (req.isDone) {
-        len = sga.copy(req.sga);
+    if (req->isDone) {
+        len = sga.copy(req->sga);
         pending.erase(it);
+        delete req;
         return len;
     } else {
         return 0;
