@@ -38,12 +38,6 @@ ssize_t
 Queue::push(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
-<<<<<<< HEAD
-=======
-    for (int i = 0; i < sga.num_bufs; i++) {
-        len += sga.bufs[i].len;
-    }
->>>>>>> 5ca8b60dd4debf36ac1ba3fcdc229c34cd00b972
    
     std::lock_guard<std::mutex> lock(qLock);
     if (!waiting.empty()) {
