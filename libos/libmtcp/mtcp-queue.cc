@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  **********************************************************************/
-
+#include "mtcp_measure.h"
 #include "mtcp-queue.h"
 #include "common/library.h"
 // hoard include
@@ -44,6 +44,30 @@
 #include <sys/time.h>
 
 
+/*********************************************************************/
+/* measurement variables */
+#ifdef _LIBOS_MTCP_MTCP_READ_LTC_
+    static uint64_t mtcp_read_total_ticks = 0;
+    static uint64_t mtcp_read_success_ticks = 0;
+    static int mtcp_read_counter = 0;
+    #define READ_OUTPUT_INTERVAL 10
+#endif
+
+#ifdef _LIBOS_MTCP_MTCP_WRITE_LTC_
+    static uint64_t mtcp_write_total_ticks = 0;
+    static int mtcp_write_counter = 0;
+    #define WRITE_OUTPUT_INTERVAL 10
+#endif
+
+static inline uint64_t rdtsc(void)
+{
+    uint64_t eax, edx;
+    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
+    return (edx << 32) | eax;
+}
+
+
+/*********************************************************************/
 namespace Zeus {
 namespace MTCP {
 
@@ -97,6 +121,50 @@ int mtcp_env_init(){
     }
     // only init mtcp once for each thread (single-thread now)
     mtcp_env_initialized = true;
+    return ret;
+}
+
+/* add measurement code into these wrappers */
+inline ssize_t
+_wrapper_mtcp_read(mctx_t mctx, int sockid, char *buf, size_t len) {
+#ifdef _LIBOS_MTCP_MTCP_READ_LTC_
+    uint64_t read_start_tick, read_end_tick;
+    read_start_tick = rdtsc(); 
+#endif
+    ssize_t ret = mtcp_read(mctx, sockid, buf, len);
+#ifdef _LIBOS_MTCP_MTCP_READ_LTC_
+    read_end_tick = rdtsc();
+    mtcp_read_total_ticks += (read_end_tick - read_start_tick);
+    if(ret >= 0){
+        mtcp_read_counter++;
+        mtcp_read_success_ticks += (read_end_tick - read_start_tick);
+    }
+    if(mtcp_read_counter == READ_OUTPUT_INTERVAL){
+        fprintf(stderr, "mtcp_read_success_ticks:%lu mtcp_read_total_ticks:%lu\n",
+                mtcp_read_success_ticks, mtcp_read_total_ticks);
+        mtcp_read_counter = 0;
+    }
+#endif
+    return ret;
+}
+
+inline int
+_wrapper_mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV){
+#ifdef _LIBOS_MTCP_MTCP_WRITE_LTC_
+    uint64_t write_start_tick, write_end_tick;
+    write_start_tick = rdtsc();
+#endif
+    int ret = mtcp_writev(mctx, sockid, iov, numIOV);
+#ifdef _LIBOS_MTCP_MTCP_WRITE_LTC_
+    write_end_tick = rdtsc();
+    if(ret >= 0){
+        mtcp_write_counter++;
+        mtcp_write_total_ticks += (write_end_tick - write_start_tick);
+        if(mtcp_write_counter == WRITE_OUTPUT_INTERVAL){
+            fprintf(stderr, "mtcp_write_total_ticks:%lu\n", mtcp_write_total_ticks);
+        }
+    }
+#endif
     return ret;
 }
 
@@ -233,7 +301,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        ssize_t count = _wrapper_mtcp_read(mctx, qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
         //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
         // printf("0-mtcp_read() count:%d\n", count);
         // we still don't have a header
@@ -269,7 +337,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        ssize_t count = mtcp_read(mctx, qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
+        ssize_t count = _wrapper_mtcp_read(mctx, qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
 #ifdef _LIBOS_MTCP_DEBUG_
         printf("1-mtcp_read() count:%d\n", count);
 #endif
@@ -361,7 +429,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
-    ssize_t count = mtcp_writev(mctx, qd,  vsga, 2*sga.num_bufs +1);
+    ssize_t count = _wrapper_mtcp_writev(mctx, qd,  vsga, 2*sga.num_bufs +1);
    
     // if error
     if (count < 0) {
@@ -388,7 +456,9 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     req.res = dataSize;
     req.isDone = true;
     uint64_t rcd_tick_end = jl_rdtsc();
+#ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_
     fprintf(stderr, "ProcessOutgoing(writev) start:%lu end:%lu\n", rcd_tick, rcd_tick_end);
+#endif
 }
     
 void
@@ -499,13 +569,11 @@ MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
     PendingRequest req = PendingRequest(sga);
     ProcessIncoming(req);
     if (req.isDone){
-        //fprintf(stderr, "time for light_pop:%lu\n", (rcd_end - rcd_start));
-        //if(rcd_end - rcd_start > 100000){
-        //    fprintf(stderr, "qtoken:%ld time forinsert():%lu time before ProcessIncoming:%lu, time for ProcessIncoming:%lu\n", (qt), (rcd_pend - rcd_start), (rcd_start1 - rcd_start), (rcd_end1 - rcd_start1));
-        //}
+#ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_
         if(req.res > 0){
             fprintf(stderr, "light_pop  success size:%d time_before_read:%lu\n", req.res, rcd_tick);
         }
+#endif
         return req.res;
     }else{
         return -1;
