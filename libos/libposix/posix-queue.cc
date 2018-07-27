@@ -30,6 +30,7 @@
 
 #include "posix-queue.h"
 #include "common/library.h"
+#include "../include/measure.h"
 // hoard include
 #include "libzeus.h"
 #include <fcntl.h>
@@ -187,6 +188,8 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     ssize_t count = 0;
     size_t dataLen;
     void* buf;
+
+    double rx_start = zeus_rdtsc();
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -283,8 +286,15 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     	free(req.buf);
     	req.buf = NULL;
     }
+
+    double rx_end = zeus_rdtsc();
+
+    printf("ProcessIncoming\n\tTotal Latency: %4.2f\n",
+    		rx_end - rx_start);
+
     req.isDone = true;
     req.res = dataLen - (req.sga->num_bufs * sizeof(uint64_t));
+
     return;
 }
     
@@ -299,6 +309,8 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     uint64_t lens[sga.num_bufs];
     size_t dataSize = 0;
     size_t totalLen = 0;
+
+    double tx_start = zeus_rdtsc();
 
     // calculate size and fill in iov
     for (int i = 0; i < sga.num_bufs; i++) {
@@ -381,6 +393,11 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         unpin((void *)sga.bufs[i].buf);
     }
 
+    double tx_end = zeus_rdtsc();
+
+    printf("ProcessOutgoing\n\tTotal Latency: %4.2f\n",
+    		tx_end - tx_start);
+
     req.res = dataSize;
     req.isDone = true;
 }
@@ -427,18 +444,15 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
         workQ.push_back(qt);
         // let's try processing here because we know our sockets are
         // non-blocking
-        if (workQ.front() == qt) {
-            ProcessQ(1);
-        }
+        if (workQ.front() == qt) ProcessQ(1);
     }
-    else {
-            req = it->second;
-	}
-    req = pending[qt];
+
+    req = pending.find(qt)->second;
 
     if (req.isDone) {
-        assert(sga.num_bufs > 0);
-        return req.res;
+    	int ret = req.res;
+    	assert(sga.num_bufs > 0);
+        return ret;
     } else {
         return 0;
     }
@@ -460,33 +474,16 @@ PosixQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 PosixQueue::peek(qtoken qt, struct sgarray &sga)
 {
-    auto it = pending.find(qt);
-    PendingRequest req;
-    if (it == pending.end()) {
-    	req = PendingRequest();
-    	req.sga = &sga;
-    	req.sga->addr.sin_family = AF_INET;
-    	pending[qt] = req;
-    	it = pending.find(qt);
-        if (it == pending.end()){
-            exit(1);
-        }
-        req = it->second;
-        if (IS_PUSH(qt)) {
-            exit(1);
-        } else {
-            ProcessIncoming(req);
-        }
-        if (req.isDone){
-            return req.res;
-        }else{
-            return -1;
-        }
-    } else {
-        // qtoken found in q
-        fprintf(stderr, "Error, light_pop() found existing qtoken\n");
-        exit(1);
-    }
+	PendingRequest req = PendingRequest();
+	req.sga = &sga;
+	req.sga->addr.sin_family = AF_INET;
+	ProcessIncoming(req);
+	if (req.isDone){
+		sga = *(req.sga);
+		return req.res;
+	}else{
+		return -1;
+	}
 }
     
 ssize_t
@@ -510,8 +507,9 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
     auto it = pending.find(qt);
     assert(it != pending.end());
     if (it->second.isDone) {
+    	int ret = it->second.res;
         sga = *(it->second.sga);
-        return it->second.res;
+        return ret;
     } else {
         return 0;
     }

@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "../include/io-queue.h"
+#include "../include/measure.h"
 
 uint16_t port = 12345;
 
@@ -57,7 +58,6 @@ int main()
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
-		double start = Zeus::zeus_ustime();
 
 		//assert(sga.num_bufs == 1);
 
@@ -70,10 +70,8 @@ int main()
 			assert(n > 0);
 		}
 
-		double end = Zeus::zeus_ustime();
-
+		printf("===========================\n");
 		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
-		printf("recvd to sent latency: %4.2f\n",  end - start);
     }
 
     Zeus::close(qd);

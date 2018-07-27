@@ -17,7 +17,7 @@ int main()
     Zeus::qtoken qt;
     struct Zeus::sgarray sga, res;
     char buf[12] = "hello world";
-    struct sockaddr_in server;
+    struct sockaddr_in server, client;
 
     char* argv[] = {(char*)"",
                     (char*)"-b",
@@ -41,6 +41,15 @@ int main()
         return -1;
     }
 
+    client.sin_family = AF_INET;
+    client.sin_addr.s_addr = htonl(0x0c0c0c05);
+    client.sin_port = htons(2345);
+
+    if (Zeus::bind(qd, (struct sockaddr*)&client, sizeof(client)) < 0) {
+    	printf("Error binding queue!\n");
+    	return -1;
+    }
+
     printf("client qd:\t%d\n", qd);
 
     server.sin_family = AF_INET;
@@ -60,10 +69,8 @@ int main()
     sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
-    uint64_t start = Zeus::zeus_ustime();
+    for (int i = 0; i < 10; i++) {
 
-	//n = Zeus::blocking_push(qd, sga);
-	//assert(n > 0);
 	qt = Zeus::push(qd, sga);
 	if (qt != 0) {
 		//printf("client wait for push\n");
@@ -71,7 +78,7 @@ int main()
 		assert(n > 0);
 	}
 
-	//printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
 	qt = Zeus::pop(qd, res);
 	if (qt != 0) {
@@ -80,13 +87,11 @@ int main()
 		assert(n > 0);
 	}
 
-	uint64_t end = Zeus::zeus_ustime();
-
 	assert(res.num_bufs == 1);
-	//printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
-	printf("send to recv latency: %lu\n",  end - start);
+	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+    }
 
-    //Zeus::close(qd);
+    Zeus::close(qd);
 
     return 0;
 }

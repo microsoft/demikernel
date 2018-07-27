@@ -36,7 +36,7 @@
 #include <list>
 #include <unordered_map>
 
-#define DEBUG_POSIX_QUEUE	1
+#define DEBUG_POSIX_QUEUE	0
 
 namespace Zeus {
 namespace POSIX {

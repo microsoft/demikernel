@@ -30,6 +30,7 @@
 
 #include "lwip-queue.h"
 #include "common/library.h"
+#include "../include/measure.h"
 
 
 #define NUM_MBUFS               8191
@@ -392,6 +393,8 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 
     struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
 
+    double tx_start = zeus_rdtsc();
+
     assert(pkt != NULL);
 
     // packet layout order is (from outside -> in):
@@ -404,8 +407,6 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     // sga.buf[1].len
     // sga.buf[1].buf
     // ...
-
-    double start = zeus_ustime();
 
     // set up Ethernet header
     eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
@@ -454,7 +455,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     udp_hdr->dgram_len = sizeof(struct udp_hdr);
     udp_hdr->dgram_cksum = 0;
 
-    double stack = zeus_ustime();
+    //double stack = zeus_ustime();
 
     // Fill in packet fields
     pkt->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
@@ -473,14 +474,14 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     pkt->data_len += sizeof(uint64_t);
     pkt->pkt_len += sizeof(uint64_t);
 
-    double copy_start = zeus_ustime();
+    //double copy_start = zeus_ustime();
 
     for (int i = 0; i < req.sga->num_bufs; i++) {
         *ptr = req.sga->bufs[i].len;
 #if DEBUG_ZEUS_LWIP
         printf("push: buf [%d] len: %d\n", i, *ptr);
 #endif
-        ptr += sizeof(req.sga->bufs[i].len);
+        ptr += sizeof(uint64_t);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
         rte_memcpy(ptr, req.sga->bufs[i].buf, req.sga->bufs[i].len);
@@ -488,29 +489,33 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
         printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
 #endif
         ptr += req.sga->bufs[i].len;
-        pkt->data_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
-        pkt->pkt_len += req.sga->bufs[i].len + sizeof(req.sga->bufs[i].len);
+        pkt->data_len += req.sga->bufs[i].len + sizeof(uint64_t);
         data_len += req.sga->bufs[i].len;
     }
-    double copy_end = zeus_ustime();
+    //double copy_end = zeus_ustime();
+
+    pkt->pkt_len = pkt->data_len;
 
 #if DEBUG_ZEUS_LWIP
     printf("push: pkt len: %d\n", pkt->data_len);
 #endif
 
-    double send_start = zeus_ustime();
+    //double send_start = zeus_ustime();
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
-    double send_end = zeus_ustime();
+    //double send_end = zeus_ustime();
 
-    double end = zeus_ustime();
+    double tx_end = zeus_rdtsc();
     assert(ret == 1);
 
 #if TIME_ZEUS_LWIP
-    printf("processOutgoing: \n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tData Send: %4.2f\n\tTotal Latency: %4.2f\n",
-    		stack - start,
-			copy_end - copy_start,
-			send_end - send_start,
-			end - start);
+//    printf("processOutgoing: \n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tData Send: %4.2f\n\tTotal Latency: %4.2f\n",
+//    		stack - start,
+//			copy_end - copy_start,
+//			send_end - send_start,
+//			end - start);
+    printf("ProcessOutgoing:\n\tTotal Latency: %4.2f\n",
+    		tx_end - tx_start);
+
 #endif
     req.res = data_len;
     req.isDone = true;
@@ -534,8 +539,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     ssize_t data_len = 0;
     uint16_t port;
 
-    double start = zeus_ustime();
-
+    double rx_start = zeus_rdtsc();
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
         // our packet buffer is empty, try to get some more from NIC
@@ -561,7 +565,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         pkt_idx += 1;
         num_packets -= 1;
 
-        double recv_end = zeus_ustime();
+        //double recv_end = zeus_ustime();
 
         // check ethernet header
         eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
@@ -623,7 +627,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
             }
         }
 
-        double stack = zeus_ustime();
+        //double stack = zeus_ustime();
 
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
@@ -634,7 +638,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         ptr += sizeof(uint64_t);
         data_len = 0;
 
-        double copy_start = zeus_ustime();
+        //double copy_start = zeus_ustime();
         for (int i = 0; i < req.sga->num_bufs; i++) {
             req.sga->bufs[i].len = *(size_t *)ptr;
 #if DEBUG_ZEUS_LWIP
@@ -652,7 +656,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
             data_len += req.sga->bufs[i].len;
         }
 
-        double copy_end = zeus_ustime();
+        //double copy_end = zeus_ustime();
 
 #if DEBUG_ZEUS_LWIP
         printf("pop: pkt len: %d\n", m->pkt_len);
@@ -671,15 +675,18 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 #endif
         }
 
-        double end = zeus_ustime();
+        double rx_end = zeus_rdtsc();
         rte_pktmbuf_free(m);
 
 #if TIME_ZEUS_LWIP
-        printf("processIncoming:\n\tRecv Time: %4.2f\n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tTotal Latency: %4.2f\n",
-        		recv_end - start,
-				stack - recv_end,
-				copy_end - copy_start,
-				end - start);
+//        printf("processIncoming:\n\tRecv Time: %4.2f\n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tTotal Latency: %4.2f\n",
+//        		recv_end - start,
+//				stack - recv_end,
+//				copy_end - copy_start,
+//				end - start);
+        printf("ProcessIncoming\n\tTotal Latency: %4.2f\n",
+        		rx_end - rx_start);
+
 #endif
 
         req.isDone = true;
@@ -702,7 +709,7 @@ LWIPQueue::ProcessQ(size_t maxRequests)
             continue;
         }
 
-        PendingRequest &req = pending[qt];
+        PendingRequest &req = it->second;
         if (IS_PUSH(qt)) {
             ProcessOutgoing(req);
         } else {
@@ -776,35 +783,15 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::peek(qtoken qt, struct sgarray &sga)
 {
-    auto it = pending.find(qt);
-    PendingRequest req;
-    if (it == pending.end()) {
-    	req = PendingRequest();
-    	req.sga = &sga;
-    	pending[qt] = req;
-    	it = pending.find(qt);
-        if(it == pending.end()){
-            exit(1);
-        }
-        req = it->second;
-        if (IS_PUSH(qt)) {
-            fprintf(stderr, "Error light_pop, push request\n");
-            exit(1);
-        } else {
-            ProcessIncoming(req);
-        }
-        if (req.isDone){
-        	errno = 0;
-            return req.res;
-        }else{
-        	errno = EAGAIN;
-            return -1;
-        }
-    }else{
-        // qtoken found in q
-        fprintf(stderr, "Error, light_pop() found existing qtoken\n");
-        exit(1);
-    }
+	PendingRequest req = PendingRequest();
+	req.sga = &sga;
+	req.sga->addr.sin_family = AF_INET;
+	ProcessIncoming(req);
+	if (req.isDone){
+		return req.res;
+	}else{
+		return -1;
+	}
 }
 
 
