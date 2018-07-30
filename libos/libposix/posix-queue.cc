@@ -30,7 +30,6 @@
 
 #include "posix-queue.h"
 #include "common/library.h"
-#include "../include/measure.h"
 // hoard include
 #include "libzeus.h"
 #include <fcntl.h>
@@ -189,7 +188,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     size_t dataLen;
     void* buf;
 
-    double rx_start = zeus_rdtsc();
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -287,11 +285,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     	req.buf = NULL;
     }
 
-    double rx_end = zeus_rdtsc();
-
-    printf("ProcessIncoming\n\tTotal Latency: %4.2f\n",
-    		rx_end - rx_start);
-
     req.isDone = true;
     req.res = dataLen - (req.sga->num_bufs * sizeof(uint64_t));
 
@@ -309,8 +302,6 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     uint64_t lens[sga.num_bufs];
     size_t dataSize = 0;
     size_t totalLen = 0;
-
-    double tx_start = zeus_rdtsc();
 
     // calculate size and fill in iov
     for (int i = 0; i < sga.num_bufs; i++) {
@@ -393,11 +384,6 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         unpin((void *)sga.bufs[i].buf);
     }
 
-    double tx_end = zeus_rdtsc();
-
-    printf("ProcessOutgoing\n\tTotal Latency: %4.2f\n",
-    		tx_end - tx_start);
-
     req.res = dataSize;
     req.isDone = true;
 }
@@ -472,7 +458,7 @@ PosixQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-PosixQueue::peek(qtoken qt, struct sgarray &sga)
+PosixQueue::peek(struct sgarray &sga)
 {
 	PendingRequest req = PendingRequest();
 	req.sga = &sga;

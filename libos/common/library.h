@@ -251,8 +251,7 @@ public:
             // popping from files not implemented yet
             return -1;
 
-        qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.peek(t, sga);
+        ssize_t res = queue.peek(sga);
         return res;
     };
 

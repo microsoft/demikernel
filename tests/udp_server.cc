@@ -4,7 +4,6 @@
 #include <assert.h>
 
 #include "../include/io-queue.h"
-#include "../include/measure.h"
 
 uint16_t port = 12345;
 

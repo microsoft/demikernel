@@ -30,7 +30,6 @@
 
 #include "lwip-queue.h"
 #include "common/library.h"
-#include "../include/measure.h"
 
 
 #define NUM_MBUFS               8191
@@ -393,8 +392,6 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 
     struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
 
-    double tx_start = zeus_rdtsc();
-
     assert(pkt != NULL);
 
     // packet layout order is (from outside -> in):
@@ -504,7 +501,6 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     //double send_end = zeus_ustime();
 
-    double tx_end = zeus_rdtsc();
     assert(ret == 1);
 
 #if TIME_ZEUS_LWIP
@@ -513,9 +509,6 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 //			copy_end - copy_start,
 //			send_end - send_start,
 //			end - start);
-    printf("ProcessOutgoing:\n\tTotal Latency: %4.2f\n",
-    		tx_end - tx_start);
-
 #endif
     req.res = data_len;
     req.isDone = true;
@@ -539,7 +532,6 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     ssize_t data_len = 0;
     uint16_t port;
 
-    double rx_start = zeus_rdtsc();
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
         // our packet buffer is empty, try to get some more from NIC
@@ -675,7 +667,6 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 #endif
         }
 
-        double rx_end = zeus_rdtsc();
         rte_pktmbuf_free(m);
 
 #if TIME_ZEUS_LWIP
@@ -684,8 +675,6 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 //				stack - recv_end,
 //				copy_end - copy_start,
 //				end - start);
-        printf("ProcessIncoming\n\tTotal Latency: %4.2f\n",
-        		rx_end - rx_start);
 
 #endif
 
@@ -781,7 +770,7 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 
 
 ssize_t
-LWIPQueue::peek(qtoken qt, struct sgarray &sga)
+LWIPQueue::peek(struct sgarray &sga)
 {
 	PendingRequest req = PendingRequest();
 	req.sga = &sga;
