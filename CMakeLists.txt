@@ -86,6 +86,7 @@ add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 add_library(zeus_lwip SHARED
   ${SRC_ZEUS_LWIP_LIB} ${SRC_ZEUS_COMMON_LIB})
 target_link_libraries(zeus_lwip ${PROJECT_SOURCE_DIR}/libhoard.so ${DPDK_LIB})
+add_dependencies(zeus_lwip hoard)
 
 # RDMA libos target
 if (NOT ${APPLE})
@@ -113,9 +114,9 @@ add_custom_target(redis
 
 # tests target
 add_executable(client ${PROJECT_SOURCE_DIR}/tests/udp_client.cc)
-target_link_libraries(client ${PROJECT_SOURCE_DIR}/libzeus_lwip.so ${PROJECT_SOURCE_DIR}/libhoard.so)
-add_dependencies(client zeus_lwip)
+target_link_libraries(client ${PROJECT_SOURCE_DIR}/libzeus_posix.so ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(client zeus_posix)
 
 add_executable(server ${PROJECT_SOURCE_DIR}/tests/udp_server.cc)
-target_link_libraries(server ${PROJECT_SOURCE_DIR}/libzeus_lwip.so ${PROJECT_SOURCE_DIR}/libhoard.so)
-add_dependencies(server zeus_lwip)
+target_link_libraries(server ${PROJECT_SOURCE_DIR}/libzeus_posix.so ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(server zeus_posix)

@@ -28,7 +28,7 @@
  *
  **********************************************************************/
  
-#ifndef _IO_QUEUE_H_
+#ifndef _IO_QUEUE_H_zeus_queue
 #define _IO_QUEUE_H_zeus_queue
 
 #include <sys/types.h>

@@ -123,8 +123,14 @@ public:
 
     int socket(int domain, int type, int protocol) {
         int qd = QueueType::socket(domain, type, protocol);
-        if (qd > 0)
-            InsertQueue(QueueType(NETWORK_Q, qd));
+        if (qd > 0) {
+        	if (type == SOCK_STREAM) {
+        		InsertQueue(QueueType(TCP_Q, qd));
+        	}
+        	else if (type == SOCK_DGRAM) {
+        		InsertQueue(QueueType(UDP_Q, qd));
+        	}
+        }
         return qd;
     };
 

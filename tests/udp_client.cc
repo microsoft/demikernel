@@ -17,7 +17,7 @@ int main()
     Zeus::qtoken qt;
     struct Zeus::sgarray sga, res;
     char buf[12] = "hello world";
-    struct sockaddr_in server, client;
+    struct sockaddr_in server;
 
     char* argv[] = {(char*)"",
                     (char*)"-b",
@@ -39,15 +39,6 @@ int main()
     if ((qd = Zeus::socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         printf("Error creating queue!\n");
         return -1;
-    }
-
-    client.sin_family = AF_INET;
-    client.sin_addr.s_addr = htonl(0x0c0c0c05);
-    client.sin_port = htons(2345);
-
-    if (Zeus::bind(qd, (struct sockaddr*)&client, sizeof(client)) < 0) {
-    	printf("Error binding queue!\n");
-    	return -1;
     }
 
     printf("client qd:\t%d\n", qd);

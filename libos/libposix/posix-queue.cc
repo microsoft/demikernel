@@ -66,16 +66,6 @@ PosixQueue::socket(int domain, int type, int protocol)
 				fprintf(stderr,
 						"Failed to set O_NONBLOCK on outgoing Zeus socket");
 			}
-			int enable = 1;
-			if (setsockopt(qd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
-			    fprintf(stderr, "Failed to set SO_REUSEADDR on Zeus socket: %s\n",
-			    		strerror(errno));
-			}
-			enable = 1;
-			if (setsockopt(qd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int)) < 0) {
-			    fprintf(stderr, "Failed to set SO_REUSEPORT on Zeus socket: %s\n",
-			    		strerror(errno));
-			}
 		}
 
     }
@@ -200,6 +190,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
             count = ::recvfrom(qd, req.buf, 1024, 0, &addr, &size);
             req.sga->addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
             req.sga->addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
+
         } else {
             count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
@@ -467,7 +458,6 @@ PosixQueue::peek(struct sgarray &sga)
 	req.sga->addr.sin_family = AF_INET;
 	ProcessIncoming(req);
 	if (req.isDone){
-		sga = *(req.sga);
 		return req.res;
 	}else{
 		return -1;

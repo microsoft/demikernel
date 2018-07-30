@@ -719,7 +719,7 @@ LWIPQueue::ProcessQ(size_t maxRequests)
 
 
 ssize_t
-LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
+LWIPQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     PendingRequest req;
@@ -732,11 +732,9 @@ LWIPQueue::Enqueue(qtoken qt, sgarray &sga)
         // let's try processing here because we know our sockets are
         // non-blocking
         if (workQ.front() == qt) ProcessQ(1);
-    } else {
-        req = it->second;
     }
 
-    req = pending[qt];
+    req = pending.find(qt)->second;
 
     if (req.isDone) {
         return req.res;
@@ -774,7 +772,6 @@ LWIPQueue::peek(struct sgarray &sga)
 {
 	PendingRequest req = PendingRequest();
 	req.sga = &sga;
-	req.sga->addr.sin_family = AF_INET;
 	ProcessIncoming(req);
 	if (req.isDone){
 		return req.res;
@@ -790,6 +787,7 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
     if (!is_init) {
     	lwip_init();
     }
+    ssize_t ret;
     auto it = pending.find(qt);
     assert(it != pending.end());
 
@@ -798,7 +796,8 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
     }
 
     sga = *it->second.sga;
-    return it->second.res;
+    ret = it->second.res;
+    return ret;
 }
 
 
@@ -811,8 +810,9 @@ LWIPQueue::poll(qtoken qt, struct sgarray &sga)
     auto it = pending.find(qt);
     assert(it != pending.end());
     if (it->second.isDone) {
-        sga = *it->second.sga;
-        return it->second.res;
+    	int ret = it->second.res;
+        sga = *(it->second.sga);
+        return ret;
     } else {
         return 0;
     }
