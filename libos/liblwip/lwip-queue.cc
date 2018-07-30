@@ -263,7 +263,7 @@ int lwip_init()
 
 
 int
-LWIPQueue::queue(int domain, int type, int protocol)
+LWIPQueue::socket(int domain, int type, int protocol)
 {
     if (!is_init) {
     	lwip_init();

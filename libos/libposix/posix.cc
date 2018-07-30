@@ -35,9 +35,9 @@
 namespace Zeus {
 static QueueLibrary<POSIX::PosixQueue> lib;
     
-int queue(int domain, int type, int protocol)
+int socket(int domain, int type, int protocol)
 {
-    return lib.queue(domain, type, protocol);
+    return lib.socket(domain, type, protocol);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -109,7 +109,7 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
+qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, sga);
 }

@@ -36,7 +36,7 @@ int main()
         return -1;
     }
 
-    if ((qd = Zeus::queue(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((qd = Zeus::socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         printf("Error creating queue!\n");
         return -1;
     }

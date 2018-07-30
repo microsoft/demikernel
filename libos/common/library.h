@@ -2,7 +2,11 @@
 /***********************************************************************
  *
  * common/library.h
+<<<<<<< HEAD
  *   Generic libos implementation
+=======
+ *   Zeus general-purpose queue library implementation
+>>>>>>> master
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -62,7 +66,6 @@ class QueueLibrary
     std::unordered_map<qtoken, int> pending;
     
 public:
-
     QueueLibrary() {
         hash = hasher(std::this_thread::get_id());
         queue_counter = hash & QUEUE_MASK;
@@ -118,15 +121,10 @@ public:
     // Generic interfaces to libOS syscalls
     // ================================================
 
-    int queue(int domain, int type, int protocol) {
-        int qd = QueueType::queue(domain, type, protocol);
-        if (qd > 0) {
-            if (type == SOCK_STREAM) {
-                InsertQueue(QueueType(TCP_Q, qd));
-            } else {
-                InsertQueue(QueueType(UDP_Q, qd));
-            }
-        }
+    int socket(int domain, int type, int protocol) {
+        int qd = QueueType::socket(domain, type, protocol);
+        if (qd > 0)
+            InsertQueue(QueueType(NETWORK_Q, qd));
         return qd;
     };
 
@@ -242,7 +240,6 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
-        //printf("call light_pop\n");
         if (!HasQueue(qd))
             return -1;
         
@@ -269,7 +266,7 @@ public:
         return queue.wait(qt, sga); 
     }
 
-    ssize_t wait_any(qtoken *qts,
+    qtoken wait_any(qtoken *qts,
                      size_t num_qts,
                      struct sgarray &sga) {
         ssize_t res = 0;
@@ -360,7 +357,6 @@ public:
 
         return 0;
     };
-
 };
 
 } // namespace Zeus

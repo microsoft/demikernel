@@ -60,7 +60,7 @@ public:
         Queue(type, qd) {};
 
     // network functions
-    static int queue(int domain, int type, int protocol);
+    static int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);

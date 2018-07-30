@@ -47,7 +47,7 @@ namespace Zeus {
 namespace POSIX {
 
 int
-PosixQueue::queue(int domain, int type, int protocol)
+PosixQueue::socket(int domain, int type, int protocol)
 {
     int qd = ::socket(domain, type, protocol);
 
@@ -430,15 +430,17 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
         workQ.push_back(qt);
         // let's try processing here because we know our sockets are
         // non-blocking
-        if (workQ.front() == qt) ProcessQ(1);
+
+        if (workQ.front() == qt) {
+            ProcessQ(1);
+        }
     }
 
     req = pending.find(qt)->second;
 
     if (req.isDone) {
-    	int ret = req.res;
-    	assert(sga.num_bufs > 0);
-        return ret;
+        assert(sga.num_bufs > 0);
+        return req.res;
     } else {
         return 0;
     }

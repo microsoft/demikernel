@@ -29,7 +29,7 @@
  **********************************************************************/
  
 #ifndef _IO_QUEUE_H_
-#define _IO_QUEUE_H_
+#define _IO_QUEUE_H_zeus_queue
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -66,7 +66,7 @@ struct sgarray {
 //ioptr iomalloc(size_t size);
 
 // network functions
-int queue(int domain, int type, int protocol);
+int socket(int domain, int type, int protocol);
 int listen(int qd, int backlog);
 int bind(int qd, struct sockaddr *saddr, socklen_t size);
 int accept(int qd, struct sockaddr *saddr, socklen_t *size);
@@ -83,7 +83,7 @@ qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
 qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
 ssize_t peek(int qd, struct sgarray &sga);  // will not return qtoken
 ssize_t wait(qtoken qt, struct sgarray &sga);
-ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray *sgas);
+qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sgas);
 ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);

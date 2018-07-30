@@ -30,7 +30,7 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
     for(int i = 0; i < sga->num_bufs; i++){
         (c_sga->bufs[i]).len = (sga->bufs[i]).len;
 #ifdef __DEBUG_c_interface_cc
-        printf("sgarray_cpp2c: i%d len:%d\n", i, (c_sga->bufs[i]).len);
+        printf("sgarray_cpp2c: i:%d len:%lu\n", i, (c_sga->bufs[i]).len);
 #endif
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
@@ -43,11 +43,11 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
 /************************************************************************/
 
 // network functions
-int zeus_queue(int domain, int type, int protocol){
+int zeus_socket(int domain, int type, int protocol){
 #ifdef __DEBUG_c_interface_cc
     printf("zeus_queue\n");
 #endif
-    return Zeus::queue(domain, type, protocol);
+    return Zeus::socket(domain, type, protocol);
 }
 
 int zeus_listen(int fd, int backlog){
@@ -104,9 +104,9 @@ zeus_qtoken zeus_push(int qd, zeus_sgarray *sga_ptr){
 }
 
 zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
-//#ifdef __DEBUG_c_interface_cc
-    //printf("zeus_pop() qd:%d\n", qd);
-//#endif
+#ifdef __DEBUG_c_interface_cc
+    printf("zeus_pop() qd:%d\n", qd);
+#endif
     Zeus::sgarray sga;
     zeus_qtoken n = Zeus::pop(qd, sga);
     //printf("return from pop() n:%zd\n", n);
@@ -151,8 +151,20 @@ ssize_t zeus_wait(zeus_qtoken qt, zeus_sgarray *sga_ptr) {
     return ret;
 }
 
-ssize_t zeus_wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
-    return -1;
+zeus_qtoken zeus_wait_any(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_ptr) {
+    zeus_qtoken ret_qt;
+    Zeus::sgarray sga;
+    ret_qt = Zeus::wait_any(qts, num_qts, sga);
+    if(ret_qt < 1){
+        // invalid qt, return error
+        fprintf(stderr, "Zeus::wait() return bad qt :%ld\n", ret_qt);
+        return -1;
+    }
+    if(!(IS_PUSH(ret_qt))){
+        // for successful zeus_pop(), copy the pointer to readed buf. into input
+        sgarray_cpp2c(&sga, sga_ptr);
+    }
+    return ret_qt;
 }
 
 ssize_t zeus_wait_all(zeus_qtoken *qts, size_t num_qts, zeus_sgarray *sga_list) {
