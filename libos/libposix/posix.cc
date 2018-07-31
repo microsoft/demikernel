@@ -52,7 +52,10 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    return lib.accept(qd, saddr, size);
+    int newfd = lib.accept(qd, saddr, size);
+    lib.GetQueue(newfd).setfd(newfd);
+ 
+    return newfd;
 }
 
 int listen(int qd, int backlog)

@@ -30,7 +30,6 @@
  
 #include "common/queue.h"
 #include <assert.h>
-#include <utility>
 
 namespace Zeus {
     
@@ -38,7 +37,6 @@ ssize_t
 Queue::push(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
-   
     std::lock_guard<std::mutex> lock(qLock);
     if (!waiting.empty()) {
         qtoken pop = waiting.front();
@@ -46,11 +44,12 @@ Queue::push(qtoken qt, struct sgarray &sga)
         auto it = pending.find(pop);
         PendingRequest *req = it->second;
         len = req->sga.copy(sga);
-        req->wakeup.notify_all();
+        req->cv.notify_all();
         req->isDone = true;
     } else {
-        buffer.push_back(&sga);
+        buffer.push_back(sga);
     }
+    printf("pushing %lx size(%ld)", qt, len);
     return len;
 }
         
@@ -60,16 +59,29 @@ Queue::pop(qtoken qt, struct sgarray &sga) {
     std::lock_guard<std::mutex> lock(qLock);
     // if we have a buffered push already
     if (!buffer.empty()) {
-        len = sga.copy(*buffer.front());
+        len = sga.copy(buffer.front());
         buffer.pop_front();
     } else {
-        PendingRequest *req = new PendingRequest(sga);
-        pending.insert(std::make_pair<qtoken, PendingRequest *>(qt, req));
+        pending.insert(
+            std::make_pair(qt, new PendingRequest(sga)));
         waiting.push_back(qt);
+        assert(pending.find(qt) != pending.end());
     }
     return len;
 }
-   
+
+ssize_t
+Queue::peek( struct sgarray &sga) {
+    size_t len = 0;
+    std::lock_guard<std::mutex> lock(qLock);
+    // if we have a buffered push already
+    if (!buffer.empty()) {
+        len = sga.copy(buffer.front());
+        buffer.pop_front();
+    }
+    return len;
+}
+
 ssize_t
 Queue::wait(qtoken qt, struct sgarray &sga)
 {
@@ -79,10 +91,10 @@ Queue::wait(qtoken qt, struct sgarray &sga)
     assert(it != pending.end());
     PendingRequest *req = it->second;
     while (!req->isDone) {
-        req->wakeup.wait(lock);
+        req->cv.wait(lock);
     }
     size_t len = sga.copy(req->sga);
-    pending.erase(it);
+    delete it->second;
     lock.unlock();
     delete req;
     return len;

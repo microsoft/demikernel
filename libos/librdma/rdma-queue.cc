@@ -243,7 +243,7 @@ RdmaQueue::close()
 }
     
 int
-RdmaQueue::fd()
+RdmaQueue::getfd()
 {
     return rdma_id->channel->fd;
 }

@@ -107,7 +107,7 @@ public:
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
+    int getfd();
 
     void setRdmaCM(struct rdma_cm_id *id);
     struct rdma_cm_id* getRdmaCM();

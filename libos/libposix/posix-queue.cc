@@ -32,10 +32,6 @@
 #include "common/library.h"
 // hoard include
 #include "common/mem/include/zeus/libzeus.h"
-#include <fcntl.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -49,27 +45,47 @@ namespace POSIX {
 int
 PosixQueue::socket(int domain, int type, int protocol)
 {
-    int _fd = ::socket(domain, type, protocol);
+    fd = ::socket(domain, type, protocol);
 
-    if (_fd > 0) {
+    if (fd > 0) {
         if (protocol == SOCK_STREAM) {
             // Set TCP_NODELAY
             int n = 1;
-            if (setsockopt(_fd, IPPROTO_TCP,
+            if (setsockopt(fd, IPPROTO_TCP,
                            TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
                 fprintf(stderr, 
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
+            // Set SO_REUSEADDR
+            if (setsockopt(fd, SOL_SOCKET,
+                           SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+                fprintf(stderr,
+                        "Failed to set SO_REUSEADDR on TCP listening socket");
+            }
+            // Always put it in non-blocking mode
+            if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+                fprintf(stderr,
+                        "Failed to set O_NONBLOCK on outgoing Zeus socket");
+            }
+
         }
         return qd;
-    } else return _fd;
+    } else return fd;
 
 }
 
 int
 PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::bind(_fd, saddr, size);
+    // Set SO_REUSEADDR
+    int n;
+    if (setsockopt(fd, SOL_SOCKET,
+                   SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+        fprintf(stderr,
+                "Failed to set SO_REUSEADDR on TCP listening socket");
+    }
+
+    int res = ::bind(fd, saddr, size);
     if (res == 0) {
         return res;
     } else {
@@ -80,30 +96,52 @@ PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
-    int newqd = ::accept(qd, saddr, size);
-    if (newqd != -1) {
-        // Set TCP_NODELAY
-        int n = 1;
-        if (setsockopt(newqd, IPPROTO_TCP,
-                       TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
-            fprintf(stderr, 
-                    "Failed to set TCP_NODELAY on Zeus connecting socket");
-        }
-        // Always put it in non-blocking mode
-        if (fcntl(newqd, F_SETFL, O_NONBLOCK, 1)) {
-            fprintf(stderr,
-                    "Failed to set O_NONBLOCK on outgoing Zeus socket");
-        }
+    assert(listening);
 
+    if (accepts.empty()) {
+        return -1;
     }
-    return newqd;
+    
+    auto &acceptInfo = accepts.front();
+    int newfd = acceptInfo.first;
+    struct sockaddr &addr = (struct sockaddr &)acceptInfo.second;
+    *saddr = addr;
+    *size = sizeof(sockaddr_in);
+    // Set TCP_NODELAY
+    int n = 1;
+    if (setsockopt(newfd, IPPROTO_TCP,
+                   TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
+        fprintf(stderr, 
+                "Failed to set TCP_NODELAY on Zeus connecting socket");
+    }
+    // Always put it in non-blocking mode
+    if (fcntl(newfd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+    // Always put it in non-blocking mode
+    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
+    accepts.pop_front();
+    return newfd;
 }
 
 int
 PosixQueue::listen(int backlog)
 {
-    int res = ::listen(_fd, backlog);
+    // Always put it in non-blocking mode
+    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
+    int res = ::listen(fd, backlog);
     if (res == 0) {
+        listening = true;
+     
         return res;
     } else {
         return errno;
@@ -114,11 +152,11 @@ PosixQueue::listen(int backlog)
 int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::connect(_fd, saddr, size);
+    int res = ::connect(fd, saddr, size);
     //fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
-        if (fcntl(_fd, F_SETFL, O_NONBLOCK, 1)) {
+        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
             fprintf(stderr,
                     "Failed to set O_NONBLOCK on outgoing Zeus socket");
         }
@@ -131,54 +169,81 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::open(const char *pathname, int flags)
 {
-    _fd = ::open(pathname, flags);
-    if (_fd > 0) return qd;
-    else return _fd;
+    fd = ::open(pathname, flags);
+    if (fd > 0) return qd;
+    else return fd;
 }
 
 int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    _fd = ::open(pathname, flags, mode);
-    if (_fd > 0) return qd;
-    else return _fd;
+    fd = ::open(pathname, flags, mode);
+    if (fd > 0) return qd;
+    else return fd;
 }
 
 int
 PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    _fd = ::creat(pathname, mode);
-    if (_fd > 0) return qd;
-    else return _fd;
+    fd = ::creat(pathname, mode);
+    if (fd > 0) return qd;
+    else return fd;
 }
     
 int
 PosixQueue::close()
 {
-    return ::close(_fd);
+    return ::close(fd);
 }
 
 int
-PosixQueue::fd()
+PosixQueue::getfd()
 {
-    return _fd;
+    return fd;
 }
 
 void
-PosixQueue::set_fd(int fd)
+PosixQueue::setfd(int fd)
 {
-    _fd = fd;
+    this->fd = fd;
 }
 
 void
 PosixQueue::ProcessIncoming(PendingRequest &req)
 {
+    // this is a listening socket, so we call accept instead of read
+    if (listening) {
+        struct sockaddr_in saddr;
+        socklen_t size = sizeof(saddr);
+        int newfd = ::accept4(fd, (sockaddr *)&saddr, &size, SOCK_NONBLOCK);
+        // Always put it in non-blocking mode
+        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+            fprintf(stderr,
+                    "Failed to set O_NONBLOCK on outgoing Zeus socket");
+        }
+
+        if (newfd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            } else {
+                req.isDone = true;
+                req.res = -1;
+            }
+        } else {
+            fprintf(stderr, "Accepting connection");
+            req.isDone = true;
+            req.res = newfd;
+            accepts.push_back(std::make_pair(newfd, saddr));
+        }
+        return;
+    } 
+        
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = ::read(_fd, (uint8_t *)&req.header + req.num_bytes,
+        ssize_t count = ::read(fd, (uint8_t *)&req.header + req.num_bytes,
                              sizeof(req.header) - req.num_bytes);
         //printf("ProcessIncoming: first read :%d\n", count);
         // we still don't have a header
@@ -215,7 +280,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        ssize_t count = ::read(_fd, (uint8_t *)req.buf + offset,
+        ssize_t count = ::read(fd, (uint8_t *)req.buf + offset,
                                dataLen - offset);
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -253,7 +318,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
-    printf("ProcessOutgoing _fd:%d num_bufs:%d\n", _fd, sga.num_bufs);
+    printf("ProcessOutgoing fd:%d num_bufs:%d\n", fd, sga.num_bufs);
 
     struct iovec vsga[2 * sga.num_bufs + 1];
     uint64_t lens[sga.num_bufs];
@@ -288,7 +353,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
-    ssize_t count = ::writev(_fd,
+    ssize_t count = ::writev(fd,
                              vsga,
                              2*sga.num_bufs +1);
    
@@ -343,34 +408,33 @@ PosixQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
         }            
     }
-    //printf("Processed %lu requests", done);
 }
     
 ssize_t
 PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
-        workQ.push_back(qt);
+    assert(pending.find(qt) == pending.end());
+    
+    pending.insert(std::make_pair(qt, PendingRequest(sga)));
+    workQ.push_back(qt);
 
-        // let's try processing here because we know our sockets are
-        // non-blocking
-        if (workQ.front() == qt) {
-            ProcessQ(1);
-        }
+    // let's try processing here because we know our sockets are
+    // non-blocking
+    if (workQ.front() == qt) {
+        ProcessQ(1);
     }
+    
     PendingRequest &req = pending.find(qt)->second;
 
     if (req.isDone) {
         int ret = req.res;
         sga.copy(req.sga);
         pending.erase(qt);
-        assert(sga.num_bufs > 0);
+   
         return ret;
     } else {
-        //printf("Enqueue() req.is Done = false will return 0\n");
+        printf("Enqueue() req.is Done = false will return 0\n");
         return 0;
     }
 }
@@ -384,8 +448,7 @@ PosixQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 PosixQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    ssize_t newqt = Enqueue(qt, sga);
-    return newqt;
+    return Enqueue(qt, sga);
 }
 
 ssize_t
@@ -435,7 +498,7 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
         pending.erase(it);
         return ret;
     } else {
-        return -1;
+        return 0;
     }
 }
 
