@@ -19,6 +19,7 @@ int main()
     char buf[12] = "hello world";
     struct sockaddr_in server;
 
+/*
     char* argv[] = {(char*)"",
                     (char*)"-b",
                     (char*)"0000:03:00.0",
@@ -30,8 +31,8 @@ int main()
                     (char*)"--file-prefix",
                     (char*)"c" };
     int argc = 10;
-
-    if (Zeus::init(argc, argv) < 0) {
+*/
+    if (Zeus::init() < 0) {
         printf("Error initializing Zeus!\n");
         return -1;
     }

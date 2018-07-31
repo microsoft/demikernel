@@ -216,7 +216,7 @@ lwip_init(int argc, char* argv[])
     }
 
     nb_ports = rte_eth_dev_count();
-    assert(nb_ports == 1);
+//    assert(nb_ports == 1);
 
     if (nb_ports <= 0) {
         rte_exit(EXIT_FAILURE, "No probed ethernet devices\n");

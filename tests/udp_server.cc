@@ -17,16 +17,13 @@ int main()
     struct sockaddr_in server;
 
     char* argv[] = {(char*)"",
-                    (char*)"-b",
-                    (char*)"0000:03:00.1",
-                    (char*)"-l",
-                    (char*)"1",
-                    (char*)"-m",
-                    (char*)"256",
-                    (char*)"--no-shconf",
-                    (char*)"--file-prefix",
-                    (char*)"s" };
-    int argc = 10;
+                    (char*)"-c",
+                    (char*)"0x1",
+                    (char*)"-n",
+                    (char*)"4",
+                    (char*)"--proc-type=auto",
+                    (char*)""};
+    int argc = 6;
 
     if (Zeus::init(argc, argv) < 0) {
         printf("Error initializing Zeus!\n");
