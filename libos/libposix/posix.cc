@@ -52,7 +52,10 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    return lib.accept(qd, saddr, size);
+    int newfd = lib.accept(qd, saddr, size);
+    lib.GetQueue(newfd).setfd(newfd);
+ 
+    return newfd;
 }
 
 int listen(int qd, int backlog)
@@ -114,12 +117,12 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
+qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
 {
-    return lib.wait_any(qts, num_qts, sga);
+    return lib.wait_any(qts, num_qts, offset, qd, sga);
 }
 
-ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas)
+ssize_t wait_all(qtoken qts[], size_t num_qts, struct sgarray **sgas)
 {
     return lib.wait_all(qts, num_qts, sgas);
 }

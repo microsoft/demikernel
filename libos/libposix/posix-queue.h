@@ -33,6 +33,10 @@
 
 #include "common/queue.h"
 #include "common/library.h"
+#include <fcntl.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 
 namespace Zeus {
 namespace POSIX {
@@ -51,7 +55,7 @@ private:
         size_t num_bytes;
         struct sgarray &sga;
 
-        PendingRequest(const struct sgarray &sga) :
+        PendingRequest(struct sgarray &sga) :
             isDone(false),
             res(0),
             header{0,0,0},
@@ -62,19 +66,21 @@ private:
     
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
+    std::list<std::pair<int, struct sockaddr_in>> accepts;
     std::list<qtoken> workQ;
 
-    int _fd;
-
+    int fd;
+    bool listening = false;
+    
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    PosixQueue() : Queue(), workQ{} { };
+    PosixQueue() : Queue(), pending(), accepts(), workQ(), listening(false) { };
     PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  { };
+        Queue(type, qd), pending(), accepts(), workQ(), listening(false) { };
 
     // network functions
     int socket(int domain, int type, int protocol);
@@ -92,13 +98,13 @@ public:
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
     ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t peek(qtoken qt, struct sgarray &sga);
+    ssize_t peek(struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
-    void set_fd(int fd);
+    int getfd();
+    void setfd(int fd);
 };
 
 } // namespace POSIX

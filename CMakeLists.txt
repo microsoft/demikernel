@@ -16,7 +16,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
 # ----------------------------------------------------
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -fstack-protector -Wall \
-  -Wno-uninitialized -O3 -DNASSERT")
+  -Wno-uninitialized")# -O3 -DNASSERT")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
    -std=c++11 -fPIC -Wall -Wl,-zdefs")
    set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")

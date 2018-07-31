@@ -30,7 +30,6 @@
  
 #include "common/queue.h"
 #include <assert.h>
-#include <utility>
 
 namespace Zeus {
     
@@ -38,25 +37,19 @@ ssize_t
 Queue::push(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
-<<<<<<< HEAD
-=======
-    for (int i = 0; i < sga.num_bufs; i++) {
-        len += sga.bufs[i].len;
-    }
->>>>>>> 5ca8b60dd4debf36ac1ba3fcdc229c34cd00b972
-   
     std::lock_guard<std::mutex> lock(qLock);
     if (!waiting.empty()) {
         qtoken pop = waiting.front();
         waiting.pop_front();
         auto it = pending.find(pop);
-        PendingRequest &req = it->second;
-        len = req.sga.copy(sga);
-        req.wakeup.notify_all();
-        req.isDone = true;
+        PendingRequest *req = it->second;
+        len = req->sga.copy(sga);
+        req->cv.notify_all();
+        req->isDone = true;
     } else {
-        buffer.push_back(&sga);
+        buffer.push_back(sga);
     }
+    printf("pushing %lx size(%ld)", qt, len);
     return len;
 }
         
@@ -66,15 +59,29 @@ Queue::pop(qtoken qt, struct sgarray &sga) {
     std::lock_guard<std::mutex> lock(qLock);
     // if we have a buffered push already
     if (!buffer.empty()) {
-        len = sga.copy(*buffer.front());
+        len = sga.copy(buffer.front());
         buffer.pop_front();
     } else {
-        pending.insert(std::make_pair<qtoken, PendingRequest>(qt, PendingRequest(sga)));
+        pending.insert(
+            std::make_pair(qt, new PendingRequest(sga)));
         waiting.push_back(qt);
+        assert(pending.find(qt) != pending.end());
     }
     return len;
 }
-   
+
+ssize_t
+Queue::peek( struct sgarray &sga) {
+    size_t len = 0;
+    std::lock_guard<std::mutex> lock(qLock);
+    // if we have a buffered push already
+    if (!buffer.empty()) {
+        len = sga.copy(buffer.front());
+        buffer.pop_front();
+    }
+    return len;
+}
+
 ssize_t
 Queue::wait(qtoken qt, struct sgarray &sga)
 {
@@ -82,13 +89,14 @@ Queue::wait(qtoken qt, struct sgarray &sga)
     lock.lock();
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest &req = it->second;
-    while (!req.isDone) {
-        req.wakeup.wait(lock);
+    PendingRequest *req = it->second;
+    while (!req->isDone) {
+        req->cv.wait(lock);
     }
-    size_t len = sga.copy(req.sga);
-    pending.erase(it);
+    size_t len = sga.copy(req->sga);
+    delete it->second;
     lock.unlock();
+    delete req;
     return len;
 }
     
@@ -99,11 +107,12 @@ Queue::poll(qtoken qt, struct sgarray &sga)
     std::lock_guard<std::mutex> lock(qLock);
     auto it = pending.find(qt);
     assert(it != pending.end());
-    PendingRequest &req = it->second;
+    PendingRequest *req = it->second;
 
-    if (req.isDone) {
-        len = sga.copy(req.sga);
+    if (req->isDone) {
+        len = sga.copy(req->sga);
         pending.erase(it);
+        delete req;
         return len;
     } else {
         return 0;

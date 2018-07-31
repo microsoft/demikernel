@@ -53,17 +53,18 @@ private:
     {
         bool isDone;
         sgarray &sga;
-        std::condition_variable wakeup;
+        std::condition_variable cv;
 
         PendingRequest(struct sgarray &sga) :
             isDone(false),
             sga(sga) { };
+        ~PendingRequest() { };
     };
     
     // queued scatter gather arrays
-    std::unordered_map<qtoken, PendingRequest> pending;
+    std::unordered_map<qtoken, PendingRequest *> pending;
     std::list<qtoken> waiting;
-    std::list<sgarray *> buffer;
+    std::list<sgarray> buffer;
     std::mutex qLock;
     
 protected:
@@ -95,13 +96,13 @@ public:
     // data plane functions
     ssize_t push(qtoken qt, struct sgarray &sga);
     ssize_t pop(qtoken qt, struct sgarray &sga);
-    ssize_t peek(qtoken qt, sgarray &sga);
+    ssize_t peek(struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
-    void set_fd(int fd);
+    int getfd();
+    void setfd(int fd);
 };
 
 } // namespace Zeus

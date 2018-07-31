@@ -243,7 +243,7 @@ RdmaQueue::close()
 }
     
 int
-RdmaQueue::fd()
+RdmaQueue::getfd()
 {
     return rdma_id->channel->fd;
 }
@@ -251,6 +251,7 @@ RdmaQueue::fd()
 void
 RdmaQueue::ProcessIncoming(PendingRequest &req, void *pendingRecv)
 {
+    req.buf = pendingRecv;
     uint8_t *ptr = (uint8_t *)req.buf;
     struct sgarray &sga = req.sga;
     uint64_t magic = *((uint64_t *)ptr);
@@ -473,13 +474,31 @@ ssize_t
 RdmaQueue::peek(struct sgarray &sga)
 {
     PendingRequest req(sga);
-    ProcessIncoming(req);
-    
-    if (req.isDone){
-        return req.res;
-    } else {
-            return -1;
+
+    // check receive completion queue
+    struct ibv_wc wcs[RECV_BUFFER_NUM];
+    int num;
+    while ((num = ibv_poll_cq(rdma_id->recv_cq, RECV_BUFFER_NUM, wcs)) > 0) {
+        // process messages
+        for (int i = 0; i < num; i++) {
+            struct ibv_wc wc = wcs[i];
+            if (wc.status == IBV_WC_SUCCESS) {
+                assert(wc.opcode == IBV_WC_RECV);
+                pendingRecv.push_back((void *)wc.wr_id);
+                PostReceive();
+            }
+        }
     }
+    
+    if (!pendingRecv.empty()) {
+        ProcessIncoming(req, pendingRecv.front());
+        pendingRecv.pop_front();
+
+        if (req.isDone){
+            return req.res;
+        }
+    }
+    return -1;
 }
     
 ssize_t
@@ -494,7 +513,7 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
         ProcessQ(1);
     }
     sga = req.sga;
-    ret = req.res
+    ret = req.res;
     pending.erase(it);
     return ret;
 }
@@ -506,12 +525,10 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     assert(it != pending.end());
     PendingRequest &req = it->second;
 
-    if (IS_PUSH(qt)) {
-        ProcessOutgoing(req);
-    } else {
-        ProcessIncoming(req);
+    if (!req.isDone) {
+        ProcessQ(1);
     }
-
+    
     if (req.isDone){
         int ret = req.res;
         pending.erase(it);
