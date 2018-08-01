@@ -44,12 +44,16 @@ Queue::push(qtoken qt, struct sgarray &sga)
         auto it = pending.find(pop);
         PendingRequest *req = it->second;
         len = req->sga.copy(sga);
+	assert(len > 0);
         req->cv.notify_all();
         req->isDone = true;
     } else {
+	for (int i = 0; i < sga.num_bufs; i++) {
+	    len += sga.bufs[i].len;
+	}
         buffer.push_back(sga);
     }
-    printf("pushing %lx size(%ld)", qt, len);
+    //fprintf(stderr, "[%x] pushing %lx size(%ld)", qd, qt, len);
     return len;
 }
         
@@ -113,6 +117,7 @@ Queue::poll(qtoken qt, struct sgarray &sga)
         len = sga.copy(req->sga);
         pending.erase(it);
         delete req;
+	assert(len > 0);
         return len;
     } else {
         return 0;

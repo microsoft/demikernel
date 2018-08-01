@@ -441,22 +441,21 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 	}
     }
     
-    auto it = pending.find(qt);
-    if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, req));
-        workQ.push_back(qt);
+    assert(pending.find(qt) == pending.end());
+    pending.insert(std::make_pair(qt, req));
+    workQ.push_back(qt);
 
-        // let's try processing here because we know our sockets are
-        // non-blocking
-        if (workQ.front() == qt) {
-            ProcessQ(1);
-        }
+    // let's try processing here because we know our sockets are
+    // non-blocking
+    if (workQ.front() == qt) {
+	ProcessQ(1);
     }
-    PendingRequest &req = pending.find(qt)->second;
 
-    if (req.isDone) {
-        int ret = req.res;
-        sga.copy(req.sga);
+    PendingRequest &req2 = pending.find(qt)->second;
+    
+    if (req2.isDone) {
+        int ret = req2.res;
+        sga.copy(req2.sga);
         pending.erase(qt);
         assert(sga.num_bufs > 0);
         return ret;

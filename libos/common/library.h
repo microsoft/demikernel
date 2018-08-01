@@ -258,15 +258,13 @@ public:
             res = ((Queue &)queue).pop(t, sga);
         else 
             res = queue.pop(t, sga);
-        if (res == 0) {
+
+	if (res > 0)
+	    return 0;
+	else if (res == 0)
             return t;
-        } else if (res == -1) {
+	else
             return -1;
-        } else {
-            // if push returns something else, then sga has been
-            // successfully popped and result is in sga
-            return 0;
-        }
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
@@ -340,7 +338,7 @@ public:
                 if (res != 0) {
                     offset = i;
                     qd = q->GetQD();
-                    return res;
+		    return res;
                 }                    
             }
         }
