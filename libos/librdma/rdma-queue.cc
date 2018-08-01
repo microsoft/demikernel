@@ -432,9 +432,18 @@ ssize_t
 RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
+    PendingRequest req(sga);
+    
+    if (IS_PUSH(qt)) {
+	ProcessOutgoing(req);
+	if (req.isDone) {
+	    return req.res;
+	}
+    }
+    
     auto it = pending.find(qt);
     if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
+        pending.insert(std::make_pair(qt, req));
         workQ.push_back(qt);
 
         // let's try processing here because we know our sockets are
@@ -447,7 +456,7 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 
     if (req.isDone) {
         int ret = req.res;
-        sga = req.sga;
+        sga.copy(req.sga);
         pending.erase(qt);
         assert(sga.num_bufs > 0);
         return ret;

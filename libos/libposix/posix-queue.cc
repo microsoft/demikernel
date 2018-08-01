@@ -47,6 +47,7 @@ PosixQueue::socket(int domain, int type, int protocol)
 {
     fd = ::socket(domain, type, protocol);
 
+    printf("Allocating socket: %d\n", fd);
     if (fd > 0) {
         if (protocol == SOCK_STREAM) {
             // Set TCP_NODELAY
@@ -55,19 +56,7 @@ PosixQueue::socket(int domain, int type, int protocol)
                            TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
                 fprintf(stderr, 
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
-            }
-            // Set SO_REUSEADDR
-            if (setsockopt(fd, SOL_SOCKET,
-                           SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
-                fprintf(stderr,
-                        "Failed to set SO_REUSEADDR on TCP listening socket");
-            }
-            // Always put it in non-blocking mode
-            if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-                fprintf(stderr,
-                        "Failed to set O_NONBLOCK on outgoing Zeus socket");
-            }
-
+            }            
         }
         return qd;
     } else return fd;
@@ -132,16 +121,14 @@ PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 int
 PosixQueue::listen(int backlog)
 {
-    // Always put it in non-blocking mode
-    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-        fprintf(stderr,
-                "Failed to set O_NONBLOCK on outgoing Zeus socket");
-    }
-
-    int res = ::listen(fd, backlog);
+   int res = ::listen(fd, backlog);
     if (res == 0) {
         listening = true;
-     
+	// Always put it in non-blocking mode
+	if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+	    fprintf(stderr,
+		    "Failed to set O_NONBLOCK on outgoing Zeus socket");
+	}
         return res;
     } else {
         return errno;
@@ -414,18 +401,14 @@ ssize_t
 PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
-    assert(pending.find(qt) == pending.end());
-    
-    pending.insert(std::make_pair(qt, PendingRequest(sga)));
-    workQ.push_back(qt);
-
-    // let's try processing here because we know our sockets are
-    // non-blocking
-    if (workQ.front() == qt) {
-        ProcessQ(1);
+    // let's just try to send this
+    PendingRequest req(sga);
+	
+    if (IS_PUSH(qt)) {
+	ProcessOutgoing(req);
+    } else {
+	ProcessIncoming(req);
     }
-    
-    PendingRequest &req = pending.find(qt)->second;
 
     if (req.isDone) {
         int ret = req.res;
@@ -434,6 +417,10 @@ PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
    
         return ret;
     } else {
+	assert(pending.find(qt) == pending.end());
+    
+	pending.insert(std::make_pair(qt, req));
+	workQ.push_back(qt);
         printf("Enqueue() req.is Done = false will return 0\n");
         return 0;
     }
