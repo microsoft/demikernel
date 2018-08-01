@@ -3,7 +3,7 @@ C = g++
 ZEUS_SRC_DIR=/users/ajaustin/datacenter-OS/
 JING_SRC_DIR=/users/jingliu/datacenter-OS/
 
-LIBZEUS=zeus_posix
+LIBZEUS=zeus_lwip
 
 ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
 ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
@@ -29,4 +29,4 @@ FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -L$(DPDK_HOME)/lib -ln
 CFLAGS_CXX=-std=c++0x
 
 all:
-	${CC} -o udp_server tests/udp_server.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}
+	${CC} -o tests/udp_server tests/udp_server.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}

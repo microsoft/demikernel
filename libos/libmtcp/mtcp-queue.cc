@@ -169,7 +169,7 @@ _wrapper_mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIO
 }
 
 int
-MTCPQueue::queue(int domain, int type, int protocol)
+MTCPQueue::socket(int domain, int type, int protocol)
 {
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("mtcp_queue\n");
@@ -563,7 +563,7 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-MTCPQueue::light_pop(qtoken qt, struct sgarray &sga){
+MTCPQueue::peek(struct sgarray &sga){
     uint64_t rcd_tick;
     rcd_tick = jl_rdtsc();
     PendingRequest req = PendingRequest(sga);

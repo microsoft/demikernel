@@ -50,7 +50,7 @@ int main()
         return -1;
     }
     
-    while (1) {
+//    while (1) {
 		qt = Zeus::pop(qd, sga);
 		if (qt != 0) {
 			printf("server: wait for pop\n");
@@ -71,7 +71,7 @@ int main()
 
 		//printf("===========================\n");
 		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
-    }
+//    }
 
     Zeus::close(qd);
 

@@ -3,8 +3,10 @@ C = g++
 ZEUS_SRC_DIR=/users/ajaustin/datacenter-OS/
 JING_SRC_DIR=/users/jingliu/datacenter-OS/
 
+LIBZEUS=zeus_posix
+
 ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
-ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib -lzeus_lwip -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
+ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 
 DPDK_HOME=$(JING_SRC_DIR)/libos/libmtcp/mtcp/dpdk/
 DPDK_INC=$(DPDK_HOME)/include
@@ -17,7 +19,7 @@ FINAL_LDFLAGS=$(LDFLAGS) $(DEBUG)
 FINAL_LIBS=-lm
 DEBUG=-g -ggdb
 
-ZEUS_LIBS := -lzeus_lwip -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
+ZEUS_LIBS := -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 FINAL_CFLAGS += $(ZEUS_CFLAGS)
 FINAL_CFLAGS += $(DPDK_MACHINE_FLAGS) -I$(DPDK_INC) -include $(DPDK_INC)/rte_config.h
 FINAL_LDFLAGS += $(ZEUS_LDFLAGS)
@@ -27,4 +29,5 @@ FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -L$(DPDK_HOME)/lib -ln
 CFLAGS_CXX=-std=c++0x
 
 all:
-	${CC} -o tcp_client tests/tcp_client.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}
+	${CC} -o tests/tcp_client tests/tcp_client.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}
+

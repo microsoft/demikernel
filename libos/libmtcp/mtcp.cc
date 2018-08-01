@@ -35,9 +35,9 @@
 namespace Zeus {
 static QueueLibrary<MTCP::MTCPQueue> lib;
     
-int queue(int domain, int type, int protocol)
+int socket(int domain, int type, int protocol)
 {
-    return lib.queue(domain, type, protocol);
+    return lib.socket(domain, type, protocol);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -95,9 +95,9 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
-ssize_t light_pop(int qd, struct Zeus::sgarray &sga)
+ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
-    ssize_t ret = lib.light_pop(qd, sga);
+    ssize_t ret = lib.peek(qd, sga);
     return ret;
 }
 

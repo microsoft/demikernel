@@ -43,8 +43,8 @@ include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
 # mtcp
-set(DPDK_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/dpdk/)
-set(MTCP_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/mtcp/)
+set(DPDK_DIR /users/jingliu/datacenter-OS/libos/libmtcp/mtcp/dpdk/)
+set(MTCP_DIR /users/jingliu/datacenter-OS/libos/libmtcp/mtcp/mtcp/)
 include_directories(${MTCP_DIR}/include)
 #link_directories(${MTCP_DIR}/lib)
 #include_directories(${DPDK_DIR}/include)
@@ -95,6 +95,19 @@ set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED ${SRC_ZEUS_RDMA_LIB})
 target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so)
 endif()
+
+
+# MTCP libos target
+add_library(zeus_mtcp STATIC
+    ${MTCP_DIR}/lib/libmtcp.a ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_MTCP_LIB})
+#set_target_properties(zeus_mtcp PROPERTIES COMPILE_FLAGS ${DPDK_CFLAGS})
+target_link_libraries(zeus_mtcp ${PROJECT_SOURCE_DIR}/libhoard.so)
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS "-pthread -lrt -march=native -export-dynamic")
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS ${MTCP_DIR}/lib/libmtcp.a)
+#target_link_libraries(zeus_mtcp ${MTCP_DIR}/lib/libmtcp.a)
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS "-lnuma -lmtcp -lpthread -lrt -ld")
+#set_target_properties(zeus_mtcp PROPERTIES LINK_FLAGS ${DPDK_LD_FLAGS})
+add_dependencies(zeus_mtcp hoard)
 
 
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)

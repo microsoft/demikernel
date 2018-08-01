@@ -37,6 +37,7 @@ int main()
         return -1;
     }
 
+    printf("server: listening for connections\n");
     if (Zeus::listen(lqd, 3) < 0) {
         printf("Error listening!\n");
         return -1;
@@ -46,6 +47,7 @@ int main()
         printf("Error accepting connection\n");
         return -1;
     }
+    printf("server: accepted connection from: %x:%d\n", peer.sin_addr.s_addr, peer.sin_port);
     
     qt = Zeus::pop(qd, sga);
     if (qt != 0) {
