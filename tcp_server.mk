@@ -29,4 +29,4 @@ FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -L$(DPDK_HOME)/lib -ln
 CFLAGS_CXX=-std=c++0x
 
 all:
-	${CC} -o udp_server tests/udp_server.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}
+	${CC} -o tcp_server tests/tcp_server.cc ${FINAL_CFLAGS} ${CFLAGS_CXX} ${FINAL_LDFLAGS} ${FINAL_LIBS}

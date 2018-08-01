@@ -6,8 +6,6 @@
 
 #include "../include/io-queue.h"
 
-#define USE_CONNECT		1
-
 uint16_t port = 12345;
 
 int main()
@@ -19,22 +17,7 @@ int main()
     char buf[12] = "hello world";
     struct sockaddr_in server;
 
-
-    char* argv[] = {(char*)"",
-                    (char*)"-c",
-                    (char*)"0x1",
-                    (char*)"-n",
-                    (char*)"4",
-                    (char*)"--proc-type=auto",
-                    (char*)""};
-    int argc = 6;
-
-    if (Zeus::init(argc, argv) < 0) {
-        printf("Error initializing Zeus!\n");
-        return -1;
-    }
-
-    if ((qd = Zeus::socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((qd = Zeus::socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         printf("Error creating queue!\n");
         return -1;
     }
@@ -42,28 +25,22 @@ int main()
     printf("client qd:\t%d\n", qd);
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
+    if (inet_pton(AF_INET, "10.0.0.5", &server.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
     server.sin_port = htons(port);
 
-
-    printf("client: sending to: %x:%d\n", server.sin_addr.s_addr, server.sin_port);
-#if USE_CONNECT
     if (Zeus::connect(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
     	printf("Error connecting queue!\n");
     	return -1;
     }
-#else
-    sga.addr = server;
-#endif
 
     sga.num_bufs = 1;
     sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
-    for (int i = 0; i < 10; i++) {
+//    for (int i = 0; i < 10; i++) {
 
 	qt = Zeus::push(qd, sga);
 	if (qt != 0) {
@@ -83,7 +60,7 @@ int main()
 
 	assert(res.num_bufs == 1);
 	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
-    }
+//    }
 
     Zeus::close(qd);
 

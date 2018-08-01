@@ -40,7 +40,7 @@
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DEBUG_ZEUS_LWIP 	0
+#define DEBUG_ZEUS_LWIP 	1
 #define TIME_ZEUS_LWIP		1
 
 static uint16_t port = 1024;
@@ -55,11 +55,11 @@ struct mac2ip {
 
 
 static struct mac2ip ip_config[] = {
-    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
-            0x040c0c0c,       // 12.12.12.4
+    {       { 0x90, 0xe2, 0xba, 0xb5, 0x01, 0xe4 },
+            0x0500000a,       // 10.0.0.5
     },
-    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
-            0x050c0c0c,       // 12.12.12.5
+    {       { 0x90, 0xe2, 0xba, 0xb3, 0x75, 0x80 },
+            0x0800000a,       // 10.0.0.8
     },
 };
 

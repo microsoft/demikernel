@@ -2,6 +2,7 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <assert.h>
+#include <arpa/inet.h>
 
 #include "../include/io-queue.h"
 
@@ -9,7 +10,6 @@ uint16_t port = 12345;
 
 int main()
 {
-	errno = 0;
     int qd;
     ssize_t n;
     Zeus::qtoken qt;
@@ -39,35 +39,38 @@ int main()
 
 
     server.sin_family = AF_INET;
-    server.sin_addr.s_addr = htonl(0x0c0c0c04);
+    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
+        printf("Address not supported!\n");
+        return -1;
+    }
     server.sin_port = htons(port);
 
     if (Zeus::bind(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
         printf("Error binding queue!\n");
         return -1;
     }
-
+    
     while (1) {
 		qt = Zeus::pop(qd, sga);
 		if (qt != 0) {
-			//printf("server: wait for pop\n");
+			printf("server: wait for pop\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
 
-		//assert(sga.num_bufs == 1);
+		assert(sga.num_bufs == 1);
 
-		//printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+		printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
 
 		qt = Zeus::push(qd, sga);
 		if (qt != 0) {
-			//printf("server: wait for push\n");
+			printf("server: wait for push\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
 
-		printf("===========================\n");
-		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+		//printf("===========================\n");
+		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
     }
 
     Zeus::close(qd);
