@@ -465,7 +465,7 @@ MTCPQueue::ProcessQ(size_t maxRequests)
 {
     size_t done = 0;
 #ifdef _LIBOS_MTCP_DEBUG_
-    printf("ProcessQ()\n");
+//    printf("ProcessQ()\n");
 #endif
     while (!workQ.empty() && done < maxRequests) {
         qtoken qt = workQ.front();
@@ -479,12 +479,12 @@ MTCPQueue::ProcessQ(size_t maxRequests)
         PendingRequest &req = it->second; 
         if (IS_PUSH(qt)) {
 #ifdef _LIBOS_MTCP_DEBUG_
-            printf("isPush\n");
+//            printf("isPush\n");
 #endif
             ProcessOutgoing(req);
         } else {
 #ifdef _LIBOS_MTCP_DEBUG_
-            printf("isPop\n");
+//            printf("isPop\n");
 #endif
             ProcessIncoming(req);
         }

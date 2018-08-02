@@ -6,6 +6,8 @@
 
 #include "../include/io-queue.h"
 
+#define PKTNUM		10
+
 uint16_t port = 12345;
 
 int main()
@@ -32,7 +34,7 @@ int main()
     server.sin_port = htons(port);
 
     if (Zeus::connect(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
-    	printf("Error connecting queue!\n");
+    	perror("Error connecting queue:");
     	return -1;
     }
 
@@ -40,27 +42,39 @@ int main()
     sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
-//    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < PKTNUM; i++) {
 
 	qt = Zeus::push(qd, sga);
 	if (qt != 0) {
+                if (qt < 0) {
+                    perror("client push:");
+                    return -1;
+                }
 		printf("client wait for push\n");
+                fflush(stdout);
 		n = Zeus::wait(qt, sga);
 		assert(n > 0);
 	}
 
 	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+        fflush(stdout);
 
 	qt = Zeus::pop(qd, res);
 	if (qt != 0) {
+                if (qt < 0) {
+                    perror("client pop:");
+                    return -1;
+                }
 		printf("client: wait for pop\n");
+                fflush(stdout);
 		n = Zeus::wait(qt, res);
 		assert(n > 0);
 	}
 
 	assert(res.num_bufs == 1);
 	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
-//    }
+        fflush(stdout);
+    }
 
     Zeus::close(qd);
 

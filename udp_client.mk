@@ -3,10 +3,12 @@ C = g++
 ZEUS_SRC_DIR=/users/ajaustin/datacenter-OS/
 JING_SRC_DIR=/users/jingliu/datacenter-OS/
 
-LIBZEUS=zeus_posix
+LIBZEUS=zeus_lwip
 
 ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
-ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
+ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -l$(LIBZEUS)
+DPDK_LDFLAGS := $(ZEUS_LDFLAGS)
+DPDK_LDFLAGS += -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib
 
 DPDK_HOME=$(JING_SRC_DIR)/libos/libmtcp/mtcp/dpdk/
 DPDK_INC=$(DPDK_HOME)/include
@@ -22,8 +24,10 @@ DEBUG=-g -ggdb
 ZEUS_LIBS := -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 FINAL_CFLAGS += $(ZEUS_CFLAGS)
 FINAL_CFLAGS += $(DPDK_MACHINE_FLAGS) -I$(DPDK_INC) -include $(DPDK_INC)/rte_config.h
-FINAL_LDFLAGS += $(ZEUS_LDFLAGS)
+#FINAL_LDFLAGS += $(ZEUS_LDFLAGS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
+FINAL_LDFLAGS += $(DPDK_LDFLAGS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 FINAL_LIBS += $(ZEUS_LIBS)
+#FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -lnuma -lpthread -lrt -ldl -lstdc++
 FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -L$(DPDK_HOME)/lib -lnuma -lpthread -lrt -ldl $(DPDK_LIB_FLAGS) -lstdc++
 
 CFLAGS_CXX=-std=c++0x
