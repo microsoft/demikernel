@@ -47,6 +47,7 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/common)
 add_subdirectory(${ZEUS_SOURCE_DIR}/librdma)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libposix)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libspdk)
 
 # ---------------------------------------------------------
 # Build targets
@@ -64,6 +65,12 @@ add_library(zeus_posix SHARED
 #target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
 #add_dependencies(zeus_posix hoard)
 
+# spdk libos target
+add_library(zeus_spdk STATIC
+    ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB})
+target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(zeus_spdk hoard)
+
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)
 add_custom_target(tapir
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
@@ -78,7 +85,6 @@ set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/redis)
 add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
-
 
 # RDMA libos target
 if (UNIX)
