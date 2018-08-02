@@ -28,10 +28,11 @@ int main()
 
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
-        printf("Address not supported!\n");
-        return -1;
-    }
+//    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
+//        printf("Address not supported!\n");
+//        return -1;
+//    }
+    server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(port);
 
     if (Zeus::bind(lqd, (struct sockaddr*)&server, sizeof(server)) < 0) {
@@ -55,7 +56,7 @@ int main()
     }
     printf("server: accepted connection from: %x:%d with qd: %d\n", server.sin_addr.s_addr, server.sin_port, qd);
 
-    // read PKTNUM packets from client
+    // process PKTNUM packets from client
     for (int i = 0; i < PKTNUM; i++) {
         qt = Zeus::pop(qd, sga);
         if (qt != 0) {
@@ -65,14 +66,14 @@ int main()
                     return -1;
                 }
             }
-	    printf("server: wait for pop\n");
+	    //printf("server: wait for pop\n");
             n = Zeus::wait(qt, sga);
 	    assert(n > 0);
         }
 
         assert(sga.num_bufs == 1);
 
-        printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+        //printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
 
         qt = Zeus::push(qd, sga);
         if (qt != 0) {
@@ -80,13 +81,13 @@ int main()
                 perror("server push:");
                 return -1;
             }
-	    printf("server: wait for push\n");
+	    //printf("server: wait for push\n");
             n = Zeus::wait(qt, sga);
 	    assert(n > 0);
         }
 
-        //printf("===========================\n");
-        printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+        printf("===========================\n");
+        //printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
     }
 
     Zeus::close(qd);
