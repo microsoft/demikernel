@@ -43,7 +43,6 @@
 #include <errno.h>
 #include <sys/time.h>
 
-
 /*********************************************************************/
 /* measurement variables */
 #ifdef _LIBOS_MTCP_MTCP_READ_LTC_
@@ -549,7 +548,7 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
     printf("MTCPQueue::pop() qt:%d\n", qt);
 #endif
     ret = Enqueue(qt, sga);
-    if (ret == 0){
+    if (ret != 0){
         // read success, feed the result sgarray
         auto it = pending.find(qt);
         assert(it != pending.end());

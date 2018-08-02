@@ -238,6 +238,8 @@ public:
         ssize_t res = queue.pop(t, sga);
         if (res == 0) {
             return t;
+        } else if (res < 0) { 
+            return res;
         } else {
             // if push returns something else, then sga has been
             // successfully popped and result is in sga
