@@ -33,10 +33,10 @@
 
 #include "common/queue.h"
 #include "common/library.h"
-#include <list>
-#include <unordered_map>
-
-#define DEBUG_POSIX_QUEUE	0
+#include <fcntl.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 
 namespace Zeus {
 namespace POSIX {
@@ -53,35 +53,40 @@ private:
         void *buf;
         // number of bytes processed so far
         size_t num_bytes;
-        struct sgarray *sga;
+        struct sgarray &sga;
 
-        PendingRequest() :
+        PendingRequest(struct sgarray &sga) :
             isDone(false),
             res(0),
             header{0,0,0},
             buf(NULL),
             num_bytes(0),
-            sga(NULL) { };
+            sga(sga) { };
     };
     
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
+    std::list<std::pair<int, struct sockaddr_in>> accepts;
     std::list<qtoken> workQ;
+
+    int fd;
+    bool listening = false;
+    bool connected = false;
+    bool is_tcp = true;
+    sockaddr connected_addr;
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
-    bool connected = false;
-
 public:
-    PosixQueue() : Queue(), workQ{} { };
+    PosixQueue() : Queue(), pending(), accepts(), workQ(), listening(false) { };
     PosixQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
+        Queue(type, qd), pending(), accepts(), workQ(), listening(false) { };
 
     // network functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -89,9 +94,9 @@ public:
     int close();
           
     // file functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
@@ -101,7 +106,8 @@ public:
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
+    int getfd();
+    void setfd(int fd);
 };
 
 } // namespace POSIX

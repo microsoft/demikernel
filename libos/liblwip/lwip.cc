@@ -106,19 +106,17 @@ qtoken pop(int qd, struct Zeus::sgarray &sga)
     return lib.pop(qd, sga);
 }
 
-
-
 ssize_t wait(qtoken qt, struct sgarray &sga)
 {
     return lib.wait(qt, sga);
 }
 
-ssize_t wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
+qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
 {
-    return lib.wait_any(qts, num_qts, sga);
+    return lib.wait_any(qts, num_qts, offset, qd, sga);
 }
 
-ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas)
+ssize_t wait_all(qtoken qts[], size_t num_qts, struct sgarray **sgas)
 {
     return lib.wait_all(qts, num_qts, sgas);
 }

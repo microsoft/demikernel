@@ -31,11 +31,7 @@
 #include "posix-queue.h"
 #include "common/library.h"
 // hoard include
-#include "libzeus.h"
-#include <fcntl.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
+#include "common/mem/include/zeus/libzeus.h"
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -49,33 +45,44 @@ namespace POSIX {
 int
 PosixQueue::socket(int domain, int type, int protocol)
 {
-    int qd = ::socket(domain, type, protocol);
+    fd = ::socket(domain, type, protocol);
 
-    if (qd != -1) {
+    //fprintf(stderr, "Allocating socket: %d\n", fd);
+    if (fd > 0) {
         if (type == SOCK_STREAM) {
             // Set TCP_NODELAY
             int n = 1;
-            if (setsockopt(qd, IPPROTO_TCP,
+            if (setsockopt(fd, IPPROTO_TCP,
                            TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
                 fprintf(stderr, 
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
+            is_tcp = true;
         }
 		else if (type == SOCK_DGRAM) {
-			if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+			if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
 				fprintf(stderr,
 						"Failed to set O_NONBLOCK on outgoing Zeus socket");
 			}
+			is_tcp = false;
 		}
+        return qd;
+    } else return fd;
 
-    }
-    return qd;
 }
 
 int
 PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::bind(qd, saddr, size);
+    // Set SO_REUSEADDR
+    int n;
+    if (setsockopt(fd, SOL_SOCKET,
+                   SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+        fprintf(stderr,
+                "Failed to set SO_REUSEADDR on TCP listening socket");
+    }
+
+    int res = ::bind(fd, saddr, size);
     if (res == 0) {
         return res;
     } else {
@@ -86,30 +93,50 @@ PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
-    int newqd = ::accept(qd, saddr, size);
-    if (newqd != -1) {
-        // Set TCP_NODELAY
-        int n = 1;
-        if (setsockopt(newqd, IPPROTO_TCP,
-                       TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
-            fprintf(stderr, 
-                    "Failed to set TCP_NODELAY on Zeus connecting socket");
-        }
-        // Always put it in non-blocking mode
-        if (fcntl(newqd, F_SETFL, O_NONBLOCK, 1)) {
-            fprintf(stderr,
-                    "Failed to set O_NONBLOCK on outgoing Zeus socket");
-        }
+    assert(listening);
 
+    if (accepts.empty()) {
+        return -1;
     }
-    return newqd;
+
+    auto &acceptInfo = accepts.front();
+    int newfd = acceptInfo.first;
+    struct sockaddr &addr = (struct sockaddr &)acceptInfo.second;
+    *saddr = addr;
+    *size = sizeof(sockaddr_in);
+    // Set TCP_NODELAY
+    int n = 1;
+    if (setsockopt(newfd, IPPROTO_TCP,
+                   TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
+        fprintf(stderr,
+                "Failed to set TCP_NODELAY on Zeus connecting socket");
+    }
+    // Always put it in non-blocking mode
+    if (fcntl(newfd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+    // Always put it in non-blocking mode
+    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
+    accepts.pop_front();
+    return newfd;
 }
 
 int
 PosixQueue::listen(int backlog)
 {
-    int res = ::listen(qd, backlog);
+   int res = ::listen(fd, backlog);
     if (res == 0) {
+        listening = true;
+	// Always put it in non-blocking mode
+	if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+	    fprintf(stderr,
+		    "Failed to set O_NONBLOCK on outgoing Zeus socket");
+	}
         return res;
     } else {
         return errno;
@@ -120,15 +147,18 @@ PosixQueue::listen(int backlog)
 int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-    int res = ::connect(qd, saddr, size);
+    int res = ::connect(fd, saddr, size);
     //fprintf(stderr, "res = %i errno=%s", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
-        if (fcntl(qd, F_SETFL, O_NONBLOCK, 1)) {
+        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
             fprintf(stderr,
                     "Failed to set O_NONBLOCK on outgoing Zeus socket");
         }
-        connected = true;
+        if (!is_tcp) {
+            connected = true;
+            memcpy(&this->connected_addr, saddr, size);
+        }
         return res;
     } else {
         return errno;
@@ -138,68 +168,100 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::open(const char *pathname, int flags)
 {
-    // use the fd as qd
-    int qd = ::open(pathname, flags);
-    return qd;
+    fd = ::open(pathname, flags);
+    if (fd > 0) return qd;
+    else return fd;
 }
 
 int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::open(pathname, flags, mode);
-    return qd;
+    fd = ::open(pathname, flags, mode);
+    if (fd > 0) return qd;
+    else return fd;
 }
 
 int
 PosixQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
-    int qd = ::creat(pathname, mode);
-    return qd;
+    fd = ::creat(pathname, mode);
+    if (fd > 0) return qd;
+    else return fd;
 }
     
 int
 PosixQueue::close()
 {
-    return ::close(qd);
+    return ::close(fd);
 }
 
 int
-PosixQueue::fd()
+PosixQueue::getfd()
 {
-    return qd;
+    return fd;
+}
+
+void
+PosixQueue::setfd(int fd)
+{
+    this->fd = fd;
 }
 
 void
 PosixQueue::ProcessIncoming(PendingRequest &req)
 {
-    ssize_t count = 0;
-    size_t dataLen;
-    void* buf;
+    // this is a listening socket, so we call accept instead of read
+    if (listening) {
+        struct sockaddr_in saddr;
+        socklen_t size = sizeof(saddr);
+        int newfd = ::accept4(fd, (sockaddr *)&saddr, &size, SOCK_NONBLOCK);
+        // Always put it in non-blocking mode
+        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+            fprintf(stderr,
+                    "Failed to set O_NONBLOCK on outgoing Zeus socket\n");
+        }
 
+        if (newfd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            } else {
+                req.isDone = true;
+                req.res = -1;
+            }
+        } else {
+            fprintf(stderr, "Accepting connection\n");
+            req.isDone = true;
+            req.res = newfd;
+            accepts.push_back(std::make_pair(newfd, saddr));
+        }
+        return;
+    }
+
+    size_t count;
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        if (type == UDP_Q) {
+        if (!is_tcp) {
             req.buf = malloc(1024);
             assert(req.buf != NULL);
-            
+
             socklen_t size = sizeof(struct sockaddr_in);
             struct sockaddr addr;
-            count = ::recvfrom(qd, req.buf, 1024, 0, &addr, &size);
-            req.sga->addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
-            req.sga->addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
+            count = ::recvfrom(fd, req.buf, 1024, 0, &addr, &size);
+            req.sga.addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
+            req.sga.addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
 
         } else {
-            count = ::read(qd, (uint8_t *)&req.header + req.num_bytes,
+            count = ::read(fd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
 
         }
-        //printf("ProcessIncoming: first read :%d\n", count);
         // we still don't have a header
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                //fprintf(stderr, "process Incoming will return EAGIN\n");
                 return;
             } else {
                 fprintf(stderr, "Could not read header: %s\n", strerror(errno));
@@ -212,12 +274,13 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         if (req.num_bytes < sizeof(req.header)) {
             return;
         }
-
-        if (type == UDP_Q) {
-            memcpy(&req.header, req.buf, sizeof(req.header));
-        }
     }
 
+    if (!is_tcp) {
+        memcpy(&req.header, req.buf, sizeof(req.header));
+    }
+
+    //fprintf(stderr, "[%x] ProcessIncoming: first read=%ld\n", qd, count);
     if (req.header[0] != MAGIC) {
         // not a correctly formed packet
         fprintf(stderr, "Could not find magic %lx\n", req.header[0]);
@@ -225,127 +288,112 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         req.res = -1;
         return;
     }
+	size_t dataLen = req.header[1];
+    if (is_tcp) {
+		// now we'll allocate a buffer
+		if (req.buf == NULL) {
+			req.buf = malloc(dataLen);
+		}
 
-    dataLen = req.header[1];
-
-    if (type == TCP_Q) {
-        // now we'll allocate a buffer
-        if (req.buf == NULL) {
-            req.buf = malloc(dataLen);
-        }
-
-        size_t offset = req.num_bytes - sizeof(req.header);
-        // grab the rest of the packet
-        if (req.num_bytes < sizeof(req.header) + dataLen) {
-            ssize_t count = ::read(qd, (uint8_t *)req.buf + offset,
-                               dataLen - offset);
-            if (count < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    return;
-                } else {
-                    fprintf(stderr, "Could not read data: %s\n", strerror(errno));
-                    req.isDone = true;
-                    req.res = count;
-                    return;
-                }
-            }
-            req.num_bytes += count;
-            if (req.num_bytes < sizeof(req.header) + dataLen) {
-                return;
-            }
-        }
+		size_t offset = req.num_bytes - sizeof(req.header);
+		// grab the rest of the packet
+		if (req.num_bytes < sizeof(req.header) + dataLen) {
+			ssize_t count = ::read(fd, (uint8_t *)req.buf + offset,
+								   dataLen - offset);
+		fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
+			if (count < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					return;
+				} else {
+					fprintf(stderr, "Could not read data: %s\n", strerror(errno));
+					req.isDone = true;
+					req.res = count;
+					return;
+				}
+			}
+			req.num_bytes += count;
+			if (req.num_bytes < sizeof(req.header) + dataLen) {
+				return;
+			}
+		}
+		fprintf(stderr, "[%x] data read length=%ld\n", qd, dataLen);
     }
 
-    buf = (type == TCP_Q) ? req.buf : req.buf + sizeof(req.header);
+    void* buf = (is_tcp) ? req.buf : req.buf + sizeof(req.header);
 
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)buf;
-    req.sga->num_bufs = req.header[2];
-    for (int i = 0; i < req.sga->num_bufs; i++) {
-        req.sga->bufs[i].len = *(size_t *)ptr;
-        ptr += sizeof(uint64_t);
-        req.sga->bufs[i].buf = (ioptr)ptr;
-        ptr += req.sga->bufs[i].len;
-
-#if DEBUG_POSIX_QUEUE
-        printf("received: [%lu] bytes: %s\n", req.sga->bufs[i].len, (char*)req.sga->bufs[i].buf);
-#endif
+    req.sga.num_bufs = req.header[2];
+    size_t len = 0;
+    for (int i = 0; i < req.sga.num_bufs; i++) {
+        req.sga.bufs[i].len = *(size_t *)ptr;
+        printf("[%x] sga len= %ld\n", qd, req.sga.bufs[i].len);
+        ptr += sizeof(req.sga.bufs[i].len);
+        req.sga.bufs[i].buf = (ioptr)ptr;
+        ptr += req.sga.bufs[i].len;
+        len += req.sga.bufs[i].len;
     }
-    if (req.buf != NULL) {
-    	free(req.buf);
-    	req.buf = NULL;
-    }
-
+    assert(req.sga.bufs[0].len == (dataLen - sizeof(req.sga.bufs[0].len)));
+    assert(req.sga.num_bufs == 1);
+    assert(req.sga.num_bufs > 0);
+    assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
-    req.res = dataLen - (req.sga->num_bufs * sizeof(uint64_t));
-
+    req.res = len;
+    fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
     return;
 }
     
 void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
-    sgarray sga = *(req.sga);
+    sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
+    //fprintf(stderr, "[%x] ProcessOutgoing fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
 
-    struct iovec vsga[2*sga.num_bufs + 1];
-    uint64_t lens[sga.num_bufs];
+    struct iovec vsga[2 * sga.num_bufs + 1];
     size_t dataSize = 0;
     size_t totalLen = 0;
 
     // calculate size and fill in iov
     for (int i = 0; i < sga.num_bufs; i++) {
-        lens[i] = sga.bufs[i].len;
-        vsga[2*i+1].iov_base = &lens[i];
-        vsga[2*i+1].iov_len = sizeof(uint64_t);
+        vsga[2*i+1].iov_base = &sga.bufs[i].len;;
+        vsga[2*i+1].iov_len = sizeof(sga.bufs[i].len);
         
         vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
         vsga[2*i+2].iov_len = sga.bufs[i].len;
+
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
         
         // add up expected packet size minus header
-        totalLen += (uint64_t)sga.bufs[i].len;
-        totalLen += sizeof(uint64_t);
-#if DEBUG_POSIX_QUEUE
-        printf("sending:  [%lu] bytes: %s\n", (size_t)lens[i], (char*)vsga[2*i+2].iov_base);
-#endif
+        totalLen += sga.bufs[i].len;
+        totalLen += sizeof(sga.bufs[i].len);
         pin((void *)sga.bufs[i].buf);
     }
 
     // fill in header
     req.header[0] = MAGIC;
     req.header[1] = totalLen;
-    req.header[2] = req.sga->num_bufs;
+    req.header[2] = req.sga.num_bufs;
 
     // set up header at beginning of packet
     vsga[0].iov_base = &req.header;
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
 
-    if (type == UDP_Q) {
-    	struct sockaddr* addr = (struct sockaddr*)&req.sga->addr;
-  		if (!connected && ::connect(qd, addr, sizeof(struct sockaddr_in)) < 0) {
+    if (!is_tcp) {
+    	struct sockaddr* addr = (connected) ? &connected_addr :(struct sockaddr*)&req.sga.addr;
+  		if (!connected && ::connect(fd, addr, sizeof(struct sockaddr_in)) < 0) {
 			fprintf(stderr, "Could not connect to outgoing address: %s\n",
 					strerror(errno));
 			req.res = -1;
 			req.isDone = true;
 			return;
 		}
-  		struct sockaddr_in* peer = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
-  		socklen_t size = sizeof(struct sockaddr_in);
-  		if (::getpeername(qd, (struct sockaddr*)peer, &size) < 0) {
-  			fprintf(stderr, "Could not get peer name: %s\n", strerror(errno));
-  			req.res = -1;
-  			req.isDone = true;
-  		}
-#if DEBUG_POSIX_QUEUE
-  		printf("connected to: %x:%d\n", peer->sin_addr.s_addr, peer->sin_port);
-#endif
-  		free(peer);
     }
-    ssize_t count = ::writev(qd,
+
+    ssize_t count = ::writev(fd,
                              vsga,
                              2*sga.num_bufs +1);
    
@@ -361,10 +409,6 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         }
     }
 
-#if DEBUG_POSIX_QUEUE
-    printf("%s\n", strerror(errno));
-#endif
-
     // otherwise
     req.num_bytes += count;
     if (req.num_bytes < totalLen) {
@@ -374,7 +418,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     for (int i = 0; i < sga.num_bufs; i++) {
         unpin((void *)sga.bufs[i].buf);
     }
-
+    //fprintf(stderr, "[%x] Sending message datasize=%ld totalsize=%ld\n", qd, dataSize, totalLen);
     req.res = dataSize;
     req.isDone = true;
 }
@@ -404,35 +448,28 @@ PosixQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
         }            
     }
-    //printf("Processed %lu requests", done);
 }
     
 ssize_t
 PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
-    auto it = pending.find(qt);
-    PendingRequest req;
-    if (it == pending.end()) {
-        req = PendingRequest();
-        req.sga = &sga;
-        req.sga->addr.sin_family = AF_INET;
-        pending[qt] = req;
-        workQ.push_back(qt);
-        // let's try processing here because we know our sockets are
-        // non-blocking
+    // let's just try to send this
+    PendingRequest req(sga);
 
-        if (workQ.front() == qt) {
-            ProcessQ(1);
-        }
+    if (IS_PUSH(qt)) {
+        ProcessOutgoing(req);
+    } else {
+        ProcessIncoming(req);
     }
 
-    req = pending.find(qt)->second;
-
     if (req.isDone) {
-        assert(sga.num_bufs > 0);
         return req.res;
     } else {
+        assert(pending.find(qt) == pending.end());
+        pending.insert(std::make_pair(qt, req));
+        workQ.push_back(qt);
+        //fprintf(stderr, "Enqueue() req.is Done = false will return 0\n");
         return 0;
     }
 }
@@ -446,22 +483,20 @@ PosixQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 PosixQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    ssize_t newqt = Enqueue(qt, sga);
-    return newqt;
+    return Enqueue(qt, sga);
 }
 
 ssize_t
 PosixQueue::peek(struct sgarray &sga)
 {
-	PendingRequest req = PendingRequest();
-	req.sga = &sga;
-	req.sga->addr.sin_family = AF_INET;
-	ProcessIncoming(req);
-	if (req.isDone){
-		return req.res;
-	}else{
-		return -1;
-	}
+    PendingRequest req(sga);
+    ProcessIncoming(req);
+
+    if (req.isDone){
+        return req.res;
+    } else {
+        return 0;
+    }
 }
     
 ssize_t
@@ -470,12 +505,14 @@ PosixQueue::wait(qtoken qt, struct sgarray &sga)
     ssize_t ret;
     auto it = pending.find(qt);
     assert(it != pending.end());
+    PendingRequest &req = it->second;
 
-    while(!it->second.isDone) {
+    while(!req.isDone) {
         ProcessQ(1);
     }
-    sga = *it->second.sga;
-    ret = it->second.res;
+    sga.copy(req.sga);
+    ret = req.res;
+    pending.erase(it);
     return ret;
 }
 
@@ -484,9 +521,18 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
 {
     auto it = pending.find(qt);
     assert(it != pending.end());
-    if (it->second.isDone) {
-    	int ret = it->second.res;
-        sga = *(it->second.sga);
+    PendingRequest &req = it->second;
+
+    if (!req.isDone) {
+        ProcessQ(1);
+    }
+
+    if (req.isDone){
+        ssize_t ret = req.res;
+        size_t len = sga.copy(req.sga);
+	if (!listening)
+	    assert((size_t)ret == len);
+	    pending.erase(it);
         return ret;
     } else {
         return 0;

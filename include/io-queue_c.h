@@ -33,10 +33,8 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <stdint.h>
-#include <sys/time.h>
-#include <string.h>
+#include <netinet/in.h>
 //#include <memory>
     
 #define C_MAX_QUEUE_DEPTH 40
@@ -44,7 +42,6 @@
 
 
 #define C_ZEUS_IO_ERR_NO (-9)
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,12 +67,11 @@ typedef struct Sgarray{
 //ioptr zeus_iomalloc(size_t size);
 
 // network functions
-int zeus_socket(int domain, int type, int protocol);
+int zeus_queue(int domain, int type, int protocol);
 int zeus_listen(int fd, int backlog);
 int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
 int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
-int zeus_close(int qd);
 
 // eventually file functions
 //int zeus_open(const char *pathname, int flags);  // C does not support
@@ -100,10 +96,10 @@ ssize_t zeus_blocking_pop(int qd, zeus_sgarray *sga);
 
 int zeus_qd2fd(int qd);
 
+int zeus_init(int argc, char* argv[]);
+
 // eventually queue functions
 //int merge(int qd1, int qd2);
-
-int zeus_init(int argc, char* argv[]);
 
 #ifdef __cplusplus
 }

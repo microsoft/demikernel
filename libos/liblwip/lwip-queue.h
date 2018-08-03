@@ -17,7 +17,7 @@
 namespace Zeus {
 namespace LWIP {
 
-#define MAX_PKTS 16
+#define MAX_PKTS 4
 
 class LWIPQueue : public Queue {
 private:
@@ -25,12 +25,12 @@ private:
     public:
         bool isDone;
         ssize_t res;
-        struct sgarray *sga;
+        struct sgarray &sga;
 
-        PendingRequest() :
+        PendingRequest(struct sgarray &sga) :
             isDone(false),
             res(0),
-            sga(NULL) { };
+            sga(sga) { };
     };
 
     // queued scatter gather arrays
@@ -60,7 +60,7 @@ public:
         Queue(type, qd) {};
 
     // network functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -79,7 +79,8 @@ public:
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
 
-    int fd();
+    int getfd();
+    void setfd(int fd);
 };
 
 int lwip_init(int argc, char* argv[]);

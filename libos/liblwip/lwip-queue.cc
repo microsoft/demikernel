@@ -55,14 +55,13 @@ struct mac2ip {
 
 
 static struct mac2ip ip_config[] = {
-    {       { 0x90, 0xe2, 0xba, 0xb5, 0x01, 0xe4 },
-            0x0500000a,       // 10.0.0.5
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
+            0x040c0c0c,       // 12.12.12.4
     },
-    {       { 0x90, 0xe2, 0xba, 0xb3, 0x75, 0x80 },
-            0x0800000a,       // 10.0.0.8
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
+            0x050c0c0c,       // 12.12.12.5
     },
 };
-
 
 static struct ether_addr ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -256,8 +255,14 @@ lwip_init(int argc, char* argv[])
 
 int lwip_init()
 {
-	int argc = 1;
-	char* argv[] = {(char*)""};
+    char* argv[] = {(char*)"",
+                    (char*)"-c",
+                    (char*)"0x1",
+                    (char*)"-n",
+                    (char*)"4",
+                    (char*)"--proc-type=auto",
+                    (char*)""};
+    int argc = 6;
 	return lwip_init(argc, argv);
 }
 
@@ -270,7 +275,7 @@ LWIPQueue::socket(int domain, int type, int protocol)
     }
 //    assert(domain == AF_INET);
 //    assert(type == SOCK_DGRAM);
-    return ++queue_counter;
+    return qd;
 }
 
 
@@ -369,6 +374,17 @@ LWIPQueue::creat(const char *pathname, mode_t mode)
     return 0;
 }
 
+int
+LWIPQueue::getfd()
+{
+	return qd;
+}
+
+void
+LWIPQueue::setfd(int fd)
+{
+	this->qd = fd;
+}
 
 void
 LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
@@ -387,7 +403,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     uint32_t data_len = 0;
     struct sockaddr_in* saddr = has_default_peer ?
     								default_peer_addr :
-									(struct sockaddr_in*)&req.sga->addr;
+									(struct sockaddr_in*)&req.sga.addr;
     uint16_t ret;
 
     struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
@@ -463,7 +479,7 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 
     uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
             + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-    *ptr = req.sga->num_bufs;
+    *ptr = req.sga.num_bufs;
 #if DEBUG_ZEUS_LWIP
     printf("push: sga num_bufs: %d\n", *ptr);
 #endif
@@ -473,21 +489,21 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 
     //double copy_start = zeus_ustime();
 
-    for (int i = 0; i < req.sga->num_bufs; i++) {
-        *ptr = req.sga->bufs[i].len;
+    for (int i = 0; i < req.sga.num_bufs; i++) {
+        *ptr = req.sga.bufs[i].len;
 #if DEBUG_ZEUS_LWIP
         printf("push: buf [%d] len: %d\n", i, *ptr);
 #endif
         ptr += sizeof(uint64_t);
 
         //TODO: Remove copy if possible (may involve changing DPDK memory management
-        rte_memcpy(ptr, req.sga->bufs[i].buf, req.sga->bufs[i].len);
+        rte_memcpy(ptr, req.sga.bufs[i].buf, req.sga.bufs[i].len);
 #if DEBUG_ZEUS_LWIP
         printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
 #endif
-        ptr += req.sga->bufs[i].len;
-        pkt->data_len += req.sga->bufs[i].len + sizeof(uint64_t);
-        data_len += req.sga->bufs[i].len;
+        ptr += req.sga.bufs[i].len;
+        pkt->data_len += req.sga.bufs[i].len + sizeof(uint64_t);
+        data_len += req.sga.bufs[i].len;
     }
     //double copy_end = zeus_ustime();
 
@@ -523,7 +539,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     }
 
     struct rte_mbuf *m;
-    struct sockaddr_in* saddr = &req.sga->addr;
+    struct sockaddr_in* saddr = &req.sga.addr;
     struct udp_hdr *udp_hdr;
     struct ipv4_hdr *ip_hdr;
     struct ether_hdr *eth_hdr;
@@ -623,29 +639,29 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 
         uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
                 + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-        req.sga->num_bufs = *(uint64_t*)ptr;
+        req.sga.num_bufs = *(uint64_t*)ptr;
 #if DEBUG_ZEUS_LWIP
-        printf("pop: sga num_bufs: %d\n", req.sga->num_bufs);
+        printf("pop: sga num_bufs: %d\n", req.sga.num_bufs);
 #endif
         ptr += sizeof(uint64_t);
         data_len = 0;
 
         //double copy_start = zeus_ustime();
-        for (int i = 0; i < req.sga->num_bufs; i++) {
-            req.sga->bufs[i].len = *(size_t *)ptr;
+        for (int i = 0; i < req.sga.num_bufs; i++) {
+            req.sga.bufs[i].len = *(size_t *)ptr;
 #if DEBUG_ZEUS_LWIP
-            printf("pop: buf [%d] len: %lu\n", i, req.sga->bufs[i].len);
+            printf("pop: buf [%d] len: %lu\n", i, req.sga.bufs[i].len);
 #endif
-            req.sga->bufs[i].buf = malloc((size_t)req.sga->bufs[i].len);
+            req.sga.bufs[i].buf = malloc((size_t)req.sga.bufs[i].len);
             ptr += sizeof(uint64_t);
 
             //TODO: Remove copy if possible (may involve changing DPDK memory management
-            rte_memcpy(req.sga->bufs[i].buf, (ioptr)ptr, req.sga->bufs[i].len);
+            rte_memcpy(req.sga.bufs[i].buf, (ioptr)ptr, req.sga.bufs[i].len);
 #if DEBUG_ZEUS_LWIP
-            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga->bufs[i].buf);
+            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga.bufs[i].buf);
 #endif
-            ptr += req.sga->bufs[i].len;
-            data_len += req.sga->bufs[i].len;
+            ptr += req.sga.bufs[i].len;
+            data_len += req.sga.bufs[i].len;
         }
 
         //double copy_end = zeus_ustime();
@@ -721,24 +737,22 @@ LWIPQueue::ProcessQ(size_t maxRequests)
 ssize_t
 LWIPQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
-    auto it = pending.find(qt);
-    PendingRequest req;
-    if (it == pending.end()) {
-        req = PendingRequest();
-        req.sga = &sga;
-        pending[qt] = req;
-        workQ.push_back(qt);
+    // let's just try to send this
+    PendingRequest req(sga);
 
-        // let's try processing here because we know our sockets are
-        // non-blocking
-        if (workQ.front() == qt) ProcessQ(1);
+    if (IS_PUSH(qt)) {
+        ProcessOutgoing(req);
+    } else {
+        ProcessIncoming(req);
     }
-
-    req = pending.find(qt)->second;
 
     if (req.isDone) {
         return req.res;
     } else {
+        assert(pending.find(qt) == pending.end());
+        pending.insert(std::make_pair(qt, req));
+        workQ.push_back(qt);
+        //fprintf(stderr, "Enqueue() req.is Done = false will return 0\n");
         return 0;
     }
 }
@@ -770,14 +784,14 @@ LWIPQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 LWIPQueue::peek(struct sgarray &sga)
 {
-	PendingRequest req = PendingRequest();
-	req.sga = &sga;
-	ProcessIncoming(req);
-	if (req.isDone){
-		return req.res;
-	}else{
-		return -1;
-	}
+    PendingRequest req(sga);
+    ProcessIncoming(req);
+
+    if (req.isDone){
+        return req.res;
+    } else {
+        return 0;
+    }
 }
 
 
@@ -790,13 +804,14 @@ LWIPQueue::wait(qtoken qt, struct sgarray &sga)
     ssize_t ret;
     auto it = pending.find(qt);
     assert(it != pending.end());
+    PendingRequest &req = it->second;
 
-    while(!it->second.isDone) {
+    while(!req.isDone) {
         ProcessQ(1);
     }
-
-    sga = *it->second.sga;
-    ret = it->second.res;
+    sga.copy(req.sga);
+    ret = req.res;
+    pending.erase(it);
     return ret;
 }
 
@@ -809,20 +824,19 @@ LWIPQueue::poll(qtoken qt, struct sgarray &sga)
     }
     auto it = pending.find(qt);
     assert(it != pending.end());
-    if (it->second.isDone) {
-    	int ret = it->second.res;
-        sga = *(it->second.sga);
+    PendingRequest &req = it->second;
+
+    if (!req.isDone) {
+        ProcessQ(1);
+    }
+
+    if (req.isDone){
+        ssize_t ret = req.res;
+        pending.erase(it);
         return ret;
     } else {
         return 0;
     }
-}
-
-
-int
-LWIPQueue::fd()
-{
-    return qd;
 }
 
 } // namespace LWIP

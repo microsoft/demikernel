@@ -28,16 +28,14 @@
  *
  **********************************************************************/
  
-#ifndef _IO_QUEUE_H_zeus_queue
-#define _IO_QUEUE_H_zeus_queue
+#ifndef _IO_QUEUE_H_
+#define _IO_QUEUE_H_
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <memory>
+#include <array>
 #include <netinet/in.h>
-#include <time.h>
-#include <sys/time.h>
-#include <string.h>
     
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
@@ -59,11 +57,27 @@ struct sgelem {
 struct sgarray {
     int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
+
+    size_t copy(sgarray &sga) {
+        size_t len = 0;
+        num_bufs = sga.num_bufs;
+        for (int i = 0; i < sga.num_bufs; i++) {
+            bufs[i].len = sga.bufs[i].len;
+            len += sga.bufs[i].len;
+            bufs[i].buf = sga.bufs[i].buf;
+        }
+        return len;
+    };
+
     struct sockaddr_in addr;
+
 };
 
 // memory allocation
 //ioptr iomalloc(size_t size);
+
+// regular queue
+int queue();
 
 // network functions
 int socket(int domain, int type, int protocol);
@@ -83,8 +97,8 @@ qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
 qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
 ssize_t peek(int qd, struct sgarray &sga);  // will not return qtoken
 ssize_t wait(qtoken qt, struct sgarray &sga);
-qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sgas);
-ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas);
+ssize_t wait_any(qtoken tokens[], size_t num, int &offset, int &qd, struct sgarray &sga);
+ssize_t wait_all(qtoken tokens[], size_t num, struct sgarray **sgas);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);
 // identical to a pop, followed by a wait on the returned qtoken
@@ -93,14 +107,14 @@ ssize_t blocking_pop(int qd, struct sgarray &sga);
 // returns the file descriptor associated with
 // the queue descriptor if the queue is an io queue
 int qd2fd(int qd);
+ssize_t wait(int qd);
 
 // eventually queue functions
 int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));
 
-int init(int argc, char* argv[]);
 int init();
-
+int init(int argc, char* argv[]);
 
 } // namespace Zeus
 #endif /* _IO_QUEUE_H_ */

@@ -2,11 +2,7 @@
 /***********************************************************************
  *
  * common/library.h
-<<<<<<< HEAD
- *   Generic libos implementation
-=======
  *   Zeus general-purpose queue library implementation
->>>>>>> master
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -42,34 +38,33 @@
 #include <thread>
 #include <assert.h>
 #include <unistd.h>
+#include <cstdlib>
 
 #define BUFFER_SIZE 1024
 #define MAGIC 0x10102010
 #define PUSH_MASK 0x1
-#define TOKEN_MASK 0xFF00000
+#define TOKEN_MASK 0x0000FFFF
 #define QUEUE_MASK 0xFFFF0000
+#define TOKEN(t) t & TOKEN_MASK
+#define QUEUE(t) t >> 32
 #define IS_PUSH(t) t & PUSH_MASK
 // qtoken format
-// | 16 bits = hash(thread_id) | 47 bits = token | 1 bit = push or pop |
+// | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
 
 namespace Zeus {
 
-thread_local static int64_t queue_counter = 0;
-thread_local static int64_t token_counter = 0;
-thread_local static std::hash<std::thread::id> hasher;
-thread_local static uint64_t hash;
+thread_local static int64_t queue_counter = 10;
+thread_local static int64_t token_counter = 10;
     
 template <class QueueType>
 class QueueLibrary
 {
-    std::unordered_map<int, QueueType> queues;
-    std::unordered_map<qtoken, int> pending;
+    std::unordered_map<int, QueueType *> queues;
     
 public:
     QueueLibrary() {
-        hash = hasher(std::this_thread::get_id());
-        queue_counter = hash & QUEUE_MASK;
-        token_counter = hash & TOKEN_MASK;
+        queue_counter = rand();
+        token_counter = rand();
     };
 
     // ================================================
@@ -83,55 +78,59 @@ public:
 
     QueueType& GetQueue(int qd) {
         assert(HasQueue(qd));
-        return queues.at(qd);
+        return *queues.at(qd);
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
-        qtoken t = (token_counter == -2) ?
-            // skip the range including -1 and 0
-            (token_counter += 4) :
-            (token_counter += 2);
+        if (token_counter == 0) token_counter++;
+        qtoken t = (token_counter << 1 & TOKEN_MASK) | ((qtoken)qd << 32);
         if (isPush) t |= PUSH_MASK;
-        //printf("GetNewTokan qd:%d\n", qd);
-        assert((t & TOKEN_MASK) == (hash & TOKEN_MASK));
-
-        pending[t] = qd;
+        //printf("GetNewToken qd:%lx\n", t);
+        token_counter++;
         return t;
     };
 
     QueueType& NewQueue(BasicQueueType type) {
-        int qd = queue_counter++;
-        queues[qd] = new QueueType(type, qd);
-        return queues[qd];
+        int qd = queue_counter++ & ~QUEUE_MASK;
+        if (type == BASIC)
+            queues[qd] = (QueueType *) new Queue(type, qd);
+        else
+            queues[qd] = new QueueType(type, qd);
+        return *queues[qd];
     };
 
-    void InsertQueue(QueueType q) {
-        //printf("library.h/InsertQueue() qd: %d\n", q.GetQD());
-        assert(queues.find(q.GetQD()) == queues.end());
-        queues[q.GetQD()] = q;
+    void InsertQueue(QueueType *q) {
+        int qd = q->GetQD();
+        assert(qd == (qd & ~QUEUE_MASK));
+        printf("library.h/InsertQueue() qd: %d\n", qd);
+        assert(queues.find(qd) == queues.end());
+        queues[qd] = q;
     };
 
 
     void RemoveQueue(int qd) {
-        assert(queues.find(qd) != queues.end());
-        queues.erase(qd);    
+        auto it = queues.find(qd);
+        assert(it != queues.end());
+        delete it->second;
+        queues.erase(it);
     };
 
     // ================================================
     // Generic interfaces to libOS syscalls
     // ================================================
 
+    int queue() {
+        return NewQueue(BASIC).GetQD();
+    }
+
     int socket(int domain, int type, int protocol) {
-        int qd = QueueType::socket(domain, type, protocol);
-        if (qd > 0) {
-        	if (type == SOCK_STREAM) {
-        		InsertQueue(QueueType(TCP_Q, qd));
-        	}
-        	else if (type == SOCK_DGRAM) {
-        		InsertQueue(QueueType(UDP_Q, qd));
-        	}
+        QueueType &q = NewQueue(NETWORK_Q);
+        int ret = q.socket(domain, type, protocol);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
         }
-        return qd;
+        return q.GetQD();
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
@@ -142,10 +141,15 @@ public:
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
         QueueType &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
-        if (newqd != -1) {
-            InsertQueue(QueueType(NETWORK_Q, newqd));
+        if (newqd > 0){
+            printf("will InsertQueue for newqd:%d\n", newqd);
+            InsertQueue(new QueueType(NETWORK_Q, newqd));
+            return newqd;
+        } else if (newqd < 0) {
+            return newqd;
+        } else {
+            return NewQueue(NETWORK_Q).GetQD();
         }
-        return newqd;
     };
 
     int listen(int qd, int backlog) {
@@ -157,32 +161,44 @@ public:
         QueueType &q = GetQueue(qd);
         int newqd = q.connect(saddr, size);
         if (newqd > 0)
-            InsertQueue(QueueType(NETWORK_Q, newqd));
+            InsertQueue(new QueueType(NETWORK_Q, newqd));
         return newqd;
     };
 
     int open(const char *pathname, int flags) {
         // use the fd as qd
-        int qd = QueueType::open(pathname, flags);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.open(pathname, flags);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
 
     int open(const char *pathname, int flags, mode_t mode) {
         // use the fd as qd
-        int qd = QueueType::open(pathname, flags, mode);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.open(pathname, flags, mode);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
 
     int creat(const char *pathname, mode_t mode) {
         // use the fd as qd
-        int qd = QueueType::creat(pathname, mode);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
+        QueueType &q = NewQueue(FILE_Q);
+        int ret = q.creat(pathname, mode);
+        if (ret < 0) {
+            RemoveQueue(q.GetQD());
+            return ret;
+        } else {
+            return q.GetQD();
+        }
     };
     
     int close(int qd) {
@@ -199,25 +215,27 @@ public:
         if (!HasQueue(qd))
             return -1;
         QueueType &q = GetQueue(qd);
-        return q.fd();
+        return q.getfd();
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
             return -1;
-        
+
         QueueType &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // pushing to files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, true);
-        ssize_t res = queue.push(t, sga);
+        ssize_t res;
+        if (queue.GetType() == BASIC)
+            res = ((Queue &)queue).push(t, sga);
+        else
+            res = queue.push(t, sga);
         // if push returns 0, then the sga is enqueued, but not pushed
         if (res == 0) {
             return t;
-        } else  if (res < 0) {
-        	return res;
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
@@ -235,19 +253,22 @@ public:
             return -1;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.pop(t, sga);
-        if (res == 0) {
-            return t;
-        } else if (res < 0) {
-            return res;
-        } else {
-            // if push returns something else, then sga has been
-            // successfully popped and result is in sga
-            return 0;
-        }
+        ssize_t res;
+        if (queue.GetType() == BASIC)
+            res = ((Queue &)queue).pop(t, sga);
+        else
+            res = queue.pop(t, sga);
+
+		if (res > 0)
+			return 0;
+		else if (res == 0)
+				return t;
+		else
+				return -1;
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
+        //printf("call peekp\n");
         if (!HasQueue(qd))
             return -1;
         
@@ -256,14 +277,17 @@ public:
             // popping from files not implemented yet
             return -1;
 
-        ssize_t res = queue.peek(sga);
+        ssize_t res;
+        if (queue.GetType() == BASIC)
+            res = ((Queue &)queue).peek(sga);
+        else
+            res = queue.peek(sga);
+
         return res;
     };
 
     ssize_t wait(qtoken qt, struct sgarray &sga) {
-        auto it = pending.find(qt);
-        assert(it != pending.end());
-        int qd = it->second;
+        int qd = QUEUE(qt);
         assert(HasQueue(qd));
 
         QueueType &queue = GetQueue(qd);
@@ -274,37 +298,60 @@ public:
         return queue.wait(qt, sga); 
     }
 
-    qtoken wait_any(qtoken *qts,
-                     size_t num_qts,
+    ssize_t wait_any(qtoken tokens[],
+                     size_t num,
+                     int &offset,
+                     int &qd,
                      struct sgarray &sga) {
         ssize_t res = 0;
-        QueueType *qs[num_qts];
-        for (unsigned int i = 0; i < num_qts; i++) {
-            auto it = pending.find(qts[i]);
-            assert(it != pending.end());
-            auto it2 = queues.find(it->second);
-            qs[i] = &it2->second;
+        QueueType *waitingQs[num];
+        for (unsigned int i = 0; i < num; i++) {
+            int qd2 = QUEUE(tokens[i]);
+            auto it2 = queues.find(qd2);
+            assert(it2 != queues.end());
+
+            // do a quick check if something is ready
+            if (it2->second->GetType() == BASIC) {
+                Queue *queue = (Queue *)it2->second;
+                res = queue->poll(tokens[i], sga);
+            } else {
+                res = it2->second->poll(tokens[i], sga);
+            }
+
+            if (res != 0) {
+                offset = i;
+                qd = qd2;
+                return res;
+            }
+            waitingQs[i] = it2->second;
         }
         
-        while (res == 0) {
-            for (unsigned int i = 0; i < num_qts; i++) {
-                res = qs[i]->poll(qts[i], sga);
-                if (res != 0) break;
+        while (true) {
+            for (unsigned int i = 0; i < num; i++) {
+                QueueType *q = waitingQs[i];
+                if (q->GetType() == BASIC) {
+                    Queue *queue = (Queue *)q;
+                    res = queue->poll(tokens[i], sga);
+                } else {
+                    res = q->poll(tokens[i], sga);
+                }
+                if (res != 0) {
+                    offset = i;
+                    qd = q->GetQD();
+		    return res;
+                }
             }
         }
-
-        return res;
     };
             
-    ssize_t wait_all(qtoken *qts,
-                     size_t num_qts,
-                     struct sgarray *sgas) {
+    ssize_t wait_all(qtoken tokens[],
+                     size_t num,
+                     struct sgarray **sgas) {
         ssize_t res = 0;
-        for (unsigned int i = 0; i < num_qts; i++) {
-            auto it = pending.find(qts[i]);
-            assert(it != pending.end());
-            QueueType &q = GetQueue(it->second);
-            ssize_t r = q.wait(qts[i], sgas[i]);
+        for (unsigned int i = 0; i < num; i++) {
+            QueueType &q = GetQueue(QUEUE(tokens[i]));
+
+            ssize_t r = q.wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }
         return res;
@@ -315,13 +362,13 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
+        QueueType &q = GetQueue(qd);
+        if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, true);
-        ssize_t res = queue.push(t, sga);
+        ssize_t res = q.push(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {
@@ -336,13 +383,13 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
+        QueueType &q = GetQueue(qd);
+        if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = queue.pop(t, sga);
+        ssize_t res = q.pop(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {
