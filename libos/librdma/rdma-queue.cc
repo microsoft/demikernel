@@ -30,8 +30,6 @@
 
 #include "rdma-queue.h"
 #include "common/library.h"
-// hoard include
-#include "librdma/mem/include/zeus/libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -114,6 +112,13 @@ int
 RdmaQueue::socket(int domain, int type, int protocol)
 {
     //get file descriptor
+    return 0;
+}
+
+int
+RdmaQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    *saddr = *rdma_get_local_addr(rdma_id);
     return 0;
 }
 
@@ -359,9 +364,10 @@ RdmaQueue::ProcessQ(size_t maxRequests)
 
     // Do some RDMA work first
     
-    assert(fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) & O_NONBLOCK);
-    assert(fcntl(rdma_id->send_cq_channel->fd, F_GETFL) & O_NONBLOCK);
+    //assert(fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) & O_NONBLOCK);
+    //assert(fcntl(rdma_id->send_cq_channel->fd, F_GETFL) & O_NONBLOCK);
     //int numEvents = 0;
+
     
     // while (ibv_get_cq_event(rdma_id->recv_cq_channel, &cq, (void**)&context) == 0) {
     //     numEvents++;

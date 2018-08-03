@@ -64,6 +64,12 @@ PosixQueue::socket(int domain, int type, int protocol)
 }
 
 int
+PosixQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    return getsockname(saddr, size);
+}
+
+int
 PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
     // Set SO_REUSEADDR

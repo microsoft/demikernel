@@ -92,12 +92,14 @@ namespace Zeus {
             assert ((HL::align<Alignment>((size_t) start) == (size_t) start));
             assert (_objectSize >= Alignment);
             assert ((_totalObjects == 1) || (_objectSize % Alignment == 0));
-            
+
+	    if (rdma_get_pd() != NULL) {
             _mr =
                 ibv_reg_mr(rdma_get_pd(),
                            (void *)start,
                            bufferSize,
                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	    }
         }
 
         virtual ~ZeusSuperblockHeaderHelper() {
@@ -334,7 +336,7 @@ namespace Zeus {
 
         uint64_t _pinned[MAX_PINNED];
 
-        struct ibv_mr *_mr;
+        struct ibv_mr *_mr = NULL;
 
         uint32_t _padding;
         

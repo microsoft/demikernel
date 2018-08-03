@@ -36,6 +36,9 @@
 #include <list>
 #include <unordered_map>
 #include <rdma/rdma_cma.h>
+// hoard include
+#include "librdma/mem/include/zeus/libzeus.h"
+
 
 #define RECV_BUFFER_SIZE 1024
 #define RECV_BUFFER_NUM 4
@@ -80,12 +83,13 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    RdmaQueue() : Queue(), workQ{} { };
+    RdmaQueue() : Queue(), workQ{} { rdma_init(); };
     RdmaQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
+        Queue(type, qd), workQ{}  { rdma_init(); };
 
     // network functions
     int socket(int domain, int type, int protocol);
+    int getsockname(struct sockaddr *saddr, socklen_t *size);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
