@@ -36,8 +36,22 @@
 #include <list>
 #include <unordered_map>
 
+extern "C" {
+#include "spdk/blob.h"
+}
+
 namespace Zeus {
 namespace SPDK {
+
+class SPDKContext {
+    private:
+        struct spdk_blob_store *app_bs;     // bs obj for the application
+        struct spdk_io_channel *app_channel;
+        uint64_t page_size;
+    public:
+        std::unordered_map<spdk_blob_id, struct spdk_blob*> opened_blobs;
+        std::unordered_map<spdk_blob_id, int> blob_status;
+};
 
 class SPDKQueue : public Queue {
 private:
@@ -46,9 +60,12 @@ private:
         bool isDone;
         ssize_t res;
         // header = MAGIC, dataSize, SGA_num
-        uint64_t header[3];
+        // uint64_t header[3];
         // currently used incoming buffer
-        void *buf;
+        // void *buf;
+        // NOTE: read_buff, write_buff need to be DMA buffer allocated by spdk_dma_malloc
+        uint8_t *read_buff;
+        uint8_t *write_buff;
         // number of bytes processed so far
         size_t num_bytes;
         struct sgarray &sga;
@@ -56,8 +73,10 @@ private:
         PendingRequest(struct sgarray &sga) :
             isDone(false),
             res(0),
-            header{0,0,0},
-            buf(NULL),
+            //header{0,0,0},
+            //buf(NULL),
+            read_buff(NULL),
+            write_buff(NULL),
             num_bytes(0),
             sga(sga) { };
     };
@@ -72,7 +91,7 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    SPDKQueue() : Queue(), workQ{} { };
+    SPDKQueue() : Queue(FILE_Q, 0), workQ{} { };
     SPDKQueue(BasicQueueType type, int qd) :
         Queue(type, qd), workQ{}  {};
 

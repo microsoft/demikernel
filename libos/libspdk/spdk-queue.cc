@@ -41,14 +41,34 @@
 #include <errno.h>
 #include <sys/uio.h>
 
+extern "C" {
+#include "spdk/env.h"
+#include "spdk/event.h"
+#include "spdk/blob.h"
+#include "spdk/blobfs.h"
+#include "spdk/blob_bdev.h"
+#include "spdk/log.h"
+#include "spdk/io_channel.h"
+#include "spdk/bdev.h"
+}
+
 
 namespace Zeus {
-
 namespace SPDK {
+
+struct spdk_app_opts libos_spdk_opts = {0};
+static bool spdk_env_initialized = false;
+
+int spdk_env_init(void){
+    return 0;
+}
 
 int
 SPDKQueue::socket(int domain, int type, int protocol)
 {
+    spdk_log_open();
+    printf("SPDKQueue:socket()\n");
+    spdk_log_close();
     return 0;
 }
 
