@@ -86,7 +86,7 @@ PosixQueue::bind(struct sockaddr *saddr, socklen_t size)
     if (res == 0) {
         return res;
     } else {
-        return errno;
+        return -errno;
     }
 }
 
@@ -132,14 +132,14 @@ PosixQueue::listen(int backlog)
    int res = ::listen(fd, backlog);
     if (res == 0) {
         listening = true;
-	// Always put it in non-blocking mode
-	if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-	    fprintf(stderr,
-		    "Failed to set O_NONBLOCK on outgoing Zeus socket");
-	}
+        // Always put it in non-blocking mode
+        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+            fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+        }
         return res;
     } else {
-        return errno;
+        return -errno;
     }
 }
         
@@ -161,7 +161,7 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
         }
         return res;
     } else {
-        return errno;
+        return -errno;
     }
 }
 
@@ -239,7 +239,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         return;
     }
 
-    size_t count;
+    ssize_t count;
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -383,8 +383,11 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     totalLen += sizeof(req.header);
 
     if (!is_tcp) {
-    	struct sockaddr* addr = (connected) ? &connected_addr :(struct sockaddr*)&req.sga.addr;
-  		if (!connected && ::connect(fd, addr, sizeof(struct sockaddr_in)) < 0) {
+    	struct sockaddr_in* addr = (connected) ?
+    	                           (struct sockaddr_in*)&connected_addr :
+                                   &req.sga.addr;
+    	addr->sin_family = AF_INET;
+  		if (!connected && ::connect(fd, (struct sockaddr*)addr, sizeof(struct sockaddr_in)) < 0) {
 			fprintf(stderr, "Could not connect to outgoing address: %s\n",
 					strerror(errno));
 			req.res = -1;
