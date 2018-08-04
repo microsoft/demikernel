@@ -70,14 +70,16 @@ private:
     // queued scatter gather arrays
     std::list<void *> pendingRecv;
     std::unordered_map<qtoken, PendingRequest> pending;
+    std::list<struct rdma_cm_id *> accepts;
     std::list<qtoken> workQ;
 
     // rdma data structures
     // connection manager for this connection queue
     struct rdma_cm_id *rdma_id = NULL;
+    bool listening = false;
 
     int PostReceive();
-    void ProcessIncoming(PendingRequest &req, void *pendingRecv);
+    void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
@@ -115,7 +117,9 @@ public:
 
     void setRdmaCM(struct rdma_cm_id *id);
     struct rdma_cm_id* getRdmaCM();
+    struct rdma_cm_id* getNextAccept();
     int setupRdmaQP();
+    
 };
 
 } // namespace RDMA

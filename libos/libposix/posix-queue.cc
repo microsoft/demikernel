@@ -94,7 +94,12 @@ PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
     assert(listening);
 
     if (accepts.empty()) {
-        return -1;
+        sgarray sga;
+        PendingRequest req(sga);
+        ProcessIncoming(req);
+        if (accepts.empty()) {
+            return 0;
+        }            
     }
     
     auto &acceptInfo = accepts.front();
@@ -455,7 +460,7 @@ PosixQueue::peek(struct sgarray &sga)
     if (req.isDone){
         return req.res;
     } else {
-	return 0;
+        return 0;
     }
 }
     
