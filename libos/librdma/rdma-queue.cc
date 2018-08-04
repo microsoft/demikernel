@@ -30,8 +30,6 @@
 
 #include "rdma-queue.h"
 #include "common/library.h"
-// hoard include
-#include "librdma/mem/include/zeus/libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -131,6 +129,13 @@ RdmaQueue::socket(int domain, int type, int protocol)
                 "Failed to set O_NONBLOCK on outgoing Zeus socket");
     }
 
+    return 0;
+}
+
+int
+RdmaQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    *saddr = *rdma_get_local_addr(rdma_id);
     return 0;
 }
 

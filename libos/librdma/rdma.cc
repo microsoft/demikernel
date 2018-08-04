@@ -48,6 +48,11 @@ int socket(int domain, int type, int protocol)
     return lib.socket(domain, type, protocol);
 }
 
+int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
+{
+    return lib.getsockname(qd, saddr, size);
+}
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);

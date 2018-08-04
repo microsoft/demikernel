@@ -133,6 +133,11 @@ public:
         return q.GetQD();
     };
 
+    int getsockname(int qd, struct sockaddr *saddr, socklen_t *size) {
+        QueueType &q = GetQueue(qd);
+        return q.getsockname(saddr, size);
+    };
+
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
         QueueType &q = GetQueue(qd);
         return q.bind(saddr, size);

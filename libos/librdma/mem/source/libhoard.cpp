@@ -35,7 +35,7 @@
 
 #include "VERSION.h"
 
-#define versionMessage "Using the Zeus-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
+#define versionMessage "Using the Zeus-RDMA-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
 
 #include "heaplayers.h"
 #include "include/zeus/libzeus.h"
@@ -115,21 +115,8 @@ TheCustomHeapType * getCustomHeap();
 enum { MAX_LOCAL_BUFFER_SIZE = 256 * 131072 };
 static char initBuffer[MAX_LOCAL_BUFFER_SIZE];
 static char * initBufferPtr = initBuffer;
-
-static struct ibv_context *rdma_context;
-static struct ibv_pd *rdma_globalpd;
-
-void init_rdma() {
-    int num_devices = 0;
-    struct ibv_device **devices = ibv_get_device_list(&num_devices);
-    if (num_devices > 0) {
-        rdma_context = ibv_open_device(*devices); 
-            rdma_globalpd = ibv_alloc_pd(rdma_context);
-    } else {
-        fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
-        abort();
-    }
-}
+static struct ibv_context *rdma_context = NULL;
+static struct ibv_pd *rdma_globalpd = NULL;
 
 extern bool isCustomHeapInitialized();
 
@@ -152,13 +139,12 @@ extern "C" {
             abort();
         }
         {
-            static bool initialized = false;
+	  static bool initialized = false;
             if (!initialized) {
                 initialized = true;
 #if !defined(_WIN32)
                 fprintf(stderr, versionMessage);
 #endif
-                init_rdma();
             }
         }
         return ptr;
@@ -195,6 +181,20 @@ extern "C" {
     struct ibv_context* rdma_get_context() { return rdma_context; }
 
     struct ibv_pd* rdma_get_pd() { return rdma_globalpd; }
-
-   
+  
+  void rdma_init() {
+    static bool initialized = false;
+    if (!initialized) {
+      int num_devices = 0;
+      struct ibv_device **devices = ibv_get_device_list(&num_devices);
+      if (num_devices > 0) {
+	rdma_context = ibv_open_device(*devices); 
+	rdma_globalpd = ibv_alloc_pd(rdma_context);
+      } else {
+	fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
+	abort();
+      }
+    }
+  }
+	       
 } // extern C
