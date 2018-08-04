@@ -184,6 +184,7 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
 int
 RdmaQueue::listen(int backlog)
 {
+    listening = true;
     return rdma_listen(rdma_id, 10);
 }
         
@@ -325,47 +326,49 @@ RdmaQueue::ProcessIncoming(PendingRequest &req)
         if (req.isDone) return;
     }      
 
-    // check receive completion queue
-    struct ibv_wc wcs[RECV_BUFFER_NUM];
-    int num;
-    assert(fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) & O_NONBLOCK);
-    while ((num = ibv_poll_cq(rdma_id->recv_cq, RECV_BUFFER_NUM, wcs)) > 0) {
-        // process messages
-        for (int i = 0; i < num; i++) {
-            struct ibv_wc wc = wcs[i];
-            if (wc.status == IBV_WC_SUCCESS) {
-                assert(wc.opcode == IBV_WC_RECV);
-                pendingRecv.push_back((void *)wc.wr_id);
-                PostReceive();
+    if (!listening) {
+        // check receive completion queue
+        struct ibv_wc wcs[RECV_BUFFER_NUM];
+        int num;
+        assert(fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) & O_NONBLOCK);
+        while ((num = ibv_poll_cq(rdma_id->recv_cq, RECV_BUFFER_NUM, wcs)) > 0) {
+            // process messages
+            for (int i = 0; i < num; i++) {
+                struct ibv_wc wc = wcs[i];
+                if (wc.status == IBV_WC_SUCCESS) {
+                    assert(wc.opcode == IBV_WC_RECV);
+                    pendingRecv.push_back((void *)wc.wr_id);
+                    PostReceive();
+                }
             }
         }
-    }
 
-    if (!pendingRecv.empty()) {
-        req.buf = pendingRecv.front();
-        pendingRecv.pop_front();
-
-        // parse the message
-        uint8_t *ptr = (uint8_t *)req.buf;
-        struct sgarray &sga = req.sga;
-        uint64_t magic = *((uint64_t *)ptr);
-        assert(magic == MAGIC);
-        ptr += sizeof(uint64_t);
-        size_t dataLen = *((uint64_t *)ptr);
-        req.buf = realloc(req.buf, dataLen + 3 * sizeof(uint64_t));
-        ptr = (uint8_t *)req.buf + 2 * sizeof(uint64_t);
-
-        // now we can start filling in the sga
-        sga.num_bufs = *(uint64_t *)ptr;
-        ptr += sizeof(uint64_t);
-        for (int i = 0; i < sga.num_bufs; i++) {
-            sga.bufs[i].len = *(size_t *)ptr;
+        if (!pendingRecv.empty()) {
+            req.buf = pendingRecv.front();
+            pendingRecv.pop_front();
+            
+            // parse the message
+            uint8_t *ptr = (uint8_t *)req.buf;
+            struct sgarray &sga = req.sga;
+            uint64_t magic = *((uint64_t *)ptr);
+            assert(magic == MAGIC);
+            ptr += sizeof(uint64_t);
+            size_t dataLen = *((uint64_t *)ptr);
+            req.buf = realloc(req.buf, dataLen + 3 * sizeof(uint64_t));
+            ptr = (uint8_t *)req.buf + 2 * sizeof(uint64_t);
+            
+            // now we can start filling in the sga
+            sga.num_bufs = *(uint64_t *)ptr;
+            ptr += sizeof(uint64_t);
+            for (int i = 0; i < sga.num_bufs; i++) {
+                sga.bufs[i].len = *(size_t *)ptr;
             ptr += sizeof(uint64_t);
             sga.bufs[i].buf = (ioptr)ptr;
             ptr += sga.bufs[i].len;
+            }
+            req.isDone = true;
+            req.res = dataLen - (sga.num_bufs * sizeof(size_t));
         }
-        req.isDone = true;
-        req.res = dataLen - (sga.num_bufs * sizeof(size_t));
     }
 }
 
