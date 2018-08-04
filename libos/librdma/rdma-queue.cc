@@ -82,18 +82,20 @@ RdmaQueue::setupRdmaQP()
         return -errno;
     }
 
+    int flags =  fcntl(rdma_id->send_cq_channel->fd, F_GETFL);
     // put queue pairs in non-blocking mode
     if (fcntl(rdma_id->send_cq_channel->fd,
               F_SETFL,
-              fcntl(rdma_id->send_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
+             flags | O_NONBLOCK)) {
         fprintf(stderr, "Could not put send completion queue into non-blocking mode: %s",
                 strerror(errno));
         return -errno;
     }
     if (rdma_id->recv_cq_channel->fd != rdma_id->send_cq_channel->fd) {
+        flags = fcntl(rdma_id->recv_cq_channel->fd, F_GETFL);
         if (fcntl(rdma_id->recv_cq_channel->fd,
                   F_SETFL,
-                  fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) | O_NONBLOCK)) {
+                  flags | O_NONBLOCK)) {
             fprintf(stderr, "Could not put receive completion queue into non-blocking mode: %s",
                     strerror(errno));
         return -errno;
@@ -123,8 +125,9 @@ RdmaQueue::socket(int domain, int type, int protocol)
             return -1;
         }
     }
+    int flags = fcntl(rdma_id->channel->fd, F_GETFL);
     // Always put it in non-blocking mode
-    if (fcntl(rdma_id->channel->fd, F_SETFL, O_NONBLOCK, 1)) {
+    if (fcntl(rdma_id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
         fprintf(stderr,
                 "Failed to set O_NONBLOCK on outgoing Zeus socket");
     }
@@ -168,8 +171,9 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
     *saddr = *rdma_get_peer_addr(rdma_id);
     *size = sizeof(sockaddr_in);
 
-        // Always put it in non-blocking mode
-    if (fcntl(rdma_id->channel->fd, F_SETFL, O_NONBLOCK, 1)) {
+    int flags = fcntl(rdma_id->channel->fd, F_GETFL);
+    // Always put it in non-blocking mode
+    if (fcntl(rdma_id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
         fprintf(stderr,
                 "Failed to set O_NONBLOCK on outgoing Zeus socket");
     }
