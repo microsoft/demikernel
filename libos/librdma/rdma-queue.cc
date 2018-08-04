@@ -114,6 +114,23 @@ int
 RdmaQueue::socket(int domain, int type, int protocol)
 {
     //get file descriptor
+    if (protocol == SOCK_STREAM) {
+        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_TCP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
+            return -1;
+        }
+    } else {
+        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_UDP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
+            return -1;
+        }
+    }
+    // Always put it in non-blocking mode
+    if (fcntl(rdma_id->channel->fd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
     return 0;
 }
 
@@ -145,6 +162,13 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
     // set up address
     *saddr = *rdma_get_peer_addr(rdma_id);
     *size = sizeof(sockaddr_in);
+
+        // Always put it in non-blocking mode
+    if (fcntl(rdma_id->channel->fd, F_SETFL, O_NONBLOCK, 1)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
+
     return 0;    
 }
 
