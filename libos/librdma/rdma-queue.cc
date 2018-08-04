@@ -195,6 +195,7 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     struct rdma_conn_param params;    
     struct rdma_cm_event *event;
     struct rdma_event_channel *channel = rdma_id->channel;
+    int ret;
 
     // Convert regular address into an rdma address
     if (rdma_resolve_addr(rdma_id, NULL, saddr, 1) != 0) {
@@ -204,7 +205,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for address resolution
-    rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(channel, &event);
+    assert(ret == 0);
     if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
         fprintf(stderr, "Could not resolve to RDMA address");
         return -1;
@@ -220,7 +222,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for path resolution
-    rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(channel, &event);
+    assert(ret);
     if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
         fprintf(stderr, "Could not resolve route to RDMA address");
     }
