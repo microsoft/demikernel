@@ -67,39 +67,40 @@ int
 RdmaQueue::setupRdmaQP()
 {
     struct ibv_qp_init_attr qp_attr;
+    ibv_pd *pd = rdma_get_pd();
+    ibv_context *context = rdma_get_context();
+    if ((rdma_id->send_cq = ibv_create_cq(context,
+					  40,
+					  NULL,
+					  NULL, 0)) == NULL) {
+	fprintf(stderr, "Could not allocate completion queue");
+	return -1;
+    }
+
+    if ((rdma_id->recv_cq = ibv_create_cq(context,
+					  40,
+					  NULL,
+					  NULL, 0)) == NULL) {
+	fprintf(stderr, "Could not allocate completion queue");
+	return -1;
+    }
+
     // Set up queue pair initial parameters
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_attr.qp_type = IBV_QPT_RC;
+    qp_attr.send_cq = rdma_id->send_cq;
+    qp_attr.recv_cq = rdma_id->recv_cq;
     qp_attr.cap.max_send_wr = 20;
     qp_attr.cap.max_recv_wr = 20;
-    qp_attr.cap.max_send_sge = 1;
-    qp_attr.cap.max_recv_sge = 1;
+    qp_attr.cap.max_send_sge = 5;
+    qp_attr.cap.max_recv_sge = 5;
 
+    
     // set up connection queue pairs
-    if (rdma_create_qp(rdma_id, rdma_get_pd(), &qp_attr) != 0) {
+    if (rdma_create_qp(rdma_id, pd, &qp_attr) != 0) {
         fprintf(stderr, "Could not create RDMA queue pairs: %s",
                 strerror(errno));
-        return -errno;
-    }
-
-    int flags =  fcntl(rdma_id->send_cq_channel->fd, F_GETFL);
-    // put queue pairs in non-blocking mode
-    if (fcntl(rdma_id->send_cq_channel->fd,
-              F_SETFL,
-             flags | O_NONBLOCK)) {
-        fprintf(stderr, "Could not put send completion queue into non-blocking mode: %s",
-                strerror(errno));
-        return -errno;
-    }
-    if (rdma_id->recv_cq_channel->fd != rdma_id->send_cq_channel->fd) {
-        flags = fcntl(rdma_id->recv_cq_channel->fd, F_GETFL);
-        if (fcntl(rdma_id->recv_cq_channel->fd,
-                  F_SETFL,
-                  flags | O_NONBLOCK)) {
-            fprintf(stderr, "Could not put receive completion queue into non-blocking mode: %s",
-                    strerror(errno));
-        return -errno;
-        }
+	return -1;
     }
 
     // post receives
@@ -114,24 +115,29 @@ int
 RdmaQueue::socket(int domain, int type, int protocol)
 {
     //get file descriptor
-    if (protocol == SOCK_STREAM) {
-        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_TCP)) != 0) {
-            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
+    struct rdma_event_channel *channel;
+    if ((channel = rdma_create_event_channel()) == 0) {
+	fprintf(stderr, "Could not create event channel: %s", strerror(errno));
+	return -1;
+    }
+    
+    if (type == SOCK_STREAM) {
+        if ((rdma_create_id(channel, &rdma_id,
+			    rdma_get_context(), RDMA_PS_TCP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s\n",
+		    strerror(errno));
             return -1;
         }
+	fprintf(stderr, "Creating reliable RDMA connection\n");
     } else {
-        if ((rdma_create_id(NULL, &rdma_id, rdma_get_context(), RDMA_PS_UDP)) != 0) {
-            fprintf(stderr, "Could not create RDMA event id: %s", strerror(errno));
+        if ((rdma_create_id(channel, &rdma_id,
+			    rdma_get_context(), RDMA_PS_UDP)) != 0) {
+            fprintf(stderr, "Could not create RDMA event id: %s\n",
+		    strerror(errno));
             return -1;
         }
+	fprintf(stderr, "Creating unreliable RDMA connection\n");
     }
-    int flags = fcntl(rdma_id->channel->fd, F_GETFL);
-    // Always put it in non-blocking mode
-    if (fcntl(rdma_id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
-        fprintf(stderr,
-                "Failed to set O_NONBLOCK on outgoing Zeus socket");
-    }
-
     return 0;
 }
 
@@ -185,6 +191,12 @@ int
 RdmaQueue::listen(int backlog)
 {
     listening = true;
+    int flags = fcntl(rdma_id->channel->fd, F_GETFL);
+    // Always put it in non-blocking mode
+    if (fcntl(rdma_id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
+        fprintf(stderr,
+                "Failed to set O_NONBLOCK on outgoing Zeus socket");
+    }
     return rdma_listen(rdma_id, 10);
 }
         
@@ -195,7 +207,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     struct rdma_conn_param params;    
     struct rdma_cm_event *event;
     struct rdma_event_channel *channel = rdma_id->channel;
-
+    int ret = 0;
+    
     // Convert regular address into an rdma address
     if (rdma_resolve_addr(rdma_id, NULL, saddr, 1) != 0) {
         fprintf(stderr, "Could not resolve IP to an RDMA address: %s",
@@ -204,7 +217,9 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for address resolution
-    rdma_get_cm_event(channel, &event);
+    while (rdma_get_cm_event(channel, &event) != 0) {
+        fprintf(stderr, "Still waiting to resolve IP");
+    }
     if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
         fprintf(stderr, "Could not resolve to RDMA address");
         return -1;
@@ -220,7 +235,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for path resolution
-    rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(channel, &event);
+    assert(ret == 0);
     if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
         fprintf(stderr, "Could not resolve route to RDMA address");
     }
@@ -246,7 +262,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for rdma connection setup to complete
-    rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(channel, &event);
+    assert(ret == 0);
     if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
         fprintf(stderr, "Could not connect to RDMA address");
     }
