@@ -38,20 +38,12 @@
 
 extern "C" {
 #include "spdk/blob.h"
-}
+#include "spdk/bdev.h"
+
+} // end of extern "C"
 
 namespace Zeus {
 namespace SPDK {
-
-class SPDKContext {
-    private:
-        struct spdk_blob_store *app_bs;     // bs obj for the application
-        struct spdk_io_channel *app_channel;
-        uint64_t page_size;
-    public:
-        std::unordered_map<spdk_blob_id, struct spdk_blob*> opened_blobs;
-        std::unordered_map<spdk_blob_id, int> blob_status;
-};
 
 class SPDKQueue : public Queue {
 private:
@@ -62,8 +54,7 @@ private:
         // header = MAGIC, dataSize, SGA_num
         // uint64_t header[3];
         // currently used incoming buffer
-        // void *buf;
-        // NOTE: read_buff, write_buff need to be DMA buffer allocated by spdk_dma_malloc
+        void *buf;
         uint8_t *read_buff;
         uint8_t *write_buff;
         // number of bytes processed so far
@@ -74,7 +65,7 @@ private:
             isDone(false),
             res(0),
             //header{0,0,0},
-            //buf(NULL),
+            buf(NULL),
             read_buff(NULL),
             write_buff(NULL),
             num_bytes(0),

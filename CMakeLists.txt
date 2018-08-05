@@ -38,6 +38,10 @@ include_directories(${HOARD_DIR}/include/util)
 include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
+# spdk
+set(SPDK_DIR ${ZEUS_SOURCE_DIR}/libspdk/spdk/)
+include_directories(${SPDK_DIR}/include)
+
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
