@@ -217,10 +217,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for address resolution
-    while (rdma_get_cm_event(channel, &event) != 0) {
-        fprintf(stderr, "Still waiting to resolve IP");
-    }
-    if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
+    ret = rdma_get_cm_event(channel, &event);
+    if (ret != 0 || event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
         fprintf(stderr, "Could not resolve to RDMA address");
         return -1;
     }
@@ -237,7 +235,7 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     // Wait for path resolution
     ret = rdma_get_cm_event(channel, &event);
     assert(ret == 0);
-    if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
+    if (ret != 0 || event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
         fprintf(stderr, "Could not resolve route to RDMA address");
     }
     rdma_ack_cm_event(event);
@@ -264,7 +262,7 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     // Wait for rdma connection setup to complete
     ret = rdma_get_cm_event(channel, &event);
     assert(ret == 0);
-    if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+    if (ret != 0 || event->event != RDMA_CM_EVENT_ESTABLISHED) {
         fprintf(stderr, "Could not connect to RDMA address");
     }
     rdma_ack_cm_event(event);
