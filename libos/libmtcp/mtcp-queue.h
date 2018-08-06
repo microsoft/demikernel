@@ -71,9 +71,14 @@ private:
     
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
+    std::list<std::pair<int, struct sockaddr_in>> accepts;
     std::list<qtoken> workQ;
     // queue and events
     uint32_t mtcp_evts;
+
+    bool listening;
+
+    int mtcp_qd;
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
@@ -81,16 +86,16 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    MTCPQueue() : Queue(), workQ{} {
+    MTCPQueue() : Queue(), pending(), accepts(), workQ(), listening(false){
         mtcp_evts = 0;
     };
     MTCPQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {
+        Queue(type, qd), pending(), accepts(), workQ(), listening(false) {
             mtcp_evts = 0;
         };
 
     // network functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -110,7 +115,8 @@ public:
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
+    int getfd();
+    void setfd(int fd);
 };
 
 } // namespace MTCP 

@@ -6,6 +6,8 @@
 
 #include "../include/io-queue.h"
 
+#define PKTNUM          10
+
 uint16_t port = 12345;
 
 int main()
@@ -17,14 +19,16 @@ int main()
     struct sockaddr_in server;
 
     char* argv[] = {(char*)"",
-                    (char*)"-c",
-                    (char*)"0x1",
-                    (char*)"-n",
-                    (char*)"4",
-                    (char*)"--proc-type=auto",
-                    (char*)""};
-    int argc = 6;
-
+                    (char*)"-b",
+                    (char*)"0000:03:00.1",
+                    (char*)"-l",
+                    (char*)"1",
+                    (char*)"-m",
+                    (char*)"256",
+                    (char*)"--no-shconf",
+                    (char*)"--file-prefix",
+                    (char*)"s" };
+    int argc = 10;
     if (Zeus::init(argc, argv) < 0) {
         printf("Error initializing Zeus!\n");
         return -1;
@@ -39,7 +43,7 @@ int main()
 
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
+    if (inet_pton(AF_INET, "12.12.12.4", &(server.sin_addr)) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
@@ -50,7 +54,7 @@ int main()
         return -1;
     }
     
-//    while (1) {
+    for (int i = 0; i < PKTNUM; i++) {
 		qt = Zeus::pop(qd, sga);
 		if (qt != 0) {
 			printf("server: wait for pop\n");
@@ -71,7 +75,7 @@ int main()
 
 		//printf("===========================\n");
 		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
-//    }
+    }
 
     Zeus::close(qd);
 

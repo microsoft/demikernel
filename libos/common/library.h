@@ -102,7 +102,7 @@ public:
     void InsertQueue(QueueType *q) {
         int qd = q->GetQD();
         assert(qd == (qd & ~QUEUE_MASK));
-        printf("library.h/InsertQueue() qd: %d\n", qd);
+        //printf("library.h/InsertQueue() qd: %d\n", qd);
         assert(queues.find(qd) == queues.end());
         queues[qd] = q;
     };
@@ -142,7 +142,7 @@ public:
         QueueType &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd > 0){
-            printf("will InsertQueue for newqd:%d\n", newqd);
+            //printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(new QueueType(NETWORK_Q, newqd));
             return newqd;
         } else if (newqd < 0) {

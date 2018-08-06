@@ -27,7 +27,7 @@ int main()
     printf("client qd:\t%d\n", qd);
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "10.0.0.5", &server.sin_addr) != 1) {
+    if (inet_pton(AF_INET, "12.12.12.4", &server.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
@@ -43,37 +43,32 @@ int main()
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
     for (int i = 0; i < PKTNUM; i++) {
+        qt = Zeus::push(qd, sga);
+        if (qt != 0) {
+            if (qt < 0) {
+                perror("client push:");
+                return -1;
+            }
+            //printf("client wait for push\n");
+            n = Zeus::wait(qt, sga);
+            assert(n > 0);
+        }
 
-	qt = Zeus::push(qd, sga);
-	if (qt != 0) {
-                if (qt < 0) {
-                    perror("client push:");
-                    return -1;
-                }
-		printf("client wait for push\n");
-                fflush(stdout);
-		n = Zeus::wait(qt, sga);
-		assert(n > 0);
-	}
+        printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
-	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
-        fflush(stdout);
+        qt = Zeus::pop(qd, res);
+        if (qt != 0) {
+            if (qt < 0) {
+                perror("client pop:");
+                return -1;
+            }
+            //printf("client: wait for pop\n");
+            n = Zeus::wait(qt, res);
+            assert(n > 0);
+        }
 
-	qt = Zeus::pop(qd, res);
-	if (qt != 0) {
-                if (qt < 0) {
-                    perror("client pop:");
-                    return -1;
-                }
-		printf("client: wait for pop\n");
-                fflush(stdout);
-		n = Zeus::wait(qt, res);
-		assert(n > 0);
-	}
-
-	assert(res.num_bufs == 1);
-	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
-        fflush(stdout);
+        assert(res.num_bufs == 1);
+        printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
     }
 
     Zeus::close(qd);

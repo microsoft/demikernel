@@ -231,7 +231,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
                 req.res = -1;
             }
         } else {
-            fprintf(stderr, "Accepting connection\n");
+            //fprintf(stderr, "Accepting connection\n");
             req.isDone = true;
             req.res = newfd;
             accepts.push_back(std::make_pair(newfd, saddr));
@@ -300,7 +300,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 		if (req.num_bytes < sizeof(req.header) + dataLen) {
 			ssize_t count = ::read(fd, (uint8_t *)req.buf + offset,
 								   dataLen - offset);
-		fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
+		//fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
 			if (count < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					return;
@@ -316,7 +316,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 				return;
 			}
 		}
-		fprintf(stderr, "[%x] data read length=%ld\n", qd, dataLen);
+		//fprintf(stderr, "[%x] data read length=%ld\n", qd, dataLen);
     }
 
     void* buf = (is_tcp) ? req.buf : req.buf + sizeof(req.header);
@@ -327,7 +327,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     size_t len = 0;
     for (int i = 0; i < req.sga.num_bufs; i++) {
         req.sga.bufs[i].len = *(size_t *)ptr;
-        printf("[%x] sga len= %ld\n", qd, req.sga.bufs[i].len);
+        //printf("[%x] sga len= %ld\n", qd, req.sga.bufs[i].len);
         ptr += sizeof(req.sga.bufs[i].len);
         req.sga.bufs[i].buf = (ioptr)ptr;
         ptr += req.sga.bufs[i].len;
@@ -339,7 +339,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
     req.res = len;
-    fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
+    //fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
     return;
 }
     

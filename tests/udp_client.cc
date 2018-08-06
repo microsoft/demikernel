@@ -7,6 +7,7 @@
 #include "../include/io-queue.h"
 
 #define USE_CONNECT		1
+#define PKTNUM          10
 
 uint16_t port = 12345;
 
@@ -21,13 +22,16 @@ int main()
 
 
     char* argv[] = {(char*)"",
-                    (char*)"-c",
-                    (char*)"0x1",
-                    (char*)"-n",
-                    (char*)"4",
-                    (char*)"--proc-type=auto",
-                    (char*)""};
-    int argc = 6;
+                    (char*)"-b",
+                    (char*)"0000:03:00.0",
+                    (char*)"-l",
+                    (char*)"1",
+                    (char*)"-m",
+                    (char*)"256",
+                    (char*)"--no-shconf",
+                    (char*)"--file-prefix",
+                    (char*)"c" };
+    int argc = 10;
 
     if (Zeus::init(argc, argv) < 0) {
         printf("Error initializing Zeus!\n");
@@ -42,7 +46,7 @@ int main()
     printf("client qd:\t%d\n", qd);
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "10.0.0.5", &(server.sin_addr)) != 1) {
+    if (inet_pton(AF_INET, "12.12.12.4", &(server.sin_addr)) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
@@ -63,26 +67,25 @@ int main()
     sga.bufs[0].len = 12;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < PKTNUM; i++) {
+        qt = Zeus::push(qd, sga);
+        if (qt != 0) {
+            printf("client wait for push\n");
+            n = Zeus::wait(qt, sga);
+            assert(n > 0);
+        }
 
-	qt = Zeus::push(qd, sga);
-	if (qt != 0) {
-		printf("client wait for push\n");
-		n = Zeus::wait(qt, sga);
-		assert(n > 0);
-	}
+        printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
-	printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+        qt = Zeus::pop(qd, res);
+        if (qt != 0) {
+            printf("client: wait for pop\n");
+            n = Zeus::wait(qt, res);
+            assert(n > 0);
+        }
 
-	qt = Zeus::pop(qd, res);
-	if (qt != 0) {
-		printf("client: wait for pop\n");
-		n = Zeus::wait(qt, res);
-		assert(n > 0);
-	}
-
-	assert(res.num_bufs == 1);
-	printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+        assert(res.num_bufs == 1);
+        printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
     }
 
     Zeus::close(qd);

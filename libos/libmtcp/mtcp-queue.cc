@@ -177,17 +177,18 @@ MTCPQueue::socket(int domain, int type, int protocol)
         printf("mtcp-queue.c/queue() will init mtcp env\n");
         mtcp_env_init();
     }
-    int qd = mtcp_socket(mctx, domain, type, protocol);
+    mtcp_qd = mtcp_socket(mctx, domain, type, protocol);
     // check qd?, not let the application check qd
     int n = 1;
-    mtcp_setsockopt(mctx, qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
-    return qd;
+    mtcp_setsockopt(mctx, mtcp_qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
+    return mtcp_qd;
 }
 
 int
 MTCPQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
-    int ret = mtcp_bind(mctx, qd, saddr, sizeof(struct sockaddr_in));
+    int ret = mtcp_bind(mctx, mtcp_qd, saddr, sizeof(struct sockaddr_in));
+    printf("bind ret: %d\n", ret);
     if (ret == 0){
         return ret;
     }
@@ -197,12 +198,19 @@ MTCPQueue::bind(struct sockaddr *saddr, socklen_t size)
 int
 MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
+    assert(listening);
+
     struct mtcp_epoll_event ev;
-    //fprintf(stderr, "@@@@@@@ before mtcp_accept\n");
-    //printf("@@@@@@ before accept\n");
-    int newqd = mtcp_accept(mctx, qd, saddr, size);
-    //printf("@@@@@@ after accept\n");
-    //fprintf(stderr, "@@@@@@@ after mtcp_accept\n");
+
+    if (accepts.empty()) {
+        return -1;
+    }
+
+    auto &acceptInfo = accepts.front();
+    int newqd = acceptInfo.first;
+    struct sockaddr &addr = (struct sockaddr &)acceptInfo.second;
+    *saddr = addr;
+    *size = sizeof(sockaddr_in);
 
     if (newqd != -1) {
         int n = 1;
@@ -217,22 +225,24 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
         ev.data.sockid = newqd;
         mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_ADD, newqd, &ev);
     }
+    accepts.pop_front();
     return newqd;
 }
 
 int
 MTCPQueue::listen(int backlog)
 {
-    int res = mtcp_listen(mctx, qd, backlog);
+    int res = mtcp_listen(mctx, mtcp_qd, backlog);
     if (res == 0) {
-        int ret = mtcp_setsock_nonblock(mctx, qd);
+        listening = true;
+        int ret = mtcp_setsock_nonblock(mctx, mtcp_qd);
         if(ret < 0) {
             fprintf(stderr, "error set listen socket\n");
         }
         return res;
     } else {
-        fprintf(stderr, "error listen %d\n", qd);
-        return errno;
+        fprintf(stderr, "error listen %d\n", mtcp_qd);
+        return -errno;
     }
 }
 
@@ -241,18 +251,18 @@ int
 MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     struct mtcp_epoll_event ev;
-    int res = mtcp_connect(mctx, qd, saddr, size);
+    int res = mtcp_connect(mctx, mtcp_qd, saddr, size);
     fprintf(stderr, "connect() res = %i errno= %s\n", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
-        int ret = mtcp_setsock_nonblock(mctx, qd);
+        int ret = mtcp_setsock_nonblock(mctx, mtcp_qd);
         if(ret < 0){
             fprintf(stderr, "connect() cannot set the socket to nonblock\n");
         }
         ev.events = MTCP_EPOLLOUT;
         mtcp_evts |= ev.events;
-        ev.data.sockid = qd;
-        mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_ADD, qd, &ev);
+        ev.data.sockid = mtcp_qd;
+        mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_ADD, mtcp_qd, &ev);
         return res;
     } else {
         return errno;
@@ -284,23 +294,47 @@ int
 MTCPQueue::close()
 {
     mtcp_evts = 0;
-    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_DEL, qd, NULL);
-    return mtcp_close(mctx, qd);
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_DEL, mtcp_qd, NULL);
+    return mtcp_close(mctx, mtcp_qd);
 }
 
 int
-MTCPQueue::fd()
+MTCPQueue::getfd()
 {
     return qd;
 }
 
 void
+MTCPQueue::setfd(int fd)
+{
+    this->qd = fd;
+}
+
+void
 MTCPQueue::ProcessIncoming(PendingRequest &req)
 {
+    if (listening) {
+        struct sockaddr_in saddr;
+        socklen_t size = sizeof(saddr);
+        int newfd = mtcp_accept(mctx, mtcp_qd, (struct sockaddr*)&saddr, &size);
+
+        if (newfd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            } else {
+                req.isDone = true;
+                req.res = -1;
+            }
+        } else {
+            req.isDone = true;
+            req.res = newfd;
+            accepts.push_back(std::make_pair(newfd, saddr));
+        }
+    }
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        ssize_t count = _wrapper_mtcp_read(mctx, qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
         //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
         // printf("0-mtcp_read() count:%d\n", count);
         // we still don't have a header
@@ -336,7 +370,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        ssize_t count = _wrapper_mtcp_read(mctx, qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
+        ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
 #ifdef _LIBOS_MTCP_DEBUG_
         printf("1-mtcp_read() count:%d\n", count);
 #endif
@@ -428,7 +462,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
-    ssize_t count = _wrapper_mtcp_writev(mctx, qd,  vsga, 2*sga.num_bufs +1);
+    ssize_t count = _wrapper_mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
    
     // if error
     if (count < 0) {
@@ -526,9 +560,9 @@ MTCPQueue::push(qtoken qt, struct sgarray &sga)
 {
     struct mtcp_epoll_event ev;
     ev.events = MTCP_EPOLLOUT | mtcp_evts;
-    ev.data.sockid = qd;
+    ev.data.sockid = mtcp_qd;
     mtcp_evts = ev.events;
-    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, mtcp_qd, &ev);
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("MTCPQueue::push() qt:%d\n", qt);
 #endif
@@ -541,9 +575,9 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
     struct mtcp_epoll_event ev;
     ssize_t ret;
     ev.events = MTCP_EPOLLIN | mtcp_evts;
-    ev.data.sockid = qd;
+    ev.data.sockid = mtcp_qd;
     mtcp_evts = ev.events;
-    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, qd, &ev);
+    mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_MOD, mtcp_qd, &ev);
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("MTCPQueue::pop() qt:%d\n", qt);
 #endif
