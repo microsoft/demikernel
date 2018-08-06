@@ -181,7 +181,7 @@ MTCPQueue::socket(int domain, int type, int protocol)
     // check qd?, not let the application check qd
     int n = 1;
     mtcp_setsockopt(mctx, mtcp_qd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
-    return mtcp_qd;
+    return qd;
 }
 
 int
@@ -301,13 +301,13 @@ MTCPQueue::close()
 int
 MTCPQueue::getfd()
 {
-    return qd;
+    return mtcp_qd;
 }
 
 void
 MTCPQueue::setfd(int fd)
 {
-    this->qd = fd;
+    this->mtcp_qd = fd;
 }
 
 void
@@ -317,7 +317,6 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
         struct sockaddr_in saddr;
         socklen_t size = sizeof(saddr);
         int newfd = mtcp_accept(mctx, mtcp_qd, (struct sockaddr*)&saddr, &size);
-
         if (newfd == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;

@@ -40,8 +40,34 @@
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DEBUG_ZEUS_LWIP 	0
+#define DEBUG_ZEUS_LWIP 	1
 #define TIME_ZEUS_LWIP		1
+
+/*
+ * RX and TX Prefetch, Host, and Write-back threshold values should be
+ * carefully set for optimal performance. Consult the network
+ * controller's datasheet and supporting DPDK documentation for guidance
+ * on how these parameters should be set.
+ */
+#define RX_PTHRESH          0 /**< Default values of RX prefetch threshold reg. */
+#define RX_HTHRESH          0 /**< Default values of RX host threshold reg. */
+#define RX_WTHRESH          0 /**< Default values of RX write-back threshold reg. */
+
+/*
+ * These default values are optimized for use with the Intel(R) 82599 10 GbE
+ * Controller and the DPDK ixgbe PMD. Consider using other values for other
+ * network controllers and/or network drivers.
+ */
+#define TX_PTHRESH          0 /**< Default values of TX prefetch threshold reg. */
+#define TX_HTHRESH          0  /**< Default values of TX host threshold reg. */
+#define TX_WTHRESH          0  /**< Default values of TX write-back threshold reg. */
+
+
+/*
+ * Configurable number of RX/TX ring descriptors
+ */
+#define RTE_TEST_RX_DESC_DEFAULT    128
+#define RTE_TEST_TX_DESC_DEFAULT    128
 
 static uint16_t port = 1024;
 
@@ -53,7 +79,15 @@ struct mac2ip {
     uint32_t ip;
 };
 
-
+static struct mac2ip ip_config[] = {
+    {       { 0x90, 0xe2, 0xba, 0xb5, 0x01, 0xe4 },
+            0x0500000a,
+    },
+    {       { 0x90, 0xe2, 0xba, 0xb3, 0x75, 0x80 },
+            0x0800000a,
+    },
+};
+/*
 static struct mac2ip ip_config[] = {
     {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
             0x040c0c0c,       // 12.12.12.4
@@ -62,7 +96,7 @@ static struct mac2ip ip_config[] = {
             0x050c0c0c,       // 12.12.12.5
     },
 };
-
+*/
 static struct ether_addr ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 };
@@ -71,6 +105,9 @@ static struct ether_addr ether_broadcast = {
 uint8_t port_id;
 struct rte_mempool *mbuf_pool;
 struct rte_eth_conf port_conf;
+struct rte_eth_txconf tx_conf;
+struct rte_eth_rxconf rx_conf;
+struct rte_eth_dev_info dev_info;
 bool is_init = false;
 
 struct ether_addr*
@@ -127,6 +164,60 @@ print_ether_addr(const char *what, struct ether_addr *eth_addr)
 }
 #endif
 
+static void
+check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
+{
+#define CHECK_INTERVAL 			100 /* 100ms */
+#define MAX_CHECK_TIME 			90 /* 9s (90 * 100ms) in total */
+
+	uint8_t portid, count, all_ports_up, print_flag = 0;
+	struct rte_eth_link link;
+
+	printf("\nChecking link status... ");
+	fflush(stdout);
+	for (count = 0; count <= MAX_CHECK_TIME; count++) {
+		all_ports_up = 1;
+		for (portid = 0; portid < port_num; portid++) {
+			if ((port_mask & (1 << portid)) == 0)
+				continue;
+			memset(&link, 0, sizeof(link));
+			rte_eth_link_get_nowait(portid, &link);
+			/* print link status if flag set */
+			if (print_flag == 1) {
+				if (link.link_status)
+					printf("Port %d Link Up - speed %u "
+						"Mbps - %s\n", (uint8_t)portid,
+						(unsigned)link.link_speed,
+				(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
+					("full-duplex") : ("half-duplex\n"));
+				else
+					printf("Port %d Link Down\n",
+						(uint8_t)portid);
+				continue;
+			}
+			/* clear all_ports_up flag if any link down */
+			if (link.link_status == 0) {
+				all_ports_up = 0;
+				break;
+			}
+		}
+		/* after finally printing all link status, get out */
+		if (print_flag == 1)
+			break;
+
+		if (all_ports_up == 0) {
+			printf(".");
+			fflush(stdout);
+			rte_delay_ms(CHECK_INTERVAL);
+		}
+
+		/* set the print_flag if all ports up or timeout */
+		if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
+			print_flag = 1;
+			printf("done\n");
+		}
+	}
+}
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -142,10 +233,34 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     uint16_t q;
     uint16_t nb_rxd = RX_RING_SIZE;
     uint16_t nb_txd = TX_RING_SIZE;
+    struct rte_eth_fc_conf fc_conf;
 
     port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
+    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+    port_conf.rxmode.split_hdr_size = 0;
+    port_conf.rxmode.header_split = 0;
+    port_conf.rxmode.hw_ip_checksum = 1;
+    port_conf.rxmode.hw_vlan_filter = 0;
+    port_conf.rxmode.jumbo_frame = 0;
+    port_conf.rxmode.hw_strip_crc = 1;
+    port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
+    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_TCP | ETH_RSS_UDP | ETH_RSS_IP | ETH_RSS_L2_PAYLOAD;
+    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+
+    rx_conf.rx_thresh.pthresh = RX_PTHRESH;
+    rx_conf.rx_thresh.hthresh = RX_HTHRESH;
+    rx_conf.rx_thresh.wthresh = RX_WTHRESH;
+    rx_conf.rx_free_thresh = 32;
+
+    tx_conf.tx_thresh.pthresh = TX_PTHRESH;
+    tx_conf.tx_thresh.hthresh = TX_HTHRESH;
+    tx_conf.tx_thresh.wthresh = TX_WTHRESH;
+    tx_conf.tx_free_thresh = 0;
+    tx_conf.tx_rs_thresh = 0;
+    tx_conf.txq_flags = 0x0;
 
     if (port >= rte_eth_dev_count()) {
+        printf("Warning: invalid port: %d\n", port);
         return -1;
     }
 
@@ -154,16 +269,18 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     if (retval != 0) {
         return retval;
     }
-
+/*
     retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
         return retval;
     }
+*/
+    rte_eth_dev_info_get(port, &dev_info);
 
     /* Allocate and set up 1 RX queue per Ethernet port. */
     for (q = 0; q < rx_rings; q++) {
         retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
-                    rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+                    rte_eth_dev_socket_id(port), &rx_conf, mbuf_pool);
 
         if (retval < 0) {
             return retval;
@@ -173,14 +290,14 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     /* Allocate and set up 1 TX queue per Ethernet port. */
     for (q = 0; q < tx_rings; q++) {
         /* Setup txq_flags */
-        struct rte_eth_txconf *txconf;
+/*        struct rte_eth_txconf *txconf;
 
         rte_eth_dev_info_get(q, &dev_info);
         txconf = &dev_info.default_txconf;
-        txconf->txq_flags = 0;
+        txconf->txq_flags = 0;*/
 
         retval = rte_eth_tx_queue_setup(port, q, nb_txd,
-                    rte_eth_dev_socket_id(port), txconf);
+                    rte_eth_dev_socket_id(port), &tx_conf);
         if (retval < 0) {
             return retval;
         }
@@ -192,9 +309,22 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
         return retval;
     }
 
+//    rte_eth_promiscuous_enable(port);
+
+    /* retrieve current flow control settings per port */
+    memset(&fc_conf, 0, sizeof(fc_conf));
+    retval = rte_eth_dev_flow_ctrl_get(port, &fc_conf);
+    if (retval != 0)
+        return retval;
+
+    /* and just disable the rx/tx flow control */
+    fc_conf.mode = RTE_FC_NONE;
+    retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
+        if (retval != 0)
+            return retval;
+
     return 0;
 }
-
 
 int
 lwip_init(int argc, char* argv[])
@@ -244,6 +374,8 @@ lwip_init(int argc, char* argv[])
             return -1;
         }
     }
+
+    check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
 
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
@@ -558,6 +690,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     if (likely(num_packets == 0)) {
         return;
     } else {
+        assert(num_packets == 1);
         // packet layout order is (from outside -> in):
         // ether_hdr
         // ipv4_hdr

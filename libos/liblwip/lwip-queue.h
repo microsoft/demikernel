@@ -17,7 +17,7 @@
 namespace Zeus {
 namespace LWIP {
 
-#define MAX_PKTS 4
+#define MAX_PKTS 64
 
 class LWIPQueue : public Queue {
 private:
