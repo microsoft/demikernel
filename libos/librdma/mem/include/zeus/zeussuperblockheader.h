@@ -94,11 +94,12 @@ namespace Zeus {
             assert ((_totalObjects == 1) || (_objectSize % Alignment == 0));
 
 	    if (rdma_get_pd() != NULL) {
-            _mr =
+	      _mr =
                 ibv_reg_mr(rdma_get_pd(),
                            (void *)start,
                            bufferSize,
                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	      printf("Registering super block for write\n");
 	    }
         }
 
@@ -204,6 +205,17 @@ namespace Zeus {
         }
 
         inline ibv_mr* rdma_get_mr() {
+	  if (_mr == NULL) {
+	    if (rdma_get_pd() != NULL) {
+	      _mr =
+                ibv_reg_mr(rdma_get_pd(),
+                           (void *)_start,
+                           _totalObjects * _objectSize,
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	      printf("Registering super block for write on-demand\n");
+	    }
+	}
+	  assert(_mr != NULL);
             return _mr;
         }
         
