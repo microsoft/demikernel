@@ -45,6 +45,8 @@ extern "C" {
 namespace Zeus {
 namespace SPDK {
 
+enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN, LIBOS_PUSH, LIBOS_POP, LIBOS_CLOSE};
+
 class SPDKQueue : public Queue {
 private:
     struct PendingRequest {
@@ -55,36 +57,46 @@ private:
         // uint64_t header[3];
         // currently used incoming buffer
         void *buf;
-        uint8_t *read_buff;
-        uint8_t *write_buff;
         // number of bytes processed so far
         size_t num_bytes;
+        char *file_name;
+        int file_flags;
+        // open returned qd
+        int new_qd;
+        SPDK_OP req_op;
         struct sgarray &sga;
 
-        PendingRequest(struct sgarray &sga) :
+        PendingRequest(SPDK_OP req_op, struct sgarray &sga) :
             isDone(false),
             res(0),
             //header{0,0,0},
             buf(NULL),
-            read_buff(NULL),
-            write_buff(NULL),
             num_bytes(0),
+            file_name(NULL),
+            file_flags(0),
+            new_qd(-1),
+            req_op(req_op),
             sga(sga) { };
     };
     
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
-    std::list<qtoken> workQ;
+    std::list<qtoken> workQ;  // will not use this one
+    uint64_t file_length;  // file_length in bytes
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
     void ProcessQ(size_t maxRequests);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
+    // libos spdk functions
+    int libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags);
+    int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
+
 public:
-    SPDKQueue() : Queue(FILE_Q, 0), workQ{} { };
+    SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0) {};
     SPDKQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  {};
+        Queue(type, qd), workQ{}, file_length(0) {};
 
     // network functions
     static int socket(int domain, int type, int protocol);
@@ -96,6 +108,7 @@ public:
           
     // file functions
     static int open(const char *pathname, int flags);
+    int open(qtoken qt, const char *pathname, int flags);
     static int open(const char *pathname, int flags, mode_t mode);
     static int creat(const char *pathname, mode_t mode);
 
