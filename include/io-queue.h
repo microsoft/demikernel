@@ -70,7 +70,6 @@ struct sgarray {
     };
 
     struct sockaddr_in addr;
-
 };
 
 // memory allocation
@@ -78,9 +77,9 @@ struct sgarray {
 
 // regular queue
 int queue();
-
 // network functions
 int socket(int domain, int type, int protocol);
+int getsockname(int qd, struct sockaddr *saddr, socklen_t *size);
 int listen(int qd, int backlog);
 int bind(int qd, struct sockaddr *saddr, socklen_t size);
 int accept(int qd, struct sockaddr *saddr, socklen_t *size);
@@ -108,7 +107,6 @@ ssize_t blocking_pop(int qd, struct sgarray &sga);
 // the queue descriptor if the queue is an io queue
 int qd2fd(int qd);
 ssize_t wait(int qd);
-
 // eventually queue functions
 int merge(int qd1, int qd2);
 // int filter(int qd, bool (*filter)(struct sgarray &sga));

@@ -70,7 +70,7 @@ private:
 protected:
     BasicQueueType type;
     int qd;
-
+    
 public:
     Queue() : type(NETWORK_Q), qd(0) { };
     Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };

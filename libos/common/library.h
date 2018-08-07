@@ -133,6 +133,11 @@ public:
         return q.GetQD();
     };
 
+    int getsockname(int qd, struct sockaddr *saddr, socklen_t *size) {
+        QueueType &q = GetQueue(qd);
+        return q.getsockname(saddr, size);
+    };
+
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
         QueueType &q = GetQueue(qd);
         return q.bind(saddr, size);
@@ -276,13 +281,12 @@ public:
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
-
+        
         ssize_t res;
         if (queue.GetType() == BASIC)
             res = ((Queue &)queue).peek(sga);
-        else
+        else 
             res = queue.peek(sga);
-
         return res;
     };
 
@@ -350,7 +354,6 @@ public:
         ssize_t res = 0;
         for (unsigned int i = 0; i < num; i++) {
             QueueType &q = GetQueue(QUEUE(tokens[i]));
-
             ssize_t r = q.wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }

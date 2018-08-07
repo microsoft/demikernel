@@ -68,7 +68,12 @@ PosixQueue::socket(int domain, int type, int protocol)
 		}
         return qd;
     } else return fd;
+}
 
+int
+PosixQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    return ::getsockname(fd, saddr, size);
 }
 
 int
@@ -95,8 +100,11 @@ PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     assert(listening);
 
+    sgarray sga;
+    PendingRequest req(sga);
+    ProcessIncoming(req);
     if (accepts.empty()) {
-        return -1;
+        return 0;
     }
 
     auto &acceptInfo = accepts.front();
@@ -111,6 +119,7 @@ PosixQueue::accept(struct sockaddr *saddr, socklen_t *size)
         fprintf(stderr,
                 "Failed to set TCP_NODELAY on Zeus connecting socket");
     }
+
     // Always put it in non-blocking mode
     if (fcntl(newfd, F_SETFL, O_NONBLOCK, 1)) {
         fprintf(stderr,
@@ -279,7 +288,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     if (!is_tcp) {
         memcpy(&req.header, req.buf, sizeof(req.header));
     }
-
     //fprintf(stderr, "[%x] ProcessIncoming: first read=%ld\n", qd, count);
     if (req.header[0] != MAGIC) {
         // not a correctly formed packet
@@ -320,7 +328,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     }
 
     void* buf = (is_tcp) ? req.buf : req.buf + sizeof(req.header);
-
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)buf;
     req.sga.num_bufs = req.header[2];
@@ -494,7 +501,6 @@ PosixQueue::peek(struct sgarray &sga)
 {
     PendingRequest req(sga);
     ProcessIncoming(req);
-
     if (req.isDone){
         return req.res;
     } else {
@@ -533,8 +539,8 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
     if (req.isDone){
         ssize_t ret = req.res;
         size_t len = sga.copy(req.sga);
-	if (!listening)
-	    assert((size_t)ret == len);
+	    if (!listening)
+	        assert((size_t)ret == len);
 	    pending.erase(it);
         return ret;
     } else {

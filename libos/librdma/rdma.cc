@@ -1,8 +1,8 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/libposix/posix.cc
- *   POSIX implementation of libos interface
+ * libos/librdma/rdma.cc
+ *   RDMA implementation of libos interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -30,11 +30,14 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
-#include "posix-queue.h"
+#include "rdma-queue.h"
+#include "librdma/mem/include/zeus/libzeus.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::PosixQueue> lib;
+static QueueLibrary<RDMA::RdmaQueue> lib;
 
+using namespace RDMA;
+    
 int queue()
 {
     return lib.queue();
@@ -49,18 +52,29 @@ int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return lib.getsockname(qd, saddr, size);
 }
-    
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);
 }
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
-{
-    int newfd = lib.accept(qd, saddr, size);
-    if (newfd > 0)
-        lib.GetQueue(newfd).setfd(newfd);
-    return newfd;
+{    
+    RdmaQueue &queue = lib.GetQueue(qd);
+    struct rdma_cm_id *newid = queue.getNextAccept();
+    if (newid != NULL) {
+        int newqd = lib.accept(qd, saddr, size);
+        RdmaQueue &newQ = lib.GetQueue(newqd);
+        newQ.setRdmaCM(newid);
+        int ret = newQ.accept(saddr, size); 
+        if (ret != 0) {
+            return ret;
+        } else {
+            return newqd;
+        }
+    } else {
+        return 0;
+    }
 }
 
 int listen(int qd, int backlog)
@@ -105,16 +119,12 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
-    //printf("posix.cc:pop input:%d\n", qd);
-    qtoken qt = lib.pop(qd, sga);
-    //printf("posix.cc: pop return qt:%d\n", qt);
-    return qt;
+     return lib.pop(qd, sga);
 }
 
 ssize_t peek(int qd, struct Zeus::sgarray &sga)
 {
-    ssize_t ret = lib.peek(qd, sga);
-    return ret;
+    return lib.peek(qd, sga);
 }
 
 ssize_t wait(qtoken qt, struct sgarray &sga)
@@ -122,7 +132,7 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
+ssize_t wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, offset, qd, sga);
 }
@@ -150,16 +160,6 @@ int merge(int qd1, int qd2)
 int filter(int qd, bool (*filter)(struct sgarray &sga))
 {
     return lib.filter(qd, filter);
-}
-
-int init()
-{
-	return 0;
-}
-
-int init(int argc, char* argv[])
-{
-	return 0;
 }
 
 } // namespace Zeus
