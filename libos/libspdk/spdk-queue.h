@@ -45,7 +45,7 @@ extern "C" {
 namespace Zeus {
 namespace SPDK {
 
-enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN, LIBOS_PUSH, LIBOS_POP, LIBOS_CLOSE};
+enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN_CREAT, LIBOS_OPEN_EXIST, LIBOS_PUSH, LIBOS_POP, LIBOS_CLOSE};
 
 class SPDKQueue : public Queue {
 private:
@@ -90,8 +90,8 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
     // libos spdk functions
-    int libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags);
-    int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
+    static int libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags);
+    static int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
 
 public:
     SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0) {};
@@ -108,7 +108,7 @@ public:
           
     // file functions
     static int open(const char *pathname, int flags);
-    int open(qtoken qt, const char *pathname, int flags);
+    static int open(qtoken qt, const char *pathname, int flags);
     static int open(const char *pathname, int flags, mode_t mode);
     static int creat(const char *pathname, mode_t mode);
 

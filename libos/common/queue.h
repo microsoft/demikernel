@@ -76,7 +76,6 @@ public:
           
     // file control plane functions
     virtual int open(const char *pathname, int flags) = 0;
-    virtual int open(qtoken qt, const char *pathname, int flags);
     virtual int open(const char *pathname, int flags, mode_t mode) = 0;
     virtual int creat(const char *pathname, mode_t mode) = 0;
 

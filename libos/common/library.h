@@ -49,7 +49,6 @@
 #define QUEUE(t) t >> 32
 #define IS_PUSH(t) t & PUSH_MASK
 
-#define LIBOS_OPEN_QD -99
 // qtoken format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
 
@@ -192,26 +191,21 @@ public:
         } else {
             return q.GetQD();
         }
-
-        /** JINGLIU
-        // use the fd as qd
-        int qd = QueueType::open(pathname, flags);
-        if (qd > 0)
-            InsertQueue(QueueType(FILE_Q, qd));
-        return qd;
     }
 
-    int open(qtoken qt, const char *pathname, int flags) {
+
+    /** JINGLIU
+    int open(const char *pathname, int flags) {
         // use the fd as qd
-        qtoken t = GetNewToken(LIBOS_OPEN_QD, false);
+        qtoken qt = GetNewToken(LIBOS_OPEN_QD, false);
+        printf("Library.h: open() called\n");
         int qd = QueueType::open(qt, pathname, flags);
         printf("library.h: open() returns:%d \n", qd);
         if (qd > 0){
             InsertQueue(QueueType(FILE_Q, qd));
         }
         return qd;
-        **/
-    };
+    };**/
 
     int open(const char *pathname, int flags, mode_t mode) {
         Queue &q = NewQueue(FILE_Q);

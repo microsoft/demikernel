@@ -174,6 +174,14 @@ PosixQueue::open(const char *pathname, int flags)
 }
 
 int
+PosixQueue::open(qtoken qt, const char *pathname, int flags)
+{
+    // use the fd as qd
+    int qd = ::open(pathname, flags);
+    return qd;
+}
+
+int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
     assert(false);
