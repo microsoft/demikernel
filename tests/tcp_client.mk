@@ -1,6 +1,6 @@
 CC = g++
 
-ZEUS_SRC_DIR=/home/amanda/datacenter-OS/
+ZEUS_SRC_DIR=/home/jingliu/datacenter-OS/
 
 LIBZEUS=zeus_mtcp
 
@@ -12,11 +12,11 @@ MTCP_LDFLAGS += -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib -L$(ZEUS_SRC_DIR)/
 DPDK_HOME=$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/
 DPDK_INC=$(DPDK_HOME)/include
 DPDK_LIB=$(DPDK_HOME)/lib/
-DPDK_MACHINE_FLAGS = $(shell cat /home/amanda/datacenter-OS/libos/libmtcp/mtcp/dpdk/include/cflags.txt)
-DPDK_LIB_FLAGS = $(shell cat /home/amanda/datacenter-OS/libos/libmtcp/mtcp/dpdk/lib/ldflags.txt) -lgmp
+DPDK_MACHINE_FLAGS = $(shell cat /home/jingliu/datacenter-OS/libos/libmtcp/mtcp/dpdk/include/cflags.txt)
+DPDK_LIB_FLAGS = $(shell cat /home/jingliu/datacenter-OS/libos/libmtcp/mtcp/dpdk/lib/ldflags.txt) -lgmp
 
 # MTCP
-MTCP_FLD    =/home/amanda/datacenter-OS/libos/libmtcp/mtcp/mtcp/
+MTCP_FLD    =/home/jingliu/datacenter-OS/libos/libmtcp/mtcp/mtcp/
 MTCP_INC    =-I$(MTCP_FLD)/include
 MTCP_LIB    =-L$(MTCP_FLD)/lib
 MTCP_TARGET = $(MTCP_LIB)/lib/libmtcp.a
