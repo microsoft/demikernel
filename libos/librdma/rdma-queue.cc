@@ -30,6 +30,7 @@
 
 #include "rdma-queue.h"
 #include "common/library.h"
+#include "include/measure.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -39,6 +40,8 @@
 #include <errno.h>
 #include <sys/uio.h>
 #include <rdma/rdma_verbs.h>
+
+struct timer_info ti;
 
 namespace Zeus {
 

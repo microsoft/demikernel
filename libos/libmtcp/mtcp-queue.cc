@@ -30,6 +30,7 @@
 #include "mtcp_measure.h"
 #include "mtcp-queue.h"
 #include "common/library.h"
+#include "include/measure.h"
 // hoard include
 #include "libzeus.h"
 #include <mtcp_api.h>
@@ -58,12 +59,14 @@
     #define WRITE_OUTPUT_INTERVAL 10
 #endif
 
-static inline uint64_t rdtsc(void)
+/*static inline uint64_t rdtsc(void)
 {
     uint64_t eax, edx;
     __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
     return (edx << 32) | eax;
-}
+}*/
+
+struct timer_info ti;
 
 
 /*********************************************************************/
@@ -76,18 +79,18 @@ static int mtcp_ep;
 static char mtcp_conf_name[] = "libos.conf";
 static bool mtcp_env_initialized = false;
 
-static uint64_t rcd_read_start;
-static uint64_t rcd_read_end;
-
-static uint64_t rcd_write_start;
-static uint64_t rcd_write_end;
-
-static inline uint64_t jl_rdtsc(void)
-{
-    uint64_t eax, edx;
-    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
-    return (edx << 32) | eax;
-}
+//static uint64_t rcd_read_start;
+//static uint64_t rcd_read_end;
+//
+//static uint64_t rcd_write_start;
+//static uint64_t rcd_write_end;
+//
+//static inline uint64_t jl_rdtsc(void)
+//{
+//    uint64_t eax, edx;
+//    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
+//    return (edx << 32) | eax;
+//}
 
 
 //void libos_mtcp_signal_handler(int signum){
@@ -330,10 +333,13 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
             accepts.push_back(std::make_pair(newfd, saddr));
         }
     }
+    ti.libos_pop_start = rdtsc();
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
+        ti.device_read_start = rdtsc();
         ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        ti.device_read_end = rdtsc();
         //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
         // printf("0-mtcp_read() count:%d\n", count);
         // we still don't have a header
@@ -417,13 +423,15 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("End ProcessIncoming\n");
 #endif
+    ti.libos_pop_end = rdtsc();
     return;
 }
     
 void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
-    uint64_t rcd_tick = jl_rdtsc();
+    ti.libos_push_start = rdtsc();
+    //uint64_t rcd_tick = jl_rdtsc();
     sgarray &sga = req.sga;
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
@@ -461,8 +469,9 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
+    ti.device_send_start = rdtsc();
     ssize_t count = _wrapper_mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
-   
+    ti.device_send_end = rdtsc();
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -487,10 +496,11 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 
     req.res = dataSize;
     req.isDone = true;
-    uint64_t rcd_tick_end = jl_rdtsc();
+    //uint64_t rcd_tick_end = jl_rdtsc();
 #ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_
     fprintf(stderr, "ProcessOutgoing(writev) start:%lu end:%lu\n", rcd_tick, rcd_tick_end);
 #endif
+    ti.libos_push_end = rdtsc();
 }
     
 void
@@ -596,8 +606,8 @@ MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 
 ssize_t
 MTCPQueue::peek(struct sgarray &sga){
-    uint64_t rcd_tick;
-    rcd_tick = jl_rdtsc();
+    //uint64_t rcd_tick;
+    //rcd_tick = jl_rdtsc();
     PendingRequest req = PendingRequest(sga);
     ProcessIncoming(req);
     if (req.isDone){

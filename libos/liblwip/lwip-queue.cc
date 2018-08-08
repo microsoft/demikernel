@@ -28,6 +28,7 @@
 #include <rte_ether.h>
 #include <rte_memcpy.h>
 
+#include "include/measure.h"
 #include "lwip-queue.h"
 #include "common/library.h"
 
@@ -70,6 +71,8 @@
 #define RTE_TEST_TX_DESC_DEFAULT    128
 
 static uint16_t port = 1024;
+
+struct timer_info ti;
 
 namespace Zeus {
 namespace LWIP {
@@ -521,6 +524,7 @@ LWIPQueue::setfd(int fd)
 void
 LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 {
+    ti.libos_push_start = rdtsc();
     if (!is_init) {
     	lwip_init();
     }
@@ -645,9 +649,11 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     printf("push: pkt len: %d\n", pkt->data_len);
 #endif
 
+    ti.device_send_start = rdtsc();
     //double send_start = zeus_ustime();
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     //double send_end = zeus_ustime();
+    ti.device_send_end = rdtsc();
 
     assert(ret == 1);
 
@@ -660,12 +666,15 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 #endif
     req.res = data_len;
     req.isDone = true;
+
+    ti.libos_push_end = rdtsc();
 }
 
 
 void
 LWIPQueue::ProcessIncoming(PendingRequest &req)
 {
+    ti.libos_pop_start = rdtsc();
     if (!is_init) {
     	lwip_init();
     }
@@ -683,7 +692,9 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
         // our packet buffer is empty, try to get some more from NIC
+        ti.device_read_start = rdtsc();
         num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
+        ti.device_read_end = rdtsc();
         pkt_idx = 0;
     }
 
@@ -829,6 +840,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 
         req.isDone = true;
         req.res = data_len;
+        ti.libos_pop_end = rdtsc();
     }
 }
 

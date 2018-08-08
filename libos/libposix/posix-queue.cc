@@ -30,6 +30,7 @@
 
 #include "posix-queue.h"
 #include "common/library.h"
+#include "include/measure.h"
 // hoard include
 #include "common/mem/include/zeus/libzeus.h"
 #include <assert.h>
@@ -37,6 +38,7 @@
 #include <errno.h>
 #include <sys/uio.h>
 
+struct timer_info ti;
 
 namespace Zeus {
 
@@ -248,6 +250,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         return;
     }
 
+    ti.libos_pop_start = rdtsc();
     ssize_t count;
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
@@ -258,13 +261,17 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 
             socklen_t size = sizeof(struct sockaddr_in);
             struct sockaddr addr;
+            ti.device_read_start = rdtsc();
             count = ::recvfrom(fd, req.buf, 1024, 0, &addr, &size);
+            ti.device_read_end = rdtsc();
             req.sga.addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
             req.sga.addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
 
         } else {
+            ti.device_read_start = rdtsc();
             count = ::read(fd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
+            ti.device_read_end = rdtsc();
 
         }
         // we still don't have a header
@@ -346,6 +353,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
     req.res = len;
+    ti.libos_pop_end = rdtsc();
     //fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
     return;
 }
@@ -353,6 +361,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
+    ti.libos_push_start = rdtsc();
     sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
@@ -403,9 +412,11 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
 		}
     }
 
+    ti.device_send_start = rdtsc();
     ssize_t count = ::writev(fd,
                              vsga,
                              2*sga.num_bufs +1);
+    ti.device_send_end = rdtsc();
    
     // if error
     if (count < 0) {
@@ -431,6 +442,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     //fprintf(stderr, "[%x] Sending message datasize=%ld totalsize=%ld\n", qd, dataSize, totalLen);
     req.res = dataSize;
     req.isDone = true;
+    ti.libos_push_end = rdtsc();
 }
     
 void
