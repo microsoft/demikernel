@@ -42,13 +42,17 @@ static inline void print_timer_info()
     uint64_t recv_duration = ti.device_read_end - ti.device_read_start;
     uint64_t send_duration = ti.device_send_end - ti.device_send_start;
     uint64_t pop_to_push_duration = ti.libos_push_end - ti.libos_pop_start;
+    uint64_t push_overhead = push_duration - send_duration;
+    uint64_t pop_overhead = pop_duration - recv_duration;
 
     printf("======================\n");
-    printf("pop duration: %lu\n", CYCLE2NS(pop_duration));
-    printf("read duration: %lu\n", CYCLE2NS(recv_duration));
-    printf("push duration: %lu\n", CYCLE2NS(push_duration));
-    printf("send duration: %lu\n", CYCLE2NS(send_duration));
-    printf("pop to push duration: %lu\n", CYCLE2NS(pop_to_push_duration));
+    printf("pop duration: %4.2f\n", CYCLE2NS(pop_duration) / 1000.0);
+    printf("read duration: %4.2f\n", CYCLE2NS(recv_duration) / 1000.0);
+    printf("push duration: %4.2f\n", CYCLE2NS(push_duration) / 1000.0);
+    printf("send duration: %4.2f\n", CYCLE2NS(send_duration) / 1000.0);
+    printf("push overhead: %4.2f\n", CYCLE2NS(push_overhead) / 1000.0);
+    printf("pop overhead: %4.2f\n", CYCLE2NS(pop_overhead) / 1000.0);
+    printf("pop to push duration: %4.2f\n", CYCLE2NS(pop_to_push_duration) / 1000.0);
 }
 
 #endif /* INCLUDE_MEASURE_H_ */

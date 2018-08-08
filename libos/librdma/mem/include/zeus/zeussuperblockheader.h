@@ -92,15 +92,6 @@ namespace Zeus {
             assert ((HL::align<Alignment>((size_t) start) == (size_t) start));
             assert (_objectSize >= Alignment);
             assert ((_totalObjects == 1) || (_objectSize % Alignment == 0));
-
-	    if (rdma_get_pd() != NULL) {
-	      _mr =
-                ibv_reg_mr(rdma_get_pd(),
-                           (void *)start,
-                           bufferSize,
-                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-	      printf("Registering super block for write\n");
-	    }
         }
 
         virtual ~ZeusSuperblockHeaderHelper() {
@@ -204,18 +195,19 @@ namespace Zeus {
             assert(0);
         }
 
-        inline ibv_mr* rdma_get_mr() {
+        inline ibv_mr* rdma_get_mr(rdma_cm_id *rdma_id) {
 	  if (_mr == NULL) {
-	    if (rdma_get_pd() != NULL) {
-	      _mr =
-                ibv_reg_mr(rdma_get_pd(),
-                           (void *)_start,
-                           _totalObjects * _objectSize,
-                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-	      printf("Registering super block for write on-demand\n");
-	    }
-	}
-	  assert(_mr != NULL);
+	    assert(rdma_id->pd != NULL);
+	    _mr =
+	      ibv_reg_mr(rdma_id->pd,
+			 (void *)_start,
+			 _totalObjects * _objectSize,
+			 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	    fprintf(stderr, "Registering super block for write on-demand\n");
+	  } else {
+	    assert(_mr->context == rdma_id->verbs);
+	  }
+       	  assert(_mr != NULL);
             return _mr;
         }
         

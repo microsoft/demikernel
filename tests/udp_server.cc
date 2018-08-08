@@ -5,8 +5,9 @@
 #include <arpa/inet.h>
 
 #include "../include/io-queue.h"
+#include "../include/measure.h"
 
-#define PKTNUM          10
+#define PKTNUM          100000
 
 uint16_t port = 12345;
 
@@ -58,24 +59,25 @@ int main()
     for (int i = 0; i < PKTNUM; i++) {
 		qt = Zeus::pop(qd, sga);
 		if (qt != 0) {
-			printf("server: wait for pop\n");
+			//printf("server: wait for pop\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
 
 		assert(sga.num_bufs == 1);
 
-		printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+		//printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
 
 		qt = Zeus::push(qd, sga);
 		if (qt != 0) {
-			printf("server: wait for push\n");
+			//printf("server: wait for push\n");
 			n = Zeus::wait(qt, sga);
 			assert(n > 0);
 		}
 
-		//printf("===========================\n");
-		printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+		//printf("===========================\n");i
+        print_timer_info();
+		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
     }
 
     Zeus::close(qd);
