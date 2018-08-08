@@ -42,6 +42,7 @@
 #include <sys/uio.h>
 #include<mutex>
 #include "concurrentqueue.h"
+#include <sys/syscall.h>
 
 extern "C" {
 #include "spdk/env.h"
@@ -58,6 +59,11 @@ extern "C" {
 
 namespace Zeus {
 namespace SPDK {
+
+static inline pid_t get_thread_tid(void){
+    pid_t x = syscall(SYS_gettid);
+    return x;
+}
 
 struct SPDKPendingRequest {
     public:
@@ -80,21 +86,33 @@ struct SPDKPendingRequest {
             sga(sga) { };
 };
 
+/* struct used to passed throught the call-back chains */
 struct SPDKCallbackArgs {
     qtoken qt;
     struct SPDKPendingRequest *req;
 };
 
+/* struct to save all the global variables for spdk */
 struct SPDKContext {
 	std::unordered_map<spdk_blob_id, struct spdk_blob*> opened_blobs;
 	std::unordered_map<spdk_blob_id, int> blob_status;
+    std::unordered_map<int, spdk_blob_id> qd_blobid_map;
 	struct spdk_bdev *bdev;
+    sem_t app_sem;
 	struct spdk_blob_store *app_bs;     // bs obj for the application
 	struct spdk_io_channel *app_channel;
 	struct spdk_bs_dev *bs_dev;
 	uint64_t page_size;
     uint64_t cluster_size;
 	int rc;
+    SPDKContext():
+        bdev(NULL),
+        app_bs(NULL),
+        app_channel(NULL),
+        bs_dev(NULL),
+        page_size(0),
+        cluster_size(0),
+        rc(0) { };
 };
 
 struct spdk_app_opts libos_spdk_opts = {0};
@@ -102,6 +120,9 @@ static struct SPDKContext *libos_spdk_context = NULL;
 static char spdk_conf_name[] = "libos_spdk.conf";
 static char spdk_app_name[] = "libos_spdk";
 static std::mutex spdk_init_lock;
+static std::mutex spdk_qd_lock;
+// we start from 1
+static int qd = 1;
 
 static std::unordered_map<qtoken, SPDKPendingRequest> libos_pending_reqs;
 // multi-producer, single-consumer queue
@@ -120,6 +141,15 @@ static pthread_t spdk_bg_thread = 0;
 
 
 static void *libos_run_spdk_thread(void* thread_args);
+
+static int
+assign_new_qd(void){
+    spdk_init_lock.try_lock();
+    qd++;
+    // TODO check overflow here?
+    spdk_init_lock.unlock();
+    return qd;
+}
 
 static void
 unload_complete(void *cb_arg, int bserrno)
@@ -161,7 +191,7 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
          int bserrno)
 {
     struct SPDKContext *spdk_context_t = (struct SPDKContext *) cb_arg;
-    printf("spdk_bs_init_complete\n");
+    fprintf(stderr, "spdk_bs_init_complete\n");
 
     SPDK_NOTICELOG("entry\n");
     if (bserrno) {
@@ -169,7 +199,7 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
         unload_bs(spdk_context_t, err_msg, bserrno);
         return;
     }
-
+    sem_init(&spdk_context_t->app_sem, 0, 0);
     spdk_context_t->app_bs = bs;
     SPDK_NOTICELOG("blobstore: %p\n", spdk_context_t->app_bs);
     /*
@@ -192,35 +222,37 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
     // After finish the call-chain, all async, and the callbacks, need to
     // return the control of this thread(spdk thread) to its loop function
     libos_run_spdk_thread(NULL);
+    fprintf(stderr, "lios_run_spdk_thread return\n");
 }
 
 
 static void libos_spdk_app_start(void *arg1, void *arg2){
     struct SPDKContext *spdk_context_t = (struct SPDKContext *) arg1;
-    printf("libos_spdk_app_start\n");
+    fprintf(stderr, "libos_spdk_app_start\n");
     // TODO: here, the Malloc0 is going to be replaced by real device!
     spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
     if(spdk_context_t->bdev == NULL){
-        printf("spdk_context_t->bdev is NULL, will do stop\n");
+        fprintf(stderr, "spdk_context_t->bdev is NULL, will do stop\n");
         spdk_app_stop(-1);
         return;
     }
     spdk_context_t->bs_dev = spdk_bdev_create_bs_dev(spdk_context_t->bdev, NULL, NULL);
 	if (spdk_context_t->bs_dev == NULL) {
-        printf("ERROR: could not create blob bdev\n");
+        fprintf(stderr, "ERROR: could not create blob bdev\n");
         SPDK_ERRLOG("Could not create blob bdev!!\n");
         spdk_app_stop(-1);
         return;
     }
     spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
+    fprintf(stderr, "libos_spdk_app_start will return\n");
 }
 
 int libos_spdk_init(void){
     int rc = 0;
-    printf("libos_spdk_init\n");
+    fprintf(stderr, "libos_spdk_init\n");
     spdk_init_lock.try_lock();
     assert(!libos_spdk_context);
-    libos_spdk_context = (struct SPDKContext *) calloc(1, sizeof(struct SPDKContext));
+    libos_spdk_context = new SPDKContext();
 	if(libos_spdk_context == NULL){
         // haddle Error Here
         spdk_app_fini();
@@ -231,52 +263,92 @@ int libos_spdk_init(void){
     libos_spdk_opts.name = spdk_app_name;
     libos_spdk_opts.config_file = spdk_conf_name;
     spdk_init_lock.unlock();
-    printf("libos_spdk_init will call spdk_app_start\n");
+    fprintf(stderr, "libos_spdk_init will call spdk_app_start\n");
     rc = spdk_app_start(&libos_spdk_opts, libos_spdk_app_start, libos_spdk_context, NULL);
+    fprintf(stderr, "libos_spdk_init will return rc:%d", rc);
     return rc;
 }
 /****************************************************************************/
 
 /****************************************************************************/
 // Call back cahin for creation a new blob. (blob <-> file)
+
+static void spdk_open_blob_sync_md_callback(void *cb_args, int bserrno){
+    fprintf(stderr, "spdk_open_blob_sync_md_callback\n");
+	if (bserrno) {
+        char err_msg[32] = "Error in sync callback";
+        unload_bs(libos_spdk_context, err_msg, bserrno);
+        return;
+    }
+    // set the request as Done
+    struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    fprintf(stderr, "assigned_qd:%d req_addr:%p\n", args->req->new_qd, args->req);
+    // now it is safe to return, since the metadata is persistent
+    args->req->isDone = true;
+    // now the file is ready to write
+    libos_run_spdk_thread(NULL);
+}
+
 static void spdk_open_blob_resize_callback(void *cb_args, int bserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    fprintf(stderr, "spdk_open_blob_resize_callback tid:%u\n", get_thread_tid());
     uint64_t file_init_len = 0;
     spdk_blob_set_xattr(args->req->file_blob, "name", args->req->file_name, strlen(args->req->file_name) + 1);
     spdk_blob_set_xattr(args->req->file_blob, "length", &file_init_len, sizeof(file_init_len));
-    printf("libos_open_create_new_file success\n");
+    // sync the metadata
+    spdk_blob_sync_md(args->req->file_blob, spdk_open_blob_sync_md_callback, args);
+    fprintf(stderr, "libos_open_resize_callback return tid:%u\n", get_thread_tid());
 }
 
 static void spdk_open_blob_callback(void *cb_args, struct spdk_blob *blob, int bserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    fprintf(stderr, "spdk_open_blob_callback tid:%u\n", get_thread_tid());
     args->req->file_blob = blob;
+    // TODO: i'm considering to change 1 into free cluster size
+    // aka. reserve the whole blobstore in initialization
+    // uint64_t free = 0;
+    // free = spdk_bs_free_cluster_count(libos_spdk_context->app_bs);
     spdk_blob_resize(blob, 1, spdk_open_blob_resize_callback, args);
+    fprintf(stderr, "spdk_open_blob_resize_callback will return tid:%u\n", get_thread_tid());
 }
 
 static void spdk_open_create_callback(void *cb_arg, spdk_blob_id blobid, int bserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_arg;
+    fprintf(stderr, "spdk_open_create_callback tid:%u blobid:%lu\n", get_thread_tid(), blobid);
     args->req->file_blobid = blobid;
     // TODO: check the type mismatch of int vs. uint64_t ?
-    args->req->new_qd = blobid;
+    args->req->new_qd = assign_new_qd();
+    libos_spdk_context->qd_blobid_map[qd] = blobid;
+    fprintf(stderr, "new_qd is %d req_addr:%p\n", args->req->new_qd, args->req);
     spdk_bs_open_blob(libos_spdk_context->app_bs, blobid, spdk_open_blob_callback, args);
 }
 
 static void libos_spdk_open_create(qtoken qt, SPDKPendingRequest* pending_req){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*) malloc(sizeof(struct SPDKCallbackArgs));
+    fprintf(stderr, "libos_spdk_open_create qt:%lu cb:%p tid:%u\n", qt, spdk_open_create_callback, get_thread_tid());
     args->qt = qt;
     args->req = pending_req;
     spdk_bs_create_blob(libos_spdk_context->app_bs, spdk_open_create_callback, args);
+    fprintf(stderr, "libos_spdk_open_create finished tid:%u\n", get_thread_tid());
 }
 /****************************************************************************/
 
 static void *libos_run_spdk_thread(void* thread_args){
     while(1){
         if(!libos_spdk_context){
+            fprintf(stderr, "libos_run_spdk_thread, will init spdk, tid:%u\n", get_thread_tid());
             libos_spdk_init();
+            break;
         }
         // start dequeuing and handling request here
-        qtoken qt;
-        while(spdk_work_queue.try_dequeue(qt)){
+        qtoken qt = 0;
+        int sum_req_processed = 0;
+        while(spdk_work_queue.try_dequeue(qt))
+        {
+            // wait until queue items
+            ;
+        }
+        if(qt != 0){
             auto it = libos_pending_reqs.find(qt);
             if(it == libos_pending_reqs.end()){
                 fprintf(stderr, "ERROR: libos_run_spdk_thread cannot find dequeued REQ\n");
@@ -299,9 +371,13 @@ static void *libos_run_spdk_thread(void* thread_args){
                 default:
                     fprintf(stderr, "ERROR, request type UNKNOWN\n");
             }
+            sum_req_processed++;
         }
-        printf("libos_run_spdk_thread\n");
-        usleep(100);
+        if(sum_req_processed > 0){
+            fprintf(stderr, "libos_run_spdk_thread break\n");
+            // break here, until the end of call-back chain re-enter this loop
+            break;
+        }
     }
 }
 
@@ -324,7 +400,7 @@ SPDKQueue::libos_spdk_open_existing_file(qtoken qt, const char *pathname, int fl
 int 
 SPDKQueue::libos_spdk_create_file(qtoken qt, const char *pathname, int flags){
     int ret;
-    printf("libos_spdk_create_file\n");
+    fprintf(stderr, "libos_spdk_create_file\n");
     // save this requeset
     struct sgarray sga;
     libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(LIBOS_OPEN_CREAT, sga)));
@@ -334,9 +410,9 @@ SPDKQueue::libos_spdk_create_file(qtoken qt, const char *pathname, int flags){
     it->second.file_flags = flags;
     spdk_work_queue.enqueue(qt);
     // busy wait until the queue is DONE
-    printf("spdk_work_queue has enqueued\n");
+    fprintf(stderr, "spdk_work_queue has enqueued\n");
     while(!it->second.isDone){
-        usleep(1);
+        usleep(100);
     }
     ret = it->second.new_qd;
     return ret;
@@ -351,7 +427,7 @@ SPDKQueue::open(qtoken qt, const char *pathname, int flags)
     int ret;
     ret = libos_spdk_open_existing_file(qt, pathname, flags);
     if(ret < 0){
-        libos_spdk_create_file(qt, pathname, flags);
+        ret = libos_spdk_create_file(qt, pathname, flags);
     }
     return ret;
 }

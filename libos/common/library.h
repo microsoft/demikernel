@@ -198,9 +198,9 @@ public:
     int open(const char *pathname, int flags) {
         // use the fd as qd
         qtoken qt = GetNewToken(LIBOS_OPEN_QD, false);
-        printf("Library.h: open() called\n");
+        fprintf(stderr, "Library.h: open() called\n");
         int qd = QueueType::open(qt, pathname, flags);
-        printf("library.h: open() returns:%d \n", qd);
+        fprintf(stderr, "library.h: open() returns:%d \n", qd);
         if (qd > 0){
             InsertQueue(QueueType(FILE_Q, qd));
         }

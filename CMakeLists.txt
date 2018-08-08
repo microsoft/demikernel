@@ -40,6 +40,7 @@ include_directories(${HOARD_DIR}/Heap-Layers)
 
 # spdk
 set(SPDK_DIR ${ZEUS_SOURCE_DIR}/libspdk/spdk/)
+set(SPDK_LD_FLAGS "-Wl,--whole-archive")
 include_directories(${SPDK_DIR}/include)
 
 # ---------------------------------------------------------
@@ -70,6 +71,8 @@ add_library(zeus_posix SHARED
 #add_dependencies(zeus_posix hoard)
 
 # spdk libos target
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
+#set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
 add_library(zeus_spdk STATIC
     ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB})
 target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
