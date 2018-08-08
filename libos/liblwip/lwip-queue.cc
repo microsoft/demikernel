@@ -41,7 +41,7 @@
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DEBUG_ZEUS_LWIP 	1
+#define DEBUG_ZEUS_LWIP 	0
 #define TIME_ZEUS_LWIP		1
 
 /*
