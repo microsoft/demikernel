@@ -51,7 +51,7 @@ RdmaQueue::PostReceive()
     struct ibv_recv_wr wr, *bad_wr = NULL;
     struct ibv_sge sge;
     void *buf = malloc(RECV_BUFFER_SIZE);
-    struct ibv_mr *mr = rdma_get_mr(buf);
+    struct ibv_mr *mr = rdma_get_mr(buf, rdma_id);
     assert(mr != NULL);
     assert(rdma_id->verbs != NULL);
     assert(rdma_id->pd != NULL);
@@ -77,11 +77,6 @@ RdmaQueue::SetupRdmaQP()
 {
     struct ibv_qp_init_attr qp_attr;
     int flags;
-    ibv_pd *pd = rdma_get_pd();
-    ibv_context *context = rdma_get_context();
-    assert(pd != NULL);
-    assert(context != NULL);
-    assert(context == rdma_id->verbs);
 
     // Set up queue pair initial parameters
     memset(&qp_attr, 0, sizeof(qp_attr));
@@ -95,13 +90,13 @@ RdmaQueue::SetupRdmaQP()
     qp_attr.cap.max_recv_sge = 20;
     
     // set up connection queue pairs
-    if (rdma_create_qp(rdma_id, pd, &qp_attr) != 0) {
+    if (rdma_create_qp(rdma_id, NULL, &qp_attr) != 0) {
         fprintf(stderr, "Could not create RDMA queue pairs: %s\n",
                 strerror(errno));
 	assert(false);
 	return -1;
     }
-    assert(pd == rdma_id->pd);
+
     // rdma_id->send_cq_channel = comp_channel;
     // rdma_id->recv_cq_channel = comp_channel;
     // rdma_id->send_cq = cq;
@@ -500,7 +495,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     uint64_t *lens = (uint64_t *)req->buf;
     size_t dataSize = 0;
     size_t totalLen = 0;
-    struct ibv_mr *mr = rdma_get_mr(req->buf);
+    struct ibv_mr *mr = rdma_get_mr(req->buf, rdma_id);
     assert(mr != NULL);
     uint32_t header_lkey = mr->lkey;
 
@@ -514,7 +509,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
-	mr = rdma_get_mr(sga.bufs[i].buf);
+	mr = rdma_get_mr(sga.bufs[i].buf, rdma_id);
 	assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
         
@@ -535,7 +530,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // set up header at beginning of packet
     vsga[0].addr = (uint64_t)&req->header;
     vsga[0].length = sizeof(req->header);
-    mr = rdma_get_mr(req->header);
+    mr = rdma_get_mr(req->header, rdma_id);
     assert(mr != NULL);
     vsga[0].lkey = mr->lkey;
     totalLen += sizeof(req->header);
