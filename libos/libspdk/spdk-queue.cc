@@ -68,6 +68,7 @@ static inline pid_t get_thread_tid(void){
 struct SPDKPendingRequest {
     public:
         bool isDone;
+        qtoken qt;
         SPDK_OP req_op;
         char *file_name;
         int file_flags;
@@ -81,8 +82,9 @@ struct SPDKPendingRequest {
         spdk_blob_id file_blobid;
         spdk_blob *file_blob;
         struct sgarray &sga;
-        SPDKPendingRequest(SPDK_OP req_op, struct sgarray &sga) :
+        SPDKPendingRequest(qtoken cur_qt, SPDK_OP req_op, struct sgarray &sga) :
             isDone(false),
+            qt(cur_qt),
             req_op(req_op),
             file_name(NULL),
             file_flags(0),
@@ -106,14 +108,14 @@ struct SPDKQueueBlob {
     spdk_blob_id blobid;
     struct spdk_blob* blob_ptr;
     // use length in Bytes here since, flush could cause the length not aligned
-    uint64_t length;             // current length of this file, all written (opeional flushed)
+    uint64_t length;             // current length of this file, all written
     // for the tail text which is not aligned, need to read and then write back
     uint64_t num_pages;          // current aligned written in pages
     uint8_t *write_buffer;       // allocated by spdk_dma_malloc
     uint32_t write_buffer_size;  // write_buffer_size (page_size * N)
     int write_buffer_offset;     // offset for writing to the write buffer (Bytes)
     uint8_t *read_buffer;
-    char name[256];              // assume file name < 128 Bytes
+    char name[256];              // assume file name < 256 Bytes
     SPDKQueueBlob():
         blobid(0), blob_ptr(NULL), length(0), num_pages(0), write_buffer(NULL), write_buffer_size(0), write_buffer_offset(0), read_buffer(NULL) {};
     SPDKQueueBlob(uint64_t id, spdk_blob* ptr,  uint64_t len):
@@ -249,7 +251,8 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
     // After finish the call-chain, all async, and the callbacks, need to
     // return the control of this thread(spdk thread) to its loop function
     libos_run_spdk_thread(NULL);
-    fprintf(stderr, "lios_run_spdk_thread return\n");
+    fprintf(stderr, "bs_init_complete():libos_run_spdk_thread return page_size:%lu cluster_size:%lu\n", 
+            spdk_context_t->page_size, spdk_context_t->cluster_size);
 }
 
 
@@ -324,6 +327,7 @@ static void spdk_open_blob_sync_md_callback(void *cb_args, int bserrno){
     args->req->isDone = true;
     // now the file is ready to write
     libos_run_spdk_thread(NULL);
+    fprintf(stderr, "spdk_open_sync(): libos_run_spdk_thread_return\n");
 }
 
 static void spdk_open_blob_resize_callback(void *cb_args, int bserrno){
@@ -372,14 +376,85 @@ static void libos_spdk_open_create(qtoken qt, SPDKPendingRequest* pending_req){
 /****************************************************************************/
 // ccallback-chain for push
 
-static void push_write_complete(void *arg1, int bserrno){
+static void push_write_sync_md_callback(void *cb_args, int bserrno){
+    fprintf(stderr, "push_write_sync_md_callback\n");
+	if (bserrno) {
+        char err_msg[32] = "Error in write_syncmd cb";
+        unload_bs(libos_spdk_context, err_msg, bserrno);
+        return;
+    }
+    struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    SPDKPendingRequest *req = args->req;
+    spdk_blob_id blobid = req->file_blobid;
+    auto it = (libos_spdk_context->opened_blobs).find(blobid);
+    if(it == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
+    }
+    SPDKQueueBlob *spdkqueue_blob = &(it->second);
+    // set the corresponding requeset to DONE
+    std::unordered_map<qtoken, SPDKPendingRequest>::iterator req_it = libos_pending_reqs.begin();
+    std::list<qtoken> erase_qt_list;
+    while(req_it != libos_pending_reqs.end()){
+        SPDKPendingRequest *cur_req = &(req_it->second);
+        if(cur_req->req_op == LIBOS_PUSH){
+            assert(cur_req->req_text_end > 0);
+            fprintf(stderr, "blob->length:%lu, req_text_end:%d\n", spdkqueue_blob->length, cur_req->req_text_end);
+            if(spdkqueue_blob->length >= cur_req->req_text_end){
+                fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
+                erase_qt_list.push_back(cur_req->qt);
+                cur_req->isDone = true;
+            }
+        }
+        req_it++;
+    }
+
+    for (std::list<qtoken>::iterator qt_it=erase_qt_list.begin(); qt_it != erase_qt_list.end(); ++qt_it){
+        fprintf(stderr, "qtoken: %lu\n", *qt_it);
+        libos_pending_reqs.erase(*qt_it);
+    }
+
+    libos_run_spdk_thread(NULL);
+    fprintf(stderr, "push_write_sync: libos_run_spdk_thread_return\n");
 }
 
-static void push_check_pending_sgabuf(void *arg1, int bsserrno){
+static void push_write_complete_callback(void *cb_args, int bsserrno){
+    fprintf(stderr, "push_write_complete_callback\n");
+	if (bsserrno) {
+        char err_msg[32] = "Error in write_complete cb";
+        unload_bs(libos_spdk_context, err_msg, bsserrno);
+        return;
+    }
+    struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    SPDKPendingRequest *req = args->req;
+    spdk_blob_id blobid = req->file_blobid;
+    auto it = (libos_spdk_context->opened_blobs).find(blobid);
+    if(it == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
+    }
+    SPDKQueueBlob *spdkqueue_blob = &(it->second);
+    // reset the write_buffer
+    spdkqueue_blob->write_buffer_offset = 0;
+    memset(spdkqueue_blob->write_buffer, 0, spdkqueue_blob->write_buffer_size);
+    // check if any data still in sgarray, not in write_buffer
+    if(req->pending_length > 0){
+        struct sgelem *write_elem = &((req->sga).bufs[0]);
+        // copy the remaining data into write_buffer
+        memcpy(spdkqueue_blob->write_buffer, ((uint8_t*)write_elem->buf) + (write_elem->len - req->pending_length), req->pending_length);
+        spdkqueue_blob->write_buffer_offset += req->pending_length;
+    }
+    // update the length of this file
+    spdkqueue_blob->length += spdkqueue_blob->write_buffer_size;
+    spdkqueue_blob->num_pages += 1;
+    // sync the metadata
+    uint64_t current_file_length = spdkqueue_blob->length;
+    spdk_blob_set_xattr(args->req->file_blob, "length", &current_file_length, sizeof(current_file_length));
+    spdk_blob_sync_md(req->file_blob, push_write_sync_md_callback, args);
+
+    fprintf(stderr, "push_write_complete_callback finished\n");
 }
 
 static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
-    fprintf(stderr, "libos_spdk_push\n");
+    fprintf(stderr, "libos_spdk_push called\n");
     spdk_blob_id blobid = pending_req->file_blobid;
     if(blobid < 0){
         fprintf(stderr, "ERROR: blobid not found qt:%lu\n", qt);
@@ -414,6 +489,10 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
     assert((pending_req->sga).num_bufs ==  1);
     struct sgelem *write_elem = &((pending_req->sga).bufs[0]);
     pending_req->req_text_length = write_elem->len;
+    if(write_elem->len > spdkqueue_blob->write_buffer_size){
+        fprintf(stderr, "ERROR write elem len too long. len:%lu", write_elem->len);
+        exit(1);
+    }
     pending_req->req_text_start = spdkqueue_blob->length + spdkqueue_blob->write_buffer_offset;
     pending_req->req_text_end = pending_req->req_text_start + write_elem->len;
     if(spdkqueue_blob->write_buffer_offset + write_elem->len >= spdkqueue_blob->write_buffer_size){
@@ -430,11 +509,14 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
         // num_pages will be the offset in pages to write this page
         // 1 means 1 page to write
         spdk_blob_io_write(spdkqueue_blob->blob_ptr, libos_spdk_context->app_channel,
-                spdkqueue_blob->write_buffer, spdkqueue_blob->num_pages, 1, push_check_pending_sgabuf, args);
+                spdkqueue_blob->write_buffer, spdkqueue_blob->num_pages, 1, push_write_complete_callback, args);
     }else{
         // copy the data into the write_buffer
         memcpy(spdkqueue_blob->write_buffer + spdkqueue_blob->write_buffer_offset,
                 write_elem->buf, write_elem->len);
+        spdkqueue_blob->write_buffer_offset += write_elem->len;
+        libos_run_spdk_thread(NULL);
+        fprintf(stderr, "libos_spdk_push(): libos_run_spdk_thread return\n");
     }
 }
 /****************************************************************************/
@@ -449,6 +531,7 @@ static void *libos_run_spdk_thread(void* thread_args){
         // start dequeuing and handling request here
         qtoken qt = 0;
         int sum_req_processed = 0;
+        SPDK_OP cur_op = LIBOS_IDLE;
         while(spdk_work_queue.try_dequeue(qt))
         {
             // wait until queue items
@@ -464,10 +547,13 @@ static void *libos_run_spdk_thread(void* thread_args){
             // process request
             switch(it->second.req_op){
                 case LIBOS_OPEN_CREAT:
+                    cur_op = LIBOS_OPEN_CREAT;
                     libos_spdk_open_create(qt, (&it->second));
+                    break;
                 case LIBOS_OPEN_EXIST:
                     break;
                 case LIBOS_PUSH:
+                    cur_op = LIBOS_PUSH;
                     libos_spdk_push(qt, (&it->second));
                     break;
                 case LIBOS_POP:
@@ -481,7 +567,7 @@ static void *libos_run_spdk_thread(void* thread_args){
             sum_req_processed++;
         }
         if(sum_req_processed > 0){
-            fprintf(stderr, "libos_run_spdk_thread break\n");
+            fprintf(stderr, "libos_run_spdk_thread break op:%d idle_op:%d\n", cur_op, LIBOS_IDLE);
             // break here, until the end of call-back chain re-enter this loop
             break;
         }
@@ -510,7 +596,7 @@ SPDKQueue::libos_spdk_create_file(qtoken qt, const char *pathname, int flags){
     fprintf(stderr, "libos_spdk_create_file\n");
     // save this requeset
     struct sgarray sga;
-    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(LIBOS_OPEN_CREAT, sga)));
+    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(qt, LIBOS_OPEN_CREAT, sga)));
     auto it = libos_pending_reqs.find(qt);
     it->second.file_name = (char*) malloc(strlen(pathname)*sizeof(char));;
     strcpy(it->second.file_name, pathname);
@@ -624,7 +710,7 @@ SPDKQueue::push(qtoken qt, struct sgarray &sga)
     file_length = (it2->second).length;
 
     // start processing by saving the pending request
-    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(LIBOS_PUSH, sga)));
+    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(qt, LIBOS_PUSH, sga)));
     auto it3 = libos_pending_reqs.find(qt);
     if(it3 == (libos_pending_reqs).end()){
         fprintf(stderr, "ERROR: insert pending req fail for qt:%lu\n", qt);
@@ -634,6 +720,7 @@ SPDKQueue::push(qtoken qt, struct sgarray &sga)
     (it3->second).file_blob = (it2->second).blob_ptr;
     (it3->second).new_qd = qd;
     spdk_work_queue.enqueue(qt);
+    // TODO: pin the sga
     // always return 0 and let application call wait
     return 0;
 }
@@ -654,6 +741,7 @@ ssize_t
 SPDKQueue::wait(qtoken qt, struct sgarray &sga)
 {
     int ret;
+    fprintf(stderr, "SPDKQueue:wait() qt:%lu\n", qt);
     auto it = libos_pending_reqs.find(qt);
     if(it == (libos_pending_reqs).end()){
         fprintf(stderr, "ERROR: cannot find the pending request for qt:%lu\n", qt);
