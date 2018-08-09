@@ -6,8 +6,9 @@
 #include <unistd.h>
 
 #include "../include/io-queue.h"
+#include "../include/measure.h"
 
-#define PKTNUM		10
+#define PKTNUM		20
 
 uint16_t port = 12345;
 
@@ -54,22 +55,24 @@ int main()
 
     // process PKTNUM packets from client
     for (int i = 0; i < PKTNUM; i++) {
-        qt = Zeus::pop(qd, sga);
-        if (qt != 0) {
-            if (qt < 0) {
-                if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
-                    perror("server pop:");
-                    return -1;
-                }
-            }
-	    //printf("server: wait for pop\n");
-            n = Zeus::wait(qt, sga);
-	    assert(n > 0);
-        }
+//        qt = Zeus::pop(qd, sga);
+//        if (qt != 0) {
+//            if (qt < 0) {
+//                if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
+//                    perror("server pop:");
+//                    return -1;
+//                }
+//            }
+//	    //printf("server: wait for pop\n");
+//            n = Zeus::wait(qt, sga);
+//	    assert(n > 0);
+//        }
+
+        while (Zeus::peek(qd, sga) == 0);
 
         assert(sga.num_bufs == 1);
 
-        printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+        //printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
 
         qt = Zeus::push(qd, sga);
         if (qt != 0) {
@@ -83,7 +86,8 @@ int main()
         }
 
         //printf("===========================\n");
-        printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+        print_timer_info();
+        //printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
     }
 
     Zeus::close(qd);

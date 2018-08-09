@@ -339,7 +339,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
             accepts.push_back(std::make_pair(newfd, saddr));
         }
     }
-    ti.libos_pop_start = rdtsc();
+    
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -429,14 +429,13 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("End ProcessIncoming\n");
 #endif
-    ti.libos_pop_end = rdtsc();
+    
     return;
 }
     
 void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
-    ti.libos_push_start = rdtsc();
     //uint64_t rcd_tick = jl_rdtsc();
     sgarray &sga = req.sga;
 #ifdef _LIBOS_MTCP_DEBUG_
@@ -506,7 +505,6 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 #ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_
     fprintf(stderr, "ProcessOutgoing(writev) start:%lu end:%lu\n", rcd_tick, rcd_tick_end);
 #endif
-    ti.libos_push_end = rdtsc();
 }
     
 void
@@ -622,6 +620,7 @@ MTCPQueue::peek(struct sgarray &sga){
             fprintf(stderr, "light_pop  success size:%d time_before_read:%lu\n", req.res, rcd_tick);
         }
 #endif
+        ti.libos_pop_end = rdtsc();
         return req.res;
     }else{
         return -1;
