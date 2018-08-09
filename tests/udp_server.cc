@@ -57,12 +57,14 @@ int main()
     }
     
     for (int i = 0; i < PKTNUM; i++) {
-		qt = Zeus::pop(qd, sga);
-		if (qt != 0) {
-			//printf("server: wait for pop\n");
-			n = Zeus::wait(qt, sga);
-			assert(n > 0);
-		}
+//		qt = Zeus::pop(qd, sga);
+//		if (qt != 0) {
+//			//printf("server: wait for pop\n");
+//			n = Zeus::wait(qt, sga);
+//			assert(n > 0);
+//		}
+
+        while(Zeus::peek(qd, sga) == 0);
 
 		assert(sga.num_bufs == 1);
 

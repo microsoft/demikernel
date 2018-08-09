@@ -250,7 +250,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
         return;
     }
 
-    ti.libos_pop_start = rdtsc();
     ssize_t count;
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
@@ -353,7 +352,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
     req.res = len;
-    ti.libos_pop_end = rdtsc();
     //fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
     return;
 }
@@ -361,7 +359,6 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
-    ti.libos_push_start = rdtsc();
     sgarray &sga = req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
     // set up header
@@ -442,7 +439,6 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     //fprintf(stderr, "[%x] Sending message datasize=%ld totalsize=%ld\n", qd, dataSize, totalLen);
     req.res = dataSize;
     req.isDone = true;
-    ti.libos_push_end = rdtsc();
 }
     
 void
@@ -514,6 +510,7 @@ PosixQueue::peek(struct sgarray &sga)
     PendingRequest req(sga);
     ProcessIncoming(req);
     if (req.isDone){
+        ti.libos_pop_end = rdtsc();
         return req.res;
     } else {
         return 0;

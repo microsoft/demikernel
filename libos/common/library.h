@@ -32,6 +32,7 @@
 #define _COMMON_LIBRARY_H_
 
 #include "include/io-queue.h"
+#include "include/measure.h"
 #include "queue.h"
 #include <list>
 #include <unordered_map>
@@ -224,6 +225,7 @@ public:
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
+        ti.libos_push_start = rdtsc();
         if (!HasQueue(qd))
             return -1;
 
@@ -244,6 +246,7 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
+            ti.libos_push_end = rdtsc();
             return 0;
         }
     };
@@ -273,6 +276,7 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
+        ti.libos_pop_start = rdtsc();
         //printf("call peekp\n");
         if (!HasQueue(qd))
             return -1;

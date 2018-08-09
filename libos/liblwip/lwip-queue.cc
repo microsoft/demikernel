@@ -524,7 +524,6 @@ LWIPQueue::setfd(int fd)
 void
 LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 {
-    ti.libos_push_start = rdtsc();
     if (!is_init) {
     	lwip_init();
     }
@@ -666,15 +665,12 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
 #endif
     req.res = data_len;
     req.isDone = true;
-
-    ti.libos_push_end = rdtsc();
 }
 
 
 void
 LWIPQueue::ProcessIncoming(PendingRequest &req)
 {
-    ti.libos_pop_start = rdtsc();
     if (!is_init) {
     	lwip_init();
     }
@@ -840,7 +836,6 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
 
         req.isDone = true;
         req.res = data_len;
-        ti.libos_pop_end = rdtsc();
     }
 }
 
@@ -933,6 +928,7 @@ LWIPQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req.isDone){
+        ti.libos_pop_end = rdtsc();
         return req.res;
     } else {
         return 0;
