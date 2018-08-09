@@ -188,6 +188,12 @@ MTCPQueue::socket(int domain, int type, int protocol)
 }
 
 int
+MTCPQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    return mtcp_getsockname(mctx, mtcp_qd, saddr, size);
+}
+
+int
 MTCPQueue::bind(struct sockaddr *saddr, socklen_t size)
 {
     int ret = mtcp_bind(mctx, mtcp_qd, saddr, sizeof(struct sockaddr_in));

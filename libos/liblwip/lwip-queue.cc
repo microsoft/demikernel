@@ -413,6 +413,15 @@ LWIPQueue::socket(int domain, int type, int protocol)
     return qd;
 }
 
+int
+LWIPQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
+{
+    if (is_bound) {
+        memcpy(saddr, &bound_addr, sizeof(struct sockaddr_in));
+        *size = sizeof(struct sockaddr_in);
+    }
+    return 0;
+}
 
 int
 LWIPQueue::listen(int backlog)

@@ -61,6 +61,7 @@ public:
 
     // network functions
     int socket(int domain, int type, int protocol);
+    int getsockname(struct sockaddr *saddr, socklen_t *size);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
