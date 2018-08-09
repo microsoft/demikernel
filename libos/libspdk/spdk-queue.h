@@ -83,6 +83,7 @@ private:
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;  // will not use this one
     uint64_t file_length;  // file_length in bytes
+    uint64_t file_blobid;  // blobid in blobstore
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
@@ -94,9 +95,9 @@ private:
     static int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
 
 public:
-    SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0) {};
+    SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0), file_blobid(0) {};
     SPDKQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}, file_length(0) {};
+        Queue(type, qd), workQ{}, file_length(0), file_blobid(0) {};
 
     // network functions
     static int socket(int domain, int type, int protocol);
