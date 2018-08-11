@@ -198,6 +198,12 @@ PosixQueue::creat(const char *pathname, mode_t mode)
     if (fd > 0) return qd;
     else return fd;
 }
+
+int 
+PosixQueue::flush(qtoken qt, bool isclosing)
+{
+    return 0;
+}
     
 int
 PosixQueue::close()

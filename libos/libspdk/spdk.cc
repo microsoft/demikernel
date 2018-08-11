@@ -74,6 +74,11 @@ int creat(const char *pathname, mode_t mode)
 {
     return lib.creat(pathname, mode);
 }
+
+int flush(int qd)
+{
+    return lib.flush(qd);
+}
     
 int close(int qd)
 {

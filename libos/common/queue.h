@@ -85,6 +85,7 @@ public:
     virtual ssize_t peek(struct sgarray &sga) = 0;
     virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;
     virtual ssize_t poll(qtoken qt, struct sgarray &sga) = 0;
+    virtual int flush(qtoken qt, bool isclosing) = 0;
 
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue

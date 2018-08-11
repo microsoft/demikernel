@@ -89,6 +89,7 @@ int close(int qd);
 int open(const char *pathname, int flags);
 int open(const char *pathname, int flags, mode_t mode);
 int creat(const char *pathname, mode_t mode);
+int flush(int qd);  // a blocking function call, guarantee durability
 
 // other functions
 qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete

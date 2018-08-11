@@ -228,11 +228,30 @@ public:
             return q.GetQD();
         }
     };
+
+    int flush(int qd) {
+        fprintf(stderr, "Library.h flush(%d) called", qd);
+        if (!HasQueue(qd)){
+            return -1;
+        }
+        QueueType &queue = GetQueue(qd);
+        if(queue.GetType() == FILE_Q){
+            qtoken t = GetNewToken(qd, true);
+            int ret = queue.flush(t, false);
+            fprintf(stderr, "Library.h flush returned %d\n", ret);
+            return ret;
+        }else{
+            // flush just for storage
+            return -1;
+        }
+    };
+
     
     int close(int qd) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
+        int res = -1;
         Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    

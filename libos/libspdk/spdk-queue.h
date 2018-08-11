@@ -45,7 +45,7 @@ extern "C" {
 namespace Zeus {
 namespace SPDK {
 
-enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN_CREAT, LIBOS_OPEN_EXIST, LIBOS_PUSH, LIBOS_POP, LIBOS_CLOSE};
+enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN_CREAT, LIBOS_OPEN_EXIST, LIBOS_PUSH, LIBOS_POP, LIBOS_FLUSH, LIBOS_CLOSE};
 
 class SPDKQueue : public Queue {
 private:
@@ -85,14 +85,10 @@ private:
     uint64_t file_length;  // file_length in bytes
     uint64_t file_blobid;  // blobid in blobstore
 
-    void ProcessIncoming(PendingRequest &req);
-    void ProcessOutgoing(PendingRequest &req);
-    void ProcessQ(size_t maxRequests);
-    ssize_t Enqueue(qtoken qt, sgarray &sga);
-
     // libos spdk functions
     static int libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags);
     static int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
+    int Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga);
 
 public:
     SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0), file_blobid(0) {};
@@ -105,13 +101,14 @@ public:
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
     int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
+    int close(void);
           
     // file functions
     static int open(const char *pathname, int flags);
     static int open(qtoken qt, const char *pathname, int flags);
     static int open(const char *pathname, int flags, mode_t mode);
     static int creat(const char *pathname, mode_t mode);
+    int flush(qtoken qt, bool isclosing);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete

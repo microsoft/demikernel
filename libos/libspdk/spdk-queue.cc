@@ -126,6 +126,8 @@ struct SPDKQueueBlob {
 struct SPDKContext {
 	std::unordered_map<spdk_blob_id, SPDKQueueBlob> opened_blobs;
     std::unordered_map<int, spdk_blob_id> qd_blobid_map;
+    std::unordered_map<int, int> queue_flush_status;
+    std::unordered_map<int, std::mutex*> queue_flush_lock;
 	struct spdk_bdev *bdev;
     sem_t app_sem;
 	struct spdk_blob_store *app_bs;     // bs obj for the application
@@ -133,7 +135,7 @@ struct SPDKContext {
 	struct spdk_bs_dev *bs_dev;
 	uint64_t page_size;
     uint64_t cluster_size;
-	int rc;
+	int rc;                             // only used in intialization
     SPDKContext():
         bdev(NULL),
         app_bs(NULL),
@@ -150,6 +152,7 @@ static char spdk_conf_name[] = "libos_spdk.conf";
 static char spdk_app_name[] = "libos_spdk";
 static std::mutex spdk_init_lock;
 static std::mutex spdk_qd_lock;
+static std::mutex libos_flush_lock;
 // we start from 1
 static int qd = 1;
 
@@ -173,7 +176,8 @@ static void *libos_run_spdk_thread(void* thread_args);
 
 static int
 assign_new_qd(void){
-    spdk_init_lock.try_lock();
+    //spdk_init_lock.try_lock();
+    spdk_init_lock.lock();
     qd++;
     // TODO check overflow here?
     spdk_init_lock.unlock();
@@ -360,6 +364,9 @@ static void spdk_open_create_callback(void *cb_arg, spdk_blob_id blobid, int bse
     // TODO: check the type mismatch of int vs. uint64_t ?
     args->req->new_qd = assign_new_qd();
     libos_spdk_context->qd_blobid_map[qd] = blobid;
+    // init the flush lock and status variables
+    libos_spdk_context->queue_flush_status[qd] = 0;
+    libos_spdk_context->queue_flush_lock[qd] = new std::mutex;
     fprintf(stderr, "new_qd is %d req_addr:%p\n", args->req->new_qd, args->req);
     spdk_bs_open_blob(libos_spdk_context->app_bs, blobid, spdk_open_blob_callback, args);
 }
@@ -373,17 +380,19 @@ static void libos_spdk_open_create(qtoken qt, SPDKPendingRequest* pending_req){
     fprintf(stderr, "libos_spdk_open_create finished tid:%u\n", get_thread_tid());
 }
 /****************************************************************************/
+
+
 /****************************************************************************/
 // ccallback-chain for push
 
 static void push_write_sync_md_callback(void *cb_args, int bserrno){
-    fprintf(stderr, "push_write_sync_md_callback\n");
 	if (bserrno) {
         char err_msg[32] = "Error in write_syncmd cb";
         unload_bs(libos_spdk_context, err_msg, bserrno);
         return;
     }
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    fprintf(stderr, "push_write_sync_md_callback qt:%lu\n", args->qt);
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
@@ -397,8 +406,12 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
     while(req_it != libos_pending_reqs.end()){
         SPDKPendingRequest *cur_req = &(req_it->second);
         if(cur_req->req_op == LIBOS_PUSH){
-            assert(cur_req->req_text_end > 0);
-            fprintf(stderr, "blob->length:%lu, req_text_end:%d\n", spdkqueue_blob->length, cur_req->req_text_end);
+            fprintf(stderr, "qt:%lu blob->length:%lu, req_text_end:%d\n", cur_req->qt, spdkqueue_blob->length, cur_req->req_text_end);
+            // here, probablly the unprocessed push request still has text_end to -1
+            if(cur_req->req_text_end < 0) {
+                req_it++;
+                continue;
+            }
             if(spdkqueue_blob->length >= cur_req->req_text_end){
                 fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
                 erase_qt_list.push_back(cur_req->qt);
@@ -408,6 +421,7 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
         req_it++;
     }
 
+    // clean up the finished request
     for (std::list<qtoken>::iterator qt_it=erase_qt_list.begin(); qt_it != erase_qt_list.end(); ++qt_it){
         fprintf(stderr, "qtoken: %lu\n", *qt_it);
         libos_pending_reqs.erase(*qt_it);
@@ -427,6 +441,7 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
+    fprintf(stderr, "push_write_complete_callback qt:%lu, end_length:%d\n", args->qt, req->req_text_end);
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
     if(it == (libos_spdk_context->opened_blobs).end()){
         fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
@@ -443,7 +458,10 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
         spdkqueue_blob->write_buffer_offset += req->pending_length;
     }
     // update the length of this file
-    spdkqueue_blob->length += spdkqueue_blob->write_buffer_size;
+    // TODO, move this into the push_write_sync_md_callback for crash consistensy ?
+    // in this push function, the length will always be aligned after we finish the page write to device
+    spdkqueue_blob->length = spdkqueue_blob->write_buffer_size * (1 + spdkqueue_blob->length / spdkqueue_blob->write_buffer_size);
+    fprintf(stderr, "update spdkqueue_blob->length to:%lu\n", spdkqueue_blob->length);
     spdkqueue_blob->num_pages += 1;
     // sync the metadata
     uint64_t current_file_length = spdkqueue_blob->length;
@@ -495,6 +513,7 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
     }
     pending_req->req_text_start = spdkqueue_blob->length + spdkqueue_blob->write_buffer_offset;
     pending_req->req_text_end = pending_req->req_text_start + write_elem->len;
+    fprintf(stderr, "qt:%lu req_text_start:%d, req_text_end:%d\n", qt, pending_req->req_text_start, pending_req->req_text_end);
     if(spdkqueue_blob->write_buffer_offset + write_elem->len >= spdkqueue_blob->write_buffer_size){
         // write_buffer will be full, need to do write
         pending_req->pending_length = (spdkqueue_blob->write_buffer_offset + write_elem->len - spdkqueue_blob->write_buffer_size);
@@ -521,6 +540,143 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
 }
 /****************************************************************************/
 
+/****************************************************************************/
+// callback chain of flush
+
+static void flush_write_sync_md_callback(void *cb_args, int bserrno){
+    if (bserrno) {
+        char err_msg[32] = "Error in write_syncmd cb";
+        unload_bs(libos_spdk_context, err_msg, bserrno);
+        return;
+    }
+    struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+    fprintf(stderr, "flush_write_sync_md_callback qt:%lu\n", args->qt);
+    SPDKPendingRequest *req = args->req;
+    spdk_blob_id blobid = req->file_blobid;
+    auto it = (libos_spdk_context->opened_blobs).find(blobid);
+    if(it == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
+    }
+    SPDKQueueBlob *spdkqueue_blob = &(it->second);
+    // set the corresponding push requeset to DONE
+    std::unordered_map<qtoken, SPDKPendingRequest>::iterator req_it = libos_pending_reqs.begin();
+    std::list<qtoken> erase_qt_list;
+    while(req_it != libos_pending_reqs.end()){
+        SPDKPendingRequest *cur_req = &(req_it->second);
+        if(cur_req->req_op == LIBOS_PUSH){
+            // here, no request will enqueue after flush enqueue
+            assert(cur_req->req_text_end > 0);
+            if(spdkqueue_blob->length >= cur_req->req_text_end){
+                fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
+                erase_qt_list.push_back(cur_req->qt);
+                cur_req->isDone = true;
+            }
+        }
+        req_it++;
+    }
+
+    // clean up the finished request
+    for (std::list<qtoken>::iterator qt_it=erase_qt_list.begin(); qt_it != erase_qt_list.end(); ++qt_it){
+        fprintf(stderr, "qtoken: %lu\n", *qt_it);
+        libos_pending_reqs.erase(*qt_it);
+    }
+    int qd = req->new_qd;
+    fprintf(stderr, "flush done for qd:%d\n", qd);
+    assert(qd > 0);
+    // clean up this flush request
+    libos_pending_reqs.erase(args->qt);
+    req->isDone = true;
+    // if is a close request instead of flush request, do clean up here
+    if(req->req_op == LIBOS_CLOSE){
+        fprintf(stderr, "flush end up with queue close qd:%d\n", qd);
+        (libos_spdk_context->opened_blobs).erase(blobid);
+        (libos_spdk_context->qd_blobid_map).erase(qd);
+        (libos_spdk_context->queue_flush_status).erase(qd);
+        auto lock_it = (libos_spdk_context->queue_flush_lock).find(qd);
+        if(lock_it != (libos_spdk_context->queue_flush_lock).end()){
+            delete(lock_it->second);
+        }
+        (libos_spdk_context->queue_flush_lock).erase(qd);
+    }
+    libos_run_spdk_thread(NULL);
+    fprintf(stderr, "flush_write_sync: libos_run_spdk_thread_return\n");
+}
+
+static void flush_write_complete_callback(void *cb_args, int bserrno){
+    fprintf(stderr, "flush_write_complete_callback\n");
+    if (bserrno) {
+        char err_msg[32] = "Error in push_wt_compl cb";
+        unload_bs(libos_spdk_context, err_msg, bserrno);
+        return;
+    }
+
+    struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+
+    SPDKPendingRequest *req = args->req;
+    spdk_blob_id blobid = req->file_blobid;
+    fprintf(stderr, "push_write_complete_callback qt:%lu, end_length:%d\n", args->qt, req->req_text_end);
+    auto it = (libos_spdk_context->opened_blobs).find(blobid);
+    if(it == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
+    }
+    SPDKQueueBlob *spdkqueue_blob = &(it->second);
+
+    // update the metadata
+    // we do not updage the num_pages, so we could re-sync the whole page
+    spdkqueue_blob->length += spdkqueue_blob->write_buffer_offset;
+    fprintf(stderr, "flush_write_cpl_cb: blob->length update to:%lu\n", spdkqueue_blob->length);
+    // sync the metadata
+    uint64_t current_file_length = spdkqueue_blob->length;
+    spdk_blob_set_xattr(args->req->file_blob, "length", &current_file_length, sizeof(current_file_length));
+    spdk_blob_sync_md(req->file_blob, flush_write_sync_md_callback, args);
+}
+
+/**
+ * libos_spdk_flush
+ * when this function is invoked, all the inflight data is in write_buffer
+ * simply write data into block device, update metadata, and then set flush status
+ **/
+static void libos_spdk_flush(qtoken qt, SPDKPendingRequest *req){
+    fprintf(stderr, "libos_spdk_flush()\n");
+    spdk_blob_id blobid = req->file_blobid;
+    if(blobid < 0){
+        fprintf(stderr, "ERROR: blobid not found qt:%lu\n", qt);
+    }
+    auto it = (libos_spdk_context->opened_blobs).find(blobid);
+    if(it == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
+    }
+    SPDKQueueBlob *spdkqueue_blob = &(it->second);
+    if(spdkqueue_blob->write_buffer == NULL){
+        fprintf(stderr, "flush invoked with write_buffer being NULL\n");
+        exit(1);
+    }
+    if(libos_spdk_context->app_channel == NULL){
+        fprintf(stderr, "ERROR: app io channel is NULL while calling flush\n");
+        exit(1);
+    }
+    // check if anything in write_buffer need to do flush
+    if(spdkqueue_blob->write_buffer_offset > 0){
+        SPDKCallbackArgs *args = (struct SPDKCallbackArgs*) malloc(sizeof(struct SPDKCallbackArgs));
+        args->qt = qt;
+        args->req = req;
+        // basically, I will still keep the write buffer in memory,
+        // which means, the next push() will append to the existing write_buffer
+        // and the next page writing to device will do whole-page syncing
+        // the difference are the partial buffer is durable
+        // and the file_length will be updated
+        spdk_blob_io_write(spdkqueue_blob->blob_ptr, libos_spdk_context->app_channel,
+                spdkqueue_blob->write_buffer, spdkqueue_blob->num_pages, 1, flush_write_complete_callback, args);
+    }else{
+        // set request as DONE since nothing to sync
+        req->isDone = true;
+        libos_run_spdk_thread(NULL);
+    }
+}
+
+/****************************************************************************/
+
+/****************************************************************************/
 static void *libos_run_spdk_thread(void* thread_args){
     while(1){
         if(!libos_spdk_context){
@@ -557,6 +713,14 @@ static void *libos_run_spdk_thread(void* thread_args){
                     libos_spdk_push(qt, (&it->second));
                     break;
                 case LIBOS_POP:
+                    break;
+                case LIBOS_FLUSH:
+                    cur_op = LIBOS_FLUSH;
+                    libos_spdk_flush(qt, (&it->second));
+                    break;
+                case LIBOS_CLOSE:
+                    cur_op = LIBOS_CLOSE;
+                    libos_spdk_flush(qt, (&it->second));
                     break;
                 case LIBOS_IDLE:
                     fprintf(stderr, "ERROR, the request type is IDLE\n");
@@ -647,13 +811,118 @@ SPDKQueue::creat(const char *pathname, mode_t mode)
 }
 
 int
-SPDKQueue::close()
+SPDKQueue::Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga){
+    // use qd to retrieve the corresponding blobid and metadata
+    auto it = (libos_spdk_context->qd_blobid_map).find(qd);
+    if(it == (libos_spdk_context->qd_blobid_map).end()){
+        fprintf(stderr, "ERROR: cannot find active queue for qd:%d\n", qd);
+        return -1;
+    }
+    // assign file_blobid attribute of this queue object
+    file_blobid = it->second;
+    // use blobid to retrieve the corresponding blob
+    auto it2 = (libos_spdk_context->opened_blobs).find(file_blobid);
+    if(it2 == (libos_spdk_context->opened_blobs).end()){
+        fprintf(stderr, "ERROR: no saved blob object for qd:%d blobid:%lu\n", qd, file_blobid);
+        return -1;
+    }
+    // assign file_length attribute of this queue object
+    file_length = (it2->second).length;
+
+    // start processing by saving the pending request
+    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(qt, req_op, sga)));
+    auto it3 = libos_pending_reqs.find(qt);
+    if(it3 == (libos_pending_reqs).end()){
+        fprintf(stderr, "ERROR: insert pending req fail for qt:%lu\n", qt);
+        return -1;
+    }
+    (it3->second).file_blobid = file_blobid;
+    (it3->second).file_blob = (it2->second).blob_ptr;
+    // make sure each request know its qd
+    (it3->second).new_qd = qd;
+    spdk_work_queue.enqueue(qt);
+    return 0;
+}
+
+/**
+ * flush (runs in application thread)
+ * basically, when flush called (flush_status is YES)
+ * all the IO request will be rejected.
+ * theorically, we should only reject push(), close()
+ **/
+int
+SPDKQueue::flush(qtoken qt, bool isclosing){
+    fprintf(stderr, "SPDKQueue::flush() called qt:%lu for qd:%d\n", qt, qd);
+    struct sgarray sga;
+    // make sure only one outstanding flush request per queue at a time
+    auto flush_var_it = (libos_spdk_context->queue_flush_status).find(qd);
+    auto flush_lock_it = (libos_spdk_context->queue_flush_lock).find(qd);
+    if(flush_var_it == (libos_spdk_context->queue_flush_status).end() ||
+            flush_lock_it == (libos_spdk_context->queue_flush_lock).end()){
+        fprintf(stderr, "flush lock not ready\n");
+        exit(1);
+    }
+    (flush_lock_it->second)->lock();
+    if((flush_var_it->second)){
+        (flush_lock_it->second)->unlock();
+        fprintf(stderr, "flush is running now\n");
+        errno = EAGAIN;
+        return -1;
+    }else{
+        // set the flush status to yes
+        libos_spdk_context->queue_flush_status[qd] = 1;
+    }
+    (flush_lock_it->second)->unlock();
+    // submit the flush request
+    int ret;
+    if(!isclosing){
+        ret = Enqueue(LIBOS_FLUSH, qt, sga);
+    }else{
+        ret = Enqueue(LIBOS_CLOSE, qt, sga);
+    }
+
+    if(ret < 0){
+        fprintf(stderr, "flush request not accepted\n");
+    }
+    // grab the request
+    auto it  = libos_pending_reqs.find(qt);
+    if(it == (libos_pending_reqs).end()){
+        fprintf(stderr, "ERROR: cannot find the pending request for qt:%lu\n", qt);
+        exit(1);
+    }
+    // now wait until the flush request finished
+    // note we submit the request to one single queue, no sync issue
+    while(!it->second.isDone){
+        usleep(100);
+    }
+    // reset the flush status if we do flush without following close
+    if(!isclosing){
+        (flush_lock_it->second)->lock();
+        if((flush_var_it->second)){
+            // set the flush status to NO
+            libos_spdk_context->queue_flush_status[qd] = 0;
+        }else{
+            fprintf(stderr, "ERROR, flush not running\n");
+            exit(1);
+        }
+        (flush_lock_it->second)->unlock();
+    }
+
+    fprintf(stderr, "SPDKQueue::flush() finished\n");
+    return 0;
+}
+
+/**
+ * close()
+ * in the library.h, already do flush(qt, iscloing=true)
+ * which means, we enter into this function with the flush_lock held
+ * thus it is safe, no more push accepted between internal flush() and this close()
+ * so now, just clean the record in spdk_context
+ */
+int
+SPDKQueue::close(void)
 {
-    //return ::close(qd);
-    int ret = 0;
-    char err_msg[32]="close ERROR";
-    unload_bs(libos_spdk_context, err_msg, 0);
-    return ret;
+    return 0;
 }
 
 int
@@ -662,64 +931,21 @@ SPDKQueue::fd()
     return qd;
 }
 
-void
-SPDKQueue::ProcessIncoming(PendingRequest &req)
-{
-    return;
-}
- 
-void
-SPDKQueue::ProcessOutgoing(PendingRequest &req)
-{
-    return;
-}
- 
-void
-SPDKQueue::ProcessQ(size_t maxRequests)
-{
-    return;
-}
-
-
-ssize_t
-SPDKQueue::Enqueue(qtoken qt, struct sgarray &sga)
-{
-    return 0;
-}
-
-
 ssize_t
 SPDKQueue::push(qtoken qt, struct sgarray &sga)
 {
     fprintf(stderr, "SPDKQueue::push() called qt:%lu for qd:%d\n", qt, qd);
-    // use qd to retrieve the corresponding blobid and metadata
-    auto it = (libos_spdk_context->qd_blobid_map).find(qd);
-    if(it == (libos_spdk_context->qd_blobid_map).end()){
-        fprintf(stderr, "ERROR: cannot find active queue for qd:%d\n", qd);
+    auto flush_var_it = (libos_spdk_context->queue_flush_status).find(qd);
+    if(flush_var_it->second){
+        fprintf(stderr, "flush is running, push after flush\n");
+        errno = EAGAIN;
+        return -1;
+    }
+    int ret = Enqueue(LIBOS_PUSH, qt, sga);
+    if(ret < 0){
+        fprintf(stderr, "push req not accepted\n");
         exit(1);
     }
-    // assign file_blobid attribute of this queue object
-    file_blobid = it->second;
-    // use blobid to retrieve the corresponding blob
-    auto it2 = (libos_spdk_context->opened_blobs).find(file_blobid);
-    if(it2 == (libos_spdk_context->opened_blobs).end()){
-        fprintf(stderr, "ERROR: no saved blob object for qd:%d blobid:%lu\n", qd, file_blobid);
-        exit(1);
-    }
-    // assign file_length attribute of this queue object
-    file_length = (it2->second).length;
-
-    // start processing by saving the pending request
-    libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(qt, LIBOS_PUSH, sga)));
-    auto it3 = libos_pending_reqs.find(qt);
-    if(it3 == (libos_pending_reqs).end()){
-        fprintf(stderr, "ERROR: insert pending req fail for qt:%lu\n", qt);
-        exit(1);
-    }
-    (it3->second).file_blobid = file_blobid;
-    (it3->second).file_blob = (it2->second).blob_ptr;
-    (it3->second).new_qd = qd;
-    spdk_work_queue.enqueue(qt);
     // TODO: pin the sga
     // always return 0 and let application call wait
     return 0;
@@ -728,14 +954,10 @@ SPDKQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 SPDKQueue::pop(qtoken qt, struct sgarray &sga)
 {
+    // TODO
     return 0;
 }
 
-ssize_t
-SPDKQueue::peek(qtoken qt, struct sgarray &sga)
-{
-    return 0;
-}
 
 ssize_t
 SPDKQueue::wait(qtoken qt, struct sgarray &sga)
@@ -757,14 +979,24 @@ SPDKQueue::wait(qtoken qt, struct sgarray &sga)
 ssize_t
 SPDKQueue::poll(qtoken qt, struct sgarray &sga)
 {
+    // TODO implement poll
     return 0;
 }
+
+/**
+ * TODO:
+ * 1. pretty sure memory leak for args, will do free after set isDone to true
+ * 2. a new function to finilize the spdk environment, that is, do unload_bs()
+ * clean up the write_buffer, etc.
+ ***/
 
 /************************ un-funcational api for spdk ************************/
 int SPDKQueue::bind(struct sockaddr *saddr, socklen_t size) {return -1;}
 int SPDKQueue::accept(struct sockaddr *saddr, socklen_t *size) {return -1;}
 int SPDKQueue::listen(int backlog) {return -1;}
 int SPDKQueue::connect(struct sockaddr *saddr, socklen_t size) {return -1;}
+// not sure, if needed
+ssize_t SPDKQueue::peek(qtoken qt, struct sgarray &sga){return 0;}
 /****************************************************************************/
 
 
