@@ -56,7 +56,7 @@ protected:
     int fd;
     
 public:
-    Queue() : type(NETWORK_Q), qd(0) { };
+    Queue() : type(BASIC_Q), qd(0) { };
     Queue(QueueType type, int qd) : type(type), qd(qd) { };
     virtual ~Queue() { };
     virtual int GetQD() { return qd; };

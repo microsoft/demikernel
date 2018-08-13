@@ -85,7 +85,7 @@ public:
         if (token_counter == 0) token_counter++;
         qtoken t = (token_counter << 1 & TOKEN_MASK) | ((qtoken)qd << 32); 
         if (isPush) t |= PUSH_MASK;
-        printf("GetNewToken qd:%lx\n", t);
+        //printf("GetNewToken qd:%lx\n", t);
         token_counter++;
         return t;
     };
@@ -105,15 +105,15 @@ public:
             break;
         default:
             assert(0);
-	}
-	queues[qd] = queue;
+        }
+        queues[qd] = queue;
         return *queue;
     };
 
     void InsertQueue(Queue *q) {
         int qd = q->GetQD();
         assert(qd == (qd & ~QUEUE_MASK));
-        printf("library.h/InsertQueue() qd: %d\n", qd);
+        //printf("library.h/InsertQueue() qd: %d\n", qd);
         assert(queues.find(qd) == queues.end());
         queues[qd] = q;
     };
@@ -158,7 +158,7 @@ public:
         Queue &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd > 0){
-            printf("will InsertQueue for newqd:%d\n", newqd);
+            //printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
             return newqd;
         } else if (newqd < 0) {
