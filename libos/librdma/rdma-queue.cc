@@ -44,19 +44,23 @@ namespace Zeus {
 
 namespace RDMA {
 
+static struct ibv_pd *pd = NULL;
+
 int
 RdmaQueue::PostReceive()
 {
+    
     // post receive
     struct ibv_recv_wr wr, *bad_wr = NULL;
     struct ibv_sge sge;
     void *buf = malloc(RECV_BUFFER_SIZE);
-    struct ibv_mr *mr = rdma_get_mr(buf, rdma_id);
+    //memset(buf, 0 , RECV_BUFFER_SIZE);
+    struct ibv_mr *mr = rdma_get_mr(buf, pd);
     assert(mr != NULL);
     assert(rdma_id->verbs != NULL);
-    assert(rdma_id->pd != NULL);
+    assert(pd != NULL);
     assert(mr->context == rdma_id->verbs);
-    assert(mr->pd == rdma_id->pd);
+    assert(mr->pd == pd);
     
     memset(&wr, 0, sizeof(wr));
     wr.wr_id = (uint64_t)buf;
@@ -68,7 +72,7 @@ RdmaQueue::PostReceive()
     sge.lkey = mr->lkey;
     int res = ibv_post_recv(rdma_id->qp, &wr, &bad_wr);
     assert(res == 0);
-    fprintf(stderr, "Done posting receive buffer: %lx\n", buf);
+    //fprintf(stderr, "Done posting receive buffer: %lx %d\n", buf, RECV_BUFFER_SIZE);
     return res;
 }
 
@@ -77,30 +81,39 @@ RdmaQueue::SetupRdmaQP()
 {
     struct ibv_qp_init_attr qp_attr;
     int flags;
+    assert(!listening);
 
+    // Set up new queue pairs
+    // Allocate a protection domain
+    if (pd == NULL) {
+	if ((pd = ibv_alloc_pd(rdma_id->verbs)) == NULL) {
+	    fprintf(stderr, "Failed to allocate pd");
+	    exit(-1);
+	}
+	//fprintf(stderr, "Allocating protection domain: pd=0x%lx\n", pd);
+    }
+    assert(pd != NULL);
+    rdma_id->pd = pd;
+    
     // Set up queue pair initial parameters
     memset(&qp_attr, 0, sizeof(qp_attr));
     //qp_attr.qp_context = context;
-    //qp_attr.send_cq = cq;
-    //qp_attr.recv_cq = cq;
+    qp_attr.send_cq = NULL;
+    qp_attr.recv_cq = NULL;
     qp_attr.qp_type = IBV_QPT_RC;
     qp_attr.cap.max_send_wr = 20;
     qp_attr.cap.max_recv_wr = 20;
-    qp_attr.cap.max_send_sge = 20;
-    qp_attr.cap.max_recv_sge = 20;
-    
+    qp_attr.cap.max_send_sge = 1;
+    qp_attr.cap.max_recv_sge = 5;
+    qp_attr.cap.max_inline_data = 64;
+    qp_attr.sq_sig_all = 1;
+
     // set up connection queue pairs
-    if (rdma_create_qp(rdma_id, NULL, &qp_attr) != 0) {
+    if (rdma_create_qp(rdma_id, pd, &qp_attr) != 0) {
         fprintf(stderr, "Could not create RDMA queue pairs: %s\n",
                 strerror(errno));
-	assert(false);
 	return -1;
     }
-
-    // rdma_id->send_cq_channel = comp_channel;
-    // rdma_id->recv_cq_channel = comp_channel;
-    // rdma_id->send_cq = cq;
-    // rdma_id->recv_cq = cq;
     flags = fcntl(rdma_id->send_cq_channel->fd, F_GETFL);
     // Always put completion queues in non-blocking mode
     if (fcntl(rdma_id->send_cq_channel->fd, F_SETFL, flags | O_NONBLOCK)) {
@@ -117,10 +130,8 @@ RdmaQueue::SetupRdmaQP()
                 "Failed to set O_NONBLOCK on outgoing Zeus socket\n");
     } else {
 	fprintf(stderr,
-		"Setting receive completion queue to non-blocking\n");
+		"Setting recieve completion queue to non-blocking\n");
     }
-    
-
     // post receives
     for (int i = 0; i < RECV_BUFFER_NUM; i++) {
         int ret = PostReceive();
@@ -139,25 +150,22 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	switch (wc.opcode) {
 	case IBV_WC_RECV:
 	{
-	    if (wc.status == IBV_WC_SUCCESS) {
-		pendingRecv.push_back((void *)wc.wr_id);
-	    } else {
-		fprintf(stderr, "Could not recv message\n");
-	    }
+	    //fprintf(stderr, "Found receive completion\n");
+	    pendingRecv.push_back((void *)wc.wr_id);
 	    PostReceive();
 	    break;
 	}
 	case IBV_WC_SEND:
 	{
+	    //fprintf(stderr, "Found send completion\n");
 	    PendingRequest *req = (PendingRequest *)wc.wr_id;
 	    // unpin completed sends
 	    req->isDone = true;
 	    for (int i = 0; i < req->sga.num_bufs; i++) {
 		unpin(req->sga.bufs[i].buf);
 	    }
-	    if (wc.status != IBV_WC_SUCCESS) {
-		req->res = wc.status;
-	    }
+	    free(req->buf);
+	    unpin(req);
 	    break;
 	}
 	default:
@@ -173,26 +181,25 @@ RdmaQueue::CheckCQ()
 {
     // check completion queue
     struct ibv_wc wcs[RECV_BUFFER_NUM];
-    memset(wcs, 0, sizeof(ibv_wc) * RECV_BUFFER_NUM);
-    int num;
-    assert(fcntl(rdma_id->recv_cq_channel->fd, F_GETFL) & O_NONBLOCK);
-    while ((num = ibv_poll_cq(rdma_id->recv_cq,
-			      RECV_BUFFER_NUM, wcs)) > 0) {
-	fprintf(stderr, "Found recv completions: %d\n", num);
-	// process messages
-	for (int i = 0; i < num; i++) {
-	    ProcessWC(wcs[i]);
-	}
-    }
+    int num = 0;
 
     while ((num = ibv_poll_cq(rdma_id->send_cq,
 			      RECV_BUFFER_NUM, wcs)) > 0) {
-	fprintf(stderr, "Found send completions: %d\n", num);
+	//fprintf(stderr, "Found send work completions: %d\n", num);
 	// process messages
 	for (int i = 0; i < num; i++) {
 	    ProcessWC(wcs[i]);
 	}
     }
+    while ((num = ibv_poll_cq(rdma_id->recv_cq,
+			      RECV_BUFFER_NUM, wcs)) > 0) {
+	//fprintf(stderr, "Found receive work completions: %d\n", num);
+	// process messages
+	for (int i = 0; i < num; i++) {
+	    ProcessWC(wcs[i]);
+	}
+    }
+    //fprintf(stderr, "Done draining completion queue\n");
 }
 
 void
@@ -202,49 +209,52 @@ RdmaQueue::CheckEventQ()
     assert(fcntl(rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
     struct rdma_cm_event *event;
-    if (rdma_get_cm_event(rdma_id->channel, &event) == 0) {
+    while (rdma_get_cm_event(rdma_id->channel, &event) == 0) {
         switch(event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            assert(listening);
             accepts.push_back(event->id);
+	    //fprintf(stderr, "Found incoming connection\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
-	    fprintf(stderr, "Disconnecting ..\n");
+	    RdmaQueue::close();
+	    //fprintf(stderr, "Disconnecting ..\n");
+	    break;
+	case RDMA_CM_EVENT_ESTABLISHED:
+	    //fprintf(stderr, "Connection established\n");
 	    break;
         default:
-	    fprintf(stderr, "Unknown event\n");
+	    fprintf(stderr, "Unknown event: 0x%x\n", event->event);
         }
         rdma_ack_cm_event(event);
-    }      
+	fprintf(stderr, "Done processing event queue\n");
+    }
 }
     
 int
 RdmaQueue::socket(int domain, int type, int protocol)
 {
+    struct rdma_event_channel *event_channel;
     //get file descriptor
-    struct rdma_event_channel *channel;
-    if ((channel = rdma_create_event_channel()) == 0) {
+    if ((event_channel = rdma_create_event_channel()) == 0) {
 	fprintf(stderr, "Could not create event channel: %s\n", strerror(errno));
 	return -1;
     }
     if (type == SOCK_STREAM) {
-        if ((rdma_create_id(channel, &rdma_id,
+        if ((rdma_create_id(event_channel, &rdma_id,
 			    NULL, RDMA_PS_TCP)) != 0) {
             fprintf(stderr, "Could not create RDMA event id: %s\n",
 		    strerror(errno));
             return -1;
         }
-	//assert(rdma_get_context() == rdma_id->verbs);
-	//assert(rdma_get_pd() == rdma_id->pd);
 	fprintf(stderr, "Creating reliable RDMA connection\n");
     } else {
-        if ((rdma_create_id(channel, &rdma_id,
+        if ((rdma_create_id(rdma_id->channel, &rdma_id,
 			    NULL, RDMA_PS_UDP)) != 0) {
             fprintf(stderr, "Could not create RDMA event id: %s\n",
 		    strerror(errno));
             return -1;
         }
-	fprintf(stderr, "Creating unreliable RDMA connection\n");
+	//fprintf(stderr, "Creating unreliable RDMA connection\n");
     }
     return 0;
 }
@@ -266,11 +276,12 @@ int
 RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     // accept doesn't happen on the listening socket in RDMA
-    if (listening) return 0;
-    
+    if (listening) return 1;
+
+    rdma_id->channel = rdma_id->channel;
     int ret = SetupRdmaQP();
     if (ret != 0) return ret;
-    fprintf(stderr, "finished setting up queue pairs\n");
+    //fprintf(stderr, "finished setting up queue pairs\n");
     
     // accept the connection
     struct rdma_conn_param params;
@@ -282,6 +293,8 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
                 strerror(errno));
         return -1;
     }
+
+   
     // set up address
     *saddr = *rdma_get_peer_addr(rdma_id);
     *size = sizeof(sockaddr_in);
@@ -315,7 +328,6 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     struct rdma_conn_param params;    
     struct rdma_cm_event *event;
-    struct rdma_event_channel *channel = rdma_id->channel;
     int ret = 0;
     
     // Convert regular address into an rdma address
@@ -326,7 +338,7 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for address resolution
-    ret = rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(rdma_id->channel, &event);
     if (ret != 0 || event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
         fprintf(stderr, "Could not resolve to RDMA address\n");
         return -1;
@@ -342,26 +354,26 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     }
 
     // Wait for path resolution
-    ret = rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(rdma_id->channel, &event);
     assert(ret == 0);
     if (ret != 0 || event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
         fprintf(stderr, "Could not resolve route to RDMA address\n");
     }
     rdma_ack_cm_event(event);
 
-    // Set up queue pairs and post receives
+    //fprintf(stderr, "Finished queue pair set up\n");
+    // Get channel
+    memset(&params, 0, sizeof(params));
+    params.initiator_depth = params.responder_resources = 1;
+    params.rnr_retry_count = 1; /* infinite retry */
+
+    // Set up queue pair and post receives
     if (SetupRdmaQP() != 0) {
         fprintf(stderr,
                 "Could not allocate queue pairs: %s\n", strerror(errno));
             return -errno;
     }
 
-    fprintf(stderr, "Finished queue pair set up\n");
-    // Get channel
-    memset(&params, 0, sizeof(params));
-    params.initiator_depth = params.responder_resources = 1;
-    params.rnr_retry_count = 1; /* infinite retry */
-    
     if (rdma_connect(rdma_id, &params) != 0) {
         fprintf(stderr,
                 "Could not connect RDMA: %s\n",
@@ -369,11 +381,11 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
 	assert(false);
         return -errno;
     }
-    fprintf(stderr, "Called connect\n");
+    //fprintf(stderr, "Called connect\n");
     // Wait for rdma connection setup to complete
-    ret = rdma_get_cm_event(channel, &event);
+    ret = rdma_get_cm_event(rdma_id->channel, &event);
     assert(ret == 0);
-    fprintf(stderr, "Got connection\n");
+    //fprintf(stderr, "Got connection\n");
     if (ret != 0 || event->event != RDMA_CM_EVENT_ESTABLISHED) {
         fprintf(stderr, "Could not connect to RDMA address: %s\n",
 		strerror(errno));
@@ -382,8 +394,8 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     rdma_ack_cm_event(event);
 
     // Switch cm event channel over to non-blocking
-    int flags = fcntl(channel->fd, F_GETFL);
-    if (fcntl(channel->fd, F_SETFL, flags | O_NONBLOCK)) {
+    int flags = fcntl(rdma_id->channel->fd, F_GETFL);
+    if (fcntl(rdma_id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
         fprintf(stderr, "Failed to set O_NONBLOCK\n");
     }
 
@@ -413,15 +425,15 @@ RdmaQueue::creat(const char *pathname, mode_t mode)
 int
 RdmaQueue::close()
 {
-     struct rdma_event_channel *channel = rdma_id->channel;
-     rdma_destroy_qp(rdma_id);
+    if (rdma_id->qp) rdma_destroy_qp(rdma_id);
 
     if (rdma_destroy_id(rdma_id) != 0) {
-        fprintf(stderr, "Could not destroy communication manager: %s\n", strerror(errno));
+        fprintf(stderr, "Could not destroy communication manager: %s\n",
+		strerror(errno));
         return -errno;
     }
 
-    rdma_destroy_event_channel(channel);
+    rdma_destroy_event_channel(rdma_id->channel);
     return 0;
 }
     
@@ -458,11 +470,12 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             assert(magic == MAGIC);
             ptr += sizeof(uint64_t);
             size_t dataLen = *((uint64_t *)ptr);
-            req->buf = realloc(req->buf, dataLen + 3 * sizeof(uint64_t));
+            //req->buf = realloc(req->buf, dataLen + 3 * sizeof(uint64_t));
             ptr = (uint8_t *)req->buf + 2 * sizeof(uint64_t);
             
             // now we can start filling in the sga
             sga.num_bufs = *(uint64_t *)ptr;
+	    //fprintf(stderr, "Found %d scatter-gather arrays\n", sga.num_bufs);
             ptr += sizeof(uint64_t);
             for (int i = 0; i < sga.num_bufs; i++) {
                 sga.bufs[i].len = *(size_t *)ptr;
@@ -472,6 +485,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             }
             req->isDone = true;
             req->res = dataLen - (sga.num_bufs * sizeof(size_t));
+	    assert(req->res > 0);
         }
     }
 }
@@ -489,13 +503,13 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     struct sgarray &sga = req->sga;
     struct ibv_sge vsga[2 * sga.num_bufs + 1];
     
-    printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
+    //printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
 
     req->buf = malloc(sga.num_bufs * sizeof(uint64_t));
     uint64_t *lens = (uint64_t *)req->buf;
     size_t dataSize = 0;
     size_t totalLen = 0;
-    struct ibv_mr *mr = rdma_get_mr(req->buf, rdma_id);
+    struct ibv_mr *mr = rdma_get_mr(req->buf, pd);
     assert(mr != NULL);
     uint32_t header_lkey = mr->lkey;
 
@@ -509,7 +523,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
-	mr = rdma_get_mr(sga.bufs[i].buf, rdma_id);
+	mr = rdma_get_mr(sga.bufs[i].buf, pd);
 	assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
         
@@ -530,7 +544,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // set up header at beginning of packet
     vsga[0].addr = (uint64_t)&req->header;
     vsga[0].length = sizeof(req->header);
-    mr = rdma_get_mr(req->header, rdma_id);
+    mr = rdma_get_mr(req->header, pd);
     assert(mr != NULL);
     vsga[0].lkey = mr->lkey;
     totalLen += sizeof(req->header);
@@ -538,14 +552,12 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // set up RDMA junk
     struct ibv_send_wr wr, *bad_wr = NULL;
     memset(&wr, 0, sizeof(wr));
+    wr.opcode = IBV_WR_SEND;
     wr.wr_id = (uint64_t)req;
     wr.sg_list = vsga;
     wr.next = NULL;
     wr.num_sge = 2 * sga.num_bufs + 1;
-    if (totalLen < 4096) {
-        wr.send_flags = IBV_SEND_INLINE;
-    }
-      
+    wr.send_flags = IBV_SEND_SIGNALED;
     int res = ibv_post_send(rdma_id->qp,
                             &wr,
                             &bad_wr);
@@ -561,16 +573,16 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
             fprintf(stderr, "Could not post rdma send: %s\n", strerror(errno));
             req->isDone = true;
             req->res = -errno;
-            return;
+            assert(false);
         }
     }
-
+    // fprintf(stderr, "Queued request for %d sge with total size %d\n",
+    //  	    wr.num_sge, totalLen);
     // otherwise, enqueued for send but not complete
     req->res = dataSize;
     req->isEnqueued = true;
+    pin(req);
     // assume inline requests are done
-    if (totalLen < 4096)
-        req->isDone = true;
 }
     
 void
@@ -605,14 +617,16 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
     
     if (IS_PUSH(qt)) {
 	ProcessOutgoing(req);
-	if (req->isDone) {
+	if (req->isDone || req->isEnqueued) {
 	    ssize_t ret = req->res;
+	    assert(ret != 0);
 	    delete req;
 	    return ret;
 	}
     }
     
     assert(pending.find(qt) == pending.end());
+    //printf("inserting qt %lx\n", qt);
     pending.insert(std::make_pair(qt, req));
     workQ.push_back(qt);
 
@@ -624,10 +638,12 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 
     if (req->isDone) {
         int ret = req->res;
+	assert(ret != 0);
         sga.copy(req->sga);
         pending.erase(qt);
-        assert(sga.num_bufs > 0);
+        //assert(sga.num_bufs > 0);
 	delete req;
+	//printf("Completed request deleting qt %lx\n", qt);
         return ret;
     } else {
         //printf("Enqueue() req->is Done = false will return 0\n");
@@ -644,8 +660,7 @@ RdmaQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    ssize_t newqt = Enqueue(qt, sga);
-    return newqt;
+    return Enqueue(qt, sga);
 }
 
 ssize_t
@@ -693,6 +708,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     
     if (req->isDone){
         int ret = req->res;
+	sga.copy(req->sga);
         pending.erase(it);
 	delete req;
         return ret;

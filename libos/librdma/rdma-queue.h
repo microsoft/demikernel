@@ -89,9 +89,9 @@ private:
     int SetupRdmaQP();
 
 public:
-    RdmaQueue() : Queue(), workQ{} { rdma_init(); };
+    RdmaQueue() : Queue(), workQ{} { };
     RdmaQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  { rdma_init(); };
+        Queue(type, qd), workQ{}  { };
 
     // network functions
     int socket(int domain, int type, int protocol);

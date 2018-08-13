@@ -118,9 +118,6 @@ TheCustomHeapType * getCustomHeap();
 enum { MAX_LOCAL_BUFFER_SIZE = 256 * 131072 };
 static char initBuffer[MAX_LOCAL_BUFFER_SIZE];
 static char * initBufferPtr = initBuffer;
-static struct ibv_context *rdma_context = NULL;
-static struct ibv_pd *rdma_globalpd = NULL;
-
 extern bool isCustomHeapInitialized();
 
 extern "C" {
@@ -177,59 +174,7 @@ extern "C" {
         getCustomHeap()->unpin (ptr);
     }
 
-  struct ibv_mr * rdma_get_mr(void * ptr, rdma_cm_id *rdma_id) {
-    return getCustomHeap()->rdma_get_mr (ptr, rdma_id);
+  struct ibv_mr * rdma_get_mr(void * ptr, ibv_pd *pd) {
+    return getCustomHeap()->rdma_get_mr (ptr, pd);
     }
-
-    struct ibv_context* rdma_get_context() {
-      assert(false);
-      return rdma_context; }
-
-    struct ibv_pd* rdma_get_pd() {
-      assert(false);
-      return rdma_globalpd; }
-  
-  void rdma_init() {
-    // static bool initialized = false;
-    // if (!initialized) {
-    //   // struct rdma_event_channel *channel;
-    //   // if ((channel = rdma_create_event_channel()) == 0) {
-    //   // 	fprintf(stderr, "Could not create event channel: %s\n", strerror(errno));
-    //   // 	abort();
-    //   // }
-
-    //   rdma_cm_id *rdma_id;
-    //   if (rdma_create_id(NULL, &rdma_id, NULL, RDMA_PS_TCP) == 0) {
-    // 	sockaddr_in dummy;
-    // 	dummy.sin_family = AF_INET;
-    // 	dummy.sin_port = INADDR_ANY;
-    // 	dummy.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-    // 	if (rdma_resolve_addr(rdma_id, NULL, (sockaddr *)&dummy, 1) == 0) {
-    // 	  struct ibv_qp_init_attr qp_attr;
-    // 	  memset(&qp_attr, 0, sizeof(qp_attr));
-    // 	  qp_attr.qp_type = IBV_QPT_RC;
-    // 	  qp_attr.cap.max_send_wr = 1;
-    // 	  qp_attr.cap.max_recv_wr = 1;
-    // 	  qp_attr.cap.max_send_sge = 1;
-    // 	  qp_attr.cap.max_recv_sge = 1;
-    
-    // 	  // set up connection queue pairs
-    // 	  if (rdma_create_qp(rdma_id, NULL, &qp_attr) == 0) {
-    // 	    assert(rdma_id->verbs != NULL);
-    // 	    assert(rdma_id->pd != NULL);
-    // 	    assert(rdma_id->verbs == rdma_id->pd->context);
-    // 	    rdma_context = rdma_id->verbs;
-    // 	    rdma_globalpd = rdma_id->pd;
-    // 	    fprintf(stderr, "Setting up RDMA memory allocation\n");
-    // 	    return;
-    // 	   }
-    // 	}
-    //   }
-      
-    //   fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
-    //   abort();
-    // }
-  }
-	       
 } // extern C
