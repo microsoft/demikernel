@@ -32,9 +32,14 @@
 #define _COMMON_QUEUE_H_
 
 #include "include/io-queue.h"
+#include <unordered_map>
+#include <condition_variable>
+#include <mutex>
+#include <list>
 
 namespace Zeus {
 enum BasicQueueType {
+    BASIC,
     NETWORK_Q,
     FILE_Q,
     MERGED_Q,
@@ -43,10 +48,29 @@ enum BasicQueueType {
 
 class Queue
 {
+private:
+    struct PendingRequest
+    {
+        bool isDone;
+        sgarray &sga;
+        std::condition_variable cv;
+
+        PendingRequest(struct sgarray &sga) :
+            isDone(false),
+            sga(sga) { };
+        ~PendingRequest() { };
+    };
+    
+    // queued scatter gather arrays
+    std::unordered_map<qtoken, PendingRequest *> pending;
+    std::list<qtoken> waiting;
+    std::list<sgarray> buffer;
+    std::mutex qLock;
+    
 protected:
     BasicQueueType type;
     int qd;
-
+    
 public:
     Queue() : type(NETWORK_Q), qd(0) { };
     Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };
@@ -54,9 +78,10 @@ public:
     BasicQueueType GetType() { return type; };
     void SetQD(int q) { qd = q; };
     void SetType(BasicQueueType t) { type = t; };
-    
+
+    int queue();
     // network control plane functions
-    static int socket(int domain, int type, int protocol);
+    int socket(int domain, int type, int protocol);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -64,18 +89,20 @@ public:
     int close();
           
     // file control plane functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // data plane functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t wait(qtoken qt, struct sgarray &sga); // blocking wait on a request
-    ssize_t poll(qtoken qt, struct sgarray &sga); // non-blocking check on a request
+    ssize_t push(qtoken qt, struct sgarray &sga);
+    ssize_t pop(qtoken qt, struct sgarray &sga);
+    ssize_t peek(struct sgarray &sga);
+    ssize_t wait(qtoken qt, struct sgarray &sga);
+    ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int fd();
+    int getfd();
+    void setfd(int fd);
 };
 
 } // namespace Zeus

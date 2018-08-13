@@ -32,33 +32,94 @@
 #define _LIB_RDMA_QUEUE_H_
 
 #include "include/io-queue.h"
-
+#include "common/queue.h"
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <rdma/rdma_cma.h>
+// hoard include
+#include "librdma/mem/include/zeus/libzeus.h"
+
+
+#define RECV_BUFFER_SIZE 1024
+#define RECV_BUFFER_NUM 4
 
 namespace Zeus {
 namespace RDMA {
+
+class RdmaQueue : public Queue {
+private:
+    struct PendingRequest {
+        bool isEnqueued;
+        bool isDone;
+        uint64_t header[3];
+        // valid data size when done
+        ssize_t res;
+        // rdma buffer for receive
+        void *buf;
+        // scatter gather array
+        struct sgarray &sga;
+
+        PendingRequest(struct sgarray &sga) :
+            isEnqueued(false),
+            isDone(false),
+            res(0),
+            buf(NULL),
+            sga(sga) { };
+    };
     
-struct IOQueue {
-    int qd; // io queue descriptor = file descriptor
-    int fd; // matching file descriptor
-    struct rdma_cm_id *id;
-    rdma_port_space type;
+    // queued scatter gather arrays
+    std::list<void *> pendingRecv;
+    std::unordered_map<qtoken, PendingRequest> pending;
+    std::list<struct rdma_cm_id *> accepts;
+    std::list<qtoken> workQ;
 
-    std::list<sgarray> queue;
-};
+    // rdma data structures
+    // connection manager for this connection queue
+    struct rdma_cm_id *rdma_id = NULL;
+    bool listening = false;
 
+    int PostReceive();
+    void ProcessIncoming(PendingRequest &req);
+    void ProcessOutgoing(PendingRequest &req);
+    void ProcessQ(size_t maxRequests);
+    ssize_t Enqueue(qtoken qt, sgarray &sga);
 
-class LibIOQueue
-{
- private:
-    std::map<int, IOQueue*> queues;
-    uint64_t qd = 1;
+public:
+    RdmaQueue() : Queue(), workQ{} { rdma_init(); };
+    RdmaQueue(BasicQueueType type, int qd) :
+        Queue(type, qd), workQ{}  { rdma_init(); };
+
+    // network functions
+    int socket(int domain, int type, int protocol);
+    int getsockname(struct sockaddr *saddr, socklen_t *size);
+    int listen(int backlog);
+    int bind(struct sockaddr *saddr, socklen_t size);
+    int accept(struct sockaddr *saddr, socklen_t *size);
+    int connect(struct sockaddr *saddr, socklen_t size);
+    int close();
+    // rdma specific set up
+    int rdmaconnect(struct rdma_cm_id *id);
+          
+    // file functions
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
+
+    // data path functions
+    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t peek(struct sgarray &sga);
+    ssize_t wait(qtoken qt, struct sgarray &sga);
+    ssize_t poll(qtoken qt, struct sgarray &sga);
+    // returns the file descriptor associated with
+    // the queue descriptor if the queue is an io queue
+    int getfd();
+
+    void setRdmaCM(struct rdma_cm_id *id);
+    struct rdma_cm_id* getRdmaCM();
+    struct rdma_cm_id* getNextAccept();
+    int setupRdmaQP();
     
- public:
-    IOQueue* NewQueue(int fd, struct rdma_cm_id *id, rdma_port_space type);
-    IOQueue* FindQueue(int qd);    
 };
 
 } // namespace RDMA
