@@ -105,8 +105,8 @@ public:
             break;
         default:
             assert(0);
-            queues[qd] = queue;
-        }
+	}
+	queues[qd] = queue;
         return *queue;
     };
 
