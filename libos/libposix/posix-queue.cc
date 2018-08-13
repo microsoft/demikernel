@@ -167,6 +167,7 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::open(const char *pathname, int flags)
 {
+    assert(false);
     fd = ::open(pathname, flags);
     if (fd > 0) return qd;
     else return fd;
@@ -175,7 +176,7 @@ PosixQueue::open(const char *pathname, int flags)
 int
 PosixQueue::open(const char *pathname, int flags, mode_t mode)
 {
-    // use the fd as qd
+    assert(false);
     fd = ::open(pathname, flags, mode);
     if (fd > 0) return qd;
     else return fd;
@@ -184,7 +185,7 @@ PosixQueue::open(const char *pathname, int flags, mode_t mode)
 int
 PosixQueue::creat(const char *pathname, mode_t mode)
 {
-    // use the fd as qd
+    assert(false);
     fd = ::creat(pathname, mode);
     if (fd > 0) return qd;
     else return fd;

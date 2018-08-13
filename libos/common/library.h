@@ -32,7 +32,7 @@
 #define _COMMON_LIBRARY_H_
 
 #include "include/io-queue.h"
-#include "queue.h"
+#include "common/basic-queue.h"
 #include <list>
 #include <unordered_map>
 #include <thread>
@@ -59,7 +59,7 @@ thread_local static int64_t token_counter = 10;
 template <class NetworkQueueType, class FileQueueType>
 class QueueLibrary
 {
-    std::unordered_map<int, QueueType *> queues;
+    std::unordered_map<int, Queue *> queues;
     
 public:
     QueueLibrary() {
@@ -76,7 +76,7 @@ public:
         return ret;
     };
 
-    QueueType& GetQueue(int qd) {
+    Queue& GetQueue(int qd) {
         assert(HasQueue(qd));
         return *queues.at(qd);
     };
@@ -90,16 +90,27 @@ public:
         return t;
     };
 
-    QueueType& NewQueue(BasicQueueType type) {
+    Queue& NewQueue(QueueType type) {
         int qd = queue_counter++ & ~QUEUE_MASK;
-        if (type == BASIC)
-            queues[qd] = (QueueType *) new Queue(type, qd);
-        else
-            queues[qd] = new QueueType(type, qd);
-        return *queues[qd];
+        Queue *queue;
+        switch (type) {
+        case BASIC_Q:
+            queue = new BasicQueue(type, qd);
+            break;
+        case NETWORK_Q:
+            queue = new NetworkQueueType(type, qd);
+            break;
+        case FILE_Q:
+            queue = new FileQueueType(type, qd);
+            break;
+        default:
+            assert(0);
+            queues[qd] = queue;
+        }
+        return *queue;
     };
 
-    void InsertQueue(QueueType *q) {
+    void InsertQueue(Queue *q) {
         int qd = q->GetQD();
         assert(qd == (qd & ~QUEUE_MASK));
         printf("library.h/InsertQueue() qd: %d\n", qd);
@@ -120,11 +131,11 @@ public:
     // ================================================
 
     int queue() {
-        return NewQueue(BASIC).GetQD();
-    }
+        return NewQueue(BASIC_Q).GetQD();
+    };
     
     int socket(int domain, int type, int protocol) {
-        QueueType &q = NewQueue(NETWORK_Q);
+        Queue &q = NewQueue(NETWORK_Q);
         int ret = q.socket(domain, type, protocol);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
@@ -134,21 +145,21 @@ public:
     };
 
     int getsockname(int qd, struct sockaddr *saddr, socklen_t *size) {
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         return q.getsockname(saddr, size);
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         return q.bind(saddr, size);
     };
 
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd > 0){
             printf("will InsertQueue for newqd:%d\n", newqd);
-            InsertQueue(new QueueType(NETWORK_Q, newqd));
+            InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
             return newqd;
         } else if (newqd < 0) {
             return newqd;
@@ -158,21 +169,20 @@ public:
     };
 
     int listen(int qd, int backlog) {
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         return q.listen(backlog);
     };
 
     int connect(int qd, struct sockaddr *saddr, socklen_t size) {
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         int newqd = q.connect(saddr, size);
         if (newqd > 0)
-            InsertQueue(new QueueType(NETWORK_Q, newqd));
+            InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
         return newqd;
     };
 
     int open(const char *pathname, int flags) {
-        // use the fd as qd
-        QueueType &q = NewQueue(FILE_Q);
+        Queue &q = NewQueue(FILE_Q);
         int ret = q.open(pathname, flags);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
@@ -183,8 +193,7 @@ public:
     };
 
     int open(const char *pathname, int flags, mode_t mode) {
-        // use the fd as qd
-        QueueType &q = NewQueue(FILE_Q);
+        Queue &q = NewQueue(FILE_Q);
         int ret = q.open(pathname, flags, mode);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
@@ -195,8 +204,7 @@ public:
     };
 
     int creat(const char *pathname, mode_t mode) {
-        // use the fd as qd
-        QueueType &q = NewQueue(FILE_Q);
+        Queue &q = NewQueue(FILE_Q);
         int ret = q.creat(pathname, mode);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
@@ -210,7 +218,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
+        Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    
         return res;
@@ -219,7 +227,7 @@ public:
     int qd2fd(int qd) {
         if (!HasQueue(qd))
             return -1;
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         return q.getfd();
     };
     
@@ -227,17 +235,10 @@ public:
         if (!HasQueue(qd))
             return -1;
 
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // pushing to files not implemented yet
-            return -1;
-
+        Queue &queue = GetQueue(qd);
         qtoken t = GetNewToken(qd, true);
         ssize_t res;
-        if (queue.GetType() == BASIC)
-            res = ((Queue &)queue).push(t, sga);
-        else 
-            res = queue.push(t, sga);
+        res = queue.push(t, sga);
         // if push returns 0, then the sga is enqueued, but not pushed
         if (res == 0) {
             return t;
@@ -252,23 +253,20 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
+        Queue &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
 
         qtoken t = GetNewToken(qd, false);
         ssize_t res;
-        if (queue.GetType() == BASIC)
-            res = ((Queue &)queue).pop(t, sga);
-        else 
-            res = queue.pop(t, sga);
+        res = queue.pop(t, sga);
 
-	if (res > 0)
-	    return 0;
-	else if (res == 0)
+        if (res > 0)
+            return 0;
+        else if (res == 0)
             return t;
-	else
+        else
             return -1;
     };
 
@@ -277,16 +275,8 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // popping from files not implemented yet
-            return -1;
-        
-        ssize_t res;
-        if (queue.GetType() == BASIC)
-            res = ((Queue &)queue).peek(sga);
-        else 
-            res = queue.peek(sga);
+        Queue &queue = GetQueue(qd);
+        int res = queue.peek(sga);
 
         return res;
     };
@@ -295,13 +285,9 @@ public:
         int qd = QUEUE(qt);
         assert(HasQueue(qd));
 
-        QueueType &queue = GetQueue(qd);
-        if (queue.GetType() == FILE_Q)
-            // waiting on files not implemented yet
-            return 0;
-
+        Queue &queue = GetQueue(qd);
         return queue.wait(qt, sga); 
-    }
+    };
 
     ssize_t wait_any(qtoken tokens[],
                      size_t num,
@@ -309,20 +295,15 @@ public:
                      int &qd,
                      struct sgarray &sga) {
         ssize_t res = 0;
-        QueueType *waitingQs[num];
+        Queue *waitingQs[num];
         for (unsigned int i = 0; i < num; i++) {
             int qd2 = QUEUE(tokens[i]);
             auto it2 = queues.find(qd2);
             assert(it2 != queues.end());
             
             // do a quick check if something is ready
-            if (it2->second->GetType() == BASIC) {
-                Queue *queue = (Queue *)it2->second; 
-                res = queue->poll(tokens[i], sga);
-            } else {
-                res = it2->second->poll(tokens[i], sga);
-            }
-
+            res = it2->second->poll(tokens[i], sga);
+    
             if (res != 0) {
                 offset = i;
                 qd = qd2;
@@ -333,17 +314,13 @@ public:
         
         while (true) {
             for (unsigned int i = 0; i < num; i++) {
-                QueueType *q = waitingQs[i];
-                if (q->GetType() == BASIC) {
-                    Queue *queue = (Queue *)q;
-                    res = queue->poll(tokens[i], sga);
-                } else {
-                    res = q->poll(tokens[i], sga);
-                }
+                Queue *q = waitingQs[i];
+                res = q->poll(tokens[i], sga);
+                
                 if (res != 0) {
                     offset = i;
                     qd = q->GetQD();
-		    return res;
+                    return res;
                 }                    
             }
         }
@@ -354,20 +331,20 @@ public:
                      struct sgarray **sgas) {
         ssize_t res = 0;
         for (unsigned int i = 0; i < num; i++) {
-            QueueType &q = GetQueue(QUEUE(tokens[i]));
+            Queue &q = GetQueue(QUEUE(tokens[i]));
             
             ssize_t r = q.wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }
         return res;
-    }
+    };
 
     ssize_t blocking_push(int qd,
                           struct sgarray &sga) {
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
@@ -381,14 +358,14 @@ public:
             // successfully popped and result is in sga
             return res;
         }
-    }
+    };
 
     ssize_t blocking_pop(int qd,
                          struct sgarray &sga) {
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &q = GetQueue(qd);
+        Queue &q = GetQueue(qd);
         if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
             return -1;
@@ -402,7 +379,7 @@ public:
             // successfully popped and result is in sga
             return res;
         }
-    }
+    };
     
     int merge(int qd1, int qd2) {
         if (!HasQueue(qd1) || !HasQueue(qd2))

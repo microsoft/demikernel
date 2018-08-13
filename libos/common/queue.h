@@ -38,8 +38,9 @@
 #include <list>
 
 namespace Zeus {
-enum BasicQueueType {
-    BASIC,
+
+enum QueueType {
+    BASIC_Q,
     NETWORK_Q,
     FILE_Q,
     MERGED_Q,
@@ -48,61 +49,48 @@ enum BasicQueueType {
 
 class Queue
 {
-private:
-    struct PendingRequest
-    {
-        bool isDone;
-        sgarray &sga;
-        std::condition_variable cv;
-
-        PendingRequest(struct sgarray &sga) :
-            isDone(false),
-            sga(sga) { };
-        ~PendingRequest() { };
-    };
-    
-    // queued scatter gather arrays
-    std::unordered_map<qtoken, PendingRequest *> pending;
-    std::list<qtoken> waiting;
-    std::list<sgarray> buffer;
-    std::mutex qLock;
     
 protected:
-    BasicQueueType type;
+    QueueType type;
     int qd;
+    int fd;
     
 public:
     Queue() : type(NETWORK_Q), qd(0) { };
-    Queue(BasicQueueType type, int qd) : type(type), qd(qd) { };
-    int GetQD() { return qd; };
-    BasicQueueType GetType() { return type; };
-    void SetQD(int q) { qd = q; };
-    void SetType(BasicQueueType t) { type = t; };
+    Queue(QueueType type, int qd) : type(type), qd(qd) { };
+    virtual ~Queue() { };
+    virtual int GetQD() { return qd; };
+    virtual QueueType GetType() { return type; };
+    virtual void SetQD(int q) { qd = q; };
+    virtual void SetType(QueueType t) { type = t; };
 
-    int queue();
+    //int queue();
     // network control plane functions
-    int socket(int domain, int type, int protocol);
-    int listen(int backlog);
-    int bind(struct sockaddr *saddr, socklen_t size);
-    int accept(struct sockaddr *saddr, socklen_t *size);
-    int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
+    virtual int socket(int domain, int type, int protocol) = 0;
+    virtual int getsockname(sockaddr *saddr, socklen_t *size) = 0;
+    virtual int listen(int backlog) = 0;
+    virtual int bind(struct sockaddr *saddr, socklen_t size) = 0;
+    virtual int accept(struct sockaddr *saddr, socklen_t *size) = 0;
+    virtual int connect(struct sockaddr *saddr, socklen_t size) = 0;
+    virtual int close() = 0;
           
     // file control plane functions
-    int open(const char *pathname, int flags);
-    int open(const char *pathname, int flags, mode_t mode);
-    int creat(const char *pathname, mode_t mode);
+    virtual int open(const char *pathname, int flags) = 0;
+    virtual int open(const char *pathname, int flags, mode_t mode) = 0;
+    virtual int creat(const char *pathname, mode_t mode) = 0;
 
     // data plane functions
-    ssize_t push(qtoken qt, struct sgarray &sga);
-    ssize_t pop(qtoken qt, struct sgarray &sga);
-    ssize_t peek(struct sgarray &sga);
-    ssize_t wait(qtoken qt, struct sgarray &sga);
-    ssize_t poll(qtoken qt, struct sgarray &sga);
+    virtual ssize_t push(qtoken qt, struct sgarray &sga) = 0;
+    virtual ssize_t pop(qtoken qt, struct sgarray &sga) = 0;
+    virtual ssize_t peek(struct sgarray &sga) = 0;
+    virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;
+    virtual ssize_t poll(qtoken qt, struct sgarray &sga) = 0;
+
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
-    int getfd();
-    void setfd(int fd);
+    virtual int getfd() { return fd; };
+    virtual void setfd(int fd) { this->fd = fd; };
+
 };
 
 } // namespace Zeus
