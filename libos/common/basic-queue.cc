@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * common/queue.cc
+ * common/basic-queue.cc
  *   Basic queue implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
@@ -27,14 +27,13 @@
  * SOFTWARE.
  *
  **********************************************************************/
-
-#include "common/queue.h"
+#include "common/basic-queue.h"
 #include <assert.h>
 
 namespace Zeus {
 
 ssize_t
-Queue::push(qtoken qt, struct sgarray &sga)
+BasicQueue::push(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
     std::lock_guard<std::mutex> lock(qLock);
@@ -58,7 +57,7 @@ Queue::push(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-Queue::pop(qtoken qt, struct sgarray &sga) {
+BasicQueue::pop(qtoken qt, struct sgarray &sga) {
     size_t len = 0;
     std::lock_guard<std::mutex> lock(qLock);
     // if we have a buffered push already
@@ -75,7 +74,7 @@ Queue::pop(qtoken qt, struct sgarray &sga) {
 }
 
 ssize_t
-Queue::peek( struct sgarray &sga) {
+BasicQueue::peek(struct sgarray &sga) {
     size_t len = 0;
     std::lock_guard<std::mutex> lock(qLock);
     // if we have a buffered push already
@@ -87,7 +86,7 @@ Queue::peek( struct sgarray &sga) {
 }
 
 ssize_t
-Queue::wait(qtoken qt, struct sgarray &sga)
+BasicQueue::wait(qtoken qt, struct sgarray &sga)
 {
     std::unique_lock<std::mutex> lock(qLock);
     lock.lock();
@@ -105,7 +104,7 @@ Queue::wait(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
-Queue::poll(qtoken qt, struct sgarray &sga)
+BasicQueue::poll(qtoken qt, struct sgarray &sga)
 {
     size_t len = 0;
     std::lock_guard<std::mutex> lock(qLock);

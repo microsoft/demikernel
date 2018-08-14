@@ -89,7 +89,7 @@ public:
     MTCPQueue() : Queue(), pending(), accepts(), workQ(), listening(false){
         mtcp_evts = 0;
     };
-    MTCPQueue(BasicQueueType type, int qd) :
+    MTCPQueue(QueueType type, int qd) :
         Queue(type, qd), pending(), accepts(), workQ(), listening(false) {
             mtcp_evts = 0;
         };
@@ -104,9 +104,9 @@ public:
     int close();
           
     // file functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete

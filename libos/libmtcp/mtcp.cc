@@ -33,7 +33,7 @@
 #include "mtcp-queue.h"
 
 namespace Zeus {
-static QueueLibrary<MTCP::MTCPQueue> lib;
+static QueueLibrary<MTCP::MTCPQueue, MTCP::MTCPQueue> lib;
 
 int queue()
 {

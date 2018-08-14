@@ -89,10 +89,11 @@ private:
     int SetupRdmaQP();
 
 public:
-    RdmaQueue() : Queue(), workQ{} { rdma_init(); };
-    RdmaQueue(BasicQueueType type, int qd) :
-        Queue(type, qd), workQ{}  { rdma_init(); };
-
+    RdmaQueue() : Queue(), workQ{} { };
+    RdmaQueue(QueueType type, int qd) :
+        Queue(type, qd), workQ{}  { };
+    ~RdmaQueue() { };
+    
     // network functions
     int socket(int domain, int type, int protocol);
     int getsockname(struct sockaddr *saddr, socklen_t *size);

@@ -282,6 +282,7 @@ int
 MTCPQueue::open(const char *pathname, int flags)
 {
     // use the fd as qd
+    assert(false);
     return ::open(pathname, flags);
 }
 
@@ -289,6 +290,7 @@ int
 MTCPQueue::open(const char *pathname, int flags, mode_t mode)
 {
     // use the fd as qd
+    assert(false);
     return ::open(pathname, flags, mode);
 }
 
@@ -296,6 +298,7 @@ int
 MTCPQueue::creat(const char *pathname, mode_t mode)
 {
     // use the fd as qd
+    assert(false);
     return ::creat(pathname, mode);
 }
     

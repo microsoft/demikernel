@@ -28,37 +28,48 @@
  *
  **********************************************************************/
  
-#ifndef _COMMON_QUEUE_H_
-#define _COMMON_QUEUE_H_
+#ifndef _BASIC_QUEUE_H_
+#define _BASIC_QUEUE_H_
 
 #include "include/io-queue.h"
+#include "common/queue.h"
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>
 #include <list>
 
 namespace Zeus {
-
-enum QueueType {
-    BASIC_Q,
-    NETWORK_Q,
-    FILE_Q,
-    MERGED_Q,
-    FILTERED_Q
-};
-
-class Queue
+    
+class BasicQueue : public Queue
 {
 
+private:
+    struct PendingRequest
+    {
+        bool isDone;
+        sgarray &sga;
+        std::condition_variable cv;
+
+        PendingRequest(struct sgarray &sga) :
+            isDone(false),
+            sga(sga) { };
+        ~PendingRequest() { };
+    };
+    
+    // queued scatter gather arrays
+    std::unordered_map<qtoken, PendingRequest *> pending;
+    std::list<qtoken> waiting;
+    std::list<sgarray> buffer;
+    std::mutex qLock;
+    
 protected:
     QueueType type;
     int qd;
-    int fd;
     
 public:
-    Queue() : type(BASIC_Q), qd(0) { };
-    Queue(QueueType type, int qd) : type(type), qd(qd) { };
-    virtual ~Queue() { };
+    BasicQueue() : type(BASIC_Q), qd(0) { };
+    BasicQueue(QueueType type, int qd) : type(type), qd(qd) { };
+    virtual ~BasicQueue() { };
     virtual int GetQD() { return qd; };
     virtual QueueType GetType() { return type; };
     virtual void SetQD(int q) { qd = q; };
@@ -66,32 +77,26 @@ public:
 
     //int queue();
     // network control plane functions
-    virtual int socket(int domain, int type, int protocol) = 0;
-    virtual int getsockname(sockaddr *saddr, socklen_t *size) = 0;
-    virtual int listen(int backlog) = 0;
-    virtual int bind(struct sockaddr *saddr, socklen_t size) = 0;
-    virtual int accept(struct sockaddr *saddr, socklen_t *size) = 0;
-    virtual int connect(struct sockaddr *saddr, socklen_t size) = 0;
-    virtual int close() = 0;
+    virtual int socket(int domain, int type, int protocol) { return 0; };
+    virtual int getsockname(sockaddr *saddr, socklen_t *size) { return 0; };
+    virtual int listen(int backlog) { return 0; };
+    virtual int bind(struct sockaddr *saddr, socklen_t size) { return 0; };
+    virtual int accept(struct sockaddr *saddr, socklen_t *size) { return 0; };
+    virtual int connect(struct sockaddr *saddr, socklen_t size) { return 0; };
+    virtual int close() { return 0; };
           
     // file control plane functions
-    virtual int open(const char *pathname, int flags) = 0;
-    virtual int open(const char *pathname, int flags, mode_t mode) = 0;
-    virtual int creat(const char *pathname, mode_t mode) = 0;
+    virtual int open(const char *pathname, int flags) { return 0; };
+    virtual int open(const char *pathname, int flags, mode_t mode) { return 0; };
+    virtual int creat(const char *pathname, mode_t mode) {return 0; };
 
     // data plane functions
-    virtual ssize_t push(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t pop(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t peek(struct sgarray &sga) = 0;
-    virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t poll(qtoken qt, struct sgarray &sga) = 0;
-
-    // returns the file descriptor associated with
-    // the queue descriptor if the queue is an io queue
-    virtual int getfd() { return fd; };
-    virtual void setfd(int fd) { this->fd = fd; };
-
+    virtual ssize_t push(qtoken qt, struct sgarray &sga);
+    virtual ssize_t pop(qtoken qt, struct sgarray &sga);
+    virtual ssize_t peek(struct sgarray &sga);
+    virtual ssize_t wait(qtoken qt, struct sgarray &sga);
+    virtual ssize_t poll(qtoken qt, struct sgarray &sga);
 };
 
 } // namespace Zeus
-#endif /* _COMMON_QUEUE_H_ */
+#endif /* _BASIC_QUEUE_H_ */

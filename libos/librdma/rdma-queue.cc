@@ -396,20 +396,21 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 RdmaQueue::open(const char *pathname, int flags)
 {
+    assert(false);
     return 0;
 }
 
 int
 RdmaQueue::open(const char *pathname, int flags, mode_t mode)
 {
-    // use the fd as qd
+    assert(false);
     return 0;
 }
 
 int
 RdmaQueue::creat(const char *pathname, mode_t mode)
 {
-    // use the fd as qd
+    assert(false);
     return 0;
 }
 

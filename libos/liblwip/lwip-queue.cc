@@ -501,6 +501,7 @@ LWIPQueue::close()
 int
 LWIPQueue::open(const char *pathname, int flags)
 {
+    assert(false);
     return 0;
 }
 
@@ -508,6 +509,7 @@ LWIPQueue::open(const char *pathname, int flags)
 int
 LWIPQueue::open(const char *pathname, int flags, mode_t mode)
 {
+    assert(false);
     return 0;
 }
 
@@ -515,6 +517,7 @@ LWIPQueue::open(const char *pathname, int flags, mode_t mode)
 int
 LWIPQueue::creat(const char *pathname, mode_t mode)
 {
+    assert(false);
     return 0;
 }
 

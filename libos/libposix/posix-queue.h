@@ -82,7 +82,7 @@ private:
 
 public:
     PosixQueue() : Queue(), pending(), accepts(), workQ(), listening(false) { };
-    PosixQueue(BasicQueueType type, int qd) :
+    PosixQueue(QueueType type, int qd) :
         Queue(type, qd), pending(), accepts(), workQ(), listening(false) { };
 
     // network functions

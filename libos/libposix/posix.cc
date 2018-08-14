@@ -33,7 +33,7 @@
 #include "posix-queue.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::PosixQueue> lib;
+static QueueLibrary<POSIX::PosixQueue, POSIX::PosixQueue> lib;
 
 int queue()
 {

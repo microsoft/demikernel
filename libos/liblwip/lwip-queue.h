@@ -56,7 +56,7 @@ private:
 
 public:
     LWIPQueue() : Queue(){ };
-    LWIPQueue(BasicQueueType type, int qd) :
+    LWIPQueue(QueueType type, int qd) :
         Queue(type, qd) {};
 
     // network functions
@@ -69,9 +69,9 @@ public:
     int close();
 
     // file functions
-    static int open(const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
 
     // other functions
     ssize_t push(qtoken qt, struct sgarray &sga);

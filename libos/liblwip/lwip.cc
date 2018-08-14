@@ -34,7 +34,7 @@
 #include "lwip-queue.h"
 
 namespace Zeus {
-static QueueLibrary<LWIP::LWIPQueue> lib;
+static QueueLibrary<LWIP::LWIPQueue, LWIP::LWIPQueue> lib;
 
 int init(int argc, char* argv[])
 {
