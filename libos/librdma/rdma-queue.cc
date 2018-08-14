@@ -40,6 +40,8 @@
 #include <sys/uio.h>
 #include <rdma/rdma_verbs.h>
 
+struct timer_info ti;
+
 namespace Zeus {
 
 namespace RDMA {

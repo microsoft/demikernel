@@ -57,7 +57,7 @@ private:
         // rdma buffer for receive
         void *buf;
         // scatter gather array
-        struct sgarray &sga;
+        struct sgarray sga;
 
         PendingRequest(struct sgarray &sga) :
             isEnqueued(false),
@@ -69,7 +69,7 @@ private:
     
     // queued scatter gather arrays
     std::list<void *> pendingRecv;
-    std::unordered_map<qtoken, PendingRequest> pending;
+    std::unordered_map<qtoken, PendingRequest*> pending;
     std::list<struct rdma_cm_id *> accepts;
     std::list<qtoken> workQ;
 
@@ -79,10 +79,14 @@ private:
     bool listening = false;
 
     int PostReceive();
-    void ProcessIncoming(PendingRequest &req);
-    void ProcessOutgoing(PendingRequest &req);
+    void ProcessIncoming(PendingRequest *req);
+    void ProcessOutgoing(PendingRequest *req);
     void ProcessQ(size_t maxRequests);
+    void CheckEventQ();
+    void CheckCQ();
+    void ProcessWC(ibv_wc &wc);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
+    int SetupRdmaQP();
 
 public:
     RdmaQueue() : Queue(), workQ{} { };
@@ -119,8 +123,6 @@ public:
     void setRdmaCM(struct rdma_cm_id *id);
     struct rdma_cm_id* getRdmaCM();
     struct rdma_cm_id* getNextAccept();
-    int setupRdmaQP();
-    
 };
 
 } // namespace RDMA
