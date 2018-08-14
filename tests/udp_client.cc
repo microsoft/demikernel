@@ -7,8 +7,8 @@
 #include "../include/io-queue.h"
 
 #define USE_CONNECT		1
-#define PKTNUM          10
-#define BUFSIZE         1024
+#define PKTNUM          10000
+#define BUFSIZE         100
 
 uint16_t port = 12345;
 
@@ -68,7 +68,7 @@ int main()
 #endif
 
     sga.num_bufs = 1;
-    sga.bufs[0].len = 200;
+    sga.bufs[0].len = BUFSIZE;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
     for (int i = 0; i < PKTNUM; i++) {
