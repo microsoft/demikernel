@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  **********************************************************************/
-#include "mtcp_measure.h"
+//#include "mtcp_measure.h"
 #include "mtcp-queue.h"
 #include "common/library.h"
 #include "include/measure.h"
@@ -261,7 +261,7 @@ MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
     struct mtcp_epoll_event ev;
     int res = mtcp_connect(mctx, mtcp_qd, saddr, size);
-    fprintf(stderr, "connect() res = %i errno= %s\n", res, strerror(errno));
+    //fprintf(stderr, "connect() res = %i errno= %s\n", res, strerror(errno));
     if (res == 0) {
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, mtcp_qd);
@@ -274,7 +274,7 @@ MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
         mtcp_epoll_ctl(mctx, mtcp_ep, MTCP_EPOLL_CTL_ADD, mtcp_qd, &ev);
         return res;
     } else {
-        return errno;
+        return -errno;
     }
 }
 
@@ -382,6 +382,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
         ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
+        ti.device_read_end = rdtsc();
 #ifdef _LIBOS_MTCP_DEBUG_
         printf("1-mtcp_read() count:%d\n", count);
 #endif
@@ -612,7 +613,7 @@ ssize_t
 MTCPQueue::peek(struct sgarray &sga){
     //uint64_t rcd_tick;
     //rcd_tick = jl_rdtsc();
-    PendingRequest req = PendingRequest(sga);
+    PendingRequest req(sga);
     ProcessIncoming(req);
     if (req.isDone){
 #ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_

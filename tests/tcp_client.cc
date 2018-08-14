@@ -33,9 +33,11 @@ int main()
     }
     server.sin_port = htons(port);
 
-    if (Zeus::connect(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
-    	perror("Error connecting queue:");
-    	return -1;
+    while (Zeus::connect(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            perror("Error connecting queue:");
+            return -1;
+        }
     }
 
     sga.num_bufs = 1;

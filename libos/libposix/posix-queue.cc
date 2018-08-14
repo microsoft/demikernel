@@ -314,6 +314,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 		if (req.num_bytes < sizeof(req.header) + dataLen) {
 			ssize_t count = ::read(fd, (uint8_t *)req.buf + offset,
 								   dataLen - offset);
+			ti.device_read_end = rdtsc();
 		//fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
 			if (count < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
