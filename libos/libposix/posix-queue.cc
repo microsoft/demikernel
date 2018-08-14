@@ -66,7 +66,7 @@ PosixQueue::socket(int domain, int type, int protocol)
 int
 PosixQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
 {
-    return getsockname(saddr, size);
+    return ::getsockname(fd, saddr, size);
 }
 
 int

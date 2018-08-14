@@ -210,10 +210,10 @@ namespace Zeus {
             s->unpin(ptr);
         }
 
-        INLINE ibv_mr* rdma_get_mr(void * ptr) {
-            SuperblockType * s = SuperHeap::getSuperblock(ptr);
+      INLINE ibv_mr* rdma_get_mr(void * ptr, ibv_pd *pd) {
+	SuperblockType * s = SuperHeap::getSuperblock(ptr);
             assert (s->getOwner() == this);
-            return s->rdma_get_mr();
+            return s->rdma_get_mr(pd);
         }
     private:
 
