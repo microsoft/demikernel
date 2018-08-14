@@ -558,7 +558,11 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     wr.sg_list = vsga;
     wr.next = NULL;
     wr.num_sge = 2 * sga.num_bufs + 1;
+<<<<<<< Updated upstream
     wr.send_flags = IBV_SEND_SIGNALED;
+=======
+      
+>>>>>>> Stashed changes
     int res = ibv_post_send(rdma_id->qp,
                             &wr,
                             &bad_wr);
@@ -580,10 +584,15 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // fprintf(stderr, "Queued request for %d sge with total size %d\n",
     //  	    wr.num_sge, totalLen);
     // otherwise, enqueued for send but not complete
+<<<<<<< Updated upstream
     req->res = dataSize;
     req->isEnqueued = true;
     pin(req);
     // assume inline requests are done
+=======
+    req.res = dataSize;
+    req.isEnqueued = true;
+>>>>>>> Stashed changes
 }
     
 void
