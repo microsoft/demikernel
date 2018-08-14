@@ -188,8 +188,8 @@ namespace Zeus {
             _header.unpin(ptr);
         }
 
-        inline ibv_mr* rdma_get_mr(rdma_cm_id *rdma_id) { 
-            return this->_header.rdma_get_mr(rdma_id);
+        inline ibv_mr* rdma_get_mr() { 
+            return this->_header.rdma_get_mr();
         };
         
         typedef Header_<LockType, SuperblockSize, HeapType> Header;

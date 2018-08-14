@@ -158,11 +158,11 @@ namespace Hoard {
             }
         }
 
-      inline struct ibv_mr * rdma_get_mr (void * ptr, rdma_cm_id *rdma_id) {
+        inline struct ibv_mr * rdma_get_mr (void * ptr) {
             auto * s = getSuperblock(ptr);
 
             if (s->isValidSuperblock()) {
-                return s->rdma_get_mr(rdma_id);
+                return s->rdma_get_mr();
             } else {
                 return NULL;// illegal pointer
             }
