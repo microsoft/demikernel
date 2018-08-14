@@ -65,6 +65,8 @@ static inline pid_t get_thread_tid(void){
     return tid;
 }
 
+#define LIBOS_BLOB_NAME_LEN_MAX 256
+
 struct SPDKPendingRequest {
     public:
         bool isDone;
@@ -115,7 +117,7 @@ struct SPDKQueueBlob {
     uint32_t write_buffer_size;  // write_buffer_size (page_size * N)
     int write_buffer_offset;     // offset for writing to the write buffer (Bytes)
     uint8_t *read_buffer;
-    char name[256];              // assume file name < 256 Bytes
+    char name[LIBOS_BLOB_NAME_LEN_MAX];              // assume file name < 256 Bytes
     SPDKQueueBlob():
         blobid(0), blob_ptr(NULL), length(0), num_pages(0), write_buffer(NULL), write_buffer_size(0), write_buffer_offset(0), read_buffer(NULL) {};
     SPDKQueueBlob(uint64_t id, spdk_blob* ptr,  uint64_t len):
@@ -128,6 +130,7 @@ struct SPDKContext {
     std::unordered_map<int, spdk_blob_id> qd_blobid_map;
     std::unordered_map<int, int> queue_flush_status;
     std::unordered_map<int, std::mutex*> queue_flush_lock;
+    std::unordered_map<std::string, spdk_blob_id> known_blobs;
 	struct spdk_bdev *bdev;
     sem_t app_sem;
 	struct spdk_blob_store *app_bs;     // bs obj for the application
@@ -259,11 +262,8 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
             spdk_context_t->page_size, spdk_context_t->cluster_size);
 }
 
-
-static void libos_spdk_app_start(void *arg1, void *arg2){
-    struct SPDKContext *spdk_context_t = (struct SPDKContext *) arg1;
-    fprintf(stderr, "libos_spdk_app_start\n");
-    // TODO: here, the Malloc0 is going to be replaced by real device!
+static void libos_spdk_start_common(SPDKContext *spdk_context_t){
+     // TODO: here, the Malloc0 is going to be replaced by real device!
     spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
     if(spdk_context_t->bdev == NULL){
         fprintf(stderr, "spdk_context_t->bdev is NULL, will do stop\n");
@@ -277,7 +277,66 @@ static void libos_spdk_app_start(void *arg1, void *arg2){
         spdk_app_stop(-1);
         return;
     }
-    spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
+}
+
+static void spdk_blob_iter_cb(void *cb_arg, struct spdk_blob *blob, int bserrno)
+{
+    const char *cur_blob_name;
+    size_t value_len;
+    struct SPDKContext *spdk_context_t = (struct SPDKContext *) cb_arg;
+    fprintf(stderr, "blob_iter_cb:\n");
+    if (bserrno) {
+        if(bserrno == -ENOENT){
+            // No more blob to iterate, do nothing
+        }else{
+            char err_msg[32] = "Error in iter_cb";
+            unload_bs(libos_spdk_context, err_msg, bserrno);
+            return;
+        }
+    }
+    int rc = spdk_blob_get_xattr_value(blob, "name", (const void **)&cur_blob_name, &value_len);
+    if (rc < 0) {
+        fprintf(stderr, "cannot get name of blobid:%lu\n", spdk_blob_get_id(blob));
+        // for super-blob, we cannot get the attribute, so ignore here
+    }else{
+        assert(value_len == 8);
+        (libos_spdk_context->known_blobs).insert(
+                make_pair(std::string(cur_blob_name), spdk_blob_get_id(blob)));
+    }
+    spdk_bs_iter_next(spdk_context_t->app_bs, blob, spdk_blob_iter_cb, spdk_context_t);
+}
+
+static void spdk_bs_load_complete(void *cb_arg, struct spdk_blob_store *bs,
+        int bserrno)
+{
+    struct SPDKContext *spdk_context_t = (struct SPDKContext *) cb_arg;
+    if(bserrno){
+        // try to init here, ignore the exact error number meaning
+        // NULL refers to opts: the structure which contains the option values for the blobstore
+        fprintf(stderr, "spdk_bs_load_complete err(%d) \n", bserrno);
+        libos_spdk_start_common(spdk_context_t);
+        spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
+        return;
+    }else{
+        /* could load existing blobstore data */
+        fprintf(stderr, "spdk_bs_load success will init metadata\n");
+        // fill in metadata
+        spdk_context_t->app_bs = bs;
+        SPDK_NOTICELOG("blobstore: %p\n", spdk_context_t->app_bs);
+        spdk_context_t->page_size = spdk_bs_get_page_size(spdk_context_t->app_bs);
+        spdk_context_t->cluster_size = spdk_bs_get_cluster_size(bs);
+        spdk_context_t->app_channel = spdk_bs_alloc_io_channel(bs);
+        // iterate the blobs to fill the known_blobs list, thus ease open()
+        spdk_bs_iter_first(bs, spdk_blob_iter_cb, spdk_context_t);
+    }
+}
+
+static void libos_spdk_app_start(void *arg1, void *arg2){
+    struct SPDKContext *spdk_context_t = (struct SPDKContext *) arg1;
+    fprintf(stderr, "libos_spdk_app_start\n");
+    libos_spdk_start_common(spdk_context_t);
+    //spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
+    spdk_bs_load(spdk_context_t->bs_dev, NULL, spdk_bs_load_complete, spdk_context_t);
     fprintf(stderr, "libos_spdk_app_start will return\n");
 }
 
@@ -340,6 +399,9 @@ static void spdk_open_blob_resize_callback(void *cb_args, int bserrno){
     uint64_t file_init_len = 0;
     spdk_blob_set_xattr(args->req->file_blob, "name", args->req->file_name, strlen(args->req->file_name) + 1);
     spdk_blob_set_xattr(args->req->file_blob, "length", &file_init_len, sizeof(file_init_len));
+    // add the created blob into known list (re-open a file could happen)
+    libos_spdk_context->known_blobs.insert(make_pair(std::string(args->req->file_name), args->req->file_blobid));
+    fprintf(stderr, "insert file_name:%s\n", args->req->file_name);
     // sync the metadata
     spdk_blob_sync_md(args->req->file_blob, spdk_open_blob_sync_md_callback, args);
     fprintf(stderr, "libos_open_resize_callback return tid:%u\n", get_thread_tid());
@@ -914,7 +976,7 @@ SPDKQueue::flush(qtoken qt, bool isclosing){
 
 /**
  * close()
- * in the library.h, already do flush(qt, iscloing=true)
+ * in the library.h, already do flush(qt, isclosing=true)
  * which means, we enter into this function with the flush_lock held
  * thus it is safe, no more push accepted between internal flush() and this close()
  * so now, just clean the record in spdk_context
