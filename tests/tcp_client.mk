@@ -3,8 +3,8 @@ CC = g++
 ZEUS_SRC_DIR=$(HOME)/datacenter-OS/
 
 #LIBZEUS=zeus_mtcp
-#LIBZEUS=zeus_posix
-LIBZEUS=zeus_rdma
+LIBZEUS=zeus_posix
+#LIBZEUS=zeus_rdma
 
 ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
 ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -l$(LIBZEUS)
@@ -32,6 +32,7 @@ ZEUS_LIBS := -l$(LIBZEUS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 FINAL_CFLAGS += $(ZEUS_CFLAGS)
 #FINAL_CFLAGS += $(DPDK_MACHINE_FLAGS) -I$(DPDK_INC) -include $(DPDK_INC)/rte_config.h
 FINAL_LDFLAGS += $(ZEUS_LDFLAGS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
+FINAL_LDFLAGS += $(ZEUS_LDFLAGS) -lrdmahoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 #FINAL_LDFLAGS += $(MTCP_LDFLAGS) -lhoard -Wl,-rpath,$(ZEUS_SRC_DIR)
 FINAL_LIBS += $(ZEUS_LIBS)
 FINAL_LIBS += -pthread -lrt -march=native -export-dynamic -lnuma -lpthread -lrt -ldl -lstdc++

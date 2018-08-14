@@ -627,7 +627,7 @@ MTCPQueue::peek(struct sgarray &sga){
         ti.libos_pop_end = rdtsc();
         return req.res;
     }else{
-        return -1;
+        return 0;
     }
 }
     

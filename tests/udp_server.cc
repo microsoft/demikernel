@@ -7,7 +7,7 @@
 #include "../include/io-queue.h"
 #include "../include/measure.h"
 
-#define PKTNUM          100000
+#define PKTNUM          10
 
 uint16_t port = 12345;
 
