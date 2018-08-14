@@ -51,7 +51,7 @@ static inline void print_timer_info()
 
     printf("======================\n");
     printf("pop duration: %lu\n", pop_duration);
-    printf("read duration: %luf\n", recv_duration);
+    printf("read duration: %lu\n", recv_duration);
     printf("push duration: %lu\n", push_duration);
     printf("send duration: %lu\n", send_duration);
     printf("push overhead: %lu\n", push_overhead);

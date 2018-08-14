@@ -677,9 +677,10 @@ RdmaQueue::peek(struct sgarray &sga)
 
     if (req->isDone or req->isEnqueued){
         ti.libos_pop_end = rdtsc();
+        ssize_t res = req->res;
         sga.copy(req->sga);
         delete req;
-        return req->res;
+        return res;
     } else {
         delete req;
         return 0;
