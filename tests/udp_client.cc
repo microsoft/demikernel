@@ -8,6 +8,7 @@
 
 #define USE_CONNECT		1
 #define PKTNUM          10
+#define BUFSIZE         1024
 
 uint16_t port = 12345;
 
@@ -17,8 +18,10 @@ int main()
     ssize_t n;
     Zeus::qtoken qt;
     struct Zeus::sgarray sga, res;
-    char buf[12] = "hello world";
+    char* buf = (char*)malloc(BUFSIZE);
     struct sockaddr_in server;
+
+    buf[0] = 0;
 
 /*
     char* argv[] = {(char*)"",
@@ -65,7 +68,7 @@ int main()
 #endif
 
     sga.num_bufs = 1;
-    sga.bufs[0].len = 12;
+    sga.bufs[0].len = 200;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
     for (int i = 0; i < PKTNUM; i++) {

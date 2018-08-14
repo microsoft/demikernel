@@ -9,6 +9,7 @@
 #define INCLUDE_MEASURE_H_
 
 #include <stdint.h>
+#include <sys/time.h>
 
 #define _CPUFREQ 3500LU /* MHz */
 
@@ -30,9 +31,12 @@ extern struct timer_info ti;
 
 static inline uint64_t rdtsc(void)
 {
-    uint32_t eax, edx;
-    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx) :: "memory");
-    return ((uint64_t)edx << 32) | eax;
+//    uint32_t eax, edx;
+//    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx) :: "memory");
+//    return ((uint64_t)edx << 32) | eax;
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+    return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
 }
 
 static inline void print_timer_info()
@@ -46,13 +50,13 @@ static inline void print_timer_info()
     uint64_t pop_overhead = pop_duration - recv_duration;
 
     printf("======================\n");
-    printf("pop duration: %4.2f\n", CYCLE2NS(pop_duration) / 1000.0);
-    printf("read duration: %4.2f\n", CYCLE2NS(recv_duration) / 1000.0);
-    printf("push duration: %4.2f\n", CYCLE2NS(push_duration) / 1000.0);
-    printf("send duration: %4.2f\n", CYCLE2NS(send_duration) / 1000.0);
-    printf("push overhead: %4.2f\n", CYCLE2NS(push_overhead) / 1000.0);
-    printf("pop overhead: %4.2f\n", CYCLE2NS(pop_overhead) / 1000.0);
-    printf("pop to push duration: %4.2f\n", CYCLE2NS(pop_to_push_duration) / 1000.0);
+    printf("pop duration: %lu\n", pop_duration);
+    printf("read duration: %luf\n", recv_duration);
+    printf("push duration: %lu\n", push_duration);
+    printf("send duration: %lu\n", send_duration);
+    printf("push overhead: %lu\n", push_overhead);
+    printf("pop overhead: %lu\n", pop_overhead);
+    printf("pop to push duration: %lu\n", pop_to_push_duration);
 }
 
 #endif /* INCLUDE_MEASURE_H_ */

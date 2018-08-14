@@ -7,6 +7,7 @@
 #include "../include/io-queue.h"
 
 #define PKTNUM		10
+#define BUFSIZE     1024
 
 uint16_t port = 12345;
 
@@ -16,8 +17,10 @@ int main()
     ssize_t n;
     Zeus::qtoken qt;
     struct Zeus::sgarray sga, res;
-    char buf[12] = "hello world";
+    char* buf = (char*)malloc(BUFSIZE);
     struct sockaddr_in server;
+
+    buf[0] = 0;
 
     if ((qd = Zeus::socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         printf("Error creating queue!\n");
@@ -41,7 +44,7 @@ int main()
     }
 
     sga.num_bufs = 1;
-    sga.bufs[0].len = 12;
+    sga.bufs[0].len = BUFSIZE;
     sga.bufs[0].buf = (Zeus::ioptr)buf;
 
     for (int i = 0; i < PKTNUM; i++) {
@@ -51,12 +54,12 @@ int main()
                 perror("client push:");
                 return -1;
             }
-            //printf("client wait for push\n");
+            printf("client wait for push\n");
             n = Zeus::wait(qt, sga);
             assert(n > 0);
         }
 
-        printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+        printf("client: sent\t%s\tbuf size:\t%d\n", (char*)sga.bufs[0].buf, sga.bufs[0].len);
 
         qt = Zeus::pop(qd, res);
         if (qt != 0) {
@@ -64,13 +67,13 @@ int main()
                 perror("client pop:");
                 return -1;
             }
-            //printf("client: wait for pop\n");
+            printf("client: wait for pop\n");
             n = Zeus::wait(qt, res);
             assert(n > 0);
         }
 
         assert(res.num_bufs == 1);
-        printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+        fprintf(stderr, "client: rcvd\t%s\tbuf size:\t%d\n", (char*)res.bufs[0].buf, res.bufs[0].len);
     }
 
     Zeus::close(qd);

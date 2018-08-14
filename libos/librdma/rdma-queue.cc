@@ -526,8 +526,8 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
-	mr = rdma_get_mr(sga.bufs[i].buf, pd);
-	assert(mr != NULL);
+        mr = rdma_get_mr(sga.bufs[i].buf, pd);
+        assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
         
         // add up actual data size
