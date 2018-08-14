@@ -39,6 +39,9 @@
 
 #include "heaplayers.h"
 #include "include/zeus/libzeus.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 // The undef below ensures that any pthread_* calls get strong
 // linkage.  Otherwise, our versions here won't replace them.  It is
@@ -115,9 +118,6 @@ TheCustomHeapType * getCustomHeap();
 enum { MAX_LOCAL_BUFFER_SIZE = 256 * 131072 };
 static char initBuffer[MAX_LOCAL_BUFFER_SIZE];
 static char * initBufferPtr = initBuffer;
-static struct ibv_context *rdma_context = NULL;
-static struct ibv_pd *rdma_globalpd = NULL;
-
 extern bool isCustomHeapInitialized();
 
 extern "C" {
@@ -174,27 +174,7 @@ extern "C" {
         getCustomHeap()->unpin (ptr);
     }
 
-    struct ibv_mr * rdma_get_mr(void * ptr) {
-        return getCustomHeap()->rdma_get_mr (ptr);
+  struct ibv_mr * rdma_get_mr(void * ptr, ibv_pd *pd) {
+    return getCustomHeap()->rdma_get_mr (ptr, pd);
     }
-
-    struct ibv_context* rdma_get_context() { return rdma_context; }
-
-    struct ibv_pd* rdma_get_pd() { return rdma_globalpd; }
-  
-  void rdma_init() {
-    static bool initialized = false;
-    if (!initialized) {
-      int num_devices = 0;
-      struct ibv_device **devices = ibv_get_device_list(&num_devices);
-      if (num_devices > 0) {
-	rdma_context = ibv_open_device(*devices); 
-	rdma_globalpd = ibv_alloc_pd(rdma_context);
-      } else {
-	fprintf(stderr, "RDMA FAILURE: %s", strerror(errno));
-	abort();
-      }
-    }
-  }
-	       
 } // extern C

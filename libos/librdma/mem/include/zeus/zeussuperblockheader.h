@@ -37,6 +37,7 @@
 
 #include "heaplayers.h"
 #include "libzeus.h"
+#include <rdma/rdma_verbs.h>
 
 #include <cstdlib>
 
@@ -47,6 +48,9 @@
 
 #define MAX_PINNED 100
 #define IN_USE 1
+#define IS_INUSE(ptr) ptr & (uint64_t)IN_USE
+#define SET_INUSE(ptr) ptr | (uint64_t)IN_USE
+#define CLEAR_INUSE(ptr) ptr & ~(uint64_t)IN_USE
 
 namespace Zeus {
 
@@ -92,19 +96,12 @@ namespace Zeus {
             assert ((HL::align<Alignment>((size_t) start) == (size_t) start));
             assert (_objectSize >= Alignment);
             assert ((_totalObjects == 1) || (_objectSize % Alignment == 0));
-
-	    if (rdma_get_pd() != NULL) {
-            _mr =
-                ibv_reg_mr(rdma_get_pd(),
-                           (void *)start,
-                           bufferSize,
-                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-	    }
         }
 
         virtual ~ZeusSuperblockHeaderHelper() {
             clear();
-            ibv_dereg_mr(_mr);
+	    if (_mr != NULL)
+	      ibv_dereg_mr(_mr);
         }
 
         inline void * malloc() {
@@ -125,15 +122,14 @@ namespace Zeus {
         inline void free (void * ptr) {
             assert ((size_t) ptr % Alignment == 0);
             assert (isValid());
-            for (int i = 0; i < MAX_PINNED; i++) {
-                if ((_pinned[i] & ~(uint64_t)IN_USE) == (uint64_t)ptr) {
-                    // found to be pinned, mark as free
-                    assert(_pinned[i] & IN_USE == 1);
-                    _pinned[i] &= ~(uint64_t)IN_USE;
-                    return;
-                }
-            }
+	    uint64_t *entry = get_pin_entry(ptr);
+	    if (entry != NULL) {
+	      *entry = CLEAR_INUSE(*entry);				\
+	      //fprintf(stderr, "[0x%llx] found pinned block, not freeing", ptr);
+	      return;
+	    }
             // not found to be pinned, free
+	    ////fprintf(stderr, "[0x%lx] not pinned block, so freeing", ptr);
             _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(ptr));
             _objectsFree++;
             if (_objectsFree == _totalObjects) {
@@ -177,8 +173,11 @@ namespace Zeus {
                 if (_pinned[i] == 0) {
                     // Assume lower bit is 0 after normalization
                     _pinned[i] = _obj | (uint64_t)IN_USE;
+		    ////fprintf(stderr, "[0x%llx] pinning block in slot %d\n", ptr, i);
                     return;
-                }
+                } else {
+		  assert(CLEAR_INUSE(_pinned[i]) != ptr);
+		}
             }
             assert(0);
         }
@@ -186,27 +185,46 @@ namespace Zeus {
         inline void unpin (void * ptr) {
             assert(isValid());
             uint64_t _obj = (uint64_t)normalize(ptr);
-            for (int i = 0; i < MAX_PINNED; i++) {
-                if ((_pinned[i] & ~(uint64_t)IN_USE) == _obj) {
-                    if ((_pinned[i] & (uint64_t)IN_USE) == 0) {
-                        // free
-                        _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(_obj));
-                        _objectsFree++;
-                        if (_objectsFree == _totalObjects) {
-                            clear();
-                        }
-                    }           
-                    _pinned[i] = 0;
-                    return;
-                }
-            }
-            assert(0);
+	    uint64_t *entry = get_pin_entry(_obj);
+
+	    assert(entry != NULL);
+	    if ((IS_INUSE(*entry)) == 0) {
+	      // free
+	      _freeList.insert (reinterpret_cast<FreeSLList::Entry *>(_obj));
+	      _objectsFree++;
+	      //fprintf(stderr, "[0x%llx] unpinning and freeing", ptr);
+	      if (_objectsFree == _totalObjects) {
+		clear();
+	      }
+	    }           
+            *entry = 0;
+	    return;
         }
 
-        inline ibv_mr* rdma_get_mr() {
+      inline uint64_t * get_pin_entry(void *ptr) {
+	assert(isValid());
+	assert ((size_t) ptr % Alignment == 0);
+	for (int i = 0; i < MAX_PINNED; i++) {
+	  if ((_pinned[i] & ~(uint64_t)IN_USE) == (uint64_t)ptr) {
+	    return &_pinned[i];
+	  }
+	}
+	return NULL;
+      }
+          
+        inline ibv_mr* rdma_get_mr(struct ibv_pd *pd) {
+	  //assert(false);
+	  if (_mr == NULL) {
+	    assert(pd != NULL);
+	    _mr = ibv_reg_mr(pd,
+			     (void *)_start,
+			     _totalObjects * _objectSize,
+			     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	    ////fprintf(stderr, "Registering buffer on demand\n");
+	  }
+       	  assert(_mr != NULL);
             return _mr;
         }
-        
         size_t getSize (void * ptr) const {
             assert (isValid());
             auto offset = (size_t) ptr - (size_t) _start;
@@ -338,7 +356,7 @@ namespace Zeus {
 
         struct ibv_mr *_mr = NULL;
 
-        uint32_t _padding;
+      uint32_t _padding;
         
         /// The list of freed objects.
         FreeSLList _freeList;
