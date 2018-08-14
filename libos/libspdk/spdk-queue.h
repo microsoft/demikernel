@@ -45,7 +45,7 @@ extern "C" {
 namespace Zeus {
 namespace SPDK {
 
-enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN_CREAT, LIBOS_OPEN_EXIST, LIBOS_PUSH, LIBOS_POP, LIBOS_FLUSH, LIBOS_CLOSE};
+enum SPDK_OP{LIBOS_IDLE, LIBOS_OPEN_CREAT, LIBOS_OPEN_EXIST, LIBOS_PUSH, LIBOS_FLUSH_PUSH, LIBOS_POP, LIBOS_FLUSH, LIBOS_CLOSE};
 
 class SPDKQueue : public Queue {
 private:
@@ -112,6 +112,7 @@ public:
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t flush_push(qtoken qt, struct sgarray &sga);
     ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
     ssize_t peek(qtoken qt, struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);

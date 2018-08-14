@@ -81,6 +81,7 @@ public:
 
     // data plane functions
     virtual ssize_t push(qtoken qt, struct sgarray &sga) = 0;
+    virtual ssize_t flush_push(qtoken, qt, struct sgarray &sga) = 0;
     virtual ssize_t pop(qtoken qt, struct sgarray &sga) = 0;
     virtual ssize_t peek(struct sgarray &sga) = 0;
     virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;

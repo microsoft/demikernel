@@ -264,7 +264,7 @@ public:
         Queue &q = GetQueue(qd);
         return q.getfd();
     };
-    
+
     qtoken push(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
@@ -282,6 +282,27 @@ public:
             return 0;
         }
     };
+
+    qtoken flush_push(int qd, struct Zeus::sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        QueueType &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q) {
+            qtoken t = GetNewToken(qd, true);
+            ssize_t res = queue.flush_push(t, sga);
+            if(res == 0){
+                return t;
+            }else{
+                return 0;
+            }
+        }else{
+            // only FILE_Q support flush_push
+            return -1;
+        }
+    };
+
+
 
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))

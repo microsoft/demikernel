@@ -95,6 +95,11 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
     return lib.push(qd, sga);
 }
 
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
+    return lib.flush_push(qd, sga);
+}
+
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
     //printf("posix.cc:pop input:%d\n", qd);
