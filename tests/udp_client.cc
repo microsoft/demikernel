@@ -8,7 +8,7 @@
 
 #define USE_CONNECT		1
 #define PKTNUM          10000
-#define BUFSIZE         100
+#define BUFSIZE         10
 
 uint16_t port = 12345;
 

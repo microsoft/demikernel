@@ -233,7 +233,7 @@ public:
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
-        ti.libos_push_start = rdtsc();
+        double libos_push_start = rdtsc();
         if (!HasQueue(qd))
             return -1;
 
@@ -247,7 +247,8 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
-            ti.libos_push_end = rdtsc();
+            double libos_push_end = rdtsc();
+            ti.push_duration = libos_push_end - libos_push_start;
             return 0;
         }
     };
@@ -274,7 +275,7 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
-        ti.libos_pop_start = rdtsc();
+        ti.pop_start = rdtsc();
         //printf("call peekp\n");
         if (!HasQueue(qd))
             return -1;

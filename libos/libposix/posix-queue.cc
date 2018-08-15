@@ -252,6 +252,10 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     }
 
     ssize_t count;
+    double dev_read_start1 = 0;
+    double dev_read_start2 = 0;
+    double dev_read_end1 = 0;
+    double dev_read_end2 = 0;
     //printf("ProcessIncoming qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -261,17 +265,17 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 
             socklen_t size = sizeof(struct sockaddr_in);
             struct sockaddr addr;
-            ti.device_read_start = rdtsc();
+            dev_read_start1 = rdtsc();
             count = ::recvfrom(fd, req.buf, 1024, 0, &addr, &size);
-            ti.device_read_end = rdtsc();
+            dev_read_end1 = rdtsc();
             req.sga.addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
             req.sga.addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
 
         } else {
-            ti.device_read_start = rdtsc();
+            dev_read_start1 = rdtsc();
             count = ::read(fd, (uint8_t *)&req.header + req.num_bytes,
                                    sizeof(req.header) - req.num_bytes);
-            ti.device_read_end = rdtsc();
+            dev_read_end1 = rdtsc();
 
         }
         // we still don't have a header
@@ -313,9 +317,10 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 		size_t offset = req.num_bytes - sizeof(req.header);
 		// grab the rest of the packet
 		if (req.num_bytes < sizeof(req.header) + dataLen) {
+		    dev_read_start2 = rdtsc();
 			ssize_t count = ::read(fd, (uint8_t *)req.buf + offset,
 								   dataLen - offset);
-			ti.device_read_end = rdtsc();
+			dev_read_end2 = rdtsc();
 		//fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
 			if (count < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -334,6 +339,8 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
 		}
 		//fprintf(stderr, "[%x] data read length=%ld\n", qd, dataLen);
     }
+
+    ti.dev_read_duration = (dev_read_end2 - dev_read_start2) + (dev_read_end1 - dev_read_start1);
 
     void* buf = (is_tcp) ? req.buf : req.buf + sizeof(req.header);
     // now we have the whole buffer, start filling sga
@@ -411,11 +418,12 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
 		}
     }
 
-    ti.device_send_start = rdtsc();
+    double device_send_start = rdtsc();
     ssize_t count = ::writev(fd,
                              vsga,
                              2*sga.num_bufs +1);
-    ti.device_send_end = rdtsc();
+    double device_send_end = rdtsc();
+    ti.dev_write_duration = device_send_end - device_send_start;
    
     // if error
     if (count < 0) {
@@ -512,7 +520,8 @@ PosixQueue::peek(struct sgarray &sga)
     PendingRequest req(sga);
     ProcessIncoming(req);
     if (req.isDone){
-        ti.libos_pop_end = rdtsc();
+        double libos_pop_end = rdtsc();
+        ti.pop_duration = libos_pop_end - ti.pop_start;
         return req.res;
     } else {
         return 0;

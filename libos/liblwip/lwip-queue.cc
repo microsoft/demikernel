@@ -660,11 +660,12 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     printf("push: pkt len: %d\n", pkt->data_len);
 #endif
 
-    ti.device_send_start = rdtsc();
+    double device_send_start = rdtsc();
     //double send_start = zeus_ustime();
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
     //double send_end = zeus_ustime();
-    ti.device_send_end = rdtsc();
+    double device_send_end = rdtsc();
+    ti.dev_write_duration = device_send_end - device_send_start;
 
     assert(ret == 1);
 
@@ -700,9 +701,10 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
         // our packet buffer is empty, try to get some more from NIC
-        ti.device_read_start = rdtsc();
+        double device_read_start = rdtsc();
         num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
-        ti.device_read_end = rdtsc();
+        double device_read_end = rdtsc();
+        ti.dev_read_duration = device_read_end - device_read_start;
         pkt_idx = 0;
     }
 
@@ -940,7 +942,8 @@ LWIPQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req.isDone){
-        ti.libos_pop_end = rdtsc();
+        double pop_end = rdtsc();
+        ti.pop_duration = pop_end - ti.pop_start;
         return req.res;
     } else {
         return 0;

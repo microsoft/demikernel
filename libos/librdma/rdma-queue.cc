@@ -562,11 +562,12 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     wr.num_sge = 2 * sga.num_bufs + 1;
     wr.send_flags = IBV_SEND_SIGNALED;
 
-    ti.device_send_start = rdtsc();
+    double device_send_start = rdtsc();
     int res = ibv_post_send(rdma_id->qp,
                             &wr,
                             &bad_wr);
-    ti.device_send_end = rdtsc();
+    double device_send_end = rdtsc();
+    ti.dev_write_duration = device_send_end - device_send_start;
 
     // if error
     if (res != 0) {
@@ -676,7 +677,8 @@ RdmaQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req->isDone or req->isEnqueued){
-        ti.libos_pop_end = rdtsc();
+        double libos_pop_end = rdtsc();
+        ti.pop_duration = libos_pop_end - ti.pop_start;
         ssize_t res = req->res;
         sga.copy(req->sga);
         delete req;

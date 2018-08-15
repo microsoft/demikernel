@@ -9,7 +9,7 @@
 #define INCLUDE_MEASURE_H_
 
 #include <stdint.h>
-#include <sys/time.h>
+#include <time.h>
 
 #define _CPUFREQ 3500LU /* MHz */
 
@@ -17,46 +17,41 @@
 #define CYCLE2NS(__cycles) (((__cycles) * 1000) / _CPUFREQ)
 
 struct timer_info {
-    uint64_t libos_pop_start;
-    uint64_t device_read_start;
-    uint64_t device_read_end;
-    uint64_t libos_pop_end;
-    uint64_t libos_push_start;
-    uint64_t device_send_start;
-    uint64_t device_send_end;
-    uint64_t libos_push_end;
+    double pop_duration;
+    double dev_read_duration;
+    double push_duration;
+    double dev_write_duration;
+
+    double pop_start;
+    double push_end;
 };
 
 extern struct timer_info ti;
 
-static inline uint64_t rdtsc(void)
+static inline double rdtsc(void)
 {
 //    uint32_t eax, edx;
 //    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx) :: "memory");
 //    return ((uint64_t)edx << 32) | eax;
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+    struct timespec tv;
+    clock_gettime(CLOCK_REALTIME, &tv);
+    return (tv.tv_sec*(uint64_t)1000000000+tv.tv_nsec) / 1000.0;
 }
 
 static inline void print_timer_info()
 {
-    uint64_t pop_duration = ti.libos_pop_end - ti.libos_pop_start;
-    uint64_t push_duration = ti.libos_push_end - ti.libos_push_start;
-    uint64_t recv_duration = ti.device_read_end - ti.device_read_start;
-    uint64_t send_duration = ti.device_send_end - ti.device_send_start;
-    uint64_t pop_to_push_duration = ti.libos_push_end - ti.libos_pop_start;
-    uint64_t push_overhead = push_duration - send_duration;
-    uint64_t pop_overhead = pop_duration - recv_duration;
+    double push_overhead = ti.push_duration - ti.dev_write_duration;
+    double pop_overhead = ti.pop_duration - ti.dev_read_duration;
+    double pop_to_push_duration = ti.push_end - ti.pop_start;
 
     printf("======================\n");
-    printf("pop duration: %lu\n", pop_duration);
-    printf("read duration: %lu\n", recv_duration);
-    printf("push duration: %lu\n", push_duration);
-    printf("send duration: %lu\n", send_duration);
-    printf("push overhead: %lu\n", push_overhead);
-    printf("pop overhead: %lu\n", pop_overhead);
-    printf("pop to push duration: %lu\n", pop_to_push_duration);
+    printf("pop duration: %4.2f\n", ti.pop_duration);
+    printf("read duration: %4.2f\n", ti.dev_read_duration);
+    printf("push duration: %4.2f\n", ti.push_duration);
+    printf("send duration: %4.2f\n", ti.dev_write_duration);
+    printf("push overhead: %4.2f\n", push_overhead);
+    printf("pop overhead: %4.2f\n", pop_overhead);
+    printf("pop to push duration: %4.2f\n", pop_to_push_duration);
 }
 
 #endif /* INCLUDE_MEASURE_H_ */
