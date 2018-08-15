@@ -416,30 +416,20 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     uint8_t *ptr = (uint8_t *)req.buf;
     // printf("req.buf:%p\n", req.buf);
     req.sga.num_bufs = req.header[2];
-#ifdef _LIBOS_MTCP_DEBUG_
-    printf("num_bufs:%d\n", req.header[2]);
-    printf("sga addr:%p\n", (void*) &req.sga);
-#endif
+    size_t len = 0;
     for (int i = 0; i < req.sga.num_bufs; i++) {
         req.sga.bufs[i].len = *(size_t *)ptr;
-#ifdef _LIBOS_MTCP_DEBUG_
-        printf("req.sga.bufs[%d].len:%d\n", i, req.sga.bufs[i].len);
-#endif
-        ptr += sizeof(uint64_t);
+        ptr += sizeof(req.sga.bufs[i].len);
         req.sga.bufs[i].buf = (ioptr)ptr;
-        char read_str[100];
-        memcpy(read_str, req.sga.bufs[i].buf, req.sga.bufs[i].len);
-        read_str[req.sga.bufs[i].len] = '\0';
-#ifdef _LIBOS_MTCP_DEBUG_
-        printf("read str:%s , first character:%c\n", read_str, read_str[0]);
-#endif
         ptr += req.sga.bufs[i].len;
+        len += req.sga.bufs[i].len;
     }
+    assert(req.sga.bufs[0].len == (dataLen - sizeof(req.sga.bufs[0].len)));
+    assert(req.sga.num_bufs == 1);
+    assert(req.sga.num_bufs > 0);
+    assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
-    req.res = dataLen - (req.sga.num_bufs * sizeof(uint64_t));
-#ifdef _LIBOS_MTCP_DEBUG_
-    printf("End ProcessIncoming\n");
-#endif
+    req.res = len;
     
     return;
 }
@@ -452,26 +442,24 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 #ifdef _LIBOS_MTCP_DEBUG_
     printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
 #endif
-    struct iovec vsga[2*sga.num_bufs + 1];
-    uint64_t lens[sga.num_bufs];
+    struct iovec vsga[2 * sga.num_bufs + 1];
     size_t dataSize = 0;
     size_t totalLen = 0;
 
     // calculate size and fill in iov
     for (int i = 0; i < sga.num_bufs; i++) {
-        lens[i] = sga.bufs[i].len;
-        vsga[2*i+1].iov_base = &lens[i];
-        vsga[2*i+1].iov_len = sizeof(uint64_t);
+        vsga[2*i+1].iov_base = &sga.bufs[i].len;;
+        vsga[2*i+1].iov_len = sizeof(sga.bufs[i].len);
         
         vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
         vsga[2*i+2].iov_len = sga.bufs[i].len;
-        
+
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
         
         // add up expected packet size minus header
-        totalLen += (uint64_t)sga.bufs[i].len;
-        totalLen += sizeof(uint64_t);
+        totalLen += sga.bufs[i].len;
+        totalLen += sizeof(sga.bufs[i].len);
         pin((void *)sga.bufs[i].buf);
     }
 
@@ -488,7 +476,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     double device_send_start = rdtsc();
     ssize_t count = _wrapper_mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
     double device_send_end = rdtsc();
-    ti.dev_write_duration = device_send_start - device_send_end;
+    ti.dev_write_duration = device_send_end- device_send_start;
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
