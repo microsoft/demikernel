@@ -158,6 +158,7 @@ static char spdk_app_name[] = "libos_spdk";
 static std::mutex spdk_init_lock;
 static std::mutex spdk_qd_lock;
 static std::mutex libos_flush_lock;
+static int libos_init_complete = 0;
 // we start from 1
 static int qd = 1;
 
@@ -250,6 +251,9 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
     spdk_context_t->cluster_size = spdk_bs_get_cluster_size(bs);
     // initialize the io channel
     spdk_context_t->app_channel = spdk_bs_alloc_io_channel(bs);
+
+    // set initial completed, make sure this place is the only one to set this variable
+    libos_init_complete = 1;
 
     /*
      * The blostore has been initialized, let's create a blob.
@@ -388,9 +392,10 @@ static void spdk_open_blob_sync_md_callback(void *cb_args, int bserrno){
     strcpy((it->second).name, args->req->file_name);
     // free the memory
     free(args->req->file_name);
-    libos_pending_reqs.erase(args->qt);
     // now it is safe to return, since the metadata is persistent
     args->req->isDone = true;
+    // NOTE: think about how to do with open() qt
+    // libos_pending_reqs.erase(args->qt);
     // now the file is ready to write
     libos_run_spdk_thread(NULL);
     fprintf(stderr, "spdk_open_sync(): libos_run_spdk_thread_return\n");
@@ -478,19 +483,23 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
                 continue;
             }
             if(spdkqueue_blob->length >= cur_req->req_text_end){
-                fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
-                erase_qt_list.push_back(cur_req->qt);
+                //fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
+                if(cur_req->req_op != LIBOS_FLUSH_PUSH){
+                    // we do not erase flush_push, let wait erase it
+                    erase_qt_list.push_back(cur_req->qt);
+                }
                 cur_req->isDone = true;
             }
         }
         req_it++;
     }
-
+#if 0
     // clean up the finished request
     for (std::list<qtoken>::iterator qt_it=erase_qt_list.begin(); qt_it != erase_qt_list.end(); ++qt_it){
         fprintf(stderr, "qtoken: %lu\n", *qt_it);
         libos_pending_reqs.erase(*qt_it);
     }
+#endif
 
     // if the flush_push request is not marked as done, we call flush explicitly
     auto flush_push_it = libos_pending_reqs.find(args->qt);
@@ -647,26 +656,32 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         SPDKPendingRequest *cur_req = &(req_it->second);
         if(cur_req->req_op == LIBOS_PUSH || cur_req->req_op == LIBOS_FLUSH_PUSH){
             // here, no request will enqueue after flush enqueue
+            fprintf(stderr, "qt:%lu blob->length:%lu, req_text_end:%d\n", cur_req->qt, spdkqueue_blob->length, cur_req->req_text_end);
             assert(cur_req->req_text_end > 0);
             if(spdkqueue_blob->length >= cur_req->req_text_end){
                 fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
-                erase_qt_list.push_back(cur_req->qt);
+                // we would not erase current request
+                if(cur_req->req_op != LIBOS_FLUSH_PUSH){
+                    erase_qt_list.push_back(cur_req->qt);
+                }
                 cur_req->isDone = true;
             }
         }
         req_it++;
     }
 
+#if 0
     // clean up the finished request
     for (std::list<qtoken>::iterator qt_it=erase_qt_list.begin(); qt_it != erase_qt_list.end(); ++qt_it){
-        fprintf(stderr, "qtoken: %lu\n", *qt_it);
+        fprintf(stderr, "qtoken to erase: %lu\n", *qt_it);
         libos_pending_reqs.erase(*qt_it);
     }
+#endif
     int qd = req->new_qd;
-    fprintf(stderr, "flush done for qd:%d\n", qd);
+    fprintf(stderr, "flush_write_sync_md callback:flush done for qd:%d\n", qd);
     assert(qd > 0);
     // clean up this flush request
-    libos_pending_reqs.erase(args->qt);
+    // libos_pending_reqs.erase(args->qt);
     req->isDone = true;
     // if is a close request instead of flush request, do clean up here
     if(req->req_op == LIBOS_CLOSE){
@@ -832,15 +847,20 @@ static void *libos_run_spdk_thread(void* thread_args){
 int
 SPDKQueue::socket(int domain, int type, int protocol)
 {
-    printf("SPDKQueue:socket()\n");
+    fprintf(stderr, "SPDKQueue:socket()\n");
     // NOTE: let's try to do init() here first, assume app just call this once at the beginning
     assert(spdk_bg_thread == 0);
     spdk_bg_thread = pthread_create(&spdk_bg_thread, NULL, *libos_run_spdk_thread, NULL);
+    while(!libos_spdk_context || libos_init_complete == 0){
+        // wait until the initialization finished
+    }
+    fprintf(stderr, "SPDK init success\n");
     return spdk_bg_thread;
 }
 
 int 
 SPDKQueue::libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags){
+    // TODO, open existing file according to loaded name and blobid
     return -1;
 }
 
@@ -977,7 +997,8 @@ SPDKQueue::flush(qtoken qt, bool isclosing){
     // grab the request
     auto it  = libos_pending_reqs.find(qt);
     if(it == (libos_pending_reqs).end()){
-        fprintf(stderr, "ERROR: cannot find the pending request for qt:%lu\n", qt);
+        fprintf(stderr, "ERROR: in flush() cannot find the pending request for qt:%lu\n", qt);
+        // if it is a push_flush request, the request has beed erased
         exit(1);
     }
     // now wait until the flush request finished
@@ -1086,13 +1107,13 @@ SPDKQueue::wait(qtoken qt, struct sgarray &sga)
     fprintf(stderr, "SPDKQueue:wait() qt:%lu\n", qt);
     auto it = libos_pending_reqs.find(qt);
     if(it == (libos_pending_reqs).end()){
-        fprintf(stderr, "ERROR: cannot find the pending request for qt:%lu\n", qt);
+        fprintf(stderr, "ERROR: in wait() cannot find the pending request for qt:%lu\n", qt);
         exit(1);
     }
     while(!it->second.isDone){
         usleep(100);
     }
-
+    // Note, we always first set isDone to true after erase the qt for push request
     if(it->second.req_op == LIBOS_FLUSH_PUSH){
         // release lock held in flush_push()
         auto flush_var_it = (libos_spdk_context->queue_flush_status).find(qd);
@@ -1114,6 +1135,15 @@ SPDKQueue::wait(qtoken qt, struct sgarray &sga)
     }
 
     ret = it->second.req_text_length;
+    // now it is truly safe to erase
+    it = libos_pending_reqs.find(qt);
+    if(it == (libos_pending_reqs).end()){
+        // ignore it now
+    }else{
+        if(it->second.req_op == LIBOS_FLUSH_PUSH){
+            libos_pending_reqs.erase(qt);
+        }
+    }
     return ret;
 }
 

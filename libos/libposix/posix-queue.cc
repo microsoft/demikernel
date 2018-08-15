@@ -459,6 +459,11 @@ PosixQueue::push(qtoken qt, struct sgarray &sga)
 {
     return Enqueue(qt, sga);
 }
+
+ssize_t
+PosixQueue::flush_push(qtoken qt, struct sgarray &sga){
+    return 0;
+}
     
 ssize_t
 PosixQueue::pop(qtoken qt, struct sgarray &sga)

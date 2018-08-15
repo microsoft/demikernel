@@ -70,13 +70,17 @@ int zeus_listen(int fd, int backlog);
 int zeus_bind(int qd, struct sockaddr *saddr, socklen_t size);
 int zeus_accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size);
+int zeus_socket(int domain, int type, int protocol);
 
 // eventually file functions
 //int zeus_open(const char *pathname, int flags);  // C does not support
 int zeus_open(const char *pathname, int flags, mode_t mode);
 int zeus_creat(const char *pathname, mode_t mode);
+int zeus_close(int qd);
+int zeus_flush(int qd);
 
 ssize_t zeus_push(int qd, zeus_sgarray * bufs);
+ssize_t zeus_flush_push(int qd, zeus_sgarray * bufs);
 ssize_t zeus_pop(int qd, zeus_sgarray * bufs);
 
 // other functions
