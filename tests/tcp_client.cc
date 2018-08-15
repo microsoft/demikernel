@@ -74,7 +74,7 @@ int main()
 
         assert(res.num_bufs == 1);
         fprintf(stderr, "client: rcvd\t%s\tbuf size:\t%d\n", (char*)res.bufs[0].buf, res.bufs[0].len);
-        free(sga.bufs[0].buf);
+        free(res.bufs[0].buf);
     }
 
     Zeus::close(qd);

@@ -55,19 +55,6 @@ int main()
 
     // process PKTNUM packets from client
     for (int i = 0; i < PKTNUM; i++) {
-//        qt = Zeus::pop(qd, sga);
-//        if (qt != 0) {
-//            if (qt < 0) {
-//                if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
-//                    perror("server pop:");
-//                    return -1;
-//                }
-//            }
-//	    //printf("server: wait for pop\n");
-//            n = Zeus::wait(qt, sga);
-//	    assert(n > 0);
-//        }
-
         while (Zeus::peek(qd, sga) == 0);
 
         assert(sga.num_bufs == 1);
@@ -80,9 +67,8 @@ int main()
                 perror("server push:");
                 return -1;
             }
-	    //printf("server: wait for push\n");
             n = Zeus::wait(qt, sga);
-	    assert(n > 0);
+	        assert(n > 0);
         }
 
         //printf("===========================\n");
