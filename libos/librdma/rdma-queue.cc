@@ -488,7 +488,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             }
             req->isDone = true;
             req->res = dataLen - (sga.num_bufs * sizeof(size_t));
-	    assert(req->res > 0);
+            assert(req->res > 0);
         }
     }
 }

@@ -73,6 +73,7 @@ int main()
         assert(sga.num_bufs == 1);
 
         //printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+        free(sga.bufs[0].buf);
 
         qt = Zeus::push(qd, sga);
         if (qt != 0) {

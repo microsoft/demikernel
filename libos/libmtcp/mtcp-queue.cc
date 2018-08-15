@@ -476,7 +476,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     double device_send_start = rdtsc();
     ssize_t count = _wrapper_mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
     double device_send_end = rdtsc();
-    ti.dev_write_duration = device_send_end- device_send_start;
+    ti.dev_write_duration = device_send_end - device_send_start;
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {

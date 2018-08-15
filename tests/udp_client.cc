@@ -90,6 +90,7 @@ int main()
 
         assert(res.num_bufs == 1);
         printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+        free(res.bufs[0].buf);
     }
 
     Zeus::close(qd);
