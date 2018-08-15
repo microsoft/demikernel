@@ -247,8 +247,8 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
-            double libos_push_end = rdtsc();
-            ti.push_duration = libos_push_end - libos_push_start;
+            ti.push_end = rdtsc();
+            ti.push_duration = ti.push_end - libos_push_start;
             return 0;
         }
     };
