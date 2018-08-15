@@ -38,14 +38,6 @@ include_directories(${HOARD_DIR}/include/util)
 include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
-set(RDMA_HOARD_DIR ${ZEUS_SOURCE_DIR}/librdma/mem)
-include_directories(${RDMA_HOARD_DIR}/include)
-include_directories(${RDMA_HOARD_DIR}/include/hoard)
-include_directories(${RDMA_HOARD_DIR}/include/superblocks)
-include_directories(${RDMA_HOARD_DIR}/include/util)
-include_directories(${RDMA_HOARD_DIR}/include/zeus)
-include_directories(${RDMA_HOARD_DIR}/Heap-Layers)
-
 # ---------------------------------------------------------
 # Source files
 # ---------------------------------------------------------
@@ -65,12 +57,6 @@ add_custom_target(hoard ALL
                   COMMAND make
                   COMMAND mv ${HOARD_DIR}/libhoard.so ${PROJECT_SOURCE_DIR}
                   WORKING_DIRECTORY ${HOARD_DIR})
-
-# hoard target
-add_custom_target(rdmahoard ALL
-                  COMMAND make
-                  COMMAND mv ${RDMA_HOARD_DIR}/libhoard.so ${PROJECT_SOURCE_DIR}/librdmahoard.so
-                  WORKING_DIRECTORY ${RDMA_HOARD_DIR})
                 
 # POSIX libos target
 add_library(zeus_posix SHARED
@@ -100,6 +86,6 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/librdmahoard.so rdmacm ibverbs)
-add_dependencies(zeus_rdma rdmahoard)
+target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)
+add_dependencies(zeus_rdma hoard)
 endif()

@@ -35,10 +35,13 @@
 
 #include "VERSION.h"
 
-#define versionMessage "Using the Zeus-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
+#define versionMessage "Using the Zeus-RDMA-Hoard memory allocator (http://www.hoard.org), version " HOARD_VERSION_STRING "\n"
 
 #include "heaplayers.h"
 #include "include/zeus/libzeus.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 // The undef below ensures that any pthread_* calls get strong
 // linkage.  Otherwise, our versions here won't replace them.  It is
@@ -115,7 +118,6 @@ TheCustomHeapType * getCustomHeap();
 enum { MAX_LOCAL_BUFFER_SIZE = 256 * 131072 };
 static char initBuffer[MAX_LOCAL_BUFFER_SIZE];
 static char * initBufferPtr = initBuffer;
-
 extern bool isCustomHeapInitialized();
 
 extern "C" {
@@ -137,7 +139,7 @@ extern "C" {
             abort();
         }
         {
-            static bool initialized = false;
+	  static bool initialized = false;
             if (!initialized) {
                 initialized = true;
 #if !defined(_WIN32)
@@ -171,5 +173,8 @@ extern "C" {
     void unpin(void * ptr) {
         getCustomHeap()->unpin (ptr);
     }
-   
+
+  struct ibv_mr * rdma_get_mr(void * ptr, ibv_pd *pd) {
+    return getCustomHeap()->rdma_get_mr (ptr, pd);
+    }
 } // extern C
