@@ -73,7 +73,6 @@ int main()
         assert(sga.num_bufs == 1);
 
         //printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
-        free(sga.bufs[0].buf);
 
         qt = Zeus::push(qd, sga);
         if (qt != 0) {
@@ -89,6 +88,7 @@ int main()
         //printf("===========================\n");
         print_timer_info();
         //printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
+        free(sga.bufs[0].buf);
     }
 
     Zeus::close(qd);
