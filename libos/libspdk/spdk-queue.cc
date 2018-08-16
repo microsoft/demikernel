@@ -55,6 +55,7 @@ extern "C" {
 #include "spdk/bdev.h"
 } // END of extern "C"
 
+//#define _LIBOS_SPDK_QUEUE_DEBUG_
 
 
 namespace Zeus {
@@ -271,7 +272,8 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
 
 static void libos_spdk_start_common(SPDKContext *spdk_context_t){
      // TODO: here, the Malloc0 is going to be replaced by real device!
-    spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
+    //spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
+    spdk_context_t->bdev = spdk_bdev_get_by_name("Nvme0n1");
     if(spdk_context_t->bdev == NULL){
         fprintf(stderr, "spdk_context_t->bdev is NULL, will do stop\n");
         spdk_app_stop(-1);
@@ -342,8 +344,9 @@ static void libos_spdk_app_start(void *arg1, void *arg2){
     struct SPDKContext *spdk_context_t = (struct SPDKContext *) arg1;
     fprintf(stderr, "libos_spdk_app_start\n");
     libos_spdk_start_common(spdk_context_t);
-    //spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
-    spdk_bs_load(spdk_context_t->bs_dev, NULL, spdk_bs_load_complete, spdk_context_t);
+    spdk_bs_init(spdk_context_t->bs_dev, NULL, spdk_bs_init_complete, spdk_context_t);
+    // TODO, check what's run with load here
+    //spdk_bs_load(spdk_context_t->bs_dev, NULL, spdk_bs_load_complete, spdk_context_t);
     fprintf(stderr, "libos_spdk_app_start will return\n");
 }
 
@@ -421,9 +424,11 @@ static void spdk_open_blob_callback(void *cb_args, struct spdk_blob *blob, int b
     args->req->file_blob = blob;
     // TODO: i'm considering to change 1 into free cluster size
     // aka. reserve the whole blobstore in initialization
-    // uint64_t free = 0;
-    // free = spdk_bs_free_cluster_count(libos_spdk_context->app_bs);
-    spdk_blob_resize(blob, 1, spdk_open_blob_resize_callback, args);
+    uint64_t free = 0;
+    free = spdk_bs_free_cluster_count(libos_spdk_context->app_bs);
+    fprintf(stderr, "free cluster count is:%lu\n", free);
+    //spdk_blob_resize(blob, 1, spdk_open_blob_resize_callback, args);
+    spdk_blob_resize(blob, free, spdk_open_blob_resize_callback, args);
     fprintf(stderr, "spdk_open_blob_resize_callback will return tid:%u\n", get_thread_tid());
 }
 
@@ -462,7 +467,9 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
         return;
     }
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "push_write_sync_md_callback qt:%lu\n", args->qt);
+#endif
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
@@ -476,7 +483,9 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
     while(req_it != libos_pending_reqs.end()){
         SPDKPendingRequest *cur_req = &(req_it->second);
         if(cur_req->req_op == LIBOS_PUSH || cur_req->req_op == LIBOS_FLUSH_PUSH){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
             fprintf(stderr, "qt:%lu blob->length:%lu, req_text_end:%d\n", cur_req->qt, spdkqueue_blob->length, cur_req->req_text_end);
+#endif
             // here, probablly the unprocessed push request still has text_end to -1
             if(cur_req->req_text_end < 0) {
                 req_it++;
@@ -504,7 +513,9 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
     // if the flush_push request is not marked as done, we call flush explicitly
     auto flush_push_it = libos_pending_reqs.find(args->qt);
     if(flush_push_it != libos_pending_reqs.end() && req->req_op == LIBOS_FLUSH_PUSH){
-        assert(req->isDone == false);
+        // It might be that this push is exactly page-aligned, thus have been flushed
+        // TODO; assert here, either now page alined or not DONE
+        ////assert(req->isDone == false);
         libos_spdk_flush(args->qt, req);
     }else{
         libos_run_spdk_thread(NULL);
@@ -513,7 +524,9 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
 }
 
 static void push_write_complete_callback(void *cb_args, int bsserrno){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "push_write_complete_callback\n");
+#endif
 	if (bsserrno) {
         char err_msg[32] = "Error in write_complete cb";
         unload_bs(libos_spdk_context, err_msg, bsserrno);
@@ -522,7 +535,9 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "push_write_complete_callback qt:%lu, end_length:%d\n", args->qt, req->req_text_end);
+#endif
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
     if(it == (libos_spdk_context->opened_blobs).end()){
         fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
@@ -542,23 +557,29 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
     // TODO, move this into the push_write_sync_md_callback for crash consistensy ?
     // in this push function, the length will always be aligned after we finish the page write to device
     spdkqueue_blob->length = spdkqueue_blob->write_buffer_size * (1 + spdkqueue_blob->length / spdkqueue_blob->write_buffer_size);
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "update spdkqueue_blob->length to:%lu\n", spdkqueue_blob->length);
+#endif
     spdkqueue_blob->num_pages += 1;
     // sync the metadata
     uint64_t current_file_length = spdkqueue_blob->length;
     spdk_blob_set_xattr(args->req->file_blob, "length", &current_file_length, sizeof(current_file_length));
     spdk_blob_sync_md(req->file_blob, push_write_sync_md_callback, args);
 
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "push_write_complete_callback finished\n");
+#endif
 }
 
 static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "libos_spdk_push called\n");
     if(pending_req->do_flush){
         fprintf(stderr, "flush_push is TRUE\n");
     }else{
         fprintf(stderr, "flush_push is FALSE\n");
     }
+#endif
     spdk_blob_id blobid = pending_req->file_blobid;
     if(blobid < 0){
         fprintf(stderr, "ERROR: blobid not found qt:%lu\n", qt);
@@ -599,7 +620,9 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
     }
     pending_req->req_text_start = (spdkqueue_blob->num_pages)*spdkqueue_blob->write_buffer_size + spdkqueue_blob->write_buffer_offset;
     pending_req->req_text_end = pending_req->req_text_start + write_elem->len;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "qt:%lu req_text_start:%d, req_text_end:%d\n", qt, pending_req->req_text_start, pending_req->req_text_end);
+#endif
     if(spdkqueue_blob->write_buffer_offset + write_elem->len >= spdkqueue_blob->write_buffer_size){
         // write_buffer will be full, need to do write
         pending_req->pending_length = (spdkqueue_blob->write_buffer_offset + write_elem->len - spdkqueue_blob->write_buffer_size);
@@ -621,7 +644,9 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
                 write_elem->buf, write_elem->len);
         spdkqueue_blob->write_buffer_offset += write_elem->len;
         if(pending_req->req_op == LIBOS_FLUSH_PUSH){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
             fprintf(stderr, "will call flush for this push\n");
+#endif
             libos_spdk_flush(pending_req->qt, pending_req);
         }else{
             libos_run_spdk_thread(NULL);
@@ -641,7 +666,9 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         return;
     }
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_args;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_sync_md_callback qt:%lu\n", args->qt);
+#endif
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
@@ -656,10 +683,12 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         SPDKPendingRequest *cur_req = &(req_it->second);
         if(cur_req->req_op == LIBOS_PUSH || cur_req->req_op == LIBOS_FLUSH_PUSH){
             // here, no request will enqueue after flush enqueue
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
             fprintf(stderr, "qt:%lu blob->length:%lu, req_text_end:%d\n", cur_req->qt, spdkqueue_blob->length, cur_req->req_text_end);
+#endif
             assert(cur_req->req_text_end > 0);
             if(spdkqueue_blob->length >= cur_req->req_text_end){
-                fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
+                //fprintf(stderr, "cur_qt:%lu\n", cur_req->qt);
                 // we would not erase current request
                 if(cur_req->req_op != LIBOS_FLUSH_PUSH){
                     erase_qt_list.push_back(cur_req->qt);
@@ -677,8 +706,9 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         libos_pending_reqs.erase(*qt_it);
     }
 #endif
+
     int qd = req->new_qd;
-    fprintf(stderr, "flush_write_sync_md callback:flush done for qd:%d\n", qd);
+    //fprintf(stderr, "flush_write_sync_md callback:flush done for qd:%d\n", qd);
     assert(qd > 0);
     // clean up this flush request
     // libos_pending_reqs.erase(args->qt);
@@ -696,11 +726,15 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         (libos_spdk_context->queue_flush_lock).erase(qd);
     }
     libos_run_spdk_thread(NULL);
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_sync: libos_run_spdk_thread_return\n");
+#endif
 }
 
 static void flush_write_complete_callback(void *cb_args, int bserrno){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_complete_callback\n");
+#endif
     if (bserrno) {
         char err_msg[32] = "Error in push_wt_compl cb";
         unload_bs(libos_spdk_context, err_msg, bserrno);
@@ -712,7 +746,9 @@ static void flush_write_complete_callback(void *cb_args, int bserrno){
     SPDKPendingRequest *req = args->req;
     spdk_blob_id blobid = req->file_blobid;
     // Here, if it is a pure flush request, the req_text_end will be -1
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_complete_callback qt:%lu, end_length:%d\n", args->qt, req->req_text_end);
+#endif
     auto it = (libos_spdk_context->opened_blobs).find(blobid);
     if(it == (libos_spdk_context->opened_blobs).end()){
         fprintf(stderr, "ERROR: cannot find opened blob blobid:%lu\n", blobid);
@@ -723,7 +759,9 @@ static void flush_write_complete_callback(void *cb_args, int bserrno){
     // we do not updage the num_pages, so we could re-sync the whole page
     //spdkqueue_blob->length += spdkqueue_blob->write_buffer_offset;
     spdkqueue_blob->length = (spdkqueue_blob->num_pages)*spdkqueue_blob->write_buffer_size + spdkqueue_blob->write_buffer_offset;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_cpl_cb: blob->length update to:%lu\n", spdkqueue_blob->length);
+#endif
     // sync the metadata
     uint64_t current_file_length = spdkqueue_blob->length;
     spdk_blob_set_xattr(args->req->file_blob, "length", &current_file_length, sizeof(current_file_length));
@@ -736,7 +774,9 @@ static void flush_write_complete_callback(void *cb_args, int bserrno){
  * simply write data into block device, update metadata, and then set flush status
  **/
 static void libos_spdk_flush(qtoken qt, SPDKPendingRequest *req){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "libos_spdk_flush()\n");
+#endif
     spdk_blob_id blobid = req->file_blobid;
     if(blobid < 0){
         fprintf(stderr, "ERROR: blobid not found qt:%lu\n", qt);
@@ -836,7 +876,10 @@ static void *libos_run_spdk_thread(void* thread_args){
             sum_req_processed++;
         }
         if(sum_req_processed > 0){
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
             fprintf(stderr, "libos_run_spdk_thread break op:%d idle_op:%d\n", cur_op, LIBOS_IDLE);
+#endif
+
             // break here, until the end of call-back chain re-enter this loop
             break;
         }
@@ -1104,7 +1147,9 @@ ssize_t
 SPDKQueue::wait(qtoken qt, struct sgarray &sga)
 {
     int ret = 0;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "SPDKQueue:wait() qt:%lu\n", qt);
+#endif
     auto it = libos_pending_reqs.find(qt);
     if(it == (libos_pending_reqs).end()){
         fprintf(stderr, "ERROR: in wait() cannot find the pending request for qt:%lu\n", qt);
