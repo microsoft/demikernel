@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 
 #include "../include/io-queue.h"
-#include "../include/measure.h"
+#include "../libos/common/latency.h"
 
 #define PKTNUM          10000
 
@@ -78,7 +78,7 @@ int main()
 		}
 
 		//printf("===========================\n");i
-        print_timer_info();
+        Latency_DumpAll();
 		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
         free(sga.bufs[0].buf);
     }
