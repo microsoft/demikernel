@@ -391,7 +391,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         // add up expected packet size minus header
         totalLen += sga.bufs[i].len;
         totalLen += sizeof(sga.bufs[i].len);
-        pin((void *)sga.bufs[i].buf);
+        //pin((void *)sga.bufs[i].buf);
     }
 
     // fill in header
@@ -443,9 +443,9 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
         assert(req.num_bytes == 0);
         return;
     }
-    for (int i = 0; i < sga.num_bufs; i++) {
-        unpin((void *)sga.bufs[i].buf);
-    }
+    // for (int i = 0; i < sga.num_bufs; i++) {
+    //     unpin((void *)sga.bufs[i].buf);
+    // }
     //fprintf(stderr, "[%x] Sending message datasize=%ld totalsize=%ld\n", qd, dataSize, totalLen);
     req.res = dataSize;
     req.isDone = true;

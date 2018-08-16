@@ -209,7 +209,12 @@ namespace Zeus {
             assert (s->getOwner() == this);
             s->unpin(ptr);
         }
-        
+
+      INLINE ibv_mr* rdma_get_mr(void * ptr, ibv_pd *pd) {
+	SuperblockType * s = SuperHeap::getSuperblock(ptr);
+            assert (s->getOwner() == this);
+            return s->rdma_get_mr(pd);
+        }
     private:
 
         typedef Hoard::BaseHoardManager<SuperblockType_> SuperHeap;

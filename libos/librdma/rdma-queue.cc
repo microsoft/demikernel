@@ -114,7 +114,7 @@ RdmaQueue::SetupRdmaQP()
     if (rdma_create_qp(rdma_id, pd, &qp_attr) != 0) {
         fprintf(stderr, "Could not create RDMA queue pairs: %s\n",
                 strerror(errno));
-	return -1;
+	return ZEUS_IO_ERR_NO;
     }
     flags = fcntl(rdma_id->send_cq_channel->fd, F_GETFL);
     // Always put completion queues in non-blocking mode
@@ -228,7 +228,7 @@ RdmaQueue::CheckEventQ()
 	    fprintf(stderr, "Unknown event: 0x%x\n", event->event);
         }
         rdma_ack_cm_event(event);
-	fprintf(stderr, "Done processing event queue\n");
+	//fprintf(stderr, "Done processing event queue\n");
     }
 }
     
@@ -239,14 +239,14 @@ RdmaQueue::socket(int domain, int type, int protocol)
     //get file descriptor
     if ((event_channel = rdma_create_event_channel()) == 0) {
 	fprintf(stderr, "Could not create event channel: %s\n", strerror(errno));
-	return -1;
+	return ZEUS_IO_ERR_NO;
     }
     if (type == SOCK_STREAM) {
         if ((rdma_create_id(event_channel, &rdma_id,
 			    NULL, RDMA_PS_TCP)) != 0) {
             fprintf(stderr, "Could not create RDMA event id: %s\n",
 		    strerror(errno));
-            return -1;
+            return ZEUS_IO_ERR_NO;
         }
 	fprintf(stderr, "Creating reliable RDMA connection\n");
     } else {
@@ -254,7 +254,7 @@ RdmaQueue::socket(int domain, int type, int protocol)
 			    NULL, RDMA_PS_UDP)) != 0) {
             fprintf(stderr, "Could not create RDMA event id: %s\n",
 		    strerror(errno));
-            return -1;
+            return ZEUS_IO_ERR_NO;
         }
 	//fprintf(stderr, "Creating unreliable RDMA connection\n");
     }
@@ -293,7 +293,7 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
     if ((rdma_accept(rdma_id, &params)) != 0) {
         fprintf(stderr, "Failed to accept incoming RDMA connection: %s\n",
                 strerror(errno));
-        return -1;
+        return ZEUS_IO_ERR_NO;
     }
 
    
@@ -343,7 +343,7 @@ RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
     ret = rdma_get_cm_event(rdma_id->channel, &event);
     if (ret != 0 || event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
         fprintf(stderr, "Could not resolve to RDMA address\n");
-        return -1;
+        return ZEUS_IO_ERR_NO;
     }
     rdma_ack_cm_event(event);
 
@@ -428,6 +428,7 @@ RdmaQueue::creat(const char *pathname, mode_t mode)
 int
 RdmaQueue::close()
 {
+    closed = true;
     if (rdma_id->qp) rdma_destroy_qp(rdma_id);
 
     if (rdma_destroy_id(rdma_id) != 0) {
@@ -450,6 +451,11 @@ void
 RdmaQueue::ProcessIncoming(PendingRequest *req)
 {
 
+    if (closed) {
+	req->isDone = true;
+	req->res = ZEUS_IO_ERR_NO;
+    }
+    
     CheckEventQ();
 
     if (listening && !accepts.empty()) {

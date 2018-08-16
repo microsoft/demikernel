@@ -37,7 +37,7 @@
 #include <unordered_map>
 #include <rdma/rdma_cma.h>
 // hoard include
-#include "librdma/mem/include/zeus/libzeus.h"
+#include "common/mem/include/zeus/libzeus.h"
 
 
 #define RECV_BUFFER_SIZE 1024
@@ -77,7 +77,8 @@ private:
     // connection manager for this connection queue
     struct rdma_cm_id *rdma_id = NULL;
     bool listening = false;
-
+    bool closed = false;
+    
     int PostReceive();
     void ProcessIncoming(PendingRequest *req);
     void ProcessOutgoing(PendingRequest *req);

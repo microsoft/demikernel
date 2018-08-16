@@ -38,15 +38,6 @@ include_directories(${HOARD_DIR}/include/util)
 include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
-# RDMA Hoard
-set(RDMA_HOARD_DIR ${ZEUS_SOURCE_DIR}/librdma/mem)
-include_directories(${RDMA_HOARD_DIR}/include)
-include_directories(${RDMA_HOARD_DIR}/include/hoard)
-include_directories(${RDMA_HOARD_DIR}/include/superblocks)
-include_directories(${RDMA_HOARD_DIR}/include/util)
-include_directories(${RDMA_HOARD_DIR}/include/zeus)
-include_directories(${RDMA_HOARD_DIR}/Heap-Layers)
-
 # mtcp
 set(DPDK_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/dpdk/)
 set(MTCP_DIR ${ZEUS_SOURCE_DIR}/libmtcp/mtcp/mtcp/)
@@ -78,18 +69,12 @@ add_custom_target(hoard ALL
                   COMMAND make
                   COMMAND mv ${HOARD_DIR}/libhoard.so ${PROJECT_SOURCE_DIR}
                   WORKING_DIRECTORY ${HOARD_DIR})
-
-# RDMA hoard target
-add_custom_target(rdmahoard ALL
-                  COMMAND make
-                  COMMAND mv ${RDMA_HOARD_DIR}/libhoard.so ${PROJECT_SOURCE_DIR}/librdmahoard.so
-                  WORKING_DIRECTORY ${RDMA_HOARD_DIR})
                 
 # POSIX libos target
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_POSIX_LIB})
-target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
-add_dependencies(zeus_posix hoard)
+#target_link_libraries(zeus_posix ${PROJECT_SOURCE_DIR}/libhoard.so)
+#add_dependencies(zeus_posix hoard)
 
 # LWIP libos target
 set( DPDK_LIB "-Wl,--whole-archive -lnuma -lpthread -ldl -lrte_mbuf  -lrte_eal -lrte_mempool -lrte_mempool_ring -lrte_ring -lrte_ethdev -lrte_kvargs -lrte_pmd_mlx5 -libverbs -Wl,--no-whole-archive" )
@@ -107,11 +92,12 @@ add_dependencies(zeus_mtcp hoard)
 
 # RDMA libos target
 if (UNIX)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
-    set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
-    add_library(zeus_rdma SHARED ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
-    target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/librdmahoard.so rdmacm ibverbs)
-    add_dependencies(zeus_rdma rdmahoard)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
+set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
+add_library(zeus_rdma SHARED
+  ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
+target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)
+add_dependencies(zeus_rdma hoard)
 endif()
 
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)

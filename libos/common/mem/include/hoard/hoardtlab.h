@@ -91,6 +91,7 @@ namespace Hoard {
     // Irene: adding pin and unpin operations
     void pin(void *ptr);
     void unpin(void *ptr);
+    struct ibv_mr * get_rdma_mr(void *ptr);
 }
 
 typedef HL::ANSIWrapper<Hoard::TLABBase> TheCustomHeapType;

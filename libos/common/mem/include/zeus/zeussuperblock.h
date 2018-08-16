@@ -30,6 +30,7 @@
 
 #include <cassert>
 #include <cstdlib>
+#include <rdma/rdma_cma.h>
 
 #include "heaplayers.h"
 
@@ -186,7 +187,15 @@ namespace Zeus {
             //printf("Unpinning block %lx", ptr);
             _header.unpin(ptr);
         }
-        
+
+      inline uint64_t * get_pin_entry (void *ptr) {
+	return _header.get_pin_entry(ptr);
+      }
+      
+        inline ibv_mr* rdma_get_mr(ibv_pd *pd) { 
+            return this->_header.rdma_get_mr(pd);
+        };
+
         typedef Header_<LockType, SuperblockSize, HeapType> Header;
 
     private:
