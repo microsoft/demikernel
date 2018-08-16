@@ -216,7 +216,7 @@ public:
     
     int close(int qd) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         
         Queue &queue = GetQueue(qd);
         int res = queue.close();
@@ -226,14 +226,14 @@ public:
 
     int qd2fd(int qd) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         Queue &q = GetQueue(qd);
         return q.getfd();
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         Queue &queue = GetQueue(qd);
         qtoken t = GetNewToken(qd, true);
@@ -251,12 +251,12 @@ public:
 
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         
         Queue &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q)
             // popping from files not implemented yet
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, false);
         ssize_t res;
@@ -267,13 +267,13 @@ public:
         else if (res == 0)
             return t;
         else
-            return -1;
+            return ZEUS_IO_ERR_NO;
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
         //printf("call peekp\n");
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         
         Queue &queue = GetQueue(qd);
         int res = queue.peek(sga);
@@ -342,12 +342,12 @@ public:
     ssize_t blocking_push(int qd,
                           struct sgarray &sga) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         
         Queue &q = GetQueue(qd);
         if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, false);
         ssize_t res = q.push(t, sga);
@@ -363,12 +363,12 @@ public:
     ssize_t blocking_pop(int qd,
                          struct sgarray &sga) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
         
         Queue &q = GetQueue(qd);
         if (q.GetType() == FILE_Q)
             // popping from files not implemented yet
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, false);
         ssize_t res = q.pop(t, sga);
@@ -383,14 +383,14 @@ public:
     
     int merge(int qd1, int qd2) {
         if (!HasQueue(qd1) || !HasQueue(qd2))
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         return 0;
     };
 
     int filter(int qd, bool (*filter)(struct sgarray &sga)) {
         if (!HasQueue(qd))
-            return -1;
+            return ZEUS_IO_ERR_NO;
 
         return 0;
     };

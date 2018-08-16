@@ -77,7 +77,8 @@ private:
     // connection manager for this connection queue
     struct rdma_cm_id *rdma_id = NULL;
     bool listening = false;
-
+    bool closed = false;
+    
     int PostReceive();
     void ProcessIncoming(PendingRequest *req);
     void ProcessOutgoing(PendingRequest *req);
