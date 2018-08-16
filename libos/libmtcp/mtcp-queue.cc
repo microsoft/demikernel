@@ -126,56 +126,9 @@ int mtcp_env_init(){
     return ret;
 }
 
-/* add measurement code into these wrappers */
-inline ssize_t
-_wrapper_mtcp_read(mctx_t mctx, int sockid, char *buf, size_t len) {
-#ifdef _LIBOS_MTCP_MTCP_READ_LTC_
-    uint64_t read_start_tick, read_end_tick;
-    read_start_tick = rdtsc(); 
-#endif
-    ssize_t ret = mtcp_read(mctx, sockid, buf, len);
-#ifdef _LIBOS_MTCP_MTCP_READ_LTC_
-    read_end_tick = rdtsc();
-    mtcp_read_total_ticks += (read_end_tick - read_start_tick);
-    if(ret >= 0){
-        mtcp_read_counter++;
-        mtcp_read_success_ticks += (read_end_tick - read_start_tick);
-    }
-    if(mtcp_read_counter == READ_OUTPUT_INTERVAL){
-        fprintf(stderr, "mtcp_read_success_ticks:%lu mtcp_read_total_ticks:%lu\n",
-                mtcp_read_success_ticks, mtcp_read_total_ticks);
-        mtcp_read_counter = 0;
-    }
-#endif
-    return ret;
-}
-
-inline int
-_wrapper_mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV){
-#ifdef _LIBOS_MTCP_MTCP_WRITE_LTC_
-    uint64_t write_start_tick, write_end_tick;
-    write_start_tick = rdtsc();
-#endif
-    int ret = mtcp_writev(mctx, sockid, iov, numIOV);
-#ifdef _LIBOS_MTCP_MTCP_WRITE_LTC_
-    write_end_tick = rdtsc();
-    if(ret >= 0){
-        mtcp_write_counter++;
-        mtcp_write_total_ticks += (write_end_tick - write_start_tick);
-        if(mtcp_write_counter == WRITE_OUTPUT_INTERVAL){
-            fprintf(stderr, "mtcp_write_total_ticks:%lu\n", mtcp_write_total_ticks);
-        }
-    }
-#endif
-    return ret;
-}
-
 int
 MTCPQueue::socket(int domain, int type, int protocol)
 {
-#ifdef _LIBOS_MTCP_DEBUG_
-    printf("mtcp_queue\n");
-#endif
     if (!mtcp_env_initialized) {
         printf("mtcp-queue.c/queue() will init mtcp env\n");
         mtcp_env_init();
@@ -201,7 +154,7 @@ MTCPQueue::bind(struct sockaddr *saddr, socklen_t size)
     if (ret == 0){
         return ret;
     }
-    return -1;
+    return -errno;
 }
 
 int
@@ -211,8 +164,11 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 
     struct mtcp_epoll_event ev;
 
+    sgarray sga;
+    PendingRequest req(sga);
+    ProcessIncoming(req);
     if (accepts.empty()) {
-        return -1;
+        return 0;
     }
 
     auto &acceptInfo = accepts.front();
@@ -226,6 +182,11 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
         mtcp_setsockopt(mctx, newqd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
         // Always put it in non-blocking mode
         int ret = mtcp_setsock_nonblock(mctx, newqd);
+        if (ret < 0) {
+            fprintf(stderr, "error accept() cannot set nonblock\n");
+        }
+
+        ret = mtcp_setsock_nonblock(mctx, mtcp_qd);
         if (ret < 0) {
             fprintf(stderr, "error accept() cannot set nonblock\n");
         }
@@ -351,7 +312,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
         dev_read_start1 = rdtsc();
-        ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
+        ssize_t count = mtcp_read(mctx, mtcp_qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
         dev_read_end1 = rdtsc();
         //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
         // printf("0-mtcp_read() count:%d\n", count);
@@ -389,11 +350,9 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
         dev_read_start2 = rdtsc();
-        ssize_t count = _wrapper_mtcp_read(mctx, mtcp_qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
+        ssize_t count = mtcp_read(mctx, mtcp_qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
         dev_read_end2 = rdtsc();
-#ifdef _LIBOS_MTCP_DEBUG_
-        printf("1-mtcp_read() count:%d\n", count);
-#endif
+
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;
@@ -439,9 +398,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
     //uint64_t rcd_tick = jl_rdtsc();
     sgarray &sga = req.sga;
-#ifdef _LIBOS_MTCP_DEBUG_
-    printf("DEBUG:ProcessOutgoing:req.num_bytes = %lu req.header[1] = %lu\n", req.num_bytes, req.header[1]);
-#endif
+
     struct iovec vsga[2 * sga.num_bufs + 1];
     size_t dataSize = 0;
     size_t totalLen = 0;
@@ -474,9 +431,10 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     totalLen += sizeof(req.header);
    
     double device_send_start = rdtsc();
-    ssize_t count = _wrapper_mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
+    ssize_t count = mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
     double device_send_end = rdtsc();
     ti.dev_write_duration = device_send_end - device_send_start;
+
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -501,19 +459,13 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
 
     req.res = dataSize;
     req.isDone = true;
-    //uint64_t rcd_tick_end = jl_rdtsc();
-#ifdef _LIBOS_MTCP_TOTAL_SERVER_LTC_
-    fprintf(stderr, "ProcessOutgoing(writev) start:%lu end:%lu\n", rcd_tick, rcd_tick_end);
-#endif
 }
     
 void
 MTCPQueue::ProcessQ(size_t maxRequests)
 {
     size_t done = 0;
-#ifdef _LIBOS_MTCP_DEBUG_
-//    printf("ProcessQ()\n");
-#endif
+
     while (!workQ.empty() && done < maxRequests) {
         qtoken qt = workQ.front();
         auto it = pending.find(qt);
@@ -525,14 +477,8 @@ MTCPQueue::ProcessQ(size_t maxRequests)
         
         PendingRequest &req = it->second; 
         if (IS_PUSH(qt)) {
-#ifdef _LIBOS_MTCP_DEBUG_
-//            printf("isPush\n");
-#endif
             ProcessOutgoing(req);
         } else {
-#ifdef _LIBOS_MTCP_DEBUG_
-//            printf("isPop\n");
-#endif
             ProcessIncoming(req);
         }
 
@@ -540,32 +486,29 @@ MTCPQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
         }            
     }
-    //printf("Processed %lu requests", done);
 }
     
 ssize_t
 MTCPQueue::Enqueue(qtoken qt, sgarray &sga)
 {
- 	auto it = pending.find(qt);
-    if (it == pending.end()) {
-        pending.insert(std::make_pair(qt, PendingRequest(sga)));
-        workQ.push_back(qt);
+    // let's just try to send this
+    PendingRequest req(sga);
 
-        // let's try processing here because we know our sockets are
-        // non-blocking
-        if (workQ.front() == qt) {
-            ProcessQ(1);
-        }
+    if (IS_PUSH(qt)) {
+        ProcessOutgoing(req);
+    } else {
+        ProcessIncoming(req);
     }
-    PendingRequest &req = pending.find(qt)->second;
 
     if (req.isDone) {
-        assert(sga.num_bufs > 0);
         return req.res;
     } else {
-        //printf("Enqueue() req.is Done = false will return 0\n");
+        assert(pending.find(qt) == pending.end());
+        pending.insert(std::make_pair(qt, req));
+        workQ.push_back(qt);
+        //fprintf(stderr, "Enqueue() req.is Done = false will return 0\n");
         return 0;
-    } 
+    }
 }
 
 ssize_t
