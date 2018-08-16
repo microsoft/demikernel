@@ -41,11 +41,22 @@
 #include <sys/types.h>
 #include <iostream>
 #include <fstream>
-
+#include "rdtsc.h"
 #include "common/message.h"
 //#include "lib/latency-format.pb.h"
 
 static struct Latency_t *latencyHead;
+
+static inline uint64_t rdtsc()
+{
+    tsc_counter c;
+    RDTSC(c);
+    return COUNTER_VAL(c);
+
+    // if (clock_gettime(CLOCK_MONOTONIC, &end) < 0)
+    //     PPanic("Failed to get CLOCK_MONOTONIC");
+
+}
 
 static void
 LatencyInit(Latency_t *l, const char *name)
@@ -65,22 +76,6 @@ _Latency_Init(Latency_t *l, const char *name)
     LatencyInit(l, name);
     l->next = latencyHead;
     latencyHead = l;
-}
-
-static void
-LatencyMaybeFlush(void)
-{
-
-    static struct timespec lastFlush;
-
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) < 0)
-        PPanic("Failed to get CLOCK_MONOTONIC");
-
-    if (now.tv_sec != lastFlush.tv_sec) {
-        lastFlush = now;
-        //Latency_Flush();
-    }
 }
 
 static inline Latency_Dist_t *
@@ -149,35 +144,22 @@ Latency_EndRecType(Latency_t *l, Latency_Frame_t *fr, char type)
     l->bottom = fr->parent;
 
     LatencyAdd(l, type, fr->accum);
-
-    //LatencyMaybeFlush();
 }
 
 void
 Latency_Pause(Latency_t *l)
 {
-    struct timespec end;
-    if (clock_gettime(CLOCK_MONOTONIC, &end) < 0)
-        PPanic("Failed to get CLOCK_MONOTONIC");
+    uint64_t end = rdtsc();
 
     Latency_Frame_t *fr = l->bottom;
-    uint64_t delta;
-    delta = end.tv_sec - fr->start.tv_sec;
-    delta *= 1000000000ll;
-    if (end.tv_nsec < fr->start.tv_nsec) {
-        delta -= 1000000000ll;
-        delta += (end.tv_nsec + 1000000000ll) - fr->start.tv_nsec;
-    } else {
-        delta += end.tv_nsec - fr->start.tv_nsec;
-    }
+    uint64_t delta = end - fr->start;
     fr->accum += delta;
 }
 
 void
 Latency_Resume(Latency_t *l)
 {
-    if (clock_gettime(CLOCK_MONOTONIC, &l->bottom->start) < 0)
-        PPanic("Failed to get CLOCK_MONOTONIC");
+    l->bottom->start = rdtsc();
 }
 
 void
@@ -322,77 +304,3 @@ Latency_DumpAll(void)
 {
     LatencyMap(Latency_Dump);
 }
-
-// void
-// Latency_FlushTo(const char *fname)
-// {
-//     std::ofstream outfile(fname);
-//     Latency_t *l = latencyHead;
-//     //::transport::latency::format::LatencyFile out;
-    
-//     for (; l; l = l->next) {
-//         //::transport::latency::format::Latency lout;
-//         Latency_Put(l, lout);
-//         *(out.add_latencies()) = lout;
-//     }
-//     if (!out.SerializeToOstream(&outfile)) {
-//         Panic("Failed to write latency stats to file");
-//     }
-// }
-
-// void
-// Latency_Flush(void)
-// {
-
-//     if (access("/tmp/stats/", R_OK) < 0) {
-//         mkdir("/tmp/stats", 0777);
-//         chmod("/tmp/stats", 0777);
-//     }
-
-//     char fname[128];
-//     snprintf(fname, sizeof fname, "/tmp/stats/%d-l", getpid());
-
-//     Latency_FlushTo(fname);
-// }
-
-// void
-// Latency_Put(Latency_t *l, ::transport::latency::format::Latency &out)
-// {
-//     out.Clear();
-//     out.set_name(l->name);
-    
-//     for (int i = 0; i < l->distPoolNext; ++i) {
-//         Latency_Dist_t *d = &l->distPool[i];
-//         //::transport::latency::format::LatencyDist *outd = out.add_dists();
-//         outd->set_type(d->type);
-//         outd->set_min(d->min);
-//         outd->set_max(d->max);
-//         outd->set_total(d->total);
-//         outd->set_count(d->count);
-        
-//         for (int b = 0; b < LATENCY_NUM_BUCKETS; ++b) {
-//             outd->add_buckets(d->buckets[b]);            
-//         }
-//     }
-// }
-
-// bool
-// Latency_TryGet(const ::transport::latency::format::Latency &in, Latency_t *l)
-// {
-//     LatencyInit(l, strdup(in.name().c_str())); // XXX Memory leak
-//     l->distPoolNext = in.dists_size();
-//     for (int i = 0; i < l->distPoolNext; ++i) {
-//         //const ::transport::latency::format::LatencyDist &ind =
-//         //    in.dists(i);
-//         Latency_Dist_t *d = &l->distPool[i];
-//         d->type = ind.type();
-//         l->dists[(int)d->type] = d;
-//         d->min = ind.min();
-//         d->max = ind.max();
-//         d->total = ind.total();
-//         d->count = ind.count();
-//         for (int b = 0; b < LATENCY_NUM_BUCKETS; ++b)
-//             d->buckets[b] = ind.buckets(b);
-//     }
-//     return true;
-// }
