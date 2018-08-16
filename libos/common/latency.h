@@ -105,6 +105,8 @@ void Latency_Sum(Latency_t *dest, Latency_t *summand);
 void Latency_Dump(Latency_t *l);
 void Latency_DumpAll(void);
 
+void init_time_resolution(void);
+
 static inline void
 Latency_Start(Latency_t *l)
 {

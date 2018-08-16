@@ -45,13 +45,15 @@
 #include "common/message.h"
 //#include "lib/latency-format.pb.h"
 
+double g_TicksPerNanoSec = -1.0;
+
 static struct Latency_t *latencyHead;
 
 static inline uint64_t rdtsc()
 {
     tsc_counter c;
     RDTSC(c);
-    return COUNTER_VAL(c);
+    return COUNTER_VAL(c) / g_TicksPerNanoSec;
 
     // if (clock_gettime(CLOCK_MONOTONIC, &end) < 0)
     //     PPanic("Failed to get CLOCK_MONOTONIC");
@@ -63,6 +65,10 @@ LatencyInit(Latency_t *l, const char *name)
 {
     memset(l, 0, sizeof *l);
     l->name = name;
+    // check if time resolution initialized here
+    if(g_TicksPerNanoSec < 0){
+        init_time_resolution();
+    }
 
     for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
         Latency_Dist_t *d = &l->distPool[i];
