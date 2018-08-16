@@ -30,7 +30,7 @@
 //#include "mtcp_measure.h"
 #include "mtcp-queue.h"
 #include "common/library.h"
-#include "include/measure.h"
+#include "common/latency.h"
 // hoard include
 #include "libzeus.h"
 #include <mtcp_api.h>
@@ -43,6 +43,9 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/time.h>
+
+DEFINE_LATENCY(dev_read_latency);
+DEFINE_LATENCY(dev_write_latency);
 
 /*********************************************************************/
 /* measurement variables */
@@ -65,8 +68,6 @@
     __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx));
     return (edx << 32) | eax;
 }*/
-
-struct timer_info ti;
 
 
 /*********************************************************************/
@@ -304,16 +305,10 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
         }
     }
     
-    double dev_read_start1 = 0;
-    double dev_read_start2 = 0;
-    double dev_read_end1 = 0;
-    double dev_read_end2 = 0;
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
-        dev_read_start1 = rdtsc();
         ssize_t count = mtcp_read(mctx, mtcp_qd, (char*)((uint8_t *)&req.header + req.num_bytes), sizeof(req.header) - req.num_bytes);
-        dev_read_end1 = rdtsc();
         //ssize_t count = mtcp_read(mctx, qd, (char*)((uint8_t *)&req.buf + req.num_bytes), sizeof(req.header) - req.num_bytes);
         // printf("0-mtcp_read() count:%d\n", count);
         // we still don't have a header
@@ -349,9 +344,9 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     size_t offset = req.num_bytes - sizeof(req.header);
     // grab the rest of the packet
     if (req.num_bytes < sizeof(req.header) + dataLen) {
-        dev_read_start2 = rdtsc();
+        Latency_Start(&dev_read_latency);
         ssize_t count = mtcp_read(mctx, mtcp_qd, (char*)((int8_t *)req.buf + offset), dataLen - offset);
-        dev_read_end2 = rdtsc();
+        Latency_End(&dev_read_latency);
 
         if (count < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -369,8 +364,6 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
         }
     }
     
-    ti.dev_read_duration = (dev_read_end1 - dev_read_start1) + (dev_read_end2 - dev_read_start2);
-
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)req.buf;
     // printf("req.buf:%p\n", req.buf);
@@ -430,10 +423,9 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
    
-    double device_send_start = rdtsc();
+    Latency_Start(&dev_write_latency);
     ssize_t count = mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
-    double device_send_end = rdtsc();
-    ti.dev_write_duration = device_send_end - device_send_start;
+    Latency_End(&dev_write_latency);
 
     // if error
     if (count < 0) {
@@ -563,8 +555,7 @@ MTCPQueue::peek(struct sgarray &sga){
             fprintf(stderr, "light_pop  success size:%d time_before_read:%lu\n", req.res, rcd_tick);
         }
 #endif
-        double libos_pop_end = rdtsc();
-        ti.pop_duration = libos_pop_end - ti.pop_start;
+        Latency_End(&pop_latency);
         return req.res;
     }else{
         return 0;

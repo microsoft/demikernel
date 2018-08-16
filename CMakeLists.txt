@@ -16,7 +16,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
 # ----------------------------------------------------
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -fstack-protector -Wall \
-  -Wno-uninitialized -O3 -DNASSERT")
+  -Wno-uninitialized -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
    -std=c++11 -fPIC -Wall -Wl,-zdefs")
    set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
@@ -93,7 +93,7 @@ add_dependencies(zeus_mtcp hoard)
 # RDMA libos target
 if (UNIX)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
-set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
 add_library(zeus_rdma SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
 target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)

@@ -30,6 +30,7 @@
 
 #include "rdma-queue.h"
 #include "common/library.h"
+#include "common/latency.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -39,8 +40,6 @@
 #include <errno.h>
 #include <sys/uio.h>
 #include <rdma/rdma_verbs.h>
-
-struct timer_info ti;
 
 namespace Zeus {
 
@@ -175,6 +174,7 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	}
     } else {
 	fprintf(stderr, "Not successful: 0x%x\n", wc.status);
+	close();
     }
 }
    
@@ -193,14 +193,14 @@ RdmaQueue::CheckCQ()
 	    ProcessWC(wcs[i]);
 	}
     }
-    while ((num = ibv_poll_cq(rdma_id->recv_cq,
-			      RECV_BUFFER_NUM, wcs)) > 0) {
-	//fprintf(stderr, "Found receive work completions: %d\n", num);
-	// process messages
-	for (int i = 0; i < num; i++) {
-	    ProcessWC(wcs[i]);
-	}
-    }
+    // while ((num = ibv_poll_cq(rdma_id->recv_cq,
+    // 			      RECV_BUFFER_NUM, wcs)) > 0) {
+    // 	//fprintf(stderr, "Found receive work completions: %d\n", num);
+    // 	// process messages
+    // 	for (int i = 0; i < num; i++) {
+    // 	    ProcessWC(wcs[i]);
+    // 	}
+    // }
     //fprintf(stderr, "Done draining completion queue\n");
 }
 
@@ -438,6 +438,7 @@ RdmaQueue::close()
     }
 
     rdma_destroy_event_channel(rdma_id->channel);
+    Latency_DumpAll();
     return 0;
 }
     
@@ -505,9 +506,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
 {
     assert(!listening);
     // Drain event queue
-    CheckEventQ();
+    //CheckEventQ();
     // Drain completion queue
-    CheckCQ();
+    //CheckCQ();
 	
     struct sgarray &sga = req->sga;
     struct ibv_sge vsga[2 * sga.num_bufs + 1];
@@ -568,12 +569,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     wr.num_sge = 2 * sga.num_bufs + 1;
     wr.send_flags = IBV_SEND_SIGNALED;
 
-    double device_send_start = rdtsc();
     int res = ibv_post_send(rdma_id->qp,
                             &wr,
                             &bad_wr);
-    double device_send_end = rdtsc();
-    ti.dev_write_duration = device_send_end - device_send_start;
 
     // if error
     if (res != 0) {
@@ -666,25 +664,30 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::push(qtoken qt, struct sgarray &sga)
 {
-    return Enqueue(qt, sga);
+    Latency_Start(&push_latency);
+    ssize_t res = Enqueue(qt, sga);
+    Latency_End(&push_latency);
+    return res;
 }
     
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    return Enqueue(qt, sga);
+    Latency_Start(&pop_latency);
+    ssize_t res = Enqueue(qt, sga);
+    if (res > 0) Latency_End(&pop_latency);
+    return res;
 }
 
 ssize_t
 RdmaQueue::peek(struct sgarray &sga)
 {
     PendingRequest *req = new PendingRequest(sga);
-    
+
     ProcessIncoming(req);
 
     if (req->isDone or req->isEnqueued){
-        double libos_pop_end = rdtsc();
-        ti.pop_duration = libos_pop_end - ti.pop_start;
+        Latency_End(&pop_latency);
         ssize_t res = req->res;
         sga.copy(req->sga);
         delete req;
@@ -704,12 +707,14 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
     PendingRequest *req = it->second;
     
     while(!req->isDone) {
+	Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     sga = req->sga;
     ret = req->res;
     pending.erase(it);
     delete req;
+    if (ret > 0) Latency_End(&pop_latency);
     return ret;
 }
 
@@ -721,6 +726,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     PendingRequest *req = it->second;
 
     if (!req->isDone) {
+	Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     
@@ -729,6 +735,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 	sga.copy(req->sga);
         pending.erase(it);
 	delete req;
+	Latency_End(&pop_latency);
         return ret;
     } else {
         return 0;

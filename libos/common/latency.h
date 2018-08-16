@@ -60,7 +60,7 @@
 
 typedef struct Latency_Frame_t
 {
-    struct timespec start;
+    uint64_t start;
     uint64_t accum;
     struct Latency_Frame_t *parent;
 } Latency_Frame_t;
@@ -104,13 +104,6 @@ void Latency_Sum(Latency_t *dest, Latency_t *summand);
 
 void Latency_Dump(Latency_t *l);
 void Latency_DumpAll(void);
-// void Latency_FlushTo(const char *fname);
-// void Latency_Flush(void);
-
-// void Latency_Put(Latency_t *l,
-//                  ::transport::latency::format::Latency &out);
-// bool Latency_TryGet(const ::transport::latency::format::Latency &in,
-//                     Latency_t *l);
 
 static inline void
 Latency_Start(Latency_t *l)

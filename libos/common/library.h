@@ -32,8 +32,8 @@
 #define _COMMON_LIBRARY_H_
 
 #include "include/io-queue.h"
-#include "include/measure.h"
 #include "common/basic-queue.h"
+#include "common/latency.h"
 #include <list>
 #include <unordered_map>
 #include <thread>
@@ -51,6 +51,10 @@
 #define IS_PUSH(t) t & PUSH_MASK
 // qtoken format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
+
+DEFINE_LATENCY(pop_latency);
+DEFINE_LATENCY(push_latency);
+
 
 namespace Zeus {
 
@@ -233,7 +237,7 @@ public:
     };
     
     qtoken push(int qd, struct Zeus::sgarray &sga) {
-        double libos_push_start = rdtsc();
+        Latency_Start(&push_latency);
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
 
@@ -247,8 +251,7 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
-            ti.push_end = rdtsc();
-            ti.push_duration = ti.push_end - libos_push_start;
+            Latency_End(&push_latency);
             return 0;
         }
     };
@@ -275,7 +278,7 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
-        ti.pop_start = rdtsc();
+        Latency_Start(&pop_latency);
         //printf("call peekp\n");
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;

@@ -28,9 +28,12 @@
 #include <rte_ether.h>
 #include <rte_memcpy.h>
 
-#include "include/measure.h"
 #include "lwip-queue.h"
 #include "common/library.h"
+#include "common/latency.h"
+
+DEFINE_LATENCY(dev_read_latency);
+DEFINE_LATENCY(dev_write_latency);
 
 
 #define NUM_MBUFS               8191
@@ -71,8 +74,6 @@
 #define RTE_TEST_TX_DESC_DEFAULT    128
 
 static uint16_t port = 1024;
-
-struct timer_info ti;
 
 namespace Zeus {
 namespace LWIP {
@@ -660,12 +661,9 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     printf("push: pkt len: %d\n", pkt->data_len);
 #endif
 
-    double device_send_start = rdtsc();
-    //double send_start = zeus_ustime();
+    Latency_Start(&dev_write_latency);
     ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
-    //double send_end = zeus_ustime();
-    double device_send_end = rdtsc();
-    ti.dev_write_duration = device_send_end - device_send_start;
+    Latency_End(&dev_write_latency);
 
     assert(ret == 1);
 
@@ -701,10 +699,9 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     //TODO: Why 4 for nb_pkts?
     if (num_packets == 0) {
         // our packet buffer is empty, try to get some more from NIC
-        double device_read_start = rdtsc();
+        Latency_Start(&dev_read_latency);
         num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
-        double device_read_end = rdtsc();
-        ti.dev_read_duration = device_read_end - device_read_start;
+        Latency_End(&dev_read_latency);
         pkt_idx = 0;
     }
 
@@ -942,8 +939,7 @@ LWIPQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req.isDone){
-        double pop_end = rdtsc();
-        ti.pop_duration = pop_end - ti.pop_start;
+        Latency_End(&pop_latency);
         return req.res;
     } else {
         return 0;
