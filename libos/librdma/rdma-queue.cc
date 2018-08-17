@@ -179,7 +179,25 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 }
    
 void
-RdmaQueue::CheckCQ()
+RdmaQueue::CheckRecvCQ()
+{
+    // check completion queue
+    struct ibv_wc wcs[RECV_BUFFER_NUM];
+    int num = 0;
+
+    while ((num = ibv_poll_cq(rdma_id->recv_cq,
+    			      RECV_BUFFER_NUM, wcs)) > 0) {
+    	//fprintf(stderr, "Found receive work completions: %d\n", num);
+    	// process messages
+    	for (int i = 0; i < num; i++) {
+    	    ProcessWC(wcs[i]);
+    	}
+    }
+    //fprintf(stderr, "Done draining completion queue\n");
+}
+
+void
+RdmaQueue::CheckSendCQ()
 {
     // check completion queue
     struct ibv_wc wcs[RECV_BUFFER_NUM];
@@ -193,15 +211,6 @@ RdmaQueue::CheckCQ()
 	    ProcessWC(wcs[i]);
 	}
     }
-    // while ((num = ibv_poll_cq(rdma_id->recv_cq,
-    // 			      RECV_BUFFER_NUM, wcs)) > 0) {
-    // 	//fprintf(stderr, "Found receive work completions: %d\n", num);
-    // 	// process messages
-    // 	for (int i = 0; i < num; i++) {
-    // 	    ProcessWC(wcs[i]);
-    // 	}
-    // }
-    //fprintf(stderr, "Done draining completion queue\n");
 }
 
 void
@@ -451,23 +460,20 @@ RdmaQueue::getfd()
 void
 RdmaQueue::ProcessIncoming(PendingRequest *req)
 {
-
-    if (closed) {
-	req->isDone = true;
-	req->res = ZEUS_IO_ERR_NO;
-    }
-    
-    CheckEventQ();
-
-    if (listening && !accepts.empty()) {
-	req->isDone = true;
-	req->res = 1;
-	return;
-    }
-    
-    if (!listening) {
-	// drain the completion queue
-	CheckCQ();
+    if (listening) {
+	if (accepts.empty()) {
+	    CheckEventQ();
+	}
+	if (!accepts.empty()) {
+	    req->isDone = true;
+	    req->res = 1;
+	    return;
+	}
+    } else {
+	if (pendingRecv.empty()) {
+	    // drain the receive completion queue
+	    CheckRecvCQ();
+	}
 	
         if (!pendingRecv.empty()) {
             req->buf = pendingRecv.front();
@@ -495,8 +501,18 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             }
             req->isDone = true;
             req->res = dataLen - (sga.num_bufs * sizeof(size_t));
-            assert(req->res > 0);
+	    assert(req->res > 0);
+        } else {
+	    // do some other work instead
+	    CheckEventQ();
+	    CheckSendCQ();
         }
+    }
+
+    if (closed) {
+	req->isDone = true;
+	req->res = ZEUS_IO_ERR_NO;
+	return;
     }
 }
 
@@ -505,11 +521,7 @@ void
 RdmaQueue::ProcessOutgoing(PendingRequest *req)
 {
     assert(!listening);
-    // Drain event queue
-    //CheckEventQ();
-    // Drain completion queue
-    //CheckCQ();
-	
+    	
     struct sgarray &sga = req->sga;
     struct ibv_sge vsga[2 * sga.num_bufs + 1];
     
@@ -664,7 +676,7 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::push(qtoken qt, struct sgarray &sga)
 {
-    //Latency_Start(&push_latency);
+    if (closed) return ZEUS_IO_ERR_NO;
     ssize_t res = Enqueue(qt, sga);
     //Latency_End(&push_latency);
     return res;
@@ -673,7 +685,7 @@ RdmaQueue::push(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    //Latency_Start(&pop_latency);
+    if (closed) return ZEUS_IO_ERR_NO;
     ssize_t res = Enqueue(qt, sga);
     ///if (res > 0) Latency_End(&pop_latency);
     return res;
@@ -682,6 +694,7 @@ RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::peek(struct sgarray &sga)
 {
+    if (closed) return ZEUS_IO_ERR_NO;
     PendingRequest *req = new PendingRequest(sga);
 
     ProcessIncoming(req);
@@ -725,6 +738,8 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     assert(it != pending.end());
     PendingRequest *req = it->second;
 
+    if (closed) return ZEUS_IO_ERR_NO;
+    
     if (!req->isDone) {
 	Latency_Start(&pop_latency);
         ProcessQ(1);

@@ -84,7 +84,8 @@ private:
     void ProcessOutgoing(PendingRequest *req);
     void ProcessQ(size_t maxRequests);
     void CheckEventQ();
-    void CheckCQ();
+    void CheckRecvCQ();
+    void CheckSendCQ();
     void ProcessWC(ibv_wc &wc);
     ssize_t Enqueue(qtoken qt, sgarray &sga);
     int SetupRdmaQP();
