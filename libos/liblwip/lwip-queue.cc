@@ -701,7 +701,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
         // our packet buffer is empty, try to get some more from NIC
         Latency_Start(&dev_read_latency);
         num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
-        Latency_End(&dev_read_latency);
+        if (num_packets > 0) Latency_End(&dev_read_latency);
         pkt_idx = 0;
     }
 

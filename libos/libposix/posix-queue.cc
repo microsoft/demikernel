@@ -264,7 +264,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
             struct sockaddr addr;
             Latency_Start(&dev_read_latency);
             count = ::recvfrom(fd, req.buf, 1024, 0, &addr, &size);
-            Latency_End(&dev_read_latency);
+            if (count > 0) Latency_End(&dev_read_latency);
             req.sga.addr.sin_addr.s_addr = ((struct sockaddr_in*)&addr)->sin_addr.s_addr;
             req.sga.addr.sin_port = ((struct sockaddr_in*)&addr)->sin_port;
 

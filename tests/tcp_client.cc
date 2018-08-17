@@ -61,15 +61,11 @@ int main()
 
         //printf("client: sent\t%s\tbuf size:\t%d\n", (char*)sga.bufs[0].buf, sga.bufs[0].len);
 
-        qt = Zeus::pop(qd, res);
-        if (qt != 0) {
-            if (qt < 0) {
+        while ((n = Zeus::peek(qd, sga)) <= 0) {
+            if (n < 0) {
                 perror("client pop:");
                 return -1;
             }
-            //printf("client: wait for pop\n");
-            n = Zeus::wait(qt, res);
-            assert(n > 0);
         }
 
         assert(res.num_bufs == 1);

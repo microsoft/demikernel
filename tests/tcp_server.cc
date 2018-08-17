@@ -55,7 +55,12 @@ int main()
 
     // process PKTNUM packets from client
     for (int i = 0; i < PKTNUM; i++) {
-        while (Zeus::peek(qd, sga) == 0);
+        while((n = Zeus::peek(qd, sga)) <= 0) {
+            if (n < 0) {
+                perror("server pop");
+                return -1;
+            }
+        }
 
         assert(sga.num_bufs == 1);
 
