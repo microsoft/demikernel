@@ -92,7 +92,7 @@ typedef struct Latency_t
     std::vector<uint64_t> *latencies;
 } Latency_t;
 
-static std::list<Latency_t *> stats;
+
 
 #define DEFINE_LATENCY(name)                                            \
     static Latency_t name;                                              \
