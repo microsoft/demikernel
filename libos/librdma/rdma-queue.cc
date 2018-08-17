@@ -512,7 +512,6 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
     if (closed) {
 	req->isDone = true;
 	req->res = ZEUS_IO_ERR_NO;
-	return;
     }
 }
 
