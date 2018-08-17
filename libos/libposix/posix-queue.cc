@@ -167,7 +167,12 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 int
 PosixQueue::open(qtoken qt, const char *pathname, int flags)
 {
-    return -1;
+    fd = ::open(pathname, flags);
+    if(fd > 0){
+        return qd;
+    }else{
+        return fd;
+    }
 }
 
 int
