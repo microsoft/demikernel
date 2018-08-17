@@ -284,6 +284,9 @@ public:
             return ZEUS_IO_ERR_NO;
         Queue &queue = GetQueue(qd);
         int res = queue.peek(sga);
+        if (res > 0) {
+            Latency_End(&pop_latency);
+        }
         return res;
     };
 

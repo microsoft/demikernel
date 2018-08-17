@@ -512,7 +512,6 @@ PosixQueue::peek(struct sgarray &sga)
     PendingRequest req(sga);
     ProcessIncoming(req);
     if (req.isDone){
-        Latency_End(&pop_latency);
         return req.res;
     } else {
         return 0;

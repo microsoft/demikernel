@@ -664,18 +664,18 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::push(qtoken qt, struct sgarray &sga)
 {
-    Latency_Start(&push_latency);
+    //Latency_Start(&push_latency);
     ssize_t res = Enqueue(qt, sga);
-    Latency_End(&push_latency);
+    //Latency_End(&push_latency);
     return res;
 }
     
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
-    Latency_Start(&pop_latency);
+    //Latency_Start(&pop_latency);
     ssize_t res = Enqueue(qt, sga);
-    if (res > 0) Latency_End(&pop_latency);
+    ///if (res > 0) Latency_End(&pop_latency);
     return res;
 }
 
@@ -687,7 +687,7 @@ RdmaQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req->isDone or req->isEnqueued){
-        Latency_End(&pop_latency);
+        //Latency_End(&pop_latency);
         ssize_t res = req->res;
         sga.copy(req->sga);
         delete req;

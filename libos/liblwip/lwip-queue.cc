@@ -939,7 +939,6 @@ LWIPQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req.isDone){
-        Latency_End(&pop_latency);
         return req.res;
     } else {
         return 0;

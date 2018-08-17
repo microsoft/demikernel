@@ -7,7 +7,7 @@
 #include "../include/io-queue.h"
 
 #define USE_CONNECT		1
-#define PKTNUM          100000
+#define PKTNUM          10
 #define BUFSIZE         10
 
 uint16_t port = 12345;

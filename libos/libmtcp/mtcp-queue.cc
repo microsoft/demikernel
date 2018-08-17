@@ -555,7 +555,6 @@ MTCPQueue::peek(struct sgarray &sga){
             fprintf(stderr, "light_pop  success size:%d time_before_read:%lu\n", req.res, rcd_tick);
         }
 #endif
-        Latency_End(&pop_latency);
         return req.res;
     }else{
         return 0;

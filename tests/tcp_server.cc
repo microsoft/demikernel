@@ -8,7 +8,7 @@
 #include "../include/io-queue.h"
 #include "../libos/common/latency.h"
 
-#define PKTNUM		10000
+#define PKTNUM		10
 
 uint16_t port = 12345;
 
@@ -72,11 +72,11 @@ int main()
         }
 
         //printf("===========================\n");
-        Latency_DumpAll();
         //printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
         free(sga.bufs[0].buf);
     }
 
+    Latency_DumpAll();
     Zeus::close(qd);
     Zeus::close(lqd);
 
