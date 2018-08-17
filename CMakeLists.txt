@@ -78,17 +78,6 @@ add_library(zeus_spdk STATIC
 target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_spdk hoard)
 
-# RDMA libos target
-if (UNIX)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
-set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
-add_library(zeus_rdma SHARED
-  ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
-target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)
-add_dependencies(zeus_rdma hoard)
-endif()
-
-
 #############################################
 # applications
 # Tapir

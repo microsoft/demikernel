@@ -132,7 +132,7 @@ BasicQueue::poll(qtoken qt, struct sgarray &sga)
 }
 
 int
-BasicQueue::flush(qtoken qt)
+BasicQueue::flush(qtoken qt, int flags)
 {
     return 0;
 }

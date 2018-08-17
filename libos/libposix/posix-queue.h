@@ -104,7 +104,7 @@ public:
     ssize_t peek(struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
-    int flush(qtoken qt);
+    int flush(qtoken qt, int flags);
     int flush(qtoken qt, bool isclosing);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
