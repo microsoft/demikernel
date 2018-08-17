@@ -51,7 +51,7 @@ int main()
         Zeus::wait(qt, sga);
         qd = Zeus::accept(lqd, (struct sockaddr*)&peer, &len);
     }
-    printf("server: accepted connection from: %x:%d\n", server.sin_addr.s_addr, server.sin_port);
+    printf("server: accepted connection from: %x:%d\n", peer.sin_addr.s_addr, peer.sin_port);
 
     // process PKTNUM packets from client
     for (int i = 0; i < PKTNUM; i++) {
