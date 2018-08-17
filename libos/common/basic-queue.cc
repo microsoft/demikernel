@@ -57,6 +57,11 @@ BasicQueue::push(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t
+BasicQueue::flush_push(qtoken qt, struct sgarray &sga)
+{
+    return 0;
+}
+ssize_t
 BasicQueue::pop(qtoken qt, struct sgarray &sga) {
     size_t len = 0;
     std::lock_guard<std::mutex> lock(qLock);
@@ -123,4 +128,11 @@ BasicQueue::poll(qtoken qt, struct sgarray &sga)
     }
 
 }
+
+int
+BasicQueue::flush(qtoken qt, int flags)
+{
+    return 0;
+}
+
 }// namespace Zeus

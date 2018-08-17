@@ -87,6 +87,10 @@ int creat(const char *pathname, mode_t mode)
 {
     return lib.creat(pathname, mode);
 }
+
+int flush(int qd){
+    return 0;
+}
     
 int close(int qd)
 {
@@ -101,6 +105,10 @@ int qd2fd(int qd)
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);
+}
+
+qtoken flush_push(int qd, struct Zeus::sgarray &sga){
+    return lib.flush_push(qd, sga);
 }
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)

@@ -41,6 +41,10 @@
 #include <sys/uio.h>
 #include <rdma/rdma_verbs.h>
 
+
+DEFINE_LATENCY(post_send);
+DEFINE_LATENCY(get_mr);
+
 namespace Zeus {
 
 namespace RDMA {
@@ -421,6 +425,13 @@ RdmaQueue::open(const char *pathname, int flags)
 }
 
 int
+RdmaQueue::open(qtoken qt, const char *pathname, int flags)
+{
+    assert(false);
+    return 0;
+}
+
+int
 RdmaQueue::open(const char *pathname, int flags, mode_t mode)
 {
     assert(false);
@@ -530,7 +541,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     uint64_t *lens = (uint64_t *)req->buf;
     size_t dataSize = 0;
     size_t totalLen = 0;
+    Latency_Start(&get_mr);
     struct ibv_mr *mr = rdma_get_mr(req->buf, pd);
+    Latency_End(&get_mr);
     assert(mr != NULL);
     uint32_t header_lkey = mr->lkey;
 
@@ -544,7 +557,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
+        Latency_Start(&get_mr);
         mr = rdma_get_mr(sga.bufs[i].buf, pd);
+        Latency_End(&get_mr);
         assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
         
@@ -565,7 +580,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // set up header at beginning of packet
     vsga[0].addr = (uint64_t)&req->header;
     vsga[0].length = sizeof(req->header);
+    Latency_Start(&get_mr);
     mr = rdma_get_mr(req->header, pd);
+    Latency_End(&get_mr);
     assert(mr != NULL);
     vsga[0].lkey = mr->lkey;
     totalLen += sizeof(req->header);
@@ -579,11 +596,11 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     wr.next = NULL;
     wr.num_sge = 2 * sga.num_bufs + 1;
     wr.send_flags = IBV_SEND_SIGNALED;
-
+    Latency_Start(&post_send);
     int res = ibv_post_send(rdma_id->qp,
                             &wr,
                             &bad_wr);
-
+    Latency_End(&post_send);
     // if error
     if (res != 0) {
         for (int i = 0; i < sga.num_bufs; i++) {
@@ -680,7 +697,10 @@ RdmaQueue::push(qtoken qt, struct sgarray &sga)
     //Latency_End(&push_latency);
     return res;
 }
-    
+
+ssize_t RdmaQueue::flush_push(qtoken qt, struct sgarray &sga) { return -1; }
+int RdmaQueue::flush(qtoken qt, int flags) {return -1; }
+
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {

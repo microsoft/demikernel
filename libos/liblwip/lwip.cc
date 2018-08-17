@@ -46,9 +46,19 @@ int init()
 	return LWIP::lwip_init();
 }
 
+int queue()
+{
+    return lib.queue();
+}
+
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
+}
+
+int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
+{
+    return lib.getsockname(qd, saddr, size);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -86,6 +96,11 @@ int creat(const char *pathname, mode_t mode)
     return lib.creat(pathname, mode);
 }
 
+int flush(int qd)
+{
+    return 0;
+}
+
 int close(int qd)
 {
     return lib.close(qd);
@@ -99,6 +114,11 @@ int qd2fd(int qd)
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);
+}
+
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
+    return lib.flush_push(qd, sga);
 }
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)

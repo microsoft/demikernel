@@ -1,8 +1,8 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/libposix/posix.cc
- *   POSIX implementation of libos interface
+ * libos/libspdk/spdk.cc
+ *   SPDK implementation of libos interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -30,15 +30,11 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
-#include "mtcp-queue.h"
+#include "spdk-queue.h"
+#include "libos/libposix/posix-queue.h"
 
 namespace Zeus {
-static QueueLibrary<MTCP::MTCPQueue, MTCP::MTCPQueue> lib;
-
-int queue()
-{
-    return lib.queue();
-}
+static QueueLibrary<POSIX::PosixQueue, SPDK::SPDKQueue> lib;
     
 int socket(int domain, int type, int protocol)
 {
@@ -58,8 +54,7 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     int newfd = lib.accept(qd, saddr, size);
-    if (newfd > 0)
-        lib.GetQueue(newfd).setfd(newfd);
+    lib.GetQueue(newfd).setfd(newfd);
     return newfd;
 }
 
@@ -87,14 +82,15 @@ int creat(const char *pathname, mode_t mode)
 {
     return lib.creat(pathname, mode);
 }
-    
-int flush(int qd){
-    return 0;
-}
 
+int flush(int qd)
+{
+    return lib.flush(qd, SPDK_FLUSH_OPT_ALL);
+}
+    
 int close(int qd)
 {
-    return lib.close(qd);
+    return lib.flush(qd, SPDK_FLUSH_OPT_CLOSE);
 }
 
 int qd2fd(int qd)
@@ -107,13 +103,17 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
     return lib.push(qd, sga);
 }
 
-qtoken flush_push(int qd, struct Zeus::sgarray &sga){
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
     return lib.flush_push(qd, sga);
 }
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
-    return lib.pop(qd, sga);
+    //printf("posix.cc:pop input:%d\n", qd);
+    qtoken qt = lib.pop(qd, sga);
+    //printf("posix.cc: pop return qt:%d\n", qt);
+    return qt;
 }
 
 ssize_t peek(int qd, struct Zeus::sgarray &sga)
@@ -127,7 +127,7 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
+qtoken wait_any(qtoken qts[], size_t num_qts, int &offset,  int &qd, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, offset, qd, sga);
 }
@@ -155,16 +155,6 @@ int merge(int qd1, int qd2)
 int filter(int qd, bool (*filter)(struct sgarray &sga))
 {
     return lib.filter(qd, filter);
-}
-
-int init()
-{
-    return 0;
-}
-
-int init(int argc, char* argv[])
-{
-    return 0;
 }
 
 } // namespace Zeus

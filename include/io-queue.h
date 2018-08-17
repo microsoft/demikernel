@@ -90,9 +90,11 @@ int close(int qd);
 int open(const char *pathname, int flags);
 int open(const char *pathname, int flags, mode_t mode);
 int creat(const char *pathname, mode_t mode);
+int flush(int qd);  // a blocking function call, guarantee durability
 
 // other functions
 qtoken push(int qd, struct sgarray &sga); // if return 0, then already complete
+qtoken flush_push(int qd, struct sgarray &sga); // similar to push, but with data durable, need to call wait
 qtoken pop(int qd, struct sgarray &sga); // if return 0, then already ready and in sga
 ssize_t peek(int qd, struct sgarray &sga);  // will not return qtoken
 ssize_t wait(qtoken qt, struct sgarray &sga);

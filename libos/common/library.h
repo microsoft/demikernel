@@ -49,6 +49,7 @@
 #define TOKEN(t) t & TOKEN_MASK
 #define QUEUE(t) t >> 32
 #define IS_PUSH(t) t & PUSH_MASK
+
 // qtoken format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
 
@@ -163,13 +164,13 @@ public:
         Queue &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd > 0){
-            //printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
             return newqd;
         } else if (newqd < 0) {
             return newqd;
         } else {
-            return NewQueue(NETWORK_Q).GetQD();
+            newqd =  NewQueue(NETWORK_Q).GetQD();
+            return newqd;
         }
     };
 
@@ -188,7 +189,8 @@ public:
 
     int open(const char *pathname, int flags) {
         Queue &q = NewQueue(FILE_Q);
-        int ret = q.open(pathname, flags);
+        qtoken qt = GetNewToken(q.GetQD(), true);
+        int ret = q.open(qt, pathname, flags);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
             return ret;
@@ -218,11 +220,24 @@ public:
             return q.GetQD();
         }
     };
+
+    int flush(int qd, int flags) {
+        //fprintf(stderr, "Library.h flush(%d) called", qd);
+        if (!HasQueue(qd)){
+            return -1;
+        }
+        Queue &queue = GetQueue(qd);
+        qtoken t = GetNewToken(qd, true);
+        int ret = queue.flush(t, flags);
+        // TODO check the ret value here
+        return ret;
+    };
+
     
     int close(int qd) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
         Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    
@@ -235,7 +250,7 @@ public:
         Queue &q = GetQueue(qd);
         return q.getfd();
     };
-    
+
     qtoken push(int qd, struct Zeus::sgarray &sga) {
         Latency_Start(&push_latency);
         if (!HasQueue(qd))
@@ -255,6 +270,27 @@ public:
             return 0;
         }
     };
+
+    qtoken flush_push(int qd, struct Zeus::sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        Queue &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q) {
+            qtoken t = GetNewToken(qd, true);
+            ssize_t res = queue.flush_push(t, sga);
+            if(res == 0){
+                return t;
+            }else{
+                return 0;
+            }
+        }else{
+            // only FILE_Q support flush_push
+            return -1;
+        }
+    };
+
+
 
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
@@ -279,7 +315,7 @@ public:
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
         Latency_Start(&pop_latency);
-        //printf("call peekp\n");
+
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
         Queue &queue = GetQueue(qd);

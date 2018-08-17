@@ -241,6 +241,13 @@ MTCPQueue::connect(struct sockaddr *saddr, socklen_t size)
 }
 
 int
+MTCPQueue::open(qtoken qt, const char *pathname, int flags)
+{
+    assert(false);
+    return 0;
+}
+
+int
 MTCPQueue::open(const char *pathname, int flags)
 {
     // use the fd as qd
@@ -263,6 +270,14 @@ MTCPQueue::creat(const char *pathname, mode_t mode)
     assert(false);
     return ::creat(pathname, mode);
 }
+
+int
+MTCPQueue::flush(qtoken qt, int flags)
+{
+    assert(false);
+    return 0;
+}
+
     
 int
 MTCPQueue::close()
@@ -515,6 +530,12 @@ MTCPQueue::push(qtoken qt, struct sgarray &sga)
     printf("MTCPQueue::push() qt:%d\n", qt);
 #endif
     return Enqueue(qt, sga);
+}
+
+ssize_t
+MTCPQueue::flush_push(qtoken qt, struct sgarray &sga){
+    assert(false);
+    return 0;
 }
     
 ssize_t

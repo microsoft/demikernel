@@ -41,6 +41,7 @@
 #include <time.h>
 #include <iostream>
 #include <fstream>
+#include <vector>
 
 // The number of the maximum distribution type.  Since we use
 // characters as distribution types, this is 127.  We could probably
@@ -57,6 +58,9 @@
 
 // The number of histogram buckets.
 #define LATENCY_NUM_BUCKETS 65
+
+// The maximum number of iterations we will record latencies for
+#define MAX_ITERATIONS 1000000
 
 typedef struct Latency_Frame_t
 {
@@ -83,7 +87,7 @@ typedef struct Latency_t
     Latency_Frame_t *bottom;
     Latency_Frame_t defaultFrame;
 
-    struct Latency_t *next;
+    std::vector<uint64_t> latencies;
 } Latency_t;
 
 #define DEFINE_LATENCY(name)                                            \

@@ -1,3 +1,6 @@
 CMakeFiles/
 CMakeCache.txt
 Makefile
+*.so
+*.a
+*.cmake

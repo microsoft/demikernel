@@ -50,6 +50,10 @@ int zeus_queue(int domain, int type, int protocol){
     return Zeus::socket(domain, type, protocol);
 }
 
+int zeus_socket(int domain, int type, int protocol){
+    return Zeus::socket(domain, type, protocol);
+}
+
 int zeus_listen(int fd, int backlog){
 #ifdef __DEBUG_c_interface_cc
     printf("zeus_listen\n");
@@ -80,12 +84,20 @@ int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size){
 
 int zeus_open(const char *pathname, int flags, mode_t mode) {
     fprintf(stderr, "NIY\n");
-    return 0;
+    return Zeus::open(pathname, flags);
 }
 
 int zeus_creat(const char *pathname, mode_t mode) {
     fprintf(stderr, "NIY\n");
     return 0;
+}
+
+int zeus_flush(int qd){
+    return Zeus::flush(qd);
+}
+
+int zeus_close(int qd){
+    return Zeus::close(qd);
 }
 
 zeus_qtoken zeus_push(int qd, zeus_sgarray *sga_ptr){
@@ -96,6 +108,13 @@ zeus_qtoken zeus_push(int qd, zeus_sgarray *sga_ptr){
     sgarray_c2cpp(sga_ptr, &sga);
     zeus_qtoken n = Zeus::push(qd, sga);
     //printf("zeus_push() will return: %zd\n",n);
+    return n;
+}
+
+zeus_qtoken zeus_flush_push(int qd, zeus_sgarray *sga_ptr){
+    Zeus::sgarray sga;
+    sgarray_c2cpp(sga_ptr, &sga);
+    zeus_qtoken n = Zeus::flush_push(qd, sga);
     return n;
 }
 
@@ -112,6 +131,7 @@ zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
     }
     return n;
 }
+
 
 ssize_t zeus_peek(int qd, zeus_sgarray *sga_ptr){
     Zeus::sgarray sga;

@@ -105,15 +105,19 @@ public:
           
     // file functions
     int open(const char *pathname, int flags);
+    int open(qtoken qt, const char *pathname, int flags);
     int open(const char *pathname, int flags, mode_t mode);
     int creat(const char *pathname, mode_t mode);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
+    ssize_t flush_push(qtoken qt, struct sgarray &sga);
     ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
     ssize_t peek(struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
+    int flush(qtoken qt, int flags);
+    int flush(qtoken qt, bool isclosing);
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
     int getfd();
