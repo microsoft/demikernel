@@ -447,7 +447,7 @@ RdmaQueue::close()
     }
 
     rdma_destroy_event_channel(rdma_id->channel);
-    Latency_DumpAll();
+//    Latency_DumpAll();
     return 0;
 }
     
@@ -719,14 +719,14 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
     PendingRequest *req = it->second;
     
     while(!req->isDone) {
-	Latency_Start(&pop_latency);
+	//Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     sga = req->sga;
     ret = req->res;
     pending.erase(it);
     delete req;
-    if (ret > 0) Latency_End(&pop_latency);
+    //if (ret > 0) Latency_End(&pop_latency);
     return ret;
 }
 
@@ -740,7 +740,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     if (closed) return ZEUS_IO_ERR_NO;
     
     if (!req->isDone) {
-	Latency_Start(&pop_latency);
+	//Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     
@@ -749,7 +749,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 	sga.copy(req->sga);
         pending.erase(it);
 	delete req;
-	Latency_End(&pop_latency);
+	//Latency_End(&pop_latency);
         return ret;
     } else {
         return 0;
