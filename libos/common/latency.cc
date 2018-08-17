@@ -41,13 +41,14 @@
 #include <sys/types.h>
 #include <iostream>
 #include <fstream>
+#include <list>
+#include <algorithm>
 #include "rdtsc.h"
 #include "common/message.h"
-//#include "lib/latency-format.pb.h"
 
 double g_TicksPerNanoSec = -1.0;
 
-static struct Latency_t *latencyHead;
+std::list<Latency_t *> stats;
 
 static inline uint64_t rdtsc()
 {
@@ -63,8 +64,9 @@ static inline uint64_t rdtsc()
 static void
 LatencyInit(Latency_t *l, const char *name)
 {
-    memset(l, 0, sizeof *l);
     l->name = name;
+    l->latencies.reserve(MAX_ITERATIONS);
+
     // check if time resolution initialized here
     if(g_TicksPerNanoSec < 0){
         init_time_resolution();
@@ -74,15 +76,22 @@ LatencyInit(Latency_t *l, const char *name)
         Latency_Dist_t *d = &l->distPool[i];
         d->min = ~0ll;
     }
+    stats.push_back(l);
 }
 
 void
 _Latency_Init(Latency_t *l, const char *name)
 {
     LatencyInit(l, name);
-    l->next = latencyHead;
-    latencyHead = l;
 }
+
+static inline void
+LatencyAddStat(Latency_t *l, char type, uint64_t val)
+{
+    if (l->latencies.size() < MAX_ITERATIONS)
+	l->latencies.push_back(val);
+}
+    
 
 static inline Latency_Dist_t *
 LatencyAddHist(Latency_t *l, char type, uint64_t val, uint32_t count)
@@ -113,22 +122,14 @@ static void
 LatencyAdd(Latency_t *l, char type, uint64_t val)
 {
     Latency_Dist_t *d = LatencyAddHist(l, type, val, 1);
-
+    LatencyAddStat(l, type, val);
+    
     if (val < d->min)
         d->min = val;
     if (val > d->max)
         d->max = val;
     d->total += val;
     ++d->count;
-}
-
-static void
-LatencyMap(void (*f)(Latency_t *))
-{
-    Latency_t *l = latencyHead;
-
-    for (; l; l = l->next)
-        f(l);
 }
 
 void
@@ -255,6 +256,12 @@ Latency_Dump(Latency_t *l)
                 LatencyFmtNS(d->total, buf[4]));
     }
     *ppnext = -1;
+    l->latencies.shrink_to_fit();
+    sort(l->latencies.begin(), l->latencies.end());
+    QNotice("TAIL LATENCY 99=%s 99.9=%s 99.99=%s",
+	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.99)], buf[0]),
+	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.999)], buf[1]),
+	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.9999)], buf[2]));
 
     // Find the count of the largest bucket so we can scale the
     // histogram
@@ -308,5 +315,7 @@ Latency_Dump(Latency_t *l)
 void
 Latency_DumpAll(void)
 {
-    LatencyMap(Latency_Dump);
+    for (auto s : stats) {
+	Latency_Dump(s);
+    }
 }
