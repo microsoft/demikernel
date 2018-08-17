@@ -1080,7 +1080,7 @@ SPDKQueue::flush(qtoken qt, bool isclosing){
     // now wait until the flush request finished
     // note we submit the request to one single queue, no sync issue
     while(!it->second.isDone){
-        usleep(100);
+        usleep(1);
     }
     // reset the flush status if we do flush without following close
     if(!isclosing){
@@ -1189,7 +1189,7 @@ SPDKQueue::wait(qtoken qt, struct sgarray &sga)
         exit(1);
     }
     while(!it->second.isDone){
-        usleep(100);
+        usleep(1);
     }
     // Note, we always first set isDone to true after erase the qt for push request
     if(it->second.req_op == LIBOS_FLUSH_PUSH){

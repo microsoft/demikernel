@@ -31,9 +31,10 @@
 #include "common/library.h"
 #include "include/io-queue.h"
 #include "spdk-queue.h"
+#include "libos/libposix/posix-queue.h"
 
 namespace Zeus {
-static QueueLibrary<SPDK::SPDKQueue, SPDK::SPDKQueue> lib;
+static QueueLibrary<POSIX::PosixQueue, SPDK::SPDKQueue> lib;
     
 int socket(int domain, int type, int protocol)
 {
@@ -52,7 +53,9 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    return lib.accept(qd, saddr, size);
+    int newfd = lib.accept(qd, saddr, size);
+    lib.GetQueue(newfd).setfd(newfd);
+    return newfd;
 }
 
 int listen(int qd, int backlog)

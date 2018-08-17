@@ -74,7 +74,7 @@ add_library(zeus_posix SHARED
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
 #set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
 add_library(zeus_spdk STATIC
-    ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB})
+    ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB} ${SRC_ZEUS_POSIX_LIB})
 target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_spdk hoard)
 

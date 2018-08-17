@@ -159,13 +159,13 @@ public:
         Queue &q = GetQueue(qd);
         int newqd = q.accept(saddr, size);
         if (newqd > 0){
-            //printf("will InsertQueue for newqd:%d\n", newqd);
             InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
             return newqd;
         } else if (newqd < 0) {
             return newqd;
         } else {
-            return NewQueue(NETWORK_Q).GetQD();
+            newqd =  NewQueue(NETWORK_Q).GetQD();
+            return newqd;
         }
     };
 
@@ -307,7 +307,6 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
-        //printf("call peekp\n");
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
         
