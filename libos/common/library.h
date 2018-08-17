@@ -48,6 +48,7 @@
 #define TOKEN(t) t & TOKEN_MASK
 #define QUEUE(t) t >> 32
 #define IS_PUSH(t) t & PUSH_MASK
+
 // qtoken format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
 
@@ -183,7 +184,8 @@ public:
 
     int open(const char *pathname, int flags) {
         Queue &q = NewQueue(FILE_Q);
-        int ret = q.open(pathname, flags);
+        qtoken qt = GetNewToken(q.GetQD(), true);
+        int ret = q.open(qt, pathname, flags);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
             return ret;
@@ -213,11 +215,28 @@ public:
             return q.GetQD();
         }
     };
+
+    int flush(int qd) {
+        fprintf(stderr, "Library.h flush(%d) called", qd);
+        if (!HasQueue(qd)){
+            return -1;
+        }
+        Queue &queue = GetQueue(qd);
+        qtoken t = GetNewToken(qd, true);
+        int ret = queue.flush(t);
+        // TODO check the ret value here
+        return ret;
+    };
+
     
     int close(int qd) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
+<<<<<<< 5db6d6d30059de56897247e7b1fabfc99e33567d
+        int res = -1;
+=======
+>>>>>>> merge the master, and spdk works for simple test
         Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    
@@ -230,7 +249,7 @@ public:
         Queue &q = GetQueue(qd);
         return q.getfd();
     };
-    
+
     qtoken push(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
@@ -248,6 +267,27 @@ public:
             return 0;
         }
     };
+
+    qtoken flush_push(int qd, struct Zeus::sgarray &sga) {
+        if (!HasQueue(qd))
+            return -1;
+        
+        Queue &queue = GetQueue(qd);
+        if (queue.GetType() == FILE_Q) {
+            qtoken t = GetNewToken(qd, true);
+            ssize_t res = queue.flush_push(t, sga);
+            if(res == 0){
+                return t;
+            }else{
+                return 0;
+            }
+        }else{
+            // only FILE_Q support flush_push
+            return -1;
+        }
+    };
+
+
 
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))

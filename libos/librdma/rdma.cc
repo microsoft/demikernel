@@ -117,6 +117,15 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
     return lib.push(qd, sga);
 }
 
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
+    return 0;
+}
+
+int flush(int qd){
+    return 0;
+}
+
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
      return lib.pop(qd, sga);

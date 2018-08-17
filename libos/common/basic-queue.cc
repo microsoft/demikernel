@@ -56,6 +56,12 @@ BasicQueue::push(qtoken qt, struct sgarray &sga)
     //fprintf(stderr, "[%x] pushing %lx size(%ld)", qd, qt, len);
     return len;
 }
+
+ssize_t
+BasicQueue::flush_push(qtoken qt, struct sgarray &sga)
+{
+    return 0;
+}
         
 ssize_t
 BasicQueue::pop(qtoken qt, struct sgarray &sga) {
@@ -124,4 +130,11 @@ BasicQueue::poll(qtoken qt, struct sgarray &sga)
     }
 
 }
+
+int
+BasicQueue::flush(qtoken qt)
+{
+    return 0;
+}
+
 }// namespace Zeus

@@ -1,8 +1,8 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/libposix/posix.cc
- *   POSIX implementation of libos interface
+ * libos/libspdk/spdk.cc
+ *   SPDK implementation of libos interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -30,15 +30,10 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
-#include "posix-queue.h"
+#include "spdk-queue.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::PosixQueue, POSIX::PosixQueue> lib;
-
-int queue()
-{
-    return lib.queue();
-}
+static QueueLibrary<SPDK::SPDKQueue, SPDK::SPDKQueue> lib;
     
 int socket(int domain, int type, int protocol)
 {
@@ -49,7 +44,7 @@ int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return lib.getsockname(qd, saddr, size);
 }
-    
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);
@@ -57,10 +52,7 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    int newfd = lib.accept(qd, saddr, size);
-    lib.GetQueue(newfd).setfd(newfd);
- 
-    return newfd;
+    return lib.accept(qd, saddr, size);
 }
 
 int listen(int qd, int backlog)
@@ -88,7 +80,8 @@ int creat(const char *pathname, mode_t mode)
     return lib.creat(pathname, mode);
 }
 
-int flush(int qd){
+int flush(int qd)
+{
     return lib.flush(qd);
 }
     
@@ -107,7 +100,8 @@ qtoken push(int qd, struct Zeus::sgarray &sga)
     return lib.push(qd, sga);
 }
 
-qtoken flush_push(int qd, struct Zeus::sgarray &sga){
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
     return lib.flush_push(qd, sga);
 }
 
@@ -130,7 +124,7 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
+qtoken wait_any(qtoken qts[], size_t num_qts, int &offset,  int &qd, struct sgarray &sga)
 {
     return lib.wait_any(qts, num_qts, offset, qd, sga);
 }

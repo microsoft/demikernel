@@ -76,15 +76,18 @@ public:
           
     // file control plane functions
     virtual int open(const char *pathname, int flags) = 0;
+    virtual int open(qtoken qt, const char *pathname, int flags) = 0;
     virtual int open(const char *pathname, int flags, mode_t mode) = 0;
     virtual int creat(const char *pathname, mode_t mode) = 0;
 
     // data plane functions
     virtual ssize_t push(qtoken qt, struct sgarray &sga) = 0;
+    virtual ssize_t flush_push(qtoken qt, struct sgarray &sga) = 0;
     virtual ssize_t pop(qtoken qt, struct sgarray &sga) = 0;
     virtual ssize_t peek(struct sgarray &sga) = 0;
     virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;
     virtual ssize_t poll(qtoken qt, struct sgarray &sga) = 0;
+    virtual int flush(qtoken qt) = 0;
 
     // returns the file descriptor associated with
     // the queue descriptor if the queue is an io queue
