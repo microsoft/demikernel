@@ -426,6 +426,13 @@ RdmaQueue::open(const char *pathname, int flags)
 }
 
 int
+RdmaQueue::open(qtoken qt, const char *pathname, int flags)
+{
+    assert(false);
+    return 0;
+}
+
+int
 RdmaQueue::open(const char *pathname, int flags, mode_t mode)
 {
     assert(false);
@@ -693,7 +700,10 @@ RdmaQueue::push(qtoken qt, struct sgarray &sga)
     Latency_End(&push_latency);
     return res;
 }
-    
+
+ssize_t RdmaQueue::flush_push(qtoken qt, struct sgarray &sga) { return -1; }
+int RdmaQueue::flush(qtoken qt, int flags) {return -1; }
+
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
