@@ -184,28 +184,15 @@ public:
 
     int open(const char *pathname, int flags) {
         Queue &q = NewQueue(FILE_Q);
-        int ret = q.open(pathname, flags);
+        qtoken qt = GetNewToken(q.GetQD(), true);
+        int ret = q.open(qt, pathname, flags);
         if (ret < 0) {
             RemoveQueue(q.GetQD());
             return ret;
         } else {
             return q.GetQD();
         }
-    }
-
-
-    /** JINGLIU
-    int open(const char *pathname, int flags) {
-        // use the fd as qd
-        qtoken qt = GetNewToken(LIBOS_OPEN_QD, false);
-        fprintf(stderr, "Library.h: open() called\n");
-        int qd = QueueType::open(qt, pathname, flags);
-        fprintf(stderr, "library.h: open() returns:%d \n", qd);
-        if (qd > 0){
-            InsertQueue(QueueType(FILE_Q, qd));
-        }
-        return qd;
-    };**/
+    };
 
     int open(const char *pathname, int flags, mode_t mode) {
         Queue &q = NewQueue(FILE_Q);
@@ -234,16 +221,11 @@ public:
         if (!HasQueue(qd)){
             return -1;
         }
-        QueueType &queue = GetQueue(qd);
-        if(queue.GetType() == FILE_Q){
-            qtoken t = GetNewToken(qd, true);
-            int ret = queue.flush(t, false);
-            fprintf(stderr, "Library.h flush returned %d\n", ret);
-            return ret;
-        }else{
-            // flush just for storage
-            return -1;
-        }
+        Queue &queue = GetQueue(qd);
+        qtoken t = GetNewToken(qd, true);
+        int ret = queue.flush(t);
+        // TODO check the ret value here
+        return ret;
     };
 
     
@@ -251,7 +233,10 @@ public:
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
 
+<<<<<<< 5db6d6d30059de56897247e7b1fabfc99e33567d
         int res = -1;
+=======
+>>>>>>> merge the master, and spdk works for simple test
         Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    
@@ -287,7 +272,7 @@ public:
         if (!HasQueue(qd))
             return -1;
         
-        QueueType &queue = GetQueue(qd);
+        Queue &queue = GetQueue(qd);
         if (queue.GetType() == FILE_Q) {
             qtoken t = GetNewToken(qd, true);
             ssize_t res = queue.flush_push(t, sga);

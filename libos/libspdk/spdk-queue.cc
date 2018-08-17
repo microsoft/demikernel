@@ -161,7 +161,7 @@ static std::mutex spdk_qd_lock;
 static std::mutex libos_flush_lock;
 static int libos_init_complete = 0;
 // we start from 1
-static int qd = 1;
+static int qd_for_assign = 1;
 
 static std::unordered_map<qtoken, SPDKPendingRequest> libos_pending_reqs;
 // multi-producer, single-consumer queue
@@ -177,6 +177,7 @@ static moodycamel::ConcurrentQueue<qtoken> spdk_work_queue;
 // and thus couuld return control to the application to go on issue
 // IO request to spdk library
 static pthread_t spdk_bg_thread = 0;
+static std::mutex bg_thread_guard;
 
 
 static void *libos_run_spdk_thread(void* thread_args);
@@ -186,10 +187,10 @@ static int
 assign_new_qd(void){
     //spdk_init_lock.try_lock();
     spdk_init_lock.lock();
-    qd++;
+    qd_for_assign++;
     // TODO check overflow here?
     spdk_init_lock.unlock();
-    return qd;
+    return qd_for_assign;
 }
 
 static void
@@ -272,8 +273,8 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
 
 static void libos_spdk_start_common(SPDKContext *spdk_context_t){
      // TODO: here, the Malloc0 is going to be replaced by real device!
-    //spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
-    spdk_context_t->bdev = spdk_bdev_get_by_name("Nvme0n1");
+    spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
+    //spdk_context_t->bdev = spdk_bdev_get_by_name("Nvme0n1");
     if(spdk_context_t->bdev == NULL){
         fprintf(stderr, "spdk_context_t->bdev is NULL, will do stop\n");
         spdk_app_stop(-1);
@@ -434,10 +435,11 @@ static void spdk_open_blob_callback(void *cb_args, struct spdk_blob *blob, int b
 
 static void spdk_open_create_callback(void *cb_arg, spdk_blob_id blobid, int bserrno){
     struct SPDKCallbackArgs *args = (struct SPDKCallbackArgs*)cb_arg;
-    fprintf(stderr, "spdk_open_create_callback tid:%u blobid:%lu\n", get_thread_tid(), blobid);
+    fprintf(stderr, "spdk_open_create_callback tid:%u blobid:%lu new_qd:%d\n", get_thread_tid(), blobid, args->req->new_qd);
     args->req->file_blobid = blobid;
-    // TODO: check the type mismatch of int vs. uint64_t ?
-    args->req->new_qd = assign_new_qd();
+    // we do not assign qd here, because assigned by libos
+    //args->req->new_qd = assign_new_qd();
+    int qd = args->req->new_qd;
     libos_spdk_context->qd_blobid_map[qd] = blobid;
     // init the flush lock and status variables
     libos_spdk_context->queue_flush_status[qd] = 0;
@@ -573,7 +575,7 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
 
 static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
 #ifdef _LIBOS_SPDK_QUEUE_DEBUG_
-    fprintf(stderr, "libos_spdk_push called\n");
+    fprintf(stderr, "libos_spdk_push called qt:%lu\n", qt);
     if(pending_req->do_flush){
         fprintf(stderr, "flush_push is TRUE\n");
     }else{
@@ -887,8 +889,9 @@ static void *libos_run_spdk_thread(void* thread_args){
 }
 
 
+
 int
-SPDKQueue::socket(int domain, int type, int protocol)
+SPDKQueue::init_env()
 {
     fprintf(stderr, "SPDKQueue:socket()\n");
     // NOTE: let's try to do init() here first, assume app just call this once at the beginning
@@ -902,14 +905,13 @@ SPDKQueue::socket(int domain, int type, int protocol)
 }
 
 int 
-SPDKQueue::libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags){
+SPDKQueue::libos_spdk_open_existing_file(int newqd, qtoken qt, const char *pathname, int flags){
     // TODO, open existing file according to loaded name and blobid
     return -1;
 }
 
 int 
-SPDKQueue::libos_spdk_create_file(qtoken qt, const char *pathname, int flags){
-    int ret;
+SPDKQueue::libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, int flags){
     fprintf(stderr, "libos_spdk_create_file\n");
     // save this requeset
     struct sgarray sga;
@@ -918,34 +920,44 @@ SPDKQueue::libos_spdk_create_file(qtoken qt, const char *pathname, int flags){
     it->second.file_name = (char*) malloc(strlen(pathname)*sizeof(char));;
     strcpy(it->second.file_name, pathname);
     it->second.file_flags = flags;
+    it->second.new_qd = newqd;
     spdk_work_queue.enqueue(qt);
     // busy wait until the queue is DONE
     fprintf(stderr, "spdk_work_queue has enqueued\n");
     while(!it->second.isDone){
         usleep(100);
     }
-    ret = it->second.new_qd;
-    return ret;
+    //ret = it->second.new_qd;
+    return 0;
+}
+
+int
+SPDKQueue::open(const char *pathname, int flags)
+{
+    return 0;
 }
 
 int
 SPDKQueue::open(qtoken qt, const char *pathname, int flags)
 {
+    if(spdk_bg_thread == 0){
+        bg_thread_guard.lock();
+        if(spdk_bg_thread == 0){
+            init_env();
+        }
+        bg_thread_guard.unlock();
+    }
     // use the fd as qd
     //int qd = ::open(pathname, flags);
     // TODO: check flags here
     int ret;
-    ret = libos_spdk_open_existing_file(qt, pathname, flags);
+    ret = libos_spdk_open_existing_file(qd, qt, pathname, flags);
     if(ret < 0){
-        ret = libos_spdk_create_file(qt, pathname, flags);
+        ret = libos_spdk_create_file(qd, qt, pathname, flags);
     }
     return ret;
 }
 
-int
-SPDKQueue::open(const char *pathname, int flags){
-    return 0;
-}
 
 int
 SPDKQueue::open(const char *pathname, int flags, mode_t mode)
@@ -995,6 +1007,11 @@ SPDKQueue::Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga){
     (it3->second).new_qd = qd;
     spdk_work_queue.enqueue(qt);
     return 0;
+}
+
+int
+SPDKQueue::flush(qtoken qt){
+    return flush(qt, false);
 }
 
 /**
@@ -1207,12 +1224,14 @@ SPDKQueue::poll(qtoken qt, struct sgarray &sga)
  ***/
 
 /************************ un-funcational api for spdk ************************/
+int SPDKQueue::socket(int domain, int type, int protocol) {return -1;}
+int SPDKQueue::getsockname(struct sockaddr *saddr, socklen_t *size) {return -1;}
 int SPDKQueue::bind(struct sockaddr *saddr, socklen_t size) {return -1;}
 int SPDKQueue::accept(struct sockaddr *saddr, socklen_t *size) {return -1;}
 int SPDKQueue::listen(int backlog) {return -1;}
 int SPDKQueue::connect(struct sockaddr *saddr, socklen_t size) {return -1;}
 // not sure, if needed
-ssize_t SPDKQueue::peek(qtoken qt, struct sgarray &sga){return 0;}
+ssize_t SPDKQueue::peek(struct sgarray &sga) {return 0;}
 /****************************************************************************/
 
 

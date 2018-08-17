@@ -165,20 +165,18 @@ PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
 }
 
 int
+PosixQueue::open(qtoken qt, const char *pathname, int flags)
+{
+    return -1;
+}
+
+int
 PosixQueue::open(const char *pathname, int flags)
 {
     assert(false);
     fd = ::open(pathname, flags);
     if (fd > 0) return qd;
     else return fd;
-}
-
-int
-PosixQueue::open(qtoken qt, const char *pathname, int flags)
-{
-    // use the fd as qd
-    int qd = ::open(pathname, flags);
-    return qd;
 }
 
 int
@@ -198,6 +196,13 @@ PosixQueue::creat(const char *pathname, mode_t mode)
     if (fd > 0) return qd;
     else return fd;
 }
+
+int 
+PosixQueue::flush(qtoken qt)
+{
+    return flush(qt, false);
+}
+ 
 
 int 
 PosixQueue::flush(qtoken qt, bool isclosing)

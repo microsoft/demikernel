@@ -86,17 +86,20 @@ private:
     uint64_t file_blobid;  // blobid in blobstore
 
     // libos spdk functions
-    static int libos_spdk_open_existing_file(qtoken qt, const char *pathname, int flags);
-    static int libos_spdk_create_file(qtoken qt, const char *pathname, int flags);
+    static int libos_spdk_open_existing_file(int newqd, qtoken qt, const char *pathname, int flags);
+    static int libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, int flags);
     int Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga);
 
 public:
-    SPDKQueue() : Queue(FILE_Q, 0), workQ{}, file_length(0), file_blobid(0) {};
-    SPDKQueue(BasicQueueType type, int qd) :
+    SPDKQueue() : Queue(), workQ{}, file_length(0), file_blobid(0) {};
+    SPDKQueue(QueueType type, int qd) :
         Queue(type, qd), workQ{}, file_length(0), file_blobid(0) {};
+    ~SPDKQueue() { };
 
     // network functions
-    static int socket(int domain, int type, int protocol);
+    static int init_env(void);
+    int socket(int domain, int type, int protocol);
+    int getsockname(struct sockaddr *saddr, socklen_t *size);
     int listen(int backlog);
     int bind(struct sockaddr *saddr, socklen_t size);
     int accept(struct sockaddr *saddr, socklen_t *size);
@@ -104,17 +107,18 @@ public:
     int close(void);
           
     // file functions
-    static int open(const char *pathname, int flags);
-    static int open(qtoken qt, const char *pathname, int flags);
-    static int open(const char *pathname, int flags, mode_t mode);
-    static int creat(const char *pathname, mode_t mode);
+    int open(const char *pathname, int flags);
+    int open(qtoken qt, const char *pathname, int flags);
+    int open(const char *pathname, int flags, mode_t mode);
+    int creat(const char *pathname, mode_t mode);
     int flush(qtoken qt, bool isclosing);
+    int flush(qtoken qt);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
     ssize_t flush_push(qtoken qt, struct sgarray &sga);
     ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t peek(qtoken qt, struct sgarray &sga);
+    ssize_t peek(struct sgarray &sga);
     ssize_t wait(qtoken qt, struct sgarray &sga);
     ssize_t poll(qtoken qt, struct sgarray &sga);
     // returns the file descriptor associated with

@@ -63,7 +63,7 @@ add_custom_target(hoard ALL
                   COMMAND make
                   COMMAND mv ${HOARD_DIR}/libhoard.so ${PROJECT_SOURCE_DIR}
                   WORKING_DIRECTORY ${HOARD_DIR})
-                
+
 # POSIX libos target
 add_library(zeus_posix SHARED
   ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_POSIX_LIB})
@@ -78,16 +78,32 @@ add_library(zeus_spdk STATIC
 target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
 add_dependencies(zeus_spdk hoard)
 
+# RDMA libos target
+if (UNIX)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrdmacm -libverbs")
+set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -lrdmacm -libverbs")
+add_library(zeus_rdma SHARED
+  ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_RDMA_LIB})
+target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)
+add_dependencies(zeus_rdma hoard)
+endif()
+
+
+#############################################
+# applications
+# Tapir
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/tapir)
 add_custom_target(tapir
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 add_dependencies(tapir zeus_posix)
-                
+
 add_custom_target(tapir-clean
                   COMMAND make clean
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 
+
+# Redis
 set(TAPIR_APP_DIR ${PROJECT_SOURCE_DIR}/apps/redis)
 add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${PROJECT_SOURCE_DIR} make
@@ -102,3 +118,4 @@ add_library(zeus_rdma SHARED
 target_link_libraries(zeus_rdma ${PROJECT_SOURCE_DIR}/libhoard.so rdmacm ibverbs)
 add_dependencies(zeus_rdma hoard)
 endif()
+

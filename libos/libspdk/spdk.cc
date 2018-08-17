@@ -33,11 +33,16 @@
 #include "spdk-queue.h"
 
 namespace Zeus {
-static QueueLibrary<SPDK::SPDKQueue> lib;
+static QueueLibrary<SPDK::SPDKQueue, SPDK::SPDKQueue> lib;
     
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
+}
+
+int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
+{
+    return lib.getsockname(qd, saddr, size);
 }
 
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
@@ -119,12 +124,12 @@ ssize_t wait(qtoken qt, struct sgarray &sga)
     return lib.wait(qt, sga);
 }
 
-qtoken wait_any(qtoken *qts, size_t num_qts, struct sgarray &sga)
+qtoken wait_any(qtoken qts[], size_t num_qts, int &offset,  int &qd, struct sgarray &sga)
 {
-    return lib.wait_any(qts, num_qts, sga);
+    return lib.wait_any(qts, num_qts, offset, qd, sga);
 }
 
-ssize_t wait_all(qtoken *qts, size_t num_qts, struct sgarray *sgas)
+ssize_t wait_all(qtoken qts[], size_t num_qts, struct sgarray **sgas)
 {
     return lib.wait_all(qts, num_qts, sgas);
 }
