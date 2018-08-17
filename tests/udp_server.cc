@@ -7,7 +7,7 @@
 #include "../include/io-queue.h"
 #include "../libos/common/latency.h"
 
-#define PKTNUM          10
+#define PKTNUM          10000
 
 uint16_t port = 12345;
 

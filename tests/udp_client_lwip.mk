@@ -14,7 +14,7 @@ DPDK_LIB=$(DPDK_HOME)/lib/
 DPDK_MACHINE_FLAGS = $(shell cat $(HOME)/datacenter-OS/libos/libmtcp/mtcp/dpdk/include/cflags.txt)
 DPDK_LIB_FLAGS = $(shell cat $(HOME)/datacenter-OS/libos/libmtcp/mtcp/dpdk/lib/ldflags.txt) -lgmp
 
-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(CFLAGS) -O3 -DNASSERT
+FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(CFLAGS) -O3 -DNDEBUG
 FINAL_LDFLAGS=$(LDFLAGS)
 FINAL_LIBS=-lm
 

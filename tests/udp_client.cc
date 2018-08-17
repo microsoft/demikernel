@@ -7,7 +7,7 @@
 #include "../include/io-queue.h"
 
 #define USE_CONNECT		1
-#define PKTNUM          10
+#define PKTNUM          10000
 #define BUFSIZE         10
 
 uint16_t port = 12345;
@@ -74,22 +74,22 @@ int main()
     for (int i = 0; i < PKTNUM; i++) {
         qt = Zeus::push(qd, sga);
         if (qt != 0) {
-            printf("client wait for push\n");
+            //printf("client wait for push\n");
             n = Zeus::wait(qt, sga);
             assert(n > 0);
         }
 
-        printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+        //printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
         qt = Zeus::pop(qd, res);
         if (qt != 0) {
-            printf("client: wait for pop\n");
+            //printf("client: wait for pop\n");
             n = Zeus::wait(qt, res);
             assert(n > 0);
         }
 
         assert(res.num_bufs == 1);
-        printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+        //printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
         free(res.bufs[0].buf);
     }
 
