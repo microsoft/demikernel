@@ -98,7 +98,7 @@ public:
     virtual ssize_t peek(struct sgarray &sga);
     virtual ssize_t wait(qtoken qt, struct sgarray &sga);
     virtual ssize_t poll(qtoken qt, struct sgarray &sga);
-    virtual int flush(qtoken qt);
+    virtual int flush(qtoken qt, int flags);
 };
 
 } // namespace Zeus

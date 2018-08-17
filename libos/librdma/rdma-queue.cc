@@ -694,7 +694,7 @@ RdmaQueue::push(qtoken qt, struct sgarray &sga)
 }
 
 ssize_t RdmaQueue::flush_push(qtoken qt, struct sgarray &sga) { return -1; }
-int RdmaQueue::flush(qtoken qt) {return -1; }
+int RdmaQueue::flush(qtoken qt, int flags) {return -1; }
 
 ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)

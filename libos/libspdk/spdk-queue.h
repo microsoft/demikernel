@@ -42,6 +42,10 @@ extern "C" {
 
 } // end of extern "C"
 
+#define SPDK_FLUSH_OPT_ALL 0
+#define SPDK_FLUSH_OPT_DATA 1
+#define SPDK_FLUSH_OPT_CLOSE 2
+
 namespace Zeus {
 namespace SPDK {
 
@@ -89,6 +93,7 @@ private:
     static int libos_spdk_open_existing_file(int newqd, qtoken qt, const char *pathname, int flags);
     static int libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, int flags);
     int Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga);
+    int flush(qtoken qt, bool isclosing);
 
 public:
     SPDKQueue() : Queue(), workQ{}, file_length(0), file_blobid(0) {};
@@ -111,8 +116,7 @@ public:
     int open(qtoken qt, const char *pathname, int flags);
     int open(const char *pathname, int flags, mode_t mode);
     int creat(const char *pathname, mode_t mode);
-    int flush(qtoken qt, bool isclosing);
-    int flush(qtoken qt);
+    int flush(qtoken qt, int flags);
 
     // data path functions
     ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete

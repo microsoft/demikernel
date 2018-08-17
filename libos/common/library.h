@@ -216,14 +216,14 @@ public:
         }
     };
 
-    int flush(int qd) {
-        fprintf(stderr, "Library.h flush(%d) called", qd);
+    int flush(int qd, int flags) {
+        //fprintf(stderr, "Library.h flush(%d) called", qd);
         if (!HasQueue(qd)){
             return -1;
         }
         Queue &queue = GetQueue(qd);
         qtoken t = GetNewToken(qd, true);
-        int ret = queue.flush(t);
+        int ret = queue.flush(t, flags);
         // TODO check the ret value here
         return ret;
     };
@@ -233,10 +233,6 @@ public:
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
 
-<<<<<<< 5db6d6d30059de56897247e7b1fabfc99e33567d
-        int res = -1;
-=======
->>>>>>> merge the master, and spdk works for simple test
         Queue &queue = GetQueue(qd);
         int res = queue.close();
         RemoveQueue(qd);    

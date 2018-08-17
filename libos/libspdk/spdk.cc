@@ -82,12 +82,12 @@ int creat(const char *pathname, mode_t mode)
 
 int flush(int qd)
 {
-    return lib.flush(qd);
+    return lib.flush(qd, SPDK_FLUSH_OPT_ALL);
 }
     
 int close(int qd)
 {
-    return lib.close(qd);
+    return lib.flush(qd, SPDK_FLUSH_OPT_CLOSE);
 }
 
 int qd2fd(int qd)

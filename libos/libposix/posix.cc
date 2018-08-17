@@ -89,7 +89,7 @@ int creat(const char *pathname, mode_t mode)
 }
 
 int flush(int qd){
-    return lib.flush(qd);
+    return 0;
 }
     
 int close(int qd)

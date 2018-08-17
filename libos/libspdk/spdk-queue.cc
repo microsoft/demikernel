@@ -169,6 +169,7 @@ static std::unordered_map<qtoken, SPDKPendingRequest> libos_pending_reqs;
 // which only perform the spdk related call since they are all async
 // and relise on callback function.
 static moodycamel::ConcurrentQueue<qtoken> spdk_work_queue;
+//static moodycamel::BlockingConcurrentQueue<qtoken> spdk_work_queue;
 // This thread will be spawned through socket() call
 // It is the single-consumer, which dequeue from the work queue
 // and then issue the spdk request
@@ -402,7 +403,9 @@ static void spdk_open_blob_sync_md_callback(void *cb_args, int bserrno){
     // libos_pending_reqs.erase(args->qt);
     // now the file is ready to write
     libos_run_spdk_thread(NULL);
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "spdk_open_sync(): libos_run_spdk_thread_return\n");
+#endif
 }
 
 static void spdk_open_blob_resize_callback(void *cb_args, int bserrno){
@@ -521,7 +524,9 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
         libos_spdk_flush(args->qt, req);
     }else{
         libos_run_spdk_thread(NULL);
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
         fprintf(stderr, "push_write_sync: libos_run_spdk_thread_return\n");
+#endif
     }
 }
 
@@ -575,11 +580,10 @@ static void push_write_complete_callback(void *cb_args, int bsserrno){
 
 static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
 #ifdef _LIBOS_SPDK_QUEUE_DEBUG_
-    fprintf(stderr, "libos_spdk_push called qt:%lu\n", qt);
     if(pending_req->do_flush){
-        fprintf(stderr, "flush_push is TRUE\n");
+        fprintf(stderr, "libos_spdk_push flush_push is TRUE qt:%lu\n", qt);
     }else{
-        fprintf(stderr, "flush_push is FALSE\n");
+        fprintf(stderr, "libos_spdk_push flush_push is FALSE qt:%lu\n", qt);
     }
 #endif
     spdk_blob_id blobid = pending_req->file_blobid;
@@ -652,7 +656,9 @@ static void libos_spdk_push(qtoken qt, SPDKPendingRequest* pending_req){
             libos_spdk_flush(pending_req->qt, pending_req);
         }else{
             libos_run_spdk_thread(NULL);
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
             fprintf(stderr, "libos_spdk_push(): libos_run_spdk_thread return\n");
+#endif
         }
     }
 }
@@ -1005,13 +1011,23 @@ SPDKQueue::Enqueue(SPDK_OP req_op, qtoken qt, sgarray &sga){
     (it3->second).file_blob = (it2->second).blob_ptr;
     // make sure each request know its qd
     (it3->second).new_qd = qd;
+#ifdef _LIBOS_SPDK_QUEUE_DEBUG_
+    fprintf(stderr, "will enqueue qt:%lu\n", qt);
+#endif
     spdk_work_queue.enqueue(qt);
     return 0;
 }
 
 int
-SPDKQueue::flush(qtoken qt){
-    return flush(qt, false);
+SPDKQueue::flush(qtoken qt, int flags){
+    if(flags == SPDK_FLUSH_OPT_ALL){
+        return flush(qt, false);
+    }else if(flags == SPDK_FLUSH_OPT_CLOSE){
+        return flush(qt, true);
+    }else{
+        fprintf(stderr, "ERROR flags not supported\n");
+        return -1;
+    }
 }
 
 /**
