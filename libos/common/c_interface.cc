@@ -77,12 +77,11 @@ int zeus_connect(int qd, struct sockaddr *saddr, socklen_t size){
 }
 
 int zeus_open(const char *pathname, int flags, mode_t mode) {
-    fprintf(stderr, "NIY\n");
     return Zeus::open(pathname, flags);
 }
 
 int zeus_creat(const char *pathname, mode_t mode) {
-    fprintf(stderr, "NIY\n");
+    fprintf(stderr, "NIY creat\n");
     return 0;
 }
 

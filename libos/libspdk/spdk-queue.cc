@@ -44,6 +44,8 @@
 #include "concurrentqueue.h"
 #include <sys/syscall.h>
 
+#include "dev_config.h"
+
 extern "C" {
 #include "spdk/env.h"
 #include "spdk/event.h"
@@ -274,8 +276,8 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
 
 static void libos_spdk_start_common(SPDKContext *spdk_context_t){
      // TODO: here, the Malloc0 is going to be replaced by real device!
-    spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
-    //spdk_context_t->bdev = spdk_bdev_get_by_name("Nvme0n1");
+    //spdk_context_t->bdev = spdk_bdev_get_by_name("Malloc0");
+    spdk_context_t->bdev = spdk_bdev_get_by_name(SPDK_DEV_NAME);
     if(spdk_context_t->bdev == NULL){
         fprintf(stderr, "spdk_context_t->bdev is NULL, will do stop\n");
         spdk_app_stop(-1);
@@ -399,6 +401,8 @@ static void spdk_open_blob_sync_md_callback(void *cb_args, int bserrno){
     free(args->req->file_name);
     // now it is safe to return, since the metadata is persistent
     args->req->isDone = true;
+    // free memory allocated by malloc
+    free(args);
     // NOTE: think about how to do with open() qt
     // libos_pending_reqs.erase(args->qt);
     // now the file is ready to write
@@ -431,6 +435,7 @@ static void spdk_open_blob_callback(void *cb_args, struct spdk_blob *blob, int b
     uint64_t free = 0;
     free = spdk_bs_free_cluster_count(libos_spdk_context->app_bs);
     fprintf(stderr, "free cluster count is:%lu\n", free);
+    free = 128;
     //spdk_blob_resize(blob, 1, spdk_open_blob_resize_callback, args);
     spdk_blob_resize(blob, free, spdk_open_blob_resize_callback, args);
     fprintf(stderr, "spdk_open_blob_resize_callback will return tid:%u\n", get_thread_tid());
@@ -523,6 +528,7 @@ static void push_write_sync_md_callback(void *cb_args, int bserrno){
         ////assert(req->isDone == false);
         libos_spdk_flush(args->qt, req);
     }else{
+        free(args);
         libos_run_spdk_thread(NULL);
 #ifdef _LIBOS_SPDK_QUEUE_DEBUG_
         fprintf(stderr, "push_write_sync: libos_run_spdk_thread_return\n");
@@ -733,6 +739,7 @@ static void flush_write_sync_md_callback(void *cb_args, int bserrno){
         }
         (libos_spdk_context->queue_flush_lock).erase(qd);
     }
+    free(args);
     libos_run_spdk_thread(NULL);
 #ifdef _LIBOS_SPDK_QUEUE_DEBUG_
     fprintf(stderr, "flush_write_sync: libos_run_spdk_thread_return\n");
@@ -851,6 +858,7 @@ static void *libos_run_spdk_thread(void* thread_args){
             switch(it->second.req_op){
                 case LIBOS_OPEN_CREAT:
                     cur_op = LIBOS_OPEN_CREAT;
+                    fprintf(stderr, "LIBOS_OPEN_CREAT qt:%lu\n", qt);
                     libos_spdk_open_create(qt, (&it->second));
                     break;
                 case LIBOS_OPEN_EXIST:
@@ -923,6 +931,7 @@ SPDKQueue::libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, in
     struct sgarray sga;
     libos_pending_reqs.insert(std::make_pair(qt, SPDKPendingRequest(qt, LIBOS_OPEN_CREAT, sga)));
     auto it = libos_pending_reqs.find(qt);
+    SPDKPendingRequest *req_ptr = &(it->second);
     it->second.file_name = (char*) malloc(strlen(pathname)*sizeof(char));;
     strcpy(it->second.file_name, pathname);
     it->second.file_flags = flags;
@@ -931,10 +940,11 @@ SPDKQueue::libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, in
     // busy wait until the queue is DONE
     fprintf(stderr, "spdk_work_queue has enqueued\n");
     while(!it->second.isDone){
-        usleep(100);
+        usleep(1);
     }
-    //ret = it->second.new_qd;
-    return 0;
+    libos_pending_reqs.erase(qt);
+    int ret = it->second.new_qd;
+    return ret;
 }
 
 int

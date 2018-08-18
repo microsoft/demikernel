@@ -12,9 +12,10 @@ GIT_BRANCH="libos"
 LIBOS_SPDK_DIR=`pwd`
 
 git clone ${GIT_URL}
+
+cd spdk
 git checkout ${GIT_BRANCH}
 # install dependency, compile
-cd spdk
 git submodule update --init
 # make sure pkgdep.sh have the right to install packages
 sudo ./scripts/pkgdep.sh
