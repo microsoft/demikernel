@@ -41,14 +41,11 @@
 #include <sys/types.h>
 #include <iostream>
 #include <fstream>
-#include <list>
 #include <algorithm>
 #include "rdtsc.h"
 #include "common/message.h"
 
 double g_TicksPerNanoSec = -1.0;
-
-std::list<Latency_t *> stats;
 
 static inline uint64_t rdtsc()
 {
@@ -64,9 +61,11 @@ static inline uint64_t rdtsc()
 static void
 LatencyInit(Latency_t *l, const char *name)
 {
-    l->name = name;
-    l->latencies.reserve(MAX_ITERATIONS);
-
+    memset(l, 0, sizeof(*l));
+    
+    l->name = new std::string(name);
+    l->latencies = new std::vector<uint64_t>();
+        
     // check if time resolution initialized here
     if(g_TicksPerNanoSec < 0){
         init_time_resolution();
@@ -75,6 +74,7 @@ LatencyInit(Latency_t *l, const char *name)
     for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
         Latency_Dist_t *d = &l->distPool[i];
         d->min = ~0ll;
+	d->type = 0;
     }
     stats.push_back(l);
 }
@@ -88,8 +88,10 @@ _Latency_Init(Latency_t *l, const char *name)
 static inline void
 LatencyAddStat(Latency_t *l, char type, uint64_t val)
 {
-    if (l->latencies.size() < MAX_ITERATIONS)
-	l->latencies.push_back(val);
+    //if (l->latencies.size() == 0)
+	
+    if (l->latencies->size() < MAX_ITERATIONS)
+	l->latencies->push_back(val);
 }
     
 
@@ -249,19 +251,19 @@ Latency_Dump(Latency_t *l)
         if (type == '=')
             extra[0] = '\0';
         QNotice("LATENCY %s%s: %s %s/%s %s (%" PRIu64 " samples, %s total)",
-                l->name, extra, LatencyFmtNS(d->min, buf[0]),
+                l->name->c_str(), extra, LatencyFmtNS(d->min, buf[0]),
                 LatencyFmtNS(d->total / d->count, buf[1]),
                 LatencyFmtNS((uint64_t)1 << medianBucket, buf[2]),
                 LatencyFmtNS(d->max, buf[3]), d->count,
                 LatencyFmtNS(d->total, buf[4]));
     }
     *ppnext = -1;
-    l->latencies.shrink_to_fit();
-    sort(l->latencies.begin(), l->latencies.end());
+    l->latencies->shrink_to_fit();
+    sort(l->latencies->begin(), l->latencies->end());
     QNotice("TAIL LATENCY 99=%s 99.9=%s 99.99=%s",
-	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.99)], buf[0]),
-	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.999)], buf[1]),
-	    LatencyFmtNS(l->latencies[((float)l->latencies.size() * 0.9999)], buf[2]));
+	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.99)), buf[0]),
+	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.999)), buf[1]),
+	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.9999)), buf[2]));
 
     // Find the count of the largest bucket so we can scale the
     // histogram

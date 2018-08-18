@@ -42,6 +42,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <string>
+#include <list>
 
 // The number of the maximum distribution type.  Since we use
 // characters as distribution types, this is 127.  We could probably
@@ -78,17 +80,19 @@ typedef struct Latency_Dist_t
 
 typedef struct Latency_t
 {
-    const char *name;
+    std::string *name;
 
     Latency_Dist_t *dists[LATENCY_MAX_DIST];
     Latency_Dist_t distPool[LATENCY_DIST_POOL_SIZE];
-    int distPoolNext;
+    int distPoolNext = 0;
 
     Latency_Frame_t *bottom;
     Latency_Frame_t defaultFrame;
 
-    std::vector<uint64_t> latencies;
+    std::vector<uint64_t> *latencies;
 } Latency_t;
+
+static std::list<Latency_t *> stats;
 
 #define DEFINE_LATENCY(name)                                            \
     static Latency_t name;                                              \
