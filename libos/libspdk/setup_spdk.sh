@@ -17,7 +17,8 @@ cd spdk
 git checkout ${GIT_BRANCH}
 # install dependency, compile
 git submodule update --init
-
+sleep 1
+rm -rf dpdk
 
 if [ -z "RTE_SDK" ]
 then
@@ -34,9 +35,14 @@ fi
 # make sure pkgdep.sh have the right to install packages
 sudo ./scripts/pkgdep.sh
 
-echo "dependency installed"
+echo "dependency installed!"
 
-configure --with-dpdk=${RTE_SDK}/${RTS_TARGET}
+
+DPDK_LIB_DIR=`echo ${RTE_SDK} | sed -e "s/dpdk-17.08/dpdk/g"`
+
+echo "DPDK_LIB_DIR is set to $DPDK_LIB_DIR"
+
+./configure --with-dpdk=${DPDK_LIB_DIR}
 
 make
 
