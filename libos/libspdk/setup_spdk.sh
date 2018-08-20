@@ -20,17 +20,25 @@ git submodule update --init
 sleep 1
 rm -rf dpdk
 
-if [ -z "RTE_SDK" ]
+cd ${LIBOS_SPDK_DIR}
+
+if [ -z "$RTE_SDK" ]
 then
     echo "RTE_SDK not set (source setup_dpdk_env.sh in mtcp directory)"
-    exit
+    cd ../libmtcp/mtcp/
+    source setup_dpdk_env.sh
 fi
 
-if [ -z "RTE_TARGET" ]
+echo "RTE_SDK:$RTE_SDK"
+
+if [ -z "$RTE_TARGET" ]
 then
     echo "RTE_TARGET not set"
     exit
+else
+    echo "RTE_TARGET: $RTE_TARGET"
 fi
+
 
 # make sure pkgdep.sh have the right to install packages
 sudo ./scripts/pkgdep.sh
