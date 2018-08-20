@@ -48,9 +48,9 @@ include_directories(${DPDK_DIR}/include)
 link_directories(${DPDK_DIR}/lib)
 
 # spdk
-#set(SPDK_DIR ${ZEUS_SOURCE_DIR}/libspdk/spdk/)
-#set(SPDK_LD_FLAGS "-Wl,--whole-archive")
-#include_directories(${SPDK_DIR}/include)
+set(SPDK_DIR ${ZEUS_SOURCE_DIR}/libspdk/spdk/)
+set(SPDK_LD_FLAGS "-Wl,--whole-archive")
+include_directories(${SPDK_DIR}/include)
 
 # ---------------------------------------------------------
 # Source files
@@ -64,7 +64,7 @@ add_subdirectory(${ZEUS_SOURCE_DIR}/libmtcp)
 add_subdirectory(${ZEUS_SOURCE_DIR}/libdpdk)
 add_subdirectory(${ZEUS_SOURCE_DIR}/liblwip)
 add_subdirectory(${PROJECT_SOURCE_DIR}/tests)
-#add_subdirectory(${ZEUS_SOURCE_DIR}/libspdk)
+add_subdirectory(${ZEUS_SOURCE_DIR}/libspdk)
 
 # ---------------------------------------------------------
 # Build targets
@@ -108,11 +108,11 @@ endif()
 
 # spdk libos target
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
-#set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wl,--whole-archive")
-#add_library(zeus_spdk STATIC
-#    ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB} ${SRC_ZEUS_POSIX_LIB})
-#target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
-#add_dependencies(zeus_spdk hoard)
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--whole-archive")
+add_library(zeus_spdk STATIC
+    ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB} ${SRC_ZEUS_POSIX_LIB})
+target_link_libraries(zeus_spdk ${PROJECT_SOURCE_DIR}/libhoard.so)
+add_dependencies(zeus_spdk hoard)
 
 #############################################
 # applications

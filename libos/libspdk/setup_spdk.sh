@@ -17,10 +17,26 @@ cd spdk
 git checkout ${GIT_BRANCH}
 # install dependency, compile
 git submodule update --init
+
+
+if [ -z "RTE_SDK" ]
+then
+    echo "RTE_SDK not set (source setup_dpdk_env.sh in mtcp directory)"
+    exit
+fi
+
+if [ -z "RTE_TARGET" ]
+then
+    echo "RTE_TARGET not set"
+    exit
+fi
+
 # make sure pkgdep.sh have the right to install packages
 sudo ./scripts/pkgdep.sh
 
-./configure
+echo "dependency installed"
+
+configure --with-dpdk=${RTE_SDK}/${RTS_TARGET}
 
 make
 
