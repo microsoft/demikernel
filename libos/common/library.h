@@ -55,7 +55,6 @@
 
 DEFINE_LATENCY(pop_latency);
 DEFINE_LATENCY(push_latency);
-DEFINE_LATENCY(pop_to_push_latency);
 
 namespace Zeus {
 
@@ -267,7 +266,6 @@ public:
             // if push returns something else, then sga has been
             // successfully pushed
             Latency_End(&push_latency);
-            Latency_End(&pop_to_push_latency);
             return 0;
         }
     };
@@ -315,7 +313,6 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
-        Latency_Start(&pop_to_push_latency);
         Latency_Start(&pop_latency);
 
         if (!HasQueue(qd))
