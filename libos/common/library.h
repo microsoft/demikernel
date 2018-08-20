@@ -344,7 +344,7 @@ public:
             int qd2 = QUEUE(tokens[i]);
             auto it2 = queues.find(qd2);
             assert(it2 != queues.end());
-
+            LatencyStart(&pop_latency);
             // do a quick check if something is ready
 
             res = it2->second->poll(tokens[i], sga);
@@ -352,6 +352,7 @@ public:
             if (res != 0) {
                 offset = i;
                 qd = qd2;
+		LatencyStop(&pop_latency);
                 return res;
             }
             waitingQs[i] = it2->second;
@@ -360,12 +361,13 @@ public:
         while (true) {
             for (unsigned int i = 0; i < num; i++) {
                 Queue *q = waitingQs[i];
+		LatencyStart(&wait_pop);
                 res = q->poll(tokens[i], sga);
                 
                 if (res != 0) {
                     offset = i;
                     qd = q->GetQD();
-
+		    LatencyEnd(&pop_latency);
                     return res;
                 }
             }
