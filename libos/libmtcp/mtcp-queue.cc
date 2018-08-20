@@ -180,9 +180,13 @@ MTCPQueue::accept(struct sockaddr *saddr, socklen_t *size)
 
     if (newqd != -1) {
         int n = 1;
-        mtcp_setsockopt(mctx, newqd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
+        int ret;
+        ret = mtcp_setsockopt(mctx, newqd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n));
+        if (ret < 0) {
+            fprintf(stderr, "Failed to set TCP_NODELAY on Zeus connecting socket\n");
+        }
         // Always put it in non-blocking mode
-        int ret = mtcp_setsock_nonblock(mctx, newqd);
+        ret = mtcp_setsock_nonblock(mctx, newqd);
         if (ret < 0) {
             fprintf(stderr, "error accept() cannot set nonblock\n");
         }
@@ -306,6 +310,12 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
         struct sockaddr_in saddr;
         socklen_t size = sizeof(saddr);
         int newfd = mtcp_accept(mctx, mtcp_qd, (struct sockaddr*)&saddr, &size);
+
+        int ret = mtcp_setsock_nonblock(mctx, mtcp_qd);
+        if (ret < 0) {
+            fprintf(stderr, "Failed to set O_NONBLOCK on outgoing Zeus socket\n");
+        }
+
         if (newfd == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;

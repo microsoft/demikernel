@@ -43,7 +43,7 @@
 #include <fstream>
 #include <algorithm>
 #include "rdtsc.h"
-#include "common/message.h"
+#include "message.h"
 
 double g_TicksPerNanoSec = -1.0;
 
