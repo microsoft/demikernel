@@ -10,3 +10,6 @@ Datacenter Operating system
     + if cmake version not higher enough, install from source code
 + make
 
+NOTE: if using Mellanox ConnectX-4 NICS, DPDK needs to be compiled
+with the CONFIG_RTE_LIBRTE_MLX5_PMD=y in config/common_base
+
