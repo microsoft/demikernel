@@ -49,7 +49,7 @@ enum QueueType {
 
 class Queue
 {
-    
+
 protected:
     QueueType type;
     int qd;

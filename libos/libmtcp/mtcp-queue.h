@@ -28,20 +28,25 @@
  *
  **********************************************************************/
  
-#ifndef _LIB_POSIX_QUEUE_H_
-#define _LIB_POSIX_QUEUE_H_
+#ifndef _LIB_MTCP_QUEUE_H_
+#define _LIB_MTCP_QUEUE_H_
 
 #include "common/queue.h"
 #include "common/library.h"
-#include <fcntl.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
+#include <list>
+#include <unordered_map>
+
+#define MTCP_MAX_FLOW_NUM  (10000)
+#define MTCP_MAX_EVENTS (MTCP_MAX_FLOW_NUM * 3)
+#define MTCP_RCVBUF_SIZE (2*1024)
+#define MTCP_SNDBUF_SIZE (8*1024)
+
+//#define _LIBOS_MTCP_DEBUG_
 
 namespace Zeus {
-namespace POSIX {
+namespace MTCP {
 
-class PosixQueue : public Queue {
+class MTCPQueue : public Queue {
 private:
     struct PendingRequest {
     public:
@@ -55,25 +60,25 @@ private:
         size_t num_bytes;
         struct sgarray &sga;
 
-        PendingRequest(struct sgarray &sga) :
+        PendingRequest(struct sgarray &input_sga) :
             isDone(false),
             res(0),
             header{0,0,0},
             buf(NULL),
             num_bytes(0),
-            sga(sga) { };
+            sga(input_sga) { };            
     };
     
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<std::pair<int, struct sockaddr_in>> accepts;
     std::list<qtoken> workQ;
+    // queue and events
+    uint32_t mtcp_evts;
 
-    int fd;
-    bool listening = false;
-    bool connected = false;
-    bool is_tcp = true;
-    sockaddr connected_addr;
+    bool listening;
+
+    int mtcp_qd;
 
     void ProcessIncoming(PendingRequest &req);
     void ProcessOutgoing(PendingRequest &req);
@@ -81,9 +86,13 @@ private:
     ssize_t Enqueue(qtoken qt, sgarray &sga);
 
 public:
-    PosixQueue() : Queue(), pending(), accepts(), workQ(), listening(false) { };
-    PosixQueue(QueueType type, int qd) :
-        Queue(type, qd), pending(), accepts(), workQ(), listening(false) { };
+    MTCPQueue() : Queue(), pending(), accepts(), workQ(), listening(false){
+        mtcp_evts = 0;
+    };
+    MTCPQueue(QueueType type, int qd) :
+        Queue(type, qd), pending(), accepts(), workQ(), listening(false) {
+            mtcp_evts = 0;
+        };
 
     // network functions
     int socket(int domain, int type, int protocol);
@@ -115,6 +124,6 @@ public:
     void setfd(int fd);
 };
 
-} // namespace POSIX
+} // namespace MTCP 
 } // namespace Zeus
-#endif /* _LIB_POSIX_QUEUE_H_ */
+#endif /* _LIB_MTCP_QUEUE_H_ */

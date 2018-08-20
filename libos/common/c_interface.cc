@@ -19,6 +19,9 @@ void sgarray_c2cpp(zeus_sgarray * c_sga, Zeus::sgarray * sga){
          (sga->bufs[i]).buf = (c_sga->bufs[i]).buf;
          (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
+    sga->addr.sin_family = AF_INET;
+    sga->addr.sin_addr.s_addr = c_sga->addr.sin_addr.s_addr;
+    sga->addr.sin_port = c_sga->addr.sin_port;
     //printf("sgarray_c2cpp() return\n");
 }
 
@@ -32,6 +35,9 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
     }
+    c_sga->addr.sin_family = AF_INET;
+    c_sga->addr.sin_addr.s_addr = sga->addr.sin_addr.s_addr;
+    c_sga->addr.sin_port = sga->addr.sin_port;
     //printf("sgarray_cpp2c() return\n");
 }
 /************************************************************************/

@@ -34,7 +34,7 @@ static inline double rdtsc(void)
 //    __asm volatile ("rdtsc" : "=a" (eax), "=d" (edx) :: "memory");
 //    return ((uint64_t)edx << 32) | eax;
     struct timespec tv;
-    clock_gettime(CLOCK_REALTIME, &tv);
+    clock_gettime(CLOCK_MONOTONIC, &tv);
     return (tv.tv_sec*(uint64_t)1000000000+tv.tv_nsec) / 1000.0;
 }
 

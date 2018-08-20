@@ -27,12 +27,11 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
 #include "common/basic-queue.h"
 #include <assert.h>
 
 namespace Zeus {
-    
+
 ssize_t
 BasicQueue::push(qtoken qt, struct sgarray &sga)
 {
@@ -62,7 +61,6 @@ BasicQueue::flush_push(qtoken qt, struct sgarray &sga)
 {
     return 0;
 }
-        
 ssize_t
 BasicQueue::pop(qtoken qt, struct sgarray &sga) {
     size_t len = 0;
@@ -109,7 +107,7 @@ BasicQueue::wait(qtoken qt, struct sgarray &sga)
     delete req;
     return len;
 }
-    
+
 ssize_t
 BasicQueue::poll(qtoken qt, struct sgarray &sga)
 {

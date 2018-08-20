@@ -47,6 +47,8 @@
 
 double g_TicksPerNanoSec = -1.0;
 
+static std::list<Latency_t *> *stats1 = NULL;
+
 static inline uint64_t rdtsc()
 {
     tsc_counter c;
@@ -76,7 +78,8 @@ LatencyInit(Latency_t *l, const char *name)
         d->min = ~0ll;
 	d->type = 0;
     }
-    stats.push_back(l);
+    if (stats1 == NULL) stats1 = new std::list<Latency_t *>;
+    stats1->push_back(l);
 }
 
 void
@@ -317,7 +320,7 @@ Latency_Dump(Latency_t *l)
 void
 Latency_DumpAll(void)
 {
-    for (auto s : stats) {
+    for (auto s : *stats1) {
 	Latency_Dump(s);
     }
 }

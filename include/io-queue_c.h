@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <stdint.h>
+#include <netinet/in.h>
 //#include <memory>
     
 #define C_MAX_QUEUE_DEPTH 40
@@ -59,6 +60,7 @@ typedef struct Sgelem{
 typedef struct Sgarray{
     int num_bufs;
     zeus_sgelem bufs[C_MAX_SGARRAY_SIZE];
+    struct sockaddr_in addr;
 }zeus_sgarray;
 
 // memory allocation
@@ -97,6 +99,8 @@ ssize_t zeus_blocking_pop(int qd, zeus_sgarray *sga);
 
 
 int zeus_qd2fd(int qd);
+
+int zeus_init(int argc, char* argv[]);
 
 // eventually queue functions
 //int merge(int qd1, int qd2);

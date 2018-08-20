@@ -30,16 +30,27 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
-#include "posix-queue.h"
+#include "include/io-queue_c.h"
+#include "lwip-queue.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::PosixQueue, POSIX::PosixQueue> lib;
+static QueueLibrary<LWIP::LWIPQueue, LWIP::LWIPQueue> lib;
+
+int init(int argc, char* argv[])
+{
+    return LWIP::lwip_init(argc, argv);
+}
+
+int init()
+{
+	return LWIP::lwip_init();
+}
 
 int queue()
 {
     return lib.queue();
 }
-    
+
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
@@ -49,7 +60,7 @@ int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return lib.getsockname(qd, saddr, size);
 }
-    
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);
@@ -57,17 +68,14 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
-    int newfd = lib.accept(qd, saddr, size);
-    if (newfd > 0)
-        lib.GetQueue(newfd).setfd(newfd);
-    return newfd;
+    return lib.accept(qd, saddr, size);
 }
 
 int listen(int qd, int backlog)
 {
     return lib.listen(qd, backlog);
 }
-        
+
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.connect(qd, saddr, size);
@@ -88,10 +96,11 @@ int creat(const char *pathname, mode_t mode)
     return lib.creat(pathname, mode);
 }
 
-int flush(int qd){
+int flush(int qd)
+{
     return 0;
 }
-    
+
 int close(int qd)
 {
     return lib.close(qd);
@@ -101,28 +110,20 @@ int qd2fd(int qd)
 {
     return lib.qd2fd(qd);
 }
-    
+
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);
 }
 
-qtoken flush_push(int qd, struct Zeus::sgarray &sga){
+qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+{
     return lib.flush_push(qd, sga);
 }
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
-    //printf("posix.cc:pop input:%d\n", qd);
-    qtoken qt = lib.pop(qd, sga);
-    //printf("posix.cc: pop return qt:%d\n", qt);
-    return qt;
-}
-
-ssize_t peek(int qd, struct Zeus::sgarray &sga)
-{
-    ssize_t ret = lib.peek(qd, sga);
-    return ret;
+    return lib.pop(qd, sga);
 }
 
 ssize_t wait(qtoken qt, struct sgarray &sga)
@@ -150,6 +151,11 @@ ssize_t blocking_pop(int qd, struct sgarray &sga)
     return lib.blocking_pop(qd, sga);
 }
 
+ssize_t peek(int qd, struct sgarray &sga)
+{
+	return lib.peek(qd, sga);
+}
+
 int merge(int qd1, int qd2)
 {
     return lib.merge(qd1, qd2);
@@ -158,16 +164,6 @@ int merge(int qd1, int qd2)
 int filter(int qd, bool (*filter)(struct sgarray &sga))
 {
     return lib.filter(qd, filter);
-}
-
-int init()
-{
-	return 0;
-}
-
-int init(int argc, char* argv[])
-{
-	return 0;
 }
 
 } // namespace Zeus

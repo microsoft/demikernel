@@ -41,8 +41,7 @@
 #include <sys/uio.h>
 #include <rdma/rdma_verbs.h>
 
-DEFINE_LATENCY(pop_latency)
-DEFINE_LATENCY(push_latency);
+
 DEFINE_LATENCY(post_send);
 DEFINE_LATENCY(get_mr);
 
@@ -459,7 +458,7 @@ RdmaQueue::close()
     }
 
     rdma_destroy_event_channel(rdma_id->channel);
-    Latency_DumpAll();
+//    Latency_DumpAll();
     return 0;
 }
     
@@ -518,7 +517,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
 	    // do some other work instead
 	    CheckEventQ();
 	    CheckSendCQ();
-	}
+        }
     }
 
     if (closed) {
@@ -558,10 +557,10 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
-	Latency_Start(&get_mr);
-	mr = rdma_get_mr(sga.bufs[i].buf, pd);
-	Latency_End(&get_mr);
-	assert(mr != NULL);
+        Latency_Start(&get_mr);
+        mr = rdma_get_mr(sga.bufs[i].buf, pd);
+        Latency_End(&get_mr);
+        assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
         
         // add up actual data size
@@ -694,10 +693,8 @@ ssize_t
 RdmaQueue::push(qtoken qt, struct sgarray &sga)
 {
     if (closed) return ZEUS_IO_ERR_NO;
-    
-    Latency_Start(&push_latency);
     ssize_t res = Enqueue(qt, sga);
-    Latency_End(&push_latency);
+    //Latency_End(&push_latency);
     return res;
 }
 
@@ -708,10 +705,8 @@ ssize_t
 RdmaQueue::pop(qtoken qt, struct sgarray &sga)
 {
     if (closed) return ZEUS_IO_ERR_NO;
-    
-    Latency_Start(&pop_latency);
     ssize_t res = Enqueue(qt, sga);
-    if (res > 0) Latency_End(&pop_latency);
+    ///if (res > 0) Latency_End(&pop_latency);
     return res;
 }
 
@@ -719,16 +714,18 @@ ssize_t
 RdmaQueue::peek(struct sgarray &sga)
 {
     if (closed) return ZEUS_IO_ERR_NO;
-    
-    Latency_Start(&pop_latency);
     PendingRequest *req = new PendingRequest(sga);
 
     ProcessIncoming(req);
 
     if (req->isDone or req->isEnqueued){
-	Latency_End(&pop_latency);
-        return req->res;
+        //Latency_End(&pop_latency);
+        ssize_t res = req->res;
+        sga.copy(req->sga);
+        delete req;
+        return res;
     } else {
+        delete req;
         return 0;
     }
 }
@@ -742,14 +739,14 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
     PendingRequest *req = it->second;
     
     while(!req->isDone) {
-	Latency_Start(&pop_latency);
+	//Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     sga = req->sga;
     ret = req->res;
     pending.erase(it);
     delete req;
-    if (ret > 0) Latency_End(&pop_latency);
+    //if (ret > 0) Latency_End(&pop_latency);
     return ret;
 }
 
@@ -763,7 +760,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     if (closed) return ZEUS_IO_ERR_NO;
     
     if (!req->isDone) {
-	Latency_Start(&pop_latency);
+	//Latency_Start(&pop_latency);
         ProcessQ(1);
     }
     
@@ -772,7 +769,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 	sga.copy(req->sga);
         pending.erase(it);
 	delete req;
-	Latency_End(&pop_latency);
+	//Latency_End(&pop_latency);
         return ret;
     } else {
         return 0;

@@ -30,10 +30,10 @@
 
 #include "common/library.h"
 #include "include/io-queue.h"
-#include "posix-queue.h"
+#include "mtcp-queue.h"
 
 namespace Zeus {
-static QueueLibrary<POSIX::PosixQueue, POSIX::PosixQueue> lib;
+static QueueLibrary<MTCP::MTCPQueue, MTCP::MTCPQueue> lib;
 
 int queue()
 {
@@ -49,7 +49,7 @@ int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return lib.getsockname(qd, saddr, size);
 }
-    
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);
@@ -87,11 +87,11 @@ int creat(const char *pathname, mode_t mode)
 {
     return lib.creat(pathname, mode);
 }
-
+    
 int flush(int qd){
     return 0;
 }
-    
+
 int close(int qd)
 {
     return lib.close(qd);
@@ -113,10 +113,7 @@ qtoken flush_push(int qd, struct Zeus::sgarray &sga){
 
 qtoken pop(int qd, struct Zeus::sgarray &sga)
 {
-    //printf("posix.cc:pop input:%d\n", qd);
-    qtoken qt = lib.pop(qd, sga);
-    //printf("posix.cc: pop return qt:%d\n", qt);
-    return qt;
+    return lib.pop(qd, sga);
 }
 
 ssize_t peek(int qd, struct Zeus::sgarray &sga)
@@ -162,12 +159,12 @@ int filter(int qd, bool (*filter)(struct sgarray &sga))
 
 int init()
 {
-	return 0;
+    return 0;
 }
 
 int init(int argc, char* argv[])
 {
-	return 0;
+    return 0;
 }
 
 } // namespace Zeus

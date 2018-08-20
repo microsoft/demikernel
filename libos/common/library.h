@@ -33,6 +33,7 @@
 
 #include "include/io-queue.h"
 #include "common/basic-queue.h"
+#include "common/latency.h"
 #include <list>
 #include <unordered_map>
 #include <thread>
@@ -51,6 +52,9 @@
 
 // qtoken format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
+
+DEFINE_LATENCY(pop_latency);
+DEFINE_LATENCY(push_latency);
 
 namespace Zeus {
 
@@ -84,7 +88,7 @@ public:
     
     qtoken GetNewToken(int qd, bool isPush) {
         if (token_counter == 0) token_counter++;
-        qtoken t = (token_counter << 1 & TOKEN_MASK) | ((qtoken)qd << 32); 
+        qtoken t = (token_counter << 1 & TOKEN_MASK) | ((qtoken)qd << 32);
         if (isPush) t |= PUSH_MASK;
         //printf("GetNewToken qd:%lx\n", t);
         token_counter++;
@@ -124,7 +128,7 @@ public:
         auto it = queues.find(qd);
         assert(it != queues.end());
         delete it->second;
-        queues.erase(it);    
+        queues.erase(it);
     };
 
     // ================================================
@@ -247,6 +251,7 @@ public:
     };
 
     qtoken push(int qd, struct Zeus::sgarray &sga) {
+        Latency_Start(&push_latency);
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
 
@@ -260,6 +265,7 @@ public:
         } else {
             // if push returns something else, then sga has been
             // successfully pushed
+            Latency_End(&push_latency);
             return 0;
         }
     };
@@ -295,8 +301,8 @@ public:
             return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res;
-        res = queue.pop(t, sga);
+
+        ssize_t res = queue.pop(t, sga);
 
         if (res > 0)
             return 0;
@@ -307,12 +313,15 @@ public:
     };
 
     ssize_t peek(int qd, struct Zeus::sgarray &sga) {
+        Latency_Start(&pop_latency);
+
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
         Queue &queue = GetQueue(qd);
         int res = queue.peek(sga);
-
+        if (res > 0) {
+            Latency_End(&pop_latency);
+        }
         return res;
     };
 
@@ -335,10 +344,11 @@ public:
             int qd2 = QUEUE(tokens[i]);
             auto it2 = queues.find(qd2);
             assert(it2 != queues.end());
-            
+
             // do a quick check if something is ready
+
             res = it2->second->poll(tokens[i], sga);
-    
+
             if (res != 0) {
                 offset = i;
                 qd = qd2;
@@ -355,8 +365,9 @@ public:
                 if (res != 0) {
                     offset = i;
                     qd = q->GetQD();
+
                     return res;
-                }                    
+                }
             }
         }
     };
@@ -367,7 +378,7 @@ public:
         ssize_t res = 0;
         for (unsigned int i = 0; i < num; i++) {
             Queue &q = GetQueue(QUEUE(tokens[i]));
-            
+
             ssize_t r = q.wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }
@@ -384,7 +395,7 @@ public:
             // popping from files not implemented yet
             return ZEUS_IO_ERR_NO;
 
-        qtoken t = GetNewToken(qd, false);
+        qtoken t = GetNewToken(qd, true);
         ssize_t res = q.push(t, sga);
         if (res == 0) {
             return wait(t, sga);
@@ -414,6 +425,7 @@ public:
             // successfully popped and result is in sga
             return res;
         }
+
     };
     
     int merge(int qd1, int qd2) {
