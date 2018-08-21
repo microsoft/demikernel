@@ -40,7 +40,7 @@ else
     echo "RTE_TARGET: $RTE_TARGET"
 fi
 
-
+cd spdk
 # make sure pkgdep.sh have the right to install packages
 sudo ./scripts/pkgdep.sh
 
