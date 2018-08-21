@@ -27,6 +27,7 @@ then
     echo "RTE_SDK not set (source setup_dpdk_env.sh in mtcp directory)"
     cd ../libmtcp/mtcp/
     source setup_dpdk_env.sh
+    cd ${LIBOS_SPDK_DIR}
 fi
 
 echo "RTE_SDK:$RTE_SDK"
