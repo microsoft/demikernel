@@ -31,7 +31,7 @@
  *
  **********************************************************************/
 
-#include "latency.h"
+#include "common/latency.h"
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -43,7 +43,7 @@
 #include <fstream>
 #include <algorithm>
 #include "rdtsc.h"
-#include "message.h"
+#include "common/message.h"
 
 double g_TicksPerNanoSec = -1.0;
 

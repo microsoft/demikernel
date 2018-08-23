@@ -3,7 +3,7 @@ CC = g++
 ZEUS_SRC_DIR=$(HOME)/datacenter-OS/
 LIBZEUS=zeus_lwip
 
-ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
+ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)/libos -I$(ZEUS_SRC_DIR)/include
 ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -l$(LIBZEUS)
 DPDK_LDFLAGS := $(ZEUS_LDFLAGS)
 DPDK_LDFLAGS += -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib
@@ -14,7 +14,7 @@ DPDK_LIB=$(DPDK_HOME)/lib/
 DPDK_MACHINE_FLAGS = $(shell cat $(HOME)/datacenter-OS/libos/libmtcp/mtcp/dpdk/include/cflags.txt)
 DPDK_LIB_FLAGS = $(shell cat $(HOME)/datacenter-OS/libos/libmtcp/mtcp/dpdk/lib/ldflags.txt) -lgmp
 
-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(CFLAGS) -O3 -DNDEBUG
+FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(CFLAGS) -O0 -pg -g
 FINAL_LDFLAGS=$(LDFLAGS)
 FINAL_LIBS=-lm
 

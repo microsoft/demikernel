@@ -960,6 +960,8 @@ LWIPQueue::peek(struct sgarray &sga)
     ProcessIncoming(req);
 
     if (req.isDone){
+        sga.copy(req.sga);
+        assert(sga.num_bufs == 1);
         return req.res;
     } else {
         return 0;

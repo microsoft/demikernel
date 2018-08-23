@@ -29,7 +29,7 @@
  *
  **********************************************************************/
 
-#include "message.h"
+#include "common/message.h"
 
 #include <ctype.h>
 #include <errno.h>

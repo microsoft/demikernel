@@ -4,8 +4,8 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#include "../include/io-queue.h"
-#include "../libos/common/latency.h"
+#include "io-queue.h"
+#include "common/latency.h"
 
 #define PKTNUM          10000
 

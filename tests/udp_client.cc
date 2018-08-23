@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#include "../include/io-queue.h"
+#include "io-queue.h"
 
 #define USE_CONNECT		1
 #define PKTNUM          10000
@@ -81,7 +81,7 @@ int main()
 
         //printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 
-        while((n = Zeus::peek(qd, sga)) <= 0) {
+        while((n = Zeus::peek(qd, res)) <= 0) {
             if (n < 0) {
                 perror("client pop");
                 return -1;
@@ -89,6 +89,7 @@ int main()
         }
 
         assert(res.num_bufs == 1);
+        assert(strcmp((char*)res.bufs[0].buf, (char*)sga.bufs[0].buf) == 0);
         //printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
         free(res.bufs[0].buf);
     }

@@ -3,7 +3,7 @@ CC = g++
 ZEUS_SRC_DIR=$(HOME)/datacenter-OS/
 LIBZEUS=zeus_lwip
 
-ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)
+ZEUS_CFLAGS := -I$(ZEUS_SRC_DIR)/libos -I$(ZEUS_SRC_DIR)/include
 ZEUS_LDFLAGS := -L$(ZEUS_SRC_DIR) -l$(LIBZEUS)
 DPDK_LDFLAGS := $(ZEUS_LDFLAGS)
 DPDK_LDFLAGS += -L$(ZEUS_SRC_DIR)/libos/libmtcp/mtcp/dpdk/lib
