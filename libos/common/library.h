@@ -78,14 +78,13 @@ public:
     // Queue Management functions
     // ================================================
 
-    int HasQueue(int qd) {
-        int ret = (queues.find(qd) != queues.end());
-        return ret;
+    bool HasQueue(int qd) {
+        return queues.find(qd) != queues.end());
     };
 
-    Queue& GetQueue(int qd) {
+    Queue* GetQueue(int qd) {
         assert(HasQueue(qd));
-        return *queues.at(qd);
+        return queues.at(qd);
     };
     
     qtoken GetNewToken(int qd, bool isPush) {
@@ -97,7 +96,7 @@ public:
         return t;
     };
 
-    Queue& NewQueue(QueueType type) {
+    Queue* NewQueue(QueueType type) {
         int qd = queue_counter++ & ~QUEUE_MASK;
         Queue *queue;
         switch (type) {
@@ -114,7 +113,7 @@ public:
             assert(0);
         }
         queues[qd] = queue;
-        return *queue;
+        return queue;
     };
 
     void InsertQueue(Queue *q) {
@@ -152,18 +151,18 @@ public:
     };
 
     int getsockname(int qd, struct sockaddr *saddr, socklen_t *size) {
-        Queue &q = GetQueue(qd);
-        return q.getsockname(saddr, size);
+        Queue *q = GetQueue(qd);
+        return q->getsockname(saddr, size);
     };
 
     int bind(int qd, struct sockaddr *saddr, socklen_t size) {
-        Queue &q = GetQueue(qd);
-        return q.bind(saddr, size);
+        Queue *q = GetQueue(qd);
+        return q->bind(saddr, size);
     };
 
     int accept(int qd, struct sockaddr *saddr, socklen_t *size) {
-        Queue &q = GetQueue(qd);
-        int newqd = q.accept(saddr, size);
+        Queue *q = GetQueue(qd);
+        int newqd = q->accept(saddr, size);
         if (newqd > 0){
             InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
             return newqd;
@@ -176,49 +175,49 @@ public:
     };
 
     int listen(int qd, int backlog) {
-        Queue &q = GetQueue(qd);
-        return q.listen(backlog);
+        Queue *q = GetQueue(qd);
+        return q->listen(backlog);
     };
 
     int connect(int qd, struct sockaddr *saddr, socklen_t size) {
-        Queue &q = GetQueue(qd);
-        int newqd = q.connect(saddr, size);
+        Queue *q = GetQueue(qd);
+        int newqd = q->connect(saddr, size);
         if (newqd > 0)
             InsertQueue(new NetworkQueueType(NETWORK_Q, newqd));
         return newqd;
     };
 
     int open(const char *pathname, int flags) {
-        Queue &q = NewQueue(FILE_Q);
-        qtoken qt = GetNewToken(q.GetQD(), true);
-        int ret = q.open(qt, pathname, flags);
+        Queue *q = NewQueue(FILE_Q);
+        qtoken qt = GetNewToken(q->GetQD(), true);
+        int ret = q->open(qt, pathname, flags);
         if (ret < 0) {
-            RemoveQueue(q.GetQD());
+            RemoveQueue(q=>GetQD());
             return ret;
         } else {
-            return q.GetQD();
+            return q->GetQD();
         }
     };
 
     int open(const char *pathname, int flags, mode_t mode) {
         Queue &q = NewQueue(FILE_Q);
-        int ret = q.open(pathname, flags, mode);
+        int ret = q->open(pathname, flags, mode);
         if (ret < 0) {
-            RemoveQueue(q.GetQD());
+            RemoveQueue(q->GetQD());
             return ret;
         } else {
-            return q.GetQD();
+            return q->GetQD();
         }
     };
 
     int creat(const char *pathname, mode_t mode) {
         Queue &q = NewQueue(FILE_Q);
-        int ret = q.creat(pathname, mode);
+        int ret = q->creat(pathname, mode);
         if (ret < 0) {
-            RemoveQueue(q.GetQD());
+            RemoveQueue(q->GetQD());
             return ret;
         } else {
-            return q.GetQD();
+            return q->GetQD();
         }
     };
 
@@ -248,8 +247,8 @@ public:
     int qd2fd(int qd) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        Queue &q = GetQueue(qd);
-        return q.getfd();
+        Queue *q = GetQueue(qd);
+        return q->getfd();
     };
 
     qtoken push(int qd, struct Zeus::sgarray &sga) {
@@ -381,9 +380,9 @@ public:
                      struct sgarray **sgas) {
         ssize_t res = 0;
         for (unsigned int i = 0; i < num; i++) {
-            Queue &q = GetQueue(QUEUE(tokens[i]));
+            Queue *q = GetQueue(QUEUE(tokens[i]));
 
-            ssize_t r = q.wait(tokens[i], *sgas[i]);
+            ssize_t r = q->wait(tokens[i], *sgas[i]);
             if (r > 0) res += r;
         }
         return res;
@@ -394,13 +393,13 @@ public:
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
         
-        Queue &q = GetQueue(qd);
-        if (q.GetType() == FILE_Q)
+        Queue *q = GetQueue(qd);
+        if (q->GetType() == FILE_Q)
             // popping from files not implemented yet
             return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, true);
-        ssize_t res = q.push(t, sga);
+        ssize_t res = q->push(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {
@@ -415,13 +414,13 @@ public:
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
         
-        Queue &q = GetQueue(qd);
-        if (q.GetType() == FILE_Q)
+        Queue *q = GetQueue(qd);
+        if (q->GetType() == FILE_Q)
             // popping from files not implemented yet
             return ZEUS_IO_ERR_NO;
 
         qtoken t = GetNewToken(qd, false);
-        ssize_t res = q.pop(t, sga);
+        ssize_t res = q->pop(t, sga);
         if (res == 0) {
             return wait(t, sga);
         } else {
