@@ -142,12 +142,12 @@ public:
     
     int socket(int domain, int type, int protocol) {
         Queue &q = NewQueue(NETWORK_Q);
-        int ret = q.socket(domain, type, protocol);
+        int ret = q->socket(domain, type, protocol);
         if (ret < 0) {
-            RemoveQueue(q.GetQD());
+            RemoveQueue(q->GetQD());
             return ret;
         }
-        return q.GetQD();
+        return q->GetQD();
     };
 
     int getsockname(int qd, struct sockaddr *saddr, socklen_t *size) {
