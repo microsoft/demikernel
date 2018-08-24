@@ -80,7 +80,12 @@ int main()
         }
 
         //printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
-
+#if 0
+        volatile double d = 2;
+        for (int i = 0; i < 100000; i++) {
+            d *= 1.01;
+        }
+#endif
         while((n = Zeus::peek(qd, res)) <= 0) {
             if (n < 0) {
                 perror("client pop");

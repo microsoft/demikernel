@@ -60,11 +60,11 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {    
-    RdmaQueue &queue = (RdmaQueue &)lib.GetQueue(qd);
+    RdmaQueue &queue = (RdmaQueue &)*lib.GetQueue(qd);
     struct rdma_cm_id *newid = queue.getNextAccept();
     if (newid != NULL) {
         int newqd = lib.accept(qd, saddr, size);
-        RdmaQueue &newQ = (RdmaQueue &)lib.GetQueue(newqd);
+        RdmaQueue &newQ = (RdmaQueue &)*lib.GetQueue(newqd);
         newQ.setRdmaCM(newid);
         int ret = newQ.accept(saddr, size); 
         if (ret != 0) {
