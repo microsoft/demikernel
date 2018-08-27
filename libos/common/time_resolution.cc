@@ -49,13 +49,14 @@ static void CalibrateTicks()
   uint64_t begin = 0, end = 0;
   clock_gettime(CLOCK_MONOTONIC, &begints);
   begin = RDTSC();
-  uint64_t i;
+  volatile uint64_t i;
   for (i = 0; i < 1000000; i++); /* must be CPU intensive */
   end = RDTSC();
   clock_gettime(CLOCK_MONOTONIC, &endts);
   struct timespec *tmpts = TimeSpecDiff(&endts, &begints);
   uint64_t nsecElapsed = tmpts->tv_sec * 1000000000LL + tmpts->tv_nsec;
   g_TicksPerNanoSec = (double)(end - begin)/(double)nsecElapsed;
+  printf("%ld\n", g_TicksPerNanoSec);
   //g_TicksPerMicroSec = (double)(end - begin)/(double)(nsecElapsed/1000.0);
 }
  

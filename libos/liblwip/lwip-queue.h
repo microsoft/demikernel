@@ -58,6 +58,7 @@ public:
     LWIPQueue() : Queue(){ };
     LWIPQueue(QueueType type, int qd) :
         Queue(type, qd) {};
+    //~LWIPQueue() { assert(false); };
 
     // network functions
     int socket(int domain, int type, int protocol);
