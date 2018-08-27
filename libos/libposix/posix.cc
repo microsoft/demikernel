@@ -59,7 +59,7 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     int newfd = lib.accept(qd, saddr, size);
     if (newfd > 0)
-        lib.GetQueue(newfd).setfd(newfd);
+        lib.GetQueue(newfd)->setfd(newfd);
     return newfd;
 }
 

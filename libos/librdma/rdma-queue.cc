@@ -44,6 +44,11 @@
 
 DEFINE_LATENCY(post_send);
 DEFINE_LATENCY(get_mr);
+DEFINE_LATENCY(rdma_pop_latency);
+DEFINE_LATENCY(poll_sendcq_latency);
+DEFINE_LATENCY(poll_recvcq_latency);
+DEFINE_LATENCY(poll_eventcq_latency);
+DEFINE_LATENCY(rdma_parse_latency);
 
 namespace Zeus {
 
@@ -185,6 +190,7 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 void
 RdmaQueue::CheckRecvCQ()
 {
+    Latency_Start(&poll_recvcq_latency);
     // check completion queue
     struct ibv_wc wcs[RECV_BUFFER_NUM];
     int num = 0;
@@ -197,6 +203,7 @@ RdmaQueue::CheckRecvCQ()
     	    ProcessWC(wcs[i]);
     	}
     }
+    Latency_End(&poll_recvcq_latency);
     //fprintf(stderr, "Done draining completion queue\n");
 }
 
@@ -204,6 +211,7 @@ void
 RdmaQueue::CheckSendCQ()
 {
     // check completion queue
+    Latency_Start(&poll_sendcq_latency);
     struct ibv_wc wcs[RECV_BUFFER_NUM];
     int num = 0;
 
@@ -215,11 +223,13 @@ RdmaQueue::CheckSendCQ()
 	    ProcessWC(wcs[i]);
 	}
     }
+    Latency_End(&poll_sendcq_latency);
 }
 
 void
 RdmaQueue::CheckEventQ()
 {
+    Latency_Start(&poll_eventcq_latency);
     // Do some RDMA work first;
     assert(fcntl(rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
@@ -243,6 +253,7 @@ RdmaQueue::CheckEventQ()
         rdma_ack_cm_event(event);
 	//fprintf(stderr, "Done processing event queue\n");
     }
+    Latency_End(&poll_eventcq_latency);
 }
     
 int
@@ -487,6 +498,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
 	}
 	
         if (!pendingRecv.empty()) {
+	    Latency_Start(&rdma_parse_latency);
             req->buf = pendingRecv.front();
             pendingRecv.pop_front();
             
@@ -513,6 +525,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             req->isDone = true;
             req->res = dataLen - (sga.num_bufs * sizeof(size_t));
 	    assert(req->res > 0);
+	    Latency_End(&rdma_parse_latency);
         } else {
 	    // do some other work instead
 	    CheckEventQ();
@@ -753,14 +766,13 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
 ssize_t
 RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 {
+    Latency_Start(&rdma_pop_latency);
     auto it = pending.find(qt);
     assert(it != pending.end());
     PendingRequest *req = it->second;
 
     if (closed) return ZEUS_IO_ERR_NO;
-    
-    if (!req->isDone) {
-	//Latency_Start(&pop_latency);
+    if (!req->isDone) {	
         ProcessQ(1);
     }
     
@@ -769,7 +781,7 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
 	sga.copy(req->sga);
         pending.erase(it);
 	delete req;
-	//Latency_End(&pop_latency);
+	Latency_End(&rdma_pop_latency);
         return ret;
     } else {
         return 0;

@@ -56,7 +56,7 @@
 DEFINE_LATENCY(pop_latency);
 DEFINE_LATENCY(push_latency);
 DEFINE_LATENCY(wait_push);
-DEFINE_LATENCY(wait_pop);
+
 
 namespace Zeus {
 
@@ -362,7 +362,7 @@ public:
         while (true) {
             for (unsigned int i = 0; i < num; i++) {
                 Queue *q = waitingQs[i];
-                Latency_Start(&wait_pop);
+                Latency_Start(&pop_latency);
                 res = q->poll(tokens[i], sga);
                 
                 if (res != 0) {

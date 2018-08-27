@@ -1,4 +1,4 @@
-# Install script for directory: /home/amanda/datacenter-OS/tests
+# Install script for directory: /biggerraid/users/iyzhang/datacenter-OS/tests
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
