@@ -79,7 +79,7 @@ int main()
             assert(n > 0);
         }
 
-        //printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
+//        printf("client: sent\t%s\n", (char*)sga.bufs[0].buf);
 #if 0
         volatile double d = 2;
         for (int i = 0; i < 100000; i++) {
@@ -95,7 +95,7 @@ int main()
 
         assert(res.num_bufs == 1);
         assert(strcmp((char*)res.bufs[0].buf, (char*)sga.bufs[0].buf) == 0);
-        //printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
+//        printf("client: rcvd\t%s\n", (char*)res.bufs[0].buf);
         free(res.bufs[0].buf);
     }
 

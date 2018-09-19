@@ -61,7 +61,7 @@ int main()
 
         //printf("client: sent\t%s\tbuf size:\t%d\n", (char*)sga.bufs[0].buf, sga.bufs[0].len);
 
-        while ((n = Zeus::peek(qd, sga)) <= 0) {
+        while ((n = Zeus::peek(qd, res)) <= 0) {
             if (n < 0) {
                 perror("client pop:");
                 return -1;
