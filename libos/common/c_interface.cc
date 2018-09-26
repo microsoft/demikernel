@@ -30,7 +30,7 @@ void sgarray_cpp2c(Zeus::sgarray * sga, zeus_sgarray * c_sga){
     for(int i = 0; i < sga->num_bufs; i++){
         (c_sga->bufs[i]).len = (sga->bufs[i]).len;
 #ifdef __DEBUG_c_interface_cc
-        printf("sgarray_cpp2c: i:%d len:%lu\n", i, (c_sga->bufs[i]).len);
+        fprintf(stderr, "sgarray_cpp2c: i:%d len:%lu\n", i, (c_sga->bufs[i]).len);
 #endif
         (c_sga->bufs[i]).buf = (sga->bufs[i]).buf;
         (c_sga->bufs[i]).addr = (sga->bufs[i]).addr;
@@ -169,7 +169,7 @@ ssize_t zeus_wait_any(zeus_qtoken qts[], size_t num_qts, int *offset, int *qd, z
     ret = Zeus::wait_any(qts, num_qts, _offset, _qd, sga);
     *offset = _offset;
     *qd = _qd;
-    if(ret > 0 && !IS_PUSH(qts[_offset])){
+    if(ret > 0 && !(IS_PUSH(qts[_offset]))){
         // for successful zeus_pop(), copy the pointer to readed buf. into input
         sgarray_cpp2c(&sga, sga_ptr);
     }
