@@ -20,7 +20,7 @@ set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
 file(STRINGS ${DPDK_DIR}/include/cflags.txt DPDK_CFLAGS)
 file(STRINGS ${DPDK_DIR}/lib/ldflags.txt DPDK_LDFLAGS)
 set(ZEUS_LDFLAGS "-L${ZEUS_DIR}")
-set(DPDK_LDFLAGS "${DPDK_LDFLAGS} -L${DPDK_DIR}/lib")
+set(DPDK_LDFLAGS "${DPDK_LDFLAGS} -L${DPDK_DIR}/lib -libverbs")
 set(MTCP_LDFLAGS "-L${MTCP_DIR}/lib")
 
 # ---------------------------------------------------------
