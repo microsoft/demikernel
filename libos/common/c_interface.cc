@@ -121,12 +121,16 @@ zeus_qtoken zeus_pop(int qd, zeus_sgarray *sga_ptr){
 #ifdef __DEBUG_c_interface_cc
     printf("zeus_pop() qd:%d\n", qd);
 #endif
-    Zeus::sgarray sga;
-    zeus_qtoken n = Zeus::pop(qd, sga);
+    // NOTE: memory leak here, just a work around
+    Zeus::sgarray *sga_obj = new Zeus::sgarray;
+    sga_obj->num_bufs = 0;
+    //Zeus::sgarray sga;
+    zeus_qtoken n = Zeus::pop(qd, *sga_obj);
     //printf("return from pop() n:%zd\n", n);
     if (n == 0){
         printf("Zeus:pop() successs\n");
-        sgarray_cpp2c(&sga, sga_ptr);
+        //sgarray_cpp2c(&sga, sga_ptr);
+        sgarray_cpp2c(sga_obj, sga_ptr);
     }
     return n;
 }
