@@ -59,7 +59,8 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size)
 }
 
 int accept(int qd, struct sockaddr *saddr, socklen_t *size)
-{    
+{
+    fprintf(stderr, "Starting accept process\n");
     RdmaQueue *queue = (RdmaQueue *)lib.GetQueue(qd);
     struct rdma_cm_id *newid = queue->getNextAccept();
     if (newid != NULL) {

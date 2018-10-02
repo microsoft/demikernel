@@ -55,7 +55,8 @@ namespace Zeus {
 namespace RDMA {
 
 static struct ibv_pd *pd = NULL;
-
+static int fd_counter = 10;
+    
 int
 RdmaQueue::PostReceive()
 {
@@ -170,12 +171,13 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	    //fprintf(stderr, "Found send completion\n");
 	    PendingRequest *req = (PendingRequest *)wc.wr_id;
 	    // unpin completed sends
-	    req->isDone = true;
+	    //req->isDone = true;
 	    for (int i = 0; i < req->sga.num_bufs; i++) {
 		unpin(req->sga.bufs[i].buf);
 	    }
 	    free(req->buf);
 	    unpin(req);
+	    delete req;
 	    break;
 	}
 	default:
@@ -238,7 +240,7 @@ RdmaQueue::CheckEventQ()
         switch(event->event) {
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             accepts.push_back(event->id);
-	    //fprintf(stderr, "Found incoming connection\n");
+	    fprintf(stderr, "Found incoming connection\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
 	    RdmaQueue::close();
@@ -302,9 +304,11 @@ int
 RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
 {
     // accept doesn't happen on the listening socket in RDMA
-    if (listening) return 1;
+    if (listening) {
+	return fd_counter++;
+    }
 
-    rdma_id->channel = rdma_id->channel;
+//    rdma_id->channel = rdma_id->channel;
     int ret = SetupRdmaQP();
     if (ret != 0) return ret;
     //fprintf(stderr, "finished setting up queue pairs\n");
@@ -484,9 +488,11 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
 {
     if (listening) {
 	if (accepts.empty()) {
+	    //fprintf(stderr, "Checking listening socket\n");
 	    CheckEventQ();
 	}
 	if (!accepts.empty()) {
+	    fprintf(stderr, "Returning accept\n");
 	    req->isDone = true;
 	    req->res = 1;
 	    return;
@@ -671,7 +677,7 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 	if (req->isDone || req->isEnqueued) {
 	    ssize_t ret = req->res;
 	    assert(ret != 0);
-	    delete req;
+	    if (req->isDone) delete req;
 	    return ret;
 	}
     }
@@ -687,6 +693,7 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
         ProcessQ(1);
     }
 
+    if (closed) return ZEUS_IO_ERR_NO;
     if (req->isDone) {
         int ret = req->res;
 	assert(ret != 0);
@@ -731,11 +738,11 @@ RdmaQueue::peek(struct sgarray &sga)
 
     ProcessIncoming(req);
 
-    if (req->isDone or req->isEnqueued){
+    if (req->isDone || req->isEnqueued) {
         //Latency_End(&pop_latency);
         ssize_t res = req->res;
         sga.copy(req->sga);
-        delete req;
+        if (req->isDone) delete req;
         return res;
     } else {
         delete req;
@@ -821,7 +828,7 @@ RdmaQueue::getNextAccept() {
         }
     } else {
         ret = accepts.front();
-        accepts.pop_front();
+	accepts.pop_front();
     }
     return ret;
 }
