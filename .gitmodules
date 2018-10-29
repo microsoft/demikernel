@@ -1,10 +1,10 @@
 [submodule "apps/tapir"]
 	path = apps/tapir
-	url = git@github.com:UWSysLab/tapir.git
+	url = https://github.com/UWSysLab/tapir.git
 	branch = io-queue
 [submodule "src/Hoard"]
 	path = src/Hoard
-	url = git@github.com:iyzhang/Hoard.git
+	url = https://github.com/iyzhang/Hoard.git
 [submodule "apps/redis"]
 	path = apps/redis
-	url = git@github.com:jingliu9/redis.git
+	url = https://github.com/jingliu9/redis.git
