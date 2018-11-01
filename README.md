@@ -2,8 +2,10 @@ Datacenter Operating system
 ===
 
 ### Installation
-+ cd ./libos/libmtcp/ (NOTE, must go into that directory)
-+ bash setup_mtcp.sh
+
+- On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
+- Run `scripts/build/mtcp.sh` to build `mtcp`.
+
 + cd ./libos/libspdk/
 + bash setup_spdk.sh
 + cmake .
