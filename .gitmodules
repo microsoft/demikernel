@@ -14,3 +14,6 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
+[submodule "submodules/dpdk"]
+	path = submodules/dpdk
+	url = https://github.com/mlr-msft/dpdk.git

@@ -26,6 +26,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
    -std=c++11 -fPIC -Wall -Wl,-zdefs")
    set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
 
+# submodules
+# ----------
+#
+# dpdk
+set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
+set(DPDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/dpdk)
+set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk)
+set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include/dpdk)
+set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
+ExternalProject_Add(dpdk
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk
+  CONFIGURE_COMMAND cd ${DPDK_SOURCE_DIR} && make config T=${DPDK_TARGET}
+  BUILD_COMMAND cd ${DPDK_SOURCE_DIR} && make T=${DPDK_TARGET}
+  INSTALL_COMMAND cd ${DPDK_SOURCE_DIR} && make install T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR}
+  INSTALL_DIR ${DPDK_BINARY_DIR}
+)
 
 #add_subdirectory(apps/echo)
 
@@ -33,12 +49,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 # Include and link directories
 # ---------------------------------------------------------
 
+# todo: put these in subdirectories.
 # todo: trigger submodule builds from within cmake.
-set(SUBMODULE_DIR ${ZEUS_DIR}/submodules)
+set(SUBMODULES_DIR ${ZEUS_DIR}/submodules)
 # todo: use a separate dpdk submodule for this variable.
-set(DPDK_DIR ${SUBMODULE_DIR}/mtcp/dpdk-17.08 CACHE PATH "Path to DPDK")
-set(MTCP_DIR ${SUBMODULE_DIR}/mtcp CACHE PATH "Path to MTCP")
-set(SPDK_DIR ${SUBMODULE_DIR}/spdk CACHE PATH "Path to SPDK")
+set(MTCP_DIR ${SUBMODULES_DIR}/mtcp CACHE PATH "Path to MTCP")
+set(SPDK_DIR ${SUBMODULES_DIR}/spdk CACHE PATH "Path to SPDK")
 
 set(ZEUS_SOURCE_DIR ${ZEUS_DIR}/libos)
 include_directories(${ZEUS_DIR})
@@ -57,8 +73,8 @@ include_directories(${HOARD_DIR}/Heap-Layers)
 include_directories(${MTCP_DIR}/mtcp/include)
 
 # LWIP
-include_directories(${DPDK_DIR}/x86_64-native-linuxapp-gcc/include)
-link_directories(${DPDK_DIR}/x86_64-native-linuxapp-gcc/lib)
+include_directories(${DPDK_INCLUDE_DIR})
+link_directories(${DPDK_LIB_DIR})
 
 # spdk
 set(SPDK_LD_FLAGS "-Wl,--whole-archive")
@@ -99,7 +115,7 @@ add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 add_library(zeus_lwip STATIC
   ${SRC_ZEUS_LWIP_LIB} ${SRC_ZEUS_COMMON_LIB})
 target_link_libraries(zeus_lwip ${ZEUS_DIR}/libhoard.so ${DPDK_LIB})
-add_dependencies(zeus_lwip hoard)
+add_dependencies(zeus_lwip hoard dpdk)
 
 # MTCP libos target
 add_library(zeus_mtcp STATIC
