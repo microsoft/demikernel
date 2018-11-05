@@ -3,8 +3,6 @@
 cmake_minimum_required (VERSION 3.5.1)
 project (Zeus C CXX)
 
-set(CMAKE_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-
 # ----------------------------------------------------
 # Additional CMake modules
 # ----------------------------------------------------
@@ -15,17 +13,10 @@ include(ExternalProject)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
   "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
-# ----------------------------------------------------
-# C Flags
-# ----------------------------------------------------
-
-# todo: are these applied to all configurations? we need to split up the options
-# between those that help with debugging and those that help with performance.
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -fstack-protector -Wall \
-  -Wno-uninitialized -O3 -DNDEBUG ")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
-   -std=c++11 -fPIC -Wall -Wl,-zdefs")
-   set(CMAKE_LD_FLAGS "${CMAKE_LD_FLAGS}")
+# default CFLAGS
+set(COMMON_CFLAGS "-g -mssse3 -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_CFLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  ${COMMON_CFLAGS} -std=c++11 -D__STDC_LIMIT_MACROS")
 
 # dpdk
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
@@ -87,7 +78,6 @@ include_directories(
 # hoard
 set(HOARD_SOURCE_DIR ${ZEUS_SOURCE_DIR}/common/mem)
 set(LIBHOARD ${HOARD_SOURCE_DIR}/libhoard.so)
-message(${LIBHOARD})
 add_custom_command(
   OUTPUT ${LIBHOARD}
   WORKING_DIRECTORY ${HOARD_SOURCE_DIR}
@@ -110,8 +100,6 @@ file(GLOB ZEUS_POSIX_SOURCES "${ZEUS_SOURCE_DIR}/libposix/*.cc")
 add_library(zeus_posix SHARED ${ZEUS_COMMON_SOURCES} ${ZEUS_POSIX_SOURCES})
 
 # LWIP libos target
-# todo: putting this in cflags didn't work. :(
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 file(GLOB ZEUS_LIBLWIP_SOURCES ${ZEUS_SOURCE_DIR}/liblwip/*.cc)
 add_library(zeus_lwip STATIC ${ZEUS_LIBLWIP_SOURCES} ${ZEUS_COMMON_SOURCES})
 target_add_hoard(zeus_lwip)
