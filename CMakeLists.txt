@@ -3,6 +3,8 @@
 cmake_minimum_required (VERSION 3.5.1)
 project (Zeus C CXX)
 
+find_package(Threads REQUIRED)
+
 # default CFLAGS
 set(COMMON_CFLAGS "-g -mssse3 -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_CFLAGS}")
@@ -212,7 +214,8 @@ target_add_hoard(zeus_lwip)
 target_include_directories(zeus_lwip PUBLIC ${ZEUS_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR} )
 # todo: these options should not be passed directly to
 # `target_link_libraries()`. we should use `find_library()` instead.
-target_link_libraries(zeus_lwip "-Wl,--whole-archive -lnuma -lpthread -libverbs -Wl,--no-whole-archive")
+target_link_libraries(zeus_lwip "-Wl,--whole-archive -lnuma -libverbs -Wl,--no-whole-archive")
+targeT_link_libraries(zeus_lwip ${CMAKE_THREAD_LIBS_INIT})
 target_add_dpdk(zeus_lwip)
 
 # MTCP libos target
@@ -233,6 +236,8 @@ add_library(zeus_spdk STATIC ${ZEUS_COMMON_SOURCES} ${ZEUS_SPDK_LIB} ${ZEUS_POSI
 target_add_hoard(zeus_spdk)
 target_add_spdk(zeus_spdk)
 
+add_subdirectory(apps/echo)
+
 #############################################
 # applications
 # Tapir
@@ -252,5 +257,3 @@ set(REDIS_APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps/redis)
 add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR} make
                   WORKING_DIRECTORY ${REDIS_APP_DIR})
-
-#add_subdirectory(apps/echo)
