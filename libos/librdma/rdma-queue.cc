@@ -29,8 +29,8 @@
  **********************************************************************/
 
 #include "rdma-queue.h"
-#include "common/library.h"
-#include "common/latency.h"
+#include <libos/common/library.h>
+#include <libos/common/latency.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -56,11 +56,11 @@ namespace RDMA {
 
 static struct ibv_pd *pd = NULL;
 static int fd_counter = 10;
-    
+
 int
 RdmaQueue::PostReceive()
 {
-    
+
     // post receive
     struct ibv_recv_wr wr, *bad_wr = NULL;
     struct ibv_sge sge;
@@ -72,7 +72,7 @@ RdmaQueue::PostReceive()
     assert(pd != NULL);
     assert(mr->context == rdma_id->verbs);
     assert(mr->pd == pd);
-    
+
     memset(&wr, 0, sizeof(wr));
     wr.wr_id = (uint64_t)buf;
     wr.sg_list = &sge;
@@ -105,7 +105,7 @@ RdmaQueue::SetupRdmaQP()
     }
     assert(pd != NULL);
     rdma_id->pd = pd;
-    
+
     // Set up queue pair initial parameters
     memset(&qp_attr, 0, sizeof(qp_attr));
     //qp_attr.qp_context = context;
@@ -188,7 +188,7 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	close();
     }
 }
-   
+
 void
 RdmaQueue::CheckRecvCQ()
 {
@@ -257,7 +257,7 @@ RdmaQueue::CheckEventQ()
     }
     Latency_End(&poll_eventcq_latency);
 }
-    
+
 int
 RdmaQueue::socket(int domain, int type, int protocol)
 {
@@ -312,7 +312,7 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
     int ret = SetupRdmaQP();
     if (ret != 0) return ret;
     //fprintf(stderr, "finished setting up queue pairs\n");
-    
+
     // accept the connection
     struct rdma_conn_param params;
     memset(&params, 0, sizeof(params));
@@ -324,7 +324,7 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
         return ZEUS_IO_ERR_NO;
     }
 
-   
+
     // set up address
     *saddr = *rdma_get_peer_addr(rdma_id);
     *size = sizeof(sockaddr_in);
@@ -336,7 +336,7 @@ RdmaQueue::accept(struct sockaddr *saddr, socklen_t *size)
                 "Failed to set O_NONBLOCK on outgoing Zeus socket\n");
     }
 
-    return 0;    
+    return 0;
 }
 
 int
@@ -351,15 +351,15 @@ RdmaQueue::listen(int backlog)
     }
     return rdma_listen(rdma_id, 10);
 }
-        
+
 
 int
 RdmaQueue::connect(struct sockaddr *saddr, socklen_t size)
 {
-    struct rdma_conn_param params;    
+    struct rdma_conn_param params;
     struct rdma_cm_event *event;
     int ret = 0;
-    
+
     // Convert regular address into an rdma address
     if (rdma_resolve_addr(rdma_id, NULL, saddr, 1) != 0) {
         fprintf(stderr, "Could not resolve IP to an RDMA address: %s\n",
@@ -476,7 +476,7 @@ RdmaQueue::close()
 //    Latency_DumpAll();
     return 0;
 }
-    
+
 int
 RdmaQueue::getfd()
 {
@@ -502,12 +502,12 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
 	    // drain the receive completion queue
 	    CheckRecvCQ();
 	}
-	
+
         if (!pendingRecv.empty()) {
 	    Latency_Start(&rdma_parse_latency);
             req->buf = pendingRecv.front();
             pendingRecv.pop_front();
-            
+
             // parse the message
             uint8_t *ptr = (uint8_t *)req->buf;
             struct sgarray &sga = req->sga;
@@ -517,7 +517,7 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
             size_t dataLen = *((uint64_t *)ptr);
             //req->buf = realloc(req->buf, dataLen + 3 * sizeof(uint64_t));
             ptr = (uint8_t *)req->buf + 2 * sizeof(uint64_t);
-            
+
             // now we can start filling in the sga
             sga.num_bufs = *(uint64_t *)ptr;
 	    //fprintf(stderr, "Found %d scatter-gather arrays\n", sga.num_bufs);
@@ -545,15 +545,15 @@ RdmaQueue::ProcessIncoming(PendingRequest *req)
     }
 }
 
-    
+
 void
 RdmaQueue::ProcessOutgoing(PendingRequest *req)
 {
     assert(!listening);
-    	
+
     struct sgarray &sga = req->sga;
     struct ibv_sge vsga[2 * sga.num_bufs + 1];
-    
+
     //printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
 
     req->buf = malloc(sga.num_bufs * sizeof(uint64_t));
@@ -573,7 +573,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         vsga[2*i+1].addr = (uint64_t)&lens[i];
         vsga[2*i+1].length = sizeof(uint64_t);
         vsga[2*i+1].lkey = header_lkey;
-        
+
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
         Latency_Start(&get_mr);
@@ -581,10 +581,10 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         Latency_End(&get_mr);
         assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
-        
+
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
-        
+
         // add up expected packet size minus header
         totalLen += (uint64_t)sga.bufs[i].len;
         totalLen += sizeof(uint64_t);
@@ -641,7 +641,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     req->isEnqueued = true;
     pin(req);
 }
-    
+
 void
 RdmaQueue::ProcessQ(size_t maxRequests)
 {
@@ -651,8 +651,8 @@ RdmaQueue::ProcessQ(size_t maxRequests)
         auto it = pending.find(qt);
         done++;
         assert(it != pending.end());
-        
-        PendingRequest *req = it->second; 
+
+        PendingRequest *req = it->second;
         if (IS_PUSH(qt)) {
             ProcessOutgoing(req);
         } else {
@@ -661,17 +661,17 @@ RdmaQueue::ProcessQ(size_t maxRequests)
 
         if (req->isDone || req->isEnqueued) {
             workQ.pop_front();
-        }            
+        }
     }
     //printf("Processed %lu requests", done);
 }
-    
+
 ssize_t
 RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
 
     PendingRequest *req = new PendingRequest(sga);
-    
+
     if (IS_PUSH(qt)) {
 	ProcessOutgoing(req);
 	if (req->isDone || req->isEnqueued) {
@@ -681,7 +681,7 @@ RdmaQueue::Enqueue(qtoken qt, struct sgarray &sga)
 	    return ret;
 	}
     }
-    
+
     assert(pending.find(qt) == pending.end());
     //printf("inserting qt %lx\n", qt);
     pending.insert(std::make_pair(qt, req));
@@ -749,7 +749,7 @@ RdmaQueue::peek(struct sgarray &sga)
         return 0;
     }
 }
-    
+
 ssize_t
 RdmaQueue::wait(qtoken qt, struct sgarray &sga)
 {
@@ -757,7 +757,7 @@ RdmaQueue::wait(qtoken qt, struct sgarray &sga)
     auto it = pending.find(qt);
     assert(it != pending.end());
     PendingRequest *req = it->second;
-    
+
     while(!req->isDone) {
 	//Latency_Start(&pop_latency);
         ProcessQ(1);
@@ -779,10 +779,10 @@ RdmaQueue::poll(qtoken qt, struct sgarray &sga)
     PendingRequest *req = it->second;
 
     if (closed) return ZEUS_IO_ERR_NO;
-    if (!req->isDone) {	
+    if (!req->isDone) {
         ProcessQ(1);
     }
-    
+
     if (req->isDone){
         int ret = req->res;
 	sga.copy(req->sga);
@@ -832,5 +832,5 @@ RdmaQueue::getNextAccept() {
     }
     return ret;
 }
-} // namespace RDMA    
+} // namespace RDMA
 } // namespace Zeus

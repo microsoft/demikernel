@@ -28,14 +28,14 @@
  *
  **********************************************************************/
 
-#include "common/library.h"
-#include "include/io-queue.h"
+#include <libos/common/library.h>
+#include <zeus/io-queue.h>
 #include "spdk-queue.h"
 #include "libos/libposix/posix-queue.h"
 
 namespace Zeus {
 static QueueLibrary<POSIX::PosixQueue, SPDK::SPDKQueue> lib;
-    
+
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
@@ -62,7 +62,7 @@ int listen(int qd, int backlog)
 {
     return lib.listen(qd, backlog);
 }
-        
+
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.connect(qd, saddr, size);
@@ -87,7 +87,7 @@ int flush(int qd)
 {
     return lib.flush(qd, SPDK_FLUSH_OPT_ALL);
 }
-    
+
 int close(int qd)
 {
     return lib.flush(qd, SPDK_FLUSH_OPT_CLOSE);
@@ -97,7 +97,7 @@ int qd2fd(int qd)
 {
     return lib.qd2fd(qd);
 }
-    
+
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);

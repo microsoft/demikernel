@@ -27,13 +27,13 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _COMMON_LIBRARY_H_
 #define _COMMON_LIBRARY_H_
 
-#include "include/io-queue.h"
-#include "common/basic-queue.h"
-#include "common/latency.h"
+#include "basic-queue.h"
+#include "latency.h"
+#include <zeus/io-queue.h>
 #include <list>
 #include <unordered_map>
 #include <thread>
@@ -62,12 +62,12 @@ namespace Zeus {
 
 thread_local static int64_t queue_counter = 10;
 thread_local static int64_t token_counter = 10;
-    
+
 template <class NetworkQueueType, class FileQueueType>
 class QueueLibrary
 {
     std::unordered_map<int, Queue *> queues;
-    
+
 public:
     QueueLibrary() {
         queue_counter = rand();
@@ -86,7 +86,7 @@ public:
         assert(HasQueue(qd));
         return queues.at(qd);
     };
-    
+
     qtoken GetNewToken(int qd, bool isPush) {
         if (token_counter == 0) token_counter++;
         qtoken t = (token_counter << 1 & TOKEN_MASK) | ((qtoken)qd << 32);
@@ -139,7 +139,7 @@ public:
     int queue() {
         return NewQueue(BASIC_Q)->GetQD();
     };
-    
+
     int socket(int domain, int type, int protocol) {
         Queue *q = NewQueue(NETWORK_Q);
         int ret = q->socket(domain, type, protocol);
@@ -233,14 +233,14 @@ public:
         return ret;
     };
 
-    
+
     int close(int qd) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
 
         Queue *queue = GetQueue(qd);
         int res = queue->close();
-        RemoveQueue(qd);    
+        RemoveQueue(qd);
         return res;
     };
 
@@ -274,7 +274,7 @@ public:
     qtoken flush_push(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
             return -1;
-        
+
         Queue *queue = GetQueue(qd);
         if (queue->GetType() == FILE_Q) {
             qtoken t = GetNewToken(qd, true);
@@ -295,7 +295,7 @@ public:
     qtoken pop(int qd, struct Zeus::sgarray &sga) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
         Queue *queue = GetQueue(qd);
         if (queue->GetType() == FILE_Q)
             // popping from files not implemented yet
@@ -331,7 +331,7 @@ public:
         assert(HasQueue(qd));
 
         Queue *queue = GetQueue(qd);
-        return queue->wait(qt, sga); 
+        return queue->wait(qt, sga);
     };
 
     ssize_t wait_any(qtoken tokens[],
@@ -358,13 +358,13 @@ public:
             }
             waitingQs[i] = it2->second;
         }
-        
+
         while (true) {
             for (unsigned int i = 0; i < num; i++) {
                 Queue *q = waitingQs[i];
                 Latency_Start(&pop_latency);
                 res = q->poll(tokens[i], sga);
-                
+
                 if (res != 0) {
                     offset = i;
                     qd = q->GetQD();
@@ -374,7 +374,7 @@ public:
             }
         }
     };
-            
+
     ssize_t wait_all(qtoken tokens[],
                      size_t num,
                      struct sgarray **sgas) {
@@ -392,7 +392,7 @@ public:
                           struct sgarray &sga) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
         Queue *q = GetQueue(qd);
         if (q->GetType() == FILE_Q)
             // popping from files not implemented yet
@@ -413,7 +413,7 @@ public:
                          struct sgarray &sga) {
         if (!HasQueue(qd))
             return ZEUS_IO_ERR_NO;
-        
+
         Queue *q = GetQueue(qd);
         if (q->GetType() == FILE_Q)
             // popping from files not implemented yet
@@ -430,7 +430,7 @@ public:
         }
 
     };
-    
+
     int merge(int qd1, int qd2) {
         if (!HasQueue(qd1) || !HasQueue(qd2))
             return ZEUS_IO_ERR_NO;

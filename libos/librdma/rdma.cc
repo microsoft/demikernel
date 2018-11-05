@@ -28,21 +28,21 @@
  *
  **********************************************************************/
 
-#include "common/library.h"
-#include "include/io-queue.h"
+#include <libos/common/library.h>
+#include <zeus/io-queue.h>
 #include "rdma-queue.h"
-#include "common/mem/include/zeus/libzeus.h"
+#include <libos/common/mem/include/zeus/libzeus.h>
 
 namespace Zeus {
 static QueueLibrary<RDMA::RdmaQueue, RDMA::RdmaQueue> lib;
 
 using namespace RDMA;
-    
+
 int queue()
 {
     return lib.queue();
 }
-    
+
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
@@ -67,7 +67,7 @@ int accept(int qd, struct sockaddr *saddr, socklen_t *size)
         int newqd = lib.accept(qd, saddr, size);
         RdmaQueue *newQ = (RdmaQueue *)lib.GetQueue(newqd);
         newQ->setRdmaCM(newid);
-        int ret = newQ->accept(saddr, size); 
+        int ret = newQ->accept(saddr, size);
         if (ret != 0) {
             return ret;
         } else {
@@ -82,7 +82,7 @@ int listen(int qd, int backlog)
 {
     return lib.listen(qd, backlog);
 }
-        
+
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.connect(qd, saddr, size);
@@ -102,7 +102,7 @@ int creat(const char *pathname, mode_t mode)
 {
     return lib.creat(pathname, mode);
 }
-    
+
 int close(int qd)
 {
     return lib.close(qd);
@@ -112,7 +112,7 @@ int qd2fd(int qd)
 {
     return lib.qd2fd(qd);
 }
-    
+
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);

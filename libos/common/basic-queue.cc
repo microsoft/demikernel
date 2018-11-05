@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  **********************************************************************/
-#include "common/basic-queue.h"
+#include "basic-queue.h"
 #include <assert.h>
 
 namespace Zeus {

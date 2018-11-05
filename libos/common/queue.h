@@ -27,11 +27,11 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _COMMON_QUEUE_H_
 #define _COMMON_QUEUE_H_
 
-#include "include/io-queue.h"
+#include <zeus/io-queue.h>
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>
@@ -54,7 +54,7 @@ protected:
     QueueType type;
     int qd;
     int fd;
-    
+
 public:
     Queue() : type(BASIC_Q), qd(0) { };
     Queue(QueueType type, int qd) : type(type), qd(qd) { };
@@ -73,7 +73,7 @@ public:
     virtual int accept(struct sockaddr *saddr, socklen_t *size) = 0;
     virtual int connect(struct sockaddr *saddr, socklen_t size) = 0;
     virtual int close() = 0;
-          
+
     // file control plane functions
     virtual int open(const char *pathname, int flags) = 0;
     virtual int open(qtoken qt, const char *pathname, int flags) = 0;

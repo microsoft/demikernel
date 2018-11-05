@@ -28,8 +28,8 @@
  *
  **********************************************************************/
 
-#include "common/library.h"
-#include "include/io-queue.h"
+#include <libos/common/library.h>
+#include <zeus/io-queue.h>
 #include "posix-queue.h"
 
 namespace Zeus {
@@ -39,7 +39,7 @@ int queue()
 {
     return lib.queue();
 }
-    
+
 int socket(int domain, int type, int protocol)
 {
     return lib.socket(domain, type, protocol);
@@ -49,7 +49,7 @@ int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
 {
     return lib.getsockname(qd, saddr, size);
 }
-    
+
 int bind(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.bind(qd, saddr, size);
@@ -67,7 +67,7 @@ int listen(int qd, int backlog)
 {
     return lib.listen(qd, backlog);
 }
-        
+
 int connect(int qd, struct sockaddr *saddr, socklen_t size)
 {
     return lib.connect(qd, saddr, size);
@@ -91,7 +91,7 @@ int creat(const char *pathname, mode_t mode)
 int flush(int qd){
     return 0;
 }
-    
+
 int close(int qd)
 {
     return lib.close(qd);
@@ -101,7 +101,7 @@ int qd2fd(int qd)
 {
     return lib.qd2fd(qd);
 }
-    
+
 qtoken push(int qd, struct Zeus::sgarray &sga)
 {
     return lib.push(qd, sga);

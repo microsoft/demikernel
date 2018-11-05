@@ -27,12 +27,12 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _LIB_SPDK_QUEUE_H_
 #define _LIB_SPDK_QUEUE_H_
 
-#include "common/queue.h"
-#include "common/library.h"
+#include <libos/common/queue.h>
+#include <libos/common/library.h>
 #include <list>
 #include <unordered_map>
 
@@ -82,7 +82,7 @@ private:
             req_op(req_op),
             sga(sga) { };
     };
-    
+
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<qtoken> workQ;  // will not use this one
@@ -110,7 +110,7 @@ public:
     int accept(struct sockaddr *saddr, socklen_t *size);
     int connect(struct sockaddr *saddr, socklen_t size);
     int close(void);
-          
+
     // file functions
     int open(const char *pathname, int flags);
     int open(qtoken qt, const char *pathname, int flags);

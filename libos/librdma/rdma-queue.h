@@ -27,17 +27,17 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _LIB_RDMA_QUEUE_H
 #define _LIB_RDMA_QUEUE_H_
 
-#include "include/io-queue.h"
-#include "common/queue.h"
+#include <zeus/io-queue.h>
+#include <libos/common/queue.h>
 #include <list>
 #include <unordered_map>
 #include <rdma/rdma_cma.h>
 // hoard include
-#include "common/mem/include/zeus/libzeus.h"
+#include <libos/common/mem/include/zeus/libzeus.h>
 
 
 #define RECV_BUFFER_SIZE 1024
@@ -66,7 +66,7 @@ private:
             buf(NULL),
             sga(sga) { };
     };
-    
+
     // queued scatter gather arrays
     std::list<void *> pendingRecv;
     std::unordered_map<qtoken, PendingRequest*> pending;
@@ -78,7 +78,7 @@ private:
     struct rdma_cm_id *rdma_id = NULL;
     bool listening = false;
     bool closed = false;
-    
+
     int PostReceive();
     void ProcessIncoming(PendingRequest *req);
     void ProcessOutgoing(PendingRequest *req);
@@ -95,7 +95,7 @@ public:
     RdmaQueue(QueueType type, int qd) :
         Queue(type, qd), workQ{}  { };
     ~RdmaQueue() { };
-    
+
     // network functions
     int socket(int domain, int type, int protocol);
     int getsockname(struct sockaddr *saddr, socklen_t *size);
@@ -106,7 +106,7 @@ public:
     int close();
     // rdma specific set up
     int rdmaconnect(struct rdma_cm_id *id);
-          
+
     // file functions
     int open(const char *pathname, int flags);
     int open(qtoken qt, const char *pathname, int flags);
