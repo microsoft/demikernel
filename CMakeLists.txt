@@ -6,7 +6,7 @@ project (Zeus C CXX)
 set(ZEUS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ----------------------------------------------------
-# Additional CMake modules 
+# Additional CMake modules
 # ----------------------------------------------------
 
 include(ExternalProject)
@@ -31,19 +31,43 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fstack-protector \
 #
 # dpdk
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
-set(DPDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/dpdk)
-set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk)
+# note: we have no choice but to use a customized version of dpdk provided
+# by mtcp.
+set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp/dpdk-17.08)
+set(DPDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/mtcp/dpdk)
 set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include/dpdk)
-set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
+set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib/dpdk)
 ExternalProject_Add(dpdk
-  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk
+  PREFIX ${DPDK_INSTALL_DIR}
+  SOURCE_DIR ${DPDK_SOURCE_DIR}
   CONFIGURE_COMMAND cd ${DPDK_SOURCE_DIR} && make config T=${DPDK_TARGET}
   BUILD_COMMAND cd ${DPDK_SOURCE_DIR} && make T=${DPDK_TARGET}
   INSTALL_COMMAND cd ${DPDK_SOURCE_DIR} && make install T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR}
-  INSTALL_DIR ${DPDK_BINARY_DIR}
 )
-
-#add_subdirectory(apps/echo)
+#
+# mtcp
+set(MTCP_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp)
+set(MTCP_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/mtcp)
+ExternalProject_Add(mtcp
+  DEPENDS dpdk
+  PREFIX ${MTCP_INSTALL_DIR}
+  SOURCE_DIR ${MTCP_SOURCE_DIR}
+  CONFIGURE_COMMAND cd ${MTCP_SOURCE_DIR} && ./configure --with-dpdk-lib=${DPDK_SOURCE_DIR}/${DPDK_TARGET} --prefix=${MTCP_INSTALL_DIR} CFLAGS=-I${CMAKE_CURRENT_SOURCE_DIR}
+  BUILD_COMMAND cd ${MTCP_SOURCE_DIR} && make
+  INSTALL_COMMAND echo 'No `install` target has been implemented for MTCP'
+)
+#
+# spdk
+set(SPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/spdk)
+set(SPDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/spdk)
+ExternalProject_Add(spdk
+  DEPENDS dpdk
+  PREFIX ${SPDK_INSTALL_DIR}
+  SOURCE_DIR ${SPDK_SOURCE_DIR}
+  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --prefix=${SPDK_INSTALL_DIR}
+  BUILD_COMMAND cd ${SPDK_SOURCE_DIR} && make
+  INSTALL_COMMAND cd ${SPDK_SOURCE_DIR} && make install
+)
 
 # ---------------------------------------------------------
 # Include and link directories
@@ -52,8 +76,6 @@ ExternalProject_Add(dpdk
 # todo: put these in subdirectories.
 # todo: trigger submodule builds from within cmake.
 set(SUBMODULES_DIR ${ZEUS_DIR}/submodules)
-# todo: use a separate dpdk submodule for this variable.
-set(MTCP_DIR ${SUBMODULES_DIR}/mtcp CACHE PATH "Path to MTCP")
 set(SPDK_DIR ${SUBMODULES_DIR}/spdk CACHE PATH "Path to SPDK")
 
 set(ZEUS_SOURCE_DIR ${ZEUS_DIR}/libos)
@@ -70,7 +92,7 @@ include_directories(${HOARD_DIR}/include/zeus)
 include_directories(${HOARD_DIR}/Heap-Layers)
 
 # mtcp
-include_directories(${MTCP_DIR}/mtcp/include)
+include_directories(${MTCP_SOURCE_DIR}/mtcp/include)
 
 # LWIP
 include_directories(${DPDK_INCLUDE_DIR})
@@ -121,7 +143,7 @@ add_dependencies(zeus_lwip hoard dpdk)
 add_library(zeus_mtcp STATIC
     ${MTCP_DIR}/mtcp/lib/libmtcp.a ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_MTCP_LIB})
 target_link_libraries(zeus_mtcp ${ZEUS_DIR}/libhoard.so)
-add_dependencies(zeus_mtcp hoard)
+add_dependencies(zeus_mtcp hoard mtcp)
 
 # RDMA libos target
 add_library(zeus_rdma SHARED
@@ -135,7 +157,7 @@ add_dependencies(zeus_rdma hoard)
 add_library(zeus_spdk STATIC
     ${SRC_ZEUS_COMMON_LIB} ${SRC_ZEUS_SPDK_LIB} ${SRC_ZEUS_POSIX_LIB})
 target_link_libraries(zeus_spdk ${ZEUS_DIR}/libhoard.so)
-add_dependencies(zeus_spdk hoard)
+add_dependencies(zeus_spdk hoard spdk)
 
 #############################################
 # applications
@@ -156,3 +178,7 @@ set(REDIS_APP_DIR ${ZEUS_DIR}/apps/redis)
 add_custom_target(redis
                   COMMAND ZEUS_SRC_DIR=${ZEUS_DIR} make
                   WORKING_DIRECTORY ${REDIS_APP_DIR})
+
+
+#add_subdirectory(apps/echo)
+
