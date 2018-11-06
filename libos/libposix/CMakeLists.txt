@@ -1,0 +1,3 @@
+# POSIX libos target
+file(GLOB ZEUS_POSIX_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
+add_library(zeus_posix SHARED ${ZEUS_COMMON_SOURCES} ${ZEUS_POSIX_SOURCES})

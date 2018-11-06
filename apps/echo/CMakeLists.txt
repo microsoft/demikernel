@@ -31,9 +31,9 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
   ${ECHO_APPS_DIR}/mtcp_common.cpp
 )
 set(ZEUS_LATENCY_SOURCES
-  ${ZEUS_DIR}/libos/common/latency.cc
-  ${ZEUS_DIR}/libos/common/message.cc
-  ${ZEUS_DIR}/libos/common/time_resolution.cc
+  ${CMAKE_SOURCE_DIR}/libos/common/latency.cc
+  ${CMAKE_SOURCE_DIR}/libos/common/message.cc
+  ${CMAKE_SOURCE_DIR}/libos/common/time_resolution.cc
 )
 
 # POSIX TCP server

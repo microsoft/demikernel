@@ -36,49 +36,14 @@ function(target_add_hoard TARGET)
   )
 endfunction(target_add_hoard)
 
-set(ZEUS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-
 # todo: can these be compiled into a common library?
-set(ZEUS_SOURCE_DIR ${ZEUS_DIR}/libos)
-file(GLOB ZEUS_COMMON_SOURCES "${ZEUS_SOURCE_DIR}/common/*.cc")
+file(GLOB ZEUS_COMMON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/libos/common/*.cc")
 include_directories(
-  ${ZEUS_DIR}/include
-  ${ZEUS_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# POSIX libos target
-file(GLOB ZEUS_POSIX_SOURCES "${ZEUS_SOURCE_DIR}/libposix/*.cc")
-add_library(zeus_posix SHARED ${ZEUS_COMMON_SOURCES} ${ZEUS_POSIX_SOURCES})
-
-# LWIP libos target
-file(GLOB ZEUS_LIBLWIP_SOURCES ${ZEUS_SOURCE_DIR}/liblwip/*.cc)
-add_library(zeus_lwip STATIC ${ZEUS_LIBLWIP_SOURCES} ${ZEUS_COMMON_SOURCES})
-target_add_hoard(zeus_lwip)
-target_include_directories(zeus_lwip PUBLIC ${ZEUS_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR} )
-# todo: these options should not be passed directly to
-# `target_link_libraries()`. we should use `find_library()` instead.
-target_link_libraries(zeus_lwip "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
-target_link_libraries(zeus_lwip Threads::Threads)
-target_add_dpdk(zeus_lwip)
-
-# MTCP libos target
-file(GLOB ZEUS_MTCP_SOURCES "${ZEUS_SOURCE_DIR}/libmtcp/*.cc")
-add_library(zeus_mtcp STATIC ${ZEUS_COMMON_SOURCES} ${ZEUS_MTCP_SOURCES})
-target_add_hoard(zeus_mtcp)
-target_add_mtcp(zeus_mtcp)
-
-# RDMA libos target
-file(GLOB ZEUS_RDMA_SOURCES "${ZEUS_SOURCE_DIR}/librdma/*.cc")
-add_library(zeus_rdma SHARED ${ZEUS_COMMON_SOURCES} ${ZEUS_RDMA_SOURCES})
-target_add_hoard(zeus_rdma)
-target_link_libraries(zeus_rdma rdmacm ibverbs)
-
-# spdk libos target
-file(GLOB ZEUS_SPDK_LIB "${ZEUS_SOURCE_DIR}/libspdk/*.cc")
-add_library(zeus_spdk STATIC ${ZEUS_COMMON_SOURCES} ${ZEUS_SPDK_LIB} ${ZEUS_POSIX_SOURCES})
-target_add_hoard(zeus_spdk)
-target_add_spdk(zeus_spdk)
-
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libos)
 add_subdirectory(apps/echo)
 
 #############################################
