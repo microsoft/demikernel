@@ -36,8 +36,6 @@ function(target_add_hoard TARGET)
   )
 endfunction(target_add_hoard)
 
-# todo: can these be compiled into a common library?
-file(GLOB ZEUS_COMMON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/libos/common/*.cc")
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}
