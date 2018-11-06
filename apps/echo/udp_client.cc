@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#include "io-queue.h"
+#include <zeus/io-queue.h>
 
 #define USE_CONNECT		1
 #define PKTNUM          10000

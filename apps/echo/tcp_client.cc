@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#include "../include/io-queue.h"
+#include <zeus/io-queue.h>
 
 #define PKTNUM		10000
 #define BUFSIZE     10

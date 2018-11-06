@@ -4,8 +4,8 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#include "io-queue.h"
-#include "common/latency.h"
+#include <zeus/io-queue.h>
+#include <libos/common/latency.h>
 
 #define PKTNUM          10000
 
@@ -55,7 +55,7 @@ int main()
         printf("Error binding queue!\n");
         return -1;
     }
-    
+
     for (int i = 0; i < PKTNUM; i++) {
 //		qt = Zeus::pop(qd, sga);
 //		if (qt != 0) {

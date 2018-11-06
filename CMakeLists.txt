@@ -3,7 +3,10 @@
 cmake_minimum_required (VERSION 3.5.1)
 project (Zeus C CXX)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
+
+set(ZEUS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # default CFLAGS
 set(COMMON_CFLAGS "-g -mssse3 -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs")
@@ -14,7 +17,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  ${COMMON_CFLAGS} -std=c++11 -D__STDC_LI
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 # note: we have no choice but to use a customized version of dpdk provided
 # by mtcp.
-set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp/dpdk-17.08)
+set(DPDK_SOURCE_DIR ${ZEUS_DIR}/submodules/mtcp/dpdk-17.08)
 set(DPDK_LIBS
   ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/libdpdk.a
   ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/librte_acl.a
@@ -83,8 +86,13 @@ set(DPDK_LIBS
   ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/librte_timer.a
   ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/librte_vhost.a
 )
+file(STRINGS ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt DPDK_CFLAGS)
+file(STRINGS ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt DPDK_LDFLAGS)
 add_custom_command(
-  OUTPUT ${DPDK_LIBS}
+  OUTPUT
+    ${DPDK_LIBS}
+    ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt
+    ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt
   WORKING_DIRECTORY ${DPDK_SOURCE_DIR}
   COMMAND make config T=${DPDK_TARGET}
   COMMAND make T=${DPDK_TARGET}
@@ -92,16 +100,20 @@ add_custom_command(
 function(target_add_dpdk TARGET)
   target_link_libraries(${TARGET} ${DPDK_LIBS})
   target_include_directories(${TARGET} PUBLIC ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include)
+  set_target_properties(${TARGET} PROPERTIES
+    COMPILE_FLAGS "${DPDK_CFLAGS}"
+    LINK_FLAGS "${DPDK_LDFLAGS} -libverbs"
+  )
 endfunction(target_add_dpdk)
 
 # mtcp
-set(MTCP_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp)
+set(MTCP_SOURCE_DIR ${ZEUS_DIR}/submodules/mtcp)
 set(MTCP_LIBS ${MTCP_SOURCE_DIR}/mtcp/lib/libmtcp.a)
 add_custom_command(
   OUTPUT ${MTCP_LIBS}
   WORKING_DIRECTORY ${MTCP_SOURCE_DIR}
   DEPENDS ${DPDK_LIBS}
-  COMMAND ./configure --with-dpdk-lib=${DPDK_SOURCE_DIR}/${DPDK_TARGET} CFLAGS=-I${CMAKE_CURRENT_SOURCE_DIR}
+  COMMAND ./configure --with-dpdk-lib=${DPDK_SOURCE_DIR}/${DPDK_TARGET} CFLAGS=-I${ZEUS_DIR}
   COMMAND make
 )
 function(target_add_mtcp TARGET)
@@ -111,7 +123,7 @@ function(target_add_mtcp TARGET)
 endfunction(target_add_mtcp)
 
 # spdk
-set(SPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/spdk)
+set(SPDK_SOURCE_DIR ${ZEUS_DIR}/submodules/spdk)
 set(SPDK_LIBS
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_app_rpc.a
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_bdev.a
@@ -176,11 +188,11 @@ function(target_add_spdk TARGET)
 endfunction(target_add_spdk)
 
 # todo: can these be compiled into a common library?
-set(ZEUS_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libos)
+set(ZEUS_SOURCE_DIR ${ZEUS_DIR}/libos)
 file(GLOB ZEUS_COMMON_SOURCES "${ZEUS_SOURCE_DIR}/common/*.cc")
 include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${ZEUS_DIR}/include
+  ${ZEUS_DIR}
 )
 
 # hoard
@@ -214,8 +226,8 @@ target_add_hoard(zeus_lwip)
 target_include_directories(zeus_lwip PUBLIC ${ZEUS_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR} )
 # todo: these options should not be passed directly to
 # `target_link_libraries()`. we should use `find_library()` instead.
-target_link_libraries(zeus_lwip "-Wl,--whole-archive -lnuma -libverbs -Wl,--no-whole-archive")
-targeT_link_libraries(zeus_lwip ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(zeus_lwip "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
+target_link_libraries(zeus_lwip Threads::Threads)
 target_add_dpdk(zeus_lwip)
 
 # MTCP libos target
@@ -241,9 +253,9 @@ add_subdirectory(apps/echo)
 #############################################
 # applications
 # Tapir
-set(TAPIR_APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps/tapir)
+set(TAPIR_APP_DIR ${ZEUS_DIR}/apps/tapir)
 add_custom_target(tapir
-                  COMMAND ZEUS_SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR} make
+                  COMMAND ZEUS_SRC_DIR=${ZEUS_DIR} make
                   WORKING_DIRECTORY ${TAPIR_APP_DIR})
 add_dependencies(tapir zeus_posix)
 
@@ -253,7 +265,7 @@ add_custom_target(tapir-clean
 
 
 # Redis
-set(REDIS_APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps/redis)
+set(REDIS_APP_DIR ${ZEUS_DIR}/apps/redis)
 add_custom_target(redis
-                  COMMAND ZEUS_SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR} make
+                  COMMAND ZEUS_SRC_DIR=${ZEUS_DIR} make
                   WORKING_DIRECTORY ${REDIS_APP_DIR})
