@@ -14,3 +14,6 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
+[submodule "submodules/Heap-Layers"]
+	path = submodules/Heap-Layers
+	url = https://github.com/emeryberger/Heap-Layers
