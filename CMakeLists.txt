@@ -41,25 +41,5 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libos)
-add_subdirectory(apps/echo)
-
-#############################################
-# applications
-# Tapir
-set(TAPIR_APP_DIR ${ZEUS_DIR}/apps/tapir)
-add_custom_target(tapir
-                  COMMAND ZEUS_SRC_DIR=${ZEUS_DIR} make
-                  WORKING_DIRECTORY ${TAPIR_APP_DIR})
-add_dependencies(tapir zeus_posix)
-
-add_custom_target(tapir-clean
-                  COMMAND make clean
-                  WORKING_DIRECTORY ${TAPIR_APP_DIR})
-
-
-# Redis
-set(REDIS_APP_DIR ${ZEUS_DIR}/apps/redis)
-add_custom_target(redis
-                  COMMAND ZEUS_SRC_DIR=${ZEUS_DIR} make
-                  WORKING_DIRECTORY ${REDIS_APP_DIR})
+add_subdirectory(libos)
+add_subdirectory(apps)
