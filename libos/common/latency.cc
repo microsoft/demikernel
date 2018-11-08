@@ -31,7 +31,7 @@
  *
  **********************************************************************/
 
-#include "common/latency.h"
+#include "latency.h"
 
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -43,7 +43,7 @@
 #include <fstream>
 #include <algorithm>
 #include "rdtsc.h"
-#include "common/message.h"
+#include "message.h"
 
 double g_TicksPerNanoSec = -1.0;
 
@@ -64,10 +64,10 @@ static void
 LatencyInit(Latency_t *l, const char *name)
 {
     memset(l, 0, sizeof(*l));
-    
+
     l->name = new std::string(name);
     l->latencies = new std::vector<uint64_t>();
-        
+
     // check if time resolution initialized here
     if(g_TicksPerNanoSec < 0){
         init_time_resolution();
@@ -92,11 +92,11 @@ static inline void
 LatencyAddStat(Latency_t *l, char type, uint64_t val)
 {
     //if (l->latencies.size() == 0)
-	
+
     if (l->latencies->size() < MAX_ITERATIONS)
 	l->latencies->push_back(val);
 }
-    
+
 
 static inline Latency_Dist_t *
 LatencyAddHist(Latency_t *l, char type, uint64_t val, uint32_t count)
@@ -128,7 +128,7 @@ LatencyAdd(Latency_t *l, char type, uint64_t val)
 {
     Latency_Dist_t *d = LatencyAddHist(l, type, val, 1);
     LatencyAddStat(l, type, val);
-    
+
     if (val < d->min)
         d->min = val;
     if (val > d->max)

@@ -29,10 +29,9 @@
  **********************************************************************/
 //#include "mtcp_measure.h"
 #include "mtcp-queue.h"
-#include "common/library.h"
-#include "common/latency.h"
+#include <libos/common/library.h>
+#include <libos/common/latency.h>
 // hoard include
-#include "libzeus.h"
 #include <mtcp_api.h>
 #include <mtcp_epoll.h>
 #include <fcntl.h>
@@ -282,7 +281,7 @@ MTCPQueue::flush(qtoken qt, int flags)
     return 0;
 }
 
-    
+
 int
 MTCPQueue::close()
 {
@@ -329,7 +328,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
             accepts.push_back(std::make_pair(newfd, saddr));
         }
     }
-    
+
     // printf("ProcessIncoming\n");
     // if we don't have a full header in our buffer, then get one
     if (req.num_bytes < sizeof(req.header)) {
@@ -388,7 +387,7 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
             return;
         }
     }
-    
+
     // now we have the whole buffer, start filling sga
     uint8_t *ptr = (uint8_t *)req.buf;
     // printf("req.buf:%p\n", req.buf);
@@ -407,10 +406,10 @@ MTCPQueue::ProcessIncoming(PendingRequest &req)
     assert(len == (dataLen - (req.sga.num_bufs * sizeof(size_t))));
     req.isDone = true;
     req.res = len;
-    
+
     return;
 }
-    
+
 void
 MTCPQueue::ProcessOutgoing(PendingRequest &req)
 {
@@ -425,17 +424,17 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     for (int i = 0; i < sga.num_bufs; i++) {
         vsga[2*i+1].iov_base = &sga.bufs[i].len;;
         vsga[2*i+1].iov_len = sizeof(sga.bufs[i].len);
-        
+
         vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
         vsga[2*i+2].iov_len = sga.bufs[i].len;
 
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
-        
+
         // add up expected packet size minus header
         totalLen += sga.bufs[i].len;
         totalLen += sizeof(sga.bufs[i].len);
-        pin((void *)sga.bufs[i].buf);
+        //pin((void *)sga.bufs[i].buf);
     }
 
     // fill in header
@@ -447,7 +446,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
     vsga[0].iov_base = &req.header;
     vsga[0].iov_len = sizeof(req.header);
     totalLen += sizeof(req.header);
-   
+
     Latency_Start(&dev_write_latency);
     ssize_t count = mtcp_writev(mctx, mtcp_qd,  vsga, 2*sga.num_bufs +1);
     Latency_End(&dev_write_latency);
@@ -470,14 +469,14 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
         assert(req.num_bytes == 0);
         return;
     }
-    for (int i = 0; i < sga.num_bufs; i++) {
+    /*for (int i = 0; i < sga.num_bufs; i++) {
         unpin((void *)sga.bufs[i].buf);
-    }
+    }*/
 
     req.res = dataSize;
     req.isDone = true;
 }
-    
+
 void
 MTCPQueue::ProcessQ(size_t maxRequests)
 {
@@ -491,8 +490,8 @@ MTCPQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
             continue;
         }
-        
-        PendingRequest &req = it->second; 
+
+        PendingRequest &req = it->second;
         if (IS_PUSH(qt)) {
             ProcessOutgoing(req);
         } else {
@@ -501,10 +500,10 @@ MTCPQueue::ProcessQ(size_t maxRequests)
 
         if (req.isDone) {
             workQ.pop_front();
-        }            
+        }
     }
 }
-    
+
 ssize_t
 MTCPQueue::Enqueue(qtoken qt, sgarray &sga)
 {
@@ -547,7 +546,7 @@ MTCPQueue::flush_push(qtoken qt, struct sgarray &sga){
     assert(false);
     return 0;
 }
-    
+
 ssize_t
 MTCPQueue::pop(qtoken qt, struct sgarray &sga)
 {
@@ -591,7 +590,7 @@ MTCPQueue::peek(struct sgarray &sga){
         return 0;
     }
 }
-    
+
 ssize_t
 MTCPQueue::wait(qtoken qt, struct sgarray &sga)
 {
@@ -629,5 +628,5 @@ MTCPQueue::poll(qtoken qt, struct sgarray &sga)
 }
 
 
-} // namespace MTCP    
+} // namespace MTCP
 } // namespace Zeus

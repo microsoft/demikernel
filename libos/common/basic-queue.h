@@ -27,19 +27,19 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _BASIC_QUEUE_H_
 #define _BASIC_QUEUE_H_
 
-#include "include/io-queue.h"
-#include "common/queue.h"
+#include "queue.h"
+#include <zeus/io-queue.h>
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>
 #include <list>
 
 namespace Zeus {
-    
+
 class BasicQueue : public Queue
 {
 
@@ -55,17 +55,17 @@ private:
             sga(sga) { };
         ~PendingRequest() { };
     };
-    
+
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest *> pending;
     std::list<qtoken> waiting;
     std::list<sgarray> buffer;
     std::mutex qLock;
-    
+
 protected:
     QueueType type;
     int qd;
-    
+
 public:
     BasicQueue() : type(BASIC_Q), qd(0) { };
     BasicQueue(QueueType type, int qd) : type(type), qd(qd) { };
@@ -84,7 +84,7 @@ public:
     virtual int accept(struct sockaddr *saddr, socklen_t *size) { return 0; };
     virtual int connect(struct sockaddr *saddr, socklen_t size) { return 0; };
     virtual int close() { return 0; };
-          
+
     // file control plane functions
     virtual int open(const char *pathname, int flags) { return 0; };
     virtual int open(qtoken qt, const char *pathname, int flags) { return 0; };

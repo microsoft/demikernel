@@ -29,9 +29,7 @@
  **********************************************************************/
 
 #include "spdk-queue.h"
-#include "common/library.h"
-// hoard include
-#include "libzeus.h"
+#include <libos/common/library.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -270,7 +268,7 @@ spdk_bs_init_complete(void *cb_arg, struct spdk_blob_store *bs,
     // After finish the call-chain, all async, and the callbacks, need to
     // return the control of this thread(spdk thread) to its loop function
     libos_run_spdk_thread(NULL);
-    fprintf(stderr, "bs_init_complete():libos_run_spdk_thread return page_size:%lu cluster_size:%lu\n", 
+    fprintf(stderr, "bs_init_complete():libos_run_spdk_thread return page_size:%lu cluster_size:%lu\n",
             spdk_context_t->page_size, spdk_context_t->cluster_size);
 }
 
@@ -918,13 +916,13 @@ SPDKQueue::init_env()
     return spdk_bg_thread;
 }
 
-int 
+int
 SPDKQueue::libos_spdk_open_existing_file(int newqd, qtoken qt, const char *pathname, int flags){
     // TODO, open existing file according to loaded name and blobid
     return -1;
 }
 
-int 
+int
 SPDKQueue::libos_spdk_create_file(int newqd, qtoken qt, const char *pathname, int flags){
     fprintf(stderr, "libos_spdk_create_file\n");
     // save this requeset

@@ -27,12 +27,12 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _LIB_MTCP_QUEUE_H_
 #define _LIB_MTCP_QUEUE_H_
 
-#include "common/queue.h"
-#include "common/library.h"
+#include <libos/common/queue.h>
+#include <libos/common/library.h>
 #include <list>
 #include <unordered_map>
 
@@ -66,9 +66,9 @@ private:
             header{0,0,0},
             buf(NULL),
             num_bytes(0),
-            sga(input_sga) { };            
+            sga(input_sga) { };
     };
-    
+
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<std::pair<int, struct sockaddr_in>> accepts;
@@ -102,7 +102,7 @@ public:
     int accept(struct sockaddr *saddr, socklen_t *size);
     int connect(struct sockaddr *saddr, socklen_t size);
     int close();
-          
+
     // file functions
     int open(const char *pathname, int flags);
     int open(qtoken qt, const char *pathname, int flags);
@@ -124,6 +124,6 @@ public:
     void setfd(int fd);
 };
 
-} // namespace MTCP 
+} // namespace MTCP
 } // namespace Zeus
 #endif /* _LIB_MTCP_QUEUE_H_ */

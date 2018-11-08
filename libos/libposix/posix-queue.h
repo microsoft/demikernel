@@ -27,12 +27,12 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _LIB_POSIX_QUEUE_H_
 #define _LIB_POSIX_QUEUE_H_
 
-#include "common/queue.h"
-#include "common/library.h"
+#include <libos/common/queue.h>
+#include <libos/common/library.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -63,7 +63,7 @@ private:
             num_bytes(0),
             sga(sga) { };
     };
-    
+
     // queued scatter gather arrays
     std::unordered_map<qtoken, PendingRequest> pending;
     std::list<std::pair<int, struct sockaddr_in>> accepts;
@@ -93,7 +93,7 @@ public:
     int accept(struct sockaddr *saddr, socklen_t *size);
     int connect(struct sockaddr *saddr, socklen_t size);
     int close();
-          
+
     // file functions
     int open(const char *pathname, int flags);
     int open(qtoken qt, const char *pathname, int flags);

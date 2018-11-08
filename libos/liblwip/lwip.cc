@@ -28,9 +28,9 @@
  *
  **********************************************************************/
 
-#include "common/library.h"
-#include "include/io-queue.h"
-#include "include/io-queue_c.h"
+#include <libos/common/library.h>
+#include <zeus/io-queue.h>
+#include <zeus/io-queue_c.h>
 #include "lwip-queue.h"
 
 namespace Zeus {

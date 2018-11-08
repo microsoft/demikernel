@@ -1,8 +1,6 @@
-# ---------------------------------------------------------
-# Directory Source files
-# ---------------------------------------------------------
-
-# Zeus lib os code
-file(GLOB SRC_ZEUS_SPDK_LIB "${ZEUS_SOURCE_DIR}/libspdk/*.cc")
-set(SRC_ZEUS_SPDK_LIB ${SRC_ZEUS_SPDK_LIB} PARENT_SCOPE)
-include_directories(${ZEUS_SOURCE_DIR}/libspdk)
+# spdk libos target
+file(GLOB ZEUS_SPDK_LIB "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
+add_library(zeus_spdk STATIC ${ZEUS_SPDK_LIB})
+target_add_hoard(zeus_spdk)
+target_add_spdk(zeus_spdk)
+target_link_libraries(zeus_spdk zeus_common zeus_posix)

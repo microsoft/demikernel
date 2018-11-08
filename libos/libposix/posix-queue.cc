@@ -29,10 +29,8 @@
  **********************************************************************/
 
 #include "posix-queue.h"
-#include "common/library.h"
-#include "common/latency.h"
-// hoard include
-#include "common/mem/include/zeus/libzeus.h"
+#include <libos/common/library.h>
+#include <libos/common/latency.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
@@ -57,7 +55,7 @@ PosixQueue::socket(int domain, int type, int protocol)
             int n = 1;
             if (setsockopt(fd, IPPROTO_TCP,
                            TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
-                fprintf(stderr, 
+                fprintf(stderr,
                         "Failed to set TCP_NODELAY on Zeus connecting socket");
             }
             is_tcp = true;
@@ -154,7 +152,7 @@ PosixQueue::listen(int backlog)
         return -errno;
     }
 }
-        
+
 
 int
 PosixQueue::connect(struct sockaddr *saddr, socklen_t size)
@@ -215,14 +213,14 @@ PosixQueue::creat(const char *pathname, mode_t mode)
     else return fd;
 }
 
-int 
+int
 PosixQueue::flush(qtoken qt, int flags)
 {
     return flush(qt, flags);
 }
- 
 
-    
+
+
 int
 PosixQueue::close()
 {
@@ -376,7 +374,7 @@ PosixQueue::ProcessIncoming(PendingRequest &req)
     //fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
     return;
 }
-    
+
 void
 PosixQueue::ProcessOutgoing(PendingRequest &req)
 {
@@ -393,13 +391,13 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     for (int i = 0; i < sga.num_bufs; i++) {
         vsga[2*i+1].iov_base = &sga.bufs[i].len;;
         vsga[2*i+1].iov_len = sizeof(sga.bufs[i].len);
-        
+
         vsga[2*i+2].iov_base = (void *)sga.bufs[i].buf;
         vsga[2*i+2].iov_len = sga.bufs[i].len;
 
         // add up actual data size
         dataSize += (uint64_t)sga.bufs[i].len;
-        
+
         // add up expected packet size minus header
         totalLen += sga.bufs[i].len;
         totalLen += sizeof(sga.bufs[i].len);
@@ -435,7 +433,7 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
                              vsga,
                              2*sga.num_bufs +1);
     Latency_End(&dev_write_latency);
-   
+
     // if error
     if (count < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -461,12 +459,12 @@ PosixQueue::ProcessOutgoing(PendingRequest &req)
     req.res = dataSize;
     req.isDone = true;
 }
-    
+
 void
 PosixQueue::ProcessQ(size_t maxRequests)
 {
     size_t done = 0;
-   
+
     while (!workQ.empty() && done < maxRequests) {
         qtoken qt = workQ.front();
         auto it = pending.find(qt);
@@ -475,8 +473,8 @@ PosixQueue::ProcessQ(size_t maxRequests)
             workQ.pop_front();
             continue;
         }
-        
-        PendingRequest &req = it->second; 
+
+        PendingRequest &req = it->second;
         if (IS_PUSH(qt)) {
             ProcessOutgoing(req);
         } else {
@@ -485,10 +483,10 @@ PosixQueue::ProcessQ(size_t maxRequests)
 
         if (req.isDone) {
             workQ.pop_front();
-        }            
+        }
     }
 }
-    
+
 ssize_t
 PosixQueue::Enqueue(qtoken qt, struct sgarray &sga)
 {
@@ -523,7 +521,7 @@ ssize_t
 PosixQueue::flush_push(qtoken qt, struct sgarray &sga){
     return 0;
 }
-    
+
 ssize_t
 PosixQueue::pop(qtoken qt, struct sgarray &sga)
 {
@@ -541,7 +539,7 @@ PosixQueue::peek(struct sgarray &sga)
         return 0;
     }
 }
-    
+
 ssize_t
 PosixQueue::wait(qtoken qt, struct sgarray &sga)
 {
@@ -583,5 +581,5 @@ PosixQueue::poll(qtoken qt, struct sgarray &sga)
 }
 
 
-} // namespace POSIX    
+} // namespace POSIX
 } // namespace Zeus

@@ -8,8 +8,8 @@
 #ifndef LIBOS_LIBLWIP_LWIP_QUEUE_H_
 #define LIBOS_LIBLWIP_LWIP_QUEUE_H_
 
-#include "include/io-queue.h"
-#include "common/queue.h"
+#include <zeus/io-queue.h>
+#include <libos/common/queue.h>
 #include <list>
 #include <unordered_map>
 #include <netinet/in.h>

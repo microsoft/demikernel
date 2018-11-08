@@ -5,8 +5,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "../include/io-queue.h"
-#include "../libos/common/latency.h"
+#include <zeus/io-queue.h>
+#include <libos/common/latency.h>
 
 #define PKTNUM		10000
 

@@ -1,7 +1,7 @@
 
-#include "include/io-queue_c.h"
+#include <zeus/io-queue_c.h>
 
-#include "include/io-queue.h"
+#include <zeus/io-queue.h>
 #include "library.h"
 
 #include <unistd.h>

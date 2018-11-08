@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  **********************************************************************/
- 
+
 #ifndef _IO_QUEUE_H_
 #define _IO_QUEUE_H_
 
@@ -36,24 +36,24 @@
 #include <memory>
 #include <array>
 #include <netinet/in.h>
-    
+
 #define MAX_QUEUE_DEPTH 40
 #define MAX_SGARRAY_SIZE 10
 
 #define ZEUS_IO_ERR_NO (-9)
 
 namespace Zeus {
-    
+
 typedef void * ioptr;
-typedef int64_t qtoken;    
-    
+typedef int64_t qtoken;
+
 struct sgelem {
     ioptr buf;
     size_t len;
     // for file operations
     uint64_t addr;
 };
-    
+
 struct sgarray {
     int num_bufs;
     sgelem bufs[MAX_SGARRAY_SIZE];
@@ -85,7 +85,7 @@ int bind(int qd, struct sockaddr *saddr, socklen_t size);
 int accept(int qd, struct sockaddr *saddr, socklen_t *size);
 int connect(int qd, struct sockaddr *saddr, socklen_t size);
 int close(int qd);
-          
+
 // file functions
 int open(const char *pathname, int flags);
 int open(const char *pathname, int flags, mode_t mode);
@@ -103,7 +103,7 @@ ssize_t wait_all(qtoken tokens[], size_t num, struct sgarray **sgas);
 // identical to a push, followed by a wait on the returned qtoken
 ssize_t blocking_push(int qd, struct sgarray &sga);
 // identical to a pop, followed by a wait on the returned qtoken
-ssize_t blocking_pop(int qd, struct sgarray &sga); 
+ssize_t blocking_pop(int qd, struct sgarray &sga);
 
 // returns the file descriptor associated with
 // the queue descriptor if the queue is an io queue

@@ -1,8 +1,5 @@
-# ---------------------------------------------------------
-# Directory Source files
-# ---------------------------------------------------------
-
-# Zeus lib os code
-file(GLOB SRC_ZEUS_RDMA_LIB "${ZEUS_SOURCE_DIR}/librdma/*.cc")
-set(SRC_ZEUS_RDMA_LIB ${SRC_ZEUS_RDMA_LIB} PARENT_SCOPE)
-include_directories(${ZEUS_SOURCE_DIR}/librdma)
+# RDMA libos target
+file(GLOB ZEUS_RDMA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
+add_library(zeus_rdma SHARED ${ZEUS_RDMA_SOURCES})
+target_add_hoard(zeus_rdma)
+target_link_libraries(zeus_rdma zeus_common rdmacm ibverbs)
