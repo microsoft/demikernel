@@ -31,7 +31,6 @@
 #include <libos/common/library.h>
 #include <zeus/io-queue.h>
 #include "rdma-queue.h"
-#include <libos/common/mem/include/zeus/libzeus.h>
 
 namespace Zeus {
 static QueueLibrary<RDMA::RdmaQueue, RDMA::RdmaQueue> lib;

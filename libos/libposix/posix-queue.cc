@@ -31,8 +31,6 @@
 #include "posix-queue.h"
 #include <libos/common/library.h>
 #include <libos/common/latency.h>
-// hoard include
-#include <libos/common/mem/include/zeus/libzeus.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>

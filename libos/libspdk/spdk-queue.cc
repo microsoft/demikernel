@@ -30,8 +30,6 @@
 
 #include "spdk-queue.h"
 #include <libos/common/library.h>
-// hoard include
-#include "libzeus.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>

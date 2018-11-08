@@ -32,7 +32,6 @@
 #include <libos/common/library.h>
 #include <libos/common/latency.h>
 // hoard include
-#include <libzeus.h>
 #include <mtcp_api.h>
 #include <mtcp_epoll.h>
 #include <fcntl.h>
@@ -435,7 +434,7 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
         // add up expected packet size minus header
         totalLen += sga.bufs[i].len;
         totalLen += sizeof(sga.bufs[i].len);
-        pin((void *)sga.bufs[i].buf);
+        //pin((void *)sga.bufs[i].buf);
     }
 
     // fill in header
@@ -470,9 +469,9 @@ MTCPQueue::ProcessOutgoing(PendingRequest &req)
         assert(req.num_bytes == 0);
         return;
     }
-    for (int i = 0; i < sga.num_bufs; i++) {
+    /*for (int i = 0; i < sga.num_bufs; i++) {
         unpin((void *)sga.bufs[i].buf);
-    }
+    }*/
 
     req.res = dataSize;
     req.isDone = true;

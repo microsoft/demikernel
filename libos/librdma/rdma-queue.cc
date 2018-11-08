@@ -31,6 +31,7 @@
 #include "rdma-queue.h"
 #include <libos/common/library.h>
 #include <libos/common/latency.h>
+#include <hoard/zeusrdma.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -66,7 +67,7 @@ RdmaQueue::PostReceive()
     struct ibv_sge sge;
     void *buf = malloc(RECV_BUFFER_SIZE);
     //memset(buf, 0 , RECV_BUFFER_SIZE);
-    struct ibv_mr *mr = rdma_get_mr(buf, pd);
+    struct ibv_mr *mr = Hoard::getRdmaMr(buf, pd);
     assert(mr != NULL);
     assert(rdma_id->verbs != NULL);
     assert(pd != NULL);
@@ -172,11 +173,11 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	    PendingRequest *req = (PendingRequest *)wc.wr_id;
 	    // unpin completed sends
 	    //req->isDone = true;
-	    for (int i = 0; i < req->sga.num_bufs; i++) {
+	    /*for (int i = 0; i < req->sga.num_bufs; i++) {
 		unpin(req->sga.bufs[i].buf);
-	    }
+	    }*/
 	    free(req->buf);
-	    unpin(req);
+	    //unpin(req);
 	    delete req;
 	    break;
 	}
@@ -561,7 +562,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     size_t dataSize = 0;
     size_t totalLen = 0;
     Latency_Start(&get_mr);
-    struct ibv_mr *mr = rdma_get_mr(req->buf, pd);
+    struct ibv_mr *mr = Hoard::getRdmaMr(req->buf, pd);
     Latency_End(&get_mr);
     assert(mr != NULL);
     uint32_t header_lkey = mr->lkey;
@@ -577,7 +578,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         vsga[2*i+2].addr = (uint64_t)sga.bufs[i].buf;
         vsga[2*i+2].length = sga.bufs[i].len;
         Latency_Start(&get_mr);
-        mr = rdma_get_mr(sga.bufs[i].buf, pd);
+        mr = Hoard::getRdmaMr(sga.bufs[i].buf, pd);
         Latency_End(&get_mr);
         assert(mr != NULL);
         vsga[2*i+2].lkey = mr->lkey;
@@ -588,7 +589,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         // add up expected packet size minus header
         totalLen += (uint64_t)sga.bufs[i].len;
         totalLen += sizeof(uint64_t);
-        pin((void *)sga.bufs[i].buf);
+        //pin((void *)sga.bufs[i].buf);
     }
 
     // fill in header
@@ -600,7 +601,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     vsga[0].addr = (uint64_t)&req->header;
     vsga[0].length = sizeof(req->header);
     Latency_Start(&get_mr);
-    mr = rdma_get_mr(req->header, pd);
+    mr = Hoard::getRdmaMr(req->header, pd);
     Latency_End(&get_mr);
     assert(mr != NULL);
     vsga[0].lkey = mr->lkey;
@@ -614,6 +615,8 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     wr.sg_list = vsga;
     wr.next = NULL;
     wr.num_sge = 2 * sga.num_bufs + 1;
+    // warning: if you don't set the send flag, it will not
+    // give a meaningful error.
     wr.send_flags = IBV_SEND_SIGNALED;
     Latency_Start(&post_send);
     int res = ibv_post_send(rdma_id->qp,
@@ -622,9 +625,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     Latency_End(&post_send);
     // if error
     if (res != 0) {
-        for (int i = 0; i < sga.num_bufs; i++) {
+        /*for (int i = 0; i < sga.num_bufs; i++) {
             unpin(sga.bufs[i].buf);
-        }
+        }*/
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         } else {
@@ -639,7 +642,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // otherwise, enqueued for send but not complete
     req->res = dataSize;
     req->isEnqueued = true;
-    pin(req);
+    //pin(req);
 }
 
 void

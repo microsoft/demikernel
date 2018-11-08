@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/apps/echo/rdma_server",
+            "program": "${workspaceFolder}/build/apps/echo/rdma_client",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

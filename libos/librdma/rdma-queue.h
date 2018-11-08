@@ -36,9 +36,6 @@
 #include <list>
 #include <unordered_map>
 #include <rdma/rdma_cma.h>
-// hoard include
-#include <libos/common/mem/include/zeus/libzeus.h>
-
 
 #define RECV_BUFFER_SIZE 1024
 #define RECV_BUFFER_NUM 4
