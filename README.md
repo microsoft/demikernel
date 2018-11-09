@@ -9,6 +9,11 @@ Datacenter Operating system
 - Set the `CMAKE_BUILD_TYPE` variable to `Release` if you want an optimized build? You can do this with the CLI (`ccmake`) or the GUI (`cmake-gui`).
 - Run `make` from the build directory.
 
+## Cleaning
+
+- You can clean the build by deleting the build directory and starting over.
+- Run `scripts/build/clean.sh` to thouroughly clean the repository. Be warned that this will delete any untracked files that you have not yet staged.
+
 ### Notes
 
 [//]: # (todo: does the following still apply?)
