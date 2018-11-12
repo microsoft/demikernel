@@ -5,7 +5,7 @@ include(ExternalProject)
 # by mtcp.
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp/dpdk-17.08)
-set(DPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/dpdk)
+set(DPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/dpdk)
 set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR})
 set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include/dpdk)
 set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
@@ -80,7 +80,7 @@ set(DPDK_LIBS
   ${DPDK_LIB_DIR}/librte_vhost.a
 )
 ExternalProject_Add(dpdk
-  PREFIX ${DPDK_BINARY_DIR}/ExternalProject
+  PREFIX ${DPDK_BINARY_DIR}
   SOURCE_DIR ${DPDK_SOURCE_DIR}
   CONFIGURE_COMMAND make -C ${DPDK_SOURCE_DIR} config  T=${DPDK_TARGET}
   BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET}
@@ -98,10 +98,10 @@ endfunction(target_add_dpdk)
 
 # mtcp
 set(MTCP_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp)
-set(MTCP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/submodules/mtcp)
+set(MTCP_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/mtcp)
 set(MTCP_LIBS ${MTCP_SOURCE_DIR}/mtcp/lib/libmtcp.a)
 ExternalProject_Add(mtcp
-  PREFIX ${MTCP_BINARY_DIR}/ExternalProject
+  PREFIX ${MTCP_BINARY_DIR}
   DEPENDS dpdk
   SOURCE_DIR ${MTCP_SOURCE_DIR}
   CONFIGURE_COMMAND cd ${MTCP_SOURCE_DIR} &&  ./configure --with-dpdk-lib=${DPDK_SOURCE_DIR}/${DPDK_TARGET} CFLAGS=-I${CMAKE_CURRENT_SOURCE_DIR}

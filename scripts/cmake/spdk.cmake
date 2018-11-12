@@ -1,5 +1,8 @@
+include(ExternalProject)
+
 # spdk
-set(SPDK_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/spdk)
+set(SPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/spdk)
+set(SPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/spdk)
 set(SPDK_LIBS
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_app_rpc.a
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_bdev.a
@@ -52,11 +55,12 @@ set(SPDK_LIBS
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_vhost.a
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_virtio.a
 )
-add_custom_command(
-  OUTPUT ${SPDK_LIBS}
-  WORKING_DIRECTORY ${SPDK_SOURCE_DIR}
-  COMMAND ./configure
-  COMMAND make
+ExternalProject_Add(spdk
+  PREFIX ${SPDK_BINARY_DIR}
+  SOURCE_DIR ${DPDK_SOURCE_DIR}
+  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure
+  BUILD_COMMAND make -C ${SPDK_SOURCE_DIR}
+  INSTALL_COMMAND echo "No install command for target `spdk`."
 )
 function(target_add_spdk TARGET)
   target_link_libraries(${TARGET} ${SPDK_LIBS})

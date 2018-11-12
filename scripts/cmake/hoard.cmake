@@ -4,7 +4,7 @@ include(ExternalProject)
 set(HEAPLAYERS_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/Heap-Layers)
 function(target_add_hoard TARGET HOARD_SOURCE_DIR)
   set(HOARD_TARGET hoard-${TARGET})
-  set(HOARD_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/${HOARD_TARGET})
+  set(HOARD_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/${HOARD_TARGET})
   set(HOARD_LIBS ${HOARD_SOURCE_DIR}/src/libhoard.so)
   ExternalProject_Add(${HOARD_TARGET}
     PREFIX ${HOARD_BINARY_DIR}
