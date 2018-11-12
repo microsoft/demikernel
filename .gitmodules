@@ -17,9 +17,9 @@
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
 	url = https://github.com/emeryberger/Heap-Layers
-[submodule "libos/librdma/submodules/Hoard"]
-	path = libos/librdma/submodules/Hoard
-	url = https://github.com/mlr-msft/Hoard.git
 [submodule "submodules/Hoard"]
 	path = submodules/Hoard
+	url = https://github.com/mlr-msft/Hoard.git
+[submodule "libos/librdma/submodules/HoardRdma"]
+	path = libos/librdma/submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
