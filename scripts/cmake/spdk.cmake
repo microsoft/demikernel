@@ -58,11 +58,12 @@ set(SPDK_LIBS
 ExternalProject_Add(spdk
   PREFIX ${SPDK_BINARY_DIR}
   SOURCE_DIR ${DPDK_SOURCE_DIR}
-  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure
+  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_SOURCE_DIR}/${DPDK_TARGET}
   BUILD_COMMAND make -C ${SPDK_SOURCE_DIR}
   INSTALL_COMMAND echo "No install command for target `spdk`."
 )
 function(target_add_spdk TARGET)
   target_link_libraries(${TARGET} ${SPDK_LIBS})
   target_include_directories(${TARGET} PUBLIC ${SPDK_SOURCE_DIR}/include)
+  target_add_dpdk(${TARGET})
 endfunction(target_add_spdk)
