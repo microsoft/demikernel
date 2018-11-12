@@ -38,12 +38,10 @@ set(ZEUS_LATENCY_SOURCES
 
 # POSIX TCP server
 add_executable(posix_server  ${TCP_ECHO_SERVER_SOURCES})
-target_add_hoard(posix_server)
 target_link_libraries(posix_server zeus_posix)
 
 # POSIX TCP client
 add_executable(posix_client  ${TCP_ECHO_CLIENT_SOURCES})
-target_add_hoard(posix_client)
 target_link_libraries(posix_client zeus_posix)
 
 # POSIX TCP client & server
@@ -53,13 +51,11 @@ add_dependencies(posix  posix_server posix_client)
 # LWIP UDP server
 add_executable(lwip_server ${UDP_ECHO_SERVER_SOURCES})
 target_add_dpdk(lwip_server)
-target_add_hoard(lwip_server)
 target_link_libraries(lwip_server zeus_lwip Threads::Threads)
 
 # LWIP UDP client
 add_executable(lwip_client  ${UDP_ECHO_CLIENT_SOURCES})
 target_add_dpdk(lwip_client)
-target_add_hoard(lwip_client)
 target_link_libraries(lwip_client zeus_lwip Threads::Threads)
 
 # LWIP UDP client & server
@@ -69,13 +65,11 @@ add_dependencies(lwip lwip_server lwip_client)
 # LWIP "raw" server
 add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
 target_add_dpdk(lwip_raw_server)
-target_add_hoard(lwip_raw_server)
 target_link_libraries(lwip_raw_server zeus_lwip Threads::Threads)
 
 # LWIP "raw" client
 add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
 target_add_dpdk(lwip_raw_client)
-target_add_hoard(lwip_raw_client)
 target_link_libraries(lwip_raw_client zeus_lwip Threads::Threads)
 
 # LWIP "raw" client & server
@@ -84,13 +78,11 @@ add_dependencies(lwip_raw lwip_raw_server lwip_raw_client)
 
 # libMTCP server
 add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
-target_add_hoard(mtcp_server)
 target_add_mtcp(mtcp_server)
 target_link_libraries(mtcp_server zeus_mtcp Threads::Threads gmp)
 
 # libMTCP client
 add_executable(mtcp_client ${TCP_ECHO_CLIENT_SOURCES})
-target_add_hoard(mtcp_client)
 target_add_mtcp(mtcp_client)
 target_link_libraries(mtcp_client zeus_mtcp Threads::Threads gmp)
 
@@ -100,13 +92,11 @@ add_dependencies(mtcp_echo mtcp_server mtcp_client)
 
 # "raw" MTCP server
 add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
-target_add_hoard(raw_mtcp_server)
 target_add_mtcp(raw_mtcp_server)
 target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
 # "raw" MTCP client
 add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
-target_add_hoard(raw_mtcp_client)
 target_add_mtcp(raw_mtcp_client)
 target_link_libraries(raw_mtcp_client Threads::Threads gmp)
 
@@ -116,12 +106,10 @@ add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
 
 # RDMA server
 add_executable(rdma_server ${TCP_ECHO_SERVER_SOURCES})
-target_add_hoard(rdma_server)
 target_link_libraries(rdma_server zeus_rdma rdmacm ibverbs)
 
 # RDMA client
 add_executable(rdma_client ${TCP_ECHO_CLIENT_SOURCES})
-target_add_hoard(rdma_client)
 target_link_libraries(rdma_client zeus_rdma rdmacm ibverbs)
 
 # RDMA client & server

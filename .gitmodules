@@ -20,3 +20,6 @@
 [submodule "libos/librdma/submodules/Hoard"]
 	path = libos/librdma/submodules/Hoard
 	url = https://github.com/mlr-msft/Hoard.git
+[submodule "submodules/Hoard"]
+	path = submodules/Hoard
+	url = https://github.com/mlr-msft/Hoard.git
