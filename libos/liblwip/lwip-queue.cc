@@ -339,12 +339,11 @@ lwip_init(int argc, char* argv[])
 
     unsigned nb_ports;
     int ret;
-    uint8_t portid;
 
     ret = rte_eal_init(argc, argv);
 
     if (ret < 0) {
-        rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+        rte_exit(ret, "Error with EAL initialization\n");
         return -1;
     }
 
@@ -364,7 +363,7 @@ lwip_init(int argc, char* argv[])
     // code is to be run by both server and client.
     char pool_name[15] = {0};
     strncpy(pool_name, "pktmbuf.XXXXXX", 14);
-    mkstemp(pool_name);
+    mktemp(pool_name);
     fprintf(stderr, "Attempting to create pktmbuf pool named `%s`...\n", pool_name);
 
     mbuf_pool = rte_pktmbuf_pool_create(pool_name,
@@ -379,18 +378,19 @@ lwip_init(int argc, char* argv[])
         return -1;
     }
 
-    fprintf(stderr, "pktmbuf pool `%s` successfully created.\n");
+    fprintf(stderr, "pktmbuf pool `%s` successfully created.\n", pool_name);
 
     /* Initialize all ports. */
-    for (portid = 0; portid < nb_ports; portid++) {
-        port_id = portid;
-        if (port_init(portid, mbuf_pool) != 0) {
-            rte_exit(EXIT_FAILURE,
-                     "Cannot init port %d\n",
-                     portid);
-            return -1;
+    uint16_t i;
+    RTE_ETH_FOREACH_DEV(i) {
+        fprintf(stderr, "Attempting to start ethernet port %d...\n", i);
+        int err = port_init(i, mbuf_pool);
+        if (0 == err) {
+            fprintf(stderr, "Ethernet port %d initialized.", i);
+            port_id = i;
+        } else {
+            rte_exit(err, "Unable to initialize ethernet port %d.", i);
         }
-        break;
     }
 
     check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
