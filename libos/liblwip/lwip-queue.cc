@@ -348,6 +348,8 @@ lwip_init(int argc, char* argv[])
         return -1;
     }
 
+    fprintf(stderr, "Sucessfully initialized EAL.\n");
+
     nb_ports = rte_eth_dev_count();
 //    assert(nb_ports == 1);
 
@@ -355,8 +357,17 @@ lwip_init(int argc, char* argv[])
         rte_exit(EXIT_FAILURE, "No probed ethernet devices\n");
     }
 
-    // Create pool of memory for ring buffers
-    mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
+    // Create pool of memory for ring buffers.
+
+    // note: DPDK requires a name for the pool and the namespace is
+    // system-wide, so we need to generate a randomized name if this
+    // code is to be run by both server and client.
+    char pool_name[15] = {0};
+    strncpy(pool_name, "pktmbuf.XXXXXX", 14);
+    mkstemp(pool_name);
+    fprintf(stderr, "Attempting to create pktmbuf pool named `%s`...\n", pool_name);
+
+    mbuf_pool = rte_pktmbuf_pool_create(pool_name,
                                         NUM_MBUFS * nb_ports,
                                         MBUF_CACHE_SIZE,
                                         0,
@@ -364,9 +375,11 @@ lwip_init(int argc, char* argv[])
                                         rte_socket_id());
 
     if (mbuf_pool == NULL) {
-        rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+        rte_exit(rte_errno, "Cannot create mbuf pool\n");
         return -1;
     }
+
+    fprintf(stderr, "pktmbuf pool `%s` successfully created.\n");
 
     /* Initialize all ports. */
     for (portid = 0; portid < nb_ports; portid++) {
@@ -377,6 +390,7 @@ lwip_init(int argc, char* argv[])
                      portid);
             return -1;
         }
+        break;
     }
 
     check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
