@@ -23,6 +23,6 @@ Some system-wide configuration needs to be performed before DPDK will function.
 
 - Enter the DPDK `usertools` directory (`cd $DATACENTEROS/submodules/mtcp/dpdk-17.08/usertools`).
 - Run the `dpdk-setup.sh` script with administrative privileges (`sudo `./dpdk-setup.sh`).
-- At the menu, select *Setup hugepage mappings for NUMA systems* (option `20`).
+- At the menu, select a *hugepage* mapping option, depending upon the system your using (option `19` or `20`).
 - Specify the number of pages for each node (e.g. `1024`).
 - Once at the menu, select *Exit Script* (option `33`).
