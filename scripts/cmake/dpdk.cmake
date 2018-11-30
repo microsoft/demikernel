@@ -1,107 +1,159 @@
+if(NOT DPDK_DOT_CMAKE_INCLUDED)
+set(DPDK_DOT_CMAKE_INCLUDED YES)
+
 include(ExternalProject)
+include(list)
 
 option(DPDK_USE_MELLANOX_PMD "include support for the Mellanox adaptor" OFF)
-
-# dpdk
-# note: we have no choice but to use a customized version of dpdk provided
-# by mtcp.
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
+
+# DPDK
 set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk)
 set(DPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/dpdk)
 set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR})
-set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include/dpdk)
+set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include ${DPDK_INSTALL_DIR}/include/dpdk)
 set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
-file(MAKE_DIRECTORY ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include)
-file(MAKE_DIRECTORY ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib)
 set(DPDK_LIBS
-  libdpdk.a
-  librte_acl.a
-  librte_bitratestats.a
-  librte_cfgfile.a
-  librte_cmdline.a
-  librte_cryptodev.a
-  librte_distributor.a
-  librte_eal.a
-  librte_efd.a
-  librte_ethdev.a
-  librte_eventdev.a
-  librte_gro.a
-  librte_hash.a
-  librte_ip_frag.a
-  librte_jobstats.a
-  librte_kni.a
-  librte_kvargs.a
-  librte_latencystats.a
-  librte_lpm.a
-  librte_mbuf.a
-  librte_mempool.a
-  librte_mempool_ring.a
-  librte_mempool_stack.a
-  librte_meter.a
-  librte_metrics.a
-  librte_net.a
-  librte_pdump.a
-  librte_pipeline.a
-  librte_pmd_af_packet.a
-  librte_pmd_ark.a
-  librte_pmd_avp.a
-  librte_pmd_bnxt.a
-  librte_pmd_bond.a
-  librte_pmd_crypto_scheduler.a
-  librte_pmd_cxgbe.a
-  librte_pmd_e1000.a
-  librte_pmd_ena.a
-  librte_pmd_enic.a
-  librte_pmd_failsafe.a
-  librte_pmd_fm10k.a
-  librte_pmd_i40e.a
-  librte_pmd_ixgbe.a
-  librte_pmd_kni.a
-  librte_pmd_lio.a
-  librte_pmd_nfp.a
-  librte_pmd_null.a
-  librte_pmd_null_crypto.a
-  librte_pmd_octeontx_ssovf.a
-  librte_pmd_qede.a
-  librte_pmd_ring.a
-  librte_pmd_sfc_efx.a
-  librte_pmd_skeleton_event.a
-  librte_pmd_sw_event.a
-  librte_pmd_tap.a
-  librte_pmd_thunderx_nicvf.a
-  librte_pmd_vhost.a
-  librte_pmd_virtio.a
-  librte_pmd_vmxnet3_uio.a
-  librte_port.a
-  librte_power.a
-  librte_reorder.a
-  librte_ring.a
-  librte_sched.a
-  librte_table.a
-  librte_timer.a
-  librte_vhost.a
+    dpdk
+    rte_acl
+    rte_bbdev
+    rte_bitratestats
+    rte_bpf
+    rte_bus_dpaa
+    rte_bus_fslmc
+    rte_bus_ifpga
+    rte_bus_pci
+    rte_bus_vdev
+    rte_bus_vmbus
+    rte_cfgfile
+    rte_cmdline
+    rte_common_cpt
+    rte_common_dpaax
+    rte_common_octeontx
+    rte_compressdev
+    rte_cryptodev
+    rte_distributor
+    rte_eal
+    rte_efd
+    rte_ethdev
+    rte_eventdev
+    rte_flow_classify
+    rte_gro
+    rte_gso
+    rte_hash
+    rte_ip_frag
+    rte_jobstats
+    rte_kni
+    rte_kvargs
+    rte_latencystats
+    rte_lpm
+    rte_mbuf
+    rte_member
+    rte_mempool
+    rte_mempool_bucket
+    rte_mempool_dpaa2
+    rte_mempool_dpaa
+    rte_mempool_octeontx
+    rte_mempool_ring
+    rte_mempool_stack
+    rte_meter
+    rte_metrics
+    rte_net
+    rte_pci
+    rte_pdump
+    rte_pipeline
+    rte_pmd_af_packet
+    rte_pmd_ark
+    rte_pmd_atlantic
+    rte_pmd_avf
+    rte_pmd_avp
+    rte_pmd_axgbe
+    rte_pmd_bbdev_null
+    rte_pmd_bnxt
+    rte_pmd_bond
+    rte_pmd_caam_jr
+    rte_pmd_crypto_scheduler
+    rte_pmd_cxgbe
+    rte_pmd_dpaa2
+    rte_pmd_dpaa2_cmdif
+    rte_pmd_dpaa2_event
+    rte_pmd_dpaa2_qdma
+    rte_pmd_dpaa2_sec
+    rte_pmd_dpaa
+    rte_pmd_dpaa_event
+    rte_pmd_dpaa_sec
+    rte_pmd_dsw_event
+    rte_pmd_e1000
+    rte_pmd_ena
+    rte_pmd_enetc
+    rte_pmd_enic
+    rte_pmd_failsafe
+    rte_pmd_fm10k
+    rte_pmd_i40e
+    rte_pmd_ifc
+    rte_pmd_ifpga_rawdev
+    rte_pmd_ixgbe
+    rte_pmd_kni
+    rte_pmd_lio
+    rte_pmd_netvsc
+    rte_pmd_nfp
+    rte_pmd_null
+    rte_pmd_null_crypto
+    rte_pmd_octeontx
+    rte_pmd_octeontx_crypto
+    rte_pmd_octeontx_ssovf
+    rte_pmd_octeontx_zip
+    rte_pmd_opdl_event
+    rte_pmd_qat
+    rte_pmd_qede
+    rte_pmd_ring
+    rte_pmd_sfc_efx
+    rte_pmd_skeleton_event
+    rte_pmd_skeleton_rawdev
+    rte_pmd_softnic
+    rte_pmd_sw_event
+    rte_pmd_tap
+    rte_pmd_thunderx_nicvf
+    rte_pmd_vdev_netvsc
+    rte_pmd_vhost
+    rte_pmd_virtio
+    rte_pmd_virtio_crypto
+    rte_pmd_vmxnet3_uio
+    rte_port
+    rte_power
+    rte_rawdev
+    rte_reorder
+    rte_ring
+    rte_sched
+    rte_security
+    rte_table
+    rte_timer
+    rte_vhost
 )
 ExternalProject_Add(dpdk
-  PREFIX ${DPDK_BINARY_DIR}
-  SOURCE_DIR ${DPDK_SOURCE_DIR}
-  CONFIGURE_COMMAND make -C ${DPDK_SOURCE_DIR} config  T=${DPDK_TARGET}
-  BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET}
-  INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR}
+    PREFIX ${DPDK_BINARY_DIR}
+    SOURCE_DIR ${DPDK_SOURCE_DIR}
+    CONFIGURE_COMMAND make -C ${DPDK_SOURCE_DIR} config  T=${DPDK_TARGET}
+    BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET}
+    INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR}
 )
 if(DPDK_USE_MELLANOX_PMD)
-  set(DPDK_LIBS ${DPDK_LIBS} librte_pmd_mlx5.a)
-  set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
-  set(DPDK_MLX5_PMD_LINK_FLAGS -Wl,-lrte_pmd_mlx5)
+    set(DPDK_LIBS ${DPDK_LIBS} rte_pmd_mlx5)
+    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
 else(DPDK_USE_MELLANOX_PMD)
-  set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
+    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
 endif(DPDK_USE_MELLANOX_PMD)
 set(DPDK_CONFIG_COMMON_BASE ${DPDK_SOURCE_DIR}/config/common_base)
 configure_file(${DPDK_CONFIG_COMMON_BASE}.in ${DPDK_CONFIG_COMMON_BASE})
 function(target_add_dpdk TARGET)
-  target_include_directories(${TARGET} PUBLIC ${DPDK_INCLUDE_DIR})
-  set_target_properties(${TARGET} PROPERTIES
-    COMPILE_FLAGS "-march=native -msse -DRTE_MACHINE_CPUFLAG_SSE -msse2 -DRTE_MACHINE_CPUFLAG_SSE2 -msse3 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -msse4.1 -DRTE_MACHINE_CPUFLAG_SSE4_1 -msse4.2 -DRTE_MACHINE_CPUFLAG_SSE4_2"
-    LINK_FLAGS "-L${DPDK_LIB_DIR} -Wl,-lrte_pipeline -Wl,-lrte_table -Wl,-lrte_port -Wl,-lrte_pdump -Wl,-lrte_distributor -Wl,-lrte_ip_frag -Wl,-lrte_gro -Wl,-lrte_meter -Wl,-lrte_sched -Wl,-lrte_lpm -Wl,--whole-archive -Wl,-lrte_acl -Wl,--no-whole-archive -Wl,-lrte_jobstats -Wl,-lrte_metrics -Wl,-lrte_bitratestats -Wl,-lrte_latencystats -Wl,-lrte_power -Wl,-lrte_timer -Wl,-lrte_efd -Wl,-lrte_cfgfile -Wl,--whole-archive -Wl,-lrte_hash -Wl,-lrte_vhost -Wl,-lrte_kvargs -Wl,-lrte_mbuf -Wl,-lrte_net -Wl,-lrte_ethdev -Wl,-lrte_cryptodev -Wl,-lrte_eventdev -Wl,-lrte_mempool -Wl,-lrte_mempool_ring -Wl,-lrte_ring -Wl,-lrte_eal -Wl,-lrte_cmdline -Wl,-lrte_reorder -Wl,-lrte_kni -Wl,-lrte_mempool_stack -Wl,-lrte_pmd_af_packet -Wl,-lrte_pmd_ark -Wl,-lrte_pmd_avp -Wl,-lrte_pmd_bnxt -Wl,-lrte_pmd_bond -Wl,-lrte_pmd_cxgbe -Wl,-lrte_pmd_e1000 -Wl,-lrte_pmd_ena -Wl,-lrte_pmd_enic -Wl,-lrte_pmd_fm10k -Wl,-lrte_pmd_failsafe -Wl,-lrte_pmd_i40e -Wl,-lrte_pmd_ixgbe -Wl,-lrte_pmd_kni -Wl,-lrte_pmd_lio ${DPDK_MLX5_PMD_LINK_FLAGS} -Wl,-libverbs -Wl,-lrte_pmd_nfp -Wl,-lrte_pmd_null -Wl,-lrte_pmd_qede -Wl,-lrte_pmd_ring -Wl,-lrte_pmd_sfc_efx -Wl,-lrte_pmd_tap -Wl,-lrte_pmd_thunderx_nicvf -Wl,-lrte_pmd_virtio -Wl,-lrte_pmd_vhost -Wl,-lrte_pmd_vmxnet3_uio -Wl,-lrte_pmd_null_crypto -Wl,-lrte_pmd_crypto_scheduler -Wl,-lrte_pmd_skeleton_event -Wl,-lrte_pmd_sw_event -Wl,-lrte_pmd_octeontx_ssovf -Wl,--no-whole-archive -Wl,-lrt -Wl,-lm -Wl,-lnuma -Wl,-ldl"
-  )
-  add_dependencies(${TARGET} dpdk)
+    list_map_prepend(DPDK_LIB_FLAGS "-Wl,-l" ${DPDK_LIBS})
+    string(REPLACE ";" " " DPDK_LIB_FLAGS "${DPDK_LIB_FLAGS}")
+    target_include_directories(${TARGET} PUBLIC ${DPDK_INCLUDE_DIR})
+    set_target_properties(${TARGET} PROPERTIES
+        COMPILE_FLAGS "-march=native -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2"
+        LINK_FLAGS "-L${DPDK_LIB_DIR} -Wl,--whole-archive ${DPDK_LIB_FLAGS} -Wl,--no-whole-archive -Wl,-lrt -Wl,-lm -Wl,-lnuma -Wl,-ldl"
+    )
+    add_dependencies(${TARGET} dpdk)
 endfunction(target_add_dpdk)
+
+endif(NOT DPDK_DOT_CMAKE_INCLUDED)
