@@ -23,3 +23,6 @@
 [submodule "submodules/HoardRdma"]
 	path = submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
+[submodule "submodules/dpdk"]
+	path = submodules/dpdk
+	url = https://github.com/mlr-msft/dpdk.git
