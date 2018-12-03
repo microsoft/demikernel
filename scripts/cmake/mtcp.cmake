@@ -39,7 +39,7 @@ ExternalProject_Add(mtcp
   SOURCE_DIR ${MTCP_SOURCE_DIR}
   CONFIGURE_COMMAND cd ${MTCP_SOURCE_DIR} &&  ./configure --with-dpdk-lib=${MTCP_DPDK_SOURCE_DIR}/${DPDK_TARGET} CFLAGS=-I${CMAKE_CURRENT_SOURCE_DIR}
   BUILD_COMMAND make -C ${MTCP_SOURCE_DIR}
-  INSTALL_COMMAND echo 'MTCP doesn't support an install step'
+  INSTALL_COMMAND echo 'mTCP doesn't support an install step'
 )
 function(target_add_mtcp TARGET)
   target_link_libraries(${TARGET} ${MTCP_LIBS})
