@@ -1,3 +1,6 @@
+if(NOT HOARD_DOT_CMAKE_INCLUDED)
+set(HOARD_DOT_CMAKE_INCLUDED YES)
+
 include(ExternalProject)
 
 # hoard
@@ -20,3 +23,5 @@ function(target_add_hoard TARGET HOARD_SOURCE_DIR)
   )
   add_dependencies(${TARGET} ${HOARD_TARGET})
 endfunction(target_add_hoard)
+
+endif(NOT HOARD_DOT_CMAKE_INCLUDED)

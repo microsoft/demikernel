@@ -76,33 +76,35 @@ target_link_libraries(lwip_raw_client zeus_lwip Threads::Threads)
 add_custom_target(lwip_raw)
 add_dependencies(lwip_raw lwip_raw_server lwip_raw_client)
 
-# libMTCP server
-add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
-target_add_mtcp(mtcp_server)
-target_link_libraries(mtcp_server zeus_mtcp Threads::Threads gmp)
+if(MTCP_BUILD)
+  # libMTCP server
+  add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
+  target_add_mtcp(mtcp_server)
+  target_link_libraries(mtcp_server zeus_mtcp Threads::Threads gmp)
 
-# libMTCP client
-add_executable(mtcp_client ${TCP_ECHO_CLIENT_SOURCES})
-target_add_mtcp(mtcp_client)
-target_link_libraries(mtcp_client zeus_mtcp Threads::Threads gmp)
+  # libMTCP client
+  add_executable(mtcp_client ${TCP_ECHO_CLIENT_SOURCES})
+  target_add_mtcp(mtcp_client)
+  target_link_libraries(mtcp_client zeus_mtcp Threads::Threads gmp)
 
-# libMTCP client & server
-add_custom_target(mtcp_echo)
-add_dependencies(mtcp_echo mtcp_server mtcp_client)
+  # libMTCP client & server
+  add_custom_target(mtcp_echo)
+  add_dependencies(mtcp_echo mtcp_server mtcp_client)
 
-# "raw" MTCP server
-add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
-target_add_mtcp(raw_mtcp_server)
-target_link_libraries(raw_mtcp_server Threads::Threads gmp)
+  # "raw" MTCP server
+  add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
+  target_add_mtcp(raw_mtcp_server)
+  target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
-# "raw" MTCP client
-add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
-target_add_mtcp(raw_mtcp_client)
-target_link_libraries(raw_mtcp_client Threads::Threads gmp)
+  # "raw" MTCP client
+  add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
+  target_add_mtcp(raw_mtcp_client)
+  target_link_libraries(raw_mtcp_client Threads::Threads gmp)
 
-# "raw" MTCP client & server
-add_custom_target(raw_mtcp_echo)
-add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
+  # "raw" MTCP client & server
+  add_custom_target(raw_mtcp_echo)
+  add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
+endif(MTCP_BUILD)
 
 # RDMA server
 add_executable(rdma_server ${TCP_ECHO_SERVER_SOURCES})

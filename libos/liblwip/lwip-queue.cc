@@ -242,11 +242,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rxmode.split_hdr_size = 0;
-    port_conf.rxmode.header_split = 0;
-    port_conf.rxmode.hw_ip_checksum = 1;
-    port_conf.rxmode.hw_vlan_filter = 0;
-    port_conf.rxmode.jumbo_frame = 0;
-    port_conf.rxmode.hw_strip_crc = 1;
+    port_conf.rxmode.offloads = 0;
     port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_TCP | ETH_RSS_UDP | ETH_RSS_IP | ETH_RSS_L2_PAYLOAD;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
@@ -261,7 +257,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     tx_conf.tx_thresh.wthresh = TX_WTHRESH;
     tx_conf.tx_free_thresh = 0;
     tx_conf.tx_rs_thresh = 0;
-    tx_conf.txq_flags = 0x0;
+    tx_conf.offloads = 0;
 
     if (port >= rte_eth_dev_count()) {
         printf("Warning: invalid port: %d\n", port);
