@@ -1,12 +1,15 @@
 if(NOT MTCP_DOT_CMAKE_INCLUDED)
 set(MTCP_DOT_CMAKE_INCLUDED YES)
 
+option(MTCP_BUILD "include mTCP in build (doesn't work within Azure)" ON)
+if(MTCP_BUILD)
+
 include(ExternalProject)
 include(dpdk) # we need access to DPDK-related cache variables
 
 # mTCP's fork of DPDK
-set(MTCP_DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/mtcp/dpdk-17.08)
-set(MTCP_DPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/mtcp_dpdk)
+set(MTCP_DPDK_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/mtcp/dpdk-17.08)
+set(MTCP_DPDK_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/mtcp_dpdk)
 set(MTCP_DPDK_INSTALL_DIR ${MTCP_DPDK_BINARY_DIR})
 set(MTCP_DPDK_INCLUDE_DIR ${MTCP_DPDK_INSTALL_DIR}/include/dpdk)
 set(MTCP_DPDK_LIB_DIR ${MTCP_DPDK_INSTALL_DIR}/lib)
@@ -57,4 +60,5 @@ function(target_add_mtcp TARGET)
   )
 endfunction(target_add_mtcp)
 
+endif(MTCP_BUILD)
 endif(NOT MTCP_DOT_CMAKE_INCLUDED)

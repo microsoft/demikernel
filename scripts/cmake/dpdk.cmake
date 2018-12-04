@@ -8,8 +8,8 @@ option(DPDK_USE_MELLANOX_PMD "include support for the Mellanox adaptor" OFF)
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 
 # DPDK
-set(DPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/dpdk)
-set(DPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/dpdk)
+set(DPDK_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/dpdk)
+set(DPDK_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/dpdk)
 set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR})
 set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include ${DPDK_INSTALL_DIR}/include/dpdk)
 set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
