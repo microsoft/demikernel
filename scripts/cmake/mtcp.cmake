@@ -1,7 +1,9 @@
 if(NOT MTCP_DOT_CMAKE_INCLUDED)
 set(MTCP_DOT_CMAKE_INCLUDED YES)
 
-option(MTCP_BUILD "include mTCP in build (doesn't work within Azure)" ON)
+option(MTCP_BUILD "Include mTCP in build (doesn't work within Azure)" ON)
+option(MTCP_USE_MELLANOX_PMD "Include mTCP support for the Mellanox adaptor" OFF)
+
 if(MTCP_BUILD)
 
 include(ExternalProject)
@@ -24,11 +26,11 @@ ExternalProject_Add(mtcp_dpdk
   INSTALL_COMMAND make -C ${MTCP_DPDK_SOURCE_DIR} install T=${DPDK_TARGET} DESTDIR=${MTCP_DPDK_INSTALL_DIR}
 )
 
-if(DPDK_USE_MELLANOX_PMD)
+if(MTCP_USE_MELLANOX_PMD)
   set(MTCP_DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
-else(DPDK_USE_MELLANOX_PMD)
+else(MTCP_USE_MELLANOX_PMD)
   set(MTCP_DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
-endif(DPDK_USE_MELLANOX_PMD)
+endif(MTCP_USE_MELLANOX_PMD)
 set(MTCP_DPDK_CONFIG_COMMON_BASE ${MTCP_DPDK_SOURCE_DIR}/config/common_base)
 configure_file(${MTCP_DPDK_CONFIG_COMMON_BASE}.in ${MTCP_DPDK_CONFIG_COMMON_BASE})
 

@@ -4,7 +4,7 @@ set(DPDK_DOT_CMAKE_INCLUDED YES)
 include(ExternalProject)
 include(list)
 
-option(DPDK_USE_MELLANOX_PMD "include support for the Mellanox adaptor" OFF)
+option(DPDK_USE_MELLANOX_PMD "Include DPDK support for the Mellanox adaptor" OFF)
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 
 # DPDK
