@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# to be run every time the machine is rebooted.
+
+echo 1024 | sudo tee /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages
+mkdir /mnt/huge
+mount -t hugetlbfs nodev /mnt/huge
+modprobe -a ib_uverbs
