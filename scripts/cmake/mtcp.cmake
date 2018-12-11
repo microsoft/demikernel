@@ -1,10 +1,12 @@
 if(NOT MTCP_DOT_CMAKE_INCLUDED)
 set(MTCP_DOT_CMAKE_INCLUDED YES)
 
-option(MTCP_BUILD "Include mTCP in build (doesn't work within Azure)" ON)
-option(MTCP_USE_MELLANOX_PMD "Include mTCP support for the Mellanox adaptor" OFF)
+include(azure)
 
-if(MTCP_BUILD)
+option(BUILD_MTCP "Include mTCP in build (doesn't work within Azure)" ON)
+option(MTCP_MELLANOX_SUPPORT "Include mTCP support for the Mellanox adaptor" OFF)
+
+if(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 include(ExternalProject)
 include(dpdk) # we need access to DPDK-related cache variables
@@ -26,11 +28,11 @@ ExternalProject_Add(mtcp_dpdk
   INSTALL_COMMAND make -C ${MTCP_DPDK_SOURCE_DIR} install T=${DPDK_TARGET} DESTDIR=${MTCP_DPDK_INSTALL_DIR}
 )
 
-if(MTCP_USE_MELLANOX_PMD)
+if(MTCP_MELLANOX_SUPPORT)
   set(MTCP_DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
-else(MTCP_USE_MELLANOX_PMD)
+else(MTCP_MELLANOX_SUPPORT)
   set(MTCP_DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
-endif(MTCP_USE_MELLANOX_PMD)
+endif(MTCP_MELLANOX_SUPPORT)
 set(MTCP_DPDK_CONFIG_COMMON_BASE ${MTCP_DPDK_SOURCE_DIR}/config/common_base)
 configure_file(${MTCP_DPDK_CONFIG_COMMON_BASE}.in ${MTCP_DPDK_CONFIG_COMMON_BASE})
 
@@ -62,5 +64,5 @@ function(target_add_mtcp TARGET)
   )
 endfunction(target_add_mtcp)
 
-endif(MTCP_BUILD)
+endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 endif(NOT MTCP_DOT_CMAKE_INCLUDED)

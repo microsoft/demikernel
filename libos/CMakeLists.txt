@@ -4,6 +4,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/liblwip)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/librdma)
 #add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libspdk)
 
-if(MTCP_BUILD)
+if(BUILD_MTCP AND NOT AZURE_SUPPORT)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmtcp)
-endif(MTCP_BUILD)
+endif(BUILD_MTCP AND NOT AZURE_SUPPORT)

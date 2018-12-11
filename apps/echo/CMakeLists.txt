@@ -76,7 +76,7 @@ target_link_libraries(lwip_raw_client zeus_lwip Threads::Threads)
 add_custom_target(lwip_raw)
 add_dependencies(lwip_raw lwip_raw_server lwip_raw_client)
 
-if(MTCP_BUILD)
+if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   # libMTCP server
   add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
   target_add_mtcp(mtcp_server)
@@ -104,7 +104,7 @@ if(MTCP_BUILD)
   # "raw" MTCP client & server
   add_custom_target(raw_mtcp_echo)
   add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
-endif(MTCP_BUILD)
+endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
 add_executable(rdma_server ${TCP_ECHO_SERVER_SOURCES})
