@@ -412,7 +412,7 @@ int lwip_init()
                     (char*)"1",
                     (char*)"-w",
                     (char*)"0002:00:02.0",
-                    (char*)"--vdev=\"net_vdev_netvsc0,iface=eth1\"",
+                    (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
                     (char*)""};
     int argc = 8;
 	return lwip_init(argc, argv);
