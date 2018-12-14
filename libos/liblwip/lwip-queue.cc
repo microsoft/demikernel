@@ -239,12 +239,14 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     uint16_t nb_txd = TX_RING_SIZE;
     struct rte_eth_fc_conf fc_conf;
 
+    rte_eth_dev_info_get(port, &dev_info);
+
     port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rxmode.split_hdr_size = 0;
     port_conf.rxmode.offloads = 0;
     port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
-    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_TCP | ETH_RSS_UDP | ETH_RSS_IP | ETH_RSS_L2_PAYLOAD;
+    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
@@ -269,13 +271,13 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     if (retval != 0) {
         return retval;
     }
+
 /*
     retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
         return retval;
     }
 */
-    rte_eth_dev_info_get(port, &dev_info);
 
     /* Allocate and set up 1 RX queue per Ethernet port. */
     for (q = 0; q < rx_rings; q++) {
