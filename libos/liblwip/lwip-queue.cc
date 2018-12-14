@@ -263,11 +263,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     tx_conf.tx_rs_thresh = 0;
     tx_conf.offloads = 0;
 
-    if (port >= rte_eth_dev_count()) {
-        printf("Warning: invalid port: %d\n", port);
-        return -1;
-    }
-
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
