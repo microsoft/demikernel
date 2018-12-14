@@ -84,11 +84,13 @@ struct mac2ip {
 };
 
 static struct mac2ip ip_config[] = {
-    {       { 0x24, 0x8a, 0x07, 0x50, 0x95, 0x08 },
-            0x040c0c0c,
+    // eth1 on cassance
+    {       { 0x00, 0x0d, 0x3a, 0x5d, 0xac, 0x15 },
+            ((10U << 24) | (0 << 16) | (0 << 8) | 5),
     },
-    {       { 0x24, 0x8a, 0x07, 0x50, 0x93, 0xe0 },
-            0x050c0c0c,
+    // eth1 on hightent
+    {       { 0x00, 0x0d, 0x3a, 0x72, 0xfc, 0x93 },
+            ((10U << 24) | (0 << 16) | (0 << 8) | 7),
     },
 };
 /*
@@ -402,11 +404,13 @@ lwip_init(int argc, char* argv[])
 int lwip_init()
 {
     char* argv[] = {(char*)"",
-                    (char*)"-c",
-                    (char*)"0x1",
+                    (char*)"-l",
+                    (char*)"0-3",
                     (char*)"-n",
-                    (char*)"4",
-                    (char*)"--proc-type=auto",
+                    (char*)"1",
+                    (char*)"-w",
+                    (char*)"0002:00:02.0",
+                    (char*)"--vdev=\"net_vdev_netvsc0,iface=eth1\"",
                     (char*)""};
     int argc = 6;
 	return lwip_init(argc, argv);
