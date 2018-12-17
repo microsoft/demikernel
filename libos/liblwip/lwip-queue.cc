@@ -733,7 +733,7 @@ LWIPQueue::ProcessIncoming(PendingRequest &req)
     if (likely(num_packets == 0)) {
         return;
     } else {
-        assert(num_packets == 1);
+        //assert(num_packets == 1);
         // packet layout order is (from outside -> in):
         // ether_hdr
         // ipv4_hdr
