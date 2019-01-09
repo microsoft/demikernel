@@ -1,5 +1,6 @@
 *.a
 *.so
+/.vscode/launch.json
 /build/
 
 # [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
