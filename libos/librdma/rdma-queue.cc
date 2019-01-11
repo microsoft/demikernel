@@ -173,11 +173,12 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
 	    PendingRequest *req = (PendingRequest *)wc.wr_id;
 	    // unpin completed sends
 	    //req->isDone = true;
-	    /*for (int i = 0; i < req->sga.num_bufs; i++) {
-		unpin(req->sga.bufs[i].buf);
-	    }*/
+	    for (int i = 0; i < req->sga.num_bufs; i++) {
+            Zeus::RDMA::Hoard::unpin(req->sga.bufs[i].buf);
+	    }
 	    free(req->buf);
-	    //unpin(req);
+        // todo: is the following `unpin()` operation actually necessary?
+        Zeus::RDMA::Hoard::unpin(req);
 	    delete req;
 	    break;
 	}
@@ -589,7 +590,7 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
         // add up expected packet size minus header
         totalLen += (uint64_t)sga.bufs[i].len;
         totalLen += sizeof(uint64_t);
-        //pin((void *)sga.bufs[i].buf);
+        Zeus::RDMA::Hoard::pin(sga.bufs[i].buf);
     }
 
     // fill in header
@@ -625,9 +626,9 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     Latency_End(&post_send);
     // if error
     if (res != 0) {
-        /*for (int i = 0; i < sga.num_bufs; i++) {
-            unpin(sga.bufs[i].buf);
-        }*/
+        for (int i = 0; i < sga.num_bufs; i++) {
+            Zeus::RDMA::Hoard::unpin(sga.bufs[i].buf);
+        }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         } else {
@@ -640,9 +641,11 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // fprintf(stderr, "Queued request for %d sge with total size %d\n",
     //  	    wr.num_sge, totalLen);
     // otherwise, enqueued for send but not complete
+    // todo: the following code looks suspiciously racy. should we be messing
+    // with the data after we post the send?
     req->res = dataSize;
     req->isEnqueued = true;
-    //pin(req);
+    Zeus::RDMA::Hoard::pin(req);
 }
 
 void
