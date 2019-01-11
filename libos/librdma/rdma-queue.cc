@@ -177,6 +177,7 @@ RdmaQueue::ProcessWC(struct ibv_wc &wc)
             Zeus::RDMA::Hoard::unpin(req->sga.bufs[i].buf);
 	    }
 	    free(req->buf);
+        // todo: is the following `unpin()` operation actually necessary?
         Zeus::RDMA::Hoard::unpin(req);
 	    delete req;
 	    break;
@@ -640,6 +641,8 @@ RdmaQueue::ProcessOutgoing(PendingRequest *req)
     // fprintf(stderr, "Queued request for %d sge with total size %d\n",
     //  	    wr.num_sge, totalLen);
     // otherwise, enqueued for send but not complete
+    // todo: the following code looks suspiciously racy. should we be messing
+    // with the data after we post the send?
     req->res = dataSize;
     req->isEnqueued = true;
     Zeus::RDMA::Hoard::pin(req);
