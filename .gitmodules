@@ -5,9 +5,6 @@
 [submodule "src/Hoard"]
 	path = src/Hoard
 	url = https://github.com/iyzhang/Hoard.git
-[submodule "apps/redis"]
-	path = apps/redis
-	url = https://github.com/jingliu9/redis.git
 [submodule "submodules/mtcp"]
 	path = submodules/mtcp
 	url = https://github.com/mlr-msft/mtcp.git
