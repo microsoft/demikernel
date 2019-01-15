@@ -1,5 +1,8 @@
 # RDMA libos target
 file(GLOB ZEUS_RDMA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
+# note: the libos library has to be a shared object in order to
+# support the fact that we develop in C++ but need to also support
+# applications written in C.
 add_library(zeus_rdma SHARED ${ZEUS_RDMA_SOURCES})
 target_add_hoard(zeus_rdma ${CMAKE_SOURCE_DIR}/submodules/HoardRdma)
 

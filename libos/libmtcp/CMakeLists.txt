@@ -1,6 +1,9 @@
 # MTCP libos target
 file(GLOB ZEUS_MTCP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
-add_library(zeus_mtcp STATIC ${ZEUS_MTCP_SOURCES})
+# note: the libos library has to be a shared object in order to
+# support the fact that we develop in C++ but need to also support
+# applications written in C.
+add_library(zeus_mtcp SHARED ${ZEUS_MTCP_SOURCES})
 target_add_hoard(zeus_mtcp ${CMAKE_SOURCE_DIR}/submodules/Hoard)
 target_add_mtcp(zeus_mtcp)
 

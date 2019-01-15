@@ -32,7 +32,7 @@ ExternalProject_Add(redis
     PREFIX ${REDIS_BINARY_DIR}
     SOURCE_DIR ${REDIS_SOURCE_DIR}
     CONFIGURE_COMMAND echo "No CONFIGURE_COMMAND for target `redis`"
-    BUILD_COMMAND DEMETER_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/include DEMETER_SO=$<TARGET_FILE:zeus_posix> make -C ${REDIS_SOURCE_DIR} MALLOC=libc
+    BUILD_COMMAND DEMETER_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/include DEMETER_SO=$<TARGET_FILE:zeus_posix> make -C ${REDIS_SOURCE_DIR} MALLOC=libc V=1
     INSTALL_COMMAND echo "No INSTALL_COMMAND for target `redis`"
 )
 add_dependencies(redis zeus_posix)
