@@ -20,11 +20,11 @@ set(MTCP_DPDK_LIB_DIR ${MTCP_DPDK_INSTALL_DIR}/lib)
 file(MAKE_DIRECTORY ${MTCP_DPDK_SOURCE_DIR}/${DPDK_TARGET}/include)
 file(MAKE_DIRECTORY ${MTCP_DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(MTCP_DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3")
-else(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE MATCHES "Rel")
     set(MTCP_DPDK_EXTRA_CFLAGS "-fPIC -O3")
-endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+else(CMAKE_BUILD_TYPE MATCHES "Rel")
+    set(MTCP_DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3")
+endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
 # warning: the same build flags have to be passed to both the build command
 # and the install command (or `EXTRA_CFLAGS` could be wiped out during

@@ -20,11 +20,11 @@ set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
 set(DPDK_CFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt)
 set(DPDK_LDFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3")
-else(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(CMAKE_BUILD_TYPE MATCHES "Rel")
     set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
-endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+else(CMAKE_BUILD_TYPE MATCHES "Rel")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3")
+endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
 # warning: the same build flags have to be passed to both the build command
 # and the install command (or `EXTRA_CFLAGS` could be wiped out during
