@@ -26,3 +26,6 @@
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
+[submodule "submodules/redis-rdma"]
+	path = submodules/redis-rdma
+	url = https://github.com/mlr-msft/redis.git
