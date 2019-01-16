@@ -1,5 +1,8 @@
 add_subdirectory(echo)
 
+add_redis(redis-posix zeus_posix ${CMAKE_SOURCE_DIR}/submodules/redis-posix)
+add_redis(redis-rdma zeus_rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
+
 # Tapir
 set(TAPIR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tapir)
 add_custom_target(tapir
@@ -14,8 +17,3 @@ add_custom_target(tapir-clean
     WORKING_DIRECTORY ${TAPIR_DIR}
 )
 
-# Redis
-add_custom_target(redis
-    COMMAND ZEUS_SRC_DIR=${CMAKE_SOURCE_DIR} make
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/redis
-)

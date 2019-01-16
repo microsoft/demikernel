@@ -30,12 +30,6 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
   ${ECHO_APPS_DIR}/mtcp_echo_client.cpp
   ${ECHO_APPS_DIR}/mtcp_common.cpp
 )
-set(ZEUS_LATENCY_SOURCES
-  ${CMAKE_SOURCE_DIR}/libos/common/latency.cc
-  ${CMAKE_SOURCE_DIR}/libos/common/message.cc
-  ${CMAKE_SOURCE_DIR}/libos/common/time_resolution.cc
-)
-
 # POSIX TCP server
 add_executable(posix_server  ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(posix_server zeus_posix)
@@ -63,12 +57,12 @@ add_custom_target(lwip)
 add_dependencies(lwip lwip_server lwip_client)
 
 # LWIP "raw" server
-add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
+add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES})
 target_add_dpdk(lwip_raw_server)
 target_link_libraries(lwip_raw_server zeus_lwip Threads::Threads)
 
 # LWIP "raw" client
-add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
+add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES})
 target_add_dpdk(lwip_raw_client)
 target_link_libraries(lwip_raw_client zeus_lwip Threads::Threads)
 
@@ -92,12 +86,12 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   add_dependencies(mtcp_echo mtcp_server mtcp_client)
 
   # "raw" MTCP server
-  add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES} ${ZEUS_LATENCY_SOURCES})
+  add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES})
   target_add_mtcp(raw_mtcp_server)
   target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
   # "raw" MTCP client
-  add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES} ${ZEUS_LATENCY_SOURCES})
+  add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES})
   target_add_mtcp(raw_mtcp_client)
   target_link_libraries(raw_mtcp_client Threads::Threads gmp)
 

@@ -20,12 +20,23 @@ set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
 set(DPDK_CFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt)
 set(DPDK_LDFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt)
 
+if(CMAKE_BUILD_TYPE MATCHES "Rel")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
+else(CMAKE_BUILD_TYPE MATCHES "Rel")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3")
+endif(CMAKE_BUILD_TYPE MATCHES "Rel")
+
+# warning: the same build flags have to be passed to both the build command
+# and the install command (or `EXTRA_CFLAGS` could be wiped out during
+# install).
+# note: add `V=1` to the invocation of `make` to see what the DPDK build
+# is actually doing.
 ExternalProject_Add(dpdk
     PREFIX ${DPDK_BINARY_DIR}
     SOURCE_DIR ${DPDK_SOURCE_DIR}
     CONFIGURE_COMMAND make -C ${DPDK_SOURCE_DIR} config  T=${DPDK_TARGET}
-    BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET}
-    INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR}
+    BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS}
+    INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET}  DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS}
 )
 
 # configure DPDK options.

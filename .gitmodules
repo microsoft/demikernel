@@ -5,9 +5,6 @@
 [submodule "src/Hoard"]
 	path = src/Hoard
 	url = https://github.com/iyzhang/Hoard.git
-[submodule "apps/redis"]
-	path = apps/redis
-	url = https://github.com/jingliu9/redis.git
 [submodule "submodules/mtcp"]
 	path = submodules/mtcp
 	url = https://github.com/mlr-msft/mtcp.git
@@ -26,3 +23,9 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/mlr-msft/dpdk.git
+[submodule "submodules/redis-posix"]
+	path = submodules/redis-posix
+	url = https://github.com/mlr-msft/redis.git
+[submodule "submodules/redis-rdma"]
+	path = submodules/redis-rdma
+	url = https://github.com/mlr-msft/redis.git
