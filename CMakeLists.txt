@@ -8,6 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/scripts/cmake")
 include(dpdk)
 include(hoard)
 include(mtcp)
+include(redis)
 #include(spdk)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
