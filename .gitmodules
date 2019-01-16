@@ -23,9 +23,6 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/mlr-msft/dpdk.git
-[submodule "submodules/redis"]
-	path = submodules/redis
-	url = https://github.com/mlr-msft/redis.git
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
