@@ -25,14 +25,3 @@ include_directories(
 
 add_subdirectory(libos)
 add_subdirectory(apps)
-
-set(REDIS_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/redis)
-set(REDIS_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/redis)
-ExternalProject_Add(redis
-    PREFIX ${REDIS_BINARY_DIR}
-    SOURCE_DIR ${REDIS_SOURCE_DIR}
-    CONFIGURE_COMMAND echo "No CONFIGURE_COMMAND for target `redis`"
-    BUILD_COMMAND DEMETER_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/include DEMETER_SO=$<TARGET_FILE:zeus_posix> make -C ${REDIS_SOURCE_DIR} MALLOC=libc PREFIX=${REDIS_BINARY_DIR}
-    INSTALL_COMMAND DEMETER_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/include DEMETER_SO=$<TARGET_FILE:zeus_posix> make -C ${REDIS_SOURCE_DIR} install MALLOC=libc PREFIX=${REDIS_BINARY_DIR} V=1
-)
-add_dependencies(redis zeus_posix)

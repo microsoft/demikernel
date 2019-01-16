@@ -1,4 +1,5 @@
 add_subdirectory(echo)
+add_subdirectory(redis)
 
 # Tapir
 set(TAPIR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tapir)
