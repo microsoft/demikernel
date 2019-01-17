@@ -32,11 +32,11 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
 )
 # POSIX TCP server
 add_executable(posix_server  ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(posix_server zeus_posix)
+target_link_libraries(posix_server dmtr-libos-posix)
 
 # POSIX TCP client
 add_executable(posix_client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix_client zeus_posix)
+target_link_libraries(posix_client dmtr-libos-posix)
 
 # POSIX TCP client & server
 add_custom_target(posix)
@@ -45,12 +45,12 @@ add_dependencies(posix  posix_server posix_client)
 # LWIP UDP server
 add_executable(lwip_server ${UDP_ECHO_SERVER_SOURCES})
 target_add_dpdk(lwip_server)
-target_link_libraries(lwip_server zeus_lwip Threads::Threads)
+target_link_libraries(lwip_server dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client
 add_executable(lwip_client  ${UDP_ECHO_CLIENT_SOURCES})
 target_add_dpdk(lwip_client)
-target_link_libraries(lwip_client zeus_lwip Threads::Threads)
+target_link_libraries(lwip_client dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client & server
 add_custom_target(lwip)
@@ -59,12 +59,12 @@ add_dependencies(lwip lwip_server lwip_client)
 # LWIP "raw" server
 add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES})
 target_add_dpdk(lwip_raw_server)
-target_link_libraries(lwip_raw_server zeus_lwip Threads::Threads)
+target_link_libraries(lwip_raw_server dmtr-libos-lwip Threads::Threads)
 
 # LWIP "raw" client
 add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES})
 target_add_dpdk(lwip_raw_client)
-target_link_libraries(lwip_raw_client zeus_lwip Threads::Threads)
+target_link_libraries(lwip_raw_client dmtr-libos-lwip Threads::Threads)
 
 # LWIP "raw" client & server
 add_custom_target(lwip_raw)
@@ -74,12 +74,12 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   # libMTCP server
   add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
   target_add_mtcp(mtcp_server)
-  target_link_libraries(mtcp_server zeus_mtcp Threads::Threads gmp)
+  target_link_libraries(mtcp_server dmtr-libos-mtcp Threads::Threads gmp)
 
   # libMTCP client
   add_executable(mtcp_client ${TCP_ECHO_CLIENT_SOURCES})
   target_add_mtcp(mtcp_client)
-  target_link_libraries(mtcp_client zeus_mtcp Threads::Threads gmp)
+  target_link_libraries(mtcp_client dmtr-libos-mtcp Threads::Threads gmp)
 
   # libMTCP client & server
   add_custom_target(mtcp_echo)
@@ -102,11 +102,11 @@ endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
 add_executable(rdma_server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(rdma_server zeus_rdma rdmacm ibverbs)
+target_link_libraries(rdma_server dmtr-libos-rdma rdmacm ibverbs)
 
 # RDMA client
 add_executable(rdma_client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(rdma_client zeus_rdma rdmacm ibverbs)
+target_link_libraries(rdma_client dmtr-libos-rdma rdmacm ibverbs)
 
 # RDMA client & server
 add_custom_target(rdma)

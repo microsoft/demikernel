@@ -1,2 +1,2 @@
 file(GLOB ZEUS_COMMON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
-add_library(zeus_common STATIC ${ZEUS_COMMON_SOURCES})
+add_library(dmtr-libos-common STATIC ${ZEUS_COMMON_SOURCES})
