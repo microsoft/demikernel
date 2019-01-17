@@ -4,7 +4,7 @@ file(GLOB ZEUS_LIBLWIP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 # support the fact that we develop in C++ but need to also support
 # applications written in C.
 add_library(dmtr-libos-lwip SHARED ${ZEUS_LIBLWIP_SOURCES})
-target_add_hoard(dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/Hoard)
+target_add_hoard(dmtr-libos-lwip hoard-vanilla)
 target_add_dpdk(dmtr-libos-lwip)
 target_include_directories(dmtr-libos-lwip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR} )
 

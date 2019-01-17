@@ -4,7 +4,7 @@ file(GLOB ZEUS_MTCP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cc")
 # support the fact that we develop in C++ but need to also support
 # applications written in C.
 add_library(dmtr-libos-mtcp SHARED ${ZEUS_MTCP_SOURCES})
-target_add_hoard(dmtr-libos-mtcp ${CMAKE_SOURCE_DIR}/submodules/Hoard)
+target_add_hoard(dmtr-libos-mtcp hoard-vanilla)
 target_add_mtcp(dmtr-libos-mtcp)
 
 # the `--whole-archive` option is needed to ensure that symbols such as
