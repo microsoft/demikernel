@@ -29,14 +29,12 @@ endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 # warning: the same build flags have to be passed to both the build command
 # and the install command (or `EXTRA_CFLAGS` could be wiped out during
 # install).
-# note: add `V=1` to the invocation of `make` to see what the DPDK build
-# is actually doing.
 ExternalProject_Add(dpdk
     PREFIX ${DPDK_BINARY_DIR}
     SOURCE_DIR ${DPDK_SOURCE_DIR}
     CONFIGURE_COMMAND make -C ${DPDK_SOURCE_DIR} config  T=${DPDK_TARGET}
-    BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS}
-    INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET}  DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS}
+    BUILD_COMMAND make -C ${DPDK_SOURCE_DIR} T=${DPDK_TARGET} DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS} V=1
+    INSTALL_COMMAND make -C ${DPDK_SOURCE_DIR} install T=${DPDK_TARGET}  DESTDIR=${DPDK_INSTALL_DIR} EXTRA_CFLAGS=${DPDK_EXTRA_CFLAGS} V=1
 )
 
 # configure DPDK options.

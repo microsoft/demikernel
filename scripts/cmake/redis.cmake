@@ -26,8 +26,6 @@ function(add_redis REDIS_TARGET LIBOS_TARGET REDIS_SOURCE_DIR)
         set(DEMETER_MALLOC libc)
     endif(DEFINED HOARD_TARGET)
 
-    # note: add `V=1` to the invocation of `make` to see what the redis build
-    # is actually doing.
     ExternalProject_Add(${REDIS_TARGET}
         PREFIX ${REDIS_BINARY_DIR}
         SOURCE_DIR ${REDIS_SOURCE_DIR}
