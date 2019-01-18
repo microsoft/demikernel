@@ -19,7 +19,7 @@ function(add_redis REDIS_TARGET LIBOS_TARGET REDIS_SOURCE_DIR)
         PROPERTY HOARD
     )
     if(DEFINED HOARD_TARGET)
-        message("${REDIS_TARGET} => ${LIBOS_TARGET}:HOARD=${HOARD_TARGET}")
+        #message("${REDIS_TARGET} => ${LIBOS_TARGET}:HOARD=${HOARD_TARGET}")
         ExternalProject_Get_Property(${HOARD_TARGET} SOURCE_DIR)
         set(DEMETER_MALLOC ${SOURCE_DIR}/src/libhoard.so)
     else(DEFINED HOARD_TARGET)

@@ -34,7 +34,7 @@ function(target_add_hoard TARGET HOARD_TARGET)
     TARGET ${TARGET}
     PROPERTY HOARD ${HOARD_TARGET}
   )
-  message("${TARGET}:HOARD=${HOARD_TARGET}")
+  #message("${TARGET}:HOARD=${HOARD_TARGET}")
 endfunction(target_add_hoard)
 
 add_hoard(hoard-vanilla ${CMAKE_SOURCE_DIR}/submodules/Hoard)
