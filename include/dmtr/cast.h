@@ -9,20 +9,20 @@
 extern "C" {
 #endif
 
-int dmtr_cast_itosz(size_t *to_arg, int from_arg);
-int dmtr_cast_ltoc(char *to_arg, long from_arg);
-int dmtr_cast_ltosz(size_t *to_arg, long from_arg);
-int dmtr_cast_ssztoi32(int32_t *to_arg, ssize_t from_arg);
-int dmtr_cast_sztoi16(int16_t *to_arg, size_t from_arg);
-int dmtr_cast_sztoi32(int32_t *to_arg, size_t from_arg);
-int dmtr_cast_sztoint(int *to_arg, size_t from_arg);
-int dmtr_cast_sztol(long *to_arg, size_t from_arg);
-int dmtr_cast_sztou(unsigned int *to_arg, size_t from_arg);
-int dmtr_cast_sztou32(uint32_t *to_arg, size_t from_arg);
-int dmtr_cast_ultoc(char *to_arg, unsigned long from_arg);
-int dmtr_cast_ultol(long *to_arg, unsigned long from_arg);
-int dmtr_cast_ultou(unsigned int *to_arg, unsigned long from_arg);
-int dmtr_cast_ultouc(unsigned char *to_arg, unsigned long from_arg);
+int dmtr_itosz(size_t *to_arg, int from_arg);
+int dmtr_ltoc(char *to_arg, long from_arg);
+int dmtr_ltosz(size_t *to_arg, long from_arg);
+int dmtr_ssztoi32(int32_t *to_arg, ssize_t from_arg);
+int dmtr_sztoi16(int16_t *to_arg, size_t from_arg);
+int dmtr_sztoi32(int32_t *to_arg, size_t from_arg);
+int dmtr_sztoint(int *to_arg, size_t from_arg);
+int dmtr_sztol(long *to_arg, size_t from_arg);
+int dmtr_sztou(unsigned int *to_arg, size_t from_arg);
+int dmtr_sztou32(uint32_t *to_arg, size_t from_arg);
+int dmtr_ultoc(char *to_arg, unsigned long from_arg);
+int dmtr_ultol(long *to_arg, unsigned long from_arg);
+int dmtr_ultou(unsigned int *to_arg, unsigned long from_arg);
+int dmtr_ultouc(unsigned char *to_arg, unsigned long from_arg);
 
 #ifdef __cplusplus
 }

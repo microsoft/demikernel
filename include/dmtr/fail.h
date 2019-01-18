@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-typedef void (*dmtr_fail_reporter_t)(int code_arg,
+typedef void (*dmtr_onfail_t)(int error_arg,
       const char *expr_arg, const char *funcn_arg, const char *filen_arg,
       int lineno_arg);
 
@@ -20,7 +20,7 @@ typedef void (*dmtr_fail_reporter_t)(int code_arg,
         assert(0 != ErrorCache); \
         DMTR_IFTE(\
             !(Condition), \
-            dmtr_fail_report(ErrorCache, #Condition, NULL, __FILE__, \
+            dmtr_fail(ErrorCache, #Condition, NULL, __FILE__, \
                     __LINE__); return ErrorCache, \
             DMTR_NOP()); \
    } while (0)
@@ -32,7 +32,7 @@ typedef void (*dmtr_fail_reporter_t)(int code_arg,
     do { \
         const int ErrorCache = (Error); \
         DMTR_IFTE(0 != ErrorCache, \
-            dmtr_fail_report(ErrorCache, #Error, NULL, __FILE__, \
+            dmtr_fail(ErrorCache, #Error, NULL, __FILE__, \
                     __LINE__); return ErrorCache, \
             DMTR_NOP()); \
     } while (0)
@@ -40,9 +40,9 @@ typedef void (*dmtr_fail_reporter_t)(int code_arg,
 #define DMTR_TRY(Error) \
     DMTR_FAIL_TRY2((Error), DMTR_UNIQID(DMTR_TRY_errorCache))
 
-void dmtr_fail_panic(const char *why_arg);
-void dmtr_fail_setrep(dmtr_fail_reporter_t reporter_arg);
-void dmtr_fail_report(int reply_arg, const char *expr_arg,
+void dmtr_panic(const char *why_arg);
+void dmtr_onfail(dmtr_onfail_t onfail_arg);
+void dmtr_fail(int error_arg, const char *expr_arg,
       const char *funcn_arg, const char *filen_arg, int lineno_arg);
 
 #ifdef __cplusplus

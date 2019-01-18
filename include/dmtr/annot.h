@@ -9,16 +9,14 @@
 #define DMTR_NOTNULL(Value) DMTR_EXPECT(EINVAL, NULL != (Value))
 
 #define DMTR_UNREACHABLE() \
-    do \
-    { \
-        dmtr_fail_panic("unreachable code"); \
+    do { \
+        dmtr_panic("unreachable code"); \
         return EPERM; \
-    } \
-    while (0);
+    } while (0);
 
 #define DMTR_NOFAIL(Error) \
     DMTR_IFTE(0 != (Error), \
-        dmtr_fail_panic("failure is not an option!"); DMTR_UNREACHABLE(), \
+        dmtr_panic("failure is not an option!"); DMTR_UNREACHABLE(), \
         DMTR_NOP())
 
 #endif /* DMTR_ANNOT_H_IS_INCLUDED */
