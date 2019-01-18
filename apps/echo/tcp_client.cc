@@ -30,7 +30,7 @@ int main()
     printf("client qd:\t%d\n", qd);
 
     server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "12.12.12.4", &server.sin_addr) != 1) {
+    if (inet_pton(AF_INET, "192.168.1.1", &server.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
