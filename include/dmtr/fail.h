@@ -14,7 +14,7 @@ typedef void (*dmtr_onfail_t)(int error_arg,
       const char *expr_arg, const char *funcn_arg, const char *filen_arg,
       int lineno_arg);
 
-#define DMTR_FAIL_EXPECT2(Error, Condition, ErrorCache) \
+#define DMTR_TRUE2(Error, Condition, ErrorCache) \
     do { \
         int ErrorCache = (Error); \
         assert(0 != ErrorCache); \
@@ -25,10 +25,10 @@ typedef void (*dmtr_onfail_t)(int error_arg,
             DMTR_NOP()); \
    } while (0)
 
-#define DMTR_EXPECT(Error, Condition) \
-    DMTR_FAIL_EXPECT2(Error, Condition, DMTR_EXPECT_errorCache)
+#define DMTR_TRUE(Error, Condition) \
+    DMTR_TRUE2(Error, Condition, DMTR_EXPECT_errorCache)
 
-#define DMTR_FAIL_TRY2(Error, ErrorCache) \
+#define DMTR_OK2(Error, ErrorCache) \
     do { \
         const int ErrorCache = (Error); \
         DMTR_IFTE(0 != ErrorCache, \
@@ -37,8 +37,8 @@ typedef void (*dmtr_onfail_t)(int error_arg,
             DMTR_NOP()); \
     } while (0)
 
-#define DMTR_TRY(Error) \
-    DMTR_FAIL_TRY2((Error), DMTR_UNIQID(DMTR_TRY_errorCache))
+#define DMTR_OK(Error) \
+    DMTR_OK2((Error), DMTR_UNIQID(DMTR_TRY_errorCache))
 
 void dmtr_panic(const char *why_arg);
 void dmtr_onfail(dmtr_onfail_t onfail_arg);

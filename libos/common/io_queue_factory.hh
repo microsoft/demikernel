@@ -28,8 +28,8 @@
  *
  **********************************************************************/
 
-#ifndef DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED
-#define DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED
+#ifndef DMTR_LIBOS_IO_QUEUE_FACTORY_HH_IS_INCLUDED
+#define DMTR_LIBOS_IO_QUEUE_FACTORY_HH_IS_INCLUDED
 
 #include "queue.h"
 #include <dmtr/types.h>
@@ -41,45 +41,18 @@
 
 namespace dmtr {
 
-class basic_queue : public io_queue
+class io_queue_factory
 {
-    private: class completion {
-        private: dmtr_sgarray_t my_sga;
-        private: bool my_completion_flag;
-        public: completion();
+    public: typedef int (*ctor_type)(io_queue *&q_out, int qd);
+    private: typedef std::unordered_map<enum io_queue::category_id, ctor_type> ctors_type;
 
-        public: void sga(const dmtr_sgarray_t &sga) {
-            my_sga = sga;
-        }
+    private: ctors_type my_ctors;
 
-        public: const dmtr_sgarray_t & sga() const {
-            return my_sga;
-        }
-
-        public: bool completed() const {
-            return my_completion_flag;
-        }
-
-        public: void complete() {
-            my_completion_flag = true;
-        }
-    };
-
-    private: std::unordered_map<dmtr_qtoken_t, completion *> my_completions;
-    private: std::queue<dmtr_sgarray_t> my_ready_queue;
-    private: std::condition_variable my_not_empty_cv;
-    private: std::mutex my_lock;
-
-    private: basic_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
-
-    public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
-    public: virtual int pop(dmtr_qtoken_t qt);
-    public: virtual int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
-    public: virtual int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
-    public: virtual int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: io_queue_factory();
+    public: int register_ctor(enum io_queue::category_id cid, ctor_type ctor);
+    public: int construct(io_queue *&q_out, enum io_queue::category_id cid, int qd) const;
 };
 
 } // namespace dmtr
 
-#endif /* DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED */
+#endif /* DMTR_LIBOS_IO_QUEUE_FACTORY_HH_IS_INCLUDED */

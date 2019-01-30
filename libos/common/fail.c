@@ -1,8 +1,10 @@
 #include <dmtr/fail.h>
 
 #include <dmtr/annot.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void default_onfail(int error_arg,
       const char *expr_arg, const char *fnn_arg, const char *filen_arg,
@@ -46,14 +48,13 @@ void default_onfail(int error_arg, const char *expr_arg,
     /* to my knowledge, Windows doesn't support providing the function name,
      * so i need to tolerate a NULL value for fnn_arg. */
     if (NULL == fnn_arg) {
-        n = fprintf(stderr, "FAIL %d at %s, line %d: %s\n", error_arg,
+        n = fprintf(stderr, "FAIL (%s) at %s, line %d: %s\n", strerror(error_arg),
                 filen_arg, lineno_arg, expr_arg);
         if (n < 1) {
             dmtr_panic("fprintf() failed.");
-            DMTR_UNREACHABLE();
         }
     } else {
-        n = fprintf(stderr, "FAIL %d in %s, at %s, line %d: %s\n", error_arg,
+        n = fprintf(stderr, "FAIL (%s) in %s, at %s, line %d: %s\n", strerror(error_arg),
                 fnn_arg, filen_arg, lineno_arg, expr_arg);
         if (n < 1) {
             dmtr_panic("fprintf() failed.");

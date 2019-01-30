@@ -28,111 +28,123 @@
  *
  **********************************************************************/
 #include "basic-queue.h"
-#include <assert.h>
+#include <dmtr/annot.h>
+#include <dmtr/mem.h>
 
-namespace Zeus {
-
-ssize_t
-BasicQueue::push(qtoken qt, struct sgarray &sga)
+dmtr::basic_queue::completion::completion()
 {
-    size_t len = 0;
-    std::lock_guard<std::mutex> lock(qLock);
-    if (!waiting.empty()) {
-        qtoken pop = waiting.front();
-        waiting.pop_front();
-        auto it = pending.find(pop);
-        PendingRequest *req = it->second;
-        len = req->sga.copy(sga);
-	assert(len > 0);
-        req->cv.notify_all();
-        req->isDone = true;
-    } else {
-	for (int i = 0; i < sga.num_bufs; i++) {
-	    len += sga.bufs[i].len;
-	}
-        buffer.push_back(sga);
-    }
-    //fprintf(stderr, "[%x] pushing %lx size(%ld)", qd, qt, len);
-    return len;
+    DMTR_ZEROMEM(my_sga);
 }
 
-ssize_t
-BasicQueue::flush_push(qtoken qt, struct sgarray &sga)
-{
+dmtr::basic_queue::basic_queue(int qd) :
+    io_queue(BASIC_Q, qd)
+{}
+
+int dmtr::basic_queue::new_object(io_queue *&q_out, int qd) {
+    q_out = new basic_queue(qd);
     return 0;
-}
-ssize_t
-BasicQueue::pop(qtoken qt, struct sgarray &sga) {
-    size_t len = 0;
-    std::lock_guard<std::mutex> lock(qLock);
-    // if we have a buffered push already
-    if (!buffer.empty()) {
-        len = sga.copy(buffer.front());
-        buffer.pop_front();
-    } else {
-        pending.insert(
-            std::make_pair(qt, new PendingRequest(sga)));
-        waiting.push_back(qt);
-        assert(pending.find(qt) != pending.end());
-    }
-    return len;
-}
-
-ssize_t
-BasicQueue::peek(struct sgarray &sga) {
-    size_t len = 0;
-    std::lock_guard<std::mutex> lock(qLock);
-    // if we have a buffered push already
-    if (!buffer.empty()) {
-        len = sga.copy(buffer.front());
-        buffer.pop_front();
-    }
-    return len;
-}
-
-ssize_t
-BasicQueue::wait(qtoken qt, struct sgarray &sga)
-{
-    std::unique_lock<std::mutex> lock(qLock);
-    lock.lock();
-    auto it = pending.find(qt);
-    assert(it != pending.end());
-    PendingRequest *req = it->second;
-    while (!req->isDone) {
-        req->cv.wait(lock);
-    }
-    size_t len = sga.copy(req->sga);
-    delete it->second;
-    lock.unlock();
-    delete req;
-    return len;
-}
-
-ssize_t
-BasicQueue::poll(qtoken qt, struct sgarray &sga)
-{
-    size_t len = 0;
-    std::lock_guard<std::mutex> lock(qLock);
-    auto it = pending.find(qt);
-    assert(it != pending.end());
-    PendingRequest *req = it->second;
-
-    if (req->isDone) {
-        len = sga.copy(req->sga);
-        pending.erase(it);
-        delete req;
-	assert(len > 0);
-        return len;
-    } else {
-        return 0;
-    }
-
 }
 
 int
-BasicQueue::flush(qtoken qt, int flags)
+dmtr::basic_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
+    // we invariably allocate memory here, so it's safe to move the allocation
+    // outside of the lock scope.
+    auto *req = new completion();
+    std::lock_guard<std::mutex> lock(my_lock);
+    bool was_empty = my_ready_queue.empty();
+    my_ready_queue.push(sga);
+    // push always completes immediately.
+    req->complete();
+    my_completions.insert(std::make_pair(qt, req));
+    // if anyone was waiting on an empty queue, let them know it is no longer
+    // empty.
+    if (was_empty) {
+        my_not_empty_cv.notify_all();
+    }
     return 0;
 }
 
-}// namespace Zeus
+int
+dmtr::basic_queue::pop(dmtr_qtoken_t qt) {
+    // we invariably allocate memory here, so it's safe to move the allocation
+    // outside of the lock scope.
+    auto *req = new completion();
+    std::lock_guard<std::mutex> lock(my_lock);
+    DMTR_TRUE(EEXIST, my_completions.find(qt) == my_completions.cend());
+    my_completions.insert(std::make_pair(qt, req));
+
+    return 0;
+}
+
+int
+dmtr::basic_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
+    DMTR_NOTNULL(sga_out);
+    std::lock_guard<std::mutex> lock(my_lock);
+    DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
+    auto it = my_completions.find(qt);
+    auto * const req = it->second;
+    // if we've opened the box beforehand, report the result we saw last.
+    if (req->completed()) {
+        *sga_out = it->second->sga();
+        return 0;
+    }
+
+    // if there's something to dequeue, then we can complete the `pop()`
+    // operation.
+    if (!my_ready_queue.empty()) {
+        req->sga(my_ready_queue.front());
+        my_ready_queue.pop();
+        *sga_out = it->second->sga();
+        return 0;
+    }
+
+    // the ready queue is empty-- we have nothing to peek at.
+    return EWOULDBLOCK;
+}
+
+int
+dmtr::basic_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+{
+    // we `poll()` until either the queue empties or the operation
+    // succeeds. if the queue empties, we sleep until the queue is
+    // no longer empty and continue polling.
+    std::unique_lock<std::mutex> lock(my_lock);
+    while (true) {
+        int ret = poll(sga_out, qt);
+        switch (ret) {
+            default:
+                DMTR_OK(ret);
+                DMTR_UNREACHABLE();
+            case EWOULDBLOCK:
+                my_not_empty_cv.wait(lock);
+                continue;
+            case 0:
+                return 0;
+        }
+    }
+}
+
+int
+dmtr::basic_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+{
+    std::lock_guard<std::mutex> lock(my_lock);
+    int ret = peek(sga_out, qt);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+            DMTR_UNREACHABLE();
+        case EWOULDBLOCK:
+            return ret;
+        case 0:
+            break;
+    }
+
+    // if the `peek()` succeeds, we forget the completion state.
+    auto it = my_completions.find(qt);
+    DMTR_TRUE(EPERM, it != my_completions.cend());
+    delete it->second;
+    my_completions.erase(it);
+    return 0;
+}
+

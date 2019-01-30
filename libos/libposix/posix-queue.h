@@ -28,93 +28,68 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_POSIX_QUEUE_H_
-#define _LIB_POSIX_QUEUE_H_
+#ifndef DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
+#define DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 
 #include <libos/common/queue.h>
-#include <libos/common/library.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
 
-namespace Zeus {
-namespace POSIX {
+#include <sys/socket.h>
+#include <unordered_map>
+#include <queue>
 
-class PosixQueue : public Queue {
-private:
-    struct PendingRequest {
-    public:
-        bool isDone;
-        ssize_t res;
-        // header = MAGIC, dataSize, SGA_num
-        uint64_t header[3];
-        // currently used incoming buffer
-        void *buf;
-        // number of bytes processed so far
+namespace dmtr {
+
+class posix_queue : public io_queue {
+    // todo: reorder largest to smallest.
+    private: struct pending_request {
+        bool push;
+        bool done;
+        int error;
+        dmtr_header_t header;
+        dmtr_sgarray_t sga;
         size_t num_bytes;
-        struct sgarray &sga;
-
-        PendingRequest(struct sgarray &sga) :
-            isDone(false),
-            res(0),
-            header{0,0,0},
-            buf(NULL),
-            num_bytes(0),
-            sga(sga) { };
     };
 
     // queued scatter gather arrays
-    std::unordered_map<qtoken, PendingRequest> pending;
-    std::list<std::pair<int, struct sockaddr_in>> accepts;
-    std::list<qtoken> workQ;
+    // todo: use `std::auto_ptr<>` here.
+    private: std::unordered_map<dmtr_qtoken_t, pending_request> my_pending;
+    private: std::queue<dmtr_qtoken_t> my_work_queue;
 
-    int fd;
-    bool listening = false;
-    bool connected = false;
-    bool is_tcp = true;
-    sockaddr connected_addr;
+    private: int my_fd;
+    private: bool my_listening_flag;
+    private: bool my_tcp_flag;
+    // todo: may not be needed for production code.
+    private: sockaddr *my_peer_saddr;
 
-    void ProcessIncoming(PendingRequest &req);
-    void ProcessOutgoing(PendingRequest &req);
-    void ProcessQ(size_t maxRequests);
-    ssize_t Enqueue(qtoken qt, sgarray &sga);
+    private: int process_incoming(pending_request &req);
+    private: int process_outgoing(pending_request &req);
+    private: int process_work_queue(size_t limit);
 
-public:
-    PosixQueue() : Queue(), pending(), accepts(), workQ(), listening(false) { };
-    PosixQueue(QueueType type, int qd) :
-        Queue(type, qd), pending(), accepts(), workQ(), listening(false) { };
+    private: posix_queue(int qd);
+    public: static int new_object(io_queue *&q_out, int qd);
 
     // network functions
-    int socket(int domain, int type, int protocol);
-    int getsockname(struct sockaddr *saddr, socklen_t *size);
-    int listen(int backlog);
-    int bind(struct sockaddr *saddr, socklen_t size);
-    int accept(struct sockaddr *saddr, socklen_t *size);
-    int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
-
-    // file functions
-    int open(const char *pathname, int flags);
-    int open(qtoken qt, const char *pathname, int flags);
-    int open(const char *pathname, int flags, mode_t mode);
-    int creat(const char *pathname, mode_t mode);
+    public: int socket(int domain, int type, int protocol);
+    public: int listen(int backlog);
+    public: int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: int accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd);
+    public: int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: int close();
 
     // data path functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t flush_push(qtoken qt, struct sgarray &sga);
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t peek(struct sgarray &sga);
-    ssize_t wait(qtoken qt, struct sgarray &sga);
-    ssize_t poll(qtoken qt, struct sgarray &sga);
-    int flush(qtoken qt, int flags);
-    int flush(qtoken qt, bool isclosing);
-    // returns the file descriptor associated with
-    // the queue descriptor if the queue is an io queue
-    int getfd();
-    void setfd(int fd);
+    public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
+    public: int pop(dmtr_qtoken_t qt);
+    public: int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+
+    private: static int set_tcp_nodelay(int fd);
+    private: static int set_non_blocking(int fd);
+    private: static int read(size_t &count_out, int fd, void *buf, size_t len);
+    private: static int recvfrom(size_t &count_out, int sockfd, void *buf, size_t len, int flags, void *saddr, socklen_t *addrlen);
+    private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
 };
 
-} // namespace POSIX
-} // namespace Zeus
-#endif /* _LIB_POSIX_QUEUE_H_ */
+} // namespace dmtr
+
+#endif /* DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED */

@@ -28,73 +28,57 @@
  *
  **********************************************************************/
 
-#ifndef _COMMON_QUEUE_H_
-#define _COMMON_QUEUE_H_
+#ifndef DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
+#define DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 
-#include <zeus/io-queue.h>
-#include <unordered_map>
-#include <condition_variable>
-#include <mutex>
-#include <list>
+#include <dmtr/types.h>
 
-namespace Zeus {
+#include <sys/socket.h>
 
-enum QueueType {
-    BASIC_Q,
-    NETWORK_Q,
-    FILE_Q,
-    MERGED_Q,
-    FILTERED_Q
-};
+namespace dmtr {
 
-class Queue
+class io_queue
 {
+    // todo: fix case.
+    public: enum category_id {
+        BASIC_Q,
+        NETWORK_Q,
+        FILE_Q,
+    };
 
-protected:
-    QueueType type;
-    int qd;
-    int fd;
+    protected: const category_id my_cid;
+    protected: const int my_qd;
 
-public:
-    Queue() : type(BASIC_Q), qd(0) { };
-    Queue(QueueType type, int qd) : type(type), qd(qd) { };
-    virtual ~Queue() { };
-    virtual int GetQD() { return qd; };
-    virtual QueueType GetType() { return type; };
-    virtual void SetQD(int q) { qd = q; };
-    virtual void SetType(QueueType t) { type = t; };
+    protected: io_queue(enum category_id cid, int qd);
+    public: virtual ~io_queue();
 
-    //int queue();
+    public: int qd() {
+        return my_qd;
+    };
+
+    public: enum category_id cid() {
+        return my_cid;
+    }
+
     // network control plane functions
-    virtual int socket(int domain, int type, int protocol) = 0;
-    virtual int getsockname(sockaddr *saddr, socklen_t *size) = 0;
-    virtual int listen(int backlog) = 0;
-    virtual int bind(struct sockaddr *saddr, socklen_t size) = 0;
-    virtual int accept(struct sockaddr *saddr, socklen_t *size) = 0;
-    virtual int connect(struct sockaddr *saddr, socklen_t size) = 0;
-    virtual int close() = 0;
+    // todo: move into derived class.
+    public: virtual int socket(int domain, int type, int protocol);
+    public: virtual int listen(int backlog);
+    public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd);
+    public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
-    // file control plane functions
-    virtual int open(const char *pathname, int flags) = 0;
-    virtual int open(qtoken qt, const char *pathname, int flags) = 0;
-    virtual int open(const char *pathname, int flags, mode_t mode) = 0;
-    virtual int creat(const char *pathname, mode_t mode) = 0;
+    // general control plane functions.
+    public: virtual int close();
 
     // data plane functions
-    virtual ssize_t push(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t flush_push(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t pop(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t peek(struct sgarray &sga) = 0;
-    virtual ssize_t wait(qtoken qt, struct sgarray &sga) = 0;
-    virtual ssize_t poll(qtoken qt, struct sgarray &sga) = 0;
-    virtual int flush(qtoken qt, int flags) = 0;
-
-    // returns the file descriptor associated with
-    // the queue descriptor if the queue is an io queue
-    virtual int getfd() { return fd; };
-    virtual void setfd(int fd) { this->fd = fd; };
-
+    public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;
+    public: virtual int pop(dmtr_qtoken_t qt) = 0;
+    public: virtual int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
+    public: virtual int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
+    public: virtual int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
 };
 
-} // namespace Zeus
-#endif /* _COMMON_QUEUE_H_ */
+} // namespace dmtr
+
+#endif /* DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED */

@@ -31,16 +31,16 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
   ${ECHO_APPS_DIR}/mtcp_common.cpp
 )
 # POSIX TCP server
-add_executable(posix_server  ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(posix_server dmtr-libos-posix)
+add_executable(posix-echo-server ${TCP_ECHO_SERVER_SOURCES})
+target_link_libraries(posix-echo-server dmtr-libos-posix)
 
 # POSIX TCP client
-add_executable(posix_client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix_client dmtr-libos-posix)
+add_executable(posix-echo-client ${TCP_ECHO_CLIENT_SOURCES})
+target_link_libraries(posix-echo-client dmtr-libos-posix)
 
 # POSIX TCP client & server
-add_custom_target(posix)
-add_dependencies(posix  posix_server posix_client)
+add_custom_target(posix-echo)
+add_dependencies(posix-echo  posix-echo-server posix-echo-client)
 
 # LWIP UDP server
 add_executable(lwip_server ${UDP_ECHO_SERVER_SOURCES})
