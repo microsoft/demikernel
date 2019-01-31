@@ -1,6 +1,14 @@
 Datacenter Operating system
 ===
 
+These instructions are for setting up a clean build of Demeter on a clean install of Ubuntu 18.04
+
+## Installing Mellanox drivers
+
+- Get drivers from Mellanox website: http://www.mellanox.com/page/products_dyn?product_family=26&mtag=linux
+- Run 'mlxnofed_install --upstream-libs --dpdk' for dpdk support
+- on a clean Ubuntu install, you may have to run 'apt-get install libnl-3-dev' to get the Mellanox script to complete
+- The mlxnofed script should install the RDMA library headers that are needed.  DO NOT install the RDMA ibverbs libraries from Ubuntu.
 ## Building
 
 - On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
