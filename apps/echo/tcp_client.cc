@@ -1,5 +1,5 @@
 #include <dmtr/annot.h>
-#include <dmtr/ioq.h>
+#include <dmtr/libos.h>
 #include <dmtr/mem.h>
 
 #include <arpa/inet.h>

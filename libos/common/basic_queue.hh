@@ -31,7 +31,7 @@
 #ifndef DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED
 
-#include "queue.h"
+#include "io_queue.hh"
 #include <dmtr/types.h>
 
 #include <condition_variable>

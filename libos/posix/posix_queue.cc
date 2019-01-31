@@ -28,12 +28,11 @@
  *
  **********************************************************************/
 
-#include "posix-queue.h"
-
+#include "posix_queue.hh"
 
 #include <dmtr/mem.h>
 #include <libos/common/latency.h>
-#include <libos/common/library.h>
+#include <libos/common/io_queue_api.hh>
 
 #include <arpa/inet.h>
 #include <cassert>

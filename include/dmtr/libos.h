@@ -1,5 +1,5 @@
-#ifndef DMTR_LIBOS_IOQ_H_IS_INCLUDED
-#define DMTR_LIBOS_IOQ_H_IS_INCLUDED
+#ifndef DMTR_LIBOS_H_IS_INCLUDED
+#define DMTR_LIBOS_H_IS_INCLUDED
 
 #include <dmtr/sys/gcc.h>
 #include <dmtr/types.h>
@@ -31,4 +31,4 @@ DMTR_EXPORT int dmtr_poll(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt);
 }
 #endif
 
-#endif /* DMTR_LIBOS_IOQ_H_IS_INCLUDED */
+#endif /* DMTR_LIBOS_H_IS_INCLUDED */

@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  **********************************************************************/
-#include "basic-queue.h"
+#include "basic_queue.hh"
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 

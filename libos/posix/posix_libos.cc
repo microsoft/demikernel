@@ -28,11 +28,11 @@
  *
  **********************************************************************/
 
-#include "posix-queue.h"
+#include "posix_queue.hh"
 #include <dmtr/annot.h>
-#include <dmtr/libos/ioq.h>
-#include <libos/common/basic-queue.h>
-#include <libos/common/library.h>
+#include <dmtr/libos.h>
+#include <libos/common/basic_queue.hh>
+#include <libos/common/io_queue_api.hh>
 
 #include <memory>
 

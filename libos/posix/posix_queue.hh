@@ -31,7 +31,8 @@
 #ifndef DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 
-#include <libos/common/queue.h>
+
+#include <libos/common/io_queue.hh>
 
 #include <sys/socket.h>
 #include <unordered_map>
