@@ -41,7 +41,7 @@ class io_queue
 {
     // todo: fix case.
     public: enum category_id {
-        BASIC_Q,
+        MEMORY_Q,
         NETWORK_Q,
         FILE_Q,
     };

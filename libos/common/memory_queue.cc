@@ -27,26 +27,26 @@
  * SOFTWARE.
  *
  **********************************************************************/
-#include "basic_queue.hh"
+#include "memory_queue.hh"
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 
-dmtr::basic_queue::completion::completion()
+dmtr::memory_queue::completion::completion()
 {
     DMTR_ZEROMEM(my_sga);
 }
 
-dmtr::basic_queue::basic_queue(int qd) :
-    io_queue(BASIC_Q, qd)
+dmtr::memory_queue::memory_queue(int qd) :
+    io_queue(MEMORY_Q, qd)
 {}
 
-int dmtr::basic_queue::new_object(io_queue *&q_out, int qd) {
-    q_out = new basic_queue(qd);
+int dmtr::memory_queue::new_object(io_queue *&q_out, int qd) {
+    q_out = new memory_queue(qd);
     return 0;
 }
 
 int
-dmtr::basic_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
+dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
@@ -66,7 +66,7 @@ dmtr::basic_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 }
 
 int
-dmtr::basic_queue::pop(dmtr_qtoken_t qt) {
+dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
     auto *req = new completion();
@@ -78,7 +78,7 @@ dmtr::basic_queue::pop(dmtr_qtoken_t qt) {
 }
 
 int
-dmtr::basic_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
+dmtr::memory_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
     DMTR_NOTNULL(sga_out);
     std::lock_guard<std::mutex> lock(my_lock);
     DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
@@ -104,7 +104,7 @@ dmtr::basic_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
 }
 
 int
-dmtr::basic_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+dmtr::memory_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
     // we `poll()` until either the queue empties or the operation
     // succeeds. if the queue empties, we sleep until the queue is
@@ -126,7 +126,7 @@ dmtr::basic_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 }
 
 int
-dmtr::basic_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
     std::lock_guard<std::mutex> lock(my_lock);
     int ret = peek(sga_out, qt);

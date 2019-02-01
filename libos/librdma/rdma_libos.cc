@@ -28,7 +28,7 @@
  *
  **********************************************************************/
 
-#include "posix_queue.hh"
+#include "rdma-queue.h"
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
 #include <libos/common/memory_queue.hh>
@@ -46,7 +46,7 @@ int dmtr_init(int argc, char *argv[])
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
     ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);
     ioq_api->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
-    ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::posix_queue::new_object);
+    ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::rdma_queue::new_object);
     return 0;
 }
 

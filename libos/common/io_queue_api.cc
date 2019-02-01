@@ -1,6 +1,6 @@
 #include "io_queue_api.hh"
 
-#include "basic_queue.hh"
+#include "memory_queue.hh"
 #include "latency.h"
 #include <dmtr/annot.h>
 
@@ -109,7 +109,7 @@ int dmtr::io_queue_api::queue(int &qd_out) {
     qd_out = 0;
 
     io_queue *q = NULL;
-    DMTR_OK(new_queue(q, io_queue::BASIC_Q));
+    DMTR_OK(new_queue(q, io_queue::MEMORY_Q));
     qd_out = q->qd();
     return 0;
 }

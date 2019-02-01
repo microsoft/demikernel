@@ -41,7 +41,7 @@
 
 namespace dmtr {
 
-class basic_queue : public io_queue
+class memory_queue : public io_queue
 {
     private: class completion {
         private: dmtr_sgarray_t my_sga;
@@ -70,7 +70,7 @@ class basic_queue : public io_queue
     private: std::condition_variable my_not_empty_cv;
     private: std::mutex my_lock;
 
-    private: basic_queue(int qd);
+    private: memory_queue(int qd);
     public: static int new_object(io_queue *&q_out, int qd);
 
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
