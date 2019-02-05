@@ -47,6 +47,7 @@
         "cinttypes": "cpp",
         "type_traits": "cpp",
         "typeinfo": "cpp",
-        "cassert": "cpp"
+        "cassert": "cpp",
+        "bitset": "cpp"
     }
 }
