@@ -224,12 +224,12 @@ int dmtr::posix_queue::close()
     }
 }
 
-int dmtr::posix_queue::process_incoming(task &t)
+int dmtr::posix_queue::on_recv(task &t)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, !my_listening_flag);
 
-    //printf("process_incoming qd:%d\n", qd);
+    //printf("on_recv qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (my_tcp_flag) {
         if (t.num_bytes < sizeof(t.header)) {
@@ -287,7 +287,7 @@ int dmtr::posix_queue::process_incoming(task &t)
         return 0;
     }
 
-    //fprintf(stderr, "[%x] process_incoming: first read=%ld\n", qd, count);
+    //fprintf(stderr, "[%x] on_recv: first read=%ld\n", qd, count);
     if (t.header.h_magic != DMTR_HEADER_MAGIC) {
         // not a correctly formed packet
         //fprintf(stderr, "Could not find magic %lx\n", t.header.h_magic);
@@ -357,7 +357,7 @@ int dmtr::posix_queue::process_incoming(task &t)
     return 0;
 }
 
-int dmtr::posix_queue::process_outgoing(task &t)
+int dmtr::posix_queue::on_send(task &t)
 {
     // todo: need to encode in network byte order.
     DMTR_TRUE(EINVAL, my_fd != -1);
@@ -365,7 +365,7 @@ int dmtr::posix_queue::process_outgoing(task &t)
     auto * const sga = &t.sga;
     //printf("t.num_bytes = %lu t.header[1] = %lu", t.num_bytes, t.header[1]);
     // set up header
-    //fprintf(stderr, "[%x] process_outgoing fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
+    //fprintf(stderr, "[%x] on_send fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
 
     size_t iov_len = 2 * sga->sga_numsegs + 1;
     struct iovec iov[iov_len];
@@ -431,33 +431,6 @@ int dmtr::posix_queue::process_outgoing(task &t)
     return 0;
 }
 
-int dmtr::posix_queue::process_work_queue(size_t limit)
-{
-    DMTR_TRUE(EINVAL, my_fd != -1);
-    size_t done = 0;
-
-    while (!my_work_queue.empty() && done < limit) {
-        auto qt = my_work_queue.front();
-        auto it = my_tasks.find(qt);
-
-        DMTR_TRUE(EPERM, it != my_tasks.end());
-        task * const t = &it->second;
-        if (t->push) {
-            DMTR_OK(process_outgoing(*t));
-        } else {
-            DMTR_OK(process_incoming(*t));
-        }
-
-        if (t->done) {
-            my_work_queue.pop();
-        }
-
-        ++done;
-    }
-
-    return 0;
-}
-
 int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
@@ -465,10 +438,8 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     task t = {};
-    t.push = true;
     t.sga = sga;
     my_tasks.insert(std::make_pair(qt, t));
-    my_work_queue.push(qt);
     return 0;
 }
 
@@ -479,8 +450,8 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     task t = {};
+    t.pull = true;
     my_tasks.insert(std::make_pair(qt, t));
-    my_work_queue.push(qt);
     return 0;
 }
 
@@ -490,12 +461,21 @@ int dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
 
-    process_work_queue(1);
+    if (it->second.pull) {
+        if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
+            return EAGAIN;
+        }
+
+        my_active_recv = qt;
+        on_recv(it->second);
+    } else {
+        on_send(it->second);
+    }
 
     if (it->second.done) {
         task t = it->second;
 
-        if (!t.push && t.error == 0) {
+        if (t.pull && t.error == 0) {
             DMTR_NOTNULL(sga_out);
             *sga_out = t.sga;
         }
@@ -528,6 +508,10 @@ int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
             return ret;
         case 0:
             my_tasks.erase(qt);
+            if (my_active_recv != boost::none && boost::get(my_active_recv) == qt) {
+                my_active_recv = boost::none;
+            }
+
             return 0;
     }
 }
