@@ -65,7 +65,7 @@ class io_queue
     public: virtual int socket(int domain, int type, int protocol);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd);
+    public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
     // general control plane functions.
@@ -77,6 +77,9 @@ class io_queue
     public: virtual int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
     public: virtual int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
     public: virtual int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
+
+    protected: static int set_non_blocking(int fd);
+
 };
 
 } // namespace dmtr

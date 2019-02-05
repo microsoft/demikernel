@@ -34,3 +34,17 @@ int dmtr::io_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 int dmtr::io_queue::close() {
     return 0;
 }
+
+int dmtr::io_queue::set_non_blocking(int fd) {
+    int ret = fcntl(fd, F_GETFL);
+    if (-1 == ret) {
+        return errno;
+    }
+
+    int flags = ret;
+    if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK)) {
+        return errno;
+    }
+
+    return 0;
+}

@@ -55,7 +55,6 @@ class posix_queue : public io_queue {
     // todo: use `std::auto_ptr<>` here.
     private: std::unordered_map<dmtr_qtoken_t, pending_request> my_pending;
     private: std::queue<dmtr_qtoken_t> my_work_queue;
-
     private: int my_fd;
     private: bool my_listening_flag;
     private: bool my_tcp_flag;
@@ -73,7 +72,7 @@ class posix_queue : public io_queue {
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd);
+    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
@@ -85,10 +84,11 @@ class posix_queue : public io_queue {
     public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
 
     private: static int set_tcp_nodelay(int fd);
-    private: static int set_non_blocking(int fd);
     private: static int read(size_t &count_out, int fd, void *buf, size_t len);
     private: static int recvfrom(size_t &count_out, int sockfd, void *buf, size_t len, int flags, void *saddr, socklen_t *addrlen);
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
+
+    private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
 };
 
 } // namespace dmtr
