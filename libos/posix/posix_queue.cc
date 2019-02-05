@@ -89,6 +89,8 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 int
 dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
     // Set SO_REUSEADDR
     const int n = 1;
     int ret = ::setsockopt(my_fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
@@ -114,15 +116,29 @@ dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
     }
 }
 
-int
-dmtr::posix_queue::accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd)
+int dmtr::posix_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
 {
+    int ret = accept2(q_out, saddr, addrlen, new_qd);
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (q_out != NULL) {
+        delete q_out;
+        q_out = NULL;
+    }
+    return ret;
+}
+
+int dmtr::posix_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
+{
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, my_listening_flag);
 
     auto * const q = new posix_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
 
-    int ret = ::accept4(my_fd, saddr_out, size_out, SOCK_NONBLOCK);
+    int ret = ::accept4(my_fd, saddr, addrlen, SOCK_NONBLOCK);
     if (ret == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return EAGAIN;
@@ -149,6 +165,8 @@ dmtr::posix_queue::accept(io_queue *&q_out, struct sockaddr * const saddr_out, s
 int
 dmtr::posix_queue::listen(int backlog)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
     int res = ::listen(my_fd, backlog);
     switch (res) {
         default:
@@ -167,9 +185,9 @@ dmtr::posix_queue::listen(int backlog)
     }
 }
 
-int
-dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t size)
+int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_NULL(my_peer_saddr);
 
     int res = ::connect(my_fd, saddr, size);
@@ -190,9 +208,10 @@ dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t size)
     }
 }
 
-int
-dmtr::posix_queue::close()
+int dmtr::posix_queue::close()
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
     int ret = ::close(my_fd);
     switch (ret) {
         default:
@@ -200,13 +219,14 @@ dmtr::posix_queue::close()
         case -1:
             return errno;
         case 0:
+            my_fd = -1;
             return 0;
     }
 }
 
-int
-dmtr::posix_queue::process_incoming(pending_request &req)
+int dmtr::posix_queue::process_incoming(pending_request &req)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, !my_listening_flag);
 
     //printf("process_incoming qd:%d\n", qd);
@@ -337,10 +357,10 @@ dmtr::posix_queue::process_incoming(pending_request &req)
     return 0;
 }
 
-int
-dmtr::posix_queue::process_outgoing(pending_request &req)
+int dmtr::posix_queue::process_outgoing(pending_request &req)
 {
     // todo: need to encode in network byte order.
+    DMTR_TRUE(EINVAL, my_fd != -1);
 
     auto * const sga = &req.sga;
     //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
@@ -411,9 +431,9 @@ dmtr::posix_queue::process_outgoing(pending_request &req)
     return 0;
 }
 
-int
-dmtr::posix_queue::process_work_queue(size_t limit)
+int dmtr::posix_queue::process_work_queue(size_t limit)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     size_t done = 0;
 
     while (!my_work_queue.empty() && done < limit) {
@@ -438,14 +458,13 @@ dmtr::posix_queue::process_work_queue(size_t limit)
     return 0;
 }
 
-int
-dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
+int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EINVAL, my_pending.find(qt) == my_pending.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    pending_request req;
-    DMTR_ZEROMEM(req);
+    pending_request req = {};
     req.push = true;
     req.sga = sga;
     my_pending.insert(std::make_pair(qt, req));
@@ -453,22 +472,21 @@ dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     return 0;
 }
 
-int
-dmtr::posix_queue::pop(dmtr_qtoken_t qt)
+int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EINVAL, my_pending.find(qt) == my_pending.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    pending_request req;
-    DMTR_ZEROMEM(req);
+    pending_request req = {};
     my_pending.insert(std::make_pair(qt, req));
     my_work_queue.push(qt);
     return 0;
 }
 
-int
-dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
     auto it = my_pending.find(qt);
     DMTR_TRUE(EINVAL, it != my_pending.cend());
 
@@ -488,9 +506,10 @@ dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     return EAGAIN;
 }
 
-int
-dmtr::posix_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
     int ret = EAGAIN;
     while (EAGAIN == ret) {
         ret = poll(sga_out, qt);
@@ -499,9 +518,10 @@ dmtr::posix_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     return ret;
 }
 
-int
-dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
     int ret = peek(sga_out, qt);
     switch (ret) {
         default:
@@ -523,19 +543,11 @@ dmtr::posix_queue::set_tcp_nodelay(int fd)
     return 0;
 }
 
-int
-dmtr::posix_queue::set_non_blocking(int fd) {
-    if (-1 == fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-        return errno;
-    }
-
-    return 0;
-}
-
 int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
     count_out = 0;
     DMTR_NOTNULL(buf);
     DMTR_TRUE(ERANGE, len <= SSIZE_MAX);
+
     Latency_Start(&dev_read_latency);
     int ret = ::read(fd, buf, len);
     Latency_End(&dev_read_latency);
@@ -550,8 +562,9 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
 }
 
 int dmtr::posix_queue::recvfrom(size_t &count_out, int sockfd, void *buf, size_t len, int flags, void *saddr, socklen_t *addrlen) {
-    count_out = 0;
     DMTR_TRUE(EINVAL, addrlen == NULL || sizeof(struct sockaddr) <= *addrlen);
+    count_out = 0;
+
     Latency_Start(&dev_read_latency);
     int ret = ::recvfrom(sockfd, buf, len, flags, reinterpret_cast<struct sockaddr *>(saddr), addrlen);
     Latency_End(&dev_read_latency);
