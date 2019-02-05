@@ -8,8 +8,6 @@
 extern "C" {
 #endif
 
-#define DMTR_ZEROMEM(Ob) memset(&(Ob), 0, sizeof(Ob))
-
 int dmtr_malloc(void **ptr_out, size_t bytes);
 
 #ifdef __cplusplus

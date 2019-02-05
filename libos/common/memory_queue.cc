@@ -31,10 +31,9 @@
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 
-dmtr::memory_queue::completion::completion()
-{
-    DMTR_ZEROMEM(my_sga);
-}
+dmtr::memory_queue::completion::completion() :
+    my_sga{}
+{}
 
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)

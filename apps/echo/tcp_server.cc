@@ -22,8 +22,7 @@ int main()
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
     printf("listen qd:\t%d\n", lqd);
 
-    struct sockaddr_in saddr;
-    DMTR_ZEROMEM(saddr);
+    struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     saddr.sin_addr.s_addr = INADDR_ANY;
     saddr.sin_port = htons(PORT);
@@ -33,8 +32,7 @@ int main()
     DMTR_OK(dmtr_listen(lqd, 3));
 
     int qd = 0;
-    struct sockaddr_in paddr;
-    DMTR_ZEROMEM(paddr);
+    struct sockaddr_in paddr = {};
     socklen_t paddrsz = sizeof(struct sockaddr_in);
     int err = EAGAIN;
     while (err == EAGAIN) {
@@ -46,8 +44,7 @@ int main()
 
     // process ITERATION_COUNT packets from client
     for (int i = 0; i < ITERATION_COUNT; i++) {
-        dmtr_sgarray_t sga;
-        DMTR_ZEROMEM(sga);
+        dmtr_sgarray_t sga = {};
         dmtr_qtoken_t qt = 0;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&sga, qt));

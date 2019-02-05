@@ -30,8 +30,7 @@ int main()
     saddr.sin_port = htons(PORT);
     DMTR_OK(dmtr_connect(qd, (struct sockaddr*)&saddr, sizeof(saddr)));
 
-    dmtr_sgarray_t sga;
-    DMTR_ZEROMEM(sga);
+    dmtr_sgarray_t sga = {};
     void *p = NULL;
     DMTR_OK(dmtr_malloc(&p, BUFFER_SIZE));
     memset(p, FILL_CHAR, BUFFER_SIZE);
