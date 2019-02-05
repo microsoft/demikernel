@@ -119,12 +119,15 @@ dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 int dmtr::posix_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
 {
     int ret = accept2(q_out, saddr, addrlen, new_qd);
-    if (0 != ret && q_out != NULL) {
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (q_out != NULL) {
         delete q_out;
         q_out = NULL;
     }
-
-    return 0;
+    return ret;
 }
 
 int dmtr::posix_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
@@ -221,50 +224,50 @@ int dmtr::posix_queue::close()
     }
 }
 
-int dmtr::posix_queue::process_incoming(pending_request &req)
+int dmtr::posix_queue::on_recv(task &t)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, !my_listening_flag);
 
-    //printf("process_incoming qd:%d\n", qd);
+    //printf("on_recv qd:%d\n", qd);
     // if we don't have a full header in our buffer, then get one
     if (my_tcp_flag) {
-        if (req.num_bytes < sizeof(req.header)) {
+        if (t.num_bytes < sizeof(t.header)) {
             // note: in TCP mode, we read the header directly into
-            // `req.header`. in UDP mode, we read into `req.buf` and
-            // then copy the information over to `req.header`.
-            uint8_t *p = reinterpret_cast<uint8_t *>(&req.header) + req.num_bytes;
-            size_t len = sizeof(req.header) - req.num_bytes;
+            // `t.header`. in UDP mode, we read into `t.buf` and
+            // then copy the information over to `t.header`.
+            uint8_t *p = reinterpret_cast<uint8_t *>(&t.header) + t.num_bytes;
+            size_t len = sizeof(t.header) - t.num_bytes;
             size_t count = 0;
             int err = read(count, my_fd, p, len);
             switch (err) {
                 default:
-                    req.done = true;
-                    req.error = err;
+                    t.done = true;
+                    t.error = err;
                     return 0;
                 case EAGAIN:
                     return 0;
                 case 0:
-                    req.num_bytes += count;
+                    t.num_bytes += count;
                     break;
             }
         }
     } else {
-        DMTR_TRUE(EPERM, req.sga.sga_buf == NULL);
-        DMTR_TRUE(EPERM, req.sga.sga_addr == NULL);
+        DMTR_TRUE(EPERM, t.sga.sga_buf == NULL);
+        DMTR_TRUE(EPERM, t.sga.sga_addr == NULL);
 
-        req.sga.sga_addrlen = sizeof(struct sockaddr_in);
-        DMTR_OK(dmtr_malloc(&req.sga.sga_buf, 1024));
+        t.sga.sga_addrlen = sizeof(struct sockaddr_in);
+        DMTR_OK(dmtr_malloc(&t.sga.sga_buf, 1024));
         void *p = NULL;
-        DMTR_OK(dmtr_malloc(&p, req.sga.sga_addrlen));
-        req.sga.sga_addr = reinterpret_cast<struct sockaddr *>(p);
+        DMTR_OK(dmtr_malloc(&p, t.sga.sga_addrlen));
+        t.sga.sga_addr = reinterpret_cast<struct sockaddr *>(p);
 
         size_t count;
-        int err = recvfrom(count, my_fd, req.sga.sga_buf, 1024, 0, req.sga.sga_addr, &req.sga.sga_addrlen);
+        int err = recvfrom(count, my_fd, t.sga.sga_buf, 1024, 0, t.sga.sga_addr, &t.sga.sga_addrlen);
         switch (err) {
             default:
-                req.done = true;
-                req.error = err;
+                t.done = true;
+                t.error = err;
                 return 0;
             case EAGAIN:
                 return 0;
@@ -272,58 +275,58 @@ int dmtr::posix_queue::process_incoming(pending_request &req)
                 break;
         }
 
-        req.num_bytes = count;
-        memcpy(&req.header, req.sga.sga_buf, sizeof(req.header));
+        t.num_bytes = count;
+        memcpy(&t.header, t.sga.sga_buf, sizeof(t.header));
     }
 
-    if (req.num_bytes < sizeof(req.header)) {
-        req.done = true;
+    if (t.num_bytes < sizeof(t.header)) {
+        t.done = true;
         // if we haven't read any bytes, it's a sign that the connection
         // was dropped.
-        req.error = req.num_bytes == 0 ? ECONNABORTED : EPROTO;
+        t.error = t.num_bytes == 0 ? ECONNABORTED : EPROTO;
         return 0;
     }
 
-    //fprintf(stderr, "[%x] process_incoming: first read=%ld\n", qd, count);
-    if (req.header.h_magic != DMTR_HEADER_MAGIC) {
+    //fprintf(stderr, "[%x] on_recv: first read=%ld\n", qd, count);
+    if (t.header.h_magic != DMTR_HEADER_MAGIC) {
         // not a correctly formed packet
-        //fprintf(stderr, "Could not find magic %lx\n", req.header.h_magic);
-        req.done = true;
-        req.error = EILSEQ;
+        //fprintf(stderr, "Could not find magic %lx\n", t.header.h_magic);
+        t.done = true;
+        t.error = EILSEQ;
         return 0;
     }
 
-    size_t data_len = req.header.h_bytes;
+    size_t data_len = t.header.h_bytes;
     if (my_tcp_flag) {
         // now we'll allocate a buffer
-        if (req.sga.sga_buf == NULL) {
-            DMTR_OK(dmtr_malloc(&req.sga.sga_buf, data_len));
+        if (t.sga.sga_buf == NULL) {
+            DMTR_OK(dmtr_malloc(&t.sga.sga_buf, data_len));
         }
 
         // grab the rest of the packet
-        if (req.num_bytes < sizeof(req.header) + data_len) {
-            size_t offset = req.num_bytes - sizeof(req.header);
-            uint8_t *p = reinterpret_cast<uint8_t *>(req.sga.sga_buf) + offset;
+        if (t.num_bytes < sizeof(t.header) + data_len) {
+            size_t offset = t.num_bytes - sizeof(t.header);
+            uint8_t *p = reinterpret_cast<uint8_t *>(t.sga.sga_buf) + offset;
             size_t len = data_len - offset;
             size_t count = 0;
             int err = read(count, my_fd, p, len);
             //fprintf(stderr, "[%x] Next read size=%ld\n", qd, count);
             switch (err) {
                 default:
-                    req.done = true;
-                    req.error = err;
+                    t.done = true;
+                    t.error = err;
                     return 0;
                 case EAGAIN:
                     return 0;
                 case 0:
-                    req.done = (0 == count);
-                    req.num_bytes += count;
+                    t.done = (0 == count);
+                    t.num_bytes += count;
                     break;
             }
 
-            if (req.num_bytes < sizeof(req.header) + data_len) {
-                if (req.done) {
-                    req.error = EPROTO;
+            if (t.num_bytes < sizeof(t.header) + data_len) {
+                if (t.done) {
+                    t.error = EPROTO;
                 }
 
                 return 0;
@@ -333,36 +336,36 @@ int dmtr::posix_queue::process_incoming(pending_request &req)
     }
 
     // now we have the whole buffer, start filling sga
-    uint8_t *p = reinterpret_cast<uint8_t *>(req.sga.sga_buf);
+    uint8_t *p = reinterpret_cast<uint8_t *>(t.sga.sga_buf);
     if (!my_tcp_flag) {
-        p += sizeof(req.header);
+        p += sizeof(t.header);
     }
-    req.sga.sga_numsegs = req.header.h_sgasegs;
+    t.sga.sga_numsegs = t.header.h_sgasegs;
     size_t len = 0;
-    for (size_t i = 0; i < req.sga.sga_numsegs; ++i) {
+    for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
         size_t seglen = *reinterpret_cast<uint32_t *>(p);
-        req.sga.sga_segs[i].sgaseg_len = seglen;
-        //printf("[%x] sga len= %ld\n", qd, req.sga.bufs[i].len);
+        t.sga.sga_segs[i].sgaseg_len = seglen;
+        //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
         p += sizeof(uint32_t);
-        req.sga.sga_segs[i].sgaseg_buf = p;
+        t.sga.sga_segs[i].sgaseg_buf = p;
         p += seglen;
         len += seglen;
     }
 
-    req.done = true;
-    //fprintf(stderr, "[%x] message length=%ld\n", qd, req.res);
+    t.done = true;
+    //fprintf(stderr, "[%x] message length=%ld\n", qd, t.res);
     return 0;
 }
 
-int dmtr::posix_queue::process_outgoing(pending_request &req)
+int dmtr::posix_queue::on_send(task &t)
 {
     // todo: need to encode in network byte order.
     DMTR_TRUE(EINVAL, my_fd != -1);
 
-    auto * const sga = &req.sga;
-    //printf("req.num_bytes = %lu req.header[1] = %lu", req.num_bytes, req.header[1]);
+    auto * const sga = &t.sga;
+    //printf("t.num_bytes = %lu t.header[1] = %lu", t.num_bytes, t.header[1]);
     // set up header
-    //fprintf(stderr, "[%x] process_outgoing fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
+    //fprintf(stderr, "[%x] on_send fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
 
     size_t iov_len = 2 * sga->sga_numsegs + 1;
     struct iovec iov[iov_len];
@@ -401,8 +404,8 @@ int dmtr::posix_queue::process_outgoing(pending_request &req)
     int err = writev(count, my_fd, iov, iov_len);
     switch (err) {
         default:
-            req.done = true;
-            req.error = err;
+            t.done = true;
+            t.error = err;
             return 0;
         case EAGAIN:
             // we'll try again later.
@@ -412,8 +415,8 @@ int dmtr::posix_queue::process_outgoing(pending_request &req)
     }
 
     if (count < total_len) {
-        req.done = true;
-        req.error = ENOTSUP;
+        t.done = true;
+        t.error = ENOTSUP;
         return 0;
     }
 
@@ -423,83 +426,61 @@ int dmtr::posix_queue::process_outgoing(pending_request &req)
 
     // count == total_len
     //fprintf(stderr, "[%x] Sending message datasize=%ld totalsize=%ld\n", qd, data_size, total_len);
-    req.done = true;
-    req.num_bytes = count;
-    return 0;
-}
-
-int dmtr::posix_queue::process_work_queue(size_t limit)
-{
-    DMTR_TRUE(EINVAL, my_fd != -1);
-    size_t done = 0;
-
-    while (!my_work_queue.empty() && done < limit) {
-        auto qt = my_work_queue.front();
-        auto it = my_pending.find(qt);
-
-        DMTR_TRUE(EPERM, it != my_pending.end());
-        pending_request * const req = &it->second;
-        if (req->push) {
-            DMTR_OK(process_outgoing(*req));
-        } else {
-            DMTR_OK(process_incoming(*req));
-        }
-
-        if (req->done) {
-            my_work_queue.pop();
-        }
-
-        ++done;
-    }
-
+    t.done = true;
+    t.num_bytes = count;
     return 0;
 }
 
 int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
-    DMTR_TRUE(EINVAL, my_pending.find(qt) == my_pending.cend());
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    pending_request req;
-    DMTR_ZEROMEM(req);
-    req.push = true;
-    req.sga = sga;
-    my_pending.insert(std::make_pair(qt, req));
-    my_work_queue.push(qt);
+    task t = {};
+    t.sga = sga;
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
 int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
-    DMTR_TRUE(EINVAL, my_pending.find(qt) == my_pending.cend());
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    pending_request req;
-    DMTR_ZEROMEM(req);
-    my_pending.insert(std::make_pair(qt, req));
-    my_work_queue.push(qt);
+    task t = {};
+    t.pull = true;
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
 int dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
-    auto it = my_pending.find(qt);
-    DMTR_TRUE(EINVAL, it != my_pending.cend());
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(EINVAL, it != my_tasks.cend());
 
-    process_work_queue(1);
-
-    if (it->second.done) {
-        pending_request req = it->second;
-
-        if (!req.push && req.error == 0) {
-            DMTR_NOTNULL(sga_out);
-            *sga_out = req.sga;
+    if (it->second.pull) {
+        if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
+            return EAGAIN;
         }
 
-        return req.error;
+        my_active_recv = qt;
+        on_recv(it->second);
+    } else {
+        on_send(it->second);
+    }
+
+    if (it->second.done) {
+        task t = it->second;
+
+        if (t.pull && t.error == 0) {
+            DMTR_NOTNULL(sga_out);
+            *sga_out = t.sga;
+        }
+
+        return t.error;
     }
 
     return EAGAIN;
@@ -526,7 +507,11 @@ int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         default:
             return ret;
         case 0:
-            my_pending.erase(qt);
+            my_tasks.erase(qt);
+            if (my_active_recv != boost::none && boost::get(my_active_recv) == qt) {
+                my_active_recv = boost::none;
+            }
+
             return 0;
     }
 }

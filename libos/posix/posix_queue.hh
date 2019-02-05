@@ -34,16 +34,17 @@
 
 #include <libos/common/io_queue.hh>
 
+#include <boost/optional.hpp>
+#include <queue>
 #include <sys/socket.h>
 #include <unordered_map>
-#include <queue>
 
 namespace dmtr {
 
 class posix_queue : public io_queue {
     // todo: reorder largest to smallest.
-    private: struct pending_request {
-        bool push;
+    private: struct task {
+        bool pull;
         bool done;
         int error;
         dmtr_header_t header;
@@ -53,17 +54,16 @@ class posix_queue : public io_queue {
 
     // queued scatter gather arrays
     // todo: use `std::auto_ptr<>` here.
-    private: std::unordered_map<dmtr_qtoken_t, pending_request> my_pending;
-    private: std::queue<dmtr_qtoken_t> my_work_queue;
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
+    private: boost::optional<dmtr_qtoken_t> my_active_recv;
     private: int my_fd;
     private: bool my_listening_flag;
     private: bool my_tcp_flag;
     // todo: may not be needed for production code.
     private: sockaddr *my_peer_saddr;
 
-    private: int process_incoming(pending_request &req);
-    private: int process_outgoing(pending_request &req);
-    private: int process_work_queue(size_t limit);
+    private: int on_recv(task &t);
+    private: int on_send(task &t);
 
     private: posix_queue(int qd);
     public: static int new_object(io_queue *&q_out, int qd);
