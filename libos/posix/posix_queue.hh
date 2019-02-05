@@ -42,7 +42,7 @@ namespace dmtr {
 
 class posix_queue : public io_queue {
     // todo: reorder largest to smallest.
-    private: struct pending_request {
+    private: struct task {
         bool push;
         bool done;
         int error;
@@ -53,7 +53,7 @@ class posix_queue : public io_queue {
 
     // queued scatter gather arrays
     // todo: use `std::auto_ptr<>` here.
-    private: std::unordered_map<dmtr_qtoken_t, pending_request> my_pending;
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     private: std::queue<dmtr_qtoken_t> my_work_queue;
     private: int my_fd;
     private: bool my_listening_flag;
@@ -61,8 +61,8 @@ class posix_queue : public io_queue {
     // todo: may not be needed for production code.
     private: sockaddr *my_peer_saddr;
 
-    private: int process_incoming(pending_request &req);
-    private: int process_outgoing(pending_request &req);
+    private: int process_incoming(task &t);
+    private: int process_outgoing(task &t);
     private: int process_work_queue(size_t limit);
 
     private: posix_queue(int qd);
