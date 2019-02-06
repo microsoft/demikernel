@@ -159,7 +159,16 @@ int dmtr::rdma_queue::service_event_queue() {
 
     Latency_Start(&poll_eventcq_latency);
     struct rdma_cm_event *event = NULL;
-    DMTR_OK(rdma_get_cm_event(event, my_rdma_id->channel));
+    int ret = rdma_get_cm_event(event, my_rdma_id->channel);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+        case 0:
+            break;
+        case EAGAIN:
+            return EAGAIN;
+    }
+
     switch(event->event) {
         default:
             fprintf(stderr, "Unrecognized event: 0x%x\n", event->event);
@@ -187,6 +196,8 @@ int dmtr::rdma_queue::service_event_queue() {
 
 int dmtr::rdma_queue::socket(int domain, int type, int protocol)
 {
+    DMTR_NULL(my_rdma_id);
+
     struct rdma_event_channel *channel = NULL;
     DMTR_OK(rdma_create_event_channel(channel));
 
@@ -230,9 +241,6 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
     DMTR_NOTNULL(my_rdma_id);
     DMTR_TRUE(EPERM, my_listening_flag);
 
-    auto * const q = new rdma_queue(new_qd);
-    DMTR_TRUE(ENOMEM, q != NULL);
-
     struct rdma_cm_id *new_rdma_id = NULL;
     int ret = pop_accept(new_rdma_id);
     switch (ret) {
@@ -244,6 +252,8 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
             return EAGAIN;
     }
 
+    auto * const q = new rdma_queue(new_qd);
+    DMTR_TRUE(ENOMEM, q != NULL);
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
@@ -273,7 +283,7 @@ int dmtr::rdma_queue::listen(int backlog)
     DMTR_NOTNULL(my_rdma_id);
 
     set_non_blocking(my_rdma_id->channel->fd);
-    DMTR_OK(rdma_listen(my_rdma_id, 10));
+    DMTR_OK(rdma_listen(my_rdma_id, backlog));
     my_listening_flag = true;
     return 0;
 }
@@ -532,7 +542,16 @@ int dmtr::rdma_queue::pop_accept(struct rdma_cm_id *&id_out) {
     id_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
 
-    DMTR_OK(service_event_queue());
+    int ret = service_event_queue();
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+        case 0:
+            break;
+        case EAGAIN:
+            break;
+    }
+
     if (my_accepts.empty()) {
         return EAGAIN;
     }
@@ -579,7 +598,7 @@ int dmtr::rdma_queue::rdma_bind_addr(struct rdma_cm_id * const id, const struct 
 }
 
 int dmtr::rdma_queue::rdma_listen(struct rdma_cm_id * const id, int backlog) {
-    int ret = rdma_listen(id, backlog);
+    int ret = ::rdma_listen(id, backlog);
     switch (ret) {
         default:
             DMTR_UNREACHABLE();
@@ -647,7 +666,11 @@ int dmtr::rdma_queue::rdma_get_cm_event(struct rdma_cm_event *&event_out, struct
             DMTR_UNREACHABLE();
         case -1:
             event_out = NULL;
-            return errno;
+            if (EAGAIN == ret || EWOULDBLOCK == ret) {
+                return EAGAIN;
+            } else {
+                return errno;
+            }
         case 0:
             return 0;
     }
