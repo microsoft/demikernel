@@ -54,6 +54,8 @@ DEFINE_LATENCY(poll_recvcq_latency);
 DEFINE_LATENCY(poll_eventcq_latency);
 DEFINE_LATENCY(rdma_parse_latency);
 
+struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
+
 dmtr::rdma_queue::task::task() :
     pull(false),
     done(false),
@@ -78,8 +80,6 @@ dmtr::rdma_queue::~rdma_queue()
 int dmtr::rdma_queue::setup_rdma_qp()
 {
     DMTR_TRUE(EPERM, !my_listening_flag);
-
-    int flags;
 
     // obtain the protection domain
     struct ibv_pd *pd = NULL;
@@ -312,7 +312,7 @@ int dmtr::rdma_queue::close()
 
     DMTR_OK(rdma_destroy_qp(my_rdma_id));
     DMTR_OK(ibv_dealloc_pd(my_rdma_id->pd));
-    rdma_event_channel * const channel = my_rdma_id->channel;
+    rdma_event_channel *channel = my_rdma_id->channel;
     DMTR_OK(rdma_destroy_id(my_rdma_id));
     DMTR_OK(rdma_destroy_event_channel(channel));
 
@@ -399,10 +399,9 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     }
 
     // fill in header
-    dmtr_header_t header;
-    header.h_magic = DMTR_HEADER_MAGIC;
-    header.h_bytes = total_len;
-    header.h_sgasegs = sga.sga_numsegs;
+    t->header.h_magic = DMTR_HEADER_MAGIC;
+    t->header.h_bytes = total_len;
+    t->header.h_sgasegs = sga.sga_numsegs;
 
     // set up header at beginning of packet
     sge[0].addr = reinterpret_cast<uint64_t>(&t->header);
@@ -559,7 +558,7 @@ int dmtr::rdma_queue::rdma_create_id(struct rdma_cm_id *&id_out, struct rdma_eve
     switch (ret) {
         default:
             DMTR_UNREACHABLE();
-        case 0;
+        case 0:
             return 0;
         case -1:
             return errno;
@@ -598,15 +597,8 @@ int dmtr::rdma_queue::rdma_destroy_qp(struct rdma_cm_id * const id) {
         return 0;
     }
 
-    int ret = ::rdma_destroy_qp(id);
-    switch (ret) {
-        default:
-            DMTR_UNREACHABLE();
-        case -1:
-            return errno;
-        case 0:
-            return 0;
-    }
+    ::rdma_destroy_qp(id);
+    return 0;
 }
 
 int dmtr::rdma_queue::rdma_destroy_id(struct rdma_cm_id *&id) {

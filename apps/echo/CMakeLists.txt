@@ -101,13 +101,13 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
 endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
-add_executable(rdma_server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(rdma_server dmtr-libos-rdma rdmacm ibverbs)
+add_executable(rdma-echo-server ${TCP_ECHO_SERVER_SOURCES})
+target_link_libraries(rdma-echo-server dmtr-libos-rdma rdmacm ibverbs)
 
 # RDMA client
-add_executable(rdma_client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(rdma_client dmtr-libos-rdma rdmacm ibverbs)
+add_executable(rdma-echo-client ${TCP_ECHO_CLIENT_SOURCES})
+target_link_libraries(rdma-echo-client dmtr-libos-rdma rdmacm ibverbs)
 
 # RDMA client & server
-add_custom_target(rdma)
-add_dependencies(rdma rdma_server rdma_client)
+add_custom_target(rdma-echo)
+add_dependencies(rdma-echo rdma-echo-server rdma-echo-client)
