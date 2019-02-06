@@ -29,6 +29,7 @@
  **********************************************************************/
 
 #include "posix_queue.hh"
+
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
 #include <libos/common/memory_queue.hh>

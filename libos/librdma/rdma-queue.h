@@ -2,7 +2,7 @@
 /***********************************************************************
  *
  * libos/rdma/rdma-queue.h
- *   RDMA implementation of the Zeus io-queue interface
+ *   RDMA implementation of the dmtr io-queue interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -28,105 +28,98 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_RDMA_QUEUE_H
-#define _LIB_RDMA_QUEUE_H_
+#ifndef DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
+#define DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 
-#include <zeus/io-queue.h>
-#include <libos/common/queue.h>
-#include <list>
+#include <libos/common/io_queue.hh>
+
+#include <queue>
 #include <unordered_map>
 #include <rdma/rdma_cma.h>
 
-#define RECV_BUFFER_SIZE 1024
-#define RECV_BUFFER_NUM 4
+namespace dmtr {
 
-namespace Zeus {
-namespace RDMA {
+class rdma_queue : public io_queue {
+    private: struct task {
+        bool pull;
+        bool done;
+        int error;
+        dmtr_header_t header;
+        dmtr_sgarray_t sga;
+        size_t byte_len;
 
-class RdmaQueue : public Queue {
-private:
-    struct PendingRequest {
-        bool isEnqueued;
-        bool isDone;
-        uint64_t header[3];
-        // valid data size when done
-        ssize_t res;
-        // rdma buffer for receive
-        void *buf;
-        // scatter gather array
-        struct sgarray sga;
-
-        PendingRequest(struct sgarray &sga) :
-            isEnqueued(false),
-            isDone(false),
-            res(0),
-            buf(NULL),
-            sga(sga) { };
+        task();
     };
 
+    private: const size_t recv_buf_size = 1024;
+
     // queued scatter gather arrays
-    std::list<void *> pendingRecv;
-    std::unordered_map<qtoken, PendingRequest*> pending;
-    std::list<struct rdma_cm_id *> accepts;
-    std::list<qtoken> workQ;
+    private: std::unordered_map<dmtr_qtoken_t, task *> my_tasks;
+    private: std::queue<struct rdma_cm_id *> my_accepts;
 
     // rdma data structures
     // connection manager for this connection queue
-    struct rdma_cm_id *rdma_id = NULL;
-    bool listening = false;
-    bool closed = false;
+    private: static struct ibv_pd *our_pd;
+    private: struct rdma_cm_id *my_rdma_id = NULL;
+    private: bool my_listening_flag;
 
-    int PostReceive();
-    void ProcessIncoming(PendingRequest *req);
-    void ProcessOutgoing(PendingRequest *req);
-    void ProcessQ(size_t maxRequests);
-    void CheckEventQ();
-    void CheckRecvCQ();
-    void CheckSendCQ();
-    void ProcessWC(ibv_wc &wc);
-    ssize_t Enqueue(qtoken qt, sgarray &sga);
-    int SetupRdmaQP();
+    private: int on_recv_completed(task &t);
+    private: int service_event_queue();
+    private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
+    private: int on_work_completed(const struct ibv_wc &wc);
+    private: int setup_rdma_qp();
 
-public:
-    RdmaQueue() : Queue(), workQ{} { };
-    RdmaQueue(QueueType type, int qd) :
-        Queue(type, qd), workQ{}  { };
-    ~RdmaQueue() { };
+    private: rdma_queue(int qd);
+    public: static int new_object(io_queue *&q_out, int qd);
+
+    public: virtual ~rdma_queue();
 
     // network functions
-    int socket(int domain, int type, int protocol);
-    int getsockname(struct sockaddr *saddr, socklen_t *size);
-    int listen(int backlog);
-    int bind(struct sockaddr *saddr, socklen_t size);
-    int accept(struct sockaddr *saddr, socklen_t *size);
-    int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
-    // rdma specific set up
-    int rdmaconnect(struct rdma_cm_id *id);
-
-    // file functions
-    int open(const char *pathname, int flags);
-    int open(qtoken qt, const char *pathname, int flags);
-    int open(const char *pathname, int flags, mode_t mode);
-    int creat(const char *pathname, mode_t mode);
+    public: int socket(int domain, int type, int protocol);
+    public: int listen(int backlog);
+    public: int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: int close();
 
     // data path functions
-    ssize_t push(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t flush_push(qtoken qt, struct sgarray &sga);
-    ssize_t pop(qtoken qt, struct sgarray &sga); // if return 0, then already complete
-    ssize_t peek(struct sgarray &sga);
-    ssize_t wait(qtoken qt, struct sgarray &sga);
-    ssize_t poll(qtoken qt, struct sgarray &sga);
-    int flush(qtoken qt, int flags);
-    // returns the file descriptor associated with
-    // the queue descriptor if the queue is an io queue
-    int getfd();
+    public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
+    public: int pop(dmtr_qtoken_t qt);
+    public: int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
 
-    void setRdmaCM(struct rdma_cm_id *id);
-    struct rdma_cm_id* getRdmaCM();
-    struct rdma_cm_id* getNextAccept();
-};
+    private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);
+    private: static int rdma_create_event_channel(struct rdma_event_channel *&channel_out);
+    private: static int rdma_create_id(struct rdma_cm_id *&id_out, struct rdma_event_channel *channel, void *context, enum rdma_port_space ps);
+    private: static int rdma_destroy_event_channel(struct rdma_event_channel *&channel);
+    private: static int rdma_destroy_id(struct rdma_cm_id *&id);
+    private: static int rdma_destroy_qp(struct rdma_cm_id * const id);
+    private: static int rdma_listen(struct rdma_cm_id * const id, int backlog);
+    private: static int rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms);
+    private: static int rdma_get_cm_event(struct rdma_cm_event *&event_out, struct rdma_event_channel *channel);
+    private: static int rdma_ack_cm_event(struct rdma_cm_event * const event);
+    private: static int rdma_resolve_route(struct rdma_cm_id * const id, int timeout_ms);
+    private: static int rdma_connect(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param);
+    private: static int rdma_create_qp(struct rdma_cm_id * const id, struct ibv_pd * const pd, struct ibv_qp_init_attr * const qp_init_attr);
+    private: static int rdma_accept(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param);
+    private: static int rdma_get_peer_addr(struct sockaddr *&saddr_out, struct rdma_cm_id * const id);
 
-} // namespace RDMA
-} // namespace Zeus
-#endif /* _LIB_RDMA_QUEUE_H_ */
+    private: static int ibv_alloc_pd(struct ibv_pd *&pd_out, struct ibv_context *context);
+    private: static int ibv_dealloc_pd(struct ibv_pd *&pd);
+    private: static int ibv_poll_cq(size_t &count_out, struct ibv_cq * const cq, int num_entries, struct ibv_wc * const wc);
+    private: static int ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_send_wr * const wr);
+    private: static int ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_recv_wr * const wr);
+
+    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
+    private: int get_pd(struct ibv_pd *&pd_out);
+    private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    private: int pop_accept(struct rdma_cm_id *&id_out);
+    private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
+}
+
+;
+
+} // namespace dmtr
+
+#endif /* DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED */

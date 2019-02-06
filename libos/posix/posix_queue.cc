@@ -353,6 +353,7 @@ int dmtr::posix_queue::on_recv(task &t)
     }
 
     t.done = true;
+    t.error = 0;
     //fprintf(stderr, "[%x] message length=%ld\n", qd, t.res);
     return 0;
 }
@@ -374,12 +375,13 @@ int dmtr::posix_queue::on_send(task &t)
 
     // calculate size and fill in iov
     for (size_t i = 0; i < sga->sga_numsegs; i++) {
-        auto j = 2 * i + 1;
+        const auto j = 2 * i + 1;
         iov[j].iov_base = &sga->sga_segs[i].sgaseg_len;
         iov[j].iov_len = sizeof(sga->sga_segs[i].sgaseg_len);
-        ++j;
-        iov[j].iov_base = sga->sga_segs[i].sgaseg_buf;
-        iov[j].iov_len = sga->sga_segs[i].sgaseg_len;
+
+        const auto k = j + 1;
+        iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
+        iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
 
         // add up actual data size
         data_size += sga->sga_segs[i].sgaseg_len;

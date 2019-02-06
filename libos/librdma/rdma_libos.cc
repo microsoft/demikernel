@@ -1,8 +1,8 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * libos/libposix/posix.cc
- *   POSIX implementation of libos interface
+ * libos/librdma/rdma.cc
+ *   RDMA implementation of libos interface
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
  *
@@ -29,6 +29,7 @@
  **********************************************************************/
 
 #include "rdma-queue.h"
+
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
 #include <libos/common/memory_queue.hh>
