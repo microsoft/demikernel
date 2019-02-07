@@ -182,7 +182,7 @@ int dmtr::rdma_queue::service_event_queue() {
         case RDMA_CM_EVENT_DISCONNECTED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
             rdma_ack_cm_event(event);
-            close();
+            DMTR_OK(close());
             return ECONNABORTED;
         case RDMA_CM_EVENT_ESTABLISHED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
@@ -254,6 +254,7 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
 
     auto * const q = new rdma_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
+    q_out = q;
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
@@ -466,9 +467,6 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     DMTR_OK(get_pd(pd));
     struct ibv_mr *mr = NULL;
     DMTR_OK(get_rdma_mr(mr, buf));
-    assert(mr->context == my_rdma_id->verbs);
-    assert(mr->pd == pd);
-
     struct ibv_sge sge = {};
     sge.addr = reinterpret_cast<uintptr_t>(buf);
     sge.length = recv_buf_size;
@@ -492,7 +490,18 @@ int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task const * t = it->second;
 
-    DMTR_OK(service_event_queue());
+    int ret = service_event_queue();
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+            DMTR_UNREACHABLE();
+        case 0:
+        case EAGAIN:
+            break;
+        case ECONNABORTED:
+            return ret;
+    }
+
     if (t->pull) {
         DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
     } else {
@@ -761,6 +770,7 @@ int dmtr::rdma_queue::ibv_dealloc_pd(struct ibv_pd *&pd) {
     int ret = ::ibv_dealloc_pd(pd);
     switch (ret) {
         default:
+            DMTR_OK(ret);
             DMTR_UNREACHABLE();
         case -1:
             return errno;
@@ -845,6 +855,7 @@ int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) 
     DMTR_NOTNULL(mr);
     assert(mr->context == my_rdma_id->verbs);
     assert(mr->pd == pd);
+    mr_out = mr;
     return 0;
 }
 
