@@ -310,7 +310,16 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     params.responder_resources = 1;
     params.rnr_retry_count = 1;
     DMTR_OK(rdma_connect(my_rdma_id, &params));
-    DMTR_OK(expect_rdma_cm_event(ECONNABORTED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id));
+    int ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+            DMTR_UNREACHABLE();
+        case ECONNREFUSED:
+            return ret;
+        case 0:
+        break;
+    }
 
     DMTR_OK(set_non_blocking(my_rdma_id->channel->fd));
     return 0;

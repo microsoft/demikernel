@@ -174,7 +174,17 @@ int dmtr::io_queue_api::listen(int qd, int backlog) {
 int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, socklen_t size) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    DMTR_OK(q->connect(saddr, size));
+    int ret = q->connect(saddr, size);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+            DMTR_UNREACHABLE();
+        case ECONNREFUSED:
+            return ret;
+        case 0:
+        break;
+    }
+
     return 0;
 }
 
