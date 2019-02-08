@@ -28,7 +28,7 @@
  *
  **********************************************************************/
 
-#include "rdma-queue.h"
+#include "rdma_queue.hh"
 
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
