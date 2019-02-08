@@ -398,7 +398,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         lengths[i] = sga.sga_segs[i].sgaseg_len;
 
         const auto j = 2 * i + 1;
-        sge[j].addr = reinterpret_cast<uint64_t>(&lengths[i]);
+        sge[j].addr = reinterpret_cast<uintptr_t>(&lengths[i]);
         sge[j].length = sizeof(*lengths);
         sge[j].lkey = lengths_mr->lkey;
 
@@ -406,7 +406,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         void * const p = sga.sga_segs[i].sgaseg_buf;
         struct ibv_mr *mr = NULL;
         DMTR_OK(get_rdma_mr(mr, p));
-        sge[k].addr = reinterpret_cast<uint64_t>(p);
+        sge[k].addr = reinterpret_cast<uintptr_t>(p);
         sge[k].length = sga.sga_segs[i].sgaseg_len;
         sge[k].lkey = mr->lkey;
 
@@ -424,7 +424,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     t->header.h_sgasegs = sga.sga_numsegs;
 
     // set up header at beginning of packet
-    sge[0].addr = reinterpret_cast<uint64_t>(&t->header);
+    sge[0].addr = reinterpret_cast<uintptr_t>(&t->header);
     sge[0].length = sizeof(t->header);
     struct ibv_mr *mr = NULL;
     DMTR_OK(get_rdma_mr(mr, t));
@@ -434,13 +434,12 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     // set up RDMA work request.
     struct ibv_send_wr wr = {};
     wr.opcode = IBV_WR_SEND;
-    wr.wr_id = qt;
-    wr.sg_list = sge;
-    wr.next = NULL;
-    wr.num_sge = sge_len;
     // warning: if you don't set the send flag, it will not
     // give a meaningful error.
     wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr_id = qt;
+    wr.sg_list = sge;
+    wr.num_sge = sge_len;
 
     struct ibv_send_wr *bad_wr = NULL;
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
