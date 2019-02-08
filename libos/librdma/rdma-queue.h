@@ -116,6 +116,7 @@ class rdma_queue : public io_queue {
     private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     private: int pop_accept(struct rdma_cm_id *&id_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
+    private: int new_recv_buf();
 }
 
 ;
