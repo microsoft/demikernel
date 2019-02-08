@@ -55,6 +55,8 @@ DEFINE_LATENCY(poll_eventcq_latency);
 DEFINE_LATENCY(rdma_parse_latency);
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
+const size_t dmtr::rdma_queue::recv_buf_size = 1024;
+const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
 dmtr::rdma_queue::task::task() :
     pull(false),
@@ -91,8 +93,8 @@ int dmtr::rdma_queue::setup_rdma_qp()
     qp_attr.qp_type = IBV_QPT_RC;
     qp_attr.cap.max_send_wr = 20;
     qp_attr.cap.max_recv_wr = 20;
-    qp_attr.cap.max_send_sge = 1;
-    qp_attr.cap.max_recv_sge = 5;
+    qp_attr.cap.max_send_sge = max_num_sge;
+    qp_attr.cap.max_recv_sge = max_num_sge;
     qp_attr.cap.max_inline_data = 64;
     qp_attr.sq_sig_all = 1;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
@@ -381,8 +383,8 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     t->sga = sga;
     my_tasks.insert(std::make_pair(qt, t));
 
-    size_t sge_len = 2 * sga.sga_numsegs + 1;
-    struct ibv_sge sge[sge_len];
+    size_t num_sge = 2 * sga.sga_numsegs + 1;
+    struct ibv_sge sge[num_sge];
     size_t data_size = 0;
     size_t total_len = 0;
 
@@ -431,7 +433,6 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     struct ibv_mr *mr = NULL;
     DMTR_OK(get_rdma_mr(mr, t));
     sge[0].lkey = mr->lkey;
-    total_len += sizeof(t->header);
 
     // set up RDMA work request.
     struct ibv_send_wr wr = {};
@@ -441,7 +442,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr_id = qt;
     wr.sg_list = sge;
-    wr.num_sge = sge_len;
+    wr.num_sge = num_sge;
 
     struct ibv_send_wr *bad_wr = NULL;
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
@@ -863,6 +864,11 @@ int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) 
 int dmtr::rdma_queue::ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_send_wr * const wr) {
     DMTR_NOTNULL(qp);
     DMTR_NOTNULL(wr);
+    size_t num_sge = wr->num_sge;
+    // undocumented: `ibv_post_send()` returns `ENOMEM` if the
+    // s/g array is larger than the max specified for the queue
+    // in `setup_rdma_qp()`.
+    DMTR_TRUE(ERANGE, num_sge <= max_num_sge);
 
     Latency_Start(&post_send);
     int ret = ::ibv_post_send(qp, wr, &bad_wr_out);

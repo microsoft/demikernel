@@ -51,7 +51,8 @@ class rdma_queue : public io_queue {
         task();
     };
 
-    private: const size_t recv_buf_size = 1024;
+    private: static const size_t recv_buf_size;
+    private: static const size_t max_num_sge;
 
     // queued scatter gather arrays
     private: std::unordered_map<dmtr_qtoken_t, task *> my_tasks;
