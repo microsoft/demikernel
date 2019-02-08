@@ -50,12 +50,11 @@ int main()
         DMTR_OK(dmtr_wait(&sga, qt));
         DMTR_TRUE(EPERM, sga.sga_numsegs == 1);
 
-        //printf("rcvd:\t%s\n", (char*)sga.bufs[0].buf);
+        fprintf(stderr, "server: rcvd\t%s\tbuf size:\t%d\n", reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
 
-        //printf("===========================\n");
-        //printf("sent:\t%s\n", (char*)sga.bufs[0].buf);
+        fprintf(stderr, "send complete.");
         free(sga.sga_buf);
     }
 

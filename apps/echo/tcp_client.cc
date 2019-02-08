@@ -9,7 +9,7 @@
 
 #define ITERATION_COUNT 10000
 #define BUFFER_SIZE 10
-#define FILL_CHAR 0xab
+#define FILL_CHAR 'a'
 static const uint16_t PORT = 12345;
 
 int main()
@@ -33,7 +33,9 @@ int main()
     dmtr_sgarray_t sga = {};
     void *p = NULL;
     DMTR_OK(dmtr_malloc(&p, BUFFER_SIZE));
-    memset(p, FILL_CHAR, BUFFER_SIZE);
+    char *s = reinterpret_cast<char *>(p);
+    memset(s, FILL_CHAR, BUFFER_SIZE);
+    s[BUFFER_SIZE - 1] = '\0';
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = BUFFER_SIZE;
     sga.sga_segs[0].sgaseg_buf = p;
@@ -42,13 +44,15 @@ int main()
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
+        fprintf(stderr, "send complete.");
 
         dmtr_sgarray_t recvd;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&recvd, qt));
         DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
-        //fprintf(stderr, "client: rcvd\t%s\tbuf size:\t%d\n", (char*)recvd.bufs[0].buf, recvd.bufs[0].len);
+
+        fprintf(stderr, "client: rcvd\t%s\tbuf size:\t%d\n", reinterpret_cast<char *>(recvd.sga_segs[0].sgaseg_buf), recvd.sga_segs[0].sgaseg_len);
         free(recvd.sga_buf);
     }
 
