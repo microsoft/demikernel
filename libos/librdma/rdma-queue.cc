@@ -158,35 +158,37 @@ int dmtr::rdma_queue::service_event_queue() {
     DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
     Latency_Start(&poll_eventcq_latency);
-    struct rdma_cm_event *event = NULL;
-    int ret = rdma_get_cm_event(event, my_rdma_id->channel);
-    switch (ret) {
-        default:
-            DMTR_OK(ret);
-        case 0:
-            break;
-        case EAGAIN:
-            return EAGAIN;
+    struct rdma_cm_event event = {};
+    {
+        struct rdma_cm_event *e = NULL;
+        int ret = rdma_get_cm_event(e, my_rdma_id->channel);
+        switch (ret) {
+            default:
+                DMTR_OK(ret);
+            case 0:
+                break;
+            case EAGAIN:
+                return EAGAIN;
+        }
+
+        event = *e;
+        rdma_ack_cm_event(e);
     }
 
-    switch(event->event) {
+    switch(event.event) {
         default:
-            fprintf(stderr, "Unrecognized event: 0x%x\n", event->event);
-            rdma_ack_cm_event(event);
+            fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
             return ENOTSUP;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_accepts.push(event->id);
+            my_accepts.push(event.id);
             fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
-            rdma_ack_cm_event(event);
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
-            rdma_ack_cm_event(event);
             DMTR_OK(close());
             return ECONNABORTED;
         case RDMA_CM_EVENT_ESTABLISHED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
-            rdma_ack_cm_event(event);
             break;
     }
 
