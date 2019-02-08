@@ -230,40 +230,12 @@ int dmtr::posix_queue::on_recv(task &t)
     DMTR_TRUE(EPERM, !my_listening_flag);
 
     //printf("on_recv qd:%d\n", qd);
-    // if we don't have a full header in our buffer, then get one
-    if (my_tcp_flag) {
-        if (t.num_bytes < sizeof(t.header)) {
-            // note: in TCP mode, we read the header directly into
-            // `t.header`. in UDP mode, we read into `t.buf` and
-            // then copy the information over to `t.header`.
-            uint8_t *p = reinterpret_cast<uint8_t *>(&t.header) + t.num_bytes;
-            size_t len = sizeof(t.header) - t.num_bytes;
-            size_t count = 0;
-            int err = read(count, my_fd, p, len);
-            switch (err) {
-                default:
-                    t.done = true;
-                    t.error = err;
-                    return 0;
-                case EAGAIN:
-                    return 0;
-                case 0:
-                    t.num_bytes += count;
-                    break;
-            }
-        }
-    } else {
-        DMTR_TRUE(EPERM, t.sga.sga_buf == NULL);
-        DMTR_TRUE(EPERM, t.sga.sga_addr == NULL);
-
-        t.sga.sga_addrlen = sizeof(struct sockaddr_in);
-        DMTR_OK(dmtr_malloc(&t.sga.sga_buf, 1024));
-        void *p = NULL;
-        DMTR_OK(dmtr_malloc(&p, t.sga.sga_addrlen));
-        t.sga.sga_addr = reinterpret_cast<struct sockaddr *>(p);
-
-        size_t count;
-        int err = recvfrom(count, my_fd, t.sga.sga_buf, 1024, 0, t.sga.sga_addr, &t.sga.sga_addrlen);
+    // if we don't have a full header yet, get one.
+    if (t.num_bytes < sizeof(t.header)) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(&t.header) + t.num_bytes;
+        size_t len = sizeof(t.header) - t.num_bytes;
+        size_t count = 0;
+        int err = read(count, my_fd, p, len);
         switch (err) {
             default:
                 t.done = true;
@@ -275,8 +247,7 @@ int dmtr::posix_queue::on_recv(task &t)
                 break;
         }
 
-        t.num_bytes = count;
-        memcpy(&t.header, t.sga.sga_buf, sizeof(t.header));
+        t.num_bytes += count;
     }
 
     if (t.num_bytes < sizeof(t.header)) {
@@ -545,29 +516,6 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
         count_out = ret;
         return 0;
     }
-}
-
-int dmtr::posix_queue::recvfrom(size_t &count_out, int sockfd, void *buf, size_t len, int flags, void *saddr, socklen_t *addrlen) {
-    DMTR_TRUE(EINVAL, addrlen == NULL || sizeof(struct sockaddr) <= *addrlen);
-    count_out = 0;
-
-    Latency_Start(&dev_read_latency);
-    int ret = ::recvfrom(sockfd, buf, len, flags, reinterpret_cast<struct sockaddr *>(saddr), addrlen);
-    Latency_End(&dev_read_latency);
-    if (ret == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return EAGAIN;
-        }
-        DMTR_OK(errno);
-    } else if (ret == 0) {
-        // peer did an "orderly shutdown".
-        // note: i think this only applies to connection oriented
-        // protocols, which isn't the case here.
-        DMTR_OK(ENOTSUP);
-    }
-
-    count_out = ret;
-    return 0;
 }
 
 int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt) {

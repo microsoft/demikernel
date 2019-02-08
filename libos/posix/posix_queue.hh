@@ -85,7 +85,6 @@ class posix_queue : public io_queue {
 
     private: static int set_tcp_nodelay(int fd);
     private: static int read(size_t &count_out, int fd, void *buf, size_t len);
-    private: static int recvfrom(size_t &count_out, int sockfd, void *buf, size_t len, int flags, void *saddr, socklen_t *addrlen);
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
 
     private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
