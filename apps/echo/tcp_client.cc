@@ -23,7 +23,8 @@ int main()
 
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
+    //if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
@@ -40,7 +41,7 @@ int main()
     sga.sga_segs[0].sgaseg_len = BUFFER_SIZE;
     sga.sga_segs[0].sgaseg_buf = p;
 
-    for (int i = 0; i < ITERATION_COUNT; i++) {
+    for (size_t i = 0; i < ITERATION_COUNT; i++) {
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
@@ -52,7 +53,7 @@ int main()
         DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
-        fprintf(stderr, "client: rcvd\t%s\tbuf size:\t%d\n", reinterpret_cast<char *>(recvd.sga_segs[0].sgaseg_buf), recvd.sga_segs[0].sgaseg_len);
+        fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(recvd.sga_segs[0].sgaseg_buf), recvd.sga_segs[0].sgaseg_len);
         free(recvd.sga_buf);
     }
 

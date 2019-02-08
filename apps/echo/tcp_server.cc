@@ -43,14 +43,14 @@ int main()
     printf("accepted connection from: %x:%d\n", paddr.sin_addr.s_addr, paddr.sin_port);
 
     // process ITERATION_COUNT packets from client
-    for (int i = 0; i < ITERATION_COUNT; i++) {
+    for (size_t i = 0; i < ITERATION_COUNT; i++) {
         dmtr_sgarray_t sga = {};
         dmtr_qtoken_t qt = 0;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&sga, qt));
         DMTR_TRUE(EPERM, sga.sga_numsegs == 1);
 
-        fprintf(stderr, "server: rcvd\t%s\tbuf size:\t%d\n", reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
+        fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
 
