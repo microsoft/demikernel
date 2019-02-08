@@ -260,7 +260,6 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
-    DMTR_OK(q->new_recv_buf());
 
     // accept the connection
     struct rdma_conn_param params = {};
@@ -454,11 +453,34 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     DMTR_NOTNULL(my_rdma_id);
     DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
+    assert(my_rdma_id->verbs != NULL);
 
+    // todo: it looks like we can't receive anything larger than
+    // `recv_buf_size`,
+    void *buf = NULL;
+    DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
     auto t = new task();
     t->pull = true;
-    //t->sga.sga_buf = buf;
+    t->sga.sga_buf = buf;
     my_tasks.insert(std::make_pair(qt, t));
+
+    struct ibv_pd *pd = NULL;
+    DMTR_OK(get_pd(pd));
+    struct ibv_mr *mr = NULL;
+    DMTR_OK(get_rdma_mr(mr, buf));
+    struct ibv_sge sge = {};
+    sge.addr = reinterpret_cast<uintptr_t>(buf);
+    sge.length = recv_buf_size;
+    sge.lkey = mr->lkey;
+    struct ibv_recv_wr wr = {};
+    wr.wr_id = qt;
+    wr.sg_list = &sge;
+    wr.next = NULL;
+    wr.num_sge = 1;
+    struct ibv_recv_wr *bad_wr = NULL;
+    DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, &wr));
+    //fprintf(stderr, "Done posting receive buffer: %lx %d\n", buf, recv_buf_size);
+
     return 0;
 }
 
@@ -855,32 +877,3 @@ int dmtr::rdma_queue::ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_
     return ::ibv_post_recv(qp, wr, &bad_wr_out);
 }
 
-int dmtr::rdma_queue::new_recv_buf()
-{
-    DMTR_NOTNULL(my_rdma_id);
-    DMTR_TRUE(ENOTSUP, !my_listening_flag);
-
-    // todo: it looks like we can't receive anything larger than
-    // `recv_buf_size`,
-    void *buf = NULL;
-    DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
-
-    struct ibv_pd *pd = NULL;
-    DMTR_OK(get_pd(pd));
-    struct ibv_mr *mr = NULL;
-    DMTR_OK(get_rdma_mr(mr, buf));
-    struct ibv_sge sge = {};
-    sge.addr = reinterpret_cast<uintptr_t>(buf);
-    sge.length = recv_buf_size;
-    sge.lkey = mr->lkey;
-    struct ibv_recv_wr wr = {};
-    //wr.wr_id = qt;
-    wr.sg_list = &sge;
-    wr.next = NULL;
-    wr.num_sge = 1;
-    struct ibv_recv_wr *bad_wr = NULL;
-    DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, &wr));
-    //fprintf(stderr, "Done posting receive buffer: %lx %d\n", buf, recv_buf_size);
-
-    return 0;
-}
