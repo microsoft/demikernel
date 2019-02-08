@@ -44,7 +44,7 @@ int main()
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        fprintf(stderr, "send complete.");
+        fprintf(stderr, "send complete.\n");
 
         dmtr_sgarray_t recvd;
         DMTR_OK(dmtr_pop(&qt, qd));
