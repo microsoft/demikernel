@@ -113,7 +113,8 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             return ENOTSUP;
         case IBV_WC_RECV: {
             void *buf = reinterpret_cast<void *>(wc.wr_id);
-            my_recv_queue.push(buf);
+            size_t byte_len = wc.byte_len;
+            my_recv_queue.push(std::make_pair(buf, byte_len));
             DMTR_OK(new_recv_buf());
             return 0;
         }
@@ -340,12 +341,12 @@ int dmtr::rdma_queue::close()
     return 0;
 }
 
-int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf) {
+int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t len) {
     auto it = my_tasks.find(qt);
     DMTR_TRUE(ENOENT, it != my_tasks.cend());
     task * const t = it->second;
 
-    if (t->byte_len < sizeof(dmtr_header_t)) {
+    if (len < sizeof(dmtr_header_t)) {
         t->done = true;
         t->error = EPROTO;
         return 0;
@@ -357,7 +358,6 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf) {
     p += sizeof(dmtr_header_t);
 
     t->sga.sga_numsegs = t->header.h_sgasegs;
-    size_t len = 0;
     for (size_t i = 0; i < t->sga.sga_numsegs; ++i) {
         size_t seglen = *reinterpret_cast<uint32_t *>(p);
         t->sga.sga_segs[i].sgaseg_len = seglen;
@@ -365,10 +365,10 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf) {
         p += sizeof(uint32_t);
         t->sga.sga_segs[i].sgaseg_buf = p;
         p += seglen;
-        len += seglen;
     }
 
     t->sga.sga_buf = buf;
+    t->byte_len = len;
     t->done = true;
     t->error = 0;
     return 0;
@@ -508,7 +508,8 @@ int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     if (t->pull) {
         DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
         void *p = NULL;
-        int ret = service_recv_queue(p);
+        size_t len = 0;
+        int ret = service_recv_queue(p, len);
         switch (ret) {
             default:
                 DMTR_OK(ret);
@@ -519,7 +520,7 @@ int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
                 break;
         }
 
-        DMTR_OK(complete_recv(qt, p));
+        DMTR_OK(complete_recv(qt, p, len));
     } else {
         DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
     }
@@ -923,13 +924,15 @@ int dmtr::rdma_queue::new_recv_buf() {
     return 0;
 }
 
-int dmtr::rdma_queue::service_recv_queue(void *&buf_out) {
+int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
     buf_out = NULL;
     if (my_recv_queue.empty()) {
         return EAGAIN;
     }
 
-    buf_out = my_recv_queue.front();
+    auto pair = my_recv_queue.front();
+    buf_out = pair.first;
+    len_out = pair.second;
     my_recv_queue.pop();
     return 0;
 }
