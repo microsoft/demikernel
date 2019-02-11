@@ -221,26 +221,18 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     return 0;
 }
 
-int dmtr::io_queue_api::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
-    int qd = qttoqd(qt);
-
-    io_queue *q = NULL;
-    DMTR_OK(get_queue(q, qd));
-    return q->peek(sga_out, qt);
-}
-
-int dmtr::io_queue_api::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
-    int qd = qttoqd(qt);
-
-    io_queue *q = NULL;
-    DMTR_OK(get_queue(q, qd));
-    return q->wait(sga_out, qt);
-}
-
 int dmtr::io_queue_api::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
     int qd = qttoqd(qt);
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     return q->poll(sga_out, qt);
+}
+
+int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {
+    int qd = qttoqd(qt);
+
+    io_queue *q = NULL;
+    DMTR_OK(get_queue(q, qd));
+    return q->drop(qt);
 }

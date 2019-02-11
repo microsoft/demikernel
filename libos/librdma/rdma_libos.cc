@@ -121,23 +121,16 @@ int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd)
     return ioq_api->pop(*qtok_out, qd);
 }
 
-int dmtr_peek(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt)
-{
-    DMTR_NOTNULL(ioq_api.get());
-
-    return ioq_api->peek(sga_out, qt);
-}
-
-int dmtr_wait(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt)
-{
-    DMTR_NOTNULL(ioq_api.get());
-
-    return ioq_api->wait(sga_out, qt);
-}
-
 int dmtr_poll(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(ioq_api.get());
 
     return ioq_api->poll(sga_out, qt);
+}
+
+int dmtr_drop(dmtr_qtoken_t qt)
+{
+    DMTR_NOTNULL(ioq_api.get());
+
+    return ioq_api->drop(qt);
 }

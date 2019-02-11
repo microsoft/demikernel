@@ -467,7 +467,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     return 0;
 }
 
-int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(my_rdma_id);
     auto it = my_tasks.find(qt);
@@ -518,25 +518,12 @@ int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     return EAGAIN;
 }
 
-int dmtr::rdma_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(my_rdma_id);
 
-    Latency_Start(&rdma_wait_latency);
-    int ret = EAGAIN;
-    while (EAGAIN == ret) {
-        ret = poll(sga_out, qt);
-    }
-    Latency_End(&rdma_wait_latency);
-
-    return ret;
-}
-
-int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
-{
-    DMTR_NOTNULL(my_rdma_id);
-
-    int ret = peek(sga_out, qt);
+    dmtr_sgarray_t sga = {};
+    int ret = poll(&sga, qt);
     switch (ret) {
         default:
             return ret;
