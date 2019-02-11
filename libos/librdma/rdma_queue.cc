@@ -55,6 +55,7 @@ DEFINE_LATENCY(poll_eventcq_latency);
 DEFINE_LATENCY(rdma_parse_latency);
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
+const size_t dmtr::rdma_queue::recv_buf_count = 1;
 const size_t dmtr::rdma_queue::recv_buf_size = 1024;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
@@ -258,6 +259,7 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
+    DMTR_OK(q->setup_recv_queue());
 
     // accept the connection
     struct rdma_conn_param params = {};
@@ -937,3 +939,10 @@ int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
     return 0;
 }
 
+int dmtr::rdma_queue::setup_recv_queue() {
+    for (size_t i = 0; i < recv_buf_count; ++i) {
+        DMTR_OK(new_recv_buf());
+    }
+
+    return 0;
+}

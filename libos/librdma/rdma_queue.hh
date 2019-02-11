@@ -121,6 +121,7 @@ class rdma_queue : public io_queue {
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();
     private: int service_recv_queue(void *&buf_out, size_t &len_out);
+    private: int setup_recv_queue();
 }
 
 ;
