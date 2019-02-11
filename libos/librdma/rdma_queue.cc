@@ -105,34 +105,29 @@ int dmtr::rdma_queue::setup_rdma_qp()
 
 int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
 {
-    bool pull = false;
+    DMTR_TRUE(ENOTSUP, IBV_WC_SUCCESS == wc.status);
+
     switch (wc.opcode) {
         default:
             fprintf(stderr, "Unexpected WC opcode: 0x%x\n", wc.opcode);
             return ENOTSUP;
-        case IBV_WC_RECV:
-            pull = true;
-            break;
-        case IBV_WC_SEND:
-            pull = false;
-            break;
+        case IBV_WC_RECV: {
+            void *buf = reinterpret_cast<void *>(wc.wr_id);
+            my_recv_queue.push(buf);
+            DMTR_OK(new_recv_buf());
+            return 0;
+        }
+        case IBV_WC_SEND: {
+            dmtr_qtoken_t qt = wc.wr_id;
+            auto it = my_tasks.find(qt);
+            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
+            task * const t = it->second;
+            t->byte_len = wc.byte_len;
+            t->done = true;
+            t->error = 0;
+            return 0;
+        }
     }
-
-    DMTR_TRUE(ENOTSUP, IBV_WC_SUCCESS == wc.status);
-    dmtr_qtoken_t qt = wc.wr_id;
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-    task * const t = it->second;
-    t->byte_len = wc.byte_len;
-    DMTR_TRUE(ENOTSUP, pull == t->pull);
-    if (pull) {
-        DMTR_OK(on_recv_completed(*t));
-        return 0;
-    }
-
-    t->done = true;
-    t->error = 0;
-    return 0;
 }
 
 int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t quantity) {
@@ -334,6 +329,7 @@ int dmtr::rdma_queue::close()
 {
     DMTR_NOTNULL(my_rdma_id);
 
+    // todo: freeing all memory that we've allocated.
     DMTR_OK(rdma_destroy_qp(my_rdma_id));
     DMTR_OK(ibv_dealloc_pd(my_rdma_id->pd));
     rdma_event_channel *channel = my_rdma_id->channel;
@@ -344,32 +340,37 @@ int dmtr::rdma_queue::close()
     return 0;
 }
 
-int dmtr::rdma_queue::on_recv_completed(task &t) {
-    if (t.byte_len < sizeof(dmtr_header_t)) {
-        t.done = true;
-        t.error = EPROTO;
+int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf) {
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(ENOENT, it != my_tasks.cend());
+    task * const t = it->second;
+
+    if (t->byte_len < sizeof(dmtr_header_t)) {
+        t->done = true;
+        t->error = EPROTO;
         return 0;
     }
 
-    uint8_t *p = reinterpret_cast<uint8_t *>(t.sga.sga_buf);
+    uint8_t *p = reinterpret_cast<uint8_t *>(buf);
     dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
-    t.header = *header;
+    t->header = *header;
     p += sizeof(dmtr_header_t);
 
-    t.sga.sga_numsegs = t.header.h_sgasegs;
+    t->sga.sga_numsegs = t->header.h_sgasegs;
     size_t len = 0;
-    for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
+    for (size_t i = 0; i < t->sga.sga_numsegs; ++i) {
         size_t seglen = *reinterpret_cast<uint32_t *>(p);
-        t.sga.sga_segs[i].sgaseg_len = seglen;
+        t->sga.sga_segs[i].sgaseg_len = seglen;
         //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
         p += sizeof(uint32_t);
-        t.sga.sga_segs[i].sgaseg_buf = p;
+        t->sga.sga_segs[i].sgaseg_buf = p;
         p += seglen;
         len += seglen;
     }
 
-    t.done = true;
-    t.error = 0;
+    t->sga.sga_buf = buf;
+    t->done = true;
+    t->error = 0;
     return 0;
 }
 
@@ -506,6 +507,19 @@ int dmtr::rdma_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 
     if (t->pull) {
         DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+        void *p = NULL;
+        int ret = service_recv_queue(p);
+        switch (ret) {
+            default:
+                DMTR_OK(ret);
+                DMTR_UNREACHABLE();
+            case EAGAIN:
+                return ret;
+            case 0:
+                break;
+        }
+
+        DMTR_OK(complete_recv(qt, p));
     } else {
         DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
     }
@@ -881,5 +895,42 @@ int dmtr::rdma_queue::ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_
     DMTR_NOTNULL(wr);
 
     return ::ibv_post_recv(qp, wr, &bad_wr_out);
+}
+
+int dmtr::rdma_queue::new_recv_buf() {
+    // todo: it looks like we can't receive anything larger than
+    // `recv_buf_size`,
+    void *buf = NULL;
+    DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
+
+    struct ibv_pd *pd = NULL;
+    DMTR_OK(get_pd(pd));
+    struct ibv_mr *mr = NULL;
+    DMTR_OK(get_rdma_mr(mr, buf));
+    struct ibv_sge sge = {};
+    sge.addr = reinterpret_cast<uintptr_t>(buf);
+    sge.length = recv_buf_size;
+    sge.lkey = mr->lkey;
+    struct ibv_recv_wr wr = {};
+    wr.wr_id = reinterpret_cast<uintptr_t>(buf);
+    wr.sg_list = &sge;
+    wr.next = NULL;
+    wr.num_sge = 1;
+    struct ibv_recv_wr *bad_wr = NULL;
+    DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, &wr));
+    //fprintf(stderr, "Done posting receive buffer: %lx %d\n", buf, recv_buf_size);
+
+    return 0;
+}
+
+int dmtr::rdma_queue::service_recv_queue(void *&buf_out) {
+    buf_out = NULL;
+    if (my_recv_queue.empty()) {
+        return EAGAIN;
+    }
+
+    buf_out = my_recv_queue.front();
+    my_recv_queue.pop();
+    return 0;
 }
 

@@ -51,12 +51,14 @@ class rdma_queue : public io_queue {
         task();
     };
 
+    private: static const size_t recv_buf_count;
     private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
 
     // queued scatter gather arrays
     private: std::unordered_map<dmtr_qtoken_t, task *> my_tasks;
     private: std::queue<struct rdma_cm_id *> my_accepts;
+    private: std::queue<void *> my_recv_queue;
 
     // rdma data structures
     // connection manager for this connection queue
@@ -64,7 +66,7 @@ class rdma_queue : public io_queue {
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
-    private: int on_recv_completed(task &t);
+    private: int complete_recv(dmtr_qtoken_t qt, void * const buf);
     private: int service_event_queue();
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
     private: int on_work_completed(const struct ibv_wc &wc);
@@ -117,6 +119,8 @@ class rdma_queue : public io_queue {
     private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     private: int pop_accept(struct rdma_cm_id *&id_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
+    private: int new_recv_buf();
+    private: int service_recv_queue(void *&buf_out);
 }
 
 ;
