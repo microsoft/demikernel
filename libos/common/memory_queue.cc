@@ -51,16 +51,10 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     // outside of the lock scope.
     auto *req = new completion();
     std::lock_guard<std::mutex> lock(my_lock);
-    bool was_empty = my_ready_queue.empty();
     my_ready_queue.push(sga);
     // push always completes immediately.
     req->complete();
     my_completions.insert(std::make_pair(qt, req));
-    // if anyone was waiting on an empty queue, let them know it is no longer
-    // empty.
-    if (was_empty) {
-        my_not_empty_cv.notify_all();
-    }
     return 0;
 }
 
@@ -77,7 +71,7 @@ dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
 }
 
 int
-dmtr::memory_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
+dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
     DMTR_NOTNULL(sga_out);
     std::lock_guard<std::mutex> lock(my_lock);
     DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
@@ -99,41 +93,19 @@ dmtr::memory_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
     }
 
     // the ready queue is empty-- we have nothing to peek at.
-    return EWOULDBLOCK;
+    return EAGAIN;
 }
 
-int
-dmtr::memory_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
 {
-    // we `poll()` until either the queue empties or the operation
-    // succeeds. if the queue empties, we sleep until the queue is
-    // no longer empty and continue polling.
-    std::unique_lock<std::mutex> lock(my_lock);
-    while (true) {
-        int ret = poll(sga_out, qt);
-        switch (ret) {
-            default:
-                DMTR_OK(ret);
-                DMTR_UNREACHABLE();
-            case EWOULDBLOCK:
-                my_not_empty_cv.wait(lock);
-                continue;
-            case 0:
-                return 0;
-        }
-    }
-}
-
-int
-dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
-{
+    dmtr_sgarray_t sga = {};
     std::lock_guard<std::mutex> lock(my_lock);
-    int ret = peek(sga_out, qt);
+    int ret = poll(&sga, qt);
     switch (ret) {
         default:
             DMTR_OK(ret);
             DMTR_UNREACHABLE();
-        case EWOULDBLOCK:
+        case EAGAIN:
             return ret;
         case 0:
             break;

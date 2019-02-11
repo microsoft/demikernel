@@ -428,63 +428,54 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
     return 0;
 }
 
-int dmtr::posix_queue::peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
+    task * const t = &it->second;
 
-    if (it->second.pull) {
+    if (t->done) {
+        return t->error;
+    }
+
+    if (t->pull) {
         if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
             return EAGAIN;
         }
 
         my_active_recv = qt;
-        on_recv(it->second);
+        DMTR_OK(on_recv(*t));
+        if (t->done) {
+            my_active_recv = boost::none;
+        }
     } else {
-        on_send(it->second);
+        DMTR_OK(on_send(*t));
     }
 
-    if (it->second.done) {
-        task t = it->second;
-
-        if (t.pull && t.error == 0) {
+    if (t->done) {
+        if (t->pull && t->error == 0) {
             DMTR_NOTNULL(sga_out);
-            *sga_out = t.sga;
+            *sga_out = t->sga;
         }
 
-        return t.error;
+        return t->error;
     }
 
     return EAGAIN;
 }
 
-int dmtr::posix_queue::wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
 
-    int ret = EAGAIN;
-    while (EAGAIN == ret) {
-        ret = poll(sga_out, qt);
-    }
-
-    return ret;
-}
-
-int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
-{
-    DMTR_TRUE(EINVAL, my_fd != -1);
-
-    int ret = peek(sga_out, qt);
+    dmtr_sgarray_t sga = {};
+    int ret = poll(&sga, qt);
     switch (ret) {
         default:
             return ret;
         case 0:
             my_tasks.erase(qt);
-            if (my_active_recv != boost::none && boost::get(my_active_recv) == qt) {
-                my_active_recv = boost::none;
-            }
-
             return 0;
     }
 }

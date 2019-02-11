@@ -1,6 +1,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
 #include <dmtr/mem.h>
+#include <dmtr/wait.h>
 
 #include <arpa/inet.h>
 #include <cstring>
@@ -45,11 +46,13 @@ int main()
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_drop(qt));
         fprintf(stderr, "send complete.\n");
 
         dmtr_sgarray_t recvd;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&recvd, qt));
+        DMTR_OK(dmtr_drop(qt));
         DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 

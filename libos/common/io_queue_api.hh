@@ -75,9 +75,8 @@ class io_queue_api
     public: int close(int qd);
     public: int push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t &qtok_out, int qd);
-    public: int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
-    public: int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
     public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int drop(dmtr_qtoken_t qt);
 };
 
 } // namespace dmtr

@@ -67,7 +67,6 @@ class memory_queue : public io_queue
 
     private: std::unordered_map<dmtr_qtoken_t, completion *> my_completions;
     private: std::queue<dmtr_sgarray_t> my_ready_queue;
-    private: std::condition_variable my_not_empty_cv;
     private: std::mutex my_lock;
 
     private: memory_queue(int qd);
@@ -75,9 +74,9 @@ class memory_queue : public io_queue
 
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: virtual int pop(dmtr_qtoken_t qt);
-    public: virtual int peek(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
-    public: virtual int wait(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
     public: virtual int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: virtual int drop(dmtr_qtoken_t qt);
+
 };
 
 } // namespace dmtr
