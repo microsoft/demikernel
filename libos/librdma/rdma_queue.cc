@@ -306,6 +306,7 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_OK(expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id));
 
     DMTR_OK(setup_rdma_qp());
+    DMTR_OK(setup_recv_queue());
 
     // Get channel
     struct rdma_conn_param params = {};
