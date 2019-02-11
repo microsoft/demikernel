@@ -474,6 +474,10 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task const * t = it->second;
 
+    if (t->done) {
+        return t->error;
+    }
+
     int ret = service_event_queue();
     switch (ret) {
         default:
