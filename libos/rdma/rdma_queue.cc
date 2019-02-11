@@ -114,6 +114,7 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             return ENOTSUP;
         case IBV_WC_RECV: {
             void *buf = reinterpret_cast<void *>(wc.wr_id);
+            Zeus::RDMA::Hoard::unpin(buf);
             size_t byte_len = wc.byte_len;
             my_recv_queue.push(std::make_pair(buf, byte_len));
             DMTR_OK(new_recv_buf());
@@ -124,6 +125,7 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             auto it = my_tasks.find(qt);
             DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
             task * const t = it->second;
+            unpin(t->sga);
             t->byte_len = wc.byte_len;
             t->done = true;
             t->error = 0;
@@ -449,6 +451,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     wr.num_sge = num_sge;
 
     struct ibv_send_wr *bad_wr = NULL;
+    pin(sga);
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
     return 0;
 }
@@ -875,6 +878,7 @@ int dmtr::rdma_queue::new_recv_buf() {
     // `recv_buf_size`,
     void *buf = NULL;
     DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
+    Zeus::RDMA::Hoard::pin(buf);
 
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
@@ -916,3 +920,24 @@ int dmtr::rdma_queue::setup_recv_queue() {
 
     return 0;
 }
+
+int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        void *buf = sga.sga_segs[i].sgaseg_buf;
+        DMTR_NOTNULL(buf);
+        Zeus::RDMA::Hoard::pin(buf);
+    }
+
+    return 0;
+}
+
+int dmtr::rdma_queue::unpin(const dmtr_sgarray_t &sga) {
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        void *buf = sga.sga_segs[i].sgaseg_buf;
+        DMTR_NOTNULL(buf);
+        Zeus::RDMA::Hoard::unpin(buf);
+    }
+
+    return 0;
+}
+
