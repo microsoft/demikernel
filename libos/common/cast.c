@@ -64,77 +64,77 @@
             DMTR_UNIQID(DMTR_CAST_INTTOUINT_tmp))
 
 int dmtr_ultoc(char *to_arg, unsigned long from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_UTOI(to_arg, char, CHAR_MAX, from_arg);
     return 0;
 }
 
 int dmtr_sztoi32(int32_t *to_arg, size_t from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_UTOI(to_arg, int32_t, INT32_MAX, from_arg);
     return 0;
 }
 
 int dmtr_ssztoi32(int32_t *to_arg, ssize_t from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_ITOI(to_arg, int32_t, from_arg, ssize_t);
     return 0;
 }
 
 int dmtr_sztou32(uint32_t *to_arg, size_t from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_UTOU(to_arg, uint32_t, from_arg, size_t);
     return 0;
 }
 
 int dmtr_sztoi(int *to_arg, size_t from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_UTOI(to_arg, int, INT_MAX, from_arg);
     return 0;
 }
 
 int dmtr_sztoi16(short int *to_arg, size_t from_arg) {
-    DMTR_NOTNULL(to_arg);
+    DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_UTOI(to_arg, short int, INT16_MAX, from_arg);
     return 0;
 }
 
 int dmtr_ltosz(size_t *to_arg, long from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_ITOU(to_arg, size_t, SIZE_MAX, from_arg);
    return 0;
 }
 
 int dmtr_itosz(size_t *to_arg, int from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_ITOU(to_arg, size_t, SIZE_MAX, from_arg);
    return 0;
 }
 
 int ramcast_ltouc(unsigned char *to_arg, long from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_ITOU(to_arg, unsigned char, UCHAR_MAX, from_arg);
    return 0;
 }
 
 int dmtr_sztol(long *to_arg, size_t from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_UTOI(to_arg, long, LONG_MAX, from_arg);
    return 0;
 }
 
 int dmtr_sztou(unsigned int *to_arg, size_t from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_UTOU(to_arg, unsigned int, from_arg, size_t);
    return 0;
@@ -142,7 +142,7 @@ int dmtr_sztou(unsigned int *to_arg, size_t from_arg) {
 
 int dmtr_ultouc(unsigned char *to_arg,
       unsigned long from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_UTOU(to_arg, unsigned char, from_arg, unsigned long);
    return 0;
@@ -150,14 +150,14 @@ int dmtr_ultouc(unsigned char *to_arg,
 
 int dmtr_ultou(unsigned int *to_arg, unsigned long from_arg)
 {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_UTOU(to_arg, unsigned int, from_arg, unsigned long);
    return 0;
 }
 
 int dmtr_ltoc(char *to_arg, long from_arg) {
-   DMTR_NOTNULL(to_arg);
+   DMTR_NOTNULL(EINVAL, to_arg);
 
    DMTR_CAST_ITOI(to_arg, char, from_arg, long);
    return 0;

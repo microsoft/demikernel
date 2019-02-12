@@ -41,7 +41,7 @@ static std::unique_ptr<dmtr::io_queue_api> ioq_api;
 
 int dmtr_init(int argc, char *argv[])
 {
-    DMTR_NULL(ioq_api.get());
+    DMTR_NULL(EPERM, ioq_api.get());
 
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
@@ -53,8 +53,8 @@ int dmtr_init(int argc, char *argv[])
 
 int dmtr_queue(int *qd_out)
 {
-    DMTR_NOTNULL(qd_out);
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     DMTR_OK(ioq_api->queue(*qd_out));
     return 0;
@@ -62,75 +62,75 @@ int dmtr_queue(int *qd_out)
 
 int dmtr_socket(int *qd_out, int domain, int type, int protocol)
 {
-    DMTR_NOTNULL(qd_out);
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->socket(*qd_out, domain, type, protocol);
 }
 
 int dmtr_listen(int qd, int backlog)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->listen(qd, backlog);
 }
 
 int dmtr_bind(int qd, const struct sockaddr * const saddr, socklen_t size)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->bind(qd, saddr, size);
 }
 
 int dmtr_accept(int *qd_out, struct sockaddr *saddr_out, socklen_t *size_out, int sockqd)
 {
-    DMTR_NOTNULL(qd_out);
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->accept(*qd_out, saddr_out, size_out, sockqd);
 }
 
 int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->connect(qd, saddr, size);
 }
 
 int dmtr_close(int qd)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->close(qd);
 }
 
 int dmtr_push(dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga)
 {
-    DMTR_NOTNULL(qtok_out);
-    DMTR_NOTNULL(sga);
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EINVAL, qtok_out);
+    DMTR_NOTNULL(EINVAL, sga);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->push(*qtok_out, qd, *sga);
 }
 
 int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd)
 {
-    DMTR_NOTNULL(qtok_out);
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EINVAL, qtok_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->pop(*qtok_out, qd);
 }
 
 int dmtr_poll(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->poll(sga_out, qt);
 }
 
 int dmtr_drop(dmtr_qtoken_t qt)
 {
-    DMTR_NOTNULL(ioq_api.get());
+    DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->drop(qt);
 }
