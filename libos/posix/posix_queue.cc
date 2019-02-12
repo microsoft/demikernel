@@ -188,7 +188,7 @@ dmtr::posix_queue::listen(int backlog)
 int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
-    DMTR_NULL(my_peer_saddr);
+    DMTR_NULL(EPERM, my_peer_saddr);
 
     int res = ::connect(my_fd, saddr, size);
     switch (res) {
@@ -455,7 +455,7 @@ int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 
     if (t->done) {
         if (t->pull && t->error == 0) {
-            DMTR_NOTNULL(sga_out);
+            DMTR_NOTNULL(EINVAL, sga_out);
             *sga_out = t->sga;
         }
 
@@ -493,7 +493,7 @@ dmtr::posix_queue::set_tcp_nodelay(int fd)
 
 int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
     count_out = 0;
-    DMTR_NOTNULL(buf);
+    DMTR_NOTNULL(EINVAL, buf);
     DMTR_TRUE(ERANGE, len <= SSIZE_MAX);
 
     Latency_Start(&dev_read_latency);

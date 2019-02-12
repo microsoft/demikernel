@@ -135,7 +135,7 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
 }
 
 int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t quantity) {
-    DMTR_NOTNULL(cq);
+    DMTR_NOTNULL(EINVAL, cq);
     DMTR_TRUE(EINVAL, quantity > 0);
 
     // check completion queue
@@ -155,7 +155,7 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
 }
 
 int dmtr::rdma_queue::service_event_queue() {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
     Latency_Start(&poll_eventcq_latency);
@@ -199,7 +199,7 @@ int dmtr::rdma_queue::service_event_queue() {
 
 int dmtr::rdma_queue::socket(int domain, int type, int protocol)
 {
-    DMTR_NULL(my_rdma_id);
+    DMTR_NULL(EPERM, my_rdma_id);
 
     struct rdma_event_channel *channel = NULL;
     DMTR_OK(rdma_create_event_channel(channel));
@@ -218,7 +218,7 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
 
 int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     DMTR_OK(rdma_bind_addr(my_rdma_id, saddr));
     return 0;
@@ -241,7 +241,7 @@ int dmtr::rdma_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, so
 }
 
 int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd) {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EPERM, my_listening_flag);
 
     struct rdma_cm_id *new_rdma_id = NULL;
@@ -285,7 +285,7 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
 int dmtr::rdma_queue::listen(int backlog)
 {
     DMTR_TRUE(EPERM, !my_listening_flag);
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     set_non_blocking(my_rdma_id->channel->fd);
     DMTR_OK(rdma_listen(my_rdma_id, backlog));
@@ -295,7 +295,7 @@ int dmtr::rdma_queue::listen(int backlog)
 
 int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     // Convert regular address into an rdma address
     DMTR_OK(rdma_resolve_addr(my_rdma_id, NULL, saddr, 1));
@@ -333,7 +333,7 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 
 int dmtr::rdma_queue::close()
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     // todo: freeing all memory that we've allocated.
     DMTR_OK(rdma_destroy_qp(my_rdma_id));
@@ -381,7 +381,7 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t l
 
 int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
@@ -458,7 +458,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
 int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
@@ -472,7 +472,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
 
 int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task const * t = it->second;
@@ -515,7 +515,7 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 
     if (t->done) {
         if (t->pull && 0 == t->error) {
-            DMTR_NOTNULL(sga_out);
+            DMTR_NOTNULL(EINVAL, sga_out);
             *sga_out = t->sga;
         }
 
@@ -527,7 +527,7 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 
 int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
 {
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     dmtr_sgarray_t sga = {};
     int ret = poll(&sga, qt);
@@ -620,7 +620,7 @@ int dmtr::rdma_queue::rdma_listen(struct rdma_cm_id * const id, int backlog) {
 }
 
 int dmtr::rdma_queue::rdma_destroy_qp(struct rdma_cm_id * const id) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     if (NULL == id->qp) {
         return 0;
@@ -631,7 +631,7 @@ int dmtr::rdma_queue::rdma_destroy_qp(struct rdma_cm_id * const id) {
 }
 
 int dmtr::rdma_queue::rdma_destroy_id(struct rdma_cm_id *&id) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     int ret = ::rdma_destroy_id(id);
     switch (ret) {
@@ -646,7 +646,7 @@ int dmtr::rdma_queue::rdma_destroy_id(struct rdma_cm_id *&id) {
 }
 
 int dmtr::rdma_queue::rdma_destroy_event_channel(struct rdma_event_channel *&channel) {
-    DMTR_NOTNULL(channel);
+    DMTR_NOTNULL(EINVAL, channel);
 
     ::rdma_destroy_event_channel(channel);
     channel = NULL;
@@ -654,7 +654,7 @@ int dmtr::rdma_queue::rdma_destroy_event_channel(struct rdma_event_channel *&cha
 }
 
 int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     int ret = ::rdma_resolve_addr(id, const_cast<struct sockaddr *>(src_addr), const_cast<struct sockaddr *>(dst_addr), timeout_ms);
     switch (ret) {
@@ -668,7 +668,7 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
 }
 
 int dmtr::rdma_queue::rdma_get_cm_event(struct rdma_cm_event *&event_out, struct rdma_event_channel *channel) {
-    DMTR_NOTNULL(channel);
+    DMTR_NOTNULL(EINVAL, channel);
 
     int ret = ::rdma_get_cm_event(channel, &event_out);
     switch (ret) {
@@ -687,7 +687,7 @@ int dmtr::rdma_queue::rdma_get_cm_event(struct rdma_cm_event *&event_out, struct
 }
 
 int dmtr::rdma_queue::rdma_ack_cm_event(struct rdma_cm_event * const event) {
-    DMTR_NOTNULL(event);
+    DMTR_NOTNULL(EINVAL, event);
 
     int ret = ::rdma_ack_cm_event(event);
     switch (ret) {
@@ -701,7 +701,7 @@ int dmtr::rdma_queue::rdma_ack_cm_event(struct rdma_cm_event * const event) {
 }
 
 int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     struct rdma_cm_event *event = NULL;
     DMTR_OK(::rdma_get_cm_event(id->channel, &event));
@@ -715,7 +715,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
 }
 
 int dmtr::rdma_queue::rdma_resolve_route(struct rdma_cm_id * const id, int timeout_ms) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     int ret = ::rdma_resolve_route(id, timeout_ms);
     switch (ret) {
@@ -729,8 +729,8 @@ int dmtr::rdma_queue::rdma_resolve_route(struct rdma_cm_id * const id, int timeo
 }
 
 int dmtr::rdma_queue::rdma_connect(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param) {
-    DMTR_NOTNULL(id);
-    DMTR_NOTNULL(conn_param);
+    DMTR_NOTNULL(EINVAL, id);
+    DMTR_NOTNULL(EINVAL, conn_param);
 
     int ret = ::rdma_connect(id, conn_param);
     switch (ret) {
@@ -744,7 +744,7 @@ int dmtr::rdma_queue::rdma_connect(struct rdma_cm_id * const id, struct rdma_con
 }
 
 int dmtr::rdma_queue::ibv_alloc_pd(struct ibv_pd *&pd_out, struct ibv_context *context) {
-    DMTR_NOTNULL(context);
+    DMTR_NOTNULL(EINVAL, context);
 
     pd_out = ::ibv_alloc_pd(context);
     if (NULL == pd_out) {
@@ -783,8 +783,8 @@ int dmtr::rdma_queue::get_pd(struct ibv_pd *&pd_out) {
 }
 
 int dmtr::rdma_queue::rdma_create_qp(struct rdma_cm_id * const id, struct ibv_pd * const pd, struct ibv_qp_init_attr * const qp_init_attr) {
-    DMTR_NOTNULL(id);
-    DMTR_NOTNULL(qp_init_attr);
+    DMTR_NOTNULL(EINVAL, id);
+    DMTR_NOTNULL(EINVAL, qp_init_attr);
 
     int ret = ::rdma_create_qp(id, pd, qp_init_attr);
     switch (ret) {
@@ -798,8 +798,8 @@ int dmtr::rdma_queue::rdma_create_qp(struct rdma_cm_id * const id, struct ibv_pd
 }
 
 int dmtr::rdma_queue::rdma_accept(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param) {
-    DMTR_NOTNULL(id);
-    DMTR_NOTNULL(conn_param);
+    DMTR_NOTNULL(EINVAL, id);
+    DMTR_NOTNULL(EINVAL, conn_param);
 
     int ret = ::rdma_accept(id, conn_param);
     switch (ret) {
@@ -813,17 +813,17 @@ int dmtr::rdma_queue::rdma_accept(struct rdma_cm_id * const id, struct rdma_conn
 }
 
 int dmtr::rdma_queue::rdma_get_peer_addr(struct sockaddr *&saddr_out, struct rdma_cm_id * const id) {
-    DMTR_NOTNULL(id);
+    DMTR_NOTNULL(EINVAL, id);
 
     saddr_out = ::rdma_get_peer_addr(id);
-    DMTR_NOTNULL(saddr_out);
+    DMTR_NOTNULL(ENOTSUP, saddr_out);
     return 0;
 }
 
 int dmtr::rdma_queue::ibv_poll_cq(size_t &count_out, struct ibv_cq * const cq, int num_entries, struct ibv_wc * const wc) {
     count_out = 0;
-    DMTR_NOTNULL(cq);
-    DMTR_NOTNULL(wc);
+    DMTR_NOTNULL(EINVAL, cq);
+    DMTR_NOTNULL(EINVAL, wc);
 
     int ret = ::ibv_poll_cq(cq, num_entries, wc);
     if (ret < 0) {
@@ -835,8 +835,8 @@ int dmtr::rdma_queue::ibv_poll_cq(size_t &count_out, struct ibv_cq * const cq, i
 }
 
 int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) {
-    DMTR_NOTNULL(p);
-    DMTR_NOTNULL(my_rdma_id);
+    DMTR_NOTNULL(EINVAL, p);
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
     Latency_Start(&get_mr);
     struct ibv_pd *pd = NULL;
@@ -844,7 +844,7 @@ int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) 
     // todo: eliminate this `const_cast<>`.
     struct ibv_mr * const mr = Zeus::RDMA::Hoard::getRdmaMr(const_cast<void *>(p), pd);
     Latency_End(&get_mr);
-    DMTR_NOTNULL(mr);
+    DMTR_NOTNULL(ENOTSUP, mr);
     assert(mr->context == my_rdma_id->verbs);
     assert(mr->pd == pd);
     mr_out = mr;
@@ -852,8 +852,8 @@ int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) 
 }
 
 int dmtr::rdma_queue::ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_send_wr * const wr) {
-    DMTR_NOTNULL(qp);
-    DMTR_NOTNULL(wr);
+    DMTR_NOTNULL(EINVAL, qp);
+    DMTR_NOTNULL(EINVAL, wr);
     size_t num_sge = wr->num_sge;
     // undocumented: `ibv_post_send()` returns `ENOMEM` if the
     // s/g array is larger than the max specified for the queue
@@ -867,8 +867,8 @@ int dmtr::rdma_queue::ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_
 }
 
 int dmtr::rdma_queue::ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_recv_wr * const wr) {
-    DMTR_NOTNULL(qp);
-    DMTR_NOTNULL(wr);
+    DMTR_NOTNULL(EINVAL, qp);
+    DMTR_NOTNULL(EINVAL, wr);
 
     return ::ibv_post_recv(qp, wr, &bad_wr_out);
 }
@@ -924,7 +924,7 @@ int dmtr::rdma_queue::setup_recv_queue() {
 int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
-        DMTR_NOTNULL(buf);
+        DMTR_NOTNULL(EINVAL, buf);
         Zeus::RDMA::Hoard::pin(buf);
     }
 
@@ -934,7 +934,7 @@ int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
 int dmtr::rdma_queue::unpin(const dmtr_sgarray_t &sga) {
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
-        DMTR_NOTNULL(buf);
+        DMTR_NOTNULL(EINVAL, buf);
         Zeus::RDMA::Hoard::unpin(buf);
     }
 

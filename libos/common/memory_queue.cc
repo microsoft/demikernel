@@ -72,7 +72,7 @@ dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
 
 int
 dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
-    DMTR_NOTNULL(sga_out);
+    DMTR_NOTNULL(EINVAL, sga_out);
     std::lock_guard<std::mutex> lock(my_lock);
     DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
     auto it = my_completions.find(qt);
