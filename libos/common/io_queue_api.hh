@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * common/library.h
+ * common/io_queue_api.hh
  *   dmtr general-purpose queue library implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
@@ -54,8 +54,8 @@ class io_queue_api
     private: int insert_queue(io_queue * const q);
     private: int remove_queue(int qd);
 
-    private: int qttoqd(dmtr_qtoken_t qtok) {
-        return static_cast<int>(qtok >> 32);
+    public: int qttoqd(dmtr_qtoken_t qtok) {
+        return static_cast<int>(QT2QD(qtok));
     }
 
     public: static int init(io_queue_api *&newobj_out, int argc, char *argv[]);

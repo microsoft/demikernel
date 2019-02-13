@@ -12,6 +12,8 @@ extern "C" {
 #define DMTR_SGARRAY_MAXSIZE 10
 #define DMTR_HEADER_MAGIC 0x10102010
 
+#define QT2QD(qtoken) qtoken >> 32 
+    
 typedef uint64_t dmtr_qtoken_t;
 
 typedef struct dmtr_sgaseg {
@@ -33,6 +35,13 @@ typedef struct dmtr_header {
     uint32_t h_sgasegs;
 } dmtr_header_t;
 
+typedef struct dmtr_wait_completion {
+    dmtr_sgarray_t sga_out;
+    dmtr_qtoken_t qt_out;
+    int qt_idx_out;
+    int qd_out;
+} dmtr_wait_completion_t;
+    
 #ifdef __cplusplus
 }
 #endif
