@@ -1,4 +1,5 @@
 #include <dmtr/fail.h>
+#include <dmtr/annot.h>
 #include <dmtr/wait.h>
 #include <dmtr/libos.h>
 #include <errno.h>
@@ -26,5 +27,5 @@ int dmtr_wait_any(dmtr_wait_completion_t * const wait_out, dmtr_qtoken_t qts[], 
         }
     }
         
-    
+    DMTR_UNREACHABLE();
 }

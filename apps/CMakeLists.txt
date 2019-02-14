@@ -6,7 +6,7 @@ add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
 # Tapir
 set(TAPIR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tapir)
 add_custom_target(tapir
-    COMMAND ZEUS_SRC_DIR=${CMAKE_SOURCE_DIR} make
+    COMMAND DMTR_CFLAGS=-I${CMAKE_SOURCE_DIR}/include DMTR_LDFLAGS='-L${PROJECT_BINARY_DIR}/libos/posix -ldmtr-libos-posix -Wl,-rpath,${PROJECT_BINARY_DIR}/libos/posix' make
     WORKING_DIRECTORY ${TAPIR_DIR}
 )
 add_dependencies(tapir dmtr-libos-posix)
