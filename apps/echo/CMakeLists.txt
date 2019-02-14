@@ -43,18 +43,18 @@ add_custom_target(posix-echo)
 add_dependencies(posix-echo  posix-echo-server posix-echo-client)
 
 # LWIP UDP server
-add_executable(lwip_server ${UDP_ECHO_SERVER_SOURCES})
-target_add_dpdk(lwip_server)
-target_link_libraries(lwip_server dmtr-libos-lwip Threads::Threads)
+add_executable(lwip-echo-server ${UDP_ECHO_SERVER_SOURCES})
+target_add_dpdk(lwip-echo-server)
+target_link_libraries(lwip-echo-server dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client
-add_executable(lwip_client  ${UDP_ECHO_CLIENT_SOURCES})
-target_add_dpdk(lwip_client)
-target_link_libraries(lwip_client dmtr-libos-lwip Threads::Threads)
+add_executable(lwip-echo-client  ${UDP_ECHO_CLIENT_SOURCES})
+target_add_dpdk(lwip-echo-client)
+target_link_libraries(lwip-echo-client dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client & server
-add_custom_target(lwip)
-add_dependencies(lwip lwip_server lwip_client)
+add_custom_target(lwip-echo)
+add_dependencies(lwip-echo lwip-echo-server lwip-echo-client)
 
 # LWIP "raw" server
 add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES})

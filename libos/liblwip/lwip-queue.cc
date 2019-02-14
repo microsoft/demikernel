@@ -8,33 +8,32 @@
  * Attn: Systems Group.
  */
 
+#include "lwip-queue.h"
 
-#include <stdio.h>
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <unistd.h>
-#include <string.h>
+#include <dmtr/annot.h>
+#include <dmtr/cast.h>
+#include <dmtr/mem.h>
+#include <libos/common/latency.h>
+
+#include <cassert>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <netinet/in.h>
 #include <rte_common.h>
+#include <rte_cycles.h>
 #include <rte_eal.h>
 #include <rte_ethdev.h>
-#include <rte_cycles.h>
-#include <rte_lcore.h>
-#include <rte_mbuf.h>
 #include <rte_ip.h>
-#include <rte_udp.h>
-#include <rte_ether.h>
+#include <rte_lcore.h>
 #include <rte_memcpy.h>
-
-#include "lwip-queue.h"
-#include <libos/common/library.h>
-#include <libos/common/latency.h>
+#include <rte_udp.h>
+#include <unistd.h>
 
 DEFINE_LATENCY(dev_read_latency);
 DEFINE_LATENCY(dev_write_latency);
-
 
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
@@ -44,7 +43,7 @@ DEFINE_LATENCY(dev_write_latency);
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DEBUG_ZEUS_LWIP 	0
+#define DMTR_DEBUG 	0
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -72,11 +71,6 @@ DEFINE_LATENCY(dev_write_latency);
  */
 #define RTE_TEST_RX_DESC_DEFAULT    128
 #define RTE_TEST_TX_DESC_DEFAULT    128
-
-static uint16_t port = 1024;
-
-namespace Zeus {
-namespace LWIP {
 
 struct mac2ip {
     struct ether_addr mac;
@@ -106,7 +100,6 @@ static struct ether_addr ether_broadcast = {
 };
 
 
-uint8_t port_id;
 struct rte_mempool *mbuf_pool;
 struct rte_eth_conf port_conf;
 struct rte_eth_txconf tx_conf;
@@ -139,26 +132,27 @@ mac_to_ip(struct ether_addr mac)
 }
 
 
-static inline uint16_t
-ip_sum(const unaligned_uint16_t *hdr, int hdr_len)
-{
+int dmtr::lwip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len) {
+    DMTR_NOTNULL(EINVAL, hdr);
     uint32_t sum = 0;
 
-    while (hdr_len > 1)
-    {
+    while (hdr_len > 1) {
         sum += *hdr++;
-        if (sum & 0x80000000)
+        if (sum & 0x80000000) {
             sum = (sum & 0xFFFF) + (sum >> 16);
+        }
         hdr_len -= 2;
     }
 
-    while (sum >> 16)
+    while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
+    }
 
-    return ~sum;
+    sum_out = ~sum;
+    return 0;
 }
 
-#if DEBUG_ZEUS_LWIP
+#if DMTR_DEBUG
 static inline void
 print_ether_addr(const char *what, struct ether_addr *eth_addr)
 {
@@ -174,53 +168,53 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 #define CHECK_INTERVAL 			100 /* 100ms */
 #define MAX_CHECK_TIME 			90 /* 9s (90 * 100ms) in total */
 
-	uint8_t portid, count, all_ports_up, print_flag = 0;
-	struct rte_eth_link link;
+    uint8_t portid, count, all_ports_up, print_flag = 0;
+    struct rte_eth_link link;
 
-	printf("\nChecking link status... ");
-	fflush(stdout);
-	for (count = 0; count <= MAX_CHECK_TIME; count++) {
-		all_ports_up = 1;
-		for (portid = 0; portid < port_num; portid++) {
-			if ((port_mask & (1 << portid)) == 0)
-				continue;
-			memset(&link, 0, sizeof(link));
-			rte_eth_link_get_nowait(portid, &link);
-			/* print link status if flag set */
-			if (print_flag == 1) {
-				if (link.link_status)
-					printf("Port %d Link Up - speed %u "
-						"Mbps - %s\n", (uint8_t)portid,
-						(unsigned)link.link_speed,
-				(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
-					("full-duplex") : ("half-duplex\n"));
-				else
-					printf("Port %d Link Down\n",
-						(uint8_t)portid);
-				continue;
-			}
-			/* clear all_ports_up flag if any link down */
-			if (link.link_status == 0) {
-				all_ports_up = 0;
-				break;
-			}
-		}
-		/* after finally printing all link status, get out */
-		if (print_flag == 1)
-			break;
+    printf("\nChecking link status... ");
+    fflush(stdout);
+    for (count = 0; count <= MAX_CHECK_TIME; count++) {
+        all_ports_up = 1;
+        for (portid = 0; portid < port_num; portid++) {
+            if ((port_mask & (1 << portid)) == 0)
+                continue;
+            memset(&link, 0, sizeof(link));
+            rte_eth_link_get_nowait(portid, &link);
+            /* print link status if flag set */
+            if (print_flag == 1) {
+                if (link.link_status)
+                    printf("Port %d Link Up - speed %u "
+                        "Mbps - %s\n", (uint8_t)portid,
+                        (unsigned)link.link_speed,
+                (link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
+                    ("full-duplex") : ("half-duplex\n"));
+                else
+                    printf("Port %d Link Down\n",
+                        (uint8_t)portid);
+                continue;
+            }
+            /* clear all_ports_up flag if any link down */
+            if (link.link_status == 0) {
+                all_ports_up = 0;
+                break;
+            }
+        }
+        /* after finally printing all link status, get out */
+        if (print_flag == 1)
+            break;
 
-		if (all_ports_up == 0) {
-			printf(".");
-			fflush(stdout);
-			rte_delay_ms(CHECK_INTERVAL);
-		}
+        if (all_ports_up == 0) {
+            printf(".");
+            fflush(stdout);
+            rte_delay_ms(CHECK_INTERVAL);
+        }
 
-		/* set the print_flag if all ports up or timeout */
-		if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
-			print_flag = 1;
-			printf("done\n");
-		}
-	}
+        /* set the print_flag if all ports up or timeout */
+        if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
+            print_flag = 1;
+            printf("done\n");
+        }
+    }
 }
 
 /*
@@ -328,12 +322,11 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-int
-lwip_init(int argc, char* argv[])
+int dmtr::lwip_queue::init_dpdk(int argc, char* argv[])
 {
-	if (is_init) {
-		return 0;
-	}
+    if (is_init) {
+        return 0;
+    }
 
     unsigned nb_ports;
     int ret;
@@ -380,6 +373,7 @@ lwip_init(int argc, char* argv[])
 
     /* Initialize all ports. */
     uint16_t i;
+    uint16_t port_id = 0;
     RTE_ETH_FOREACH_DEV(i) {
         fprintf(stderr, "Attempting to start ethernet port %d...\n", i);
         int err = port_init(i, mbuf_pool);
@@ -398,11 +392,11 @@ lwip_init(int argc, char* argv[])
     }
 
     is_init = true;
+    our_dpdk_port_id = port_id;
     return 0;
 }
 
-int lwip_init()
-{
+int dmtr::lwip_queue::init_dpdk() {
     char* argv[] = {(char*)"",
                     (char*)"-c",
                     (char*)"0x1",
@@ -411,178 +405,110 @@ int lwip_init()
                     (char*)"--proc-type=auto",
                     (char*)""};
     int argc = 6;
-	return lwip_init(argc, argv);
+    return init_dpdk(argc, argv);
 }
 
+const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
+boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
-int
-LWIPQueue::socket(int domain, int type, int protocol)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-//    assert(domain == AF_INET);
-//    assert(type == SOCK_DGRAM);
-    return qd;
-}
+dmtr::lwip_queue::task::task() :
+    pull(false),
+    done(false),
+    error(0),
+    header{},
+    sga{}
+{}
 
-int
-LWIPQueue::getsockname(struct sockaddr *saddr, socklen_t *size)
-{
-    if (is_bound) {
-        memcpy(saddr, &bound_addr, sizeof(struct sockaddr_in));
-        *size = sizeof(struct sockaddr_in);
-    }
+dmtr::lwip_queue::lwip_queue(int qd) :
+    io_queue(NETWORK_Q, qd)
+{}
+
+int dmtr::lwip_queue::new_object(io_queue *&q_out, int qd) {
+    q_out = NULL;
+
+    // todo: this should be initialized in `dmtr_init()`;
+    DMTR_OK(init_dpdk());
+    q_out = new lwip_queue(qd);
     return 0;
 }
 
-int
-LWIPQueue::listen(int backlog)
-{
-    return 0;
-}
+dmtr::lwip_queue::~lwip_queue()
+{}
 
-
-int
-LWIPQueue::bind(struct sockaddr *addr, socklen_t size)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-    assert(size == sizeof(struct sockaddr_in));
-    struct sockaddr_in* saddr = (struct sockaddr_in*)addr;
-    bound_addr = *saddr;
-    if (bound_addr.sin_port == 0) {
-        bound_addr.sin_port = htons(port++);
-        if (port > 65535) {
-            port = 1024;
-        }
+int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
+    // we don't currently support anything but UDP.
+    if (type != SOCK_DGRAM) {
+        return ENOTSUP;
     }
 
-    if (bound_addr.sin_addr.s_addr == 0) {
-        struct ether_addr my_mac;
-        rte_eth_macaddr_get(port_id, &my_mac);
-        bound_addr.sin_addr.s_addr = mac_to_ip(my_mac);
+    return 0;
+}
+
+int dmtr::lwip_queue::listen(int backlog)
+{
+    return ENOTSUP;
+}
+
+int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
+    DMTR_NOTNULL(EINVAL, saddr);
+    DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
+    struct sockaddr_in saddr_copy =
+        *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
+
+    if (INADDR_ANY == saddr_copy.sin_addr.s_addr) {
+        struct ether_addr mac_addr = {};
+        DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
+        saddr_copy.sin_addr.s_addr = mac_to_ip(mac_addr);
     }
 
-    is_bound = true;
-
+    my_bound_addr = saddr_copy;
     return 0;
 }
 
-int
-LWIPQueue::bind()
+int dmtr::lwip_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
 {
-    if (!is_init) {
-    	lwip_init();
-    }
-    struct sockaddr_in *addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
-    addr->sin_port = 0;
-    addr->sin_addr.s_addr = 0;
-    return bind((struct sockaddr*)addr, sizeof(sockaddr_in));
+    q_out = NULL;
+
+    return ENOTSUP;
 }
 
+int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
+    DMTR_TRUE(EPERM, boost::none == my_bound_addr);
+    DMTR_TRUE(EPERM, boost::none == my_default_peer);
 
-int
-LWIPQueue::accept(struct sockaddr *saddr, socklen_t *size)
-{
+    my_default_peer = *reinterpret_cast<const struct sockaddr_in *>(saddr);
     return 0;
 }
 
-
-int
-LWIPQueue::connect(struct sockaddr *saddr, socklen_t size)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-	default_peer_addr = (struct sockaddr_in*)saddr;
-	has_default_peer = true;
+int dmtr::lwip_queue::close() {
+    my_default_peer = boost::none;
+    my_bound_addr = boost::none;
     return 0;
 }
 
+int dmtr::lwip_queue::complete_send(task &t) {
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-int
-LWIPQueue::close()
-{
-	default_peer_addr = NULL;
-	has_default_peer = false;
-    return 0;
-}
-
-int
-LWIPQueue::open(qtoken qt, const char *pathname, int flags)
-{
-    assert(false);
-    return 0;
-}
-
-
-int
-LWIPQueue::open(const char *pathname, int flags)
-{
-    assert(false);
-    return 0;
-}
-
-
-int
-LWIPQueue::open(const char *pathname, int flags, mode_t mode)
-{
-    assert(false);
-    return 0;
-}
-
-
-int
-LWIPQueue::creat(const char *pathname, mode_t mode)
-{
-    assert(false);
-    return 0;
-}
-
-int
-LWIPQueue::flush(qtoken qt, int flags)
-{
-    assert(false);
-    return 0;
-}
-
-int
-LWIPQueue::getfd()
-{
-	return qd;
-}
-
-void
-LWIPQueue::setfd(int fd)
-{
-	this->qd = fd;
-}
-
-void
-LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
-{
-    if (!is_init) {
-    	lwip_init();
+    struct sockaddr_in *saddr = NULL;
+    if (boost::none == my_default_peer) {
+        DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == t.sga.sga_addrlen);
+        saddr = reinterpret_cast<struct sockaddr_in *>(t.sga.sga_addr);
+    } else {
+        saddr = &boost::get(my_default_peer);
     }
 
-    if (!is_bound) {
-        bind();
-    }
-
-    struct udp_hdr* udp_hdr;
-    struct ipv4_hdr* ip_hdr;
-    struct ether_hdr* eth_hdr;
+    struct rte_mbuf *pkt = NULL;
+    DMTR_OK(rte_pktmbuf_alloc(pkt, mbuf_pool));
+    pkt->nb_segs = 1;
+    auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
     uint32_t data_len = 0;
-    struct sockaddr_in* saddr = has_default_peer ?
-    								default_peer_addr :
-									(struct sockaddr_in*)&req.sga.addr;
-    uint16_t ret;
-
-    struct rte_mbuf* pkt = rte_pktmbuf_alloc(mbuf_pool);
-
-    assert(pkt != NULL);
 
     // packet layout order is (from outside -> in):
     // ether_hdr
@@ -596,434 +522,393 @@ LWIPQueue::ProcessOutgoing(struct PendingRequest &req)
     // ...
 
     // set up Ethernet header
-    eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr*);
-    rte_eth_macaddr_get(port_id, &eth_hdr->s_addr);
-#if DEBUG_ZEUS_LWIP
-    print_ether_addr("push: eth src addr: ", &eth_hdr->s_addr);
-#endif
-    ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
-#if DEBUG_ZEUS_LWIP
-    print_ether_addr("push: eth dst addr: ", &eth_hdr->d_addr);
-#endif
+    auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
+    p += sizeof(*eth_hdr);
+    data_len += sizeof(*eth_hdr);
+    memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
+    rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
+    ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
 
     // set up IP header
-    ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(pkt, char *)
-            + sizeof(struct ether_hdr));
-    memset(ip_hdr, 0, sizeof(struct ipv4_hdr));
+    auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
+    p += sizeof(*ip_hdr);
+    data_len += sizeof(*ip_hdr);
+    memset(ip_hdr, 0, sizeof(struct ::ipv4_hdr));
     ip_hdr->version_ihl = IP_VHL_DEF;
-    ip_hdr->type_of_service = 0;
-    ip_hdr->fragment_offset = 0;
     ip_hdr->time_to_live = IP_DEFTTL;
     ip_hdr->next_proto_id = IPPROTO_UDP;
-    ip_hdr->packet_id = 0;
-    ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
-#if DEBUG_ZEUS_LWIP
-    printf("push: ip src addr: %x\n", ip_hdr->src_addr);
-#endif
+    // todo: need a way to get my own IP address even if `bind()` wasn't
+    // called.
+    if (is_bound()) {
+        auto bound_addr = boost::get(my_bound_addr);
+        ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
+    }
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
-#if DEBUG_ZEUS_LWIP
-    printf("push: ip dst addr: %x\n", ip_hdr->dst_addr);
-#endif
-    ip_hdr->total_length = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr);
-    ip_hdr->hdr_checksum = ip_sum((unaligned_uint16_t*)ip_hdr, sizeof(struct ipv4_hdr));
+    ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
+    uint16_t checksum = 0;
+    DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(struct ipv4_hdr)));
+    ip_hdr->hdr_checksum = htons(checksum);
 
     // set up UDP header
-    udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(pkt, char *)
-            + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
-    udp_hdr->src_port = bound_addr.sin_port;
-#if DEBUG_ZEUS_LWIP
-    printf("push: udp src port: %d\n", udp_hdr->src_port);
-#endif
-    udp_hdr->dst_port = saddr->sin_port;
-#if DEBUG_ZEUS_LWIP
-    printf("push: udp dst port: %d\n", udp_hdr->dst_port);
-#endif
-    udp_hdr->dgram_len = sizeof(struct udp_hdr);
-    udp_hdr->dgram_cksum = 0;
+    auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
+    p += sizeof(*udp_hdr);
+    data_len += sizeof(*udp_hdr);
+    memset(udp_hdr, 0, sizeof(struct ::udp_hdr));
+    // todo: need a way to get my own IP address even if `bind()` wasn't
+    // called.
+    if (is_bound()) {
+        auto bound_addr = boost::get(my_bound_addr);
+        udp_hdr->src_port = htons(bound_addr.sin_port);
+    }
+    udp_hdr->dst_port = htons(saddr->sin_port);
+    udp_hdr->dgram_len = htonl(sizeof(struct udp_hdr));
 
-    //double stack = zeus_ustime();
+    auto *u32 = reinterpret_cast<uint32_t *>(p);
+    *u32 = t.sga.sga_numsegs;
+    data_len += sizeof(*u32);
+    p += sizeof(*u32);
 
-    // Fill in packet fields
-    pkt->data_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
-                                + sizeof(struct ether_hdr);
-    pkt->pkt_len = sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr)
-                                + sizeof(struct ether_hdr);
+    for (size_t i = 0; i < t.sga.sga_numsegs; i++) {
+        u32 = reinterpret_cast<uint32_t *>(p);
+        auto len = t.sga.sga_segs[i].sgaseg_len;
+        *u32 = len;
+        data_len += sizeof(*u32);
+        p += sizeof(*u32);
+        // todo: remove copy by associating foreign memory with
+        // pktmbuf object.
+        rte_memcpy(p, t.sga.sga_segs[i].sgaseg_buf, len);
+        data_len += len;
+        p += len;
+    }
+
+#if DMTR_DEBUG
+    print_ether_addr("send: eth src addr: ", &eth_hdr->s_addr);
+    print_ether_addr("send: eth dst addr: ", &eth_hdr->d_addr);
+    printf("send: ip src addr: %x\n", ip_hdr->src_addr);
+    printf("send: ip dst addr: %x\n", ip_hdr->dst_addr);
+    printf("send: udp src port: %d\n", udp_hdr->src_port);
+    printf("send: udp dst port: %d\n", udp_hdr->dst_port);
+    printf("send: sga_numsegs: %d\n", t.sga.sga_numsegs);
+    for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
+        printf("send: buf [%d] len: %d\n", i, t.sga.sga_segs[i].sgaseg_len);
+        printf("send: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(ptr));
+    }
+    printf("send: pkt len: %d\n", data_len);
+#endif
+
+    pkt->data_len = data_len;
+    pkt->pkt_len = data_len;
     pkt->nb_segs = 1;
-
-    uint8_t *ptr = rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr)
-            + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-    *ptr = req.sga.num_bufs;
-#if DEBUG_ZEUS_LWIP
-    printf("push: sga num_bufs: %d\n", *ptr);
-#endif
-    ptr += sizeof(uint64_t);
-    pkt->data_len += sizeof(uint64_t);
-    pkt->pkt_len += sizeof(uint64_t);
-
-    //double copy_start = zeus_ustime();
-
-    for (int i = 0; i < req.sga.num_bufs; i++) {
-        *ptr = req.sga.bufs[i].len;
-#if DEBUG_ZEUS_LWIP
-        printf("push: buf [%d] len: %d\n", i, *ptr);
-#endif
-        ptr += sizeof(uint64_t);
-
-        //TODO: Remove copy if possible (may involve changing DPDK memory management
-        rte_memcpy(ptr, req.sga.bufs[i].buf, req.sga.bufs[i].len);
-#if DEBUG_ZEUS_LWIP
-        printf("push: packet segment [%d] contents: %s\n", i, (char*)ptr);
-#endif
-        ptr += req.sga.bufs[i].len;
-        pkt->data_len += req.sga.bufs[i].len + sizeof(uint64_t);
-        data_len += req.sga.bufs[i].len;
-    }
-    //double copy_end = zeus_ustime();
-
-    pkt->pkt_len = pkt->data_len;
-
-#if DEBUG_ZEUS_LWIP
-    printf("push: pkt len: %d\n", pkt->data_len);
-#endif
-
-    Latency_Start(&dev_write_latency);
-    ret = rte_eth_tx_burst(port_id, 0,  &pkt, 1);
-    Latency_End(&dev_write_latency);
-
-    assert(ret == 1);
-
-#if TIME_ZEUS_LWIP
-//    printf("processOutgoing: \n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tData Send: %4.2f\n\tTotal Latency: %4.2f\n",
-//    		stack - start,
-//			copy_end - copy_start,
-//			send_end - send_start,
-//			end - start);
-#endif
-    req.res = data_len;
-    req.isDone = true;
-}
-
-
-void
-LWIPQueue::ProcessIncoming(PendingRequest &req)
-{
-    if (!is_init) {
-    	lwip_init();
+    size_t count = 0;
+    int ret = rte_eth_tx_burst(count, dpdk_port_id, 0, &pkt, 1);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+            DMTR_UNREACHABLE();
+        case 0:
+            break;
+        case EAGAIN:
+            return ret;
     }
 
-    struct rte_mbuf *m;
-    struct sockaddr_in* saddr = &req.sga.addr;
-    struct udp_hdr *udp_hdr;
-    struct ipv4_hdr *ip_hdr;
-    struct ether_hdr *eth_hdr;
-    uint16_t eth_type;
-    uint8_t ip_type;
-    ssize_t data_len = 0;
-    uint16_t port;
-
-    //TODO: Why 4 for nb_pkts?
-    if (num_packets == 0) {
-        // our packet buffer is empty, try to get some more from NIC
-        Latency_Start(&dev_read_latency);
-        num_packets = rte_eth_rx_burst(port_id, 0, pkt_buffer, MAX_PKTS);
-        if (num_packets > 0) Latency_End(&dev_read_latency);
-        pkt_idx = 0;
-    }
-
-    if (likely(num_packets == 0)) {
-        return;
-    } else {
-        assert(num_packets == 1);
-        // packet layout order is (from outside -> in):
-        // ether_hdr
-        // ipv4_hdr
-        // udp_hdr
-        // sga.num_bufs
-        // sga.buf[0].len
-        // sga.buf[0].buf
-        // sga.buf[1].len
-        // sga.buf[1].buf
-        // ...
-
-        m = pkt_buffer[pkt_idx];
-        pkt_idx += 1;
-        num_packets -= 1;
-
-        //double recv_end = zeus_ustime();
-
-        // check ethernet header
-        eth_hdr = (struct ether_hdr *)rte_pktmbuf_mtod(m, struct ether_hdr *);
-        eth_type = ntohs(eth_hdr->ether_type);
-
-#if DEBUG_ZEUS_LWIP
-        print_ether_addr("pop: eth src addr: ", &eth_hdr->s_addr);
-        print_ether_addr("pop: eth dst addr: ", &eth_hdr->d_addr);
-#endif
-
-        if (eth_type != ETHER_TYPE_IPv4) {
-#if DEBUG_ZEUS_LWIP
-            printf("pop: Not an IPv4 Packet\n");
-#endif
-            return;
-        }
-
-        // check IP header
-        ip_hdr = (struct ipv4_hdr *)(rte_pktmbuf_mtod(m, char *)
-                    + sizeof(struct ether_hdr));
-        ip_type = ip_hdr->next_proto_id;
-#if DEBUG_ZEUS_LWIP
-        printf("pop: ip src addr: %x\n", ip_hdr->src_addr);
-        printf("pop: ip dst addr: %x\n", ip_hdr->dst_addr);
-#endif
-
-        if (is_bound) {
-            if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
-#if DEBUG_ZEUS_LWIP
-                printf("pop: not for me: ip dst addr: %x\n", ip_hdr->dst_addr);
-#endif
-                return;
-            }
-        }
-
-        if (ip_type != IPPROTO_UDP) {
-#if DEBUG_ZEUS_LWIP
-            printf("pop: Not a UDP Packet\n");
-#endif
-            return;
-        }
-
-        // check UDP header
-        udp_hdr = (struct udp_hdr *)(rte_pktmbuf_mtod(m, char *)
-                    + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
-        port = udp_hdr->dst_port;
-
-#if DEBUG_ZEUS_LWIP
-        printf("pop: udp src port: %d\n", udp_hdr->src_port);
-        printf("pop: udp dst port: %d\n", udp_hdr->dst_port);
-#endif
-
-        if (is_bound) {
-            if (port != bound_addr.sin_port) {
-#if DEBUG_ZEUS_LWIP
-                printf("pop: not for me: udp dst port: %d", udp_hdr->dst_port);
-#endif
-                return;
-            }
-        }
-
-        //double stack = zeus_ustime();
-
-        uint8_t* ptr = rte_pktmbuf_mtod(m, uint8_t *) + sizeof(struct ether_hdr)
-                + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-        req.sga.num_bufs = *(uint64_t*)ptr;
-#if DEBUG_ZEUS_LWIP
-        printf("pop: sga num_bufs: %d\n", req.sga.num_bufs);
-#endif
-        ptr += sizeof(uint64_t);
-        data_len = 0;
-
-        //double copy_start = zeus_ustime();
-        for (int i = 0; i < req.sga.num_bufs; i++) {
-            req.sga.bufs[i].len = *(size_t *)ptr;
-#if DEBUG_ZEUS_LWIP
-            printf("pop: buf [%d] len: %lu\n", i, req.sga.bufs[i].len);
-#endif
-            req.sga.bufs[i].buf = malloc((size_t)req.sga.bufs[i].len);
-            ptr += sizeof(uint64_t);
-
-            //TODO: Remove copy if possible (may involve changing DPDK memory management
-            rte_memcpy(req.sga.bufs[i].buf, (ioptr)ptr, req.sga.bufs[i].len);
-#if DEBUG_ZEUS_LWIP
-            printf("pop: packet segment [%d] contents: %s\n", i, (char*)req.sga.bufs[i].buf);
-#endif
-            ptr += req.sga.bufs[i].len;
-            data_len += req.sga.bufs[i].len;
-        }
-
-        //double copy_end = zeus_ustime();
-
-#if DEBUG_ZEUS_LWIP
-        printf("pop: pkt len: %d\n", m->pkt_len);
-#endif
-
-        if (saddr != NULL){
-            memset(saddr, 0, sizeof(struct sockaddr_in));
-            saddr->sin_family = AF_INET;
-            saddr->sin_port = udp_hdr->src_port;
-#if DEBUG_ZEUS_LWIP
-            printf("pop: saddr port: %d\n", saddr->sin_port);
-#endif
-            saddr->sin_addr.s_addr = ip_hdr->src_addr;
-#if DEBUG_ZEUS_LWIP
-            printf("pop: saddr addr: %x\n", saddr->sin_addr.s_addr);
-#endif
-        }
-
-        rte_pktmbuf_free(m);
-
-#if TIME_ZEUS_LWIP
-//        printf("processIncoming:\n\tRecv Time: %4.2f\n\tNetwork Stack: %4.2f\n\tData Copy: %4.2f\n\tTotal Latency: %4.2f\n",
-//        		recv_end - start,
-//				stack - recv_end,
-//				copy_end - copy_start,
-//				end - start);
-
-#endif
-
-        req.isDone = true;
-        req.res = data_len;
-    }
-}
-
-
-void
-LWIPQueue::ProcessQ(size_t maxRequests)
-{
-    size_t done = 0;
-
-    while (!workQ.empty() && done < maxRequests) {
-        qtoken qt = workQ.front();
-        auto it = pending.find(qt);
-        done++;
-        if (it == pending.end()) {
-            workQ.pop_front();
-            continue;
-        }
-
-        PendingRequest &req = it->second;
-        if (IS_PUSH(qt)) {
-            ProcessOutgoing(req);
-        } else {
-            ProcessIncoming(req);
-        }
-
-        if (req.isDone) {
-        	if (req.res >= 0) {
-        		errno = 0;
-        	}
-            workQ.pop_front();
-        }
-        else {
-        	errno = EAGAIN;
-        }
-    }
-}
-
-
-ssize_t
-LWIPQueue::Enqueue(qtoken qt, struct sgarray &sga)
-{
-    // let's just try to send this
-    PendingRequest req(sga);
-
-    if (IS_PUSH(qt)) {
-        ProcessOutgoing(req);
-    } else {
-        ProcessIncoming(req);
-    }
-
-    if (req.isDone) {
-        return req.res;
-    } else {
-        assert(pending.find(qt) == pending.end());
-        pending.insert(std::make_pair(qt, req));
-        workQ.push_back(qt);
-        //fprintf(stderr, "Enqueue() req.is Done = false will return 0\n");
-        return 0;
-    }
-}
-
-ssize_t
-LWIPQueue::push(qtoken qt, struct sgarray &sga)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-
-    if (!is_bound) {
-        bind();
-    }
-    return Enqueue(qt, sga);
-}
-
-ssize_t
-LWIPQueue::flush_push(qtoken qt, struct sgarray &sga)
-{
-    assert(false);
+    t.done = true;
+    t.error = 0;
     return 0;
 }
 
-
-ssize_t
-LWIPQueue::pop(qtoken qt, struct sgarray &sga)
+int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 {
-    if (!is_init) {
-    	lwip_init();
-    }
-    return Enqueue(qt, sga);
-}
+    DMTR_NOTNULL(EINVAL, pkt);
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    //const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
+#if DMTR_DEBUG
+        printf("recv: pkt len: %d\n", pkt->pkt_len);
+#endif
 
-ssize_t
-LWIPQueue::peek(struct sgarray &sga)
-{
-    PendingRequest req(sga);
-    ProcessIncoming(req);
+    // packet layout order is (from outside -> in):
+    // ether_hdr
+    // ipv4_hdr
+    // udp_hdr
+    // sga.num_bufs
+    // sga.buf[0].len
+    // sga.buf[0].buf
+    // sga.buf[1].len
+    // sga.buf[1].buf
+    // ...
 
-    if (req.isDone){
-        sga.copy(req.sga);
-        assert(sga.num_bufs == 1);
-        return req.res;
-    } else {
+    auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
+
+    // check ethernet header
+    auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
+    p += sizeof(*eth_hdr);
+    auto eth_type = ntohs(eth_hdr->ether_type);
+
+#if DMTR_DEBUG
+        printf("=====\n");
+        print_ether_addr("recv: eth src addr: ", &eth_hdr->s_addr);
+        print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
+        printf("recv: eth type: %x\n", eth_type);
+#endif
+
+    if (ETHER_TYPE_IPv4 != eth_type) {
         return 0;
     }
-}
 
+    // check ip header
+    auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
+    p += sizeof(*ip_hdr);
 
-ssize_t
-LWIPQueue::wait(qtoken qt, struct sgarray &sga)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-    ssize_t ret;
-    auto it = pending.find(qt);
-    assert(it != pending.end());
-    PendingRequest &req = it->second;
+#if DMTR_DEBUG
+        printf("recv: ip src addr: %x\n", ip_hdr->src_addr);
+        printf("recv: ip dst addr: %x\n", ip_hdr->dst_addr);
+#endif
 
-    while(!req.isDone) {
-        ProcessQ(1);
-    }
-    sga.copy(req.sga);
-    ret = req.res;
-    pending.erase(it);
-    return ret;
-}
-
-
-ssize_t
-LWIPQueue::poll(qtoken qt, struct sgarray &sga)
-{
-    if (!is_init) {
-    	lwip_init();
-    }
-    auto it = pending.find(qt);
-    assert(it != pending.end());
-    PendingRequest &req = it->second;
-
-    if (!req.isDone) {
-        ProcessQ(1);
+    if (is_bound()) {
+        auto bound_addr = boost::get(my_bound_addr);
+        // if the packet isn't addressed to me, drop it.
+        if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+            return 0;
+        }
     }
 
-    if (req.isDone){
-        ssize_t ret = req.res;
-        pending.erase(it);
-        return ret;
-    } else {
+    if (IPPROTO_UDP != ip_hdr->next_proto_id) {
         return 0;
     }
+
+    // check udp header
+    auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
+    p += sizeof(*udp_hdr);
+    uint16_t udp_src_port = ntohs(udp_hdr->src_port);
+    uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
+
+#if DMTR_DEBUG
+        printf("recv: udp src port: %d\n", udp_src_port);
+        printf("recv: udp dst port: %d\n", udp_dst_port);
+#endif
+
+    if (is_bound()) {
+        auto bound_addr = boost::get(my_bound_addr);
+        if (udp_dst_port != bound_addr.sin_port) {
+            return 0;
+        }
+    }
+
+    // segment count
+    t.sga.sga_numsegs = *reinterpret_cast<uint32_t *>(p);
+    p += sizeof(uint32_t);
+
+#if DMTR_DEBUG
+        printf("recv: sga_numsegs: %d\n", t.sga.sga_numsegs);
+#endif
+
+    for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
+        // segment length
+        auto seg_len = *reinterpret_cast<uint32_t *>(p);
+        t.sga.sga_segs[i].sgaseg_len = seg_len;
+        p += sizeof(seg_len);
+
+#if DMTR_DEBUG
+        printf("recv: buf [%d] len: %lu\n", i, seg_len);
+#endif
+
+        void *buf = NULL;
+        DMTR_OK(dmtr_malloc(&buf, seg_len));
+        t.sga.sga_segs[i].sgaseg_buf = buf;
+        // todo: remove copy if possible.
+        rte_memcpy(buf, p, seg_len);
+        p += seg_len;
+
+#if DMTR_DEBUG
+        printf("recv: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(buf));
+#endif
+    }
+
+    if (sizeof(struct sockaddr_in) == t.sga.sga_addrlen) {
+        DMTR_NOTNULL(EPERM, t.sga.sga_addr);
+
+        auto * const saddr = reinterpret_cast<struct sockaddr_in *>(t.sga.sga_addr);
+        memset(saddr, 0, sizeof(*saddr));
+        saddr->sin_family = AF_INET;
+        saddr->sin_port = udp_src_port;
+        saddr->sin_addr.s_addr = ip_hdr->src_addr;
+
+#if DMTR_DEBUG
+        printf("recv: saddr ip addr: %x\n", saddr->sin_addr.s_addr);
+        printf("recv: saddr udp port: %d\n", saddr->sin_port);
+#endif
+    } else {
+        DMTR_NULL(ENOTSUP, t.sga.sga_addr);
+    }
+
+    // todo: free memory in failure cases as well.
+    rte_pktmbuf_free(pkt);
+
+    t.done = true;
+    t.error = 0;
+    return 0;
 }
 
-} // namespace LWIP
-} // namespace ZEUS
+int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
+    // todo: check preconditions.
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
+
+    task t = {};
+    t.sga = sga;
+    my_tasks.insert(std::make_pair(qt, t));
+    return 0;
+}
+
+int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
+    // todo: check preconditions.
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
+
+    task t = {};
+    t.pull = true;
+    my_tasks.insert(std::make_pair(qt, t));
+    return 0;
+}
+
+int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+{
+    // todo: check preconditions.
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(EINVAL, it != my_tasks.cend());
+    task * const t = &it->second;
+
+    if (t->done) {
+        return t->error;
+    }
+
+    if (t->pull) {
+        struct rte_mbuf *mbuf = NULL;
+        int ret = service_recv_queue(mbuf);
+        switch (ret) {
+            default:
+                DMTR_OK(ret);
+                DMTR_UNREACHABLE();
+            case 0:
+                break;
+            case EAGAIN:
+                return ret;
+        }
+
+        DMTR_OK(complete_recv(*t, mbuf));
+    } else {
+        DMTR_OK(complete_send(*t));
+    }
+
+    if (t->done) {
+        if (t->pull && t->error == 0) {
+            DMTR_NOTNULL(EINVAL, sga_out);
+            *sga_out = t->sga;
+        }
+
+        return t->error;
+    }
+
+    return EAGAIN;
+}
+
+int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
+    dmtr_sgarray_t sga = {};
+    int ret = poll(&sga, qt);
+    switch (ret) {
+        default:
+            return ret;
+        case 0:
+            auto it = my_tasks.find(qt);
+            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
+            my_tasks.erase(it);
+            return 0;
+    }
+}
+
+int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
+    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+
+    // todo: how to detect invalid port ids?
+    ::rte_eth_macaddr_get(port_id, &mac_addr);
+    return 0;
+}
+
+int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
+    if (my_recv_queue.empty()) {
+        struct rte_mbuf *pkts[our_max_queue_depth];
+        uint16_t depth = 0;
+        DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
+        size_t count = 0;
+        int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
+        switch (ret) {
+            default:
+                DMTR_OK(ret);
+                DMTR_UNREACHABLE();
+            case 0:
+                break;
+            case EAGAIN:
+                return ret;
+        }
+
+        for (size_t i = 0; i < count; ++i) {
+            my_recv_queue.push(pkts[i]);
+        }
+    }
+
+    pkt_out = my_recv_queue.front();
+    my_recv_queue.pop();
+    return 0;
+}
+
+bool dmtr::lwip_queue::is_dpdk_port_id_valid(uint16_t port_id) {
+    // todo: this function is deprecated; find another.
+    return port_id < ::rte_eth_dev_count();
+}
+
+int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts) {
+    count_out = 0;
+    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_NOTNULL(EINVAL, rx_pkts);
+
+    size_t count = ::rte_eth_rx_burst(port_id, queue_id, rx_pkts, nb_pkts);
+    if (0 == count) {
+        // todo: after enough retries on `0 == count`, the link status
+        // needs to be checked to determine if an error occurred.
+        return EAGAIN;
+    }
+
+    count_out = count;
+    return 0;
+}
+
+int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **tx_pkts, const uint16_t nb_pkts) {
+    count_out = 0;
+    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_NOTNULL(EINVAL, tx_pkts);
+
+    Latency_Start(&dev_write_latency);
+    size_t count = ::rte_eth_tx_burst(port_id, queue_id, tx_pkts, nb_pkts);
+    Latency_End(&dev_write_latency);
+    if (0 == count) {
+        // todo: after enough retries on `0 == count`, the link status
+        // needs to be checked to determine if an error occurred.
+        return EAGAIN;
+    }
+
+    count_out = count;
+    return 0;
+}
+
+int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp) {
+    pkt_out = NULL;
+    DMTR_NOTNULL(EINVAL, pkt_out);
+    DMTR_NOTNULL(EINVAL, mp);
+
+    struct rte_mbuf *pkt = ::rte_pktmbuf_alloc(mp);
+    DMTR_NOTNULL(ENOMEM, pkt);
+    pkt_out = pkt;
+    return 0;
+}

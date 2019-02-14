@@ -224,12 +224,12 @@ int dmtr::posix_queue::close()
     }
 }
 
-int dmtr::posix_queue::on_recv(task &t)
+int dmtr::posix_queue::complete_recv(task &t)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, !my_listening_flag);
 
-    //printf("on_recv qd:%d\n", qd);
+    //printf("complete_recv qd:%d\n", qd);
     // if we don't have a full header yet, get one.
     if (t.num_bytes < sizeof(t.header)) {
         uint8_t *p = reinterpret_cast<uint8_t *>(&t.header) + t.num_bytes;
@@ -258,7 +258,7 @@ int dmtr::posix_queue::on_recv(task &t)
         return 0;
     }
 
-    //fprintf(stderr, "[%x] on_recv: first read=%ld\n", qd, count);
+    //fprintf(stderr, "[%x] complete_recv: first read=%ld\n", qd, count);
     if (t.header.h_magic != DMTR_HEADER_MAGIC) {
         // not a correctly formed packet
         //fprintf(stderr, "Could not find magic %lx\n", t.header.h_magic);
@@ -329,7 +329,7 @@ int dmtr::posix_queue::on_recv(task &t)
     return 0;
 }
 
-int dmtr::posix_queue::on_send(task &t)
+int dmtr::posix_queue::complete_send(task &t)
 {
     // todo: need to encode in network byte order.
     DMTR_TRUE(EINVAL, my_fd != -1);
@@ -337,7 +337,7 @@ int dmtr::posix_queue::on_send(task &t)
     auto * const sga = &t.sga;
     //printf("t.num_bytes = %lu t.header[1] = %lu", t.num_bytes, t.header[1]);
     // set up header
-    //fprintf(stderr, "[%x] on_send fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
+    //fprintf(stderr, "[%x] complete_send fd:%d num_bufs:%ld\n", qd, fd, sga.num_bufs);
 
     size_t iov_len = 2 * sga->sga_numsegs + 1;
     struct iovec iov[iov_len];
@@ -445,12 +445,12 @@ int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         }
 
         my_active_recv = qt;
-        DMTR_OK(on_recv(*t));
+        DMTR_OK(complete_recv(*t));
         if (t->done) {
             my_active_recv = boost::none;
         }
     } else {
-        DMTR_OK(on_send(*t));
+        DMTR_OK(complete_send(*t));
     }
 
     if (t->done) {

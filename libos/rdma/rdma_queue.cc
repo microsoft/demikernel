@@ -64,7 +64,8 @@ dmtr::rdma_queue::task::task() :
     done(false),
     error(0),
     header{},
-    sga{}
+    sga{},
+    byte_len(0)
 {}
 
 dmtr::rdma_queue::rdma_queue(int qd) :

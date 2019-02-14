@@ -22,13 +22,14 @@ int main()
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
 
-    struct sockaddr_in saddr;
+    struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     //if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
     if (inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
+    // todo: this should be done from within the libos.
     saddr.sin_port = htons(PORT);
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 

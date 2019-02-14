@@ -5,96 +5,78 @@
  *      Author: amanda
  */
 
-#ifndef LIBOS_LIBLWIP_LWIP_QUEUE_H_
-#define LIBOS_LIBLWIP_LWIP_QUEUE_H_
+#ifndef DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
+#define DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
 
-#include <zeus/io-queue.h>
-#include <libos/common/queue.h>
-#include <list>
-#include <unordered_map>
+#include <libos/common/io_queue.hh>
+
+#include <boost/optional.hpp>
 #include <netinet/in.h>
+#include <queue>
+#include <rte_ether.h>
+#include <rte_mbuf.h>
+#include <unordered_map>
 
-namespace Zeus {
-namespace LWIP {
+namespace dmtr {
 
-#define MAX_PKTS 64
+class lwip_queue : public io_queue {
+    private: struct task {
+        bool pull;
+        bool done;
+        int error;
+        dmtr_header_t header;
+        dmtr_sgarray_t sga;
 
-class LWIPQueue : public Queue {
-private:
-    struct PendingRequest {
-    public:
-        bool isDone;
-        ssize_t res;
-        struct sgarray &sga;
-
-        PendingRequest(struct sgarray &sga) :
-            isDone(false),
-            res(0),
-            sga(sga) { };
+        task();
     };
 
-    // queued scatter gather arrays
-    std::unordered_map<qtoken, struct PendingRequest> pending;
-    std::list<qtoken> workQ;
+    private: static const size_t our_max_queue_depth;
+    private: static boost::optional<uint16_t> our_dpdk_port_id;
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
+    private: boost::optional<struct sockaddr_in> my_bound_addr;
+    private: boost::optional<struct sockaddr_in> my_default_peer;
+    private: std::queue<struct rte_mbuf *> my_recv_queue;
 
-    bool is_bound = false;
-    struct sockaddr_in bound_addr;
+    private: int complete_send(task &t);
+    private: int complete_recv(task &t, struct rte_mbuf *mbuf);
 
-    struct sockaddr_in *default_peer_addr = NULL;
-    bool has_default_peer = false;
+    private: lwip_queue(int qd);
+    public: static int new_object(io_queue *&q_out, int qd);
 
-
-    int bind();
-    void ProcessOutgoing(PendingRequest &req);
-    void ProcessIncoming(PendingRequest &req);
-    void ProcessQ(size_t maxRequests);
-    ssize_t Enqueue(qtoken qt, sgarray &sga);
-
-    struct rte_mbuf *pkt_buffer[MAX_PKTS];
-    int num_packets = 0;
-    int pkt_idx = 0;
-
-public:
-    LWIPQueue() : Queue(){ };
-    LWIPQueue(QueueType type, int qd) :
-        Queue(type, qd) {};
-    //~LWIPQueue() { assert(false); };
+    public: virtual ~lwip_queue();
 
     // network functions
-    int socket(int domain, int type, int protocol);
-    int getsockname(struct sockaddr *saddr, socklen_t *size);
-    int listen(int backlog);
-    int bind(struct sockaddr *saddr, socklen_t size);
-    int accept(struct sockaddr *saddr, socklen_t *size);
-    int connect(struct sockaddr *saddr, socklen_t size);
-    int close();
+    public: int socket(int domain, int type, int protocol);
+    public: int listen(int backlog);
+    public: int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: int close();
 
-    // file functions
-    int open(const char *pathname, int flags);
-    int open(qtoken qt, const char *pathname, int flags);
-    int open(const char *pathname, int flags, mode_t mode);
-    int creat(const char *pathname, mode_t mode);
+    // data path functions
+    public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
+    public: int pop(dmtr_qtoken_t qt);
+    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int drop(dmtr_qtoken_t qt);
 
-    // other functions
-    ssize_t push(qtoken qt, struct sgarray &sga);
-    ssize_t flush_push(qtoken qt, struct sgarray &sga);
-    ssize_t pop(qtoken qt, struct sgarray &sga);
-    ssize_t peek(struct sgarray &sga);
-    ssize_t wait(qtoken qt, struct sgarray &sga);
-    ssize_t poll(qtoken qt, struct sgarray &sga);
-    int flush(qtoken qt, int flags);
-    int flush(qtoken qt, bool isclosing);
+    private: static int init_dpdk();
+    private: static int init_dpdk(int argc, char* argv[]);
+    private: static int get_dpdk_port_id(uint16_t &id_out);
+    private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
+    private: bool is_bound() const {
+        return boost::none != my_bound_addr;
+    }
+    private: int service_recv_queue(struct rte_mbuf *&pkt_out);
+    private: static bool is_dpdk_port_id_valid(uint16_t port_id);
 
-    int getfd();
-    void setfd(int fd);
+    private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
+    private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
+    private: static int rte_eth_tx_burst(size_t &count_out, uint16_t port_id,uint16_t queue_id, struct rte_mbuf **tx_pkts, uint16_t nb_pkts);
+    private: static int rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp);
 };
 
-int lwip_init(int argc, char* argv[]);
-int lwip_init();
-
-} // namespace LWIP
-} // namespace Zeus
+} // namespace dmtr
 
 
 
-#endif /* LIBOS_LIBLWIP_LWIP_QUEUE_H_ */
+#endif /* DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED */

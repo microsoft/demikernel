@@ -28,142 +28,109 @@
  *
  **********************************************************************/
 
-#include <libos/common/library.h>
-#include <zeus/io-queue.h>
-#include <zeus/io-queue_c.h>
 #include "lwip-queue.h"
 
-namespace Zeus {
-static QueueLibrary<LWIP::LWIPQueue, LWIP::LWIPQueue> lib;
+#include <dmtr/annot.h>
+#include <dmtr/libos.h>
+#include <libos/common/memory_queue.hh>
+#include <libos/common/io_queue_api.hh>
 
-int init(int argc, char* argv[])
-{
-    return LWIP::lwip_init(argc, argv);
-}
+#include <memory>
 
-int init()
-{
-	return LWIP::lwip_init();
-}
+static std::unique_ptr<dmtr::io_queue_api> ioq_api;
 
-int queue()
+int dmtr_init(int argc, char *argv[])
 {
-    return lib.queue();
-}
+    DMTR_NULL(EINVAL, ioq_api.get());
 
-int socket(int domain, int type, int protocol)
-{
-    return lib.socket(domain, type, protocol);
-}
-
-int getsockname(int qd, struct sockaddr *saddr, socklen_t *size)
-{
-    return lib.getsockname(qd, saddr, size);
-}
-
-int bind(int qd, struct sockaddr *saddr, socklen_t size)
-{
-    return lib.bind(qd, saddr, size);
-}
-
-int accept(int qd, struct sockaddr *saddr, socklen_t *size)
-{
-    return lib.accept(qd, saddr, size);
-}
-
-int listen(int qd, int backlog)
-{
-    return lib.listen(qd, backlog);
-}
-
-int connect(int qd, struct sockaddr *saddr, socklen_t size)
-{
-    return lib.connect(qd, saddr, size);
-}
-
-int open(const char *pathname, int flags)
-{
-    return lib.open(pathname, flags);
-}
-
-int open(const char *pathname, int flags, mode_t mode)
-{
-    return lib.open(pathname, flags, mode);
-}
-
-int creat(const char *pathname, mode_t mode)
-{
-    return lib.creat(pathname, mode);
-}
-
-int flush(int qd)
-{
+    dmtr::io_queue_api *p = NULL;
+    DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
+    ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);
+    ioq_api->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
+    ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::lwip_queue::new_object);
     return 0;
 }
 
-int close(int qd)
+int dmtr_queue(int *qd_out)
 {
-    return lib.close(qd);
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    DMTR_OK(ioq_api->queue(*qd_out));
+    return 0;
 }
 
-int qd2fd(int qd)
+int dmtr_socket(int *qd_out, int domain, int type, int protocol)
 {
-    return lib.qd2fd(qd);
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->socket(*qd_out, domain, type, protocol);
 }
 
-qtoken push(int qd, struct Zeus::sgarray &sga)
+int dmtr_listen(int qd, int backlog)
 {
-    return lib.push(qd, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->listen(qd, backlog);
 }
 
-qtoken flush_push(int qd, struct Zeus::sgarray &sga)
+int dmtr_bind(int qd, const struct sockaddr * const saddr, socklen_t size)
 {
-    return lib.flush_push(qd, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->bind(qd, saddr, size);
 }
 
-qtoken pop(int qd, struct Zeus::sgarray &sga)
+int dmtr_accept(int *qd_out, struct sockaddr *saddr_out, socklen_t *size_out, int sockqd)
 {
-    return lib.pop(qd, sga);
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->accept(*qd_out, saddr_out, size_out, sockqd);
 }
 
-ssize_t wait(qtoken qt, struct sgarray &sga)
+int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
 {
-    return lib.wait(qt, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->connect(qd, saddr, size);
 }
 
-qtoken wait_any(qtoken qts[], size_t num_qts, int &offset, int &qd, struct sgarray &sga)
+int dmtr_close(int qd)
 {
-    return lib.wait_any(qts, num_qts, offset, qd, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->close(qd);
 }
 
-ssize_t wait_all(qtoken qts[], size_t num_qts, struct sgarray **sgas)
+int dmtr_push(dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga)
 {
-    return lib.wait_all(qts, num_qts, sgas);
+    DMTR_NOTNULL(EINVAL, qtok_out);
+    DMTR_NOTNULL(EINVAL, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->push(*qtok_out, qd, *sga);
 }
 
-ssize_t blocking_push(int qd, struct sgarray &sga)
+int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd)
 {
-    return lib.blocking_push(qd, sga);
+    DMTR_NOTNULL(EINVAL, qtok_out);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->pop(*qtok_out, qd);
 }
 
-ssize_t blocking_pop(int qd, struct sgarray &sga)
+int dmtr_poll(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt)
 {
-    return lib.blocking_pop(qd, sga);
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
+
+    return ioq_api->poll(sga_out, qt);
 }
 
-ssize_t peek(int qd, struct sgarray &sga)
+int dmtr_drop(dmtr_qtoken_t qt)
 {
-	return lib.peek(qd, sga);
-}
+    DMTR_NOTNULL(EINVAL, ioq_api.get());
 
-int merge(int qd1, int qd2)
-{
-    return lib.merge(qd1, qd2);
+    return ioq_api->drop(qt);
 }
-
-int filter(int qd, bool (*filter)(struct sgarray &sga))
-{
-    return lib.filter(qd, filter);
-}
-
-} // namespace Zeus
