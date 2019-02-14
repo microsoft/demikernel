@@ -78,11 +78,13 @@ struct mac2ip {
 };
 
 static struct mac2ip ip_config[] = {
-    {       { 0x24, 0x8a, 0x07, 0x50, 0x95, 0x08 },
-            0x040c0c0c,
+    // eth1 on cassance
+    {       { 0x00, 0x0d, 0x3a, 0x5d, 0xac, 0x15 },
+            ((10U << 24) | (0 << 16) | (0 << 8) | 5),
     },
-    {       { 0x24, 0x8a, 0x07, 0x50, 0x93, 0xe0 },
-            0x050c0c0c,
+    // eth1 on hightent
+    {       { 0x00, 0x0d, 0x3a, 0x72, 0xfc, 0x93 },
+            ((10U << 24) | (0 << 16) | (0 << 8) | 7),
     },
 };
 /*
@@ -255,11 +257,6 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     tx_conf.tx_rs_thresh = 0;
     tx_conf.offloads = 0;
 
-    if (port >= rte_eth_dev_count()) {
-        printf("Warning: invalid port: %d\n", port);
-        return -1;
-    }
-
     /* Configure the Ethernet device. */
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
@@ -396,6 +393,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char* argv[])
     return 0;
 }
 
+/*
 int dmtr::lwip_queue::init_dpdk() {
     char* argv[] = {(char*)"",
                     (char*)"-c",
@@ -405,6 +403,20 @@ int dmtr::lwip_queue::init_dpdk() {
                     (char*)"--proc-type=auto",
                     (char*)""};
     int argc = 6;
+    return init_dpdk(argc, argv);
+}*/
+
+int dmtr::lwip_queue::init_dpdk() {
+    char* argv[] = {(char*)"",
+                    (char*)"-l",
+                    (char*)"0-3",
+                    (char*)"-n",
+                    (char*)"1",
+                    (char*)"-w",
+                    (char*)"0002:00:02.0",
+                    (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
+                    (char*)""};
+    int argc = 8;
     return init_dpdk(argc, argv);
 }
 
