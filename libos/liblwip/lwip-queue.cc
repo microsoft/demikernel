@@ -79,11 +79,11 @@ struct mac2ip {
 
 static struct mac2ip ip_config[] = {
     // eth1 on cassance
-    {       { 0x00, 0x0d, 0x3a, 0x5d, 0xac, 0x15 },
+    {       { 0x00, 0x0d, 0x3a, 0x70, 0x25, 0x75 },
             ((10U << 24) | (0 << 16) | (0 << 8) | 5),
     },
     // eth1 on hightent
-    {       { 0x00, 0x0d, 0x3a, 0x72, 0xfc, 0x93 },
+    {       { 0x00, 0x0d, 0x3a, 0x5e, 0x4f, 0x6e },
             ((10U << 24) | (0 << 16) | (0 << 8) | 7),
     },
 };
@@ -413,7 +413,7 @@ int dmtr::lwip_queue::init_dpdk() {
                     (char*)"-n",
                     (char*)"1",
                     (char*)"-w",
-                    (char*)"0002:00:02.0",
+                    (char*)"ac2a:00:02.0",
                     (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
                     (char*)""};
     int argc = 8;
