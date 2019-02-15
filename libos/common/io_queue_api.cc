@@ -30,7 +30,7 @@ dmtr::io_queue_api::io_queue_api()
 {}
 
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
-    DMTR_NULL(newobj_out);
+    DMTR_NULL(EINVAL, newobj_out);
 
     newobj_out = new io_queue_api();
     // todo: should these really be `thread_local`, or atomic?
@@ -80,7 +80,7 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
 }
 
 int dmtr::io_queue_api::insert_queue(io_queue * const q) {
-    DMTR_NOTNULL(q);
+    DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
     //printf("library.h/InsertQueue() qd: %d\n", qd);

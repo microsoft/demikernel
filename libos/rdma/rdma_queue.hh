@@ -114,6 +114,8 @@ class rdma_queue : public io_queue {
     private: static int ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_recv_wr * const wr);
 
     private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
+    private: static int pin(const dmtr_sgarray_t &sga);
+    private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
     private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     private: int pop_accept(struct rdma_cm_id *&id_out);
