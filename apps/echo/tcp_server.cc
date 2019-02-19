@@ -49,7 +49,7 @@ int main()
         dmtr_qtoken_t qt = 0;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&sga, qt));
-        DMTR_OK(dmtr_drop(qt));
+        //DMTR_OK(dmtr_drop(qt));
         DMTR_TRUE(EPERM, sga.sga_numsegs == 1);
 
         fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
