@@ -8,7 +8,7 @@
 #include <iostream>
 #include <netinet/in.h>
 
-#define ITERATION_COUNT 10000
+#define ITERATION_COUNT 10
 #define BUFFER_SIZE 10
 #define FILL_CHAR 'a'
 static const uint16_t PORT = 12345;
@@ -25,7 +25,7 @@ int main()
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
     //if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
-    if (inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, "10.10.1.1", &saddr.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
@@ -46,7 +46,7 @@ int main()
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_drop(qt));
+        //DMTR_OK(dmtr_drop(qt));
         fprintf(stderr, "send complete.\n");
 
         dmtr_sgarray_t recvd;

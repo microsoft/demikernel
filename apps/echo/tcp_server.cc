@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-#define ITERATION_COUNT 10000
+#define ITERATION_COUNT 10
 static const uint16_t PORT = 12345;
 
 int main()
