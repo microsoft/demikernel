@@ -34,3 +34,40 @@ Some system-wide configuration needs to be performed before DPDK will function.
 - At the menu, select a *hugepage* mapping option, depending upon the system your using (option `19` or `20`).
 - Specify the number of pages for each node (e.g. `1024`).
 - Once at the menu, select *Exit Script* (option `33`).
+
+## Notes on Azure
+
+### VM Creation
+
+- Select the Ubuntu 18.04 VM template.
+- Use a VM size that supports hyperthreading (e.g. D4s_v3).
+- Do not select _Accelerated Networking_ option when creating the VM.
+- Use the `az` CLI tool to create an additional network adaptor with Accelerated Networking enabled. e.g.:
+
+```
+az network nic create --resource-group centigo --name cassance596 --vnet-name centigo-vnet --subnet default --accelerated-networking true --network-security-group cassance-nsg
+```
+
+- Use the portal or the CLI tool to attach the NIC to the VM.
+
+### Single Sender & Receiver Test
+
+Use the following on `cassance` and `hightent` to test DPDK with `testpmd`:
+
+Sender (`cassance.southcentralus.cloudapp.azure.com`):
+
+```
+testpmd -l 0-3 -n 1 -w ac2a:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=txonly --eth-peer=1,00:0d:3a:70:25:75 --stats-period 1
+```
+
+Receiver (`hightent.southcentralus.cloudapp.azure.com`):
+
+```
+testpmd -l 0-3 -n 1 -w aa89:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=rxonly --eth-peer=1,00:0d:3a:70:25:75 --stats-period 1
+```
+
+### Resources
+
+- [Set up DPDK in a Linux virtual machine](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk).
+- [Create a Linux virtual machine with Accelerated Networking](https://docs.microsoft.com/en-us/azure/virtual-network/create-vm-accelerated-networking-cli).
+

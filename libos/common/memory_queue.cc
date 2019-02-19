@@ -103,8 +103,7 @@ int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
     int ret = poll(&sga, qt);
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case EAGAIN:
             return ret;
         case 0:

@@ -14,6 +14,12 @@
     do { \
         dmtr_panic("unreachable code"); \
         return ENOTSUP; \
-    } while (0);
+    } while (0)
+
+#define DMTR_FAIL(Error) \
+    do { \
+        DMTR_OK(Error); \
+        DMTR_UNREACHABLE(); \
+    } while (0)
 
 #endif /* DMTR_ANNOT_H_IS_INCLUDED */

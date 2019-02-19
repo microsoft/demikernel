@@ -123,8 +123,7 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
     int ret = q->socket(domain, type, protocol);
     if (ret != 0) {
         DMTR_OK(remove_queue(q->qd()));
-        DMTR_OK(ret);
-        DMTR_UNREACHABLE();
+        DMTR_FAIL(ret);
     }
 
     qd_out = q->qd();
@@ -150,8 +149,7 @@ int dmtr::io_queue_api::accept(int &qd_out, struct sockaddr * const saddr_out,so
     int ret = sockq->accept(q, saddr_out, size_out, qd);
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case EAGAIN:
             return EAGAIN;
         case 0:
@@ -177,8 +175,7 @@ int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, soc
     int ret = q->connect(saddr, size);
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case ECONNREFUSED:
             return ret;
         case 0:
