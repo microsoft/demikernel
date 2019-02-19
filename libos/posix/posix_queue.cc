@@ -144,8 +144,7 @@ int dmtr::posix_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, 
             return EAGAIN;
         }
 
-        DMTR_OK(errno);
-        DMTR_UNREACHABLE()
+        DMTR_FAIL(errno);
     }
 
     if (ret < -1) {
@@ -520,8 +519,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
             return EAGAIN;
         }
 
-        DMTR_OK(errno);
-        DMTR_UNREACHABLE();
+        DMTR_FAIL(errno);
     }
 
     if (ret < -1) {
