@@ -60,10 +60,10 @@ class posix_queue : public io_queue {
     private: bool my_listening_flag;
     private: bool my_tcp_flag;
     // todo: may not be needed for production code.
-    private: sockaddr *my_peer_saddr;
+    private: struct sockaddr *my_peer_saddr;
 
-    private: int on_recv(task &t);
-    private: int on_send(task &t);
+    private: int complete_recv(task &t);
+    private: int complete_send(task &t);
 
     private: posix_queue(int qd);
     public: static int new_object(io_queue *&q_out, int qd);
