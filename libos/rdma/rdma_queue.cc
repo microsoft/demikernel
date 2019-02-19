@@ -319,8 +319,7 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     int ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id);
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case ECONNREFUSED:
             return ret;
         case 0:
@@ -484,8 +483,7 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
     int ret = service_event_queue();
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case 0:
         case EAGAIN:
             break;
@@ -500,8 +498,7 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         int ret = service_recv_queue(p, len);
         switch (ret) {
             default:
-                DMTR_OK(ret);
-                DMTR_UNREACHABLE();
+                DMTR_FAIL(ret);
             case EAGAIN:
                 return ret;
             case 0:
@@ -762,8 +759,7 @@ int dmtr::rdma_queue::ibv_dealloc_pd(struct ibv_pd *&pd) {
     int ret = ::ibv_dealloc_pd(pd);
     switch (ret) {
         default:
-            DMTR_OK(ret);
-            DMTR_UNREACHABLE();
+            DMTR_FAIL(ret);
         case -1:
             return errno;
         case 0:
