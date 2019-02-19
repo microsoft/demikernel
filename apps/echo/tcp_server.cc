@@ -55,7 +55,7 @@ int main()
         fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_drop(qt));
+        //DMTR_OK(dmtr_drop(qt));
 
         fprintf(stderr, "send complete.\n");
         free(sga.sga_buf);

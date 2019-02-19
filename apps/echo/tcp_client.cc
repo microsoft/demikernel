@@ -52,7 +52,7 @@ int main()
         dmtr_sgarray_t recvd;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&recvd, qt));
-        DMTR_OK(dmtr_drop(qt));
+        //DMTR_OK(dmtr_drop(qt));
         DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
