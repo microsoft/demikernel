@@ -24,8 +24,7 @@ int main()
 
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
-    //if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
-    if (inet_pton(AF_INET, "10.10.1.1", &saddr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, "192.168.1.1", &saddr.sin_addr) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
