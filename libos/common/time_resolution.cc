@@ -19,7 +19,7 @@ void init_time_resolution(void){
     }
     InitRdtsc();
 }
- 
+
 /* assembly code to read the TSC */
 static inline uint64_t RDTSC()
 {
@@ -27,7 +27,7 @@ static inline uint64_t RDTSC()
   __asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
   return ((uint64_t)hi << 32) | lo;
 }
- 
+
 const int NANO_SECONDS_IN_SEC = 1000000000;
 /* returns a static buffer of struct timespec with the time difference of ts1 and ts2
    ts1 is assumed to be greater than ts2 */
@@ -42,7 +42,7 @@ struct timespec *TimeSpecDiff(struct timespec *ts1, struct timespec *ts2)
   }
   return &ts;
 }
- 
+
 static void CalibrateTicks()
 {
   struct timespec begints, endts;
@@ -56,10 +56,10 @@ static void CalibrateTicks()
   struct timespec *tmpts = TimeSpecDiff(&endts, &begints);
   uint64_t nsecElapsed = tmpts->tv_sec * 1000000000LL + tmpts->tv_nsec;
   g_TicksPerNanoSec = (double)(end - begin)/(double)nsecElapsed;
-  printf("%ld\n", g_TicksPerNanoSec);
+  printf("%g\n", g_TicksPerNanoSec);
   //g_TicksPerMicroSec = (double)(end - begin)/(double)(nsecElapsed/1000.0);
 }
- 
+
 /* Call once before using RDTSC, has side effect of binding process to CPU1 */
 void InitRdtsc()
 {
@@ -71,13 +71,13 @@ void InitRdtsc()
   sched_setaffinity(0, sizeof(cpuMask), &cpuMask);
   CalibrateTicks();
 }
- 
+
 void GetTimeSpec(struct timespec *ts, uint64_t nsecs)
 {
   ts->tv_sec = nsecs / NANO_SECONDS_IN_SEC;
   ts->tv_nsec = nsecs % NANO_SECONDS_IN_SEC;
 }
- 
+
 /* ts will be filled with time converted from TSC reading */
 void GetRdtscTime(struct timespec *ts)
 {
