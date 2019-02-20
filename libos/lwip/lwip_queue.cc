@@ -633,7 +633,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 {
     DMTR_NOTNULL(EINVAL, pkt);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    //const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
 #if DMTR_DEBUG
         printf("recv: pkt len: %d\n", pkt->pkt_len);
@@ -663,8 +663,20 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
         printf("recv: eth type: %x\n", eth_type);
 #endif
+    
+    struct ether_addr mac_addr = {};
+    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
+    if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth addr)!\n");
+#endif
+        return 0;
+    }
 
     if (ETHER_TYPE_IPv4 != eth_type) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth type)!\n");
+#endif
         return 0;
     }
 
@@ -681,11 +693,17 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         auto bound_addr = boost::get(my_bound_addr);
         // if the packet isn't addressed to me, drop it.
         if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+#if DMTR_DEBUG
+            printf("recv: dropped (not my IP addr)!\n");
+#endif
             return 0;
         }
     }
 
     if (IPPROTO_UDP != ip_hdr->next_proto_id) {
+#if DMTR_DEBUG
+        printf("recv: dropped (not UDP)!\n");
+#endif
         return 0;
     }
 
@@ -703,6 +721,9 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
     if (is_bound()) {
         auto bound_addr = boost::get(my_bound_addr);
         if (udp_dst_port != bound_addr.sin_port) {
+#if DMTR_DEBUG
+            printf("recv: dropped (wrong UDP port)!\n");
+#endif
             return 0;
         }
     }
