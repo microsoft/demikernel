@@ -27,6 +27,7 @@ typedef struct dmtr_sgarray {
     socklen_t sga_addrlen;
 } dmtr_sgarray_t;
 
+// todo: move to <dmtr/libos/common/types.hh>
 typedef struct dmtr_header {
     uint32_t h_magic;
     uint32_t h_bytes;
