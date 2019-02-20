@@ -1,94 +1,56 @@
-#include <iostream>
-#include <string.h>
-#include <netinet/in.h>
-#include <assert.h>
-#include <arpa/inet.h>
-
-#include <zeus/io-queue.h>
+#include <dmtr/annot.h>
+#include <dmtr/libos.h>
+#include <dmtr/mem.h>
+#include <dmtr/wait.h>
 #include <libos/common/latency.h>
 
-#define PKTNUM          10000
+#include <arpa/inet.h>
+#include <cassert>
+#include <cstring>
+#include <iostream>
+#include <netinet/in.h>
 
-uint16_t port = 12345;
+#define ITERATION_COUNT 10000
+static const uint16_t PORT = 12345;
 
 int main()
 {
-    int qd;
-    ssize_t n;
-    Zeus::qtoken qt;
-    struct Zeus::sgarray sga;
-    struct sockaddr_in server;
-/*
-    char* argv[] = {(char*)"",
-                    (char*)"-b",
-                    (char*)"0000:03:00.1",
-                    (char*)"-l",
-                    (char*)"1",
-                    (char*)"-m",
-                    (char*)"256",
-                    (char*)"--no-shconf",
-                    (char*)"--file-prefix",
-                    (char*)"s" };
-    int argc = 10;
-*/
-    if (Zeus::init() < 0) {
-        printf("Error initializing Zeus!\n");
-        return -1;
-    }
+    char *argv[] = {};
+    DMTR_OK(dmtr_init(0, argv));
 
-    if ((qd = Zeus::socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        printf("Error creating queue!\n");
-        return -1;
-    }
-
+    int qd = 0;
+    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
     printf("server qd:\t%d\n", qd);
 
-
-    server.sin_family = AF_INET;
-    if (inet_pton(AF_INET, "12.12.12.4", &(server.sin_addr)) != 1) {
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = PORT;
+    if (inet_pton(AF_INET, "12.12.12.4", &(saddr.sin_addr)) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
-    server.sin_port = htons(port);
 
-    if (Zeus::bind(qd, (struct sockaddr*)&server, sizeof(server)) < 0) {
-        printf("Error binding queue!\n");
-        return -1;
-    }
+    DMTR_OK(dmtr_bind(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
-    for (int i = 0; i < PKTNUM; i++) {
-//		qt = Zeus::pop(qd, sga);
-//		if (qt != 0) {
-//			//printf("server: wait for pop\n");
-//			n = Zeus::wait(qt, sga);
-//			assert(n > 0);
-//		}
+    for (size_t i = 0; i < ITERATION_COUNT; i++) {
+        dmtr_sgarray_t sga = {};
+        dmtr_qtoken_t qt = 0;
+        DMTR_OK(dmtr_pop(&qt, qd));
+        DMTR_OK(dmtr_wait(&sga, qt));
+        DMTR_OK(dmtr_drop(qt));
+        DMTR_TRUE(EPERM, sga.sga_numsegs == 1);
 
-        while((n = Zeus::peek(qd, sga)) <= 0) {
-            if (n < 0) {
-                perror("server pop");
-                return -1;
-            }
-        }
+        fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
+        DMTR_OK(dmtr_push(&qt, qd, &sga));
+        DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_drop(qt));
 
-		assert(sga.num_bufs == 1);
-
-		//printf("server rcvd:\t%s\n", (char*)sga.bufs[0].buf);
-
-		qt = Zeus::push(qd, sga);
-		if (qt != 0) {
-			//printf("server: wait for push\n");
-			n = Zeus::wait(qt, sga);
-			assert(n > 0);
-		}
-
-		//printf("===========================\n");i
-		//printf("server sent:\t%s\n", (char*)sga.bufs[0].buf);
-        free(sga.bufs[0].buf);
+        fprintf(stderr, "send complete.\n");
+        free(sga.sga_buf);
     }
 
     Latency_DumpAll();
-    Zeus::close(qd);
+    DMTR_OK(dmtr_close(qd));
 
     return 0;
 }

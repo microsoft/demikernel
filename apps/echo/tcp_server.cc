@@ -25,7 +25,7 @@ int main(int argc, char **argv)
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     saddr.sin_addr.s_addr = INADDR_ANY;
-    saddr.sin_port = htons(PORT);
+    saddr.sin_port = PORT;
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     printf("listening for connections\n");
