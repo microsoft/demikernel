@@ -68,6 +68,7 @@ class io_queue_api
     // ================================================
 
     public: int socket(int &qd_out, int domain, int type, int protocol);
+    public: int getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size);
     public: int bind(int qd, const struct sockaddr * const saddr, socklen_t size);
     public: int accept(int &qd_out, struct sockaddr * const saddr_out,socklen_t * const size_out, int sockqd);
     public: int listen(int qd, int backlog);

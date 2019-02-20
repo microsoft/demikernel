@@ -63,6 +63,7 @@ class io_queue
     // network control plane functions
     // todo: move into derived class.
     public: virtual int socket(int domain, int type, int protocol);
+    public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
     public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);

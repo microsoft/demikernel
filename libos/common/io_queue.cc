@@ -15,6 +15,10 @@ int dmtr::io_queue::socket(int domain, int type, int protocol) {
     return ENOTSUP;
 }
 
+int dmtr::io_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
+    return ENOTSUP;
+}
+
 int dmtr::io_queue::listen(int backlog) {
     return ENOTSUP;
 }
