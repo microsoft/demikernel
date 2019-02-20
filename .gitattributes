@@ -1,0 +1,11 @@
+# auto detect text files and perform LF normalization
+# http://davidlaing.com/2012/09/19/customise-your-gitattributes-to-become-a-git-ninja/
+* text=auto
+
+# unix shell interpreters get confused unless the EOL is LF.
+*.bash text eol=lf
+*.sh text eol=lf
+
+# exclude files from exporting
+.gitattributes export-ignore
+.gitignore export-ignore
