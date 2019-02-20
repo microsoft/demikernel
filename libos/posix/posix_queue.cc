@@ -87,6 +87,12 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 }
 
 int
+dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    return ::getsockname(my_fd, saddr, size);
+}
+
+int
 dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);

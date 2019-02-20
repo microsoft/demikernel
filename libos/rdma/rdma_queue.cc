@@ -217,6 +217,12 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
     }
 }
 
+int
+dmtr::rdma_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    return ::getsockname(my_fd, saddr, size);
+}
+
 int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);

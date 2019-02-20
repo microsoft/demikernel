@@ -130,6 +130,14 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
     return 0;
 }
 
+int dmtr::io_queue_api::getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size) {
+    io_queue *q = NULL;
+    DMTR_OK(get_queue(q, qd));
+    DMTR_OK(q->getsockname(saddr, size));
+
+    return 0;
+};
+
 int dmtr::io_queue_api::bind(int qd, const struct sockaddr * const saddr, socklen_t size) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
