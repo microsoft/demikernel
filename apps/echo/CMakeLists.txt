@@ -43,27 +43,23 @@ add_custom_target(posix-echo)
 add_dependencies(posix-echo  posix-echo-server posix-echo-client)
 
 # LWIP UDP server
-add_executable(lwip_server ${UDP_ECHO_SERVER_SOURCES})
-target_add_dpdk(lwip_server)
-target_link_libraries(lwip_server dmtr-libos-lwip Threads::Threads)
+add_executable(lwip-echo-server ${UDP_ECHO_SERVER_SOURCES})
+target_link_libraries(lwip-echo-server dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client
-add_executable(lwip_client  ${UDP_ECHO_CLIENT_SOURCES})
-target_add_dpdk(lwip_client)
-target_link_libraries(lwip_client dmtr-libos-lwip Threads::Threads)
+add_executable(lwip-echo-client  ${UDP_ECHO_CLIENT_SOURCES})
+target_link_libraries(lwip-echo-client dmtr-libos-lwip Threads::Threads)
 
 # LWIP UDP client & server
-add_custom_target(lwip)
-add_dependencies(lwip lwip_server lwip_client)
+add_custom_target(lwip-echo)
+add_dependencies(lwip-echo lwip-echo-server lwip-echo-client)
 
 # LWIP "raw" server
 add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES})
-target_add_dpdk(lwip_raw_server)
 target_link_libraries(lwip_raw_server dmtr-libos-lwip Threads::Threads)
 
 # LWIP "raw" client
 add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES})
-target_add_dpdk(lwip_raw_client)
 target_link_libraries(lwip_raw_client dmtr-libos-lwip Threads::Threads)
 
 # LWIP "raw" client & server
@@ -73,12 +69,10 @@ add_dependencies(lwip_raw lwip_raw_server lwip_raw_client)
 if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   # libMTCP server
   add_executable(mtcp_server ${TCP_ECHO_SERVER_SOURCES})
-  target_add_mtcp(mtcp_server)
   target_link_libraries(mtcp_server dmtr-libos-mtcp Threads::Threads gmp)
 
   # libMTCP client
   add_executable(mtcp_client ${TCP_ECHO_CLIENT_SOURCES})
-  target_add_mtcp(mtcp_client)
   target_link_libraries(mtcp_client dmtr-libos-mtcp Threads::Threads gmp)
 
   # libMTCP client & server
@@ -87,12 +81,10 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
   # "raw" MTCP server
   add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES})
-  target_add_mtcp(raw_mtcp_server)
   target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
   # "raw" MTCP client
   add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES})
-  target_add_mtcp(raw_mtcp_client)
   target_link_libraries(raw_mtcp_client Threads::Threads gmp)
 
   # "raw" MTCP client & server
