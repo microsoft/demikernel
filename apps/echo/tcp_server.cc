@@ -10,14 +10,13 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <unistd.h>
+#include "common.hh"
 
-#define ITERATION_COUNT 10
-static const uint16_t PORT = 12345;
-
-int main()
+int main(int argc, char **argv)
 {
-    char *argv[] = {};
-    DMTR_OK(dmtr_init(0, argv));
+
+    parse_args(argc, argv);
+    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
     int lqd = 0;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
