@@ -31,9 +31,28 @@
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 
-dmtr::memory_queue::completion::completion() :
+dmtr::memory_queue::task::task(bool pull) :
+    my_pull_flag(pull),
     my_sga{}
 {}
+
+int dmtr::memory_queue::task::to_qresult(dmtr_qresult * const qr_out) const {
+    if (qr_out != NULL) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
+    if (!completed()) {
+        return EAGAIN;
+    }
+
+    if (my_pull_flag) {
+        DMTR_NOTNULL(EINVAL, qr_out);
+        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_value.sga = this->sga();
+    }
+
+    return 0;
+}
 
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
@@ -44,17 +63,19 @@ int dmtr::memory_queue::new_object(io_queue *&q_out, int qd) {
     return 0;
 }
 
+
+
 int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
-    auto *req = new completion();
+    auto * const t = new task(false);
     std::lock_guard<std::mutex> lock(my_lock);
     my_ready_queue.push(sga);
     // push always completes immediately.
-    req->complete();
-    my_completions.insert(std::make_pair(qt, req));
+    t->complete();
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
@@ -62,45 +83,46 @@ int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
-    auto *req = new completion();
+    auto * const t = new task(true);
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(EEXIST, my_completions.find(qt) == my_completions.cend());
-    my_completions.insert(std::make_pair(qt, req));
+    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
+    my_tasks.insert(std::make_pair(qt, t));
 
     return 0;
 }
 
 int
-dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
-    DMTR_NOTNULL(EINVAL, sga_out);
+dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
+    if (qr_out != NULL) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
-    auto it = my_completions.find(qt);
-    auto * const req = it->second;
+    DMTR_TRUE(ENOENT, my_tasks.find(qt) != my_tasks.cend());
+
+    auto it = my_tasks.find(qt);
+    auto * const t = it->second;
     // if we've opened the box beforehand, report the result we saw last.
-    if (req->completed()) {
-        *sga_out = it->second->sga();
-        return 0;
+    if (t->completed()) {
+        return t->to_qresult(qr_out);
     }
 
-    // if there's something to dequeue, then we can complete the `pop()`
-    // operation.
-    if (!my_ready_queue.empty()) {
-        req->sga(my_ready_queue.front());
+    if (t->is_pull() && !my_ready_queue.empty()) {
+        // if there's something to dequeue, then we can complete a `pop()`
+        // operation.
+        t->sga(my_ready_queue.front());
         my_ready_queue.pop();
-        *sga_out = it->second->sga();
-        return 0;
+        t->complete();
     }
 
-    // the ready queue is empty-- we have nothing to peek at.
-    return EAGAIN;
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
 {
-    dmtr_sgarray_t sga = {};
+    dmtr_qresult_t qr = {};
     std::lock_guard<std::mutex> lock(my_lock);
-    int ret = poll(&sga, qt);
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -110,11 +132,11 @@ int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
             break;
     }
 
-    // if the `peek()` succeeds, we forget the completion state.
-    auto it = my_completions.find(qt);
-    DMTR_TRUE(EPERM, it != my_completions.cend());
+    // if the `poll()` succeeds, we forget the task state.
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(EPERM, it != my_tasks.cend());
     delete it->second;
-    my_completions.erase(it);
+    my_tasks.erase(it);
     return 0;
 }
 

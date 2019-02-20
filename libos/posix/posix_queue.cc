@@ -55,6 +55,24 @@ dmtr::posix_queue::posix_queue(int qd) :
     my_peer_saddr(NULL)
 {}
 
+int dmtr::posix_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
+    if (NULL != qr_out) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
+    if (!this->done) {
+        return EAGAIN;
+    }
+
+    if (this->pull && 0 == this->error) {
+        DMTR_NOTNULL(EINVAL, qr_out);
+        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_value.sga = this->sga;
+    }
+
+    return this->error;
+}
+
 int dmtr::posix_queue::new_object(io_queue *&q_out, int qd) {
     q_out = new posix_queue(qd);
     return 0;
@@ -427,15 +445,19 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
     return 0;
 }
 
-int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
+    if (qr_out != NULL) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
     DMTR_TRUE(EINVAL, my_fd != -1);
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task * const t = &it->second;
 
     if (t->done) {
-        return t->error;
+        return t->to_qresult(qr_out);
     }
 
     if (t->pull) {
@@ -452,24 +474,15 @@ int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         DMTR_OK(complete_send(*t));
     }
 
-    if (t->done) {
-        if (t->pull && t->error == 0) {
-            DMTR_NOTNULL(EINVAL, sga_out);
-            *sga_out = t->sga;
-        }
-
-        return t->error;
-    }
-
-    return EAGAIN;
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::posix_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
 
-    dmtr_sgarray_t sga = {};
-    int ret = poll(&sga, qt);
+    dmtr_qresult_t qr = {};
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             return ret;

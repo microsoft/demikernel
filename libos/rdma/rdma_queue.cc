@@ -68,6 +68,24 @@ dmtr::rdma_queue::task::task() :
     byte_len(0)
 {}
 
+int dmtr::rdma_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
+    if (NULL != qr_out) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
+    if (!this->done) {
+        return EAGAIN;
+    }
+
+    if (this->pull && 0 == this->error) {
+        DMTR_NOTNULL(EINVAL, qr_out);
+        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_value.sga = this->sga;
+    }
+
+    return this->error;
+}
+
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_listening_flag(false)
@@ -470,15 +488,19 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     return 0;
 }
 
-int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
+    if (qr_out != NULL) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
     DMTR_NOTNULL(EPERM, my_rdma_id);
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task const * t = it->second;
 
     if (t->done) {
-        return t->error;
+        return t->to_qresult(qr_out);;
     }
 
     int ret = service_event_queue();
@@ -511,24 +533,15 @@ int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
     }
 
-    if (t->done) {
-        if (t->pull && 0 == t->error) {
-            DMTR_NOTNULL(EINVAL, sga_out);
-            *sga_out = t->sga;
-        }
-
-        return t->error;
-    }
-
-    return EAGAIN;
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
 
-    dmtr_sgarray_t sga = {};
-    int ret = poll(&sga, qt);
+    dmtr_qresult_t qr = {};
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             return ret;

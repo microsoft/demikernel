@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/apps/echo/rdma-echo-server",
+            "program": "${workspaceFolder}/build/apps/echo/posix-echo-server",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/apps/echo",

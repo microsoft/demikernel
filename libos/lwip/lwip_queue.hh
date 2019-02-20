@@ -28,6 +28,7 @@ class lwip_queue : public io_queue {
         dmtr_sgarray_t sga;
 
         task();
+        int to_qresult(dmtr_qresult_t * const qr_out) const;
     };
 
     private: static const size_t our_max_queue_depth;
@@ -56,7 +57,7 @@ class lwip_queue : public io_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
 
     private: static int init_dpdk();

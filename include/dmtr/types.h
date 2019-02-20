@@ -27,6 +27,20 @@ typedef struct dmtr_sgarray {
     socklen_t sga_addrlen;
 } dmtr_sgarray_t;
 
+enum dmtr_qr_tid {
+    DMTR_QR_NIL = 0,
+    DMTR_QR_SGA,
+    //DMTR_RTID_QD,
+};
+
+typedef struct dmtr_qresult {
+    enum dmtr_qr_tid qr_tid;
+    union {
+        dmtr_sgarray_t sga;
+        //int qd;
+    } qr_value;
+} dmtr_qresult_t;
+
 // todo: move to <dmtr/libos/common/types.hh>
 typedef struct dmtr_header {
     uint32_t h_magic;

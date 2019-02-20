@@ -431,6 +431,24 @@ dmtr::lwip_queue::task::task() :
     sga{}
 {}
 
+int dmtr::lwip_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
+    if (NULL != qr_out) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
+    if (!this->done) {
+        return EAGAIN;
+    }
+
+    if (this->pull && 0 == this->error) {
+        DMTR_NOTNULL(EINVAL, qr_out);
+        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_value.sga = this->sga;
+    }
+
+    return this->error;
+}
+
 dmtr::lwip_queue::lwip_queue(int qd) :
     io_queue(NETWORK_Q, qd)
 {}
@@ -663,7 +681,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
         printf("recv: eth type: %x\n", eth_type);
 #endif
-    
+
     struct ether_addr mac_addr = {};
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
     if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
@@ -805,13 +823,17 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 
 int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
+    if (qr_out != NULL) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
     // todo: check preconditions.
     auto it = my_tasks.find(qt);
     DMTR_TRUE(EINVAL, it != my_tasks.cend());
     task * const t = &it->second;
 
     if (t->done) {
-        return t->error;
+        return t->to_qresult(qr_out);
     }
 
     if (t->pull) {
@@ -832,16 +854,7 @@ int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         DMTR_OK(complete_send(*t));
     }
 
-    if (t->done) {
-        if (t->pull && t->error == 0) {
-            DMTR_NOTNULL(EINVAL, sga_out);
-            *sga_out = t->sga;
-        }
-
-        return t->error;
-    }
-
-    return EAGAIN;
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {

@@ -49,6 +49,7 @@ class rdma_queue : public io_queue {
         size_t byte_len;
 
         task();
+        int to_qresult(dmtr_qresult_t * const qr_out) const;
     };
 
     private: static const size_t recv_buf_count;
@@ -88,7 +89,7 @@ class rdma_queue : public io_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
 
     private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);

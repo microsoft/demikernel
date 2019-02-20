@@ -30,7 +30,7 @@ int main()
         return -1;
     }
     // todo: this should be done from within the libos.
-    saddr.sin_port = htons(PORT);
+    saddr.sin_port = PORT;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     dmtr_sgarray_t sga = {};
@@ -50,15 +50,16 @@ int main()
         DMTR_OK(dmtr_drop(qt));
         fprintf(stderr, "send complete.\n");
 
-        dmtr_sgarray_t recvd;
+        dmtr_qresult_t qr;
         DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&recvd, qt));
+        DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_drop(qt));
-        DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
-        DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
+        DMTR_TRUE(EPERM, DMTR_QR_SGA == qr.qr_tid);
+        DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
+        DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
-        fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(recvd.sga_segs[0].sgaseg_buf), recvd.sga_segs[0].sgaseg_len);
-        free(recvd.sga_buf);
+        fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+        free(qr.qr_value.sga.sga_buf);
     }
 
     DMTR_OK(dmtr_close(qd));

@@ -45,20 +45,21 @@ int main()
 
     // process ITERATION_COUNT packets from client
     for (size_t i = 0; i < ITERATION_COUNT; i++) {
-        dmtr_sgarray_t sga = {};
+        dmtr_qresult_t qr = {};
         dmtr_qtoken_t qt = 0;
         DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&sga, qt));
+        DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_drop(qt));
-        DMTR_TRUE(EPERM, sga.sga_numsegs == 1);
+        DMTR_TRUE(EPERM, DMTR_QR_SGA == qr.qr_tid);
+        DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
 
-        fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(sga.sga_segs[0].sgaseg_buf), sga.sga_segs[0].sgaseg_len);
-        DMTR_OK(dmtr_push(&qt, qd, &sga));
+        fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+        DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_drop(qt));
 
         fprintf(stderr, "send complete.\n");
-        free(sga.sga_buf);
+        free(qr.qr_value.sga.sga_buf);
     }
 
     Latency_DumpAll();
