@@ -838,7 +838,7 @@ int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
 }
 
 int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     // todo: how to detect invalid port ids?
     ::rte_eth_macaddr_get(port_id, &mac_addr);
@@ -875,14 +875,9 @@ int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
     return 0;
 }
 
-bool dmtr::lwip_queue::is_dpdk_port_id_valid(uint16_t port_id) {
-    // todo: this function is deprecated; find another.
-    return port_id < ::rte_eth_dev_count();
-}
-
 int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, rx_pkts);
 
     size_t count = ::rte_eth_rx_burst(port_id, queue_id, rx_pkts, nb_pkts);
@@ -898,7 +893,7 @@ int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint
 
 int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **tx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
     Latency_Start(&dev_write_latency);

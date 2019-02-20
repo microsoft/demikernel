@@ -67,7 +67,6 @@ class lwip_queue : public io_queue {
         return boost::none != my_bound_addr;
     }
     private: int service_recv_queue(struct rte_mbuf *&pkt_out);
-    private: static bool is_dpdk_port_id_valid(uint16_t port_id);
 
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
