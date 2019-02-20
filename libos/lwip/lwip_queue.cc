@@ -43,7 +43,7 @@ DEFINE_LATENCY(dev_write_latency);
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DMTR_DEBUG 	0
+#define DMTR_DEBUG 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -603,8 +603,8 @@ int dmtr::lwip_queue::complete_send(task &t) {
     printf("send: udp dst port: %d\n", udp_hdr->dst_port);
     printf("send: sga_numsegs: %d\n", t.sga.sga_numsegs);
     for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
-        printf("send: buf [%d] len: %d\n", i, t.sga.sga_segs[i].sgaseg_len);
-        printf("send: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(ptr));
+        printf("send: buf [%lu] len: %u\n", i, t.sga.sga_segs[i].sgaseg_len);
+        printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(t.sga.sga_segs[i].sgaseg_buf));
     }
     printf("send: pkt len: %d\n", data_len);
 #endif
@@ -722,7 +722,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         p += sizeof(seg_len);
 
 #if DMTR_DEBUG
-        printf("recv: buf [%d] len: %lu\n", i, seg_len);
+        printf("recv: buf [%lu] len: %u\n", i, seg_len);
 #endif
 
         void *buf = NULL;
@@ -733,7 +733,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         p += seg_len;
 
 #if DMTR_DEBUG
-        printf("recv: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(buf));
+        printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
 #endif
     }
 
