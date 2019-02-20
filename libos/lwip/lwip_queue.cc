@@ -8,7 +8,7 @@
  * Attn: Systems Group.
  */
 
-#include "lwip-queue.h"
+#include "lwip_queue.hh"
 
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
