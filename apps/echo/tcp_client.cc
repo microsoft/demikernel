@@ -64,10 +64,10 @@ int main(int argc, char **argv)
 
         //fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(recvd.sga_segs[0].sgaseg_buf), recvd.sga_segs[0].sgaseg_len);
         free(recvd.sga_buf);
-        perf_stats += duration_cast<boost::chrono::nanoseconds>(end-start).count();
+        perf_stats += duration_cast<boost::chrono::microseconds>(end-start).count();
     }
 
-    std::cout << "Avg latency (us): " << (float)perf_stats / (iterations * 1000.0) << "\n";
+    std::cout << "Avg latency (us): " << (float)perf_stats / (iterations) << "\n";
 
     DMTR_OK(dmtr_close(qd));
 
