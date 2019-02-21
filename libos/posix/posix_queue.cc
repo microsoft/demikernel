@@ -490,9 +490,9 @@ int dmtr::posix_queue::drop(dmtr_qtoken_t qt)
 int
 dmtr::posix_queue::set_tcp_nodelay(int fd)
 {
-    int n = 1;
+    const int n = 1;
     printf("Setting the nagle algorithm off\n");
-    if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n))) {
+    if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &n, sizeof(n))) {
         return errno;
     }
 
