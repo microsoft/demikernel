@@ -6,7 +6,11 @@ project (EchoServer C CXX)
 #set(RUNTIME_OUTPUT_DIRECTORY "execs")
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+
 find_package(Threads REQUIRED)
+find_package(Boost REQUIRED COMPONENTS
+  program_options chrono)
+include_directories(${Boost_INCLUDE_DIR})
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -32,11 +36,11 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
 )
 # POSIX TCP server
 add_executable(posix-echo-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-echo-server dmtr-libos-posix)
+target_link_libraries(posix-echo-server dmtr-libos-posix Boost::program_options)
 
 # POSIX TCP client
 add_executable(posix-echo-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-echo-client dmtr-libos-posix)
+target_link_libraries(posix-echo-client dmtr-libos-posix Boost::program_options Boost::chrono)
 
 # POSIX TCP client & server
 add_custom_target(posix-echo)
