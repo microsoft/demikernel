@@ -37,26 +37,11 @@
 #include <boost/optional.hpp>
 #include <queue>
 #include <sys/socket.h>
-#include <unordered_map>
 
 namespace dmtr {
 
 class posix_queue : public io_queue {
-    // todo: reorder largest to smallest.
-    private: struct task {
-        bool pull;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-        size_t num_bytes;
-
-        int to_qresult(dmtr_qresult_t * const qr_out) const;
-    };
-
     // queued scatter gather arrays
-    // todo: use `std::auto_ptr<>` here.
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     private: boost::optional<dmtr_qtoken_t> my_active_recv;
     private: int my_fd;
     private: bool my_listening_flag;

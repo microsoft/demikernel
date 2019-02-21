@@ -31,29 +31,6 @@
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 
-dmtr::memory_queue::task::task(bool pull) :
-    my_pull_flag(pull),
-    my_sga{}
-{}
-
-int dmtr::memory_queue::task::to_qresult(dmtr_qresult * const qr_out) const {
-    if (qr_out != NULL) {
-        qr_out->qr_tid = DMTR_QR_NIL;
-    }
-
-    if (!completed()) {
-        return EAGAIN;
-    }
-
-    if (my_pull_flag) {
-        DMTR_NOTNULL(EINVAL, qr_out);
-        qr_out->qr_tid = DMTR_QR_SGA;
-        qr_out->qr_value.sga = this->sga();
-    }
-
-    return 0;
-}
-
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
 {}
@@ -63,31 +40,25 @@ int dmtr::memory_queue::new_object(io_queue *&q_out, int qd) {
     return 0;
 }
 
-
-
 int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
-    auto * const t = new task(false);
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
+    DMTR_OK(new_task(t, qt, false));
     my_ready_queue.push(sga);
     // push always completes immediately.
-    t->complete();
-    my_tasks.insert(std::make_pair(qt, t));
+    t->done = true;
     return 0;
 }
 
 int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
-    // we invariably allocate memory here, so it's safe to move the allocation
-    // outside of the lock scope.
-    auto * const t = new task(true);
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
-    my_tasks.insert(std::make_pair(qt, t));
-
+    DMTR_OK(new_task(t, qt, true));
     return 0;
 }
 
@@ -97,22 +68,21 @@ dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         qr_out->qr_tid = DMTR_QR_NIL;
     }
 
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(ENOENT, my_tasks.find(qt) != my_tasks.cend());
+    DMTR_OK(get_task(t, qt));
 
-    auto it = my_tasks.find(qt);
-    auto * const t = it->second;
     // if we've opened the box beforehand, report the result we saw last.
-    if (t->completed()) {
+    if (t->done) {
         return t->to_qresult(qr_out);
     }
 
-    if (t->is_pull() && !my_ready_queue.empty()) {
+    if (t->pull && !my_ready_queue.empty()) {
         // if there's something to dequeue, then we can complete a `pop()`
         // operation.
-        t->sga(my_ready_queue.front());
+        t->sga = my_ready_queue.front();
         my_ready_queue.pop();
-        t->complete();
+        t->done = true;
     }
 
     return t->to_qresult(qr_out);
@@ -133,10 +103,7 @@ int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
     }
 
     // if the `poll()` succeeds, we forget the task state.
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(EPERM, it != my_tasks.cend());
-    delete it->second;
-    my_tasks.erase(it);
+    DMTR_OK(drop_task(qt));
     return 0;
 }
 

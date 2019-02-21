@@ -1,7 +1,35 @@
 #include "io_queue.hh"
 
 #include <cerrno>
+#include <dmtr/annot.h>
 #include <fcntl.h>
+
+dmtr::io_queue::task::task(bool pull) :
+    pull(pull),
+    done(false),
+    error(0),
+    header{},
+    sga{},
+    num_bytes(0)
+{}
+
+int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
+    if (NULL != qr_out) {
+        qr_out->qr_tid = DMTR_QR_NIL;
+    }
+
+    if (!this->done) {
+        return EAGAIN;
+    }
+
+    if (this->pull && 0 == this->error) {
+        DMTR_NOTNULL(EINVAL, qr_out);
+        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_value.sga = this->sga;
+    }
+
+    return this->error;
+}
 
 dmtr::io_queue::io_queue(enum category_id cid, int qd) :
     my_cid(cid),
@@ -47,5 +75,31 @@ int dmtr::io_queue::set_non_blocking(int fd) {
         return errno;
     }
 
+    return 0;
+}
+
+int dmtr::io_queue::new_task(task *&t, dmtr_qtoken_t qt, bool pull) {
+    t = NULL;
+    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
+
+    my_tasks.insert(std::make_pair(qt, task(pull)));
+    DMTR_OK(get_task(t, qt));
+    return 0;
+}
+
+int dmtr::io_queue::get_task(task *&t, dmtr_qtoken_t qt) {
+    t = NULL;
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(ENOENT, it != my_tasks.cend());
+
+    t = &it->second;
+    DMTR_NOTNULL(EPERM, t);
+    return 0;
+}
+
+int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(ENOENT, it != my_tasks.cend());
+    my_tasks.erase(it);
     return 0;
 }

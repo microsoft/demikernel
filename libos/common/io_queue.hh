@@ -34,6 +34,7 @@
 #include <dmtr/types.h>
 
 #include <sys/socket.h>
+#include <unordered_map>
 
 namespace dmtr {
 
@@ -46,6 +47,20 @@ class io_queue
         FILE_Q,
     };
 
+    // todo: reorder largest to smallest.
+    protected: struct task {
+        bool pull;
+        bool done;
+        int error;
+        dmtr_header_t header;
+        dmtr_sgarray_t sga;
+        size_t num_bytes;
+
+        task(bool pull);
+        int to_qresult(dmtr_qresult_t * const qr_out) const;
+    };
+
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     protected: const category_id my_cid;
     protected: const int my_qd;
 
@@ -78,7 +93,9 @@ class io_queue
     public: virtual int drop(dmtr_qtoken_t qt) = 0;
 
     protected: static int set_non_blocking(int fd);
-
+    protected: int new_task(task *&t, dmtr_qtoken_t qt, bool pull);
+    protected: int get_task(task *&t, dmtr_qtoken_t qt);
+    protected: int drop_task(dmtr_qtoken_t qt);
 };
 
 } // namespace dmtr

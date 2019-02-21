@@ -43,36 +43,6 @@ namespace dmtr {
 
 class memory_queue : public io_queue
 {
-    private: class task {
-        private: bool my_pull_flag;
-        private: dmtr_sgarray_t my_sga;
-        private: bool my_completion_flag;
-        public: task(bool pull);
-
-        public: void sga(const dmtr_sgarray_t &sga) {
-            my_sga = sga;
-        }
-
-        public: const dmtr_sgarray_t & sga() const {
-            return my_sga;
-        }
-
-        public: bool completed() const {
-            return my_completion_flag;
-        }
-
-        public: void complete() {
-            my_completion_flag = true;
-        }
-
-        public: bool is_pull() {
-            return my_pull_flag;
-        }
-
-        public: int to_qresult(dmtr_qresult * const qr_out) const;
-    };
-
-    private: std::unordered_map<dmtr_qtoken_t, task *> my_tasks;
     private: std::queue<dmtr_sgarray_t> my_ready_queue;
     private: std::mutex my_lock;
 
@@ -83,7 +53,6 @@ class memory_queue : public io_queue
     public: virtual int pop(dmtr_qtoken_t qt);
     public: virtual int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
-
 };
 
 } // namespace dmtr
