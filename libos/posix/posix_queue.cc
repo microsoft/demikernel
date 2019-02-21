@@ -490,7 +490,7 @@ int dmtr::posix_queue::drop(dmtr_qtoken_t qt)
 int
 dmtr::posix_queue::set_tcp_nodelay(int fd)
 {
-    const int n = 1;
+    int n = 1;
     if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &n, sizeof(n))) {
         return errno;
     }
