@@ -35,6 +35,7 @@ int main(int argc, char **argv)
     }
     // todo: this should be done from within the libos.
     saddr.sin_port = htons(port);
+    std::cout << "Connecting to: " << ip << "\n";
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     dmtr_sgarray_t sga = {};

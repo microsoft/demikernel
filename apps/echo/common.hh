@@ -21,7 +21,7 @@ void parse_args(int argc, char **argv)
     options_description desc{"echo experiment options"};
     desc.add_options()
         ("help", "produce help message")
-        ("ip", value<std::string>(&ip)->default_value("127.0.0.1"), "server ip address")
+        ("ip", value<std::string>(), "server ip address")
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations");
@@ -34,6 +34,8 @@ void parse_args(int argc, char **argv)
         std::cout << desc << "\n";
         exit(0);
     }
+    if (vm.count("ip"))
+        ip = vm["ip"].as<std::string>();
 };
 
 void* generate_packet()
