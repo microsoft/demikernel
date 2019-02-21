@@ -203,6 +203,8 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
             return errno;
         case 0: {
             DMTR_OK(set_non_blocking(my_fd));
+            DMTR_OK(set_tcp_nodelay(my_fd));
+ 
             void *p = malloc(size);
             DMTR_TRUE(ENOMEM, p != NULL);
             memcpy(p, saddr, size);
