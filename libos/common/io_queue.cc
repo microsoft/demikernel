@@ -41,6 +41,7 @@ int dmtr::io_queue::close() {
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
+    printf("Set non blocking");
     int ret = fcntl(fd, F_GETFL);
     if (-1 == ret) {
         return errno;

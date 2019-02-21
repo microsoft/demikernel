@@ -180,12 +180,7 @@ dmtr::posix_queue::listen(int backlog)
             return errno;
         case 0:
             my_listening_flag = true;
-            // Always put it in non-blocking mode
-            if (-1 == fcntl(my_fd, F_SETFL, O_NONBLOCK, 1)) {
-                fprintf(stderr,
-                    "Failed to set O_NONBLOCK on outgoing dmtr socket");
-                return errno;
-            }
+            DMTR_OK(set_non_blocking(my_fd));
             return 0;
     }
 }
