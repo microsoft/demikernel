@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <cstdio.h>
 
 dmtr::io_queue::io_queue(enum category_id cid, int qd) :
     my_cid(cid),
