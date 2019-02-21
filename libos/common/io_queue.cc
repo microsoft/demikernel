@@ -47,7 +47,7 @@ int dmtr::io_queue::set_non_blocking(int fd) {
     }
 
     int flags = ret;
-    if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK)) {
+    if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK, 1)) {
         return errno;
     }
 
