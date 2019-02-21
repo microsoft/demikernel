@@ -25,10 +25,11 @@ int main(int argc, char **argv)
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
-    if (inet_pton(AF_INET, ip.c_str(), &saddr.sin_addr) != 1) {
-        printf("Address not supported!\n");
-        return -1;
-    }
+    saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+ //   if (inet_pton(AF_INET, ip.c_str(), &saddr.sin_addr) != 1) {
+ //       printf("Address not supported!\n");
+ //     return -1;
+ //   }
     // todo: this should be done from within the libos.
     saddr.sin_port = htons(port);
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
