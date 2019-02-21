@@ -34,30 +34,16 @@
 #include <libos/common/io_queue.hh>
 
 #include <queue>
-#include <unordered_map>
 #include <rdma/rdma_cma.h>
 
 namespace dmtr {
 
 class rdma_queue : public io_queue {
-    private: struct task {
-        bool pull;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-        size_t byte_len;
-
-        task();
-        int to_qresult(dmtr_qresult_t * const qr_out) const;
-    };
-
     private: static const size_t recv_buf_count;
     private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
 
     // queued scatter gather arrays
-    private: std::unordered_map<dmtr_qtoken_t, task *> my_tasks;
     private: std::queue<struct rdma_cm_id *> my_accepts;
     private: std::queue<std::pair<void *, size_t>> my_recv_queue;
 

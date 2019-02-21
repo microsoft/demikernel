@@ -59,33 +59,6 @@ const size_t dmtr::rdma_queue::recv_buf_count = 1;
 const size_t dmtr::rdma_queue::recv_buf_size = 1024;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
-dmtr::rdma_queue::task::task() :
-    pull(false),
-    done(false),
-    error(0),
-    header{},
-    sga{},
-    byte_len(0)
-{}
-
-int dmtr::rdma_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
-    if (NULL != qr_out) {
-        qr_out->qr_tid = DMTR_QR_NIL;
-    }
-
-    if (!this->done) {
-        return EAGAIN;
-    }
-
-    if (this->pull && 0 == this->error) {
-        DMTR_NOTNULL(EINVAL, qr_out);
-        qr_out->qr_tid = DMTR_QR_SGA;
-        qr_out->qr_value.sga = this->sga;
-    }
-
-    return this->error;
-}
-
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_listening_flag(false)
@@ -141,11 +114,10 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
         }
         case IBV_WC_SEND: {
             dmtr_qtoken_t qt = wc.wr_id;
-            auto it = my_tasks.find(qt);
-            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-            task * const t = it->second;
+            task *t = NULL;
+            DMTR_OK(get_task(t, qt));
             unpin(t->sga);
-            t->byte_len = wc.byte_len;
+            t->num_bytes = wc.byte_len;
             t->done = true;
             t->error = 0;
             return 0;
@@ -365,9 +337,8 @@ int dmtr::rdma_queue::close()
 }
 
 int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t len) {
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(ENOENT, it != my_tasks.cend());
-    task * const t = it->second;
+    task *t = NULL;
+    DMTR_OK(get_task(t, qt));
 
     if (len < sizeof(dmtr_header_t)) {
         t->done = true;
@@ -391,7 +362,7 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t l
     }
 
     t->sga.sga_buf = buf;
-    t->byte_len = len;
+    t->num_bytes = len;
     t->done = true;
     t->error = 0;
     return 0;
@@ -400,12 +371,11 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t l
 int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    task * const t = new task();
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, false));
     t->sga = sga;
-    my_tasks.insert(std::make_pair(qt, t));
 
     size_t num_sge = 2 * sga.sga_numsegs + 1;
     struct ibv_sge sge[num_sge];
@@ -477,14 +447,11 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
 
-    auto t = new task();
-    t->pull = true;
-    my_tasks.insert(std::make_pair(qt, t));
-
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, true));
     return 0;
 }
 
@@ -495,9 +462,9 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
     }
 
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(EINVAL, it != my_tasks.cend());
-    task const * t = it->second;
+
+    task *t = NULL;
+    DMTR_OK(get_task(t, qt));
 
     if (t->done) {
         return t->to_qresult(qr_out);;
@@ -545,17 +512,17 @@ int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
     switch (ret) {
         default:
             return ret;
-        case 0:
-            auto it = my_tasks.find(qt);
-            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-            task * const t = it->second;
+        case 0: {
+            task *t = NULL;
+            DMTR_OK(get_task(t, qt));
             if (!t->pull && t->sga.sga_buf != NULL) {
                 // free the buffer used to store segment lengths.
                 free(t->sga.sga_buf);
             }
-            delete it->second;
-            my_tasks.erase(it);
+            t = NULL;
+            DMTR_OK(drop_task(qt));
             return 0;
+        }
     }
 }
 
