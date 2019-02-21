@@ -491,7 +491,8 @@ int
 dmtr::posix_queue::set_tcp_nodelay(int fd)
 {
     int n = 1;
-    if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &n, sizeof(n))) {
+    prinft("Setting the nagle algorithm off");
+    if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&n, sizeof(n))) {
         return errno;
     }
 
