@@ -448,11 +448,6 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     return 0;
 }
 
-int dmtr::lwip_queue::listen(int backlog)
-{
-    return ENOTSUP;
-}
-
 int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
     DMTR_NOTNULL(EINVAL, saddr);
@@ -472,13 +467,6 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
 
     my_bound_addr = saddr_copy;
     return 0;
-}
-
-int dmtr::lwip_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
-{
-    q_out = NULL;
-
-    return ENOTSUP;
 }
 
 int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {

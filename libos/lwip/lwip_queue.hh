@@ -35,9 +35,7 @@ class lwip_queue : public io_queue {
 
     // network functions
     public: int socket(int domain, int type, int protocol);
-    public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
