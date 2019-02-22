@@ -807,7 +807,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
         return t->to_qresult(qr_out);
     }
 
-    if (t->pull) {
+    if (DMTR_OPC_POP == t->opcode) {
         struct rte_mbuf *mbuf = NULL;
         int ret = service_recv_queue(mbuf);
         switch (ret) {
