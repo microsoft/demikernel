@@ -37,24 +37,11 @@
 #include <boost/optional.hpp>
 #include <queue>
 #include <sys/socket.h>
-#include <unordered_map>
 
 namespace dmtr {
 
 class posix_queue : public io_queue {
-    // todo: reorder largest to smallest.
-    private: struct task {
-        bool pull;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-        size_t num_bytes;
-    };
-
     // queued scatter gather arrays
-    // todo: use `std::auto_ptr<>` here.
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     private: boost::optional<dmtr_qtoken_t> my_active_recv;
     private: int my_fd;
     private: bool my_listening_flag;
@@ -72,21 +59,22 @@ class posix_queue : public io_queue {
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
 
     private: static int set_tcp_nodelay(int fd);
     private: static int read(size_t &count_out, int fd, void *buf, size_t len);
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
+    private: static int accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen);
 
-    private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    private: int complete_accept(task &t);
 };
 
 } // namespace dmtr

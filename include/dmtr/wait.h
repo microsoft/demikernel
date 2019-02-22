@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-DMTR_EXPORT int dmtr_wait(dmtr_sgarray_t *sga_out, dmtr_qtoken_t qt);
+DMTR_EXPORT int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
 
 #ifdef __cplusplus
 }

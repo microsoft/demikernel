@@ -48,8 +48,8 @@ class io_queue_api
 
     private: io_queue_api();
     private: int get_queue(io_queue *&q_out, int qd) const;
-    private: int new_qd();
-    private: dmtr_qtoken_t new_qtoken(int qd, bool push);
+    private: static int new_qd();
+    private: static dmtr_qtoken_t new_qtoken(int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
     private: int insert_queue(io_queue * const q);
     private: int remove_queue(int qd);
@@ -69,13 +69,13 @@ class io_queue_api
 
     public: int socket(int &qd_out, int domain, int type, int protocol);
     public: int bind(int qd, const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(int &qd_out, struct sockaddr * const saddr_out,socklen_t * const size_out, int sockqd);
+    public: int accept(dmtr_qtoken_t &qtok_out, int sockqd);
     public: int listen(int qd, int backlog);
     public: int connect(int qd, const struct sockaddr * const saddr, socklen_t size);
     public: int close(int qd);
     public: int push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t &qtok_out, int qd);
-    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
 };
 

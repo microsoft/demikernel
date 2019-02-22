@@ -423,14 +423,6 @@ int dmtr::lwip_queue::init_dpdk() {
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
-dmtr::lwip_queue::task::task() :
-    pull(false),
-    done(false),
-    error(0),
-    header{},
-    sga{}
-{}
-
 dmtr::lwip_queue::lwip_queue(int qd) :
     io_queue(NETWORK_Q, qd)
 {}
@@ -456,11 +448,6 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     return 0;
 }
 
-int dmtr::lwip_queue::listen(int backlog)
-{
-    return ENOTSUP;
-}
-
 int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
     DMTR_NOTNULL(EINVAL, saddr);
@@ -480,13 +467,6 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
 
     my_bound_addr = saddr_copy;
     return 0;
-}
-
-int dmtr::lwip_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
-{
-    q_out = NULL;
-
-    return ENOTSUP;
 }
 
 int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
@@ -663,7 +643,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
         printf("recv: eth type: %x\n", eth_type);
 #endif
-    
+
     struct ether_addr mac_addr = {};
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
     if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
@@ -785,36 +765,37 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 
 int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
 
-    task t = {};
-    t.sga = sga;
-    my_tasks.insert(std::make_pair(qt, t));
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
+    t->sga = sga;
     return 0;
 }
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
 
-    task t = {};
-    t.pull = true;
-    my_tasks.insert(std::make_pair(qt, t));
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
-int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
-    // todo: check preconditions.
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(EINVAL, it != my_tasks.cend());
-    task * const t = &it->second;
-
-    if (t->done) {
-        return t->error;
+    if (qr_out != NULL) {
+        *qr_out = {};
     }
 
-    if (t->pull) {
+    // todo: check preconditions.
+
+    task *t = NULL;
+    DMTR_OK(get_task(t, qt));
+
+    if (t->done) {
+        return t->to_qresult(qr_out);
+    }
+
+    if (DMTR_OPC_POP == t->opcode) {
         struct rte_mbuf *mbuf = NULL;
         int ret = service_recv_queue(mbuf);
         switch (ret) {
@@ -832,28 +813,17 @@ int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         DMTR_OK(complete_send(*t));
     }
 
-    if (t->done) {
-        if (t->pull && t->error == 0) {
-            DMTR_NOTNULL(EINVAL, sga_out);
-            *sga_out = t->sga;
-        }
-
-        return t->error;
-    }
-
-    return EAGAIN;
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
-    dmtr_sgarray_t sga = {};
-    int ret = poll(&sga, qt);
+    dmtr_qresult_t qr = {};
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             return ret;
         case 0:
-            auto it = my_tasks.find(qt);
-            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-            my_tasks.erase(it);
+            DMTR_OK(drop_task(qt));
             return 0;
     }
 }
