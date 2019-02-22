@@ -4,14 +4,19 @@
 #include <dmtr/annot.h>
 #include <fcntl.h>
 
-dmtr::io_queue::task::task(dmtr_opcode_t  opcode) :
+dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
     opcode(opcode),
     done(false),
     error(0),
     header{},
     sga{},
+    queue(q),
     num_bytes(0)
-{}
+{
+    if (q != NULL && opcode != DMTR_OPC_ACCEPT) {
+        dmtr_panic("a non-NULL queue argument only applies to opcode `DMTR_OPC_ACCEPT`");
+    }
+}
 
 int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
     if (NULL != qr_out) {
@@ -24,13 +29,24 @@ int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
         return EAGAIN;
     }
 
-    if (DMTR_OPC_POP == this->opcode && 0 == this->error) {
-        DMTR_NOTNULL(EINVAL, qr_out);
-        qr_out->qr_tid = DMTR_TID_SGA;
-        qr_out->qr_value.sga = this->sga;
+    switch (this->opcode) {
+        default:
+            DMTR_UNREACHABLE();
+        case DMTR_OPC_PUSH:
+            return this->error;
+        case DMTR_OPC_POP:
+            if (0 == this->error) {
+                DMTR_NOTNULL(EINVAL, qr_out);
+                qr_out->qr_tid = DMTR_TID_SGA;
+                qr_out->qr_value.sga = this->sga;
+            }
+            return this->error;
+        case DMTR_OPC_ACCEPT:
+            DMTR_NOTNULL(EINVAL, qr_out);
+            qr_out->qr_tid = DMTR_TID_QD;
+            qr_out->qr_value.qd = this->queue->qd();
+            return this->error;
     }
-
-    return this->error;
 }
 
 dmtr::io_queue::io_queue(enum category_id cid, int qd) :
@@ -53,8 +69,7 @@ int dmtr::io_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     return ENOTSUP;
 }
 
-int dmtr::io_queue::accept(io_queue *&q_out, struct sockaddr * const saddr_out, socklen_t * const size_out, int new_qd) {
-    q_out = NULL;
+int dmtr::io_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd) {
     return ENOTSUP;
 }
 
@@ -80,11 +95,12 @@ int dmtr::io_queue::set_non_blocking(int fd) {
     return 0;
 }
 
-int dmtr::io_queue::new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
+int dmtr::io_queue::new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue * const q) {
     t = NULL;
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
+    DMTR_TRUE(EINVAL, NULL == q || DMTR_OPC_ACCEPT == opcode);
 
-    my_tasks.insert(std::make_pair(qt, task(opcode)));
+    my_tasks.insert(std::make_pair(qt, task(opcode, q)));
     DMTR_OK(get_task(t, qt));
     return 0;
 }

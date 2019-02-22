@@ -15,7 +15,7 @@ DMTR_EXPORT int dmtr_queue(int *qd_out);
 DMTR_EXPORT int dmtr_socket(int *qd_out, int domain, int type, int protocol);
 DMTR_EXPORT int dmtr_listen(int fd, int backlog);
 DMTR_EXPORT int dmtr_bind(int qd, const struct sockaddr *saddr, socklen_t size);
-DMTR_EXPORT int dmtr_accept(int *qd_out, struct sockaddr *saddr_out, socklen_t *size_out, int sockqd);
+DMTR_EXPORT int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd);
 DMTR_EXPORT int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_close(int qd);
 

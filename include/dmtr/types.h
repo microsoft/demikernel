@@ -30,13 +30,13 @@ typedef struct dmtr_sgarray {
 typedef enum dmtr_typeid {
     DMTR_TID_NIL = 0,
     DMTR_TID_SGA,
-    //DMTR_TID_QD,
+    DMTR_TID_QD,
 } dmtr_typeid_t;
 
 typedef enum dmtr_opcode {
     DMTR_OPC_PUSH = 0,
     DMTR_OPC_POP,
-    //DMTR_OPC_ACCEPT
+    DMTR_OPC_ACCEPT
 } dmtr_opcode_t;
 
 typedef struct dmtr_qresult {
@@ -44,7 +44,7 @@ typedef struct dmtr_qresult {
     enum dmtr_opcode qr_opcode;
     union {
         dmtr_sgarray_t sga;
-        //int qd;
+        int qd;
     } qr_value;
 } dmtr_qresult_t;
 

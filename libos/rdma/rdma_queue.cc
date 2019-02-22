@@ -172,7 +172,7 @@ int dmtr::rdma_queue::service_event_queue() {
             fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
             return ENOTSUP;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_accepts.push(event.id);
+            my_accept_queue.push(event.id);
             fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
@@ -216,22 +216,21 @@ int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 
 }
 
-int dmtr::rdma_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
+int dmtr::rdma_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd)
 {
-    int ret = accept2(q_out, saddr, addrlen, new_qd);
-    if (0 == ret) {
-        return 0;
-    }
+    q_out = NULL;
+    DMTR_NOTNULL(EPERM, my_rdma_id);
 
-    if (q_out != NULL) {
-        delete q_out;
-        q_out = NULL;
-    }
+    auto * const q = new rdma_queue(new_qd);
+    DMTR_TRUE(ENOMEM, q != NULL);
 
-    return ret;
+    task *t = NULL;
+    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q));
+    q_out = q;
+    return 0;
 }
 
-int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd) {
+int dmtr::rdma_queue::service_accept_queue(task &t) {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EPERM, my_listening_flag);
 
@@ -243,12 +242,11 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
         case 0:
             break;
         case EAGAIN:
-            return EAGAIN;
+            return 0;
     }
 
-    auto * const q = new rdma_queue(new_qd);
-    DMTR_TRUE(ENOMEM, q != NULL);
-    q_out = q;
+    auto * const q = dynamic_cast<rdma_queue *>(t.queue);
+    DMTR_NOTNULL(EPERM, q);
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
@@ -262,14 +260,8 @@ int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, s
     params.rnr_retry_count = 7;
     DMTR_OK(rdma_accept(new_rdma_id, &params));
 
-    // todo: is the assumption that this is always a `sockaddr_in`
-    // correct? the interface always specifies `sockaddr *`.
-    struct sockaddr *paddr = NULL;
-    DMTR_OK(rdma_get_peer_addr(paddr, new_rdma_id));
-    size_t n = *addrlen;
-    memcpy(saddr, paddr, std::min(n, sizeof(sockaddr_in)));
-    *addrlen = sizeof(sockaddr_in);
-
+    t.done = true;
+    t.error = 0;
     return 0;
 }
 
@@ -481,23 +473,32 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             return ret;
     }
 
-    if (DMTR_OPC_POP == t->opcode) {
-        DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
-        void *p = NULL;
-        size_t len = 0;
-        int ret = service_recv_queue(p, len);
-        switch (ret) {
-            default:
-                DMTR_FAIL(ret);
-            case EAGAIN:
-                return ret;
-            case 0:
-                break;
-        }
+    switch (t->opcode) {
+        default:
+            DMTR_UNREACHABLE();
+        case DMTR_OPC_PUSH:
+            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+            break;
+        case DMTR_OPC_POP: {
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            void *p = NULL;
+            size_t len = 0;
+            int ret = service_recv_queue(p, len);
+            switch (ret) {
+                default:
+                    DMTR_FAIL(ret);
+                case EAGAIN:
+                    return ret;
+                case 0:
+                    break;
+            }
 
-        DMTR_OK(complete_recv(qt, p, len));
-    } else {
-        DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+            DMTR_OK(complete_recv(qt, p, len));
+            break;
+        }
+        case DMTR_OPC_ACCEPT:
+            DMTR_OK(service_accept_queue(*t));
+            break;
     }
 
     return t->to_qresult(qr_out);
@@ -540,12 +541,12 @@ int dmtr::rdma_queue::pop_accept(struct rdma_cm_id *&id_out) {
             break;
     }
 
-    if (my_accepts.empty()) {
+    if (my_accept_queue.empty()) {
         return EAGAIN;
     }
 
-    id_out = my_accepts.front();
-    my_accepts.pop();
+    id_out = my_accept_queue.front();
+    my_accept_queue.pop();
     return 0;
 }
 

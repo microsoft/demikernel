@@ -59,7 +59,7 @@ class posix_queue : public io_queue {
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
@@ -72,8 +72,9 @@ class posix_queue : public io_queue {
     private: static int set_tcp_nodelay(int fd);
     private: static int read(size_t &count_out, int fd, void *buf, size_t len);
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
+    private: static int accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen);
 
-    private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    private: int complete_accept(task &t);
 };
 
 } // namespace dmtr

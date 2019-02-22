@@ -54,9 +54,10 @@ class io_queue
         int error;
         dmtr_header_t header;
         dmtr_sgarray_t sga;
+        io_queue *queue;
         size_t num_bytes;
 
-        task(dmtr_opcode_t opcode);
+        task(dmtr_opcode_t opcode, io_queue * const q = NULL);
         int to_qresult(dmtr_qresult_t * const qr_out) const;
     };
 
@@ -80,7 +81,7 @@ class io_queue
     public: virtual int socket(int domain, int type, int protocol);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: virtual int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
     // general control plane functions.
@@ -93,7 +94,7 @@ class io_queue
     public: virtual int drop(dmtr_qtoken_t qt) = 0;
 
     protected: static int set_non_blocking(int fd);
-    protected: int new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode);
+    protected: int new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue * const q = NULL);
     protected: int get_task(task *&t, dmtr_qtoken_t qt);
     protected: int drop_task(dmtr_qtoken_t qt);
 };

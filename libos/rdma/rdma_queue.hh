@@ -44,7 +44,7 @@ class rdma_queue : public io_queue {
     private: static const size_t max_num_sge;
 
     // queued scatter gather arrays
-    private: std::queue<struct rdma_cm_id *> my_accepts;
+    private: std::queue<struct rdma_cm_id *> my_accept_queue;
     private: std::queue<std::pair<void *, size_t>> my_recv_queue;
 
     // rdma data structures
@@ -68,7 +68,7 @@ class rdma_queue : public io_queue {
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
@@ -104,7 +104,7 @@ class rdma_queue : public io_queue {
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
-    private: int accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    private: int service_accept_queue(task &t);
     private: int pop_accept(struct rdma_cm_id *&id_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();

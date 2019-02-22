@@ -82,12 +82,12 @@ int dmtr_bind(int qd, const struct sockaddr * const saddr, socklen_t size)
     return ioq_api->bind(qd, saddr, size);
 }
 
-int dmtr_accept(int *qd_out, struct sockaddr *saddr_out, socklen_t *size_out, int sockqd)
+int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd)
 {
-    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EINVAL, qtok_out);
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
-    return ioq_api->accept(*qd_out, saddr_out, size_out, sockqd);
+    return ioq_api->accept(*qtok_out, sockqd);
 }
 
 int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
