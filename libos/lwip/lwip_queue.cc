@@ -792,7 +792,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
     DMTR_OK(get_task(t, qt));
 
     if (t->done) {
-        return t->to_qresult(qr_out);
+        return t->to_qresult(qr_out, qd());
     }
 
     if (DMTR_OPC_POP == t->opcode) {
@@ -813,7 +813,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
         DMTR_OK(complete_send(*t));
     }
 
-    return t->to_qresult(qr_out);
+    return t->to_qresult(qr_out, qd());
 }
 
 int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
