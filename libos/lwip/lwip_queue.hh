@@ -15,25 +15,12 @@
 #include <queue>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
-#include <unordered_map>
 
 namespace dmtr {
 
 class lwip_queue : public io_queue {
-    private: struct task {
-        bool pull;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-
-        task();
-        int to_qresult(dmtr_qresult_t * const qr_out) const;
-    };
-
     private: static const size_t our_max_queue_depth;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     private: boost::optional<struct sockaddr_in> my_bound_addr;
     private: boost::optional<struct sockaddr_in> my_default_peer;
     private: std::queue<struct rte_mbuf *> my_recv_queue;

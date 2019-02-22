@@ -423,32 +423,6 @@ int dmtr::lwip_queue::init_dpdk() {
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
-dmtr::lwip_queue::task::task() :
-    pull(false),
-    done(false),
-    error(0),
-    header{},
-    sga{}
-{}
-
-int dmtr::lwip_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
-    if (NULL != qr_out) {
-        qr_out->qr_tid = DMTR_QR_NIL;
-    }
-
-    if (!this->done) {
-        return EAGAIN;
-    }
-
-    if (this->pull && 0 == this->error) {
-        DMTR_NOTNULL(EINVAL, qr_out);
-        qr_out->qr_tid = DMTR_QR_SGA;
-        qr_out->qr_value.sga = this->sga;
-    }
-
-    return this->error;
-}
-
 dmtr::lwip_queue::lwip_queue(int qd) :
     io_queue(NETWORK_Q, qd)
 {}
@@ -803,34 +777,31 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 
 int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
 
-    task t = {};
-    t.sga = sga;
-    my_tasks.insert(std::make_pair(qt, t));
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, false));
+    t->sga = sga;
     return 0;
 }
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
-
-    task t = {};
-    t.pull = true;
-    my_tasks.insert(std::make_pair(qt, t));
+     
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, true));
     return 0;
 }
 
-int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
     if (qr_out != NULL) {
         qr_out->qr_tid = DMTR_QR_NIL;
     }
 
     // todo: check preconditions.
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(EINVAL, it != my_tasks.cend());
-    task * const t = &it->second;
+    
+    task *t = NULL;
+    DMTR_OK(get_task(t, qt));
 
     if (t->done) {
         return t->to_qresult(qr_out);
@@ -858,15 +829,13 @@ int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 }
 
 int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
-    dmtr_sgarray_t sga = {};
-    int ret = poll(&sga, qt);
+    dmtr_qresult_t qr = {};
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             return ret;
         case 0:
-            auto it = my_tasks.find(qt);
-            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-            my_tasks.erase(it);
+            DMTR_OK(drop_task(qt));
             return 0;
     }
 }
