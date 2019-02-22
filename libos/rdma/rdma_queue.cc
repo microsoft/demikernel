@@ -515,7 +515,7 @@ int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
         case 0: {
             task *t = NULL;
             DMTR_OK(get_task(t, qt));
-            if (DMTR_OPC_POP == t->opcode && t->sga.sga_buf != NULL) {
+            if (DMTR_OPC_PUSH == t->opcode && t->sga.sga_buf != NULL) {
                 // free the buffer used to store segment lengths.
                 free(t->sga.sga_buf);
             }
