@@ -27,14 +27,21 @@ typedef struct dmtr_sgarray {
     socklen_t sga_addrlen;
 } dmtr_sgarray_t;
 
-enum dmtr_qr_tid {
-    DMTR_QR_NIL = 0,
-    DMTR_QR_SGA,
-    //DMTR_RTID_QD,
-};
+typedef enum dmtr_typeid {
+    DMTR_TID_NIL = 0,
+    DMTR_TID_SGA,
+    //DMTR_TID_QD,
+} dmtr_typeid_t;
+
+typedef enum dmtr_opcode {
+    DMTR_OPC_PUSH = 0,
+    DMTR_OPC_POP,
+    //DMTR_OPC_ACCEPT
+} dmtr_opcode_t;
 
 typedef struct dmtr_qresult {
-    enum dmtr_qr_tid qr_tid;
+    enum dmtr_typeid qr_tid;
+    enum dmtr_opcode qr_opcode;
     union {
         dmtr_sgarray_t sga;
         //int qd;

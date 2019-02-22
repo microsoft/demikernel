@@ -4,8 +4,8 @@
 #include <dmtr/annot.h>
 #include <fcntl.h>
 
-dmtr::io_queue::task::task(bool pull) :
-    pull(pull),
+dmtr::io_queue::task::task(dmtr_opcode_t  opcode) :
+    opcode(opcode),
     done(false),
     error(0),
     header{},
@@ -15,16 +15,18 @@ dmtr::io_queue::task::task(bool pull) :
 
 int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
     if (NULL != qr_out) {
-        qr_out->qr_tid = DMTR_QR_NIL;
+        *qr_out = {};
+        qr_out->qr_tid = DMTR_TID_NIL;
+        qr_out->qr_opcode = this->opcode;
     }
 
     if (!this->done) {
         return EAGAIN;
     }
 
-    if (this->pull && 0 == this->error) {
+    if (DMTR_OPC_POP == this->opcode && 0 == this->error) {
         DMTR_NOTNULL(EINVAL, qr_out);
-        qr_out->qr_tid = DMTR_QR_SGA;
+        qr_out->qr_tid = DMTR_TID_SGA;
         qr_out->qr_value.sga = this->sga;
     }
 
@@ -78,11 +80,11 @@ int dmtr::io_queue::set_non_blocking(int fd) {
     return 0;
 }
 
-int dmtr::io_queue::new_task(task *&t, dmtr_qtoken_t qt, bool pull) {
+int dmtr::io_queue::new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
     t = NULL;
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
 
-    my_tasks.insert(std::make_pair(qt, task(pull)));
+    my_tasks.insert(std::make_pair(qt, task(opcode)));
     DMTR_OK(get_task(t, qt));
     return 0;
 }

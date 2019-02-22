@@ -779,27 +779,27 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     // todo: check preconditions.
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, false));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
     t->sga = sga;
     return 0;
 }
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     // todo: check preconditions.
-     
+
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, true));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
 int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
     if (qr_out != NULL) {
-        qr_out->qr_tid = DMTR_QR_NIL;
+        *qr_out = {};
     }
 
     // todo: check preconditions.
-    
+
     task *t = NULL;
     DMTR_OK(get_task(t, qt));
 

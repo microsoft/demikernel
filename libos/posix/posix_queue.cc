@@ -409,7 +409,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, false));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
     t->sga = sga;
     return 0;
 }
@@ -420,14 +420,14 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, true));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
 int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
     if (qr_out != NULL) {
-        qr_out->qr_tid = DMTR_QR_NIL;
+        *qr_out = {};
     }
 
     DMTR_TRUE(EINVAL, my_fd != -1);
@@ -439,7 +439,7 @@ int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
         return t->to_qresult(qr_out);
     }
 
-    if (t->pull) {
+    if (DMTR_OPC_POP == t->opcode) {
         if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
             return EAGAIN;
         }

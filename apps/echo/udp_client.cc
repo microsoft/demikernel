@@ -58,11 +58,12 @@ int main()
         DMTR_OK(dmtr_drop(qt));
         fprintf(stderr, "send complete.\n");
 
-        dmtr_qresult_t qr;
+        dmtr_qresult_t qr = {};
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_drop(qt));
-        DMTR_TRUE(EPERM, DMTR_QR_SGA == qr.qr_tid);
+        DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
+        DMTR_TRUE(EPERM, DMTR_TID_SGA == qr.qr_tid);
         DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 

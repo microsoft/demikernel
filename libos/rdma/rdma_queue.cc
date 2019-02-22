@@ -374,7 +374,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, false));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
     t->sga = sga;
 
     size_t num_sge = 2 * sga.sga_numsegs + 1;
@@ -451,14 +451,14 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     assert(my_rdma_id->verbs != NULL);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qt, true));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
 int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
     if (qr_out != NULL) {
-        qr_out->qr_tid = DMTR_QR_NIL;
+        *qr_out = {};
     }
 
     DMTR_NOTNULL(EPERM, my_rdma_id);
@@ -481,7 +481,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             return ret;
     }
 
-    if (t->pull) {
+    if (DMTR_OPC_POP == t->opcode) {
         DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
         void *p = NULL;
         size_t len = 0;
@@ -515,7 +515,7 @@ int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
         case 0: {
             task *t = NULL;
             DMTR_OK(get_task(t, qt));
-            if (!t->pull && t->sga.sga_buf != NULL) {
+            if (DMTR_OPC_POP == t->opcode && t->sga.sga_buf != NULL) {
                 // free the buffer used to store segment lengths.
                 free(t->sga.sga_buf);
             }

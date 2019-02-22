@@ -47,7 +47,7 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     // outside of the lock scope.
     task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(t, qt, false));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
     my_ready_queue.push(sga);
     // push always completes immediately.
     t->done = true;
@@ -58,14 +58,14 @@ int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
     task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(t, qt, true));
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
 int
 dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     if (qr_out != NULL) {
-        qr_out->qr_tid = DMTR_QR_NIL;
+        *qr_out = {};
     }
 
     task *t = NULL;
@@ -77,7 +77,7 @@ dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         return t->to_qresult(qr_out);
     }
 
-    if (t->pull && !my_ready_queue.empty()) {
+    if (DMTR_OPC_POP == t->opcode && !my_ready_queue.empty()) {
         // if there's something to dequeue, then we can complete a `pop()`
         // operation.
         t->sga = my_ready_queue.front();
