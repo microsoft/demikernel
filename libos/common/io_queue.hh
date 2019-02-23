@@ -34,6 +34,7 @@
 #include <dmtr/types.h>
 
 #include <sys/socket.h>
+#include <unordered_map>
 
 namespace dmtr {
 
@@ -46,6 +47,21 @@ class io_queue
         FILE_Q,
     };
 
+    // todo: reorder largest to smallest.
+    protected: struct task {
+        const dmtr_opcode_t opcode;
+        bool done;
+        int error;
+        dmtr_header_t header;
+        dmtr_sgarray_t sga;
+        io_queue *queue;
+        size_t num_bytes;
+
+        task(dmtr_opcode_t opcode, io_queue * const q = NULL);
+        int to_qresult(dmtr_qresult_t * const qr_out, int qd) const;
+    };
+
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     protected: const category_id my_cid;
     protected: const int my_qd;
 
@@ -66,7 +82,7 @@ class io_queue
     public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: virtual int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
+    public: virtual int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
     // general control plane functions.
@@ -75,11 +91,13 @@ class io_queue
     // data plane functions
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;
     public: virtual int pop(dmtr_qtoken_t qt) = 0;
-    public: virtual int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) = 0;
+    public: virtual int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) = 0;
     public: virtual int drop(dmtr_qtoken_t qt) = 0;
 
     protected: static int set_non_blocking(int fd);
-
+    protected: int new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue * const q = NULL);
+    protected: int get_task(task *&t, dmtr_qtoken_t qt);
+    protected: int drop_task(dmtr_qtoken_t qt);
 };
 
 } // namespace dmtr

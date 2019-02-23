@@ -43,7 +43,7 @@ DEFINE_LATENCY(dev_write_latency);
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DMTR_DEBUG 	0
+#define DMTR_DEBUG 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -423,14 +423,6 @@ int dmtr::lwip_queue::init_dpdk() {
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
-dmtr::lwip_queue::task::task() :
-    pull(false),
-    done(false),
-    error(0),
-    header{},
-    sga{}
-{}
-
 dmtr::lwip_queue::lwip_queue(int qd) :
     io_queue(NETWORK_Q, qd)
 {}
@@ -456,11 +448,6 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     return 0;
 }
 
-int dmtr::lwip_queue::listen(int backlog)
-{
-    return ENOTSUP;
-}
-
 int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
     DMTR_NOTNULL(EINVAL, saddr);
@@ -480,13 +467,6 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
 
     my_bound_addr = saddr_copy;
     return 0;
-}
-
-int dmtr::lwip_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
-{
-    q_out = NULL;
-
-    return ENOTSUP;
 }
 
 int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
@@ -603,8 +583,8 @@ int dmtr::lwip_queue::complete_send(task &t) {
     printf("send: udp dst port: %d\n", udp_hdr->dst_port);
     printf("send: sga_numsegs: %d\n", t.sga.sga_numsegs);
     for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
-        printf("send: buf [%d] len: %d\n", i, t.sga.sga_segs[i].sgaseg_len);
-        printf("send: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(ptr));
+        printf("send: buf [%lu] len: %u\n", i, t.sga.sga_segs[i].sgaseg_len);
+        printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(t.sga.sga_segs[i].sgaseg_buf));
     }
     printf("send: pkt len: %d\n", data_len);
 #endif
@@ -633,7 +613,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 {
     DMTR_NOTNULL(EINVAL, pkt);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    //const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
 #if DMTR_DEBUG
         printf("recv: pkt len: %d\n", pkt->pkt_len);
@@ -664,7 +644,19 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         printf("recv: eth type: %x\n", eth_type);
 #endif
 
+    struct ether_addr mac_addr = {};
+    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
+    if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth addr)!\n");
+#endif
+        return 0;
+    }
+
     if (ETHER_TYPE_IPv4 != eth_type) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth type)!\n");
+#endif
         return 0;
     }
 
@@ -681,11 +673,17 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         auto bound_addr = boost::get(my_bound_addr);
         // if the packet isn't addressed to me, drop it.
         if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+#if DMTR_DEBUG
+            printf("recv: dropped (not my IP addr)!\n");
+#endif
             return 0;
         }
     }
 
     if (IPPROTO_UDP != ip_hdr->next_proto_id) {
+#if DMTR_DEBUG
+        printf("recv: dropped (not UDP)!\n");
+#endif
         return 0;
     }
 
@@ -703,6 +701,9 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
     if (is_bound()) {
         auto bound_addr = boost::get(my_bound_addr);
         if (udp_dst_port != bound_addr.sin_port) {
+#if DMTR_DEBUG
+            printf("recv: dropped (wrong UDP port)!\n");
+#endif
             return 0;
         }
     }
@@ -722,7 +723,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         p += sizeof(seg_len);
 
 #if DMTR_DEBUG
-        printf("recv: buf [%d] len: %lu\n", i, seg_len);
+        printf("recv: buf [%lu] len: %u\n", i, seg_len);
 #endif
 
         void *buf = NULL;
@@ -733,7 +734,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
         p += seg_len;
 
 #if DMTR_DEBUG
-        printf("recv: packet segment [%d] contents: %s\n", i, reinterpret_cast<char *>(buf));
+        printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
 #endif
     }
 
@@ -764,36 +765,37 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 
 int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
 
-    task t = {};
-    t.sga = sga;
-    my_tasks.insert(std::make_pair(qt, t));
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
+    t->sga = sga;
     return 0;
 }
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     // todo: check preconditions.
-    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
 
-    task t = {};
-    t.pull = true;
-    my_tasks.insert(std::make_pair(qt, t));
+    task *t = NULL;
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
-int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
+int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
 {
-    // todo: check preconditions.
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(EINVAL, it != my_tasks.cend());
-    task * const t = &it->second;
-
-    if (t->done) {
-        return t->error;
+    if (qr_out != NULL) {
+        *qr_out = {};
     }
 
-    if (t->pull) {
+    // todo: check preconditions.
+
+    task *t = NULL;
+    DMTR_OK(get_task(t, qt));
+
+    if (t->done) {
+        return t->to_qresult(qr_out, qd());
+    }
+
+    if (DMTR_OPC_POP == t->opcode) {
         struct rte_mbuf *mbuf = NULL;
         int ret = service_recv_queue(mbuf);
         switch (ret) {
@@ -811,34 +813,23 @@ int dmtr::lwip_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
         DMTR_OK(complete_send(*t));
     }
 
-    if (t->done) {
-        if (t->pull && t->error == 0) {
-            DMTR_NOTNULL(EINVAL, sga_out);
-            *sga_out = t->sga;
-        }
-
-        return t->error;
-    }
-
-    return EAGAIN;
+    return t->to_qresult(qr_out, qd());
 }
 
 int dmtr::lwip_queue::drop(dmtr_qtoken_t qt) {
-    dmtr_sgarray_t sga = {};
-    int ret = poll(&sga, qt);
+    dmtr_qresult_t qr = {};
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             return ret;
         case 0:
-            auto it = my_tasks.find(qt);
-            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
-            my_tasks.erase(it);
+            DMTR_OK(drop_task(qt));
             return 0;
     }
 }
 
 int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     // todo: how to detect invalid port ids?
     ::rte_eth_macaddr_get(port_id, &mac_addr);
@@ -875,14 +866,9 @@ int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
     return 0;
 }
 
-bool dmtr::lwip_queue::is_dpdk_port_id_valid(uint16_t port_id) {
-    // todo: this function is deprecated; find another.
-    return port_id < ::rte_eth_dev_count();
-}
-
 int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, rx_pkts);
 
     size_t count = ::rte_eth_rx_burst(port_id, queue_id, rx_pkts, nb_pkts);
@@ -898,7 +884,7 @@ int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint
 
 int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **tx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
-    DMTR_TRUE(ERANGE, is_dpdk_port_id_valid(port_id));
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
     Latency_Start(&dev_write_latency);

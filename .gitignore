@@ -1,8 +1,13 @@
 *.a
 *.so
-*.swp
-/.vscode/launch.json
 /build/
+
+# vim
+*.swo
+*.swp
+
+# vscode
+/.vscode/launch.json
 
 # [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
 #

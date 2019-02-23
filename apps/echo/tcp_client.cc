@@ -35,7 +35,7 @@ int main(int argc, char **argv)
     }
     // todo: this should be done from within the libos.
     saddr.sin_port = htons(port);
-    std::cout << "Connecting to: " << ip << "\n";
+    std::cout << "Connecting to: " << ip << ":" << port << "\n";
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     dmtr_sgarray_t sga = {};
@@ -51,14 +51,16 @@ int main(int argc, char **argv)
         high_resolution_clock::time_point start = high_resolution_clock::now();
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
+
         //DMTR_OK(dmtr_drop(qt));
         //fprintf(stderr, "send complete.\n");
      
-        dmtr_sgarray_t recvd;
+        dmtr_qresult_t qr;
         DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&recvd, qt));
+        DMTR_OK(dmtr_wait(&qr, qt));
         high_resolution_clock::time_point end = high_resolution_clock::now();
         //DMTR_OK(dmtr_drop(qt));
+	dmtr_sgarray_t recvd = qr.qr_value.sga;
         DMTR_TRUE(EPERM, recvd.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(recvd.sga_segs[0].sgaseg_buf)[0] == 'a');
 

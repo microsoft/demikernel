@@ -31,10 +31,6 @@
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 
-dmtr::memory_queue::completion::completion() :
-    my_sga{}
-{}
-
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
 {}
@@ -49,58 +45,54 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     // we invariably allocate memory here, so it's safe to move the allocation
     // outside of the lock scope.
-    auto *req = new completion();
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
+    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
     my_ready_queue.push(sga);
     // push always completes immediately.
-    req->complete();
-    my_completions.insert(std::make_pair(qt, req));
+    t->done = true;
     return 0;
 }
 
 int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
-    // we invariably allocate memory here, so it's safe to move the allocation
-    // outside of the lock scope.
-    auto *req = new completion();
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(EEXIST, my_completions.find(qt) == my_completions.cend());
-    my_completions.insert(std::make_pair(qt, req));
-
+    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
     return 0;
 }
 
 int
-dmtr::memory_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
-    DMTR_NOTNULL(EINVAL, sga_out);
+dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
+    if (qr_out != NULL) {
+        *qr_out = {};
+    }
+
+    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_TRUE(ENOENT, my_completions.find(qt) != my_completions.cend());
-    auto it = my_completions.find(qt);
-    auto * const req = it->second;
+    DMTR_OK(get_task(t, qt));
+
     // if we've opened the box beforehand, report the result we saw last.
-    if (req->completed()) {
-        *sga_out = it->second->sga();
-        return 0;
+    if (t->done) {
+        return t->to_qresult(qr_out, qd());
     }
 
-    // if there's something to dequeue, then we can complete the `pop()`
-    // operation.
-    if (!my_ready_queue.empty()) {
-        req->sga(my_ready_queue.front());
+    if (DMTR_OPC_POP == t->opcode && !my_ready_queue.empty()) {
+        // if there's something to dequeue, then we can complete a `pop()`
+        // operation.
+        t->sga = my_ready_queue.front();
         my_ready_queue.pop();
-        *sga_out = it->second->sga();
-        return 0;
+        t->done = true;
     }
 
-    // the ready queue is empty-- we have nothing to peek at.
-    return EAGAIN;
+    return t->to_qresult(qr_out, qd());
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
 {
-    dmtr_sgarray_t sga = {};
+    dmtr_qresult_t qr = {};
     std::lock_guard<std::mutex> lock(my_lock);
-    int ret = poll(&sga, qt);
+    int ret = poll(&qr, qt);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -110,11 +102,8 @@ int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
             break;
     }
 
-    // if the `peek()` succeeds, we forget the completion state.
-    auto it = my_completions.find(qt);
-    DMTR_TRUE(EPERM, it != my_completions.cend());
-    delete it->second;
-    my_completions.erase(it);
+    // if the `poll()` succeeds, we forget the task state.
+    DMTR_OK(drop_task(qt));
     return 0;
 }
 

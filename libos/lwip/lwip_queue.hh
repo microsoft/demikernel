@@ -15,24 +15,12 @@
 #include <queue>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
-#include <unordered_map>
 
 namespace dmtr {
 
 class lwip_queue : public io_queue {
-    private: struct task {
-        bool pull;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-
-        task();
-    };
-
     private: static const size_t our_max_queue_depth;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     private: boost::optional<struct sockaddr_in> my_bound_addr;
     private: boost::optional<struct sockaddr_in> my_default_peer;
     private: std::queue<struct rte_mbuf *> my_recv_queue;
@@ -47,16 +35,14 @@ class lwip_queue : public io_queue {
 
     // network functions
     public: int socket(int domain, int type, int protocol);
-    public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
 
     private: static int init_dpdk();
@@ -67,7 +53,6 @@ class lwip_queue : public io_queue {
         return boost::none != my_bound_addr;
     }
     private: int service_recv_queue(struct rte_mbuf *&pkt_out);
-    private: static bool is_dpdk_port_id_valid(uint16_t port_id);
 
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
