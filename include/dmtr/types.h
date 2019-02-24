@@ -45,6 +45,7 @@ typedef struct dmtr_qresult {
     enum dmtr_typeid qr_tid;
     enum dmtr_opcode qr_opcode;
     int qr_qd;
+    dmtr_qtoken_t qr_qt;
     union {
         dmtr_sgarray_t sga;
         int qd;

@@ -224,7 +224,7 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     switch (ret) {
         default:
             if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-                DMTR_OK(remove_queue(qr.qr_value.qd));
+                //DMTR_OK(remove_queue(qr.qr_value.qd));
                 if (NULL != qr_out) {
                     *qr_out = qr;
                     qr_out->qr_tid = DMTR_TID_NIL;
@@ -233,6 +233,8 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
             }
             DMTR_FAIL(ret);
         case EAGAIN:
+        case ECONNABORTED:
+        case ECONNRESET:
             return ret;
         case 0:
             DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_TID_NIL == qr.qr_tid);

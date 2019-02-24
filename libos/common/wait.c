@@ -10,6 +10,7 @@ int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
         ret = dmtr_poll(qr_out, qt);
     }
     DMTR_OK(dmtr_drop(qt));
+    if (qr_out != NULL) qr_out->qr_qt = qt;
     return ret;
 }
 
@@ -18,10 +19,10 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, dmtr_qtoken_t qts[], int num_qts) {
         for (int i = 0; i < num_qts; i++) {
             int ret = dmtr_poll(qr_out, qts[i]);
             if (ret != EAGAIN) {
-	      //wait_out->qt_out = qts[i];
-	      //wait_out->qt_idx_out = i;
-	      //wait_out->qd_out = QT2QD(qts[i]);
-                DMTR_OK(dmtr_drop(qts[i]));
+                if (ret == 0)
+                    DMTR_OK(dmtr_drop(qts[i]));
+                if (qr_out != NULL)
+                    qr_out->qr_qt = qts[i];
                 return ret;
             }
         }
