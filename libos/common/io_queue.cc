@@ -18,12 +18,11 @@ dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
     }
 }
 
-int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out, int qd) const {
+int dmtr::io_queue::task::to_qresult(dmtr_qresult_t * const qr_out) const {
     if (NULL != qr_out) {
         *qr_out = {};
-        qr_out->qr_opcode = this->opcode;
-        qr_out->qr_qd = qd;
         qr_out->qr_tid = DMTR_TID_NIL;
+        qr_out->qr_opcode = this->opcode;
     }
 
     if (!this->done) {

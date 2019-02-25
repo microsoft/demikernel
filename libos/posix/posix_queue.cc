@@ -448,7 +448,7 @@ int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
     DMTR_OK(get_task(t, qt));
 
     if (t->done) {
-        return t->to_qresult(qr_out, qd());
+        return t->to_qresult(qr_out);
     }
 
     switch (t->opcode) {
@@ -473,7 +473,7 @@ int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             break;
     }
 
-    return t->to_qresult(qr_out, qd());
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::posix_queue::drop(dmtr_qtoken_t qt)

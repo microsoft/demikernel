@@ -459,7 +459,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
     DMTR_OK(get_task(t, qt));
 
     if (t->done) {
-        return t->to_qresult(qr_out, qd());
+        return t->to_qresult(qr_out);;
     }
 
     int ret = service_event_queue();
@@ -501,7 +501,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             break;
     }
 
-    return t->to_qresult(qr_out, qd());
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)

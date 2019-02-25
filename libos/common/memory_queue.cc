@@ -74,7 +74,7 @@ dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
 
     // if we've opened the box beforehand, report the result we saw last.
     if (t->done) {
-        return t->to_qresult(qr_out, qd());
+        return t->to_qresult(qr_out);
     }
 
     if (DMTR_OPC_POP == t->opcode && !my_ready_queue.empty()) {
@@ -85,7 +85,7 @@ dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         t->done = true;
     }
 
-    return t->to_qresult(qr_out, qd());
+    return t->to_qresult(qr_out);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt)

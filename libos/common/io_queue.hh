@@ -58,7 +58,7 @@ class io_queue
         size_t num_bytes;
 
         task(dmtr_opcode_t opcode, io_queue * const q = NULL);
-        int to_qresult(dmtr_qresult_t * const qr_out, int qd) const;
+        int to_qresult(dmtr_qresult_t * const qr_out) const;
     };
 
     private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
