@@ -480,7 +480,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
     struct rte_mbuf *pkt = NULL;
     DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
     auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
-    uint32_t data_len = 0;
+    uint32_t total_len = 0;
 
     // packet layout order is (from outside -> in):
     // ether_hdr
@@ -496,7 +496,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
     // set up Ethernet header
     auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
     p += sizeof(*eth_hdr);
-    data_len += sizeof(*eth_hdr);
+    total_len += sizeof(*eth_hdr);
     memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
     rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
@@ -505,7 +505,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
     // set up IP header
     auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
     p += sizeof(*ip_hdr);
-    data_len += sizeof(*ip_hdr);
+    total_len += sizeof(*ip_hdr);
     memset(ip_hdr, 0, sizeof(struct ::ipv4_hdr));
     ip_hdr->version_ihl = IP_VHL_DEF;
     ip_hdr->time_to_live = IP_DEFTTL;
@@ -527,37 +527,43 @@ int dmtr::lwip_queue::complete_send(task &t) {
     // set up UDP header
     auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
     p += sizeof(*udp_hdr);
-    data_len += sizeof(*udp_hdr);
+    total_len += sizeof(*udp_hdr);
     memset(udp_hdr, 0, sizeof(struct ::udp_hdr));
+    udp_hdr->dst_port = htons(saddr->sin_port);
     // todo: need a way to get my own IP address even if `bind()` wasn't
     // called.
     if (is_bound()) {
         auto bound_addr = boost::get(my_bound_addr);
         udp_hdr->src_port = htons(bound_addr.sin_port);
+    } else {
+        udp_hdr->src_port = udp_hdr->dst_port;
     }
-    udp_hdr->dst_port = htons(saddr->sin_port);
-    udp_hdr->dgram_len = htonl(sizeof(struct udp_hdr));
 
+    uint32_t payload_len = 0;
     auto *u32 = reinterpret_cast<uint32_t *>(p);
     *u32 = t.sga.sga_numsegs;
-    data_len += sizeof(*u32);
+    payload_len += sizeof(*u32);
     p += sizeof(*u32);
 
     for (size_t i = 0; i < t.sga.sga_numsegs; i++) {
         u32 = reinterpret_cast<uint32_t *>(p);
         auto len = t.sga.sga_segs[i].sgaseg_len;
         *u32 = len;
-        data_len += sizeof(*u32);
+        payload_len += sizeof(*u32);
         p += sizeof(*u32);
         // todo: remove copy by associating foreign memory with
         // pktmbuf object.
         rte_memcpy(p, t.sga.sga_segs[i].sgaseg_buf, len);
-        data_len += len;
+        payload_len += len;
         p += len;
     }
 
-    pkt->data_len = data_len;
-    pkt->pkt_len = data_len;
+    uint16_t udp_len = 0;
+    DMTR_OK(dmtr_u32tou16(&udp_len, sizeof(struct udp_hdr) + payload_len));
+    udp_hdr->dgram_len = htons(udp_len);
+    total_len += payload_len;
+    pkt->data_len = total_len;
+    pkt->pkt_len = total_len;
     pkt->nb_segs = 1;
 
 #if DMTR_DEBUG
@@ -576,8 +582,9 @@ int dmtr::lwip_queue::complete_send(task &t) {
         printf("send: buf [%lu] len: %u\n", i, t.sga.sga_segs[i].sgaseg_len);
         printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(t.sga.sga_segs[i].sgaseg_buf));
     }
-    printf("send: pkt len: %d\n", data_len);
-    rte_pktmbuf_dump(stderr, pkt, data_len);
+    printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
+    printf("send: pkt len: %d\n", total_len);
+    rte_pktmbuf_dump(stderr, pkt, total_len);
 #endif
 
     size_t count = 0;
