@@ -498,7 +498,6 @@ int dmtr::lwip_queue::complete_send(task &t) {
 
     struct rte_mbuf *pkt = NULL;
     DMTR_OK(rte_pktmbuf_alloc(pkt, mbuf_pool));
-    pkt->nb_segs = 1;
     auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
     uint32_t data_len = 0;
 
@@ -576,6 +575,10 @@ int dmtr::lwip_queue::complete_send(task &t) {
         p += len;
     }
 
+    pkt->data_len = data_len;
+    pkt->pkt_len = data_len;
+    pkt->nb_segs = 1;
+
 #if DMTR_DEBUG
     print_ether_addr("send: eth src addr: ", &eth_hdr->s_addr);
     print_ether_addr("send: eth dst addr: ", &eth_hdr->d_addr);
@@ -589,11 +592,9 @@ int dmtr::lwip_queue::complete_send(task &t) {
         printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(t.sga.sga_segs[i].sgaseg_buf));
     }
     printf("send: pkt len: %d\n", data_len);
+    rte_pktmbuf_dump(stderr, pkt, data_len);
 #endif
 
-    pkt->data_len = data_len;
-    pkt->pkt_len = data_len;
-    pkt->nb_segs = 1;
     size_t count = 0;
     int ret = rte_eth_tx_burst(count, dpdk_port_id, 0, &pkt, 1);
     switch (ret) {
@@ -617,10 +618,6 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-#if DMTR_DEBUG
-        printf("recv: pkt len: %d\n", pkt->pkt_len);
-#endif
-
     // packet layout order is (from outside -> in):
     // ether_hdr
     // ipv4_hdr
@@ -641,6 +638,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 
 #if DMTR_DEBUG
         printf("=====\n");
+        printf("recv: pkt len: %d\n", pkt->pkt_len);
         print_ether_addr("recv: eth src addr: ", &eth_hdr->s_addr);
         print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
         printf("recv: eth type: %x\n", eth_type);
