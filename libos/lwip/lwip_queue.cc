@@ -318,23 +318,17 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     return 0;
 }
 
-int dmtr::lwip_queue::init_dpdk(int argc, char* argv[])
+int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
 {
+    count_out = -1;
+
     if (is_init) {
         return 0;
     }
 
     unsigned nb_ports;
-    int ret;
 
-    ret = rte_eal_init(argc, argv);
-
-    if (ret < 0) {
-        rte_exit(ret, "Error with EAL initialization\n");
-        return -1;
-    }
-
-    fprintf(stderr, "Sucessfully initialized EAL.\n");
+    DMTR_OK(rte_eal_init(count_out, argc, argv));
 
     nb_ports = rte_eth_dev_count();
 //    assert(nb_ports == 1);
@@ -416,7 +410,8 @@ int dmtr::lwip_queue::init_dpdk() {
                     (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
                     (char*)""};
     int argc = 8;
-    return init_dpdk(argc, argv);
+    int count = -1;
+    return init_dpdk(count, argc, argv);
 }
 
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
@@ -914,5 +909,27 @@ int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_me
     struct rte_mbuf *pkt = ::rte_pktmbuf_alloc(mp);
     DMTR_NOTNULL(ENOMEM, pkt);
     pkt_out = pkt;
+    return 0;
+}
+
+
+int dmtr::lwip_queue::rte_eal_init(int &count_out, int argc, char *argv[]) {
+    count_out = -1;
+    DMTR_NOTNULL(EINVAL, argv);
+    DMTR_TRUE(ERANGE, argc >= 0);
+    for (int i = 0; i < argc; ++i) {
+        DMTR_NOTNULL(EINVAL, argv[i]);
+    }
+
+    int ret = ::rte_eal_init(argc, argv);
+    if (-1 == ret) {
+        return rte_errno;
+    }
+
+    if (-1 > ret) {
+        DMTR_UNREACHABLE();
+    }
+
+    count_out = ret;
     return 0;
 }
