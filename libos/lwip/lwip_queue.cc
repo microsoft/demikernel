@@ -102,12 +102,12 @@ static struct ether_addr ether_broadcast = {
 };
 
 
-struct rte_mempool *mbuf_pool;
+struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 struct rte_eth_conf port_conf;
 struct rte_eth_txconf tx_conf;
 struct rte_eth_rxconf rx_conf;
 struct rte_eth_dev_info dev_info;
-bool is_init = false;
+bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 
 struct ether_addr*
 ip_to_mac(in_addr_t ip)
@@ -322,44 +322,24 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
 {
     count_out = -1;
 
-    if (is_init) {
+    if (our_dpdk_init_flag) {
         return 0;
     }
 
-    unsigned nb_ports;
-
     DMTR_OK(rte_eal_init(count_out, argc, argv));
+    const uint16_t nb_ports = rte_eth_dev_count_avail();
+    DMTR_TRUE(ENOENT, nb_ports > 0);
 
-    nb_ports = rte_eth_dev_count();
-//    assert(nb_ports == 1);
-
-    if (nb_ports <= 0) {
-        rte_exit(EXIT_FAILURE, "No probed ethernet devices\n");
-    }
-
-    // Create pool of memory for ring buffers.
-
-    // note: DPDK requires a name for the pool and the namespace is
-    // system-wide, so we need to generate a randomized name if this
-    // code is to be run by both server and client.
-    char pool_name[15] = {0};
-    strncpy(pool_name, "pktmbuf.XXXXXX", 14);
-    mktemp(pool_name);
-    fprintf(stderr, "Attempting to create pktmbuf pool named `%s`...\n", pool_name);
-
-    mbuf_pool = rte_pktmbuf_pool_create(pool_name,
-                                        NUM_MBUFS * nb_ports,
-                                        MBUF_CACHE_SIZE,
-                                        0,
-                                        RTE_MBUF_DEFAULT_BUF_SIZE,
-                                        rte_socket_id());
-
-    if (mbuf_pool == NULL) {
-        rte_exit(rte_errno, "Cannot create mbuf pool\n");
-        return -1;
-    }
-
-    fprintf(stderr, "pktmbuf pool `%s` successfully created.\n", pool_name);
+    // create pool of memory for ring buffers.
+    struct rte_mempool *mbuf_pool = NULL;
+    DMTR_OK(rte_pktmbuf_pool_create(
+        mbuf_pool, 
+        "default_mbuf_pool",
+        NUM_MBUFS * nb_ports,
+        MBUF_CACHE_SIZE,
+        0,
+        RTE_MBUF_DEFAULT_BUF_SIZE,
+        rte_socket_id()));
 
     /* Initialize all ports. */
     uint16_t i;
@@ -381,8 +361,9 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
     }
 
-    is_init = true;
+    our_dpdk_init_flag = true;
     our_dpdk_port_id = port_id;
+    our_mbuf_pool = mbuf_pool;
     return 0;
 }
 
@@ -434,6 +415,8 @@ dmtr::lwip_queue::~lwip_queue()
 {}
 
 int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
+
     // we don't currently support anything but UDP.
     if (type != SOCK_DGRAM) {
         return ENOTSUP;
@@ -443,6 +426,7 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
 }
 
 int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
     DMTR_NOTNULL(EINVAL, saddr);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
@@ -464,6 +448,7 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
 }
 
 int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, boost::none == my_bound_addr);
     DMTR_TRUE(EPERM, boost::none == my_default_peer);
@@ -473,12 +458,14 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 }
 
 int dmtr::lwip_queue::close() {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     my_default_peer = boost::none;
     my_bound_addr = boost::none;
     return 0;
 }
 
 int dmtr::lwip_queue::complete_send(task &t) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
@@ -491,7 +478,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
     }
 
     struct rte_mbuf *pkt = NULL;
-    DMTR_OK(rte_pktmbuf_alloc(pkt, mbuf_pool));
+    DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
     auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
     uint32_t data_len = 0;
 
@@ -612,6 +599,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
 
 int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_NOTNULL(EINVAL, pkt);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
@@ -766,6 +754,7 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
 }
 
 int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
 
     task *t = NULL;
@@ -775,6 +764,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 }
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
 
     task *t = NULL;
@@ -788,6 +778,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
         *qr_out = {};
     }
 
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
 
     task *t = NULL;
@@ -839,6 +830,7 @@ int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &m
 }
 
 int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
@@ -870,6 +862,7 @@ int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
 
 int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, rx_pkts);
 
@@ -886,6 +879,7 @@ int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint
 
 int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **tx_pkts, const uint16_t nb_pkts) {
     count_out = 0;
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
@@ -905,6 +899,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
 int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp) {
     pkt_out = NULL;
     DMTR_NOTNULL(EINVAL, mp);
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
 
     struct rte_mbuf *pkt = ::rte_pktmbuf_alloc(mp);
     DMTR_NOTNULL(ENOMEM, pkt);
@@ -933,3 +928,17 @@ int dmtr::lwip_queue::rte_eal_init(int &count_out, int argc, char *argv[]) {
     count_out = ret;
     return 0;
 }
+
+int dmtr::lwip_queue::rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, const char *name, unsigned n, unsigned cache_size, uint16_t priv_size, uint16_t data_room_size, int socket_id) {
+    mpool_out = NULL;
+    DMTR_NOTNULL(EINVAL, name);
+
+    struct rte_mempool *ret = ::rte_pktmbuf_pool_create(name, n, cache_size, priv_size, data_room_size, socket_id);
+    if (NULL == ret) {
+        return rte_errno;
+    }
+
+    mpool_out = ret;
+    return 0;
+}
+

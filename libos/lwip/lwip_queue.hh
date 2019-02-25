@@ -20,6 +20,8 @@ namespace dmtr {
 
 class lwip_queue : public io_queue {
     private: static const size_t our_max_queue_depth;
+    private: static struct rte_mempool *our_mbuf_pool;
+    private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     private: boost::optional<struct sockaddr_in> my_bound_addr;
     private: boost::optional<struct sockaddr_in> my_default_peer;
@@ -60,7 +62,7 @@ class lwip_queue : public io_queue {
     private: static int rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp);
     private: static int print_ether_addr(FILE *f, struct ether_addr &eth_addr);
     private: static int rte_eal_init(int &count_out, int argc, char *argv[]);
-
+    private: static int rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, const char *name, unsigned n, unsigned cache_size, uint16_t priv_size, uint16_t data_room_size, int socket_id);
 };
 
 } // namespace dmtr
