@@ -10,7 +10,11 @@
 
 // todo: make symbols private
 #define BUFFER_SIZE 1024
+#define PUSH_MASK 0x1
+#define TOKEN_MASK 0x0000FFFF
 #define QUEUE_MASK 0xFFFF0000
+#define TOKEN(t) t & TOKEN_MASK
+#define IS_PUSH(t) t & PUSH_MASK
 
 // dmtr_qtoken_t format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
@@ -50,10 +54,11 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     return 0;
 }
 
-dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd) {
+dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd, bool push) {
     // todo: is this means of generating tokens robust?
     if (token_counter == 0) token_counter++;
-    dmtr_qtoken_t t = token_counter | ((dmtr_qtoken_t)qd << 32);
+    dmtr_qtoken_t t = (token_counter << 1 & TOKEN_MASK) | ((dmtr_qtoken_t)qd << 32);
+    if (push) t |= PUSH_MASK;
     //printf("new_qtoken qd:%lx\n", t);
     token_counter++;
     return t;
@@ -133,18 +138,26 @@ int dmtr::io_queue_api::bind(int qd, const struct sockaddr * const saddr, sockle
     return 0;
 };
 
-int dmtr::io_queue_api::accept(dmtr_qtoken_t &qtok_out, int sockqd) {
-    qtok_out = 0;
+int dmtr::io_queue_api::accept(int &qd_out, struct sockaddr * const saddr_out,socklen_t * const size_out, int sockqd) {
+    qd_out = 0;
 
     io_queue *sockq = NULL;
     DMTR_OK(get_queue(sockq, sockqd));
 
-    int qd = new_qd();
-    auto qtok = new_qtoken(sockqd);
     io_queue *q = NULL;
-    DMTR_OK(sockq->accept(q, qtok, qd));
+    int qd = new_qd();
+    int ret = sockq->accept(q, saddr_out, size_out, qd);
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case EAGAIN:
+            return EAGAIN;
+        case 0:
+            break;
+    }
+
     DMTR_OK(insert_queue(q));
-    qtok_out = qtok;
+    qd_out = qd;
     return 0;
 }
 
@@ -186,7 +199,7 @@ int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    auto qtok = new_qtoken(qd);
+    auto qtok = new_qtoken(qd, true);
     DMTR_OK(q->push(qtok, sga));
 
     qtok_out = qtok;
@@ -198,43 +211,19 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    auto qtok = new_qtoken(qd);
+    auto qtok = new_qtoken(qd, false);
     DMTR_OK(q->pop(qtok));
 
     qtok_out = qtok;
     return 0;
 }
 
-int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
+int dmtr::io_queue_api::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt) {
     int qd = qttoqd(qt);
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-
-    dmtr_qresult_t qr = {};
-    int ret = q->poll(&qr, qt);
-    switch (ret) {
-        default:
-            if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-                DMTR_OK(remove_queue(qr.qr_value.qd));
-                if (NULL != qr_out) {
-                    *qr_out = qr;
-                    qr_out->qr_tid = DMTR_TID_NIL;
-                    qr_out->qr_value.qd = 0;
-                }
-            }
-            DMTR_FAIL(ret);
-        case EAGAIN:
-            return ret;
-        case 0:
-            DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_TID_NIL == qr.qr_tid);
-            if (NULL != qr_out) {
-                *qr_out = qr;
-            }
-            return 0;
-    }
-
-    return ret;
+    return q->poll(sga_out, qt);
 }
 
 int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {

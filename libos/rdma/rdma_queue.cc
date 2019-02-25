@@ -59,6 +59,15 @@ const size_t dmtr::rdma_queue::recv_buf_count = 1;
 const size_t dmtr::rdma_queue::recv_buf_size = 1024;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
+dmtr::rdma_queue::task::task() :
+    pull(false),
+    done(false),
+    error(0),
+    header{},
+    sga{},
+    byte_len(0)
+{}
+
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_listening_flag(false)
@@ -114,10 +123,11 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
         }
         case IBV_WC_SEND: {
             dmtr_qtoken_t qt = wc.wr_id;
-            task *t = NULL;
-            DMTR_OK(get_task(t, qt));
+            auto it = my_tasks.find(qt);
+            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
+            task * const t = it->second;
             unpin(t->sga);
-            t->num_bytes = wc.byte_len;
+            t->byte_len = wc.byte_len;
             t->done = true;
             t->error = 0;
             return 0;
@@ -172,7 +182,7 @@ int dmtr::rdma_queue::service_event_queue() {
             fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
             return ENOTSUP;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_accept_queue.push(event.id);
+            my_accepts.push(event.id);
             fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
@@ -216,21 +226,22 @@ int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 
 }
 
-int dmtr::rdma_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd)
+int dmtr::rdma_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
 {
-    q_out = NULL;
-    DMTR_NOTNULL(EPERM, my_rdma_id);
+    int ret = accept2(q_out, saddr, addrlen, new_qd);
+    if (0 == ret) {
+        return 0;
+    }
 
-    auto * const q = new rdma_queue(new_qd);
-    DMTR_TRUE(ENOMEM, q != NULL);
+    if (q_out != NULL) {
+        delete q_out;
+        q_out = NULL;
+    }
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q));
-    q_out = q;
-    return 0;
+    return ret;
 }
 
-int dmtr::rdma_queue::service_accept_queue(task &t) {
+int dmtr::rdma_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd) {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EPERM, my_listening_flag);
 
@@ -242,11 +253,12 @@ int dmtr::rdma_queue::service_accept_queue(task &t) {
         case 0:
             break;
         case EAGAIN:
-            return 0;
+            return EAGAIN;
     }
 
-    auto * const q = dynamic_cast<rdma_queue *>(t.queue);
-    DMTR_NOTNULL(EPERM, q);
+    auto * const q = new rdma_queue(new_qd);
+    DMTR_TRUE(ENOMEM, q != NULL);
+    q_out = q;
     q->my_rdma_id = new_rdma_id;
     DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(q->setup_rdma_qp());
@@ -260,8 +272,14 @@ int dmtr::rdma_queue::service_accept_queue(task &t) {
     params.rnr_retry_count = 7;
     DMTR_OK(rdma_accept(new_rdma_id, &params));
 
-    t.done = true;
-    t.error = 0;
+    // todo: is the assumption that this is always a `sockaddr_in`
+    // correct? the interface always specifies `sockaddr *`.
+    struct sockaddr *paddr = NULL;
+    DMTR_OK(rdma_get_peer_addr(paddr, new_rdma_id));
+    size_t n = *addrlen;
+    memcpy(saddr, paddr, std::min(n, sizeof(sockaddr_in)));
+    *addrlen = sizeof(sockaddr_in);
+
     return 0;
 }
 
@@ -329,8 +347,9 @@ int dmtr::rdma_queue::close()
 }
 
 int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t len) {
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(ENOENT, it != my_tasks.cend());
+    task * const t = it->second;
 
     if (len < sizeof(dmtr_header_t)) {
         t->done = true;
@@ -354,7 +373,7 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t l
     }
 
     t->sga.sga_buf = buf;
-    t->num_bytes = len;
+    t->byte_len = len;
     t->done = true;
     t->error = 0;
     return 0;
@@ -363,11 +382,12 @@ int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t l
 int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
+    task * const t = new task();
     t->sga = sga;
+    my_tasks.insert(std::make_pair(qt, t));
 
     size_t num_sge = 2 * sga.sga_numsegs + 1;
     struct ibv_sge sge[num_sge];
@@ -439,27 +459,26 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
+    auto t = new task();
+    t->pull = true;
+    my_tasks.insert(std::make_pair(qt, t));
+
     return 0;
 }
 
-int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
+int dmtr::rdma_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
-    if (qr_out != NULL) {
-        *qr_out = {};
-    }
-
     DMTR_NOTNULL(EPERM, my_rdma_id);
-
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(EINVAL, it != my_tasks.cend());
+    task const * t = it->second;
 
     if (t->done) {
-        return t->to_qresult(qr_out);;
+        return t->error;
     }
 
     int ret = service_event_queue();
@@ -473,57 +492,57 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             return ret;
     }
 
-    switch (t->opcode) {
-        default:
-            DMTR_UNREACHABLE();
-        case DMTR_OPC_PUSH:
-            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
-            break;
-        case DMTR_OPC_POP: {
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
-            void *p = NULL;
-            size_t len = 0;
-            int ret = service_recv_queue(p, len);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    return ret;
-                case 0:
-                    break;
-            }
-
-            DMTR_OK(complete_recv(qt, p, len));
-            break;
+    if (t->pull) {
+        DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+        void *p = NULL;
+        size_t len = 0;
+        int ret = service_recv_queue(p, len);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                return ret;
+            case 0:
+                break;
         }
-        case DMTR_OPC_ACCEPT:
-            DMTR_OK(service_accept_queue(*t));
-            break;
+
+        DMTR_OK(complete_recv(qt, p, len));
+    } else {
+        DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
     }
 
-    return t->to_qresult(qr_out);
+    if (t->done) {
+        if (t->pull && 0 == t->error) {
+            DMTR_NOTNULL(EINVAL, sga_out);
+            *sga_out = t->sga;
+        }
+
+        return t->error;
+    }
+
+    return EAGAIN;
 }
 
 int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
 
-    dmtr_qresult_t qr = {};
-    int ret = poll(&qr, qt);
+    dmtr_sgarray_t sga = {};
+    int ret = poll(&sga, qt);
     switch (ret) {
         default:
             return ret;
-        case 0: {
-            task *t = NULL;
-            DMTR_OK(get_task(t, qt));
-            if (DMTR_OPC_PUSH == t->opcode && t->sga.sga_buf != NULL) {
+        case 0:
+            auto it = my_tasks.find(qt);
+            DMTR_TRUE(ENOTSUP, it != my_tasks.cend());
+            task * const t = it->second;
+            if (!t->pull && t->sga.sga_buf != NULL) {
                 // free the buffer used to store segment lengths.
                 free(t->sga.sga_buf);
             }
-            t = NULL;
-            DMTR_OK(drop_task(qt));
+            delete it->second;
+            my_tasks.erase(it);
             return 0;
-        }
     }
 }
 
@@ -541,12 +560,12 @@ int dmtr::rdma_queue::pop_accept(struct rdma_cm_id *&id_out) {
             break;
     }
 
-    if (my_accept_queue.empty()) {
+    if (my_accepts.empty()) {
         return EAGAIN;
     }
 
-    id_out = my_accept_queue.front();
-    my_accept_queue.pop();
+    id_out = my_accepts.front();
+    my_accepts.pop();
     return 0;
 }
 

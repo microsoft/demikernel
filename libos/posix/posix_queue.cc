@@ -116,23 +116,29 @@ dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
     }
 }
 
-int dmtr::posix_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd)
+int dmtr::posix_queue::accept(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
 {
-    q_out = NULL;
+    int ret = accept2(q_out, saddr, addrlen, new_qd);
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (q_out != NULL) {
+        delete q_out;
+        q_out = NULL;
+    }
+    return ret;
+}
+
+int dmtr::posix_queue::accept2(io_queue *&q_out, struct sockaddr * const saddr, socklen_t * const addrlen, int new_qd)
+{
+    DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(EPERM, my_listening_flag);
 
     auto * const q = new posix_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q));
-    q_out = q;
-    return 0;
-}
-
-int dmtr::posix_queue::accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen)
-{
-    int ret = ::accept4(fd, saddr, addrlen, SOCK_NONBLOCK);
+    int ret = ::accept4(my_fd, saddr, addrlen, SOCK_NONBLOCK);
     if (ret == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return EAGAIN;
@@ -146,30 +152,12 @@ int dmtr::posix_queue::accept(int &newfd_out, int fd, struct sockaddr * const sa
     }
 
     //fprintf(stderr, "Accepting connection\n");
-    newfd_out = ret;
-    return 0;
-}
-
-int dmtr::posix_queue::complete_accept(task &t) {
-    DMTR_TRUE(EPERM, my_fd != -1);
-
-    int new_fd = -1;
-    int ret = accept(new_fd, my_fd, NULL, NULL);
-    if (EAGAIN == ret) {
-        return 0;
-    }
-
-    t.done = true;
-    t.error = ret;
-    if (t.error != 0) {
-        return 0;
-    }
-
+    int new_fd = ret;
     DMTR_OK(set_tcp_nodelay(new_fd));
     DMTR_OK(set_non_blocking(new_fd));
-    posix_queue * const q = dynamic_cast<posix_queue *>(t.queue);
     q->my_fd = new_fd;
     q->my_tcp_flag = my_tcp_flag;
+    q_out = q;
     return 0;
 }
 
@@ -418,75 +406,75 @@ int dmtr::posix_queue::complete_send(task &t)
 int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
-    t->sga = sga;
+    task t = {};
+    t.sga = sga;
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
 int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
+    DMTR_TRUE(EINVAL, my_tasks.find(qt) == my_tasks.cend());
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
+    task t = {};
+    t.pull = true;
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
-int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::poll(dmtr_sgarray_t * const sga_out, dmtr_qtoken_t qt)
 {
-    if (qr_out != NULL) {
-        *qr_out = {};
-    }
-
     DMTR_TRUE(EINVAL, my_fd != -1);
-
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
+    auto it = my_tasks.find(qt);
+    DMTR_TRUE(EINVAL, it != my_tasks.cend());
+    task * const t = &it->second;
 
     if (t->done) {
-        return t->to_qresult(qr_out);
+        return t->error;
     }
 
-    switch (t->opcode) {
-        default:
-            DMTR_UNREACHABLE();
-        case DMTR_OPC_PUSH:
-            DMTR_OK(complete_send(*t));
-            break;
-        case DMTR_OPC_ACCEPT:
-            DMTR_OK(complete_accept(*t));
-            break;
-        case DMTR_OPC_POP:
-            if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
-                return EAGAIN;
-            }
+    if (t->pull) {
+        if (my_active_recv != boost::none && boost::get(my_active_recv) != qt) {
+            return EAGAIN;
+        }
 
-            my_active_recv = qt;
-            DMTR_OK(complete_recv(*t));
-            if (t->done) {
-                my_active_recv = boost::none;
-            }
-            break;
+        my_active_recv = qt;
+        DMTR_OK(complete_recv(*t));
+        if (t->done) {
+            my_active_recv = boost::none;
+        }
+    } else {
+        DMTR_OK(complete_send(*t));
     }
 
-    return t->to_qresult(qr_out);
+    if (t->done) {
+        if (t->pull && t->error == 0) {
+            DMTR_NOTNULL(EINVAL, sga_out);
+            *sga_out = t->sga;
+        }
+
+        return t->error;
+    }
+
+    return EAGAIN;
 }
 
 int dmtr::posix_queue::drop(dmtr_qtoken_t qt)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
 
-    dmtr_qresult_t qr = {};
-    int ret = poll(&qr, qt);
+    dmtr_sgarray_t sga = {};
+    int ret = poll(&sga, qt);
     switch (ret) {
         default:
             return ret;
         case 0:
-            DMTR_OK(drop_task(qt));
+            my_tasks.erase(qt);
             return 0;
     }
 }
