@@ -413,7 +413,7 @@ int dmtr::lwip_queue::init_dpdk() {
                     (char*)"-n",
                     (char*)"1",
                     (char*)"-w",
-                    (char*)"ac2a:00:02.0",
+                    (char*)"aa89:00:02.0",
                     (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
                     (char*)""};
     int argc = 8;
@@ -520,7 +520,7 @@ int dmtr::lwip_queue::complete_send(task &t) {
     memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
     rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
-    ether_addr_copy(ip_to_mac(saddr->sin_addr.s_addr), &eth_hdr->d_addr);
+    ether_addr_copy(ip_to_mac(htonl(saddr->sin_addr.s_addr)), &eth_hdr->d_addr);
 
     // set up IP header
     auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
@@ -534,7 +534,9 @@ int dmtr::lwip_queue::complete_send(task &t) {
     // called.
     if (is_bound()) {
         auto bound_addr = boost::get(my_bound_addr);
-        ip_hdr->src_addr = bound_addr.sin_addr.s_addr;
+        ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
+    } else {
+        ip_hdr->src_addr = htonl(mac_to_ip(eth_hdr->s_addr));
     }
     ip_hdr->dst_addr = saddr->sin_addr.s_addr;
     ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
@@ -577,10 +579,10 @@ int dmtr::lwip_queue::complete_send(task &t) {
 #if DMTR_DEBUG
     print_ether_addr("send: eth src addr: ", &eth_hdr->s_addr);
     print_ether_addr("send: eth dst addr: ", &eth_hdr->d_addr);
-    printf("send: ip src addr: %x\n", ip_hdr->src_addr);
-    printf("send: ip dst addr: %x\n", ip_hdr->dst_addr);
-    printf("send: udp src port: %d\n", udp_hdr->src_port);
-    printf("send: udp dst port: %d\n", udp_hdr->dst_port);
+    printf("send: ip src addr: %x\n", ntohl(ip_hdr->src_addr));
+    printf("send: ip dst addr: %x\n", ntohl(ip_hdr->dst_addr));
+    printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
+    printf("send: udp dst port: %d\n", ntohs(udp_hdr->dst_port));
     printf("send: sga_numsegs: %d\n", t.sga.sga_numsegs);
     for (size_t i = 0; i < t.sga.sga_numsegs; ++i) {
         printf("send: buf [%lu] len: %u\n", i, t.sga.sga_segs[i].sgaseg_len);
@@ -902,7 +904,6 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
 
 int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp) {
     pkt_out = NULL;
-    DMTR_NOTNULL(EINVAL, pkt_out);
     DMTR_NOTNULL(EINVAL, mp);
 
     struct rte_mbuf *pkt = ::rte_pktmbuf_alloc(mp);

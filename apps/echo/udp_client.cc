@@ -21,13 +21,13 @@ int main()
     DMTR_OK(dmtr_init(0, argv));
 
     int qd = 0;
-    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
+    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
     printf("client qd:\t%d\n", qd);
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     saddr.sin_port = PORT;
-    if (inet_pton(AF_INET, "10.0.0.7", &(saddr.sin_addr)) != 1) {
+    if (inet_pton(AF_INET, "10.0.0.5", &(saddr.sin_addr)) != 1) {
         printf("Address not supported!\n");
         return -1;
     }
