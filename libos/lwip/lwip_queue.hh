@@ -58,10 +58,10 @@ class lwip_queue : public io_queue {
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
     private: static int rte_eth_tx_burst(size_t &count_out, uint16_t port_id,uint16_t queue_id, struct rte_mbuf **tx_pkts, uint16_t nb_pkts);
     private: static int rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp);
+    private: static int print_ether_addr(FILE *f, struct ether_addr &eth_addr);
+
 };
 
 } // namespace dmtr
-
-
 
 #endif /* DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED */

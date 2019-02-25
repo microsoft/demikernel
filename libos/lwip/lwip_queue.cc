@@ -154,15 +154,14 @@ int dmtr::lwip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len
     return 0;
 }
 
-#if DMTR_DEBUG
-static inline void
-print_ether_addr(const char *what, struct ether_addr *eth_addr)
-{
+int dmtr::lwip_queue::print_ether_addr(FILE *f, struct ether_addr &eth_addr) {
+    DMTR_NOTNULL(EINVAL, f);
+
     char buf[ETHER_ADDR_FMT_SIZE];
-    ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, eth_addr);
-    printf("%s%s\n", what, buf);
+    ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, &eth_addr);
+    fputs(buf, f);
+    return 0;
 }
-#endif
 
 static void
 check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
@@ -580,8 +579,12 @@ int dmtr::lwip_queue::complete_send(task &t) {
     pkt->nb_segs = 1;
 
 #if DMTR_DEBUG
-    print_ether_addr("send: eth src addr: ", &eth_hdr->s_addr);
-    print_ether_addr("send: eth dst addr: ", &eth_hdr->d_addr);
+    printf("send: eth src addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
+    printf("\n");
+    printf("send: eth dst addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
+    printf("\n");
     printf("send: ip src addr: %x\n", ntohl(ip_hdr->src_addr));
     printf("send: ip dst addr: %x\n", ntohl(ip_hdr->dst_addr));
     printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
@@ -637,11 +640,15 @@ int dmtr::lwip_queue::complete_recv(task &t, struct rte_mbuf *pkt)
     auto eth_type = ntohs(eth_hdr->ether_type);
 
 #if DMTR_DEBUG
-        printf("=====\n");
-        printf("recv: pkt len: %d\n", pkt->pkt_len);
-        print_ether_addr("recv: eth src addr: ", &eth_hdr->s_addr);
-        print_ether_addr("recv: eth dst addr: ", &eth_hdr->d_addr);
-        printf("recv: eth type: %x\n", eth_type);
+    printf("=====\n");
+    printf("recv: pkt len: %d\n", pkt->pkt_len);
+    printf("send: eth src addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
+    printf("\n");
+    printf("send: eth dst addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
+    printf("\n");
+    printf("recv: eth type: %x\n", eth_type);
 #endif
 
     struct ether_addr mac_addr = {};
