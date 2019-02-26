@@ -158,59 +158,45 @@ int dmtr::lwip_queue::print_ether_addr(FILE *f, struct ether_addr &eth_addr) {
     return 0;
 }
 
-static void
-check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
-{
-#define CHECK_INTERVAL 			100 /* 100ms */
-#define MAX_CHECK_TIME 			90 /* 9s (90 * 100ms) in total */
-
-    uint8_t portid, count, all_ports_up, print_flag = 0;
-    struct rte_eth_link link;
-
-    printf("\nChecking link status... ");
-    fflush(stdout);
-    for (count = 0; count <= MAX_CHECK_TIME; count++) {
-        all_ports_up = 1;
-        for (portid = 0; portid < port_num; portid++) {
-            if ((port_mask & (1 << portid)) == 0)
-                continue;
-            memset(&link, 0, sizeof(link));
-            rte_eth_link_get_nowait(portid, &link);
-            /* print link status if flag set */
-            if (print_flag == 1) {
-                if (link.link_status)
-                    printf("Port %d Link Up - speed %u "
-                        "Mbps - %s\n", (uint8_t)portid,
-                        (unsigned)link.link_speed,
-                (link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
-                    ("full-duplex") : ("half-duplex\n"));
-                else
-                    printf("Port %d Link Down\n",
-                        (uint8_t)portid);
-                continue;
-            }
-            /* clear all_ports_up flag if any link down */
-            if (link.link_status == 0) {
-                all_ports_up = 0;
-                break;
-            }
-        }
-        /* after finally printing all link status, get out */
-        if (print_flag == 1)
-            break;
-
-        if (all_ports_up == 0) {
-            printf(".");
-            fflush(stdout);
-            rte_delay_ms(CHECK_INTERVAL);
-        }
-
-        /* set the print_flag if all ports up or timeout */
-        if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
-            print_flag = 1;
-            printf("done\n");
-        }
+int dmtr::lwip_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
+    DMTR_NOTNULL(EINVAL, f);
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+   
+    struct rte_eth_link link2 = {};
+    if (NULL == link) {
+        DMTR_OK(rte_eth_link_get_nowait(port_id, link2));
+        link = &link2;
     }
+    if (ETH_LINK_UP == link->link_status) {
+        const char * const duplex = ETH_LINK_FULL_DUPLEX == link->link_duplex ?  "full" : "half";
+        fprintf(f, "Port %d Link Up - speed %u " "Mbps - %s-duplex\n", port_id, link->link_speed, duplex);
+    } else {
+        printf("Port %d Link Down\n", port_id);
+    }
+
+    return 0;
+}
+
+int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
+{
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    const size_t sleep_duration_ms = 100;
+    const size_t retry_count = 90;
+
+    struct rte_eth_link link = {};
+    for (size_t i = 0; i < retry_count; ++i) {
+        DMTR_OK(rte_eth_link_get_nowait(port_id, link));
+        if (ETH_LINK_UP == link.link_status) {
+            DMTR_OK(print_link_status(stderr, port_id, &link));
+            return 0;
+        }
+
+        rte_delay_ms(sleep_duration_ms);
+    }
+
+    DMTR_OK(print_link_status(stderr, port_id, &link));
+    return ECONNREFUSED;
 }
 
 /*
@@ -286,6 +272,8 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     fc_conf.mode = RTE_FC_NONE;
     DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
 
+    DMTR_OK(wait_for_link_status_up(port_id));
+
     return 0;
 }
 
@@ -320,8 +308,6 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
         DMTR_OK(init_dpdk_port(i, *mbuf_pool));
         port_id = i;
     }
-
-    ::check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
 
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
@@ -1032,4 +1018,12 @@ int dmtr::lwip_queue::rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct r
     }
 
     DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link) {
+    link = {};
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+    
+    ::rte_eth_link_get_nowait(port_id, &link);
+    return 0;
 }
