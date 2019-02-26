@@ -859,6 +859,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     Latency_Start(&dev_write_latency);
     size_t count = ::rte_eth_tx_burst(port_id, queue_id, tx_pkts, nb_pkts);
     Latency_End(&dev_write_latency);
+    // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status
         // needs to be checked to determine if an error occurred.
