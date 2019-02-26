@@ -12,8 +12,8 @@
 
 #define DMTR_UNREACHABLE() \
     do { \
-        dmtr_panic("unreachable code"); \
-        return ENOTSUP; \
+        DMTR_PANIC("unreachable code"); \
+        return -1; \
     } while (0)
 
 #define DMTR_FAIL(Error) \
@@ -21,5 +21,7 @@
         DMTR_OK(Error); \
         DMTR_UNREACHABLE(); \
     } while (0)
+
+
 
 #endif /* DMTR_ANNOT_H_IS_INCLUDED */

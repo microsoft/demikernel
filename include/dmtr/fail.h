@@ -40,7 +40,9 @@ typedef void (*dmtr_onfail_t)(int error_arg,
 #define DMTR_OK(Error) \
     DMTR_OK2((Error), DMTR_UNIQID(DMTR_TRY_errorCache))
 
-void dmtr_panic(const char *why_arg);
+#define DMTR_PANIC(Why) dmtr_panic((Why), __FILE__, __LINE__)
+
+void dmtr_panic(const char *why_arg, const char *filen_arg, int lineno_arg);
 void dmtr_onfail(dmtr_onfail_t onfail_arg);
 void dmtr_fail(int error_arg, const char *expr_arg,
       const char *funcn_arg, const char *filen_arg, int lineno_arg);

@@ -21,7 +21,7 @@ int main()
     DMTR_OK(dmtr_init(0, argv));
 
     int qd = 0;
-    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
+    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
     printf("client qd:\t%d\n", qd);
 
     struct sockaddr_in saddr = {};
