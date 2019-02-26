@@ -14,7 +14,7 @@ dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
     num_bytes(0)
 {
     if (q != NULL && opcode != DMTR_OPC_ACCEPT) {
-        dmtr_panic("a non-NULL queue argument only applies to opcode `DMTR_OPC_ACCEPT`");
+        DMTR_PANIC("a non-NULL queue argument only applies to opcode `DMTR_OPC_ACCEPT`");
     }
 }
 

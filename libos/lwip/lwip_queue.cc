@@ -25,7 +25,6 @@
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
-#include <rte_ethdev.h>
 #include <rte_ip.h>
 #include <rte_lcore.h>
 #include <rte_memcpy.h>
@@ -103,10 +102,6 @@ static struct ether_addr ether_broadcast = {
 
 
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
-struct rte_eth_conf port_conf;
-struct rte_eth_txconf tx_conf;
-struct rte_eth_rxconf rx_conf;
-struct rte_eth_dev_info dev_info;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 
 struct ether_addr*
@@ -222,46 +217,38 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
  */
-static inline int
-port_init(uint8_t port, struct rte_mempool *mbuf_pool)
-{
-    struct rte_eth_dev_info dev_info;
+int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+    
     const uint16_t rx_rings = 1;
     const uint16_t tx_rings = 1;
-    int retval;
-    uint16_t q;
-    uint16_t nb_rxd = RX_RING_SIZE;
-    uint16_t nb_txd = TX_RING_SIZE;
-    struct rte_eth_fc_conf fc_conf;
+    const uint16_t nb_rxd = RX_RING_SIZE;
+    const uint16_t nb_txd = TX_RING_SIZE;
 
-    rte_eth_dev_info_get(port, &dev_info);
+    struct ::rte_eth_dev_info dev_info = {};
+    DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
+    struct ::rte_eth_conf port_conf = {};
     port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-    port_conf.rxmode.split_hdr_size = 0;
-    port_conf.rxmode.offloads = 0;
-    port_conf.rx_adv_conf.rss_conf.rss_key = NULL;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
+    struct ::rte_eth_rxconf rx_conf = {};
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
     rx_conf.rx_thresh.hthresh = RX_HTHRESH;
     rx_conf.rx_thresh.wthresh = RX_WTHRESH;
     rx_conf.rx_free_thresh = 32;
 
+    struct ::rte_eth_txconf tx_conf = {};
     tx_conf.tx_thresh.pthresh = TX_PTHRESH;
     tx_conf.tx_thresh.hthresh = TX_HTHRESH;
     tx_conf.tx_thresh.wthresh = TX_WTHRESH;
-    tx_conf.tx_free_thresh = 0;
-    tx_conf.tx_rs_thresh = 0;
-    tx_conf.offloads = 0;
 
-    /* Configure the Ethernet device. */
-    retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
-    if (retval != 0) {
-        return retval;
-    }
+    // configure the ethernet device.
+    DMTR_OK(rte_eth_dev_configure(port_id, rx_rings, tx_rings, port_conf));
 
+    // todo: what does this do?
 /*
     retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
     if (retval != 0) {
@@ -269,51 +256,35 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
     }
 */
 
-    /* Allocate and set up 1 RX queue per Ethernet port. */
-    for (q = 0; q < rx_rings; q++) {
-        retval = rte_eth_rx_queue_setup(port, q, nb_rxd,
-                    rte_eth_dev_socket_id(port), &rx_conf, mbuf_pool);
-
-        if (retval < 0) {
-            return retval;
-        }
+    // todo: this call fails and i don't understand why.
+    int socket_id = 0;
+    int ret = rte_eth_dev_socket_id(socket_id, port_id);
+    if (0 != ret) {
+        fprintf(stderr, "WARNING: Failed to get the NUMA socket ID for port %d.\n", port_id);
+        socket_id = 0;
     }
 
-    /* Allocate and set up 1 TX queue per Ethernet port. */
-    for (q = 0; q < tx_rings; q++) {
-        /* Setup txq_flags */
-/*        struct rte_eth_txconf *txconf;
-
-        rte_eth_dev_info_get(q, &dev_info);
-        txconf = &dev_info.default_txconf;
-        txconf->txq_flags = 0;*/
-
-        retval = rte_eth_tx_queue_setup(port, q, nb_txd,
-                    rte_eth_dev_socket_id(port), &tx_conf);
-        if (retval < 0) {
-            return retval;
-        }
+    // allocate and set up 1 RX queue per Ethernet port.
+    for (uint16_t i = 0; i < rx_rings; ++i) {
+        DMTR_OK(rte_eth_rx_queue_setup(port_id, i, nb_rxd, socket_id, rx_conf, mbuf_pool));
     }
 
-    /* Start the Ethernet port. */
-    retval = rte_eth_dev_start(port);
-    if (retval < 0) {
-        return retval;
+    // allocate and set up 1 TX queue per Ethernet port.
+    for (uint16_t i = 0; i < tx_rings; ++i) {
+        DMTR_OK(rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, tx_conf));
     }
 
-//    rte_eth_promiscuous_enable(port);
+    // start the ethernet port.
+    DMTR_OK(rte_eth_dev_start(port_id));
 
-    /* retrieve current flow control settings per port */
-    memset(&fc_conf, 0, sizeof(fc_conf));
-    retval = rte_eth_dev_flow_ctrl_get(port, &fc_conf);
-    if (retval != 0)
-        return retval;
+    DMTR_OK(rte_eth_promiscuous_enable(port_id));
 
-    /* and just disable the rx/tx flow control */
+    // disable the rx/tx flow control
+    // todo: why?
+    struct ::rte_eth_fc_conf fc_conf = {};
+    DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
     fc_conf.mode = RTE_FC_NONE;
-    retval = rte_eth_dev_flow_ctrl_set(port, &fc_conf);
-        if (retval != 0)
-            return retval;
+    DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
 
     return 0;
 }
@@ -329,6 +300,7 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
     DMTR_OK(rte_eal_init(count_out, argc, argv));
     const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
+    fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
 
     // create pool of memory for ring buffers.
     struct rte_mempool *mbuf_pool = NULL;
@@ -341,21 +313,15 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
         RTE_MBUF_DEFAULT_BUF_SIZE,
         rte_socket_id()));
 
-    /* Initialize all ports. */
-    uint16_t i;
+    // initialize all ports.
+    uint16_t i = 0;
     uint16_t port_id = 0;
     RTE_ETH_FOREACH_DEV(i) {
-        fprintf(stderr, "Attempting to start ethernet port %d...\n", i);
-        int err = port_init(i, mbuf_pool);
-        if (0 == err) {
-            fprintf(stderr, "Ethernet port %d initialized.", i);
-            port_id = i;
-        } else {
-            rte_exit(err, "Unable to initialize ethernet port %d.", i);
-        }
+        DMTR_OK(init_dpdk_port(i, *mbuf_pool));
+        port_id = i;
     }
 
-    check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
+    ::check_all_ports_link_status(nb_ports, 0xFFFFFFFF);
 
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
@@ -949,3 +915,120 @@ int dmtr::lwip_queue::rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, co
     return 0;
 }
 
+int dmtr::lwip_queue::rte_eth_dev_info_get(uint16_t port_id, struct rte_eth_dev_info &dev_info) {
+    dev_info = {};
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    ::rte_eth_dev_info_get(port_id, &dev_info);
+    return 0;
+}
+
+int dmtr::lwip_queue::rte_eth_dev_configure(uint16_t port_id, uint16_t nb_rx_queue, uint16_t nb_tx_queue, const struct rte_eth_conf &eth_conf) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    int ret = ::rte_eth_dev_configure(port_id, nb_rx_queue, nb_tx_queue, &eth_conf);
+    // `::rte_eth_dev_configure()` returns device-specific error codes that are supposed to be < 0.
+    if (0 >= ret) {
+        return ret;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_rx_queue_setup(uint16_t port_id, uint16_t rx_queue_id, uint16_t nb_rx_desc, unsigned int socket_id, const struct rte_eth_rxconf &rx_conf, struct rte_mempool &mb_pool) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    int ret = ::rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, &rx_conf, &mb_pool);
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (0 > ret) {
+        return 0 - ret;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_tx_queue_setup(uint16_t port_id, uint16_t tx_queue_id, uint16_t nb_tx_desc, unsigned int socket_id, const struct rte_eth_txconf &tx_conf) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    int ret = ::rte_eth_tx_queue_setup(port_id, tx_queue_id, nb_tx_desc, socket_id, &tx_conf);
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (0 > ret) {
+        return 0 - ret;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_dev_socket_id(int &sockid_out, uint16_t port_id) {
+    sockid_out = 0;
+
+    int ret = ::rte_eth_dev_socket_id(port_id);
+    if (-1 == ret) {
+        // `port_id` is out of range.
+        return ERANGE;
+    }
+
+    if (0 <= ret) {
+        sockid_out = ret;
+        return 0;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_dev_start(uint16_t port_id) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    int ret = ::rte_eth_dev_start(port_id);
+    // `::rte_eth_dev_start()` returns device-specific error codes that are supposed to be < 0.
+    if (0 >= ret) {
+        return ret;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_promiscuous_enable(uint16_t port_id) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    ::rte_eth_promiscuous_enable(port_id);
+    return 0;
+}
+
+int dmtr::lwip_queue::rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf) {
+    fc_conf = {};
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    int ret = ::rte_eth_dev_flow_ctrl_get(port_id, &fc_conf);
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (0 > ret) {
+        return 0 - ret;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
+int dmtr::lwip_queue::rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf) {
+    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
+
+    // i don't see a reason why `fc_conf` would be modified.
+    int ret = ::rte_eth_dev_flow_ctrl_set(port_id, const_cast<struct rte_eth_fc_conf *>(&fc_conf));
+    if (0 == ret) {
+        return 0;
+    }
+
+    if (0 > ret) {
+        return 0 - ret;
+    }
+
+    DMTR_UNREACHABLE();
+}

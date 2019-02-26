@@ -13,6 +13,7 @@
 #include <boost/optional.hpp>
 #include <netinet/in.h>
 #include <queue>
+#include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
 
@@ -51,6 +52,7 @@ class lwip_queue : public io_queue {
     private: static int init_dpdk(int &count_out, int argc, char* argv[]);
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
+    private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
     private: bool is_bound() const {
         return boost::none != my_bound_addr;
     }
@@ -63,6 +65,15 @@ class lwip_queue : public io_queue {
     private: static int print_ether_addr(FILE *f, struct ether_addr &eth_addr);
     private: static int rte_eal_init(int &count_out, int argc, char *argv[]);
     private: static int rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, const char *name, unsigned n, unsigned cache_size, uint16_t priv_size, uint16_t data_room_size, int socket_id);
+    private: static int rte_eth_dev_info_get(uint16_t port_id, struct rte_eth_dev_info &dev_info);
+    private: static int rte_eth_dev_configure(uint16_t port_id, uint16_t nb_rx_queue, uint16_t nb_tx_queue, const struct rte_eth_conf &eth_conf);
+    private: static int rte_eth_rx_queue_setup(uint16_t port_id, uint16_t rx_queue_id, uint16_t nb_rx_desc, unsigned int socket_id, const struct rte_eth_rxconf &rx_conf, struct rte_mempool &mb_pool);
+    private: static int rte_eth_tx_queue_setup(uint16_t port_id, uint16_t tx_queue_id, uint16_t nb_tx_desc, unsigned int socket_id, const struct rte_eth_txconf &tx_conf);
+    private: static int rte_eth_dev_socket_id(int &sockid_out, uint16_t port_id);
+    private: static int rte_eth_dev_start(uint16_t port_id);
+    private: static int rte_eth_promiscuous_enable(uint16_t port_id);
+    private: static int rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf);
+    private: static int rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf);
 };
 
 } // namespace dmtr
