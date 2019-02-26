@@ -57,7 +57,7 @@ Use the following on `cassance` and `hightent` to test DPDK with `testpmd`:
 Sender (`cassance.southcentralus.cloudapp.azure.com`):
 
 ```
-testpmd -l 0-3 -n 1 -w ac2a:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=txonly --eth-peer=1,00:0d:3a:70:25:75 --stats-period 1
+testpmd -l 0-3 -n 1 -w ac2a:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=txonly --eth-peer=1,00:0d:3a:5e:4f:6e --stats-period 1
 ```
 
 Receiver (`hightent.southcentralus.cloudapp.azure.com`):
