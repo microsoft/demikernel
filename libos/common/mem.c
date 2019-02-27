@@ -1,5 +1,5 @@
 #include <dmtr/annot.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 
 #include <stdlib.h>
 #include <string.h>

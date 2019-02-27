@@ -12,7 +12,7 @@
 
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 #include <libos/common/latency.h>
 
 #include <cassert>
@@ -162,7 +162,7 @@ int dmtr::lwip_queue::print_ether_addr(FILE *f, struct ether_addr &eth_addr) {
 int dmtr::lwip_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
     DMTR_NOTNULL(EINVAL, f);
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-   
+
     struct rte_eth_link link2 = {};
     if (NULL == link) {
         DMTR_OK(rte_eth_link_get_nowait(port_id, link2));
@@ -206,7 +206,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
  */
 int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-    
+
     const uint16_t rx_rings = 1;
     const uint16_t tx_rings = 1;
     const uint16_t nb_rxd = RX_RING_SIZE;
@@ -288,7 +288,7 @@ int dmtr::lwip_queue::init_dpdk()
     if (access("config.yaml", R_OK) != -1) {
         config = YAML::LoadFile("config.yaml");
     }
-    
+
     std::vector<std::string> init_args;
     if (boost::none != config) {
         YAML::Node &root = boost::get(config);
@@ -297,7 +297,7 @@ int dmtr::lwip_queue::init_dpdk()
             init_args = node.as<std::vector<std::string>>();
         }
     }
-    
+
     std::cerr << "eal_init: [";
     std::vector<char *> argv;
     for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
@@ -318,7 +318,7 @@ int dmtr::lwip_queue::init_dpdk()
     // create pool of memory for ring buffers.
     struct rte_mempool *mbuf_pool = NULL;
     DMTR_OK(rte_pktmbuf_pool_create(
-        mbuf_pool, 
+        mbuf_pool,
         "default_mbuf_pool",
         NUM_MBUFS * nb_ports,
         MBUF_CACHE_SIZE,
@@ -1020,7 +1020,7 @@ int dmtr::lwip_queue::rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct r
 int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link) {
     link = {};
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-    
+
     ::rte_eth_link_get_nowait(port_id, &link);
     return 0;
 }

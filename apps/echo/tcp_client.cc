@@ -1,6 +1,6 @@
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 #include <dmtr/wait.h>
 
 #include <arpa/inet.h>

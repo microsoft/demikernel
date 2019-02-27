@@ -32,7 +32,7 @@
 
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 #include <hoard/zeusrdma.h>
 #include <libos/common/latency.h>
 
