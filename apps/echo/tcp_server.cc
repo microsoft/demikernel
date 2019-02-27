@@ -2,7 +2,6 @@
 #include <dmtr/libos.h>
 #include <libos/common/mem.h>
 #include <dmtr/wait.h>
-#include <libos/common/latency.h>
 
 #include <arpa/inet.h>
 #include <cassert>
@@ -18,6 +17,11 @@ int main()
 {
     char *argv[] = {};
     DMTR_OK(dmtr_init(0, argv));
+
+    dmtr_timer_t *pop_timer = NULL;
+    DMTR_OK(dmtr_newtimer(&pop_timer, "pop"));
+    dmtr_timer_t *push_timer = NULL;
+    DMTR_OK(dmtr_newtimer(&push_timer, "push"));
 
     int lqd = 0;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
@@ -44,23 +48,28 @@ int main()
 
     // process ITERATION_COUNT packets from client
     for (size_t i = 0; i < ITERATION_COUNT; i++) {
+        DMTR_OK(dmtr_starttimer(pop_timer));
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
+        DMTR_OK(dmtr_stoptimer(pop_timer));
         DMTR_OK(dmtr_drop(qt));
         DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
         DMTR_TRUE(EPERM, DMTR_TID_SGA == qr.qr_tid);
         DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
 
         fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+        DMTR_OK(dmtr_starttimer(push_timer));
         DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_stoptimer(push_timer));
         DMTR_OK(dmtr_drop(qt));
 
         fprintf(stderr, "send complete.\n");
         free(qr.qr_value.sga.sga_buf);
     }
 
-    Latency_DumpAll();
+    DMTR_OK(dmtr_dumptimer(stderr, pop_timer));
+    DMTR_OK(dmtr_dumptimer(stderr, push_timer));
     DMTR_OK(dmtr_close(qd));
     DMTR_OK(dmtr_close(lqd));
 

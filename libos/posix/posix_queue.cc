@@ -31,7 +31,6 @@
 #include "posix_queue.hh"
 
 #include <libos/common/mem.h>
-#include <libos/common/latency.h>
 #include <libos/common/io_queue_api.hh>
 
 #include <arpa/inet.h>
@@ -43,9 +42,6 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <climits>
-
-DEFINE_LATENCY(dev_read_latency);
-DEFINE_LATENCY(dev_write_latency);
 
 dmtr::posix_queue::posix_queue(int qd) :
     io_queue(NETWORK_Q, qd),
@@ -507,9 +503,7 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
     DMTR_NOTNULL(EINVAL, buf);
     DMTR_TRUE(ERANGE, len <= SSIZE_MAX);
 
-    Latency_Start(&dev_read_latency);
     int ret = ::read(fd, buf, len);
-    Latency_End(&dev_read_latency);
     if (ret < -1) {
         DMTR_UNREACHABLE();
     } else if (ret == -1) {
@@ -521,9 +515,8 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
 }
 
 int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt) {
-    Latency_Start(&dev_write_latency);
+    count_out = 0;
     ssize_t ret = ::writev(fd, iov, iovcnt);
-    Latency_End(&dev_write_latency);
 
     if (ret == -1) {
         if (errno == EWOULDBLOCK || errno == EAGAIN) {

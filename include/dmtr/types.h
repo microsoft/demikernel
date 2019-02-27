@@ -13,6 +13,7 @@ extern "C" {
 #define DMTR_HEADER_MAGIC 0x10102010
 
 typedef uint64_t dmtr_qtoken_t;
+typedef struct dmtr_timer dmtr_timer_t;
 
 typedef struct dmtr_sgaseg {
     void *sgaseg_buf;

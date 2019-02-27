@@ -33,7 +33,6 @@
 
 #include "io_queue_factory.hh"
 #include "io_queue.hh"
-#include "latency.h"
 #include <dmtr/annot.h>
 
 #include <unordered_map>

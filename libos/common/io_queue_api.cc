@@ -1,7 +1,6 @@
 #include "io_queue_api.hh"
 
 #include "memory_queue.hh"
-#include "latency.h"
 #include <dmtr/annot.h>
 
 #include <cassert>
@@ -14,10 +13,6 @@
 
 // dmtr_qtoken_t format
 // | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
-
-DEFINE_LATENCY(pop_latency);
-DEFINE_LATENCY(push_latency);
-DEFINE_LATENCY(wait_push);
 
 thread_local static int64_t queue_counter = 10;
 thread_local static int64_t token_counter = 10;
