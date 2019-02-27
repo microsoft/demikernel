@@ -2,3 +2,8 @@ client:
   connect_to:
     host: 127.0.0.1
     port: 54321
+dpdk:
+  eal_init: ["-l", "0-3", "-n", "1", "-w", "aa89:00:02.0", "--vdev=net_vdev_netvsc0,iface=eth1"]
+  #eal_init: ["-c", "0x1", "-n", "4", "--proc-type=auto"]
+
+# vim: set tabstop=2 shiftwidth=2

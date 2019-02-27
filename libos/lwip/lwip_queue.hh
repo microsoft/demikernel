@@ -49,7 +49,6 @@ class lwip_queue : public io_queue {
     public: int drop(dmtr_qtoken_t qt);
 
     private: static int init_dpdk();
-    private: static int init_dpdk(int &count_out, int argc, char* argv[]);
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
     private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);

@@ -30,6 +30,7 @@
 #include <rte_memcpy.h>
 #include <rte_udp.h>
 #include <unistd.h>
+#include <yaml-cpp/yaml.h>
 
 DEFINE_LATENCY(dev_read_latency);
 DEFINE_LATENCY(dev_write_latency);
@@ -277,15 +278,39 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
-int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
+int dmtr::lwip_queue::init_dpdk()
 {
-    count_out = -1;
-
     if (our_dpdk_init_flag) {
         return 0;
     }
 
-    DMTR_OK(rte_eal_init(count_out, argc, argv));
+    boost::optional<YAML::Node> config;
+    if (access("config.yaml", R_OK) != -1) {
+        config = YAML::LoadFile("config.yaml");
+    }
+    
+    std::vector<std::string> init_args;
+    if (boost::none != config) {
+        YAML::Node &root = boost::get(config);
+        YAML::Node node = root["dpdk"]["eal_init"];
+        if (YAML::NodeType::Sequence == node.Type()) {
+            init_args = node.as<std::vector<std::string>>();
+        }
+    }
+    
+    std::cerr << "eal_init: [";
+    std::vector<char *> argv;
+    for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
+        if (i != init_args.cbegin()) {
+            std::cerr << ", ";
+        }
+        std::cerr << "\"" << *i << "\"";
+        argv.push_back(const_cast<char *>(i->c_str()));
+    }
+    std::cerr << "]" << std::endl;
+
+    int unused = -1;
+    DMTR_OK(rte_eal_init(unused, argv.size(), argv.data()));
     const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
     fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
@@ -317,34 +342,6 @@ int dmtr::lwip_queue::init_dpdk(int &count_out, int argc, char* argv[])
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
     return 0;
-}
-
-/*
-int dmtr::lwip_queue::init_dpdk() {
-    char* argv[] = {(char*)"",
-                    (char*)"-c",
-                    (char*)"0x1",
-                    (char*)"-n",
-                    (char*)"4",
-                    (char*)"--proc-type=auto",
-                    (char*)""};
-    int argc = 6;
-    return init_dpdk(argc, argv);
-}*/
-
-int dmtr::lwip_queue::init_dpdk() {
-    char* argv[] = {(char*)"",
-                    (char*)"-l",
-                    (char*)"0-3",
-                    (char*)"-n",
-                    (char*)"1",
-                    (char*)"-w",
-                    (char*)"aa89:00:02.0",
-                    (char*)"--vdev=net_vdev_netvsc0,iface=eth1",
-                    (char*)""};
-    int argc = 8;
-    int count = -1;
-    return init_dpdk(count, argc, argv);
 }
 
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
