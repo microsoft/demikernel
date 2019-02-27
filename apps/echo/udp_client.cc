@@ -8,6 +8,8 @@
 #include <netinet/in.h>
 #include <cassert>
 #include <arpa/inet.h>
+#include <yaml-cpp/yaml.h>
+#include <boost/optional.hpp>
 
 #define USE_CONNECT 1
 #define ITERATION_COUNT 10000
@@ -17,22 +19,39 @@ static const uint16_t PORT = 12345;
 
 int main()
 {
+    boost::optional<YAML::Node> config;
+    if (access("config.yaml", R_OK) != -1) {
+        config = YAML::LoadFile("config.yaml");
+    }
+
+    std::string server_ip_addr = "127.0.0.1";
+    uint16_t port = 12345;
+    if (boost::none != config) {
+        YAML::Node &root = boost::get(config);
+        YAML::Node node = root["client"]["connect_to"]["host"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            server_ip_addr = node.as<std::string>();
+        }
+        node = root["client"]["connect_to"]["port"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            port = node.as<uint16_t>();
+        }
+    }
+
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = port;
+    if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
+        std::cerr << "Unable to parse IP address." << std::endl;
+        return -1;
+    }
+
     char *argv[] = {};
     DMTR_OK(dmtr_init(0, argv));
 
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
     printf("client qd:\t%d\n", qd);
-
-    struct sockaddr_in saddr = {};
-    saddr.sin_family = AF_INET;
-    saddr.sin_port = PORT;
-    if (inet_pton(AF_INET, "10.0.0.7", &(saddr.sin_addr)) != 1) {
-        printf("Address not supported!\n");
-        return -1;
-    }
-
-    printf("client: sending to: %x:%d\n", saddr.sin_addr.s_addr, saddr.sin_port);
 
     dmtr_sgarray_t sga = {};
     void *p = NULL;
@@ -45,7 +64,8 @@ int main()
     sga.sga_segs[0].sgaseg_buf = p;
 
 #if USE_CONNECT
-    DMTR_OK(dmtr_connect(qd, (struct sockaddr*)&saddr, sizeof(saddr)));
+    std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
+    DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 #else
     sga.sga_addr = saddr;
     sga.sga_addrlen = sizeof(saddr);

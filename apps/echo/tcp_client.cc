@@ -7,14 +7,43 @@
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <yaml-cpp/yaml.h>
+#include <boost/optional.hpp>
+#include <unistd.h>
 
 #define ITERATION_COUNT 10000
 #define BUFFER_SIZE 10
 #define FILL_CHAR 'a'
-static const uint16_t PORT = 12345;
 
 int main()
 {
+    boost::optional<YAML::Node> config;
+    if (access("config.yaml", R_OK) != -1) {
+        config = YAML::LoadFile("config.yaml");
+    }
+
+    std::string server_ip_addr = "127.0.0.1";
+    uint16_t port = 12345;
+    if (boost::none != config) {
+        YAML::Node &root = boost::get(config);
+        YAML::Node node = root["client"]["connect_to"]["host"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            server_ip_addr = node.as<std::string>();
+        }
+        node = root["client"]["connect_to"]["port"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            port = node.as<uint16_t>();
+        }
+    }
+
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = port;
+    if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
+        std::cerr << "Unable to parse IP address." << std::endl;
+        return -1;
+    }
+
     char *argv[] = {};
     DMTR_OK(dmtr_init(0, argv));
 
@@ -22,15 +51,7 @@ int main()
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
 
-    struct sockaddr_in saddr = {};
-    saddr.sin_family = AF_INET;
-    //if (inet_pton(AF_INET, "192.168.1.2", &saddr.sin_addr) != 1) {
-    if (inet_pton(AF_INET, "127.0.0.1", &saddr.sin_addr) != 1) {
-        printf("Address not supported!\n");
-        return -1;
-    }
-    // todo: this should be done from within the libos.
-    saddr.sin_port = PORT;
+    std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     dmtr_sgarray_t sga = {};
