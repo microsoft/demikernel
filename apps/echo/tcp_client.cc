@@ -53,6 +53,7 @@ int main()
 
     std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    std::cerr << "Connected." << std::endl;
 
     dmtr_sgarray_t sga = {};
     void *p = NULL;

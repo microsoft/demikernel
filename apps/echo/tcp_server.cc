@@ -9,12 +9,47 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <yaml-cpp/yaml.h>
+#include <boost/optional.hpp>
 
 #define ITERATION_COUNT 10000
-static const uint16_t PORT = 12345;
 
 int main()
 {
+    boost::optional<YAML::Node> config;
+    if (access("config.yaml", R_OK) != -1) {
+        config = YAML::LoadFile("config.yaml");
+    }
+
+    boost::optional<std::string> server_ip_addr;
+    uint16_t port = 12345;
+    if (boost::none != config) {
+        YAML::Node &root = boost::get(config);
+        YAML::Node node = root["server"]["listen_on"]["host"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            server_ip_addr = node.as<std::string>();
+        }
+        node = root["server"]["listen_on"]["port"];
+        if (YAML::NodeType::Scalar == node.Type()) {
+            port = node.as<uint16_t>();
+        }
+    }
+
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    if (boost::none == server_ip_addr) {
+        std::cerr << "Listening on `*:" << port << "`..." << std::endl;
+        saddr.sin_addr.s_addr = INADDR_ANY;
+    } else {
+        const char *s = boost::get(server_ip_addr).c_str();
+        std::cerr << "Listening on `" << s << ":" << port << "`..." << std::endl;
+        if (inet_pton(AF_INET, s, &saddr.sin_addr) != 1) {
+            std::cerr << "Unable to parse IP address." << std::endl;
+            return -1;
+        }
+    }
+    saddr.sin_port = port;
+
     char *argv[] = {};
     DMTR_OK(dmtr_init(0, argv));
 
@@ -27,10 +62,6 @@ int main()
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
     printf("listen qd:\t%d\n", lqd);
 
-    struct sockaddr_in saddr = {};
-    saddr.sin_family = AF_INET;
-    saddr.sin_addr.s_addr = INADDR_ANY;
-    saddr.sin_port = PORT;
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     printf("listening for connections\n");
@@ -44,7 +75,7 @@ int main()
     DMTR_TRUE(EPERM, DMTR_OPC_ACCEPT == qr.qr_opcode);
     DMTR_TRUE(EPERM, DMTR_TID_QD == qr.qr_tid);
     int qd = qr.qr_value.qd;
-    //printf("accepted connection from: %x:%d\n", paddr.sin_addr.s_addr, paddr.sin_port);
+    std::cerr << "Connection accepted." << std::endl;
 
     // process ITERATION_COUNT packets from client
     for (size_t i = 0; i < ITERATION_COUNT; i++) {
