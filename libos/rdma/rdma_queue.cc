@@ -34,7 +34,6 @@
 #include <dmtr/cast.h>
 #include <libos/common/mem.h>
 #include <hoard/zeusrdma.h>
-#include <libos/common/latency.h>
 
 #include <arpa/inet.h>
 #include <cassert>
@@ -45,14 +44,6 @@
 #include <rdma/rdma_verbs.h>
 #include <sys/uio.h>
 #include <unistd.h>
-
-DEFINE_LATENCY(post_send);
-DEFINE_LATENCY(get_mr);
-DEFINE_LATENCY(rdma_wait_latency);
-DEFINE_LATENCY(poll_sendcq_latency);
-DEFINE_LATENCY(poll_recvcq_latency);
-DEFINE_LATENCY(poll_eventcq_latency);
-DEFINE_LATENCY(rdma_parse_latency);
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 const size_t dmtr::rdma_queue::recv_buf_count = 1;
@@ -132,14 +123,12 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
     // check completion queue
     struct ibv_wc wc[quantity];
     size_t count = 0;
-    Latency_Start(&poll_recvcq_latency);
     DMTR_OK(ibv_poll_cq(count, cq, quantity, wc));
     //fprintf(stderr, "Found receive work completions: %d\n", num);
     // process messages
     for (size_t i = 0; i < count; ++i) {
         on_work_completed(wc[i]);
     }
-    Latency_End(&poll_recvcq_latency);
     //fprintf(stderr, "Done draining completion queue\n");
 
     return 0;
@@ -149,7 +138,6 @@ int dmtr::rdma_queue::service_event_queue() {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
-    Latency_Start(&poll_eventcq_latency);
     struct rdma_cm_event event = {};
     {
         struct rdma_cm_event *e = NULL;
@@ -184,7 +172,6 @@ int dmtr::rdma_queue::service_event_queue() {
             break;
     }
 
-    Latency_End(&poll_eventcq_latency);
     return 0;
 }
 
@@ -816,12 +803,10 @@ int dmtr::rdma_queue::get_rdma_mr(struct ibv_mr *&mr_out, const void * const p) 
     DMTR_NOTNULL(EINVAL, p);
     DMTR_NOTNULL(EPERM, my_rdma_id);
 
-    Latency_Start(&get_mr);
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
     // todo: eliminate this `const_cast<>`.
     struct ibv_mr * const mr = Zeus::RDMA::Hoard::getRdmaMr(const_cast<void *>(p), pd);
-    Latency_End(&get_mr);
     DMTR_NOTNULL(ENOTSUP, mr);
     assert(mr->context == my_rdma_id->verbs);
     assert(mr->pd == pd);
@@ -838,10 +823,7 @@ int dmtr::rdma_queue::ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_
     // in `setup_rdma_qp()`.
     DMTR_TRUE(ERANGE, num_sge <= max_num_sge);
 
-    Latency_Start(&post_send);
-    int ret = ::ibv_post_send(qp, wr, &bad_wr_out);
-    Latency_End(&post_send);
-    return ret;
+    return ::ibv_post_send(qp, wr, &bad_wr_out);
 }
 
 int dmtr::rdma_queue::ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_recv_wr * const wr) {
