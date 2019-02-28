@@ -32,11 +32,11 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
 )
 # POSIX TCP server
 add_executable(posix-echo-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-echo-server dmtr-libos-posix yaml-cpp)
+target_link_libraries(posix-echo-server dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client
 add_executable(posix-echo-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-echo-client dmtr-libos-posix yaml-cpp)
+target_link_libraries(posix-echo-client dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client & server
 add_custom_target(posix-echo)
