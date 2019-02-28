@@ -13,14 +13,17 @@
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <libos/common/mem.h>
-#include <libos/common/latency.h>
 
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 #include <cassert>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <netinet/in.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
@@ -32,8 +35,7 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
-DEFINE_LATENCY(dev_read_latency);
-DEFINE_LATENCY(dev_write_latency);
+namespace bpo = boost::program_options;
 
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
@@ -278,39 +280,54 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
-int dmtr::lwip_queue::init_dpdk()
+int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
-    if (our_dpdk_init_flag) {
+    DMTR_TRUE(ERANGE, argc >= 0);
+    if (argc > 0) {
+        DMTR_NOTNULL(EINVAL, argv);
+    }
+    DMTR_TRUE(EPERM, !our_dpdk_init_flag);
+
+    std::string config_path;
+    bpo::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "display usage information")
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+
+    bpo::variables_map vm;
+    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+    bpo::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << desc << std::endl;
         return 0;
     }
 
-    boost::optional<YAML::Node> config;
-    if (access("config.yaml", R_OK) != -1) {
-        config = YAML::LoadFile("config.yaml");
+    if (access(config_path.c_str(), R_OK) == -1) {
+        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
+        return ENOENT;
     }
 
     std::vector<std::string> init_args;
-    if (boost::none != config) {
-        YAML::Node &root = boost::get(config);
-        YAML::Node node = root["dpdk"]["eal_init"];
-        if (YAML::NodeType::Sequence == node.Type()) {
-            init_args = node.as<std::vector<std::string>>();
-        }
-    }
-
+    YAML::Node config = YAML::LoadFile(config_path);
+    YAML::Node node = config["dpdk"]["eal_init"];
+    if (YAML::NodeType::Sequence == node.Type()) {
+        init_args = node.as<std::vector<std::string>>();
+    } 
+    
     std::cerr << "eal_init: [";
-    std::vector<char *> argv;
+    std::vector<char *> init_cargs;
     for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
         if (i != init_args.cbegin()) {
             std::cerr << ", ";
         }
         std::cerr << "\"" << *i << "\"";
-        argv.push_back(const_cast<char *>(i->c_str()));
+        init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
 
     int unused = -1;
-    DMTR_OK(rte_eal_init(unused, argv.size(), argv.data()));
+    DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
     const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
     fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
@@ -353,9 +370,8 @@ dmtr::lwip_queue::lwip_queue(int qd) :
 
 int dmtr::lwip_queue::new_object(io_queue *&q_out, int qd) {
     q_out = NULL;
+    DMTR_TRUE(EPERM, our_dpdk_init_flag);
 
-    // todo: this should be initialized in `dmtr_init()`;
-    DMTR_OK(init_dpdk());
     q_out = new lwip_queue(qd);
     return 0;
 }
@@ -839,9 +855,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
-    Latency_Start(&dev_write_latency);
     size_t count = ::rte_eth_tx_burst(port_id, queue_id, tx_pkts, nb_pkts);
-    Latency_End(&dev_write_latency);
     // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status

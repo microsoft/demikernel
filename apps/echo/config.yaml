@@ -3,7 +3,7 @@ client:
     host: 127.0.0.1
     port: 54321
 server:
-  listen_on:
+  bind:
     host: 127.0.0.1
     port: 54321
 dpdk:

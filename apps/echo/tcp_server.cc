@@ -44,11 +44,11 @@ int main(int argc, char *argv[])
     YAML::Node config = YAML::LoadFile(config_path);
     boost::optional<std::string> server_ip_addr;
     uint16_t port = 12345;
-    YAML::Node node = config["server"]["listen_on"]["host"];
+    YAML::Node node = config["server"]["bind"]["host"];
     if (YAML::NodeType::Scalar == node.Type()) {
         server_ip_addr = node.as<std::string>();
     }
-    node = config["server"]["listen_on"]["port"];
+    node = config["server"]["bind"]["port"];
     if (YAML::NodeType::Scalar == node.Type()) {
         port = node.as<uint16_t>();
     }
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = port;
 
-    DMTR_OK(dmtr_init(0, argv));
+    DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_timer_t *pop_timer = NULL;
     DMTR_OK(dmtr_newtimer(&pop_timer, "pop"));

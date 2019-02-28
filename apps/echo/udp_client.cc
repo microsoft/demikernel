@@ -3,39 +3,56 @@
 #include <libos/common/mem.h>
 #include <dmtr/wait.h>
 
-#include <iostream>
-#include <cstring>
-#include <netinet/in.h>
-#include <cassert>
 #include <arpa/inet.h>
-#include <yaml-cpp/yaml.h>
 #include <boost/optional.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
+#include <cassert>
+#include <cstring>
+#include <iostream>
+#include <netinet/in.h>
+#include <yaml-cpp/yaml.h>
 
 #define USE_CONNECT 1
 #define ITERATION_COUNT 10000
 #define BUFFER_SIZE 10
 #define FILL_CHAR 'a'
-static const uint16_t PORT = 12345;
 
-int main()
+namespace po = boost::program_options;
+
+int main(int argc, char *argv[])
 {
-    boost::optional<YAML::Node> config;
-    if (access("config.yaml", R_OK) != -1) {
-        config = YAML::LoadFile("config.yaml");
+    std::string config_path;
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "display usage information")
+        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << desc << std::endl;
+        return 0;
     }
 
+    if (access(config_path.c_str(), R_OK) == -1) {
+        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
+        return -1;
+    }
+
+    YAML::Node config = YAML::LoadFile(config_path);
     std::string server_ip_addr = "127.0.0.1";
     uint16_t port = 12345;
-    if (boost::none != config) {
-        YAML::Node &root = boost::get(config);
-        YAML::Node node = root["client"]["connect_to"]["host"];
-        if (YAML::NodeType::Scalar == node.Type()) {
-            server_ip_addr = node.as<std::string>();
-        }
-        node = root["client"]["connect_to"]["port"];
-        if (YAML::NodeType::Scalar == node.Type()) {
-            port = node.as<uint16_t>();
-        }
+    YAML::Node node = config["client"]["connect_to"]["host"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        server_ip_addr = node.as<std::string>();
+    }
+    node = config["client"]["connect_to"]["port"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        port = node.as<uint16_t>();
     }
 
     struct sockaddr_in saddr = {};
@@ -46,8 +63,7 @@ int main()
         return -1;
     }
 
-    char *argv[] = {};
-    DMTR_OK(dmtr_init(0, argv));
+    DMTR_OK(dmtr_init(argc, argv));
 
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
