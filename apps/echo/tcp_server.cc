@@ -57,14 +57,14 @@ int main()
         DMTR_TRUE(EPERM, DMTR_TID_SGA == qr.qr_tid);
         DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
 
-        fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+        /*fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         DMTR_OK(dmtr_starttimer(push_timer));
         DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_stoptimer(push_timer));
         DMTR_OK(dmtr_drop(qt));
 
-        fprintf(stderr, "send complete.\n");
+        //fprintf(stderr, "send complete.\n");
         free(qr.qr_value.sga.sga_buf);
     }
 
