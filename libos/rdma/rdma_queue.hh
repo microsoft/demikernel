@@ -33,6 +33,7 @@
 
 #include <libos/common/io_queue.hh>
 
+#include <memory>
 #include <queue>
 #include <rdma/rdma_cma.h>
 
@@ -60,7 +61,7 @@ class rdma_queue : public io_queue {
     private: int setup_rdma_qp();
 
     private: rdma_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
+    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~rdma_queue();
 
@@ -68,7 +69,7 @@ class rdma_queue : public io_queue {
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 

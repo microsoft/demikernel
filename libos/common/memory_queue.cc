@@ -35,8 +35,9 @@ dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
 {}
 
-int dmtr::memory_queue::new_object(io_queue *&q_out, int qd) {
-    q_out = new memory_queue(qd);
+int dmtr::memory_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    q_out = std::unique_ptr<io_queue>(new memory_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 

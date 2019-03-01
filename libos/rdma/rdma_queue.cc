@@ -55,8 +55,9 @@ dmtr::rdma_queue::rdma_queue(int qd) :
     my_listening_flag(false)
 {}
 
-int dmtr::rdma_queue::new_object(io_queue *&q_out, int qd) {
-    q_out = new rdma_queue(qd);
+int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    q_out = std::unique_ptr<io_queue>(new rdma_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 
@@ -203,17 +204,16 @@ int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 
 }
 
-int dmtr::rdma_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd)
-{
+int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd) {
     q_out = NULL;
-    DMTR_NOTNULL(EPERM, my_rdma_id);
+    DMTR_TRUE(EPERM, my_listening_flag);
 
-    auto * const q = new rdma_queue(new_qd);
+    auto q = std::unique_ptr<io_queue>(new rdma_queue(new_qd));
     DMTR_TRUE(ENOMEM, q != NULL);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q));
-    q_out = q;
+    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q.get()));
+    q_out = std::move(q);
     return 0;
 }
 

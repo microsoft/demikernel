@@ -51,8 +51,9 @@ dmtr::posix_queue::posix_queue(int qd) :
     my_peer_saddr(NULL)
 {}
 
-int dmtr::posix_queue::new_object(io_queue *&q_out, int qd) {
-    q_out = new posix_queue(qd);
+int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    q_out = std::unique_ptr<io_queue>(new posix_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 
@@ -112,17 +113,16 @@ dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
     }
 }
 
-int dmtr::posix_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd)
-{
+int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
 
-    auto * const q = new posix_queue(new_qd);
+    auto q = std::unique_ptr<io_queue>(new posix_queue(new_qd));
     DMTR_TRUE(ENOMEM, q != NULL);
 
     task *t = NULL;
-    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q));
-    q_out = q;
+    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q.get()));
+    q_out = std::move(q);
     return 0;
 }
 

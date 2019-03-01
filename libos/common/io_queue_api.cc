@@ -41,7 +41,7 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
 
     auto it = my_queues.find(qd);
     DMTR_TRUE(EINVAL, my_queues.cend() != it);
-    q_out = it->second;
+    q_out = it->second.get();
     return 0;
 }
 
@@ -62,14 +62,20 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
     q_out = NULL;
 
     int qd = new_qd();
-    io_queue *q = NULL;
+    std::unique_ptr<io_queue> q = NULL;
     DMTR_OK(my_queue_factory.construct(q, cid, qd));
-    DMTR_OK(insert_queue(q));
-    q_out = q;
+
+    q_out = q.get();
+    int ret = insert_queue(q);
+    if (0 != ret) {
+        q_out = NULL;
+        DMTR_FAIL(ret);
+    }
+
     return 0;
 }
 
-int dmtr::io_queue_api::insert_queue(io_queue * const q) {
+int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
@@ -80,7 +86,7 @@ int dmtr::io_queue_api::insert_queue(io_queue * const q) {
         return EEXIST;
     }
 
-    my_queues[qd] = q;
+    my_queues[qd] = std::move(q);
     return 0;
 }
 
@@ -90,7 +96,6 @@ int dmtr::io_queue_api::remove_queue(int qd) {
         return ENOENT;
     }
 
-    delete it->second;
     my_queues.erase(it);
     return 0;
 }
@@ -136,7 +141,7 @@ int dmtr::io_queue_api::accept(dmtr_qtoken_t &qtok_out, int sockqd) {
 
     int qd = new_qd();
     auto qtok = new_qtoken(sockqd);
-    io_queue *q = NULL;
+    std::unique_ptr<io_queue> q;
     DMTR_OK(sockq->accept(q, qtok, qd));
     DMTR_OK(insert_queue(q));
     qtok_out = qtok;

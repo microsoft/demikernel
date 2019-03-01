@@ -35,6 +35,7 @@
 #include <libos/common/io_queue.hh>
 
 #include <boost/optional.hpp>
+#include <memory>
 #include <queue>
 #include <sys/socket.h>
 
@@ -53,13 +54,13 @@ class posix_queue : public io_queue {
     private: int complete_send(task &t);
 
     private: posix_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
+    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     // network functions
     public: int socket(int domain, int type, int protocol);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 

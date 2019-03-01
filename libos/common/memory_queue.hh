@@ -32,9 +32,10 @@
 #define DMTR_LIBOS_BASIC_QUEUE_HH_IS_INCLUDED
 
 #include "io_queue.hh"
-#include <dmtr/types.h>
 
 #include <condition_variable>
+#include <dmtr/types.h>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <unordered_map>
@@ -47,7 +48,7 @@ class memory_queue : public io_queue
     private: std::mutex my_lock;
 
     private: memory_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
+    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: virtual int pop(dmtr_qtoken_t qt);

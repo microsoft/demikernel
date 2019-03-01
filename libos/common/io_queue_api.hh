@@ -35,14 +35,14 @@
 #include "io_queue.hh"
 #include <dmtr/annot.h>
 
+#include <memory>
 #include <unordered_map>
 
 namespace dmtr {
 
 class io_queue_api
 {
-    // todo: can i use `std::unique_ptr` instead of raw pointers?
-    private: std::unordered_map<int, io_queue *> my_queues;
+    private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
@@ -50,7 +50,7 @@ class io_queue_api
     private: static int new_qd();
     private: static dmtr_qtoken_t new_qtoken(int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
-    private: int insert_queue(io_queue * const q);
+    private: int insert_queue(std::unique_ptr<io_queue> &q);
     private: int remove_queue(int qd);
 
     private: int qttoqd(dmtr_qtoken_t qtok) {

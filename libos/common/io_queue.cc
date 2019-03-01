@@ -1,7 +1,6 @@
 #include "io_queue.hh"
 
 #include <cerrno>
-#include <dmtr/annot.h>
 #include <fcntl.h>
 
 dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
@@ -70,7 +69,7 @@ int dmtr::io_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     return ENOTSUP;
 }
 
-int dmtr::io_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd) {
+int dmtr::io_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd) {
     return ENOTSUP;
 }
 
@@ -122,3 +121,4 @@ int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
     my_tasks.erase(it);
     return 0;
 }
+
