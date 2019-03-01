@@ -31,8 +31,9 @@
 #ifndef DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 
+#include <dmtr/annot.h>
 #include <dmtr/types.h>
-
+#include <memory>
 #include <sys/socket.h>
 #include <unordered_map>
 
@@ -81,7 +82,7 @@ class io_queue
     public: virtual int socket(int domain, int type, int protocol);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: virtual int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
     // general control plane functions.

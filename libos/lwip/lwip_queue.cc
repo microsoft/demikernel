@@ -368,11 +368,12 @@ dmtr::lwip_queue::lwip_queue(int qd) :
     io_queue(NETWORK_Q, qd)
 {}
 
-int dmtr::lwip_queue::new_object(io_queue *&q_out, int qd) {
+int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
 
-    q_out = new lwip_queue(qd);
+    q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 

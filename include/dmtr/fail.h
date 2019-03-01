@@ -2,7 +2,6 @@
 #define DMTR_FAIL_H_IS_INCLUDED
 
 #include "meta.h"
-#include <assert.h>
 #include <stdlib.h>
 #include <errno.h>
 
@@ -17,7 +16,6 @@ typedef void (*dmtr_onfail_t)(int error_arg,
 #define DMTR_TRUE2(Error, Condition, ErrorCache) \
     do { \
         int ErrorCache = (Error); \
-        assert(0 != ErrorCache); \
         DMTR_IFTE(\
             !(Condition), \
             dmtr_fail(ErrorCache, #Condition, NULL, __FILE__, \
@@ -26,7 +24,7 @@ typedef void (*dmtr_onfail_t)(int error_arg,
    } while (0)
 
 #define DMTR_TRUE(Error, Condition) \
-    DMTR_TRUE2(Error, Condition, DMTR_EXPECT_errorCache)
+    DMTR_TRUE2(Error, Condition, DMTR_TRUE_errorCache)
 
 #define DMTR_OK2(Error, ErrorCache) \
     do { \
@@ -38,7 +36,7 @@ typedef void (*dmtr_onfail_t)(int error_arg,
     } while (0)
 
 #define DMTR_OK(Error) \
-    DMTR_OK2((Error), DMTR_UNIQID(DMTR_TRY_errorCache))
+    DMTR_OK2((Error), DMTR_UNIQID(DMTR_OK_errorCache))
 
 #define DMTR_PANIC(Why) dmtr_panic((Why), __FILE__, __LINE__)
 

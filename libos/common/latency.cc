@@ -33,13 +33,14 @@
 
 #include <dmtr/libos.h>
 
+#include <algorithm>
+#include <cassert>
+#include <dmtr/annot.h>
+#include <dmtr/fail.h>
 #include <plf_nanotimer.h>
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <dmtr/fail.h>
-#include <dmtr/annot.h>
 
 // The number of the maximum distribution type.  Since we use
 // characters as distribution types, this is 127.  We could probably

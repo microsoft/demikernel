@@ -1,8 +1,8 @@
 #include "io_queue.hh"
 
 #include <cerrno>
-#include <dmtr/annot.h>
 #include <fcntl.h>
+#include <sstream>
 
 dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
     opcode(opcode),
@@ -56,7 +56,14 @@ dmtr::io_queue::io_queue(enum category_id cid, int qd) :
 {}
 
 dmtr::io_queue::~io_queue()
-{}
+{
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `io_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
+}
 
 int dmtr::io_queue::socket(int domain, int type, int protocol) {
     return ENOTSUP;
@@ -70,7 +77,7 @@ int dmtr::io_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     return ENOTSUP;
 }
 
-int dmtr::io_queue::accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd) {
+int dmtr::io_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd) {
     return ENOTSUP;
 }
 
@@ -122,3 +129,4 @@ int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
     my_tasks.erase(it);
     return 0;
 }
+

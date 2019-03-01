@@ -8,9 +8,9 @@
 #ifndef DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
 
-#include <libos/common/io_queue.hh>
-
 #include <boost/optional.hpp>
+#include <libos/common/io_queue.hh>
+#include <memory>
 #include <netinet/in.h>
 #include <queue>
 #include <rte_ethdev.h>
@@ -32,7 +32,7 @@ class lwip_queue : public io_queue {
     private: int complete_recv(task &t, struct rte_mbuf *mbuf);
 
     private: lwip_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
+    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~lwip_queue();
 
