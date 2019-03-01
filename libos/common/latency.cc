@@ -31,79 +31,70 @@
  *
  **********************************************************************/
 
-#include "latency.h"
+#include <dmtr/libos.h>
 
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <iostream>
-#include <fstream>
+#include <plf_nanotimer.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
 #include <algorithm>
-#include "rdtsc.h"
-#include "message.h"
+#include <dmtr/fail.h>
+#include <dmtr/annot.h>
 
-double g_TicksPerNanoSec = -1.0;
+// The number of the maximum distribution type.  Since we use
+// characters as distribution types, this is 127.  We could probably
+// shift things down by 32 to save some space, but that's probably not
+// worth anything.
+#define LATENCY_MAX_DIST 127
 
-static std::list<Latency_t *> *stats1 = NULL;
+// The maximum number of unique distribution types in a single latency
+// distribution.
+#define LATENCY_DIST_POOL_SIZE 5
 
-static inline uint64_t rdtsc()
+// The width of a printed histogram in characters.
+#define LATENCY_HISTOGRAM_WIDTH 50
+
+// The number of histogram buckets.
+#define LATENCY_NUM_BUCKETS 65
+
+// The maximum number of iterations we will record latencies for
+#define MAX_ITERATIONS 1000000
+
+typedef struct Latency_Dist_t
 {
-    tsc_counter c;
-    RDTSC(c);
-    return COUNTER_VAL(c) / g_TicksPerNanoSec;
+    uint64_t min, max, total, count;
+    uint32_t buckets[LATENCY_NUM_BUCKETS];
+    char type;
+} Latency_Dist_t;
 
-    // if (clock_gettime(CLOCK_MONOTONIC, &end) < 0)
-    //     PPanic("Failed to get CLOCK_MONOTONIC");
-
-}
-
-static void
-LatencyInit(Latency_t *l, const char *name)
+typedef struct dmtr_timer
 {
-    memset(l, 0, sizeof(*l));
+    std::string name;
+    plf::nanotimer timer;
 
-    l->name = new std::string(name);
-    l->latencies = new std::vector<uint64_t>();
+    Latency_Dist_t *dists[LATENCY_MAX_DIST];
+    Latency_Dist_t distPool[LATENCY_DIST_POOL_SIZE];
+    int distPoolNext = 0;
 
-    // check if time resolution initialized here
-    if(g_TicksPerNanoSec < 0){
-        init_time_resolution();
-    }
-
-    for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
-        Latency_Dist_t *d = &l->distPool[i];
-        d->min = ~0ll;
-	d->type = 0;
-    }
-    if (stats1 == NULL) stats1 = new std::list<Latency_t *>;
-    stats1->push_back(l);
-}
-
-void
-_Latency_Init(Latency_t *l, const char *name)
-{
-    LatencyInit(l, name);
-}
+    std::vector<uint64_t> latencies;
+} dmtr_timer_t;
 
 static inline void
-LatencyAddStat(Latency_t *l, char type, uint64_t val)
+LatencyAddStat(dmtr_timer_t *l, char type, uint64_t val)
 {
     //if (l->latencies.size() == 0)
 
-    if (l->latencies->size() < MAX_ITERATIONS)
-	l->latencies->push_back(val);
+    if (l->latencies.size() < MAX_ITERATIONS)
+	l->latencies.push_back(val);
 }
 
 
 static inline Latency_Dist_t *
-LatencyAddHist(Latency_t *l, char type, uint64_t val, uint32_t count)
+LatencyAddHist(dmtr_timer_t *l, char type, uint64_t val, uint32_t count)
 {
     if (!l->dists[(int)type]) {
         if (l->distPoolNext == LATENCY_DIST_POOL_SIZE) {
-            Panic("Too many distributions; maybe increase "
+            DMTR_PANIC("Too many distributions; maybe increase "
                   "LATENCY_DIST_POOL_SIZE");
         }
         l->dists[(int)type] = &l->distPool[l->distPoolNext++];
@@ -117,14 +108,14 @@ LatencyAddHist(Latency_t *l, char type, uint64_t val, uint32_t count)
         val >>= 1;
         ++bucket;
     }
-    Assert(bucket < LATENCY_NUM_BUCKETS);
+    assert(bucket < LATENCY_NUM_BUCKETS);
     d->buckets[bucket] += count;
 
     return d;
 }
 
 static void
-LatencyAdd(Latency_t *l, char type, uint64_t val)
+LatencyAdd(dmtr_timer_t *l, char type, uint64_t val)
 {
     Latency_Dist_t *d = LatencyAddHist(l, type, val, 1);
     LatencyAddStat(l, type, val);
@@ -138,44 +129,7 @@ LatencyAdd(Latency_t *l, char type, uint64_t val)
 }
 
 void
-Latency_StartRec(Latency_t *l, Latency_Frame_t *fr)
-{
-    fr->accum = 0;
-    fr->parent = l->bottom;
-    l->bottom = fr;
-
-    Latency_Resume(l);
-}
-
-void
-Latency_EndRecType(Latency_t *l, Latency_Frame_t *fr, char type)
-{
-    Latency_Pause(l);
-
-    Assert(l->bottom == fr);
-    l->bottom = fr->parent;
-
-    LatencyAdd(l, type, fr->accum);
-}
-
-void
-Latency_Pause(Latency_t *l)
-{
-    uint64_t end = rdtsc();
-
-    Latency_Frame_t *fr = l->bottom;
-    uint64_t delta = end - fr->start;
-    fr->accum += delta;
-}
-
-void
-Latency_Resume(Latency_t *l)
-{
-    l->bottom->start = rdtsc();
-}
-
-void
-Latency_Sum(Latency_t *dest, Latency_t *summand)
+Latency_Sum(dmtr_timer_t *dest, dmtr_timer_t *summand)
 {
     for (int i = 0; i < summand->distPoolNext; ++i) {
         Latency_Dist_t *d = &summand->distPool[i];
@@ -210,16 +164,19 @@ LatencyFmtNS(uint64_t ns, char *buf)
         ns /= 1000;
         ++unit;
     }
-    sprintf(buf, "%" PRIu64 " %s", ns, units[unit]);
+    sprintf(buf, "%lu %s", ns, units[unit]);
     return buf;
 }
 
-void
-Latency_Dump(Latency_t *l)
+int
+Latency_Dump(FILE *f, dmtr_timer_t *l)
 {
+    DMTR_NOTNULL(EINVAL, f);
+    DMTR_NOTNULL(EINVAL, l);
+
     if (l->distPoolNext == 0) {
         // No distributions yet
-        return;
+        return 0;
     }
 
     char buf[5][64];
@@ -253,20 +210,20 @@ Latency_Dump(Latency_t *l)
         char extra[3] = {'/', (char)type, 0};
         if (type == '=')
             extra[0] = '\0';
-        QNotice("LATENCY %s%s: %s %s/%s %s (%" PRIu64 " samples, %s total)",
-                l->name->c_str(), extra, LatencyFmtNS(d->min, buf[0]),
+        fprintf(f, "LATENCY %s%s: %s %s/%s %s (%lu samples, %s total)\n",
+                l->name.c_str(), extra, LatencyFmtNS(d->min, buf[0]),
                 LatencyFmtNS(d->total / d->count, buf[1]),
                 LatencyFmtNS((uint64_t)1 << medianBucket, buf[2]),
                 LatencyFmtNS(d->max, buf[3]), d->count,
                 LatencyFmtNS(d->total, buf[4]));
     }
     *ppnext = -1;
-    l->latencies->shrink_to_fit();
-    sort(l->latencies->begin(), l->latencies->end());
-    QNotice("TAIL LATENCY 99=%s 99.9=%s 99.99=%s",
-	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.99)), buf[0]),
-	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.999)), buf[1]),
-	    LatencyFmtNS(l->latencies->at((int)((float)l->latencies->size() * 0.9999)), buf[2]));
+    l->latencies.shrink_to_fit();
+    sort(l->latencies.begin(), l->latencies.end());
+    fprintf(f, "TAIL LATENCY 99=%s 99.9=%s 99.99=%s\n",
+	    LatencyFmtNS(l->latencies.at((int)((float)l->latencies.size() * 0.99)), buf[0]),
+	    LatencyFmtNS(l->latencies.at((int)((float)l->latencies.size() * 0.999)), buf[1]),
+	    LatencyFmtNS(l->latencies.at((int)((float)l->latencies.size() * 0.9999)), buf[2]));
 
     // Find the count of the largest bucket so we can scale the
     // histogram
@@ -300,27 +257,69 @@ Latency_Dump(Latency_t *l)
         if (total > 0) {
             bar[pos] = '\0';
             if (lastPrinted < i - 3) {
-                QNotice("%10s |", "...");
+                fprintf(f, "%10s |\n", "...");
             } else {
                 for (++lastPrinted; lastPrinted < i;
                      ++lastPrinted)
-                    QNotice("%10s | %10ld |",
+                    fprintf(f, "%10s | %10ld |\n",
                             LatencyFmtNS((uint64_t)1 << lastPrinted,
                                          buf[0]), 0L);
             }
-            QNotice("%10s | %10ld | %s",
+            fprintf(f, "%10s | %10ld | %s\n",
                     LatencyFmtNS((uint64_t)1 << i, buf[0]),
                     total,
                     bar);
             lastPrinted = i;
         }
     }
+
+    return 0;
 }
 
-void
-Latency_DumpAll(void)
-{
-    for (auto s : *stats1) {
-	Latency_Dump(s);
+typedef dmtr_timer_t dmtr_timer_t;
+
+int dmtr_newtimer(dmtr_timer_t **timer_out, const char *name) {
+    DMTR_NOTNULL(EINVAL, timer_out);
+    *timer_out = NULL;
+    DMTR_NOTNULL(EINVAL, name);
+
+    auto timer = new dmtr_timer_t();
+    timer->name = name;
+    timer->latencies.reserve(MAX_ITERATIONS);
+
+    for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
+        Latency_Dist_t *d = &timer->distPool[i];
+        d->min = ~0ll;
     }
+
+    *timer_out = timer;
+    return 0;
+}
+
+int dmtr_starttimer(dmtr_timer_t *timer) {
+    DMTR_NOTNULL(EINVAL, timer);
+
+    timer->timer.start();
+    return 0;
+}
+
+int dmtr_stoptimer(dmtr_timer_t *timer) {
+    DMTR_NOTNULL(EINVAL, timer);
+
+    auto elapsed = timer->timer.get_elapsed_ns();
+    LatencyAdd(timer, '=', elapsed);
+    return 0;
+}
+
+int dmtr_dumptimer(FILE *f, dmtr_timer_t *timer) {
+    DMTR_OK(Latency_Dump(f, timer));
+    return 0;
+}
+
+int dmtr_deltimer(dmtr_timer_t **timer) {
+    DMTR_NOTNULL(EINVAL, timer);
+
+    delete *timer;
+    *timer = NULL;
+    return 0;
 }

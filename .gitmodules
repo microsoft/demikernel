@@ -29,3 +29,6 @@
 [submodule "submodules/redis-rdma"]
 	path = submodules/redis-rdma
 	url = https://github.com/mlr-msft/redis.git
+[submodule "submodules/plf_nanotimer"]
+	path = submodules/plf_nanotimer
+	url = https://github.com/mattreecebentley/plf_nanotimer.git

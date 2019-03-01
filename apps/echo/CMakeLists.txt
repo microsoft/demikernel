@@ -32,11 +32,11 @@ set(RAW_MTCP_ECHO_CLIENT_SOURCES
 )
 # POSIX TCP server
 add_executable(posix-echo-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-echo-server dmtr-libos-posix yaml-cpp)
+target_link_libraries(posix-echo-server dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client
 add_executable(posix-echo-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-echo-client dmtr-libos-posix yaml-cpp)
+target_link_libraries(posix-echo-client dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client & server
 add_custom_target(posix-echo)
@@ -44,11 +44,11 @@ add_dependencies(posix-echo  posix-echo-server posix-echo-client)
 
 # LWIP UDP server
 add_executable(lwip-echo-server ${UDP_ECHO_SERVER_SOURCES})
-target_link_libraries(lwip-echo-server dmtr-libos-lwip yaml-cpp)
+target_link_libraries(lwip-echo-server dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP UDP client
 add_executable(lwip-echo-client  ${UDP_ECHO_CLIENT_SOURCES})
-target_link_libraries(lwip-echo-client dmtr-libos-lwip yaml-cpp)
+target_link_libraries(lwip-echo-client dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP UDP client & server
 add_custom_target(lwip-echo)
@@ -94,11 +94,11 @@ endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
 add_executable(rdma-echo-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(rdma-echo-server dmtr-libos-rdma rdmacm ibverbs yaml-cpp)
+target_link_libraries(rdma-echo-server dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client
 add_executable(rdma-echo-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(rdma-echo-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp)
+target_link_libraries(rdma-echo-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client & server
 add_custom_target(rdma-echo)

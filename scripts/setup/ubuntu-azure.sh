@@ -4,7 +4,7 @@ set -e
 
 add-apt-repository ppa:canonical-server/dpdk-azure -y
 apt-get update
-APT_PACKAGES="cmake-curses-gui cmake-qt-gui build-essential libgmp-dev libnuma-dev libmnl-dev librdmacm1 librdmacm-dev libelf-dev libboost-dev libyaml-cpp-dev"
+APT_PACKAGES="cmake-curses-gui cmake-qt-gui build-essential libgmp-dev libnuma-dev libmnl-dev librdmacm1 librdmacm-dev libelf-dev libboost-dev libboost-program-options-dev libyaml-cpp-dev"
 
 repo_root=$(git rev-parse --show-toplevel)
 

@@ -29,7 +29,7 @@
  **********************************************************************/
 #include "memory_queue.hh"
 #include <dmtr/annot.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)

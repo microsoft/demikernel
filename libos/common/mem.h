@@ -1,8 +1,6 @@
 #ifndef DMTR_MEM_H_IS_INCLUDED
 #define DMTR_MEM_H_IS_INCLUDED
 
-// todo: move header to <dmtr/libos/common/mem.h>
-
 #include <stddef.h>
 #include <string.h>
 
