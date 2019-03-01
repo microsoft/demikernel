@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <sstream>
 
 dmtr::io_queue::task::task(dmtr_opcode_t  opcode, io_queue * const q) :
     opcode(opcode),
@@ -55,7 +56,14 @@ dmtr::io_queue::io_queue(enum category_id cid, int qd) :
 {}
 
 dmtr::io_queue::~io_queue()
-{}
+{
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `io_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
+}
 
 int dmtr::io_queue::socket(int domain, int type, int protocol) {
     return ENOTSUP;

@@ -217,17 +217,21 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
 
 int dmtr::posix_queue::close()
 {
-    DMTR_TRUE(EINVAL, my_fd != -1);
+    if (-1 == my_fd) {
+        return 0;
+    }
 
-    int ret = ::close(my_fd);
+    int fd = my_fd;
+    my_fd = -1;
+
+    int ret = ::close(fd);
     switch (ret) {
         default:
             DMTR_UNREACHABLE();
         case -1:
             return errno;
         case 0:
-            my_fd = -1;
-            return 0;
+            return ret;
     }
 }
 

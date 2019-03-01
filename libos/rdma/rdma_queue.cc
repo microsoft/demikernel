@@ -302,16 +302,19 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 
 int dmtr::rdma_queue::close()
 {
-    DMTR_NOTNULL(EPERM, my_rdma_id);
+    if (NULL == my_rdma_id) {
+        return 0;
+    }
+
+    struct rdma_cm_id *rdma_id = my_rdma_id;
+    my_rdma_id = NULL;
 
     // todo: freeing all memory that we've allocated.
-    DMTR_OK(rdma_destroy_qp(my_rdma_id));
-    DMTR_OK(ibv_dealloc_pd(my_rdma_id->pd));
-    rdma_event_channel *channel = my_rdma_id->channel;
-    DMTR_OK(rdma_destroy_id(my_rdma_id));
+    DMTR_OK(rdma_destroy_qp(rdma_id));
+    DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
+    rdma_event_channel *channel = rdma_id->channel;
+    DMTR_OK(rdma_destroy_id(rdma_id));
     DMTR_OK(rdma_destroy_event_channel(channel));
-
-    my_rdma_id = NULL;
     return 0;
 }
 
