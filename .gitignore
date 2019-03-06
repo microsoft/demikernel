@@ -12,6 +12,9 @@
 # gdb
 .gdb.*
 
+# ctags
+tags
+
 # [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
 #
 CMakeCache.txt
