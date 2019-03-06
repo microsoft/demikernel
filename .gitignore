@@ -14,6 +14,7 @@
 
 # ctags
 tags
+tags.*
 
 # [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
 #
