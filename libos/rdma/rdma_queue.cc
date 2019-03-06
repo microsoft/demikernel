@@ -30,16 +30,16 @@
 
 #include "rdma_queue.hh"
 
-#include <dmtr/annot.h>
-#include <dmtr/cast.h>
-#include <libos/common/mem.h>
-#include <hoard/zeusrdma.h>
-
 #include <arpa/inet.h>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/cast.h>
 #include <fcntl.h>
+#include <hoard/zeusrdma.h>
+#include <libos/common/mem.h>
+#include <libos/common/raii_guard.hh>
 #include <netinet/tcp.h>
 #include <rdma/rdma_verbs.h>
 #include <sys/uio.h>
@@ -100,18 +100,13 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             void *buf = reinterpret_cast<void *>(wc.wr_id);
             Zeus::RDMA::Hoard::unpin(buf);
             size_t byte_len = wc.byte_len;
-            my_recv_queue.push(std::make_pair(buf, byte_len));
+            my_pending_recvs.push(std::make_pair(buf, byte_len));
             DMTR_OK(new_recv_buf());
             return 0;
         }
         case IBV_WC_SEND: {
             dmtr_qtoken_t qt = wc.wr_id;
-            task *t = NULL;
-            DMTR_OK(get_task(t, qt));
-            unpin(t->sga);
-            t->num_bytes = wc.byte_len;
-            t->done = true;
-            t->error = 0;
+            my_completed_sends.insert(qt);
             return 0;
         }
     }
@@ -161,7 +156,7 @@ int dmtr::rdma_queue::service_event_queue() {
             fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
             return ENOTSUP;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_accept_queue.push(event.id);
+            my_pending_accepts.push(event.id);
             fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
@@ -204,51 +199,40 @@ int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 
 }
 
-int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd) {
+int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
 
-    auto q = std::unique_ptr<io_queue>(new rdma_queue(new_qd));
+    auto * const q = new rdma_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
+    auto qq = std::unique_ptr<io_queue>(q);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qtok, DMTR_OPC_ACCEPT, q.get()));
-    q_out = std::move(q);
-    return 0;
-}
+    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        while (my_pending_accepts.empty()) {
+            yield();
+        }
 
-int dmtr::rdma_queue::service_accept_queue(task &t) {
-    DMTR_NOTNULL(EPERM, my_rdma_id);
-    DMTR_TRUE(EPERM, my_listening_flag);
+        auto * const new_rdma_id = my_pending_accepts.front();
+        my_pending_accepts.pop();
 
-    struct rdma_cm_id *new_rdma_id = NULL;
-    int ret = pop_accept(new_rdma_id);
-    switch (ret) {
-        default:
-            DMTR_OK(ret);
-        case 0:
-            break;
-        case EAGAIN:
-            return 0;
-    }
+        q->my_rdma_id = new_rdma_id;
+        DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
+        DMTR_OK(q->setup_rdma_qp());
+        DMTR_OK(q->setup_recv_queue());
 
-    auto * const q = dynamic_cast<rdma_queue *>(t.queue);
-    DMTR_NOTNULL(EPERM, q);
-    q->my_rdma_id = new_rdma_id;
-    DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
-    DMTR_OK(q->setup_rdma_qp());
-    DMTR_OK(q->setup_recv_queue());
+        // accept the connection
+        struct rdma_conn_param params = {};
+        memset(&params, 0, sizeof(params));
+        params.initiator_depth = 1;
+        params.responder_resources = 1;
+        params.rnr_retry_count = 7;
+        DMTR_OK(rdma_accept(new_rdma_id, &params));
 
-    // accept the connection
-    struct rdma_conn_param params = {};
-    memset(&params, 0, sizeof(params));
-    params.initiator_depth = 1;
-    params.responder_resources = 1;
-    params.rnr_retry_count = 7;
-    DMTR_OK(rdma_accept(new_rdma_id, &params));
+        DMTR_OK(init_accept_qresult(qr_out, new_qd));
+        return 0;
+    }));
 
-    t.done = true;
-    t.error = 0;
+    q_out = std::move(qq);
     return 0;
 }
 
@@ -318,111 +302,91 @@ int dmtr::rdma_queue::close()
     return 0;
 }
 
-int dmtr::rdma_queue::complete_recv(dmtr_qtoken_t qt, void * const buf, size_t len) {
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
-
-    if (len < sizeof(dmtr_header_t)) {
-        t->done = true;
-        t->error = EPROTO;
-        return 0;
-    }
-
-    uint8_t *p = reinterpret_cast<uint8_t *>(buf);
-    dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
-    t->header = *header;
-    p += sizeof(dmtr_header_t);
-
-    t->sga.sga_numsegs = t->header.h_sgasegs;
-    for (size_t i = 0; i < t->sga.sga_numsegs; ++i) {
-        size_t seglen = *reinterpret_cast<uint32_t *>(p);
-        t->sga.sga_segs[i].sgaseg_len = seglen;
-        //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
-        p += sizeof(uint32_t);
-        t->sga.sga_segs[i].sgaseg_buf = p;
-        p += seglen;
-    }
-
-    t->sga.sga_buf = buf;
-    t->num_bytes = len;
-    t->done = true;
-    t->error = 0;
-    return 0;
-}
-
 int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
-    t->sga = sga;
+    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        size_t num_sge = 2 * sga.sga_numsegs + 1;
+        struct ibv_sge sge[num_sge];
+        size_t data_size = 0;
+        size_t total_len = 0;
 
-    size_t num_sge = 2 * sga.sga_numsegs + 1;
-    struct ibv_sge sge[num_sge];
-    size_t data_size = 0;
-    size_t total_len = 0;
+        // we need to allocate space to serialize metadata.
+        struct metadata *md = NULL;
+        DMTR_OK(dmtr_malloc(reinterpret_cast<void **>(&md), sizeof(struct metadata) + sga.sga_numsegs * sizeof(uint32_t)));
+        raii_guard rg0([=]() {
+            free(md);
+        });
+        struct ibv_mr *md_mr = NULL;
+        DMTR_OK(get_rdma_mr(md_mr, md));
 
-    //printf("ProcessOutgoing qd:%d num_bufs:%d\n", qd, sga.num_bufs);
+        // calculate size and fill in iov
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            // todo: we need to use network byte ordering.
+            md->lengths[i] = sga.sga_segs[i].sgaseg_len;
 
-    // we need to allocate space to serialize the segment lengths.
-    DMTR_OK(dmtr_malloc(&t->sga.sga_buf, sga.sga_numsegs * sizeof(uint32_t)));
-    uint32_t * const lengths = reinterpret_cast<uint32_t *>(t->sga.sga_buf);
-    struct ibv_mr *lengths_mr = NULL;
-    DMTR_OK(get_rdma_mr(lengths_mr, lengths));
+            const auto j = 2 * i + 1;
+            sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
+            sge[j].length = sizeof(*md->lengths);
+            sge[j].lkey = md_mr->lkey;
 
-    // calculate size and fill in iov
-    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        // todo: we need to use network byte ordering.
-        lengths[i] = sga.sga_segs[i].sgaseg_len;
+            const auto k = j + 1;
+            void * const p = sga.sga_segs[i].sgaseg_buf;
+            struct ibv_mr *mr = NULL;
+            DMTR_OK(get_rdma_mr(mr, p));
+            sge[k].addr = reinterpret_cast<uintptr_t>(p);
+            sge[k].length = sga.sga_segs[i].sgaseg_len;
+            sge[k].lkey = mr->lkey;
 
-        const auto j = 2 * i + 1;
-        sge[j].addr = reinterpret_cast<uintptr_t>(&lengths[i]);
-        sge[j].length = sizeof(*lengths);
-        sge[j].lkey = lengths_mr->lkey;
+            // add up actual data size
+            data_size += sga.sga_segs[i].sgaseg_len;
 
-        const auto k = j + 1;
-        void * const p = sga.sga_segs[i].sgaseg_buf;
-        struct ibv_mr *mr = NULL;
-        DMTR_OK(get_rdma_mr(mr, p));
-        sge[k].addr = reinterpret_cast<uintptr_t>(p);
-        sge[k].length = sga.sga_segs[i].sgaseg_len;
-        sge[k].lkey = mr->lkey;
+            // add up expected packet size minus header
+            total_len += sga.sga_segs[i].sgaseg_len;
+            total_len += sizeof(sga.sga_segs[i].sgaseg_len);
+        }
 
-        // add up actual data size
-        data_size += sga.sga_segs[i].sgaseg_len;
+        // fill in header
+        md->header.h_magic = DMTR_HEADER_MAGIC;
+        md->header.h_bytes = total_len;
+        md->header.h_sgasegs = sga.sga_numsegs;
 
-        // add up expected packet size minus header
-        total_len += sga.sga_segs[i].sgaseg_len;
-        total_len += sizeof(sga.sga_segs[i].sgaseg_len);
-    }
+        // set up header at beginning of packet
+        sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
+        sge[0].length = sizeof(md->header);
+        sge[0].lkey = md_mr->lkey;
 
-    // fill in header
-    t->header.h_magic = DMTR_HEADER_MAGIC;
-    t->header.h_bytes = total_len;
-    t->header.h_sgasegs = sga.sga_numsegs;
+        // set up RDMA work request.
+        struct ibv_send_wr wr = {};
+        wr.opcode = IBV_WR_SEND;
+        // warning: if you don't set the send flag, it will not
+        // give a meaningful error.
+        wr.send_flags = IBV_SEND_SIGNALED;
+        wr.wr_id = qt;
+        wr.sg_list = sge;
+        wr.num_sge = num_sge;
 
-    // set up header at beginning of packet
-    sge[0].addr = reinterpret_cast<uintptr_t>(&t->header);
-    sge[0].length = sizeof(t->header);
-    struct ibv_mr *mr = NULL;
-    DMTR_OK(get_rdma_mr(mr, t));
-    sge[0].lkey = mr->lkey;
+        struct ibv_send_wr *bad_wr = NULL;
+        pin(sga);
+        DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
 
-    // set up RDMA work request.
-    struct ibv_send_wr wr = {};
-    wr.opcode = IBV_WR_SEND;
-    // warning: if you don't set the send flag, it will not
-    // give a meaningful error.
-    wr.send_flags = IBV_SEND_SIGNALED;
-    wr.wr_id = qt;
-    wr.sg_list = sge;
-    wr.num_sge = num_sge;
+        while (true) {
+            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+            auto it = my_completed_sends.find(qt);
+            if (my_completed_sends.cend() == it) {
+                my_completed_sends.erase(it);
+                break;
+            }
 
-    struct ibv_send_wr *bad_wr = NULL;
-    pin(sga);
-    DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
+            yield();
+        }
+
+        DMTR_OK(init_push_qresult(qr_out));
+        return 0;
+    }));
+
     return 0;
 }
 
@@ -432,26 +396,61 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
 
-    task *t = NULL;
-    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
+    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        void *buf = NULL;
+        size_t sz_buf = 0;
+        while (NULL == buf) {
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            int ret = service_recv_queue(buf, sz_buf);
+            switch (ret) {
+                default:
+                    DMTR_FAIL(ret);
+                case EAGAIN:
+                    yield();
+                    continue;
+                case 0:
+                    buf = NULL;
+                    continue;
+            }
+        }
+
+        if (sz_buf < sizeof(dmtr_header_t)) {
+            return EPROTO;
+        }
+
+        uint8_t *p = reinterpret_cast<uint8_t *>(buf);
+        dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
+        p += sizeof(dmtr_header_t);
+
+        if (DMTR_HEADER_MAGIC != header->h_magic) {
+            return EILSEQ;
+        }
+
+        dmtr_sgarray_t sga = {};
+        sga.sga_numsegs = header->h_sgasegs;
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            size_t seglen = *reinterpret_cast<uint32_t *>(p);
+            sga.sga_segs[i].sgaseg_len = seglen;
+            //printf("[%x] sga sz_buf= %ld\n", qd, t.sga.bufs[i].sz_buf);
+            p += sizeof(uint32_t);
+            sga.sga_segs[i].sgaseg_buf = p;
+            p += seglen;
+        }
+
+        sga.sga_buf = buf;
+        DMTR_OK(init_pop_qresult(qr_out, sga));
+        return 0;
+    }));
+
     return 0;
 }
 
-int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
-{
+int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     if (qr_out != NULL) {
         *qr_out = {};
     }
 
     DMTR_NOTNULL(EPERM, my_rdma_id);
-
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
-
-    if (t->done) {
-        return t->to_qresult(qr_out, qd());
-    }
-
     int ret = service_event_queue();
     switch (ret) {
         default:
@@ -463,81 +462,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
             return ret;
     }
 
-    switch (t->opcode) {
-        default:
-            DMTR_UNREACHABLE();
-        case DMTR_OPC_PUSH:
-            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
-            break;
-        case DMTR_OPC_POP: {
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
-            void *p = NULL;
-            size_t len = 0;
-            int ret = service_recv_queue(p, len);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    return ret;
-                case 0:
-                    break;
-            }
-
-            DMTR_OK(complete_recv(qt, p, len));
-            break;
-        }
-        case DMTR_OPC_ACCEPT:
-            DMTR_OK(service_accept_queue(*t));
-            break;
-    }
-
-    return t->to_qresult(qr_out, qd());
-}
-
-int dmtr::rdma_queue::drop(dmtr_qtoken_t qt)
-{
-    DMTR_NOTNULL(EPERM, my_rdma_id);
-
-    dmtr_qresult_t qr = {};
-    int ret = poll(&qr, qt);
-    switch (ret) {
-        default:
-            return ret;
-        case 0: {
-            task *t = NULL;
-            DMTR_OK(get_task(t, qt));
-            if (DMTR_OPC_PUSH == t->opcode && t->sga.sga_buf != NULL) {
-                // free the buffer used to store segment lengths.
-                free(t->sga.sga_buf);
-            }
-            t = NULL;
-            DMTR_OK(drop_task(qt));
-            return 0;
-        }
-    }
-}
-
-int dmtr::rdma_queue::pop_accept(struct rdma_cm_id *&id_out) {
-    id_out = NULL;
-    DMTR_TRUE(EPERM, my_listening_flag);
-
-    int ret = service_event_queue();
-    switch (ret) {
-        default:
-            DMTR_OK(ret);
-        case 0:
-            break;
-        case EAGAIN:
-            break;
-    }
-
-    if (my_accept_queue.empty()) {
-        return EAGAIN;
-    }
-
-    id_out = my_accept_queue.front();
-    my_accept_queue.pop();
-    return 0;
+    return io_queue::poll(qr_out, qt);
 }
 
 int dmtr::rdma_queue::rdma_create_event_channel(struct rdma_event_channel *&channel_out) {
@@ -865,14 +790,14 @@ int dmtr::rdma_queue::new_recv_buf() {
 
 int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
     buf_out = NULL;
-    if (my_recv_queue.empty()) {
+    if (my_pending_recvs.empty()) {
         return EAGAIN;
     }
 
-    auto pair = my_recv_queue.front();
+    auto pair = my_pending_recvs.front();
     buf_out = pair.first;
     len_out = pair.second;
-    my_recv_queue.pop();
+    my_pending_recvs.pop();
     return 0;
 }
 
