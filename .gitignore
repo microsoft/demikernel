@@ -9,6 +9,9 @@
 # vscode
 /.vscode/launch.json
 
+# gdb
+.gdb.*
+
 # [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
 #
 CMakeCache.txt
