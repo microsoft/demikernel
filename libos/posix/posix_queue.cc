@@ -307,6 +307,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         DMTR_OK(init_push_qresult(qr_out));
         return 0;
     }));
+
     return 0;
 }
 
