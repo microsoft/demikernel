@@ -407,9 +407,10 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
                     DMTR_FAIL(ret);
                 case EAGAIN:
                     yield();
+                    buf = NULL;
                     continue;
                 case 0:
-                    buf = NULL;
+                    DMTR_NOTNULL(EPERM, buf);
                     continue;
             }
         }
