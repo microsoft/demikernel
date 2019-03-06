@@ -375,7 +375,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         while (true) {
             DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
-            if (my_completed_sends.cend() == it) {
+            if (my_completed_sends.cend() != it) {
                 my_completed_sends.erase(it);
                 break;
             }
