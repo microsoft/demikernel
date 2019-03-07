@@ -219,7 +219,6 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
                 DMTR_OK(remove_queue(qr.qr_value.qd));
                 if (NULL != qr_out) {
                     *qr_out = qr;
-                    qr_out->qr_tid = DMTR_TID_NIL;
                     qr_out->qr_value.qd = 0;
                 }
             }
@@ -227,7 +226,7 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         case EAGAIN:
             return ret;
         case 0:
-            DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_TID_NIL == qr.qr_tid);
+            DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_OPC_PUSH == qr.qr_opcode);
             if (NULL != qr_out) {
                 *qr_out = qr;
             }

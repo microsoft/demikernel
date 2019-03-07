@@ -50,9 +50,6 @@ class posix_queue : public io_queue {
     // todo: may not be needed for production code.
     private: struct sockaddr *my_peer_saddr;
 
-    private: int complete_recv(task &t);
-    private: int complete_send(task &t);
-
     private: posix_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
@@ -68,7 +65,6 @@ class posix_queue : public io_queue {
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
     public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
-    public: int drop(dmtr_qtoken_t qt);
 
     private: static int set_tcp_nodelay(int fd);
     private: static int read(size_t &count_out, int fd, void *buf, size_t len);
