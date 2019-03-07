@@ -6,7 +6,8 @@
 
 dmtr::io_queue::task::task() :
     my_qr{},
-    my_error(-1)
+    my_error(-1),
+    my_coroutine([=](yield_type &){})
 {}
 
 int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, completion_type completion) {
@@ -15,7 +16,7 @@ int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, completion
     auto * const t = new task();
     auto tt = std::unique_ptr<task>(t);
     DMTR_NOTNULL(ENOMEM, t);
-    coroutine_type::pull_type cor([=](coroutine_type::push_type &yield) {
+    coroutine_type::pull_type cor([=](yield_type &yield) {
         dmtr_qresult_t qr = {};
         t->my_error = completion(yield, qr);
         if (0 == t->my_error) {
@@ -29,16 +30,13 @@ int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, completion
 
 int dmtr::io_queue::task::poll(dmtr_qresult_t &qr_out) {
     qr_out = {};
-    DMTR_TRUE(EINVAL, boost::none != my_coroutine);
 
-    coroutine_type::pull_type * const cor = boost::get_pointer(my_coroutine);
-
-    // `!cor` ==> done
-    if (*cor) {
-        (*cor)();
+    // `!my_coroutine` ==> done
+    if (my_coroutine) {
+        my_coroutine();
     }
 
-    if (*cor) {
+    if (my_coroutine) {
         return EAGAIN;
     }
 

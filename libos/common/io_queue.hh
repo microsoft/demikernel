@@ -32,7 +32,6 @@
 #define DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 
 #include <boost/coroutine2/coroutine.hpp>
-#include <boost/optional.hpp>
 #include <dmtr/annot.h>
 #include <dmtr/types.h>
 #include <functional>
@@ -60,7 +59,7 @@ class io_queue
 
         private: dmtr_qresult_t my_qr;
         private: int my_error;
-        private: boost::optional<coroutine_type::pull_type> my_coroutine;
+        private: coroutine_type::pull_type my_coroutine;
 
         private: task();
         public: static int new_object(std::unique_ptr<task> &task_out, completion_type completion);
