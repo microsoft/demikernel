@@ -324,8 +324,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
         // calculate size and fill in iov
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            // todo: we need to use network byte ordering.
-            md->lengths[i] = sga.sga_segs[i].sgaseg_len;
+            md->lengths[i] = htonl(sga.sga_segs[i].sgaseg_len);
 
             const auto j = 2 * i + 1;
             sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
@@ -349,9 +348,9 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         }
 
         // fill in header
-        md->header.h_magic = DMTR_HEADER_MAGIC;
-        md->header.h_bytes = total_len;
-        md->header.h_sgasegs = sga.sga_numsegs;
+        md->header.h_magic = htonl(DMTR_HEADER_MAGIC);
+        md->header.h_bytes = htonl(total_len);
+        md->header.h_sgasegs = htonl(sga.sga_numsegs);
 
         // set up header at beginning of packet
         sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
@@ -423,6 +422,10 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
         p += sizeof(dmtr_header_t);
 
+        header->h_magic = ntohl(header->h_magic);
+        header->h_bytes = ntohl(header->h_bytes);
+        header->h_sgasegs = ntohl(header->h_sgasegs);
+
         if (DMTR_HEADER_MAGIC != header->h_magic) {
             return EILSEQ;
         }
@@ -430,7 +433,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         dmtr_sgarray_t sga = {};
         sga.sga_numsegs = header->h_sgasegs;
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            size_t seglen = *reinterpret_cast<uint32_t *>(p);
+            size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
             sga.sga_segs[i].sgaseg_len = seglen;
             //printf("[%x] sga sz_buf= %ld\n", qd, t.sga.bufs[i].sz_buf);
             p += sizeof(uint32_t);
