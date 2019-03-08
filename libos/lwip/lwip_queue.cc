@@ -511,14 +511,14 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
         uint32_t payload_len = 0;
         auto *u32 = reinterpret_cast<uint32_t *>(p);
-        *u32 = sga.sga_numsegs;
+        *u32 = htonl(sga.sga_numsegs);
         payload_len += sizeof(*u32);
         p += sizeof(*u32);
 
         for (size_t i = 0; i < sga.sga_numsegs; i++) {
             u32 = reinterpret_cast<uint32_t *>(p);
             auto len = sga.sga_segs[i].sgaseg_len;
-            *u32 = len;
+            *u32 = htonl(len);
             payload_len += sizeof(*u32);
             p += sizeof(*u32);
             // todo: remove copy by associating foreign memory with
@@ -708,7 +708,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
             }
 
             // segment count
-            sga.sga_numsegs = *reinterpret_cast<uint32_t *>(p);
+            sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
             p += sizeof(uint32_t);
 
 #if DMTR_DEBUG
@@ -717,7 +717,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 
             for (size_t i = 0; i < sga.sga_numsegs; ++i) {
                 // segment length
-                auto seg_len = *reinterpret_cast<uint32_t *>(p);
+                auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
                 sga.sga_segs[i].sgaseg_len = seg_len;
                 p += sizeof(seg_len);
 

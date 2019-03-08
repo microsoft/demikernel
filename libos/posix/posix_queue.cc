@@ -244,19 +244,20 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        // todo: need to encode in network byte order.
-
         //std::cerr << "push(" << qt << "): preparing message." << std::endl;
 
         size_t iov_len = 2 * sga.sga_numsegs + 1;
         struct iovec iov[iov_len];
         size_t data_size = 0;
         size_t message_bytes = 0;
+        uint32_t seg_lens[sga.sga_numsegs] = {};
 
         // calculate size and fill in iov
         for (size_t i = 0; i < sga.sga_numsegs; i++) {
+            static_assert(sizeof(*seg_lens) == sizeof(sga.sga_segs[i].sgaseg_len), "type mismatch");
             const auto j = 2 * i + 1;
-            iov[j].iov_base = const_cast<uint32_t *>(&sga.sga_segs[i].sgaseg_len);
+            seg_lens[i] = htonl(sga.sga_segs[i].sgaseg_len);
+            iov[j].iov_base = &seg_lens[i];
             iov[j].iov_len = sizeof(sga.sga_segs[i].sgaseg_len);
 
             const auto k = j + 1;
@@ -272,10 +273,10 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         }
 
         // fill in header
-        dmtr_header_t header;
-        header.h_magic = DMTR_HEADER_MAGIC;
-        header.h_bytes = message_bytes;
-        header.h_sgasegs = sga.sga_numsegs;
+        dmtr_header_t header = {};
+        header.h_magic = htonl(DMTR_HEADER_MAGIC);
+        header.h_bytes = htonl(message_bytes);
+        header.h_sgasegs = htonl(sga.sga_numsegs);
 
         // set up header at beginning of packet
         iov[0].iov_base = &header;
@@ -354,6 +355,10 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 
         //std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
 
+        header.h_magic = ntohl(header.h_magic);
+        header.h_bytes = ntohl(header.h_bytes);
+        header.h_sgasegs = ntohl(header.h_sgasegs);
+
         if (DMTR_HEADER_MAGIC != header.h_magic) {
             return EILSEQ;
         }
@@ -395,7 +400,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
         uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
         sga.sga_numsegs = header.h_sgasegs;
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            size_t seglen = *reinterpret_cast<uint32_t *>(p);
+            size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
             sga.sga_segs[i].sgaseg_len = seglen;
             //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
             p += sizeof(uint32_t);
