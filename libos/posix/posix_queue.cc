@@ -363,6 +363,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
         // grab the rest of the message
         dmtr_sgarray_t sga = {};
         DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
+        std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
         size_t data_bytes = 0;
         while (data_bytes < header.h_bytes) {
             uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
@@ -404,6 +405,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         DMTR_OK(init_pop_qresult(qr_out, sga));
+        buf.release();
         return 0;
     }));
     return 0;
