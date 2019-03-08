@@ -28,9 +28,6 @@ class lwip_queue : public io_queue {
     private: boost::optional<struct sockaddr_in> my_default_peer;
     private: std::queue<struct rte_mbuf *> my_recv_queue;
 
-    private: int complete_send(task &t);
-    private: int complete_recv(task &t, struct rte_mbuf *mbuf);
-
     private: lwip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
@@ -46,7 +43,6 @@ class lwip_queue : public io_queue {
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
     public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
-    public: int drop(dmtr_qtoken_t qt);
 
     public: static int init_dpdk(int argc, char *argv[]);
     private: static int get_dpdk_port_id(uint16_t &id_out);

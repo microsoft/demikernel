@@ -1,8 +1,3 @@
-#include <dmtr/annot.h>
-#include <dmtr/libos.h>
-#include <libos/common/mem.h>
-#include <dmtr/wait.h>
-
 #include <arpa/inet.h>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
@@ -10,7 +5,11 @@
 #include <boost/program_options/variables_map.hpp>
 #include <cassert>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/libos.h>
+#include <dmtr/wait.h>
 #include <iostream>
+#include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <yaml-cpp/yaml.h>
 
@@ -99,7 +98,6 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_drop(qt));
         DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
-        DMTR_TRUE(EPERM, DMTR_TID_SGA == qr.qr_tid);
         DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
