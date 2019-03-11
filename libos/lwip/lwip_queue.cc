@@ -447,10 +447,9 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-        struct sockaddr_in *saddr = NULL;
+        const struct sockaddr_in *saddr = NULL;
         if (boost::none == my_default_peer) {
-            DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == sga.sga_addrlen);
-            saddr = reinterpret_cast<struct sockaddr_in *>(sga.sga_addr);
+            saddr = &sga.sga_addr;
         } else {
             saddr = &boost::get(my_default_peer);
         }
@@ -747,22 +746,9 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 #endif
             }
 
-            if (sizeof(struct sockaddr_in) == sga.sga_addrlen) {
-                DMTR_NOTNULL(EPERM, sga.sga_addr);
-
-                auto * const saddr = reinterpret_cast<struct sockaddr_in *>(sga.sga_addr);
-                memset(saddr, 0, sizeof(*saddr));
-                saddr->sin_family = AF_INET;
-                saddr->sin_port = udp_src_port;
-                saddr->sin_addr.s_addr = ip_hdr->src_addr;
-
-#if DMTR_DEBUG
-                printf("recv: saddr ip addr: %x\n", saddr->sin_addr.s_addr);
-                printf("recv: saddr udp port: %d\n", saddr->sin_port);
-#endif
-            } else {
-                DMTR_NULL(ENOTSUP, sga.sga_addr);
-            }
+            sga.sga_addr.sin_family = AF_INET;
+            sga.sga_addr.sin_port = udp_src_port;
+            sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
 
             init_pop_qresult(qr_out, sga);
             return 0;
