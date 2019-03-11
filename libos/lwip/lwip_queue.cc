@@ -45,7 +45,7 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DMTR_DEBUG 1
+//#define DMTR_DEBUG 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -87,6 +87,14 @@ static struct mac2ip ip_config[] = {
     // eth1 on hightent
     {       { 0x00, 0x0d, 0x3a, 0x5e, 0x4f, 0x6e },
             ((10U << 24) | (0 << 16) | (0 << 8) | 7),
+    },
+    // ens1 on iyzhang-test
+    {       { 0x24, 0x8a, 0x07, 0x50, 0x95, 0x08 },
+            ((192U << 24) | (168 << 16) | (1 << 8) | 1),
+    },
+    // ens4f1 on iyzhang-test2
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
+            ((192U << 24) | (168 << 16) | (1 << 8) | 2),
     },
 };
 /*
@@ -439,10 +447,9 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-        struct sockaddr_in *saddr = NULL;
+        const struct sockaddr_in *saddr = NULL;
         if (boost::none == my_default_peer) {
-            DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == sga.sga_addrlen);
-            saddr = reinterpret_cast<struct sockaddr_in *>(sga.sga_addr);
+            saddr = &sga.sga_addr;
         } else {
             saddr = &boost::get(my_default_peer);
         }
@@ -486,9 +493,9 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
             auto bound_addr = boost::get(my_bound_addr);
             ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
         } else {
-            ip_hdr->src_addr = htonl(mac_to_ip(eth_hdr->s_addr));
+            ip_hdr->src_addr = mac_to_ip(eth_hdr->s_addr);
         }
-        ip_hdr->dst_addr = saddr->sin_addr.s_addr;
+        ip_hdr->dst_addr = htonl(saddr->sin_addr.s_addr);
         ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
         uint16_t checksum = 0;
         DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(struct ipv4_hdr)));
@@ -640,7 +647,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 
             struct ether_addr mac_addr = {};
             DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
-            if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
+            if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
 #if DMTR_DEBUG
                 printf("recv: dropped (wrong eth addr)!\n");
 #endif
@@ -659,18 +666,20 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
             // check ip header
             auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
             p += sizeof(*ip_hdr);
+            uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
+            uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
 
 #if DMTR_DEBUG
-                printf("recv: ip src addr: %x\n", ip_hdr->src_addr);
-                printf("recv: ip dst addr: %x\n", ip_hdr->dst_addr);
+                printf("recv: ip src addr: %x\n", ipv4_src_addr);
+                printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
 #endif
 
             if (is_bound()) {
                 auto bound_addr = boost::get(my_bound_addr);
                 // if the packet isn't addressed to me, drop it.
-                if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+                if (ipv4_dst_addr != bound_addr.sin_addr.s_addr) {
 #if DMTR_DEBUG
-                    printf("recv: dropped (not my IP addr)!\n");
+                    printf("recv: dropped (not my IP addr; %x)!\n", bound_addr.sin_addr.s_addr);
 #endif
                     yield();
                     continue;
@@ -737,22 +746,9 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 #endif
             }
 
-            if (sizeof(struct sockaddr_in) == sga.sga_addrlen) {
-                DMTR_NOTNULL(EPERM, sga.sga_addr);
-
-                auto * const saddr = reinterpret_cast<struct sockaddr_in *>(sga.sga_addr);
-                memset(saddr, 0, sizeof(*saddr));
-                saddr->sin_family = AF_INET;
-                saddr->sin_port = udp_src_port;
-                saddr->sin_addr.s_addr = ip_hdr->src_addr;
-
-#if DMTR_DEBUG
-                printf("recv: saddr ip addr: %x\n", saddr->sin_addr.s_addr);
-                printf("recv: saddr udp port: %d\n", saddr->sin_port);
-#endif
-            } else {
-                DMTR_NULL(ENOTSUP, sga.sga_addr);
-            }
+            sga.sga_addr.sin_family = AF_INET;
+            sga.sga_addr.sin_port = udp_src_port;
+            sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
 
             init_pop_qresult(qr_out, sga);
             return 0;

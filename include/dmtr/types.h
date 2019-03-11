@@ -24,8 +24,7 @@ typedef struct dmtr_sgarray {
     void *sga_buf;
     uint32_t sga_numsegs;
     dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
-    struct sockaddr *sga_addr;
-    socklen_t sga_addrlen;
+    struct sockaddr_in sga_addr;
 } dmtr_sgarray_t;
 
 typedef enum dmtr_typeid {
