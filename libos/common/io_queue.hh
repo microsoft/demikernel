@@ -95,17 +95,17 @@ class io_queue
     // data plane functions
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;
     public: virtual int pop(dmtr_qtoken_t qt) = 0;
-    public: virtual int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
+    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
 
     protected: static int set_non_blocking(int fd);
-    protected: int new_task(dmtr_qtoken_t qt, task::completion_type completion);
+    protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion);
     private: int get_task(task *&t, dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
-    protected: int init_qresult(dmtr_qresult_t &qr_out) const;
-    protected: int init_push_qresult(dmtr_qresult_t &qr_out) const;
-    protected: int init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
-    protected: int init_accept_qresult(dmtr_qresult_t &qr_out, int qd) const;
+    protected: void init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const;
+    protected: void init_push_qresult(dmtr_qresult_t &qr_out) const;
+    protected: void init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
+    protected: void init_accept_qresult(dmtr_qresult_t &qr_out, int qd) const;
 };
 
 } // namespace dmtr

@@ -45,10 +45,10 @@ int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         std::lock_guard<std::mutex> lock(my_lock);
         my_ready_queue.push(sga);
-        DMTR_OK(init_push_qresult(qr_out));
+        init_push_qresult(qr_out);
         return 0;
     }));
     return 0;
@@ -57,7 +57,7 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         dmtr_sgarray_t sga;
         while (true) {
             {
@@ -72,13 +72,13 @@ dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
             yield();
         }
 
-        DMTR_OK(init_pop_qresult(qr_out, sga));
+        init_pop_qresult(qr_out, sga);
         return 0;
     }));
     return 0;
 }
 
-int dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
+int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     std::lock_guard<std::mutex> lock(my_lock);
     return io_queue::poll(qr_out, qt);
 }

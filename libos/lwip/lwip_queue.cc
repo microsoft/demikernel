@@ -434,7 +434,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         DMTR_TRUE(EPERM, our_dpdk_init_flag);
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
@@ -572,7 +572,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
             }
         }
 
-        DMTR_OK(init_push_qresult(qr_out));
+        init_push_qresult(qr_out);
         return 0;
     }));
 
@@ -583,7 +583,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         DMTR_TRUE(EPERM, our_dpdk_init_flag);
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
@@ -754,7 +754,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
                 DMTR_NULL(ENOTSUP, sga.sga_addr);
             }
 
-            DMTR_OK(init_pop_qresult(qr_out, sga));
+            init_pop_qresult(qr_out, sga);
             return 0;
         }
     }));
@@ -762,12 +762,9 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     return 0;
 }
 
-int dmtr::lwip_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
+int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
-    if (qr_out != NULL) {
-        *qr_out = {};
-    }
-
+    qr_out = {};
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
     

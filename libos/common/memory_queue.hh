@@ -52,7 +52,7 @@ class memory_queue : public io_queue
 
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: virtual int pop(dmtr_qtoken_t qt);
-    public: virtual int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
+    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
 };
 

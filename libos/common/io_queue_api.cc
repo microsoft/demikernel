@@ -55,16 +55,12 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
     q_out = NULL;
 
     int qd = new_qd();
-    std::unique_ptr<io_queue> q = NULL;
-    DMTR_OK(my_queue_factory.construct(q, cid, qd));
+    std::unique_ptr<io_queue> qq;
+    DMTR_OK(my_queue_factory.construct(qq, cid, qd));
+    io_queue * const q = qq.get();
+    DMTR_OK(insert_queue(qq));
 
-    q_out = q.get();
-    int ret = insert_queue(q);
-    if (0 != ret) {
-        q_out = NULL;
-        DMTR_FAIL(ret);
-    }
-
+    q_out = q;
     return 0;
 }
 
@@ -95,6 +91,7 @@ int dmtr::io_queue_api::queue(int &qd_out) {
 
     io_queue *q = NULL;
     DMTR_OK(new_queue(q, io_queue::MEMORY_Q));
+
     qd_out = q->qd();
     return 0;
 }
@@ -165,9 +162,10 @@ int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, soc
 int dmtr::io_queue_api::close(int qd) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    DMTR_OK(q->close());
+    int ret = q->close();
     DMTR_OK(remove_queue(qd));
 
+    DMTR_OK(ret);
     return 0;
 }
 
@@ -202,20 +200,21 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     DMTR_OK(get_queue(q, qd));
 
     dmtr_qresult_t qr = {};
-    int ret = q->poll(&qr, qt);
+    int ret = q->poll(qr, qt);
     switch (ret) {
         default:
+            // if there's a failure on an accept token, we remove the queue we created at the beginning of the operation.
             if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
                 DMTR_OK(remove_queue(qr.qr_value.qd));
-                if (NULL != qr_out) {
-                    *qr_out = qr;
-                    qr_out->qr_value.qd = 0;
-                }
+                DMTR_NOTNULL(EINVAL, qr_out);
+                *qr_out = qr;
+                qr_out->qr_value.qd = 0;
             }
             DMTR_FAIL(ret);
         case EAGAIN:
             return ret;
         case 0:
+            // callers that know they're waiting on a push token can specify `NULL` for `qr_out` without causing a fuss.
             DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_OPC_PUSH == qr.qr_opcode);
             if (NULL != qr_out) {
                 *qr_out = qr;

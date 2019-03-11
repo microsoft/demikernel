@@ -123,7 +123,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         int new_fd = -1;
         int ret = EAGAIN;
         while (EAGAIN == ret) {
@@ -144,7 +144,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        DMTR_OK(init_accept_qresult(qr_out, new_qd));
+        init_accept_qresult(qr_out, new_qd);
         return 0;
     }));
 
@@ -243,7 +243,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         //std::cerr << "push(" << qt << "): preparing message." << std::endl;
 
         size_t iov_len = 2 * sga.sga_numsegs + 1;
@@ -305,7 +305,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             return ENOTSUP;
         }
 
-        DMTR_OK(init_push_qresult(qr_out));
+        init_push_qresult(qr_out);
         return 0;
     }));
 
@@ -317,7 +317,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         while (boost::none != my_active_recv) {
             yield();
         }
@@ -409,20 +409,18 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
         }
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
-        DMTR_OK(init_pop_qresult(qr_out, sga));
         buf.release();
+        init_pop_qresult(qr_out, sga);
         return 0;
     }));
     return 0;
 }
 
-int dmtr::posix_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt)
+int dmtr::posix_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
-    if (NULL != qr_out) {
-        *qr_out = {};
-    }
-
+    qr_out = {};
     DMTR_TRUE(EINVAL, my_fd != -1);
+
     return io_queue::poll(qr_out, qt);
 }
 

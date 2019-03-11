@@ -207,7 +207,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         while (my_pending_accepts.empty()) {
             yield();
         }
@@ -228,7 +228,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         params.rnr_retry_count = 7;
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
-        DMTR_OK(init_accept_qresult(qr_out, new_qd));
+        init_accept_qresult(qr_out, new_qd);
         return 0;
     }));
 
@@ -307,7 +307,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         size_t num_sge = 2 * sga.sga_numsegs + 1;
         struct ibv_sge sge[num_sge];
         size_t data_size = 0;
@@ -382,7 +382,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        DMTR_OK(init_push_qresult(qr_out));
+        init_push_qresult(qr_out);
         return 0;
     }));
 
@@ -395,7 +395,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
 
-    DMTR_OK(new_task(qt, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         void *buf = NULL;
         size_t sz_buf = 0;
         while (NULL == buf) {
@@ -442,19 +442,17 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         }
 
         sga.sga_buf = buf;
-        DMTR_OK(init_pop_qresult(qr_out, sga));
+        init_pop_qresult(qr_out, sga);
         return 0;
     }));
 
     return 0;
 }
 
-int dmtr::rdma_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
-    if (qr_out != NULL) {
-        *qr_out = {};
-    }
-
+int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
+    qr_out = {};
     DMTR_NOTNULL(EPERM, my_rdma_id);
+
     int ret = service_event_queue();
     switch (ret) {
         default:

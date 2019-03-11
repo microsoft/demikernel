@@ -82,7 +82,7 @@ class rdma_queue : public io_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);
     private: static int rdma_create_event_channel(struct rdma_event_channel *&channel_out);
