@@ -293,9 +293,9 @@ int dmtr::rdma_queue::close()
     struct rdma_cm_id *rdma_id = my_rdma_id;
     my_rdma_id = NULL;
 
-    // todo: freeing all memory that we've allocated.
     DMTR_OK(rdma_destroy_qp(rdma_id));
-    DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
+    // todo: until we deal with unregistering memory, deallocating the protection domain will fail.
+    //DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
     rdma_event_channel *channel = rdma_id->channel;
     DMTR_OK(rdma_destroy_id(rdma_id));
     DMTR_OK(rdma_destroy_event_channel(channel));
