@@ -667,18 +667,20 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
             // check ip header
             auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
             p += sizeof(*ip_hdr);
+            uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
+            uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
 
 #if DMTR_DEBUG
-                printf("recv: ip src addr: %x\n", ip_hdr->src_addr);
-                printf("recv: ip dst addr: %x\n", ip_hdr->dst_addr);
+                printf("recv: ip src addr: %x\n", ipv4_src_addr);
+                printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
 #endif
 
             if (is_bound()) {
                 auto bound_addr = boost::get(my_bound_addr);
                 // if the packet isn't addressed to me, drop it.
-                if (ip_hdr->dst_addr != bound_addr.sin_addr.s_addr) {
+                if (ipv4_dst_addr != bound_addr.sin_addr.s_addr) {
 #if DMTR_DEBUG
-                    printf("recv: dropped (not my IP addr)!\n");
+                    printf("recv: dropped (not my IP addr; %x)!\n", bound_addr.sin_addr.s_addr);
 #endif
                     yield();
                     continue;
