@@ -31,10 +31,10 @@
 #ifndef DMTR_IO_QUEUE_API_HH_IS_INCLUDED
 #define DMTR_IO_QUEUE_API_HH_IS_INCLUDED
 
-#include "io_queue_factory.hh"
 #include "io_queue.hh"
+#include "io_queue_factory.hh"
+#include <boost/atomic.hpp>
 #include <dmtr/annot.h>
-
 #include <memory>
 #include <unordered_map>
 
@@ -42,6 +42,8 @@ namespace dmtr {
 
 class io_queue_api
 {
+    private: static boost::atomic<int> our_qd_counter;
+    private: static boost::atomic<uint32_t> our_qt_counter;
     private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
     private: io_queue_factory my_queue_factory;
 

@@ -7,15 +7,8 @@
 #include <cstdlib>
 #include <unistd.h>
 
-// todo: make symbols private
-#define BUFFER_SIZE 1024
-#define QUEUE_MASK 0xFFFF0000
-
-// dmtr_qtoken_t format
-// | 32 bits = queue id | 31 bits = token | 1 bit = push or pop |
-
-thread_local static int64_t queue_counter = 10;
-thread_local static int64_t token_counter = 10;
+boost::atomic<int> dmtr::io_queue_api::our_qd_counter(0);
+boost::atomic<uint32_t> dmtr::io_queue_api::our_qt_counter(0);
 
 dmtr::io_queue_api::io_queue_api()
 {}
@@ -24,10 +17,6 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
     DMTR_NULL(EINVAL, newobj_out);
 
     newobj_out = new io_queue_api();
-    // todo: should these really be `thread_local`, or atomic?
-    queue_counter = rand();
-    token_counter = rand();
-
     return 0;
 }
 
@@ -46,16 +35,21 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
 }
 
 dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd) {
-    // todo: is this means of generating tokens robust?
-    if (token_counter == 0) token_counter++;
-    dmtr_qtoken_t t = token_counter | ((dmtr_qtoken_t)qd << 32);
-    //printf("new_qtoken qd:%lx\n", t);
-    token_counter++;
-    return t;
+    uint32_t u = ++our_qt_counter;
+    if (0 == u) {
+        DMTR_PANIC("Queue token overflow");
+    }
+
+    return static_cast<uint64_t>(u) | (static_cast<uint64_t>(qd) << 32);
 }
 
 int dmtr::io_queue_api::new_qd() {
-    return queue_counter++ & ~QUEUE_MASK;
+    int qd = ++our_qd_counter;
+    if (0 > qd) {
+        DMTR_PANIC("Queue descriptor overflow");
+    }
+
+    return qd;
 }
 
 int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id cid) {
@@ -79,9 +73,6 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
-    //printf("library.h/InsertQueue() qd: %d\n", qd);
-    assert(qd == static_cast<int>(qd & ~QUEUE_MASK));
-
     if (my_queues.find(qd) != my_queues.cend()) {
         return EEXIST;
     }
