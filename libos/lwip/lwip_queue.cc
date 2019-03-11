@@ -496,7 +496,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         } else {
             ip_hdr->src_addr = htonl(mac_to_ip(eth_hdr->s_addr));
         }
-        ip_hdr->dst_addr = saddr->sin_addr.s_addr;
+        ip_hdr->dst_addr = htonl(saddr->sin_addr.s_addr);
         ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
         uint16_t checksum = 0;
         DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(struct ipv4_hdr)));
