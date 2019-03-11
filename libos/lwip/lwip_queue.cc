@@ -640,7 +640,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 
             struct ether_addr mac_addr = {};
             DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
-            if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr)) {
+            if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
 #if DMTR_DEBUG
                 printf("recv: dropped (wrong eth addr)!\n");
 #endif
