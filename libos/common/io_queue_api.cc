@@ -7,10 +7,9 @@
 #include <cstdlib>
 #include <unistd.h>
 
-boost::atomic<int> dmtr::io_queue_api::our_qd_counter(0);
-boost::atomic<uint32_t> dmtr::io_queue_api::our_qt_counter(0);
-
-dmtr::io_queue_api::io_queue_api()
+dmtr::io_queue_api::io_queue_api() :
+    my_qd_counter(0),
+    my_qt_counter(0)
 {}
 
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
@@ -35,7 +34,7 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
 }
 
 dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd) {
-    uint32_t u = ++our_qt_counter;
+    uint32_t u = ++my_qt_counter;
     if (0 == u) {
         DMTR_PANIC("Queue token overflow");
     }
@@ -44,7 +43,7 @@ dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd) {
 }
 
 int dmtr::io_queue_api::new_qd() {
-    int qd = ++our_qd_counter;
+    int qd = ++my_qd_counter;
     if (0 > qd) {
         DMTR_PANIC("Queue descriptor overflow");
     }

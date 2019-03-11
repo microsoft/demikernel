@@ -42,15 +42,15 @@ namespace dmtr {
 
 class io_queue_api
 {
-    private: static boost::atomic<int> our_qd_counter;
-    private: static boost::atomic<uint32_t> our_qt_counter;
+    private: boost::atomic<int> my_qd_counter;
+    private: boost::atomic<uint32_t> my_qt_counter;
     private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
     private: int get_queue(io_queue *&q_out, int qd) const;
-    private: static int new_qd();
-    private: static dmtr_qtoken_t new_qtoken(int qd);
+    private: int new_qd();
+    private: dmtr_qtoken_t new_qtoken(int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
     private: int insert_queue(std::unique_ptr<io_queue> &q);
     private: int remove_queue(int qd);
