@@ -88,6 +88,14 @@ static struct mac2ip ip_config[] = {
     {       { 0x00, 0x0d, 0x3a, 0x5e, 0x4f, 0x6e },
             ((10U << 24) | (0 << 16) | (0 << 8) | 7),
     },
+    // ens1 on iyzhang-test
+    {       { 0x24, 0x8a, 0x07, 0x50, 0x95, 0x08 },
+            ((192U << 24) | (168 << 16) | (1 << 8) | 1),
+    },
+    // ens4f1 on iyzhang-test2
+    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
+            ((192U << 24) | (168 << 16) | (1 << 8) | 2),
+    },
 };
 /*
 static struct mac2ip ip_config[] = {
