@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_drop(qt));
-        fprintf(stderr, "send complete.\n");
+        //fprintf(stderr, "send complete.\n");
 
         dmtr_qresult_t qr = {};
         DMTR_OK(dmtr_pop(&qt, qd));
@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
         DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
         DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
-        fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+        //fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
         free(qr.qr_value.sga.sga_buf);
     }
 
