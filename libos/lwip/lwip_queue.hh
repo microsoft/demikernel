@@ -42,7 +42,7 @@ class lwip_queue : public io_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     public: static int init_dpdk(int argc, char *argv[]);
     private: static int get_dpdk_port_id(uint16_t &id_out);
