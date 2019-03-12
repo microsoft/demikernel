@@ -114,6 +114,8 @@ int main(int argc, char *argv[])
         free(qr.qr_value.sga.sga_buf);
     }
 
+    DMTR_OK(dmtr_dumptimer(stderr, pop_timer));
+    DMTR_OK(dmtr_dumptimer(stderr, push_timer));
     DMTR_OK(dmtr_close(qd));
 
     return 0;
