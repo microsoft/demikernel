@@ -9,6 +9,7 @@ include(dpdk)
 include(hoard)
 include(mtcp)
 include(redis)
+include(plf)
 #include(spdk)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)

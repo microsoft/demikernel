@@ -15,6 +15,7 @@ extern "C" {
 #define QT2QD(qtoken) qtoken >> 32 
     
 typedef uint64_t dmtr_qtoken_t;
+typedef struct dmtr_timer dmtr_timer_t;
 
 typedef struct dmtr_sgaseg {
     void *sgaseg_buf;
@@ -25,8 +26,7 @@ typedef struct dmtr_sgarray {
     void *sga_buf;
     uint32_t sga_numsegs;
     dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
-    struct sockaddr *sga_addr;
-    socklen_t sga_addrlen;
+    struct sockaddr_in sga_addr;
 } dmtr_sgarray_t;
 
 typedef enum dmtr_typeid {
@@ -42,7 +42,6 @@ typedef enum dmtr_opcode {
 } dmtr_opcode_t;
 
 typedef struct dmtr_qresult {
-    enum dmtr_typeid qr_tid;
     enum dmtr_opcode qr_opcode;
     int qr_qd;
     dmtr_qtoken_t qr_qt;

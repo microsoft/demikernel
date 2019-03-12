@@ -29,81 +29,63 @@
  **********************************************************************/
 #include "memory_queue.hh"
 #include <dmtr/annot.h>
-#include <dmtr/mem.h>
+#include <libos/common/mem.h>
 
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
 {}
 
-int dmtr::memory_queue::new_object(io_queue *&q_out, int qd) {
-    q_out = new memory_queue(qd);
+int dmtr::memory_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    q_out = std::unique_ptr<io_queue>(new memory_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 
 int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
-    // we invariably allocate memory here, so it's safe to move the allocation
-    // outside of the lock scope.
-    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(t, qt, DMTR_OPC_PUSH));
-    my_ready_queue.push(sga);
-    // push always completes immediately.
-    t->done = true;
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        std::lock_guard<std::mutex> lock(my_lock);
+        my_ready_queue.push(sga);
+        init_push_qresult(qr_out);
+        return 0;
+    }));
     return 0;
 }
 
 int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
-    task *t = NULL;
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(new_task(t, qt, DMTR_OPC_POP));
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        dmtr_sgarray_t sga;
+        while (true) {
+            {
+                std::lock_guard<std::mutex> lock(my_lock);
+                if (!my_ready_queue.empty()) {
+                    sga = my_ready_queue.front();
+                    my_ready_queue.pop();
+                    break;
+                }
+            }
+
+            yield();
+        }
+
+        init_pop_qresult(qr_out, sga);
+        return 0;
+    }));
     return 0;
 }
 
-int
-dmtr::memory_queue::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
-    if (qr_out != NULL) {
-        *qr_out = {};
-    }
-
-    task *t = NULL;
+int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     std::lock_guard<std::mutex> lock(my_lock);
-    DMTR_OK(get_task(t, qt));
-
-    // if we've opened the box beforehand, report the result we saw last.
-    if (t->done) {
-        return t->to_qresult(qr_out, qd());
-    }
-
-    if (DMTR_OPC_POP == t->opcode && !my_ready_queue.empty()) {
-        // if there's something to dequeue, then we can complete a `pop()`
-        // operation.
-        t->sga = my_ready_queue.front();
-        my_ready_queue.pop();
-        t->done = true;
-    }
-
-    return t->to_qresult(qr_out, qd());
+    return io_queue::poll(qr_out, qt);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
 {
-    dmtr_qresult_t qr = {};
     std::lock_guard<std::mutex> lock(my_lock);
-    int ret = poll(&qr, qt);
-    switch (ret) {
-        default:
-            DMTR_FAIL(ret);
-        case EAGAIN:
-            return ret;
-        case 0:
-            break;
-    }
-
-    // if the `poll()` succeeds, we forget the task state.
-    DMTR_OK(drop_task(qt));
-    return 0;
+    return io_queue::drop(qt);
 }
 

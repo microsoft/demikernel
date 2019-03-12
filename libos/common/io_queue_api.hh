@@ -31,27 +31,28 @@
 #ifndef DMTR_IO_QUEUE_API_HH_IS_INCLUDED
 #define DMTR_IO_QUEUE_API_HH_IS_INCLUDED
 
-#include "io_queue_factory.hh"
 #include "io_queue.hh"
-#include "latency.h"
+#include "io_queue_factory.hh"
+#include <boost/atomic.hpp>
 #include <dmtr/annot.h>
-
+#include <memory>
 #include <unordered_map>
 
 namespace dmtr {
 
 class io_queue_api
 {
-    // todo: can i use `std::unique_ptr` instead of raw pointers?
-    private: std::unordered_map<int, io_queue *> my_queues;
+    private: boost::atomic<int> my_qd_counter;
+    private: boost::atomic<uint32_t> my_qt_counter;
+    private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
     private: int get_queue(io_queue *&q_out, int qd) const;
-    private: static int new_qd();
-    private: static dmtr_qtoken_t new_qtoken(int qd);
+    private: int new_qd();
+    private: dmtr_qtoken_t new_qtoken(int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
-    private: int insert_queue(io_queue * const q);
+    private: int insert_queue(std::unique_ptr<io_queue> &q);
     private: int remove_queue(int qd);
 
     public: int qttoqd(dmtr_qtoken_t qtok) {

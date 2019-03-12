@@ -31,8 +31,11 @@
 #ifndef DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_IO_QUEUE_HH_IS_INCLUDED
 
+#include <boost/coroutine2/coroutine.hpp>
+#include <dmtr/annot.h>
 #include <dmtr/types.h>
-
+#include <functional>
+#include <memory>
 #include <sys/socket.h>
 #include <unordered_map>
 
@@ -47,28 +50,30 @@ class io_queue
         FILE_Q,
     };
 
-    // todo: reorder largest to smallest.
-    protected: struct task {
-        const dmtr_opcode_t opcode;
-        bool done;
-        int error;
-        dmtr_header_t header;
-        dmtr_sgarray_t sga;
-        io_queue *queue;
-        size_t num_bytes;
 
-        task(dmtr_opcode_t opcode, io_queue * const q = NULL);
-        int to_qresult(dmtr_qresult_t * const qr_out, int qd) const;
+    // todo: reorder largest to smallest.
+    protected: class task {
+        public: typedef boost::coroutines2::coroutine<void> coroutine_type;
+        public: typedef coroutine_type::push_type yield_type;
+        public: typedef std::function<int (yield_type &, dmtr_qresult_t &qr_out)> completion_type;
+
+        private: dmtr_qresult_t my_qr;
+        private: int my_error;
+        private: coroutine_type::pull_type my_coroutine;
+
+        private: task();
+        public: static int new_object(std::unique_ptr<task> &task_out, completion_type completion);
+        public: int poll(dmtr_qresult_t &qr_out);
     };
 
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
+    private: std::unordered_map<dmtr_qtoken_t, std::unique_ptr<task>> my_tasks;
     protected: const category_id my_cid;
     protected: const int my_qd;
 
     protected: io_queue(enum category_id cid, int qd);
     public: virtual ~io_queue();
 
-    public: int qd() {
+    public: int qd() const {
         return my_qd;
     };
 
@@ -82,7 +87,7 @@ class io_queue
     public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: virtual int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
     // general control plane functions.
@@ -91,13 +96,17 @@ class io_queue
     // data plane functions
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;
     public: virtual int pop(dmtr_qtoken_t qt) = 0;
-    public: virtual int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) = 0;
-    public: virtual int drop(dmtr_qtoken_t qt) = 0;
+    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
+    public: virtual int drop(dmtr_qtoken_t qt);
 
     protected: static int set_non_blocking(int fd);
-    protected: int new_task(task *&t, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue * const q = NULL);
-    protected: int get_task(task *&t, dmtr_qtoken_t qt);
-    protected: int drop_task(dmtr_qtoken_t qt);
+    protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion);
+    private: int get_task(task *&t, dmtr_qtoken_t qt);
+    private: int drop_task(dmtr_qtoken_t qt);
+    protected: void init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const;
+    protected: void init_push_qresult(dmtr_qresult_t &qr_out) const;
+    protected: void init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
+    protected: void init_accept_qresult(dmtr_qresult_t &qr_out, int qd) const;
 };
 
 } // namespace dmtr

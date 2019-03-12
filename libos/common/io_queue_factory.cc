@@ -13,7 +13,7 @@ int dmtr::io_queue_factory::register_ctor(enum io_queue::category_id cid, ctor_t
     return 0;
 }
 
-int dmtr::io_queue_factory::construct(io_queue *&q_out, enum io_queue::category_id cid, int qd) const {
+int dmtr::io_queue_factory::construct(std::unique_ptr<io_queue> &q_out, enum io_queue::category_id cid, int qd) const {
     auto it = my_ctors.find(cid);
     DMTR_TRUE(ENOENT, it != my_ctors.cend());
     ctor_type f = it->second;

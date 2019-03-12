@@ -169,3 +169,11 @@ int dmtr_sztou16(uint16_t *to_arg, size_t from_arg) {
     DMTR_CAST_UTOU(to_arg, uint16_t, from_arg, size_t);
     return 0;
 }
+
+int dmtr_u32tou16(uint16_t *to_arg, uint32_t from_arg) {
+    DMTR_NOTNULL(EINVAL, to_arg);
+
+    DMTR_CAST_UTOU(to_arg, uint16_t, from_arg, uint32_t);
+    return 0;
+}
+

@@ -33,8 +33,10 @@
 
 #include <libos/common/io_queue.hh>
 
+#include <memory>
 #include <queue>
 #include <rdma/rdma_cma.h>
+#include <unordered_set>
 
 namespace dmtr {
 
@@ -43,9 +45,15 @@ class rdma_queue : public io_queue {
     private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
 
+    private: struct metadata {
+        dmtr_header_t header;
+        uint32_t lengths[]; 
+    };
+
     // queued scatter gather arrays
-    private: std::queue<struct rdma_cm_id *> my_accept_queue;
-    private: std::queue<std::pair<void *, size_t>> my_recv_queue;
+    private: std::queue<struct rdma_cm_id *> my_pending_accepts;
+    private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
+    private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
 
     // rdma data structures
     // connection manager for this connection queue
@@ -53,14 +61,13 @@ class rdma_queue : public io_queue {
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
-    private: int complete_recv(dmtr_qtoken_t qt, void * const buf, size_t len);
     private: int service_event_queue();
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
     private: int on_work_completed(const struct ibv_wc &wc);
     private: int setup_rdma_qp();
 
     private: rdma_queue(int qd);
-    public: static int new_object(io_queue *&q_out, int qd);
+    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~rdma_queue();
 
@@ -69,15 +76,14 @@ class rdma_queue : public io_queue {
     public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(io_queue *&q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
-    public: int drop(dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);
     private: static int rdma_create_event_channel(struct rdma_event_channel *&channel_out);
@@ -105,8 +111,6 @@ class rdma_queue : public io_queue {
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
-    private: int service_accept_queue(task &t);
-    private: int pop_accept(struct rdma_cm_id *&id_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();
     private: int service_recv_queue(void *&buf_out, size_t &len_out);

@@ -43,6 +43,8 @@ int dmtr_init(int argc, char *argv[])
 {
     DMTR_NULL(EINVAL, ioq_api.get());
 
+    DMTR_OK(dmtr::lwip_queue::init_dpdk(argc, argv));
+
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
     ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);

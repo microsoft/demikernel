@@ -8,7 +8,7 @@ target_add_hoard(dmtr-libos-lwip hoard-vanilla)
 target_add_dpdk(dmtr-libos-lwip)
 target_include_directories(dmtr-libos-lwip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR} )
 
-target_link_libraries(dmtr-libos-lwip Threads::Threads)
+target_link_libraries(dmtr-libos-lwip Threads::Threads yaml-cpp boost_program_options)
 
 # the `--whole-archive` option is needed to ensure that symbols such as
 # `zeus_queue` get exported from the resulting shared object. object
@@ -18,3 +18,7 @@ target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive" dmtr-libos-common "-
 # todo: these options should not be passed directly to
 # `target_link_libraries()`. we should use `find_library()` instead.
 target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
+
+# `boost_context` and `boost_coroutine` must follow `dmtr-libos-common`
+target_link_libraries(dmtr-libos-lwip boost_context boost_coroutine)
+
