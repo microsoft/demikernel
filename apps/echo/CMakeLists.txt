@@ -98,19 +98,11 @@ endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
 add_executable(rdma-echo-server ${TCP_ECHO_SERVER_SOURCES})
-<<<<<<< HEAD
-target_link_libraries(rdma-echo-server dmtr-libos-rdma rdmacm ibverbs Boost::program_options)
-
-# RDMA client
-add_executable(rdma-echo-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(rdma-echo-client dmtr-libos-rdma rdmacm ibverbs Boost::program_options Boost::chrono)
-=======
 target_link_libraries(rdma-echo-server dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client
 add_executable(rdma-echo-client ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(rdma-echo-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
->>>>>>> origin/master
 
 # RDMA client & server
 add_custom_target(rdma-echo)
