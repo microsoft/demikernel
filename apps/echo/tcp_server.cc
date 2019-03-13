@@ -100,8 +100,8 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_stoptimer(pop_timer));
         DMTR_OK(dmtr_drop(qt));
-        DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
-        DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
+        assert(DMTR_OPC_POP == qr.qr_opcode);
+        assert(qr.qr_value.sga.sga_numsegs == 1);
 
         //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
         DMTR_OK(dmtr_starttimer(push_timer));
