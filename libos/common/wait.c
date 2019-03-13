@@ -14,7 +14,7 @@ int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     return ret;
 }
 
-int dmtr_wait_any(dmtr_qresult_t *qr_out, dmtr_qtoken_t qts[], int num_qts) {
+int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
     while (1) {
         for (int i = 0; i < num_qts; i++) {
             int ret = dmtr_poll(qr_out, qts[i]);
@@ -23,6 +23,8 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, dmtr_qtoken_t qts[], int num_qts) {
                     DMTR_OK(dmtr_drop(qts[i]));
                 if (qr_out != NULL)
                     qr_out->qr_qt = qts[i];
+                if (ready_offset != NULL)
+                    *ready_offset = i;
                 return ret;
             }
         }

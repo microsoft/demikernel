@@ -132,8 +132,10 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         int new_fd = -1;
         int ret = EAGAIN;
+        sockaddr_in addr;
+        socklen_t len;
         while (EAGAIN == ret) {
-            ret = accept(new_fd, my_fd, NULL, NULL);
+            ret = accept(new_fd, my_fd, &addr, &len);
             yield();
         }
 
@@ -150,7 +152,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd);
+        init_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 

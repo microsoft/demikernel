@@ -177,7 +177,9 @@ void dmtr::io_queue::init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray
     qr_out.qr_value.sga = sga;
 }
 
-void dmtr::io_queue::init_accept_qresult(dmtr_qresult_t &qr_out, int qd) const {
+void dmtr::io_queue::init_accept_qresult(dmtr_qresult_t &qr_out, int qd, sockaddr_in addr, socklen_t len) const {
     init_qresult(qr_out, DMTR_OPC_ACCEPT);
-    qr_out.qr_value.qd = qd;
+    qr_out.qr_value.ares.qd = qd;
+    qr_out.qr_value.ares.addr = addr;
+    qr_out.qr_value.ares.len = len;
 }

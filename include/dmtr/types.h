@@ -41,30 +41,29 @@ typedef enum dmtr_opcode {
     DMTR_OPC_ACCEPT
 } dmtr_opcode_t;
 
+typedef struct dmtr_accept_result {
+    int qd;
+    struct sockaddr_in addr;
+    socklen_t len;
+} dmtr_accept_result;
+    
 typedef struct dmtr_qresult {
     enum dmtr_opcode qr_opcode;
     int qr_qd;
     dmtr_qtoken_t qr_qt;
     union {
         dmtr_sgarray_t sga;
-        int qd;
+        dmtr_accept_result ares;
     } qr_value;
 } dmtr_qresult_t;
-
+    
 // todo: move to <dmtr/libos/common/types.hh>
 typedef struct dmtr_header {
     uint32_t h_magic;
     uint32_t h_bytes;
     uint32_t h_sgasegs;
 } dmtr_header_t;
-
-typedef struct dmtr_wait_completion {
-    dmtr_sgarray_t sga_out;
-    dmtr_qtoken_t qt_out;
-    int qt_idx_out;
-    int qd_out;
-} dmtr_wait_completion_t;
-    
+   
 #ifdef __cplusplus
 }
 #endif

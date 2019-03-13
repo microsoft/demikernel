@@ -213,10 +213,10 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         default:
             // if there's a failure on an accept token, we remove the queue we created at the beginning of the operation.
             if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-                DMTR_OK(remove_queue(qr.qr_value.qd));
+                DMTR_OK(remove_queue(qr.qr_value.ares.qd));
                 DMTR_NOTNULL(EINVAL, qr_out);
                 *qr_out = qr;
-                qr_out->qr_value.qd = 0;
+                qr_out->qr_value.ares.qd = 0;
             }
             DMTR_FAIL(ret);
         case EAGAIN:
