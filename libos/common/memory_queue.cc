@@ -44,9 +44,9 @@ int dmtr::memory_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
-    std::lock_guard<std::mutex> lock(my_lock);
+    std::lock_guard<std::recursive_mutex> lock(my_lock);
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        std::lock_guard<std::mutex> lock(my_lock);
+                //std::lock_guard<std::recursive_mutex> lock(my_lock);
         my_ready_queue.push(sga);
         init_push_qresult(qr_out);
         return 0;
@@ -56,12 +56,12 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
 int
 dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
-    std::lock_guard<std::mutex> lock(my_lock);
+    std::lock_guard<std::recursive_mutex> lock(my_lock);
     DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         dmtr_sgarray_t sga;
         while (true) {
             {
-                std::lock_guard<std::mutex> lock(my_lock);
+                // std::lock_guard<std::recursive_mutex> lock(my_lock);
                 if (!my_ready_queue.empty()) {
                     sga = my_ready_queue.front();
                     my_ready_queue.pop();
@@ -79,13 +79,13 @@ dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
 }
 
 int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
-    std::lock_guard<std::mutex> lock(my_lock);
+    std::lock_guard<std::recursive_mutex> lock(my_lock);
     return io_queue::poll(qr_out, qt);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt)
 {
-    std::lock_guard<std::mutex> lock(my_lock);
+    std::lock_guard<std::recursive_mutex> lock(my_lock);
     return io_queue::drop(qt);
 }
 

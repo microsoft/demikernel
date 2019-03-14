@@ -135,7 +135,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         sockaddr_in addr;
         socklen_t len;
         while (EAGAIN == ret) {
-            ret = accept(new_fd, my_fd, &addr, &len);
+            ret = accept(new_fd, my_fd, (sockaddr *)&addr, &len);
             yield();
         }
 

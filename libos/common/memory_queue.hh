@@ -45,7 +45,7 @@ namespace dmtr {
 class memory_queue : public io_queue
 {
     private: std::queue<dmtr_sgarray_t> my_ready_queue;
-    private: std::mutex my_lock;
+    private: std::recursive_mutex my_lock;
 
     private: memory_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);

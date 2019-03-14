@@ -2,7 +2,7 @@
 
 set -e
 
-APT_PACKAGES="cmake-curses-gui cmake-qt-gui build-essential libgmp-dev libnuma-dev libmnl-dev libelf-dev libboost-dev libboost-program-options-dev libboost-coroutine-dev libboost-system-dev libyaml-cpp-dev"
+APT_PACKAGES="cmake-curses-gui cmake-qt-gui build-essential libgmp-dev libnuma-dev libmnl-dev libelf-dev libboost-dev libboost-program-options-dev libboost-coroutine-dev libboost-system-dev libyaml-cpp-dev libboost-chrono-dev"
 
 repo_root=$(git rev-parse --show-toplevel)
 
