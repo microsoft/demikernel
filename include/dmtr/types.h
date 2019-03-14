@@ -12,7 +12,8 @@ extern "C" {
 #define DMTR_SGARRAY_MAXSIZE 10
 #define DMTR_HEADER_MAGIC 0x10102010
 
-#define QT2QD(qtoken) qtoken >> 32 
+#define QT2QD(qtoken) ((qtoken) >> 32)
+
     
 typedef uint64_t dmtr_qtoken_t;
 typedef struct dmtr_timer dmtr_timer_t;
@@ -45,7 +46,7 @@ typedef struct dmtr_accept_result {
     int qd;
     struct sockaddr_in addr;
     socklen_t len;
-} dmtr_accept_result;
+} dmtr_accept_result_t;
     
 typedef struct dmtr_qresult {
     enum dmtr_opcode qr_opcode;
@@ -53,7 +54,7 @@ typedef struct dmtr_qresult {
     dmtr_qtoken_t qr_qt;
     union {
         dmtr_sgarray_t sga;
-        dmtr_accept_result ares;
+        dmtr_accept_result_t ares;
     } qr_value;
 } dmtr_qresult_t;
     

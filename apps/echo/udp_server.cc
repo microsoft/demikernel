@@ -86,7 +86,6 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_stoptimer(pop_timer));
-        DMTR_OK(dmtr_drop(qt));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
 
@@ -95,7 +94,6 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_stoptimer(push_timer));
-        DMTR_OK(dmtr_drop(qt));
 
         //fprintf(stderr, "send complete.\n");
         free(qr.qr_value.sga.sga_buf);

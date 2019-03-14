@@ -133,9 +133,9 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         int new_fd = -1;
         int ret = EAGAIN;
         sockaddr_in addr;
-        socklen_t len;
+        socklen_t len = sizeof(addr);
         while (EAGAIN == ret) {
-            ret = accept(new_fd, my_fd, &addr, &len);
+            ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
             yield();
         }
 
@@ -162,6 +162,8 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
 
 int dmtr::posix_queue::accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen)
 {
+    DMTR_TRUE(EINVAL, NULL == saddr || (addrlen != NULL && 0 < *addrlen));
+
     int ret = ::accept4(fd, saddr, addrlen, SOCK_NONBLOCK);
     if (ret == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -305,11 +307,9 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         }
         //std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
 
-        if (bytes_written != message_bytes) {
-            return ENOTSUP;
-        }
+        DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
-        init_push_qresult(qr_out);
+        init_push_qresult(qr_out, sga);
         return 0;
     }));
 

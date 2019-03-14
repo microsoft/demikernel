@@ -388,7 +388,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        init_push_qresult(qr_out);
+        init_push_qresult(qr_out, sga);
         return 0;
     }));
 
