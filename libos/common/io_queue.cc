@@ -118,7 +118,7 @@ int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
-    printf("Set non blocking\n");
+    //printf("Set non blocking\n");
     int ret = fcntl(fd, F_GETFL);
     if (-1 == ret) {
         return errno;

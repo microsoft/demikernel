@@ -50,7 +50,7 @@ class io_queue_api
     private: io_queue_api();
     private: int get_queue(io_queue *&q_out, int qd) const;
     private: int new_qd();
-    private: dmtr_qtoken_t new_qtoken(int qd);
+    private: int new_qtoken(dmtr_qtoken_t &qt_out, int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
     private: int insert_queue(std::unique_ptr<io_queue> &q);
     private: int remove_queue(int qd);
