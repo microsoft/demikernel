@@ -118,7 +118,7 @@ int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
-    printf("Set non blocking\n");
+    //printf("Set non blocking\n");
     int ret = fcntl(fd, F_GETFL);
     if (-1 == ret) {
         return errno;
@@ -168,8 +168,9 @@ void dmtr::io_queue::init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) 
     qr_out.qr_opcode = opcode;
 }
 
-void dmtr::io_queue::init_push_qresult(dmtr_qresult_t &qr_out) const {
+void dmtr::io_queue::init_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
     init_qresult(qr_out, DMTR_OPC_PUSH);
+    qr_out.qr_value.sga = sga;
 }
 
 void dmtr::io_queue::init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {

@@ -104,7 +104,7 @@ class io_queue
     private: int get_task(task *&t, dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
     protected: void init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const;
-    protected: void init_push_qresult(dmtr_qresult_t &qr_out) const;
+    protected: void init_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
     protected: void init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
     protected: void init_accept_qresult(dmtr_qresult_t &qr_out, int qd, sockaddr_in addr, socklen_t len) const;
 };
