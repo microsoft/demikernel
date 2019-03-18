@@ -64,8 +64,78 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
     int fd = ::socket(domain, type, protocol);
     if (fd == -1) {
         return errno;
-           ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
-           
+    }
+
+    //fprintf(stderr, "Allocating socket: %d\n", fd);
+    switch (type) {
+        default:
+            return ENOTSUP;
+        case SOCK_STREAM:
+            DMTR_OK(set_tcp_nodelay(fd));
+            my_tcp_flag = true;
+            break;
+        case SOCK_DGRAM:
+            DMTR_OK(set_non_blocking(fd));
+            my_tcp_flag = false;
+            break;
+    }
+
+    my_fd = fd;
+    return 0;
+}
+
+int
+dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    return ::getsockname(my_fd, saddr, size);
+}
+
+int
+dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
+{
+    DMTR_TRUE(EINVAL, my_fd != -1);
+
+    // Set SO_REUSEADDR
+    const int n = 1;
+    int ret = ::setsockopt(my_fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            break;
+        case -1:
+            fprintf(stderr,
+                "Failed to set SO_REUSEADDR on TCP listening socket");
+            return errno;
+    }
+
+    ret = ::bind(my_fd, saddr, size);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            return 0;
+        case -1:
+            return errno;
+    }
+}
+
+int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd) {
+    q_out = NULL;
+    DMTR_TRUE(EPERM, my_listening_flag);
+    DMTR_TRUE(EPERM, my_tcp_flag);
+
+    auto * const q = new posix_queue(new_qd);
+    DMTR_TRUE(ENOMEM, q != NULL);
+    auto qq = std::unique_ptr<io_queue>(q);
+
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        int new_fd = -1;
+        int ret = EAGAIN;
+        sockaddr_in addr;
+        socklen_t len;
+        while (EAGAIN == ret) {
+            ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
             yield();
         }
 
