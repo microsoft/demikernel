@@ -66,6 +66,10 @@ int dmtr::io_queue::socket(int domain, int type, int protocol) {
     return ENOTSUP;
 }
 
+int dmtr::io_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
+    return ENOTSUP;
+}
+
 int dmtr::io_queue::listen(int backlog) {
     return ENOTSUP;
 }
@@ -114,13 +118,14 @@ int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
+    //printf("Set non blocking\n");
     int ret = fcntl(fd, F_GETFL);
     if (-1 == ret) {
         return errno;
     }
 
     int flags = ret;
-    if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK)) {
+    if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK, 1)) {
         return errno;
     }
 
@@ -163,8 +168,9 @@ void dmtr::io_queue::init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) 
     qr_out.qr_opcode = opcode;
 }
 
-void dmtr::io_queue::init_push_qresult(dmtr_qresult_t &qr_out) const {
+void dmtr::io_queue::init_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
     init_qresult(qr_out, DMTR_OPC_PUSH);
+    qr_out.qr_value.sga = sga;
 }
 
 void dmtr::io_queue::init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
@@ -172,7 +178,9 @@ void dmtr::io_queue::init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray
     qr_out.qr_value.sga = sga;
 }
 
-void dmtr::io_queue::init_accept_qresult(dmtr_qresult_t &qr_out, int qd) const {
+void dmtr::io_queue::init_accept_qresult(dmtr_qresult_t &qr_out, int qd, sockaddr_in addr, socklen_t len) const {
     init_qresult(qr_out, DMTR_OPC_ACCEPT);
-    qr_out.qr_value.qd = qd;
+    qr_out.qr_value.ares.qd = qd;
+    qr_out.qr_value.ares.addr = addr;
+    qr_out.qr_value.ares.len = len;
 }

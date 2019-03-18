@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * common/library.h
+ * common/io_queue_api.hh
  *   dmtr general-purpose queue library implementation
  *
  * Copyright 2018 Irene Zhang  <irene.zhang@microsoft.com>
@@ -50,13 +50,13 @@ class io_queue_api
     private: io_queue_api();
     private: int get_queue(io_queue *&q_out, int qd) const;
     private: int new_qd();
-    private: dmtr_qtoken_t new_qtoken(int qd);
+    private: int new_qtoken(dmtr_qtoken_t &qt_out, int qd);
     private: int new_queue(io_queue *&q_out, enum io_queue::category_id cid);
     private: int insert_queue(std::unique_ptr<io_queue> &q);
     private: int remove_queue(int qd);
 
-    private: int qttoqd(dmtr_qtoken_t qtok) {
-        return static_cast<int>(qtok >> 32);
+    public: int qttoqd(dmtr_qtoken_t qtok) {
+        return static_cast<int>(QT2QD(qtok));
     }
 
     public: static int init(io_queue_api *&newobj_out, int argc, char *argv[]);
@@ -69,6 +69,7 @@ class io_queue_api
     // ================================================
 
     public: int socket(int &qd_out, int domain, int type, int protocol);
+    public: int getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size);
     public: int bind(int qd, const struct sockaddr * const saddr, socklen_t size);
     public: int accept(dmtr_qtoken_t &qtok_out, int sockqd);
     public: int listen(int qd, int backlog);

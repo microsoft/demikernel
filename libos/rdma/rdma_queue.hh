@@ -73,6 +73,7 @@ class rdma_queue : public io_queue {
 
     // network functions
     public: int socket(int domain, int type, int protocol);
+    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
     public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);

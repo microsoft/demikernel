@@ -579,7 +579,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
             }
         }
 
-        init_push_qresult(qr_out);
+        init_push_qresult(qr_out, sga);
         return 0;
     }));
 

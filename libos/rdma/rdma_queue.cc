@@ -190,6 +190,12 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
     }
 }
 
+int
+dmtr::rdma_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    return ::getsockname(my_rdma_id->channel->fd, saddr, size);
+}
+
 int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
@@ -382,7 +388,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        init_push_qresult(qr_out);
+        init_push_qresult(qr_out, sga);
         return 0;
     }));
 

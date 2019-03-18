@@ -1,8 +1,3 @@
-#include <dmtr/annot.h>
-#include <dmtr/libos.h>
-#include <libos/common/mem.h>
-#include <dmtr/wait.h>
-
 #include <arpa/inet.h>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
@@ -10,7 +5,11 @@
 #include <boost/program_options/variables_map.hpp>
 #include <cassert>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/libos.h>
+#include <dmtr/wait.h>
 #include <iostream>
+#include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
@@ -88,9 +87,8 @@ int main(int argc, char *argv[])
     dmtr_qresult_t qr = {};
     DMTR_OK(dmtr_accept(&qt, lqd));
     DMTR_OK(dmtr_wait(&qr, qt));
-    DMTR_OK(dmtr_drop(qt));
     DMTR_TRUE(EPERM, DMTR_OPC_ACCEPT == qr.qr_opcode);
-    int qd = qr.qr_value.qd;
+    int qd = qr.qr_value.ares.qd;
     std::cerr << "Connection accepted." << std::endl;
 
     // process ITERATION_COUNT packets from client
@@ -99,7 +97,6 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_stoptimer(pop_timer));
-        DMTR_OK(dmtr_drop(qt));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
 
@@ -108,7 +105,6 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_stoptimer(push_timer));
-        DMTR_OK(dmtr_drop(qt));
 
         //fprintf(stderr, "send complete.\n");
         free(qr.qr_value.sga.sga_buf);

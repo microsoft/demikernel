@@ -85,6 +85,12 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 }
 
 int
+dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    return ::getsockname(my_fd, saddr, size);
+}
+
+int
 dmtr::posix_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
@@ -126,8 +132,10 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         int new_fd = -1;
         int ret = EAGAIN;
+        sockaddr_in addr;
+        socklen_t len;
         while (EAGAIN == ret) {
-            ret = accept(new_fd, my_fd, NULL, NULL);
+            ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
             yield();
         }
 
@@ -144,7 +152,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd);
+        init_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
@@ -154,6 +162,8 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
 
 int dmtr::posix_queue::accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen)
 {
+    DMTR_TRUE(EINVAL, NULL == saddr || (addrlen != NULL && 0 < *addrlen));
+
     int ret = ::accept4(fd, saddr, addrlen, SOCK_NONBLOCK);
     if (ret == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -185,12 +195,7 @@ dmtr::posix_queue::listen(int backlog)
             return errno;
         case 0:
             my_listening_flag = true;
-            // Always put it in non-blocking mode
-            if (-1 == fcntl(my_fd, F_SETFL, O_NONBLOCK, 1)) {
-                fprintf(stderr,
-                    "Failed to set O_NONBLOCK on outgoing dmtr socket");
-                return errno;
-            }
+            DMTR_OK(set_non_blocking(my_fd));
             return 0;
     }
 }
@@ -208,6 +213,7 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
             return errno;
         case 0: {
             DMTR_OK(set_non_blocking(my_fd));
+
             void *p = malloc(size);
             DMTR_TRUE(ENOMEM, p != NULL);
             memcpy(p, saddr, size);
@@ -301,11 +307,9 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         }
         //std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
 
-        if (bytes_written != message_bytes) {
-            return ENOTSUP;
-        }
+        DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
-        init_push_qresult(qr_out);
+        init_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -428,6 +432,7 @@ int
 dmtr::posix_queue::set_tcp_nodelay(int fd)
 {
     const int n = 1;
+    //printf("Setting the nagle algorithm off\n");
     if (-1 == ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &n, sizeof(n))) {
         return errno;
     }

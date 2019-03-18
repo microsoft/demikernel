@@ -33,13 +33,16 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     return 0;
 }
 
-dmtr_qtoken_t dmtr::io_queue_api::new_qtoken(int qd) {
+int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     uint32_t u = ++my_qt_counter;
     if (0 == u) {
         DMTR_PANIC("Queue token overflow");
     }
 
-    return static_cast<uint64_t>(u) | (static_cast<uint64_t>(qd) << 32);
+    qt_out = static_cast<uint64_t>(u) | (static_cast<uint64_t>(qd) << 32);
+    return 0;
 }
 
 int dmtr::io_queue_api::new_qd() {
@@ -77,6 +80,8 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
 }
 
 int dmtr::io_queue_api::remove_queue(int qd) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;
@@ -112,7 +117,19 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
     return 0;
 }
 
+int dmtr::io_queue_api::getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
+    io_queue *q = NULL;
+    DMTR_OK(get_queue(q, qd));
+    DMTR_OK(q->getsockname(saddr, size));
+
+    return 0;
+};
+
 int dmtr::io_queue_api::bind(int qd, const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     DMTR_OK(q->bind(saddr, size));
@@ -122,20 +139,24 @@ int dmtr::io_queue_api::bind(int qd, const struct sockaddr * const saddr, sockle
 
 int dmtr::io_queue_api::accept(dmtr_qtoken_t &qtok_out, int sockqd) {
     qtok_out = 0;
+    DMTR_TRUE(EINVAL, sockqd != 0);
 
     io_queue *sockq = NULL;
     DMTR_OK(get_queue(sockq, sockqd));
 
     int qd = new_qd();
-    auto qtok = new_qtoken(sockqd);
+    dmtr_qtoken_t qt;
+    DMTR_OK(new_qtoken(qt, sockqd));
     std::unique_ptr<io_queue> q;
-    DMTR_OK(sockq->accept(q, qtok, qd));
+    DMTR_OK(sockq->accept(q, qt, qd));
     DMTR_OK(insert_queue(q));
-    qtok_out = qtok;
+    qtok_out = qt;
     return 0;
 }
 
 int dmtr::io_queue_api::listen(int qd, int backlog) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     DMTR_OK(q->listen(backlog));
@@ -144,6 +165,8 @@ int dmtr::io_queue_api::listen(int qd, int backlog) {
 }
 
 int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     int ret = q->connect(saddr, size);
@@ -160,6 +183,8 @@ int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, soc
 }
 
 int dmtr::io_queue_api::close(int qd) {
+    DMTR_TRUE(EINVAL, qd != 0);
+
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     int ret = q->close();
@@ -171,29 +196,35 @@ int dmtr::io_queue_api::close(int qd) {
 
 int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga) {
     qtok_out = 0;
+    DMTR_TRUE(EINVAL, qd != 0);
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    auto qtok = new_qtoken(qd);
-    DMTR_OK(q->push(qtok, sga));
+    dmtr_qtoken_t qt;
+    DMTR_OK(new_qtoken(qt, qd));
+    DMTR_OK(q->push(qt, sga));
 
-    qtok_out = qtok;
+    qtok_out = qt;
     return 0;
 }
 
 int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     qtok_out = 0;
+    DMTR_TRUE(EINVAL, qd != 0);
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    auto qtok = new_qtoken(qd);
-    DMTR_OK(q->pop(qtok));
+    dmtr_qtoken_t qt;
+    DMTR_OK(new_qtoken(qt, qd));
+    DMTR_OK(q->pop(qt));
 
-    qtok_out = qtok;
+    qtok_out = qt;
     return 0;
 }
 
 int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
+    DMTR_TRUE(EINVAL, qt != 0);
+
     int qd = qttoqd(qt);
 
     io_queue *q = NULL;
@@ -205,13 +236,15 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
         default:
             // if there's a failure on an accept token, we remove the queue we created at the beginning of the operation.
             if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-                DMTR_OK(remove_queue(qr.qr_value.qd));
+                DMTR_OK(remove_queue(qr.qr_value.ares.qd));
                 DMTR_NOTNULL(EINVAL, qr_out);
                 *qr_out = qr;
-                qr_out->qr_value.qd = 0;
+                qr_out->qr_value.ares.qd = 0;
             }
             DMTR_FAIL(ret);
         case EAGAIN:
+        case ECONNABORTED:
+        case ECONNRESET:
             return ret;
         case 0:
             // callers that know they're waiting on a push token can specify `NULL` for `qr_out` without causing a fuss.
@@ -226,6 +259,8 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
 }
 
 int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {
+    DMTR_TRUE(EINVAL, qt != 0);
+
     int qd = qttoqd(qt);
 
     io_queue *q = NULL;

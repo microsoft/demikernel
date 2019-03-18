@@ -68,6 +68,14 @@ int dmtr_socket(int *qd_out, int domain, int type, int protocol)
     return ioq_api->socket(*qd_out, domain, type, protocol);
 }
 
+int dmtr_getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size)
+{
+    DMTR_NOTNULL(EINVAL, qd);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->getsockname(qd, saddr, size);
+}
+
 int dmtr_listen(int qd, int backlog)
 {
     DMTR_NOTNULL(EPERM, ioq_api.get());
