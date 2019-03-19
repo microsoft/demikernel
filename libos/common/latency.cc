@@ -279,7 +279,7 @@ Latency_Dump(FILE *f, dmtr_timer_t *l)
 
 typedef dmtr_timer_t dmtr_timer_t;
 
-int dmtr_newtimer(dmtr_timer_t **timer_out, const char *name) {
+int dmtr_new_timer(dmtr_timer_t **timer_out, const char *name) {
     DMTR_NOTNULL(EINVAL, timer_out);
     *timer_out = NULL;
     DMTR_NOTNULL(EINVAL, name);
@@ -297,14 +297,14 @@ int dmtr_newtimer(dmtr_timer_t **timer_out, const char *name) {
     return 0;
 }
 
-int dmtr_starttimer(dmtr_timer_t *timer) {
+int dmtr_start_timer(dmtr_timer_t *timer) {
     DMTR_NOTNULL(EINVAL, timer);
 
     timer->timer.start();
     return 0;
 }
 
-int dmtr_stoptimer(dmtr_timer_t *timer) {
+int dmtr_stop_timer(dmtr_timer_t *timer) {
     DMTR_NOTNULL(EINVAL, timer);
 
     auto elapsed = timer->timer.get_elapsed_ns();
@@ -312,12 +312,12 @@ int dmtr_stoptimer(dmtr_timer_t *timer) {
     return 0;
 }
 
-int dmtr_dumptimer(FILE *f, dmtr_timer_t *timer) {
+int dmtr_dump_timer(FILE *f, dmtr_timer_t *timer) {
     DMTR_OK(Latency_Dump(f, timer));
     return 0;
 }
 
-int dmtr_deltimer(dmtr_timer_t **timer) {
+int dmtr_delete_timer(dmtr_timer_t **timer) {
     DMTR_NOTNULL(EINVAL, timer);
 
     delete *timer;
