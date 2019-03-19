@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
-    saddr.sin_port = port;
+    saddr.sin_port = htons(port);
 
     DMTR_OK(dmtr_init(argc, argv));
 
