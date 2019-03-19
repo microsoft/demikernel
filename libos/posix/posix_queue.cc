@@ -87,7 +87,19 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 int
 dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
 {
-    return ::getsockname(my_fd, saddr, size);
+    DMTR_NOTNULL(EINVAL, saddr);
+    DMTR_NOTNULL(EINVAL, size);
+    DMTR_TRUE(ERANGE, *size > 0);
+
+    int ret = ::getsockname(my_fd, saddr, size);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            return 0;
+        case -1:
+            return errno;
+    }
 }
 
 int
@@ -133,7 +145,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         int new_fd = -1;
         int ret = EAGAIN;
         sockaddr_in addr;
-        socklen_t len;
+        socklen_t len = 0;
         while (EAGAIN == ret) {
             ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
             yield();
@@ -152,7 +164,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd, (sockaddr *)&addr, &len);
+        init_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
