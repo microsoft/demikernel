@@ -234,7 +234,12 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         params.rnr_retry_count = 7;
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
-        init_accept_qresult(qr_out, new_qd);
+        // get the address
+        sockaddr_in addr;
+        socklen_t len;
+        DMTR_OK(::getsockname(new_rdma_id->channel->fd, addr, len));
+        
+        init_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
