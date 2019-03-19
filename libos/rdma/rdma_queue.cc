@@ -235,9 +235,9 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
         // get the address
-        sockaddr_in addr;
-        socklen_t len;
-        DMTR_OK(::getsockname(new_rdma_id->channel->fd, addr, len));
+        sockaddr_in addr = {};
+        socklen_t len = sizeof(addr);
+        DMTR_OK(getsockname(new_rdma_id->channel->fd, reinterpret_cast< struct sockaddr * >(&addr), len));
         
         init_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
@@ -840,5 +840,20 @@ int dmtr::rdma_queue::unpin(const dmtr_sgarray_t &sga) {
     }
 
     return 0;
+}
+
+int dmtr::rdma_queue::getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen) {
+    DMTR_TRUE(EINVAL, saddr != NULL);
+    DMTR_TRUE(ERANGE, addrlen > 0);
+
+    int ret = ::getsockname(sockfd, saddr, &addrlen);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            return 0;
+        case -1:
+            return errno;
+    }
 }
 
