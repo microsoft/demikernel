@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
-    saddr.sin_port = port;
+    saddr.sin_port = htons(port);
     if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
         std::cerr << "Unable to parse IP address." << std::endl;
         return -1;

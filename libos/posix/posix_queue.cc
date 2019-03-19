@@ -87,7 +87,19 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 int
 dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
 {
-    return ::getsockname(my_fd, saddr, size);
+    DMTR_NOTNULL(EINVAL, saddr);
+    DMTR_NOTNULL(EINVAL, size);
+    DMTR_TRUE(ERANGE, *size > 0);
+
+    int ret = ::getsockname(my_fd, saddr, size);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            return 0;
+        case -1:
+            return errno;
+    }
 }
 
 int

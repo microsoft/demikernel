@@ -274,7 +274,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     // start the ethernet port.
     DMTR_OK(rte_eth_dev_start(port_id));
 
-    DMTR_OK(rte_eth_promiscuous_enable(port_id));
+    //DMTR_OK(rte_eth_promiscuous_enable(port_id));
 
     // disable the rx/tx flow control
     // todo: why?

@@ -70,7 +70,7 @@ int dmtr_socket(int *qd_out, int domain, int type, int protocol)
 
 int dmtr_getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size)
 {
-    DMTR_NOTNULL(EINVAL, qd);
+    DMTR_NONZERO(EINVAL, qd);
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->getsockname(qd, saddr, size);

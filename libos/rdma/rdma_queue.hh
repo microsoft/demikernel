@@ -107,6 +107,8 @@ class rdma_queue : public io_queue {
     private: static int ibv_post_send(struct ibv_send_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_send_wr * const wr);
     private: static int ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_qp * const qp, struct ibv_recv_wr * const wr);
 
+    private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
+
     private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
