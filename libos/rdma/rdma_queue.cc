@@ -193,7 +193,14 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
 int
 dmtr::rdma_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
 {
-    return ::getsockname(my_rdma_id->channel->fd, saddr, size);
+    // can't run getsockname on rdma socket
+    sockaddr *addr = rdma_get_local_addr(my_rdma_id);
+    if (addr != NULL) {
+	memcpy(saddr, addr, sizeof(sockaddr_in));
+	*size = sizeof(sockaddr_in);
+	return 0; // eok
+    }
+    return -1;
 }
 
 int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
@@ -235,11 +242,9 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
         // get the address
-        sockaddr_in addr;
-        socklen_t len;
-        DMTR_OK(::getsockname(new_rdma_id->channel->fd, addr, len));
-        
-        init_accept_qresult(qr_out, new_qd, addr, len);
+	sockaddr *saddr;
+	rdma_get_peer_addr(saddr, new_rdma_id);
+        init_accept_qresult(qr_out, new_qd, *(sockaddr_in *)saddr, sizeof(sockaddr_in));
         return 0;
     }));
 
