@@ -152,7 +152,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd, addr, len);
+        init_accept_qresult(qr_out, new_qd, (sockaddr *)&addr, &len);
         return 0;
     }));
 
