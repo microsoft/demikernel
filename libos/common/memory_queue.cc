@@ -48,7 +48,7 @@ dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
                 //std::lock_guard<std::recursive_mutex> lock(my_lock);
         my_ready_queue.push(sga);
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
     return 0;
@@ -72,7 +72,7 @@ dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
             yield();
         }
 
-        init_pop_qresult(qr_out, sga);
+        set_pop_qresult(qr_out, sga);
         return 0;
     }));
     return 0;

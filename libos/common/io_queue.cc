@@ -137,7 +137,8 @@ int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::compl
 
     std::unique_ptr<task> t;
     DMTR_OK(task::new_object(t, [=](task::yield_type &yield, dmtr_qresult_t &qr) {
-        init_qresult(qr, opcode);
+        qr = {};
+        set_qresult(qr, opcode);
         qr.qr_qt = qt;
         return completion(yield, qr);
     }));
@@ -163,24 +164,23 @@ int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
     return 0;
 }
 
-void dmtr::io_queue::init_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const {
-    qr_out = {};
+void dmtr::io_queue::set_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const {
     qr_out.qr_qd = qd();
     qr_out.qr_opcode = opcode;
 }
 
-void dmtr::io_queue::init_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
-    init_qresult(qr_out, DMTR_OPC_PUSH);
+void dmtr::io_queue::set_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
+    set_qresult(qr_out, DMTR_OPC_PUSH);
     qr_out.qr_value.sga = sga;
 }
 
-void dmtr::io_queue::init_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
-    init_qresult(qr_out, DMTR_OPC_POP);
+void dmtr::io_queue::set_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
+    set_qresult(qr_out, DMTR_OPC_POP);
     qr_out.qr_value.sga = sga;
 }
 
-void dmtr::io_queue::init_accept_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const {
-    init_qresult(qr_out, DMTR_OPC_ACCEPT);
+void dmtr::io_queue::set_accept_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const {
+    set_qresult(qr_out, DMTR_OPC_ACCEPT);
     qr_out.qr_value.ares.qd = qd;
     qr_out.qr_value.ares.addr = addr;
     qr_out.qr_value.ares.len = len;

@@ -244,7 +244,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         // get the address
 	sockaddr *saddr;
 	rdma_get_peer_addr(saddr, new_rdma_id);
-        init_accept_qresult(qr_out, new_qd, *(sockaddr_in *)saddr, sizeof(sockaddr_in));
+        set_accept_qresult(qr_out, new_qd, *(sockaddr_in *)saddr, sizeof(sockaddr_in));
     }));
 
     q_out = std::move(qq);
@@ -397,7 +397,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -457,7 +457,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         }
 
         sga.sga_buf = buf;
-        init_pop_qresult(qr_out, sga);
+        set_pop_qresult(qr_out, sga);
         return 0;
     }));
 

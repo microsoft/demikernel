@@ -164,7 +164,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd, addr, len);
+        set_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
@@ -321,7 +321,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
         DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -426,7 +426,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         buf.release();
-        init_pop_qresult(qr_out, sga);
+        set_pop_qresult(qr_out, sga);
         return 0;
     }));
     return 0;
