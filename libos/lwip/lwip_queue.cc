@@ -21,6 +21,7 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/sga.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
@@ -446,6 +447,12 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         DMTR_TRUE(EPERM, our_dpdk_init_flag);
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
 
         const struct sockaddr_in *saddr = NULL;
         if (boost::none == my_default_peer) {

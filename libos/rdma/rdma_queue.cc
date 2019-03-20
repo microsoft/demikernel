@@ -36,6 +36,7 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/sga.h>
 #include <fcntl.h>
 #include <hoard/zeusrdma.h>
 #include <libos/common/mem.h>
@@ -323,6 +324,12 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
+
         size_t num_sge = 2 * sga.sga_numsegs + 1;
         struct ibv_sge sge[num_sge];
         size_t data_size = 0;

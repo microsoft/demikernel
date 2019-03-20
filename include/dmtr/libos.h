@@ -21,7 +21,7 @@ DMTR_EXPORT int dmtr_bind(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd);
 DMTR_EXPORT int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_close(int qd);
-DMTR_EXPORT int dmtr_is_qd_valid(int *flag, int qd);
+DMTR_EXPORT int dmtr_is_qd_valid(int *flag_out, int qd);
 
 DMTR_EXPORT int dmtr_push(
     dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga);

@@ -112,16 +112,16 @@ int dmtr_close(int qd)
     return ioq_api->close(qd);
 }
 
-int dmtr_is_qd_valid(int *flag, int qd)
+int dmtr_is_qd_valid(int *flag_out, int qd)
 {
-    DMTR_NOTNULL(EINVAL, flag);
-    *flag = 0;
+    DMTR_NOTNULL(EINVAL, flag_out);
+    *flag_out = 0;
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
     bool b = false;
     DMTR_OK(ioq_api->is_qd_valid(b, qd));
     if (b) {
-        *flag = 1;
+        *flag_out = 1;
     }
 
     return 0;

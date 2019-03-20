@@ -35,6 +35,7 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
+#include <dmtr/sga.h>
 #include <fcntl.h>
 #include <iostream>
 #include <libos/common/io_queue_api.hh>
@@ -263,6 +264,12 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         //std::cerr << "push(" << qt << "): preparing message." << std::endl;
+
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
 
         size_t iov_len = 2 * sga.sga_numsegs + 1;
         struct iovec iov[iov_len];
