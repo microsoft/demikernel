@@ -138,7 +138,7 @@ int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::compl
     std::unique_ptr<task> t;
     DMTR_OK(task::new_object(t, [=](task::yield_type &yield, dmtr_qresult_t &qr) {
         init_qresult(qr, opcode);
-        qr->qr_qt = qt;
+        qr.qr_qt = qt;
         return completion(yield, qr);
     }));
 
