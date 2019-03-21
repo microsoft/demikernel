@@ -8,6 +8,7 @@
 
 # vscode
 /.vscode/launch.json
+/.vscode/ipch
 
 # gdb
 .gdb.*
