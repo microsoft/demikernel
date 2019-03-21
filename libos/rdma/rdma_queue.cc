@@ -243,9 +243,11 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
         // get the address
-	sockaddr *saddr;
-	rdma_get_peer_addr(saddr, new_rdma_id);
-        set_accept_qresult(qr_out, new_qd, *(sockaddr_in *)saddr, sizeof(sockaddr_in));
+        sockaddr *saddr;
+        DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
+        set_accept_qresult(qr_out, new_qd, *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
+
+        return 0;
     }));
 
     q_out = std::move(qq);
