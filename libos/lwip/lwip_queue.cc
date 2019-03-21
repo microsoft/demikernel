@@ -21,6 +21,7 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/sga.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
@@ -321,8 +322,8 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     YAML::Node node = config["dpdk"]["eal_init"];
     if (YAML::NodeType::Sequence == node.Type()) {
         init_args = node.as<std::vector<std::string>>();
-    } 
-    
+    }
+
     std::cerr << "eal_init: [";
     std::vector<char *> init_cargs;
     for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
@@ -446,6 +447,12 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         DMTR_TRUE(EPERM, our_dpdk_init_flag);
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
 
         const struct sockaddr_in *saddr = NULL;
         if (boost::none == my_default_peer) {
@@ -579,7 +586,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
             }
         }
 
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -594,7 +601,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
         DMTR_TRUE(EPERM, our_dpdk_init_flag);
         DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
         const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
-        
+
         while (true) {
             struct rte_mbuf *pkt = NULL;
             while (NULL == pkt) {
@@ -750,11 +757,11 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
             sga.sga_addr.sin_port = udp_src_port;
             sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
 
-            init_pop_qresult(qr_out, sga);
+            set_pop_qresult(qr_out, sga);
             return 0;
         }
     }));
-    
+
     return 0;
 }
 
@@ -763,7 +770,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     qr_out = {};
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
-    
+
     return io_queue::poll(qr_out, qt);
 }
 

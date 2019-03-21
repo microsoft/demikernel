@@ -21,6 +21,7 @@ DMTR_EXPORT int dmtr_bind(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd);
 DMTR_EXPORT int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_close(int qd);
+DMTR_EXPORT int dmtr_is_qd_valid(int *flag_out, int qd);
 
 DMTR_EXPORT int dmtr_push(
     dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga);
@@ -29,11 +30,11 @@ DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qt_out, int qd);
 DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
 DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 
-DMTR_EXPORT int dmtr_newtimer(dmtr_timer_t **timer_out, const char *name);
-DMTR_EXPORT int dmtr_starttimer(dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_stoptimer(dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_dumptimer(FILE *f, dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_deltimer(dmtr_timer_t **timer);
+DMTR_EXPORT int dmtr_new_timer(dmtr_timer_t **timer_out, const char *name);
+DMTR_EXPORT int dmtr_start_timer(dmtr_timer_t *timer);
+DMTR_EXPORT int dmtr_stop_timer(dmtr_timer_t *timer);
+DMTR_EXPORT int dmtr_dump_timer(FILE *f, dmtr_timer_t *timer);
+DMTR_EXPORT int dmtr_delete_timer(dmtr_timer_t **timer);
 
 #ifdef __cplusplus
 }

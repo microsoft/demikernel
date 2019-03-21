@@ -28,7 +28,10 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     q_out = NULL;
 
     auto it = my_queues.find(qd);
-    DMTR_TRUE(EINVAL, my_queues.cend() != it);
+    if (my_queues.cend() == it) {
+        return ENOENT;
+    }
+
     q_out = it->second.get();
     return 0;
 }
@@ -192,6 +195,23 @@ int dmtr::io_queue_api::close(int qd) {
 
     DMTR_OK(ret);
     return 0;
+}
+
+int dmtr::io_queue_api::is_qd_valid(bool &flag, int qd)
+{
+    flag = 0;
+
+    io_queue *q = NULL;
+    int ret = get_queue(q, qd);
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case 0:
+            flag = 1;
+            return 0;
+        case ENOENT:
+            return 0;
+    }
 }
 
 int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga) {

@@ -36,6 +36,7 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/sga.h>
 #include <fcntl.h>
 #include <hoard/zeusrdma.h>
 #include <libos/common/mem.h>
@@ -193,7 +194,14 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
 int
 dmtr::rdma_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
 {
-    return ::getsockname(my_rdma_id->channel->fd, saddr, size);
+    // can't run getsockname on rdma socket
+    sockaddr *addr = rdma_get_local_addr(my_rdma_id);
+    if (addr != NULL) {
+	memcpy(saddr, addr, sizeof(sockaddr_in));
+	*size = sizeof(sockaddr_in);
+	return 0; // eok
+    }
+    return -1;
 }
 
 int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
@@ -235,11 +243,10 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
         // get the address
-        sockaddr_in addr = {};
-        socklen_t len = sizeof(addr);
-        DMTR_OK(getsockname(new_rdma_id->channel->fd, reinterpret_cast< struct sockaddr * >(&addr), len));
-        
-        init_accept_qresult(qr_out, new_qd, addr, len);
+        sockaddr *saddr;
+        DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
+        set_accept_qresult(qr_out, new_qd, *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
+
         return 0;
     }));
 
@@ -319,6 +326,12 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
+
         size_t num_sge = 2 * sga.sga_numsegs + 1;
         struct ibv_sge sge[num_sge];
         size_t data_size = 0;
@@ -393,7 +406,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -453,7 +466,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         }
 
         sga.sga_buf = buf;
-        init_pop_qresult(qr_out, sga);
+        set_pop_qresult(qr_out, sga);
         return 0;
     }));
 

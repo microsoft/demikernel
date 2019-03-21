@@ -35,6 +35,7 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
+#include <dmtr/sga.h>
 #include <fcntl.h>
 #include <iostream>
 #include <libos/common/io_queue_api.hh>
@@ -87,7 +88,19 @@ dmtr::posix_queue::socket(int domain, int type, int protocol)
 int
 dmtr::posix_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
 {
-    return ::getsockname(my_fd, saddr, size);
+    DMTR_NOTNULL(EINVAL, saddr);
+    DMTR_NOTNULL(EINVAL, size);
+    DMTR_TRUE(ERANGE, *size > 0);
+
+    int ret = ::getsockname(my_fd, saddr, size);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case 0:
+            return 0;
+        case -1:
+            return errno;
+    }
 }
 
 int
@@ -133,7 +146,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         int new_fd = -1;
         int ret = EAGAIN;
         sockaddr_in addr;
-        socklen_t len;
+        socklen_t len = sizeof(addr);
         while (EAGAIN == ret) {
             ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
             yield();
@@ -152,7 +165,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        init_accept_qresult(qr_out, new_qd, (sockaddr *)&addr, &len);
+        set_accept_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
@@ -252,6 +265,12 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         //std::cerr << "push(" << qt << "): preparing message." << std::endl;
 
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+        if (0 == sgalen) {
+            return ENOMSG;
+        }
+
         size_t iov_len = 2 * sga.sga_numsegs + 1;
         struct iovec iov[iov_len];
         size_t data_size = 0;
@@ -309,7 +328,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
         DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
-        init_push_qresult(qr_out, sga);
+        set_push_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -414,7 +433,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         buf.release();
-        init_pop_qresult(qr_out, sga);
+        set_pop_qresult(qr_out, sga);
         return 0;
     }));
     return 0;

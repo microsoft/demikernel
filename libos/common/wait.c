@@ -10,7 +10,6 @@ int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
         ret = dmtr_poll(qr_out, qt);
     }
     DMTR_OK(dmtr_drop(qt));
-    if (qr_out != NULL) qr_out->qr_qt = qt;
     return ret;
 }
 
@@ -21,14 +20,12 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
             if (ret != EAGAIN) {
                 if (ret == 0)
                     DMTR_OK(dmtr_drop(qts[i]));
-                if (qr_out != NULL)
-                    qr_out->qr_qt = qts[i];
                 if (ready_offset != NULL)
                     *ready_offset = i;
                 return ret;
             }
         }
     }
-        
+
     DMTR_UNREACHABLE();
 }
