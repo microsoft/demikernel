@@ -144,21 +144,20 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
 
     DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
         int new_fd = -1;
-        int ret = EAGAIN;
         sockaddr_in addr;
         socklen_t len = sizeof(addr);
-        while (EAGAIN == ret) {
-            ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
-            yield();
-        }
-
-        switch (ret) {
-            default:
-                DMTR_FAIL(ret);
-            case EAGAIN:
-                DMTR_UNREACHABLE();
-            case 0:
-                break;
+        while (-1 == new_fd) {
+            int ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
+            switch (ret) {
+                default:
+                    DMTR_FAIL(ret);
+                case EAGAIN:
+                    new_fd = -1;
+                    yield();
+                    continue;
+                case 0:
+                    break;
+            }
         }
 
         DMTR_OK(set_tcp_nodelay(new_fd));
