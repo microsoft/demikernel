@@ -41,6 +41,7 @@
 #include <dmtr/sga.h>
 #include <fcntl.h>
 #include <hoard/zeusrdma.h>
+#include <iostream>
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
 #include <netinet/tcp.h>
@@ -633,6 +634,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
     struct rdma_cm_event *event = NULL;
     DMTR_OK(::rdma_get_cm_event(id->channel, &event));
     if (expected != event->event) {
+        std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event->event << "." << std::endl;
         DMTR_OK(rdma_ack_cm_event(event));
         return err;
     }
