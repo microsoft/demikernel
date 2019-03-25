@@ -30,6 +30,8 @@
 
 #include "rdma_queue.hh"
 
+#define USE_HOARD_PINNING 0
+
 #include <arpa/inet.h>
 #include <cassert>
 #include <cerrno>
@@ -99,7 +101,6 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             return ENOTSUP;
         case IBV_WC_RECV: {
             void *buf = reinterpret_cast<void *>(wc.wr_id);
-            Zeus::RDMA::Hoard::unpin(buf);
             size_t byte_len = wc.byte_len;
             my_pending_recvs.push(std::make_pair(buf, byte_len));
             DMTR_OK(new_recv_buf());
@@ -437,6 +438,12 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
                     continue;
             }
         }
+
+#if USE_HOARD_PINNING
+        raii_guard rg0([=]() {
+            Zeus::RDMA::Hoard::unpin(buf);
+        });
+#endif
 
         if (sz_buf < sizeof(dmtr_header_t)) {
             return EPROTO;
@@ -792,7 +799,9 @@ int dmtr::rdma_queue::new_recv_buf() {
     // `recv_buf_size`,
     void *buf = NULL;
     DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
+#if USE_HOARD_PINNING
     Zeus::RDMA::Hoard::pin(buf);
+#endif
 
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
@@ -836,21 +845,25 @@ int dmtr::rdma_queue::setup_recv_queue() {
 }
 
 int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
+#if USE_HOARD_PINNING
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
         DMTR_NOTNULL(EINVAL, buf);
         Zeus::RDMA::Hoard::pin(buf);
     }
+#endif
 
     return 0;
 }
 
 int dmtr::rdma_queue::unpin(const dmtr_sgarray_t &sga) {
+#if USE_HOARD_PINNING
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
         DMTR_NOTNULL(EINVAL, buf);
         Zeus::RDMA::Hoard::unpin(buf);
     }
+#endif
 
     return 0;
 }
