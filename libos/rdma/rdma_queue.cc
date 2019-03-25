@@ -120,9 +120,12 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
     // check completion queue
     struct ibv_wc wc[quantity];
     size_t count = 0;
+    dmtr_start_timer(read_timer);
     DMTR_OK(ibv_poll_cq(count, cq, quantity, wc));
     //fprintf(stderr, "Found receive work completions: %d\n", num);
     // process messages
+    if (count > 0) {
+        dmtr_stop_timer(read_timer);
     for (size_t i = 0; i < count; ++i) {
         on_work_completed(wc[i]);
     }
@@ -393,8 +396,9 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
         struct ibv_send_wr *bad_wr = NULL;
         pin(sga);
+        dmtr_start_timer(write_timer);
         DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
-
+        dmtr_stop_timer(write_timer);
         while (true) {
             DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
