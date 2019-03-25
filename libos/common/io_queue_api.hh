@@ -35,6 +35,7 @@
 #include "io_queue_factory.hh"
 #include <boost/atomic.hpp>
 #include <dmtr/annot.h>
+#include <dmtr/libos.h>
 #include <memory>
 #include <unordered_map>
 
@@ -48,6 +49,7 @@ class io_queue_api
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
+    public: ~io_queue_api(); 
     private: int get_queue(io_queue *&q_out, int qd) const;
     private: int new_qd();
     private: int new_qtoken(dmtr_qtoken_t &qt_out, int qd);
@@ -80,6 +82,7 @@ class io_queue_api
     public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
     public: int is_qd_valid(bool &flag, int qd);
+
 };
 
 } // namespace dmtr

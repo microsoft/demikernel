@@ -406,6 +406,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                     yield();
                     continue;
                 case 0:
+                    dmtr_stop_timer(read_timer);
                     break;
             }
 
@@ -464,12 +465,14 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
     DMTR_NOTNULL(EINVAL, buf);
     DMTR_TRUE(ERANGE, len <= SSIZE_MAX);
 
+    dmtr_start_timer(read_timer);
     int ret = ::read(fd, buf, len);
     if (ret < -1) {
         DMTR_UNREACHABLE();
     } else if (ret == -1) {
         return errno;
     } else {
+        dmtr_stop_timer(read_timer);
         count_out = ret;
         return 0;
     }
@@ -477,6 +480,7 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
 
 int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt) {
     count_out = 0;
+    dmtr_start_timer(write_timer);
     ssize_t ret = ::writev(fd, iov, iovcnt);
 
     if (ret == -1) {
@@ -492,6 +496,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
         DMTR_UNREACHABLE();
     }
 
+    dmtr_stop_timer(write_timer);            
     count_out = ret;
     return 0;
 }

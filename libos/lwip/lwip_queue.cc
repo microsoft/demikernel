@@ -819,13 +819,14 @@ int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, rx_pkts);
 
+    dmtr_start_timer(read_timer);
     size_t count = ::rte_eth_rx_burst(port_id, queue_id, rx_pkts, nb_pkts);
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status
         // needs to be checked to determine if an error occurred.
         return EAGAIN;
     }
-
+    dmtr_stop_timer(read_timer);
     count_out = count;
     return 0;
 }
@@ -836,6 +837,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
+    dmtr_start_timer(write_timer);
     size_t count = ::rte_eth_tx_burst(port_id, queue_id, tx_pkts, nb_pkts);
     // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
     if (0 == count) {
@@ -843,7 +845,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
         // needs to be checked to determine if an error occurred.
         return EAGAIN;
     }
-
+    dmtr_stop_timer(write_timer);
     count_out = count;
     return 0;
 }
