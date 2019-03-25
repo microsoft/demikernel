@@ -407,14 +407,13 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                     yield();
                     continue;
                 case 0:
-                    dmtr_stop_timer(read_timer);
                     break;
             }
 
             if (0 == bytes_read) {
                 return ECONNABORTED;
             }
-
+            dmtr_stop_timer(read_timer);
             data_bytes += bytes_read;
         }
 
