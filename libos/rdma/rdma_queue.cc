@@ -126,6 +126,7 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
     // process messages
     if (count > 0) {
         dmtr_stop_timer(read_timer);
+    }
     for (size_t i = 0; i < count; ++i) {
         on_work_completed(wc[i]);
     }
