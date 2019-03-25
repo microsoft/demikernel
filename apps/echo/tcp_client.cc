@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_init(argc, argv));
 
-    dmtr_timer_t *pop_timer = NULL;
+    dmtr_timer_t *timer = NULL;
     DMTR_OK(dmtr_new_timer(&timer, "timer"));
 
     int qd = 0;
