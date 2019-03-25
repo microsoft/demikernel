@@ -48,7 +48,7 @@
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 const size_t dmtr::rdma_queue::recv_buf_count = 1;
-const size_t dmtr::rdma_queue::recv_buf_size = 1024;
+const size_t dmtr::rdma_queue::recv_buf_size = 1224;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
 dmtr::rdma_queue::rdma_queue(int qd) :
@@ -98,6 +98,7 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             fprintf(stderr, "Unexpected WC opcode: 0x%x\n", wc.opcode);
             return ENOTSUP;
         case IBV_WC_RECV: {
+            dmtr_stop_timer(read_timer);
             void *buf = reinterpret_cast<void *>(wc.wr_id);
             Zeus::RDMA::Hoard::unpin(buf);
             size_t byte_len = wc.byte_len;
@@ -124,9 +125,6 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
     DMTR_OK(ibv_poll_cq(count, cq, quantity, wc));
     //fprintf(stderr, "Found receive work completions: %d\n", num);
     // process messages
-    if (count > 0) {
-        dmtr_stop_timer(read_timer);
-    }
     for (size_t i = 0; i < count; ++i) {
         on_work_completed(wc[i]);
     }
