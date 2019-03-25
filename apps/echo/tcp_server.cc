@@ -26,11 +26,10 @@ dmtr_timer_t *push_timer = NULL;
 
 void sig_handler(int signo)
 {
-    if (signo == SIGUSR1 || signo == SIGKILL || signo == SIGSTOP) {
-        dmtr_dump_timer(stderr, pop_timer);
-        dmtr_dump_timer(stderr, push_timer);
-        dmtr_close(lqd);
-    }
+  dmtr_dump_timer(stderr, pop_timer);
+  dmtr_dump_timer(stderr, push_timer);
+  dmtr_close(lqd);
+  exit(0);
 }
 
 int main(int argc, char *argv[])
@@ -54,13 +53,6 @@ int main(int argc, char *argv[])
         std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
         return -1;
     }
-
-    if (signal(SIGUSR1, sig_handler) == SIG_ERR)
-        std::cout << "\ncan't catch SIGUSR1\n";
-    if (signal(SIGKILL, sig_handler) == SIG_ERR)
-        std::cout << "\ncan't catch SIGKILL\n";
-    if (signal(SIGSTOP, sig_handler) == SIG_ERR)
-        std::cout << "\ncan't catch SIGSTOP\n";
     
     YAML::Node config = YAML::LoadFile(config_path);
     boost::optional<std::string> server_ip_addr;
@@ -104,6 +96,10 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_listen(lqd, 3));
     DMTR_OK(dmtr_accept(&token, lqd));
     tokens.push_back(token);
+    
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+        std::cout << "\ncan't catch SIGINT\n";
+
     while (1) {
         dmtr_qresult wait_out;
         int idx;
@@ -111,7 +107,7 @@ int main(int argc, char *argv[])
 
         // if we got an EOK back from wait
         if (status == 0) {
-            std::cout << "Found something: qd=" << wait_out.qr_qd;
+	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers
