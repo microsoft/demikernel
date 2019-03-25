@@ -496,7 +496,8 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
         DMTR_UNREACHABLE();
     }
 
-    dmtr_stop_timer(write_timer);            
+    dmtr_stop_timer(write_timer);
+            
     count_out = ret;
     return 0;
 }

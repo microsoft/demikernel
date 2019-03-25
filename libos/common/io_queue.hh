@@ -34,10 +34,14 @@
 #include <boost/coroutine2/coroutine.hpp>
 #include <dmtr/annot.h>
 #include <dmtr/types.h>
+#include <dmtr/libos.h>
 #include <functional>
 #include <memory>
 #include <sys/socket.h>
 #include <unordered_map>
+
+extern dmtr_timer_t *write_timer;
+extern dmtr_timer_t *read_timer;
 
 namespace dmtr {
 

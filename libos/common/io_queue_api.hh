@@ -35,12 +35,8 @@
 #include "io_queue_factory.hh"
 #include <boost/atomic.hpp>
 #include <dmtr/annot.h>
-#include <dmtr/libos.h>
 #include <memory>
 #include <unordered_map>
-
-extern dmtr_timer_t *write_timer;
-extern dmtr_timer_t *read_timer;
 
 namespace dmtr {
 
