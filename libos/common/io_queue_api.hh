@@ -39,11 +39,11 @@
 #include <memory>
 #include <unordered_map>
 
-static dmtr_timer_t *write_timer = NULL;
-static dmtr_timer_t *read_timer = NULL;
+extern dmtr_timer_t *write_timer;
+extern dmtr_timer_t *read_timer;
 
 namespace dmtr {
-    
+
 class io_queue_api
 {
     private: boost::atomic<int> my_qd_counter;

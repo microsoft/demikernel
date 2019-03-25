@@ -10,6 +10,8 @@
 static dmtr_timer_t *pop_timer = NULL;
 static dmtr_timer_t *push_timer = NULL;
 static dmtr_timer_t *poll_timer = NULL;
+dmtr_timer_t *write_timer = NULL;
+dmtr_timer_t *read_timer = NULL;
 
 dmtr::io_queue_api::io_queue_api() :
     my_qd_counter(0),
