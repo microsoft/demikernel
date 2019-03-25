@@ -398,6 +398,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
             size_t remaining_bytes = header.h_bytes - data_bytes;
             size_t bytes_read = 0;
             //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+            dmtr_start_timer(read_timer);
             int ret = read(bytes_read, my_fd, p, remaining_bytes);
             switch (ret) {
                 default:
@@ -465,14 +466,12 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
     DMTR_NOTNULL(EINVAL, buf);
     DMTR_TRUE(ERANGE, len <= SSIZE_MAX);
 
-    dmtr_start_timer(read_timer);
     int ret = ::read(fd, buf, len);
     if (ret < -1) {
         DMTR_UNREACHABLE();
     } else if (ret == -1) {
         return errno;
     } else {
-        dmtr_stop_timer(read_timer);
         count_out = ret;
         return 0;
     }
