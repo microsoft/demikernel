@@ -15,7 +15,7 @@
 #include <yaml-cpp/yaml.h>
 
 #define ITERATION_COUNT 10000
-#define BUFFER_SIZE 10
+#define BUFFER_SIZE 1024
 #define FILL_CHAR 'a'
 
 namespace po = boost::program_options;
@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_timer_t *timer = NULL;
-    DMTR_OK(dmtr_new_timer(&timer, "timer"));
+    DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
 
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));

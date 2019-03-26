@@ -22,7 +22,7 @@
 #include <yaml-cpp/yaml.h>
 
 #define ITERATION_COUNT 10000
-#define BUFFER_SIZE 10
+#define BUFFER_SIZE 1024
 #define FILL_CHAR 'a'
 
 namespace po = boost::program_options;

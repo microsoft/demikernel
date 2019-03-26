@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, 0, &event));
     char buf[PACKET_SIZE];
     while (1) {
-        int event_count = epoll_wait(epoll_fd, events, 10, 300);
+        int event_count = epoll_wait(epoll_fd, events, 10, -1);
         for (int i = 0; i < event_count; i++) {
             if (events[i].data.fd == lfd) {
                 // run accept
