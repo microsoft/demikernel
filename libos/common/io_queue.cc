@@ -94,14 +94,7 @@ int dmtr::io_queue::poll(dmtr_qresult &qr_out, dmtr_qtoken_t qt) {
     task *t = NULL;
     DMTR_OK(get_task(t, qt));
 
-    int ret = t->poll(qr_out);
-    switch (ret) {
-        default:
-            DMTR_FAIL(ret);
-        case 0:
-        case EAGAIN:
-            return ret;
-    }
+    return t->poll(qr_out);
 }
 
 int dmtr::io_queue::drop(dmtr_qtoken_t qt)

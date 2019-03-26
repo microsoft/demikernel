@@ -274,7 +274,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         struct iovec iov[iov_len];
         size_t data_size = 0;
         size_t message_bytes = 0;
-        uint32_t seg_lens[sga.sga_numsegs] = {};
+        uint32_t seg_lens[sga.sga_numsegs];
 
         // calculate size and fill in iov
         for (size_t i = 0; i < sga.sga_numsegs; i++) {
@@ -318,6 +318,14 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     done = true;
                     break;
@@ -364,6 +372,14 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     break;
             }
@@ -404,6 +420,14 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     break;
             }
@@ -484,7 +508,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
             return EAGAIN;
         }
 
-        DMTR_FAIL(errno);
+        return errno;
     }
 
     if (ret < -1) {
