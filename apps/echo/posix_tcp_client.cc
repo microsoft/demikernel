@@ -91,15 +91,25 @@ int main(int argc, char *argv[])
     buf[BUFFER_SIZE - 1] = '\0';
  
     for (size_t i = 0; i < ITERATION_COUNT; i++) {
-        int bytes_read = 0;
-        
-        DMTR_OK(dmtr_start_timer(timer));
-        write(fd, (void *)&buf, BUFFER_SIZE);
+      DMTR_OK(dmtr_start_timer(timer));
+	int bytes_written = 0, ret;
+	while (bytes_written < BUFFER_SIZE) {
+	  ret = write(fd,
+		      (void *)&(buf[bytes_written]),
+		      BUFFER_SIZE-bytes_written);
+	  if (ret < 0) {
+	    exit(-1);
+	  }
+	  bytes_written += ret;
+	}
+	int bytes_read = 0;
         while(bytes_read < BUFFER_SIZE) {
-            bytes_read += read(fd, (void *)&buf, BUFFER_SIZE);
+            ret += read(fd, (void *)&buf, BUFFER_SIZE);
+	    if (ret < 0) exit(-1);
+	    bytes_read += ret;
         }
+	DMTR_OK(dmtr_stop_timer(timer));
     }
-
     close(fd);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
     return 0;

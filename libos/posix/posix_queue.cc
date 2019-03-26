@@ -353,6 +353,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
         // if we don't have a full header yet, get one.
         size_t header_bytes = 0;
         dmtr_header_t header;
+	dmtr_start_timer(read_timer);
         while (header_bytes < sizeof(header)) {
             uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
             size_t remaining_bytes = sizeof(header) - header_bytes;
@@ -398,7 +399,6 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
             size_t remaining_bytes = header.h_bytes - data_bytes;
             size_t bytes_read = 0;
             //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
-            dmtr_start_timer(read_timer);
             int ret = read(bytes_read, my_fd, p, remaining_bytes);
             switch (ret) {
                 default:
@@ -413,9 +413,10 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
             if (0 == bytes_read) {
                 return ECONNABORTED;
             }
-            dmtr_stop_timer(read_timer);
+        
             data_bytes += bytes_read;
         }
+	dmtr_stop_timer(read_timer);
 
         //std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
         //std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
