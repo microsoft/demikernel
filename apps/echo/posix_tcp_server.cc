@@ -127,11 +127,14 @@ int main(int argc, char *argv[])
     event.data.fd = lfd;
     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, 0, &event));
     char buf[PACKET_SIZE];
+    int bytes_read = 0;
     while (1) {
-        int event_count = epoll_wait(epoll_fd, events, 10, 300);
+        int event_count = epoll_wait(epoll_fd, events, 10, -1);
         for (int i = 0; i < event_count; i++) {
+            std::cout << "Found something!" << endl;
             if (events[i].data.fd == lfd) {
                 // run accept
+                std::cout << "Found new connection" << endl;
                 int newfd = accept(lfd, NULL, NULL);
 
                 // Put it in non-blocking mode
@@ -148,8 +151,9 @@ int main(int argc, char *argv[])
                 event.data.fd = newfd;
                 DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, 0, &event));
             } else {
+                std::cout << "Found new packet" << endl;
                 int bytes_written = 0;
-                int bytes_read = read(events[i].data.fd, (void *)&buf, PACKET_SIZE);
+                bytes_read += read(events[i].data.fd, (void *)&buf, PACKET_SIZE);
                 if (bytes_read < PACKET_SIZE)
                     continue;
                 while (bytes_written < PACKET_SIZE) {
