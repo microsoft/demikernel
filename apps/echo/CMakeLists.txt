@@ -18,22 +18,9 @@ set(TCP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/tcp_server.cc)
 set(TCP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/tcp_client.cc)
 set(UDP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/udp_server.cc)
 set(UDP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/udp_client.cc)
-set(RAW_ECHO_SERVER_SOURCES
-  ${ECHO_APPS_DIR}/dpdk_udp_echo_server.cpp
-  ${ECHO_APPS_DIR}/dpdk_common.cpp
-)
-set(RAW_ECHO_CLIENT_SOURCES
-  ${ECHO_APPS_DIR}/dpdk_udp_echo_client.cpp
-  ${ECHO_APPS_DIR}/dpdk_common.cpp
-)
-set(RAW_MTCP_ECHO_SERVER_SOURCES
-  ${ECHO_APPS_DIR}/mtcp_echo_server.cpp
-  ${ECHO_APPS_DIR}/mtcp_common.cpp
-)
-set(RAW_MTCP_ECHO_CLIENT_SOURCES
-  ${ECHO_APPS_DIR}/mtcp_echo_client.cpp
-  ${ECHO_APPS_DIR}/mtcp_common.cpp
-)
+set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
+set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
+
 # POSIX TCP server
 add_executable(posix-echo-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(posix-echo-server dmtr-libos-posix yaml-cpp boost_program_options)
@@ -58,17 +45,17 @@ target_link_libraries(lwip-echo-client dmtr-libos-lwip yaml-cpp boost_program_op
 add_custom_target(lwip-echo)
 add_dependencies(lwip-echo lwip-echo-server lwip-echo-client)
 
-# LWIP "raw" server
-add_executable(lwip_raw_server ${RAW_ECHO_SERVER_SOURCES})
-target_link_libraries(lwip_raw_server dmtr-libos-lwip Threads::Threads)
+# POSIX "raw" server
+add_executable(posix_raw_server ${RAW_ECHO_SERVER_SOURCES})
+target_link_libraries(posix_raw_server dmtr-libos-posix yaml-cpp boost_program_options)
 
-# LWIP "raw" client
-add_executable(lwip_raw_client ${RAW_ECHO_CLIENT_SOURCES})
-target_link_libraries(lwip_raw_client dmtr-libos-lwip Threads::Threads)
+# POSIX "raw" client
+add_executable(posix_raw_client ${RAW_ECHO_CLIENT_SOURCES})
+target_link_libraries(posix_raw_client dmtr-libos-posix yaml-cpp boost_program_options)
 
-# LWIP "raw" client & server
-add_custom_target(lwip_raw)
-add_dependencies(lwip_raw lwip_raw_server lwip_raw_client)
+# POSIX "raw" client & server
+add_custom_target(posix-raw)
+add_dependencies(posix-raw posix_raw_server posix_raw_client)
 
 if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   # libMTCP server
