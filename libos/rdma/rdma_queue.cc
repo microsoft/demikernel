@@ -50,6 +50,7 @@
 #include <unistd.h>
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
+dmtr::rdmacm_router* dmtr::rdma_queue::our_rdmacm_router = NULL;
 const size_t dmtr::rdma_queue::recv_buf_count = 1;
 const size_t dmtr::rdma_queue::recv_buf_size = 1024;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
@@ -138,20 +139,14 @@ int dmtr::rdma_queue::service_event_queue() {
     DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
 
     struct rdma_cm_event event = {};
-    {
-        struct rdma_cm_event *e = NULL;
-        int ret = rdma_get_cm_event(e, my_rdma_id->channel);
-        switch (ret) {
-            default:
-                DMTR_OK(ret);
-            case 0:
-                break;
-            case EAGAIN:
-                return EAGAIN;
-        }
-
-        event = *e;
-        rdma_ack_cm_event(e);
+    int ret = our_rdmacm_router->get_rdmacm_event(&event, my_rdma_id);
+    switch (ret) {
+        default:
+            DMTR_OK(ret);
+        case 0:
+            break;
+        case EAGAIN:
+            return EAGAIN;
     }
 
     switch(event.event) {
@@ -186,11 +181,16 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
             return ENOTSUP;
         case SOCK_STREAM:
             DMTR_OK(rdma_create_id(my_rdma_id, channel, NULL, RDMA_PS_TCP));
-            return 0;
+            break;
         case SOCK_DGRAM:
             DMTR_OK(rdma_create_id(my_rdma_id, channel, NULL, RDMA_PS_UDP));
-            return 0;
+            break;
     }
+    if(our_rdmacm_router == NULL) {
+        dmtr::rdmacm_router::get_rdmacm_router(our_rdmacm_router);
+    }
+    our_rdmacm_router->add_rdma_queue(my_rdma_id);
+    return 0;
 }
 
 int
@@ -218,6 +218,7 @@ int dmtr::rdma_queue::bind(const struct sockaddr * const saddr, socklen_t size)
 int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
+    DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     auto * const q = new rdma_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
@@ -232,6 +233,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         my_pending_accepts.pop();
 
         q->my_rdma_id = new_rdma_id;
+        our_rdmacm_router->add_rdma_queue(new_rdma_id);
         DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
         DMTR_OK(q->setup_rdma_qp());
         DMTR_OK(q->setup_recv_queue());
@@ -315,9 +317,11 @@ int dmtr::rdma_queue::close()
     DMTR_OK(rdma_destroy_qp(rdma_id));
     // todo: until we deal with unregistering memory, deallocating the protection domain will fail.
     //DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
-    rdma_event_channel *channel = rdma_id->channel;
-    DMTR_OK(rdma_destroy_id(rdma_id));
-    DMTR_OK(rdma_destroy_event_channel(channel));
+    our_rdmacm_router->delete_rdma_queue(rdma_id);
+    // todo: similarly can't destroy either of these
+    //DMTR_OK(rdma_destroy_id(rdma_id));
+    //DMTR_OK(rdma_destroy_event_channel(channel));
+    rdma_id->channel = NULL;
     return 0;
 }
 
@@ -594,51 +598,16 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
     }
 }
 
-int dmtr::rdma_queue::rdma_get_cm_event(struct rdma_cm_event *&event_out, struct rdma_event_channel *channel) {
-    DMTR_NOTNULL(EINVAL, channel);
-
-    int ret = ::rdma_get_cm_event(channel, &event_out);
-    switch (ret) {
-        default:
-            DMTR_UNREACHABLE();
-        case -1:
-            event_out = NULL;
-            if (EAGAIN == ret || EWOULDBLOCK == ret) {
-                return EAGAIN;
-            } else {
-                return errno;
-            }
-        case 0:
-            return 0;
-    }
-}
-
-int dmtr::rdma_queue::rdma_ack_cm_event(struct rdma_cm_event * const event) {
-    DMTR_NOTNULL(EINVAL, event);
-
-    int ret = ::rdma_ack_cm_event(event);
-    switch (ret) {
-        default:
-            DMTR_UNREACHABLE();
-        case -1:
-            return errno;
-        case 0:
-            return 0;
-    }
-}
-
 int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id) {
     DMTR_NOTNULL(EINVAL, id);
+    DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
-    struct rdma_cm_event *event = NULL;
-    DMTR_OK(::rdma_get_cm_event(id->channel, &event));
-    if (expected != event->event) {
-        std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event->event << "." << std::endl;
-        DMTR_OK(rdma_ack_cm_event(event));
+    struct rdma_cm_event event = {};
+    DMTR_OK(our_rdmacm_router->get_rdmacm_event(&event, id));
+    if (expected != event.event) {
+        std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event.event << "." << std::endl;
         return err;
     }
-
-    DMTR_OK(rdma_ack_cm_event(event));
     return 0;
 }
 

@@ -38,6 +38,8 @@
 #include <rdma/rdma_cma.h>
 #include <unordered_set>
 
+#include <libos/common/rdmacm_router.hh>
+
 namespace dmtr {
 
 class rdma_queue : public io_queue {
@@ -58,6 +60,7 @@ class rdma_queue : public io_queue {
     // rdma data structures
     // connection manager for this connection queue
     private: static struct ibv_pd *our_pd;
+    private: static rdmacm_router* our_rdmacm_router;
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
@@ -93,8 +96,6 @@ class rdma_queue : public io_queue {
     private: static int rdma_destroy_qp(struct rdma_cm_id * const id);
     private: static int rdma_listen(struct rdma_cm_id * const id, int backlog);
     private: static int rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms);
-    private: static int rdma_get_cm_event(struct rdma_cm_event *&event_out, struct rdma_event_channel *channel);
-    private: static int rdma_ack_cm_event(struct rdma_cm_event * const event);
     private: static int rdma_resolve_route(struct rdma_cm_id * const id, int timeout_ms);
     private: static int rdma_connect(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param);
     private: static int rdma_create_qp(struct rdma_cm_id * const id, struct ibv_pd * const pd, struct ibv_qp_init_attr * const qp_init_attr);
