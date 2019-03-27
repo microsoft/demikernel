@@ -103,10 +103,10 @@ class io_queue
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion);
     private: int get_task(task *&t, dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
-    protected: void set_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const;
-    protected: void set_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
-    protected: void set_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
-    protected: void set_accept_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const;
+    protected: void set_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
+    protected: void set_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const;
+    protected: int init_qresult(dmtr_qresult_t &qr, dmtr_qtoken_t qt, int qd) const;
+    protected: int init_qresult(dmtr_qresult_t &qr, dmtr_qtoken_t qt) const;
 };
 
 } // namespace dmtr

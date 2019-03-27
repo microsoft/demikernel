@@ -17,11 +17,7 @@ int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, completion
     auto tt = std::unique_ptr<task>(t);
     DMTR_NOTNULL(ENOMEM, t);
     coroutine_type::pull_type cor([=](yield_type &yield) {
-        dmtr_qresult_t qr = {};
-        t->my_error = completion(yield, qr);
-        if (0 == t->my_error) {
-            t->my_qr = qr;
-        }
+        t->my_error = completion(yield, t->my_qr);
     });
     tt->my_coroutine = std::move(cor);
     task_out = std::move(tt);
@@ -29,8 +25,6 @@ int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, completion
 }
 
 int dmtr::io_queue::task::poll(dmtr_qresult_t &qr_out) {
-    qr_out = {};
-
     // `!my_coroutine` ==> done
     if (my_coroutine) {
         my_coroutine();
@@ -40,10 +34,7 @@ int dmtr::io_queue::task::poll(dmtr_qresult_t &qr_out) {
         return EAGAIN;
     }
 
-    if (0 == my_error) {
-        qr_out = my_qr;
-    }
-
+    qr_out = my_qr;
     return my_error;
 }
 
@@ -91,6 +82,9 @@ int dmtr::io_queue::close() {
 }
 
 int dmtr::io_queue::poll(dmtr_qresult &qr_out, dmtr_qtoken_t qt) {
+    init_qresult(qr_out, qt);
+    DMTR_TRUE(EPERM, qd() != 0);
+
     task *t = NULL;
     DMTR_OK(get_task(t, qt));
 
@@ -99,7 +93,7 @@ int dmtr::io_queue::poll(dmtr_qresult &qr_out, dmtr_qtoken_t qt) {
 
 int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 {
-    dmtr_qresult_t qr = {};
+    dmtr_qresult_t qr;
     int ret = poll(qr, qt);
     switch (ret) {
         default:
@@ -127,13 +121,15 @@ int dmtr::io_queue::set_non_blocking(int fd) {
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion) {
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
+    int qd = this->qd();
+    DMTR_TRUE(EPERM, qd != 0);
 
     std::unique_ptr<task> t;
     DMTR_OK(task::new_object(t, [=](task::yield_type &yield, dmtr_qresult_t &qr) {
-        qr = {};
-        set_qresult(qr, opcode);
-        qr.qr_qt = qt;
-        return completion(yield, qr);
+        int ret = completion(yield, qr);
+        DMTR_OK(init_qresult(qr, qt, qd));
+        qr.qr_opcode = opcode;
+        return ret;
     }));
 
     my_tasks.insert(std::make_pair(qt, std::move(t)));
@@ -157,23 +153,29 @@ int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
     return 0;
 }
 
-void dmtr::io_queue::set_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const {
-    qr_out.qr_qd = qd();
-    qr_out.qr_opcode = opcode;
+int dmtr::io_queue::init_qresult(dmtr_qresult_t &qr, dmtr_qtoken_t qt, int qd) const {
+    DMTR_TRUE(EINVAL, qd != 0);
+
+    qr.qr_qd = qd;
+    qr.qr_opcode = DMTR_OPC_INVALID;
+    qr.qr_qt = qt;
+    return 0;
 }
 
-void dmtr::io_queue::set_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
-    set_qresult(qr_out, DMTR_OPC_PUSH);
+int dmtr::io_queue::init_qresult(dmtr_qresult_t &qr, dmtr_qtoken_t qt) const {
+    int qd = this->qd();
+    DMTR_TRUE(EPERM, qd != 0);
+
+    init_qresult(qr, qt, qd);
+    return 0;
+}
+
+
+void dmtr::io_queue::set_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
     qr_out.qr_value.sga = sga;
 }
 
-void dmtr::io_queue::set_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const {
-    set_qresult(qr_out, DMTR_OPC_POP);
-    qr_out.qr_value.sga = sga;
-}
-
-void dmtr::io_queue::set_accept_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const {
-    set_qresult(qr_out, DMTR_OPC_ACCEPT);
+void dmtr::io_queue::set_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const {
     qr_out.qr_value.ares.qd = qd;
     qr_out.qr_value.ares.addr = addr;
     qr_out.qr_value.ares.len = len;
