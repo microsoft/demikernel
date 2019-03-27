@@ -41,6 +41,7 @@
 #include <dmtr/sga.h>
 #include <fcntl.h>
 #include <hoard/zeusrdma.h>
+#include <iostream>
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
 #include <netinet/tcp.h>
@@ -237,7 +238,6 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
 
         // accept the connection
         struct rdma_conn_param params = {};
-        memset(&params, 0, sizeof(params));
         params.initiator_depth = 1;
         params.responder_resources = 1;
         params.rnr_retry_count = 7;
@@ -246,7 +246,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
-        set_accept_qresult(qr_out, new_qd, *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
+        set_qresult(qr_out, new_qd, *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
 
         return 0;
     }));
@@ -407,7 +407,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
             yield();
         }
 
-        set_push_qresult(qr_out, sga);
+        set_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -473,7 +473,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
         }
 
         sga.sga_buf = buf;
-        set_pop_qresult(qr_out, sga);
+        set_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -481,7 +481,7 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
 }
 
 int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
-    qr_out = {};
+    DMTR_OK(init_qresult(qr_out, qt));
     DMTR_NOTNULL(EPERM, my_rdma_id);
 
     int ret = service_event_queue();
@@ -633,6 +633,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
     struct rdma_cm_event *event = NULL;
     DMTR_OK(::rdma_get_cm_event(id->channel, &event));
     if (expected != event->event) {
+        std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event->event << "." << std::endl;
         DMTR_OK(rdma_ack_cm_event(event));
         return err;
     }

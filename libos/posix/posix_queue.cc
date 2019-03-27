@@ -164,7 +164,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
         DMTR_OK(set_non_blocking(new_fd));
         q->my_fd = new_fd;
         q->my_tcp_flag = true;
-        set_accept_qresult(qr_out, new_qd, addr, len);
+        set_qresult(qr_out, new_qd, addr, len);
         return 0;
     }));
 
@@ -274,7 +274,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
         struct iovec iov[iov_len];
         size_t data_size = 0;
         size_t message_bytes = 0;
-        uint32_t seg_lens[sga.sga_numsegs] = {};
+        uint32_t seg_lens[sga.sga_numsegs];
 
         // calculate size and fill in iov
         for (size_t i = 0; i < sga.sga_numsegs; i++) {
@@ -318,6 +318,14 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     done = true;
                     break;
@@ -327,7 +335,7 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
         DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
-        set_push_qresult(qr_out, sga);
+        set_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -364,6 +372,14 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     break;
             }
@@ -404,6 +420,14 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
                 case EAGAIN:
                     yield();
                     continue;
+                // these can occur if the peer closes the connection before
+                // completion.
+                case ECONNABORTED:
+                case ECONNRESET:
+                    return ECONNABORTED;
+                // `EBADF` can occur if the queue is closed before completion.
+                case EBADF:
+                    return ret;
                 case 0:
                     break;
             }
@@ -432,7 +456,7 @@ int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         buf.release();
-        set_pop_qresult(qr_out, sga);
+        set_qresult(qr_out, sga);
         return 0;
     }));
     return 0;
@@ -484,7 +508,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
             return EAGAIN;
         }
 
-        DMTR_FAIL(errno);
+        return errno;
     }
 
     if (ret < -1) {

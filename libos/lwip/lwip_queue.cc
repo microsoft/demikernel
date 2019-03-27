@@ -586,7 +586,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
             }
         }
 
-        set_push_qresult(qr_out, sga);
+        set_qresult(qr_out, sga);
         return 0;
     }));
 
@@ -757,7 +757,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
             sga.sga_addr.sin_port = udp_src_port;
             sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
 
-            set_pop_qresult(qr_out, sga);
+            set_qresult(qr_out, sga);
             return 0;
         }
     }));
