@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         free(qr.qr_value.sga.sga_buf);
     }
-
+    free(p);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
     DMTR_OK(dmtr_close(qd));
 

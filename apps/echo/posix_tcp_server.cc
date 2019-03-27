@@ -190,11 +190,14 @@ int main(int argc, char *argv[])
             } else {
                 char *buf = (char *)malloc(PACKET_SIZE);
                 if (process_read(events[i].data.fd, buf) < 0) {
+                    free(buf);
                     continue;
                 }
                 if (process_write(events[i].data.fd, buf) < 0) {
+                    free(buf);
                     continue;
                 }
+                free(buf);                
             }
         }
     }
