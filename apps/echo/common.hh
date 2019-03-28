@@ -34,8 +34,24 @@ void parse_args(int argc, char **argv)
         std::cout << desc << "\n";
         exit(0);
     }
-    if (vm.count("ip"))
+    if (vm.count("ip")) {
         ip = vm["ip"].as<std::string>();
+        //std::cout << "Setting server IP to: " << ip << std::endl;
+    }
+    if (vm.count("port")) {
+        port = vm["port"].as<uint16_t>();
+        //std::cout << "Setting server port to: " << port << std::endl;
+    }
+    if (vm.count("iterations")) {
+        iterations = vm["iterations"].as<uint32_t>();
+        //std::cout << "Setting iterations to: " << iterations << std::endl;
+    }
+    if (vm.count("size")) {
+        packet_size = vm["size"].as<uint32_t>();
+        //std::cout << "Setting packet size to: " << packet_size << " bytes." << std::endl;
+    }
+
+    //std::cout << "server ip: " << ip << std::endl;
 };
 
 void* generate_packet()
