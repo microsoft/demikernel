@@ -113,8 +113,43 @@ static struct ether_addr ether_broadcast = {
 };
 
 
+lwip_addr::lwip_addr(const struct sockaddr_in &addr)
+    : addr(addr)
+{
+    memset((void *)addr.sin_zero, 0, sizeof(addr.sin_zero));
+}
+
+lwip_addr::lwip_addr()
+{
+    memset((void *)&addr, 0, sizeof(addr));
+}
+
+bool
+operator==(const lwip_addr &a,
+           const lwip_addr &b)
+{
+    return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) == 0);
+}
+
+bool
+operator!=(const lwip_addr &a,
+           const lwip_addr &b)
+{
+    return !(a == b);
+}
+
+bool
+operator<(const lwip_addr &a,
+          const lwip_addr &b)
+{
+    return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) < 0);
+}
+
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
+
+// local ports bound for incoming connections, used to demultiplex incoming new messages for accept
+std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
 
 struct ether_addr*
 ip_to_mac(in_addr_t ip)
@@ -140,6 +175,17 @@ mac_to_ip(struct ether_addr mac)
     return 0;
 }
 
+bool
+dmtr::lwip_queue::insert_recv_queue(const lwip_addr &saddr,
+                                    const dmtr_sgarray_t &sga)
+{
+    auto it = our_recv_queues.find(lwip_addr(saddr));
+    if (it == our_recv_queues.end()) {
+        return false;
+    }
+    it->second->push(sga);
+    return true;
+}
 
 int dmtr::lwip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len) {
     DMTR_NOTNULL(EINVAL, hdr);
@@ -400,12 +446,68 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     return 0;
 }
 
+int
+dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
+{
+    if (is_bound()) {
+        sockaddr_in *local_addr = &boost::get(my_bound_src);
+        memcpy(saddr, local_addr, sizeof(sockaddr_in));
+        *size = sizeof(sockaddr_in);
+        return 0; // eok
+    }
+    return -1;
+}
+
+
+int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd)
+{
+    q_out = NULL;
+    DMTR_TRUE(EPERM, my_listening_flag);
+
+    auto * const q = new lwip_queue(new_qd);
+    DMTR_TRUE(ENOMEM, q != NULL);
+    auto qq = std::unique_ptr<io_queue>(q);
+
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
+                while (my_recv_queue.empty()) {
+                    DMTR_OK(service_incoming_packets());
+                    if (my_recv_queue.empty()) {
+                        yield();
+                    } else {
+                        break;
+                    }
+                }
+
+                dmtr_sgarray_t &sga = my_recv_queue.front();
+                sockaddr_in &src = sga.sga_addr;
+                q->my_bound_src = my_bound_src;
+                q->my_default_dst = src;
+                our_recv_queues[lwip_addr(src)] = &my_recv_queue;
+                // add the packet as the first to the new queue
+                q->my_recv_queue.push(sga);
+                set_accept_qresult(qr_out, new_qd, src, sizeof(src));
+                my_recv_queue.pop();
+                return 0;
+    }));
+
+    q_out = std::move(qq);
+    return 0;
+}
+
+int dmtr::lwip_queue::listen(int backlog)
+{
+    DMTR_TRUE(EPERM, !my_listening_flag);
+    my_listening_flag = true;
+    return 0;
+}
+
 int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EINVAL, boost::none == my_bound_addr);
+    DMTR_TRUE(EINVAL, is_bound());
     DMTR_NOTNULL(EINVAL, saddr);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    // only one socket can be bound to an address at a time
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
     struct sockaddr_in saddr_copy =
@@ -417,25 +519,32 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
         DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
         saddr_copy.sin_addr.s_addr = mac_to_ip(mac_addr);
     }
-
-    my_bound_addr = saddr_copy;
+    DMTR_TRUE(EINVAL, our_recv_queues.find(lwip_addr(saddr_copy)) != our_recv_queues.end());
+    my_bound_src = saddr_copy;
+    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
     return 0;
 }
 
 int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
-    DMTR_TRUE(EPERM, boost::none == my_bound_addr);
-    DMTR_TRUE(EPERM, boost::none == my_default_peer);
-
-    my_default_peer = *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    DMTR_TRUE(EPERM, !is_bound());
+    DMTR_TRUE(EPERM, !is_connected());
+    
+    my_default_dst = *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    struct sockaddr_in saddr_copy =
+        *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
+    DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
+    
+    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
     return 0;
 }
 
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    my_default_peer = boost::none;
-    my_bound_addr = boost::none;
+    my_default_dst = boost::none;
+    my_bound_src = boost::none;
     return 0;
 }
 
@@ -455,10 +564,10 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         }
 
         const struct sockaddr_in *saddr = NULL;
-        if (boost::none == my_default_peer) {
+        if (!is_bound()) {
             saddr = &sga.sga_addr;
         } else {
-            saddr = &boost::get(my_default_peer);
+            saddr = &boost::get(my_default_dst);
         }
 
         struct rte_mbuf *pkt = NULL;
@@ -497,7 +606,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         // todo: need a way to get my own IP address even if `bind()` wasn't
         // called.
         if (is_bound()) {
-            auto bound_addr = boost::get(my_bound_addr);
+            auto bound_addr = boost::get(my_bound_src);
             ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
         } else {
             ip_hdr->src_addr = mac_to_ip(eth_hdr->s_addr);
@@ -517,7 +626,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
         // todo: need a way to get my own IP address even if `bind()` wasn't
         // called.
         if (is_bound()) {
-            auto bound_addr = boost::get(my_bound_addr);
+            auto bound_addr = boost::get(my_bound_src);
             udp_hdr->src_port = htons(bound_addr.sin_port);
         } else {
             udp_hdr->src_port = udp_hdr->dst_port;
@@ -596,171 +705,23 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // todo: check preconditions.
-
+    DMTR_TRUE(EINVAL, !my_listening_flag);
     DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        DMTR_TRUE(EPERM, our_dpdk_init_flag);
-        DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-        const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+                DMTR_TRUE(EPERM, our_dpdk_init_flag);
 
-        while (true) {
-            struct rte_mbuf *pkt = NULL;
-            while (NULL == pkt) {
-                int ret = service_recv_queue(pkt);
-                switch (ret) {
-                    default:
-                        DMTR_FAIL(ret);
-                    case 0:
-                        continue;
-                    case EAGAIN:
+                while (true) {
+                    service_incoming_packets();
+                    if (my_recv_queue.empty()) {
                         yield();
-                        pkt = NULL;
                         continue;
+                    }
+                    
+                    dmtr_sgarray_t &sga = my_recv_queue.front();
+                    set_pop_qresult(qr_out, sga);
+                    my_recv_queue.pop();
+                    return 0;
                 }
-            }
-
-            raii_guard rg0([=]() {
-                rte_pktmbuf_free(pkt);
-            });
-
-            // packet layout order is (from outside -> in):
-            // ether_hdr
-            // ipv4_hdr
-            // udp_hdr
-            // sga.num_bufs
-            // sga.buf[0].len
-            // sga.buf[0].buf
-            // sga.buf[1].len
-            // sga.buf[1].buf
-            // ...
-            dmtr_sgarray_t sga = {};
-            auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
-
-            // check ethernet header
-            auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
-            p += sizeof(*eth_hdr);
-            auto eth_type = ntohs(eth_hdr->ether_type);
-
-#if DMTR_DEBUG
-            printf("=====\n");
-            printf("recv: pkt len: %d\n", pkt->pkt_len);
-            printf("send: eth src addr: ");
-            DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
-            printf("\n");
-            printf("send: eth dst addr: ");
-            DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
-            printf("\n");
-            printf("recv: eth type: %x\n", eth_type);
-#endif
-
-            struct ether_addr mac_addr = {};
-            DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
-            if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
-#if DMTR_DEBUG
-                printf("recv: dropped (wrong eth addr)!\n");
-#endif
-                yield();
-                continue;
-            }
-
-            if (ETHER_TYPE_IPv4 != eth_type) {
-#if DMTR_DEBUG
-                printf("recv: dropped (wrong eth type)!\n");
-#endif
-                yield();
-                continue;
-            }
-
-            // check ip header
-            auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
-            p += sizeof(*ip_hdr);
-            uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
-            uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
-
-#if DMTR_DEBUG
-                printf("recv: ip src addr: %x\n", ipv4_src_addr);
-                printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
-#endif
-
-            if (is_bound()) {
-                auto bound_addr = boost::get(my_bound_addr);
-                // if the packet isn't addressed to me, drop it.
-                if (ipv4_dst_addr != bound_addr.sin_addr.s_addr) {
-#if DMTR_DEBUG
-                    printf("recv: dropped (not my IP addr; %x)!\n", bound_addr.sin_addr.s_addr);
-#endif
-                    yield();
-                    continue;
-                }
-            }
-
-            if (IPPROTO_UDP != ip_hdr->next_proto_id) {
-#if DMTR_DEBUG
-                printf("recv: dropped (not UDP)!\n");
-#endif
-                yield();
-                continue;
-            }
-
-            // check udp header
-            auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
-            p += sizeof(*udp_hdr);
-            uint16_t udp_src_port = ntohs(udp_hdr->src_port);
-            uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
-
-#if DMTR_DEBUG
-                printf("recv: udp src port: %d\n", udp_src_port);
-                printf("recv: udp dst port: %d\n", udp_dst_port);
-#endif
-
-            if (is_bound()) {
-                auto bound_addr = boost::get(my_bound_addr);
-                if (udp_dst_port != bound_addr.sin_port) {
-#if DMTR_DEBUG
-                    printf("recv: dropped (wrong UDP port)!\n");
-#endif
-                    yield();
-                    continue;
-                }
-            }
-
-            // segment count
-            sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
-            p += sizeof(uint32_t);
-
-#if DMTR_DEBUG
-                printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
-#endif
-
-            for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-                // segment length
-                auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
-                sga.sga_segs[i].sgaseg_len = seg_len;
-                p += sizeof(seg_len);
-
-#if DMTR_DEBUG
-                printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endif
-
-                void *buf = NULL;
-                DMTR_OK(dmtr_malloc(&buf, seg_len));
-                sga.sga_segs[i].sgaseg_buf = buf;
-                // todo: remove copy if possible.
-                rte_memcpy(buf, p, seg_len);
-                p += seg_len;
-
-#if DMTR_DEBUG
-                printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
-#endif
-            }
-
-            sga.sga_addr.sin_family = AF_INET;
-            sga.sga_addr.sin_port = udp_src_port;
-            sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
-
-            set_pop_qresult(qr_out, sga);
-            return 0;
-        }
-    }));
+            }));
 
     return 0;
 }
@@ -782,35 +743,167 @@ int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &m
     return 0;
 }
 
-int dmtr::lwip_queue::service_recv_queue(struct rte_mbuf *&pkt_out) {
+int
+dmtr::lwip_queue::service_incoming_packets() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-    if (my_recv_queue.empty()) {
-        struct rte_mbuf *pkts[our_max_queue_depth];
-        uint16_t depth = 0;
-        DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
-        size_t count = 0;
-        int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
-        switch (ret) {
-            default:
-                DMTR_OK(ret);
-                DMTR_UNREACHABLE();
-            case 0:
-                break;
-            case EAGAIN:
-                return ret;
-        }
-
-        for (size_t i = 0; i < count; ++i) {
-            my_recv_queue.push(pkts[i]);
-        }
+    // poll DPDK NIC
+    struct rte_mbuf *pkts[our_max_queue_depth];
+    uint16_t depth = 0;
+    DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
+    size_t count = 0;
+    int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
+    switch (ret) {
+    default:
+        DMTR_OK(ret);
+    case 0:
+    case EAGAIN:
+        return 0;
     }
 
-    pkt_out = my_recv_queue.front();
-    my_recv_queue.pop();
-    return 0;
+    for (size_t i = 0; i < count; ++i) {
+        struct sockaddr_in src, dst;
+        dmtr_sgarray_t sga;
+        // check the packet header
+        bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
+        rte_pktmbuf_free(pkts[i]);
+
+        if (valid_packet) {
+            // found valid packet, try to place in queue based on src
+            if (insert_recv_queue(lwip_addr(src), sga)) {
+                // placed in appropriate queue, work is done
+                continue;
+            }
+            // otherwise place in queue based on dst
+            insert_recv_queue(lwip_addr(dst), sga);
+        }
+    }
+    return count;
+}
+
+bool
+dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
+                               struct sockaddr_in &dst,
+                               dmtr_sgarray_t &sga,
+                               const struct rte_mbuf *pkt)
+{
+    // packet layout order is (from outside -> in):
+    // ether_hdr
+    // ipv4_hdr
+    // udp_hdr
+    // sga.num_bufs
+    // sga.buf[0].len
+    // sga.buf[0].buf
+    // sga.buf[1].len
+    // sga.buf[1].buf
+    // ...
+    auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
+
+    // check ethernet header
+    auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
+    p += sizeof(*eth_hdr);
+    auto eth_type = ntohs(eth_hdr->ether_type);
+
+#if DMTR_DEBUG
+    printf("=====\n");
+    printf("recv: pkt len: %d\n", pkt->pkt_len);
+    printf("send: eth src addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
+    printf("\n");
+    printf("send: eth dst addr: ");
+    DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
+    printf("\n");
+    printf("recv: eth type: %x\n", eth_type);
+#endif
+
+    struct ether_addr mac_addr = {};
+
+    DMTR_OK(rte_eth_macaddr_get(boost::get(our_dpdk_port_id), mac_addr));
+    if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth addr)!\n");
+#endif
+        return false;
+    }
+
+    if (ETHER_TYPE_IPv4 != eth_type) {
+#if DMTR_DEBUG
+        printf("recv: dropped (wrong eth type)!\n");
+#endif
+        return false;
+    }
+
+    // check ip header
+    auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
+    p += sizeof(*ip_hdr);
+    uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
+    uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
+
+    if (IPPROTO_UDP != ip_hdr->next_proto_id) {
+#if DMTR_DEBUG
+        printf("recv: dropped (not UDP)!\n");
+#endif
+        return false;
+    }
+
+#if DMTR_DEBUG
+    printf("recv: ip src addr: %x\n", ipv4_src_addr);
+    printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
+#endif
+    src.sin_addr.s_addr = ipv4_src_addr;
+    dst.sin_addr.s_addr = ipv4_dst_addr;
+
+    // check udp header
+    auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
+    p += sizeof(*udp_hdr);
+    uint16_t udp_src_port = ntohs(udp_hdr->src_port);
+    uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
+
+#if DMTR_DEBUG
+    printf("recv: udp src port: %d\n", udp_src_port);
+    printf("recv: udp dst port: %d\n", udp_dst_port);
+#endif
+    src.sin_port = udp_src_port;
+    dst.sin_port = udp_dst_port;
+    src.sin_family = AF_INET;
+    dst.sin_family = AF_INET;
+    
+
+    // segment count
+    sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
+    p += sizeof(uint32_t);
+
+#if DMTR_DEBUG
+    printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
+#endif
+
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        // segment length
+        auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
+        sga.sga_segs[i].sgaseg_len = seg_len;
+        p += sizeof(seg_len);
+
+#if DMTR_DEBUG
+        printf("recv: buf [%lu] len: %u\n", i, seg_len);
+#endif
+
+        void *buf = NULL;
+        DMTR_OK(dmtr_malloc(&buf, seg_len));
+        sga.sga_segs[i].sgaseg_buf = buf;
+        // todo: remove copy if possible.
+        rte_memcpy(buf, p, seg_len);
+        p += seg_len;
+
+#if DMTR_DEBUG
+        printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+#endif
+    }
+    sga.sga_addr.sin_family = AF_INET;
+    sga.sga_addr.sin_port = udp_src_port;
+    sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
+    return true;
 }
 
 int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts) {

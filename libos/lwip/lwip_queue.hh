@@ -16,17 +16,40 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <map>
+
+class lwip_addr {
+public:
+    lwip_addr();
+    lwip_addr(const struct sockaddr_in &addr);
+    
+private:
+    sockaddr_in addr;
+    friend class lwip_queue;
+    friend bool operator==(const lwip_addr &a,
+                           const lwip_addr &b);
+    friend bool operator!=(const lwip_addr &a,
+                           const lwip_addr &b);
+    friend bool operator<(const lwip_addr &a,
+                          const lwip_addr &b);
+};
 
 namespace dmtr {
 
 class lwip_queue : public io_queue {
+   
+    
     private: static const size_t our_max_queue_depth;
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
-    private: boost::optional<struct sockaddr_in> my_bound_addr;
-    private: boost::optional<struct sockaddr_in> my_default_peer;
-    private: std::queue<struct rte_mbuf *> my_recv_queue;
+    // demultiplexing incoming packets into queues
+    private: static std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
+
+    private: bool my_listening_flag = false;
+    protected: boost::optional<struct sockaddr_in> my_bound_src;
+    protected: boost::optional<struct sockaddr_in> my_default_dst;
+    protected: std::queue<dmtr_sgarray_t> my_recv_queue;
 
     private: lwip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -35,7 +58,10 @@ class lwip_queue : public io_queue {
 
     // network functions
     public: int socket(int domain, int type, int protocol);
+    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
+    public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int newqd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
@@ -52,10 +78,15 @@ class lwip_queue : public io_queue {
     private: static int print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link = NULL);
     private: static int wait_for_link_status_up(uint16_t port_id);
     private: bool is_bound() const {
-        return boost::none != my_bound_addr;
+        return boost::none != my_bound_src;
     }
-    private: int service_recv_queue(struct rte_mbuf *&pkt_out);
+    private: bool is_connected() const {
+        return boost::none != my_default_dst;
+    }
 
+    private: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
+    private: static int service_incoming_packets();
+    private: static bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
     private: static int rte_eth_tx_burst(size_t &count_out, uint16_t port_id,uint16_t queue_id, struct rte_mbuf **tx_pkts, uint16_t nb_pkts);

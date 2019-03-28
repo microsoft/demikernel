@@ -33,12 +33,12 @@ target_link_libraries(dmtr-posix-client dmtr-libos-posix yaml-cpp boost_program_
 add_custom_target(dmtr-posix-echo)
 add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
 
-# LWIP UDP server
-add_executable(dmtr-lwip-server ${UDP_ECHO_SERVER_SOURCES})
+# LWIP TCP server
+add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-lwip-server dmtr-libos-lwip yaml-cpp boost_program_options)
 
-# LWIP UDP client
-add_executable(dmtr-lwip-client  ${UDP_ECHO_CLIENT_SOURCES})
+# LWIP TCP client
+add_executable(dmtr-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(dmtr-lwip-client dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP UDP client & server
