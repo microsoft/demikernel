@@ -88,11 +88,11 @@ int main(int argc, char *argv[])
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
-    std::cout << "listen qd: " << lqd;
+    std::cout << "listen qd: " << lqd << std::endl;
 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
-    std::cout << "listening for connections\n";
+
     DMTR_OK(dmtr_listen(lqd, 3));
     DMTR_OK(dmtr_accept(&token, lqd));
     tokens.push_back(token);
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 
         // if we got an EOK back from wait
         if (status == 0) {
-	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
+            std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers

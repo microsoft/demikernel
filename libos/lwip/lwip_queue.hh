@@ -85,6 +85,7 @@ class lwip_queue : public io_queue {
     }
 
     private: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
+    private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: static int service_incoming_packets();
     private: static bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);

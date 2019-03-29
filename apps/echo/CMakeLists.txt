@@ -41,7 +41,7 @@ target_link_libraries(dmtr-lwip-server dmtr-libos-lwip yaml-cpp boost_program_op
 add_executable(dmtr-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(dmtr-lwip-client dmtr-libos-lwip yaml-cpp boost_program_options)
 
-# LWIP UDP client & server
+# LWIP TCP client & server
 add_custom_target(dmtr-lwip-echo)
 add_dependencies(dmtr-lwip-echo dmtr-lwip-server dmtr-lwip-client)
 
