@@ -48,6 +48,16 @@
         "type_traits": "cpp",
         "typeinfo": "cpp",
         "cassert": "cpp",
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "strstream": "cpp",
+        "complex": "cpp",
+        "deque": "cpp",
+        "unordered_set": "cpp",
+        "iomanip": "cpp",
+        "typeindex": "cpp",
+        "variant": "cpp",
+        "algorithm": "cpp"
     }
 }
