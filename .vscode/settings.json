@@ -48,6 +48,7 @@
         "type_traits": "cpp",
         "typeinfo": "cpp",
         "cassert": "cpp",
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "*.ipp": "cpp"
     }
 }
