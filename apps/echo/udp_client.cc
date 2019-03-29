@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
     }
 
     DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
-    DMTR_OK(dmtr_dump_ptimer(stderr, push_timer));
+    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
     DMTR_OK(dmtr_close(qd));
 
     return 0;

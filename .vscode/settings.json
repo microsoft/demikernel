@@ -58,6 +58,7 @@
         "iomanip": "cpp",
         "typeindex": "cpp",
         "variant": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "*.ipp": "cpp"
     }
 }
