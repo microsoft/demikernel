@@ -223,7 +223,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, complete_accept));
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, complete_accept, q));
 
     q_out = std::move(qq);
     return 0;
