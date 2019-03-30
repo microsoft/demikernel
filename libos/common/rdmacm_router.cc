@@ -50,8 +50,11 @@ int dmtr::rdmacm_router::get_rdmacm_router(rdmacm_router *&r_out) {
 /* Called when a socket is created to listen for events for it
 */ 
 int dmtr::rdmacm_router::add_rdma_queue(struct rdma_cm_id* id) {
+    DMTR_NOTNULL(EINVAL, id);
     my_event_queues[id] = std::queue<struct rdma_cm_event>();
-    if (my_channel == NULL) {
+
+    // If this is our first id, get the global channel from it
+    if (NULL == my_channel) {
         my_channel = id->channel;
     }
     return 0;
@@ -60,10 +63,12 @@ int dmtr::rdmacm_router::add_rdma_queue(struct rdma_cm_id* id) {
 /* Called when a socket is closed to stop delivering events
 */
 int dmtr::rdmacm_router::delete_rdma_queue(struct rdma_cm_id* id) {
-    my_event_queues.erase(id);
+    DMTR_NOTNULL(EINVAL, id);
+    auto it = my_event_queues.find(id);
+    DMTR_TRUE(ENOENT, it != my_event_queues.cend());
+    my_event_queues.erase(it);
     if(my_event_queues.empty()) {
         my_channel = NULL;
-        fprintf(stderr, "No event channel to scan anymore\n");
     }
     return 0;
 }
@@ -71,15 +76,15 @@ int dmtr::rdmacm_router::delete_rdma_queue(struct rdma_cm_id* id) {
 /* Gets the next rdma_cm_event for the given rdma_cm_id (socket) if there are any waiting
 */
 int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rdma_cm_id* id) {
-    if (my_event_queues.empty() || my_event_queues.find(id) == my_event_queues.end()) {
-        fprintf(stderr, "Couldn't find my id, bad news\n");
-        return EINVAL;
-    }
+    auto it = my_event_queues.find(id);
+    DMTR_TRUE(ENOENT, it != my_event_queues.cend());
     int ret = poll();
     if (ret != EAGAIN && ret != 0) {
         fprintf(stderr, "Unexpected rdmacm_router poll() return value %d\n", ret);
+        return ret;
     }
-    if (my_event_queues[id].empty()) {
+    auto *q = &it->second;
+    if (q->empty()) {
         return EAGAIN;
     }
     *e_out = my_event_queues[id].front();
@@ -90,13 +95,35 @@ int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rd
 /* Polls for a new rdma_cm_event and puts it in the right socket's queue 
 */
 int dmtr::rdmacm_router::poll() {
+    DMTR_NOTNULL(EINVAL, my_channel);
     struct rdma_cm_event *e = NULL;
     int ret = 0;
-    if (my_channel == NULL) {
-        fprintf(stderr, "Error: no channel\n");
-        return EINVAL;
+
+    rdma_get_cm_event(&e);
+
+    // Usually the destination rdma_cm_id is the e->id, except for connect requests.
+    // There, the e->id is the NEW socket id and the destination id is in e->listen_id
+    struct rdma_cm_id* importantId = e->id;
+    if (e->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
+        importantId = e->listen_id;
     }
-    ret = rdma_get_cm_event(my_channel, &e);
+
+    auto it = my_event_queues.find(importantId);
+    if (it != my_event_queues.cend()) {
+        it->second.push(*e);
+    }
+    // RDMA sends status messages on closed connections to signal QP reuse availability
+    // For that and maybe other reasons, we still want to acknowledge (and not crash)
+    // cm_events that aren't destined for one of the alive queues.
+
+    rdma_ack_cm_event(e);
+    return ret;
+}
+
+int dmtr::rdmacm_router::rdma_get_cm_event(struct rdma_cm_event** e_out) {
+    DMTR_NOTNULL(EINVAL, my_channel);
+
+    int ret = ::rdma_get_cm_event(my_channel, e_out);
     switch (ret) {
         default:
             DMTR_UNREACHABLE();
@@ -107,19 +134,20 @@ int dmtr::rdmacm_router::poll() {
                 return errno;
             }
         case 0:
-            break;
+            return 0;
     }
+}
 
-    // Usually the destination rdma_cm_id is the e->id, except for connect requests.
-    // There, the e->id is the NEW socket id and the destination id is in e->listen_id
-    struct rdma_cm_id* importantId = e->id;
-    if (e->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
-        importantId = e->listen_id;
-    }
+int dmtr::rdmacm_router::rdma_ack_cm_event(struct rdma_cm_event * const event) {
+    DMTR_NOTNULL(EINVAL, event);
 
-    if(my_event_queues.count(importantId)) {
-        my_event_queues[importantId].push(*e);
+    int ret = ::rdma_ack_cm_event(event);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case -1:
+            return errno;
+        case 0:
+            return 0;
     }
-    rdma_ack_cm_event(e);
-    return ret;
 }

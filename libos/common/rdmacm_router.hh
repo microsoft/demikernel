@@ -33,14 +33,14 @@
 #ifndef DMTR_LIBOS_RDMA_ROUTER_HH_IS_INCLUDED
 #define DMTR_LIBOS_RDMA_ROUTER_HH_IS_INCLUDED
 
-#include <map>
+#include <unordered_map>
 #include <queue>
 #include <rdma/rdma_cma.h>
 
 namespace dmtr {
 
 class rdmacm_router {
-    private: std::map<struct rdma_cm_id*, std::queue<struct rdma_cm_event>> my_event_queues;
+    private: std::unordered_map<struct rdma_cm_id*, std::queue<struct rdma_cm_event>> my_event_queues;
     private: struct rdma_event_channel *my_channel = NULL;
 
     private: rdmacm_router();
@@ -52,6 +52,8 @@ class rdmacm_router {
     public: int get_rdmacm_event(struct rdma_cm_event* e_out, struct rdma_cm_id* id);
 
     private: int poll();
+    private: int rdma_get_cm_event(struct rdma_cm_event** e_out);
+    private: int rdma_ack_cm_event(struct rdma_cm_event* e);
 };
 
 } // namespace dmtr

@@ -189,7 +189,7 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
     if(our_rdmacm_router == NULL) {
         dmtr::rdmacm_router::get_rdmacm_router(our_rdmacm_router);
     }
-    our_rdmacm_router->add_rdma_queue(my_rdma_id);
+    DMTR_OK(our_rdmacm_router->add_rdma_queue(my_rdma_id));
     return 0;
 }
 
@@ -233,7 +233,7 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
         my_pending_accepts.pop();
 
         q->my_rdma_id = new_rdma_id;
-        our_rdmacm_router->add_rdma_queue(new_rdma_id);
+        DMTR_OK(our_rdmacm_router->add_rdma_queue(new_rdma_id));
         DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
         DMTR_OK(q->setup_rdma_qp());
         DMTR_OK(q->setup_recv_queue());
@@ -317,7 +317,7 @@ int dmtr::rdma_queue::close()
     DMTR_OK(rdma_destroy_qp(rdma_id));
     // todo: until we deal with unregistering memory, deallocating the protection domain will fail.
     //DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
-    our_rdmacm_router->delete_rdma_queue(rdma_id);
+    DMTR_OK(our_rdmacm_router->delete_rdma_queue(rdma_id));
     // todo: similarly can't destroy either of these
     //DMTR_OK(rdma_destroy_id(rdma_id));
     //DMTR_OK(rdma_destroy_event_channel(channel));
