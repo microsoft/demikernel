@@ -142,33 +142,43 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        int new_fd = -1;
-        sockaddr_in addr;
-        socklen_t len = sizeof(addr);
-        while (-1 == new_fd) {
-            int ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    new_fd = -1;
-                    yield();
-                    continue;
-                case 0:
-                    break;
-            }
-        }
-
-        DMTR_OK(set_tcp_nodelay(new_fd));
-        DMTR_OK(set_non_blocking(new_fd));
-        q->my_fd = new_fd;
-        q->my_tcp_flag = true;
-        set_qresult(qr_out, new_qd, addr, len);
-        return 0;
-    }));
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, complete_accept, q));
 
     q_out = std::move(qq);
+    return 0;
+}
+
+int dmtr::posix_queue::complete_accept(task::yield_type &yield, task &t, io_queue &q) {
+    auto * const self = dynamic_cast<posix_queue *>(&q);
+    DMTR_NOTNULL(EINVAL, self);
+
+    io_queue *new_q = NULL;
+    DMTR_TRUE(EINVAL, t.arg(new_q));
+    auto * const new_pq = dynamic_cast<posix_queue *>(new_q);
+    DMTR_NOTNULL(EINVAL, new_pq);
+
+    int new_fd = -1;
+    sockaddr_in addr;
+    socklen_t len = sizeof(addr);
+    while (-1 == new_fd) {
+        int ret = self->accept(new_fd, self->my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                new_fd = -1;
+                yield();
+                continue;
+            case 0:
+                break;
+        }
+    }
+
+    DMTR_OK(set_tcp_nodelay(new_fd));
+    DMTR_OK(set_non_blocking(new_fd));
+    new_pq->my_fd = new_fd;
+    new_pq->my_tcp_flag = true;
+    t.complete(new_pq->qd(), addr, len);
     return 0;
 }
 
@@ -261,210 +271,221 @@ int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        //std::cerr << "push(" << qt << "): preparing message." << std::endl;
-
-        size_t sgalen = 0;
-        DMTR_OK(dmtr_sgalen(&sgalen, &sga));
-        if (0 == sgalen) {
-            return ENOMSG;
-        }
-
-        size_t iov_len = 2 * sga.sga_numsegs + 1;
-        struct iovec iov[iov_len];
-        size_t data_size = 0;
-        size_t message_bytes = 0;
-        uint32_t seg_lens[sga.sga_numsegs];
-
-        // calculate size and fill in iov
-        for (size_t i = 0; i < sga.sga_numsegs; i++) {
-            static_assert(sizeof(*seg_lens) == sizeof(sga.sga_segs[i].sgaseg_len), "type mismatch");
-            const auto j = 2 * i + 1;
-            seg_lens[i] = htonl(sga.sga_segs[i].sgaseg_len);
-            iov[j].iov_base = &seg_lens[i];
-            iov[j].iov_len = sizeof(sga.sga_segs[i].sgaseg_len);
-
-            const auto k = j + 1;
-            iov[k].iov_base = sga.sga_segs[i].sgaseg_buf;
-            iov[k].iov_len = sga.sga_segs[i].sgaseg_len;
-
-            // add up actual data size
-            data_size += sga.sga_segs[i].sgaseg_len;
-
-            // add up expected packet size (not yet including header)
-            message_bytes += sga.sga_segs[i].sgaseg_len;
-            message_bytes += sizeof(sga.sga_segs[i].sgaseg_len);
-        }
-
-        // fill in header
-        dmtr_header_t header = {};
-        header.h_magic = htonl(DMTR_HEADER_MAGIC);
-        header.h_bytes = htonl(message_bytes);
-        header.h_sgasegs = htonl(sga.sga_numsegs);
-
-        // set up header at beginning of packet
-        iov[0].iov_base = &header;
-        iov[0].iov_len = sizeof(header);
-        message_bytes += sizeof(header);
-
-        //std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
-        size_t bytes_written = 0;
-        bool done = false;
-        while (!done) {
-            int ret = writev(bytes_written, my_fd, iov, iov_len);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    yield();
-                    continue;
-                // these can occur if the peer closes the connection before
-                // completion.
-                case ECONNABORTED:
-                case ECONNRESET:
-                    return ECONNABORTED;
-                // `EBADF` can occur if the queue is closed before completion.
-                case EBADF:
-                    return ret;
-                case 0:
-                    done = true;
-                    break;
-            }
-        }
-        //std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
-
-        DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
-
-        set_qresult(qr_out, sga);
-        return 0;
-    }));
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, complete_push, sga));
 
     return 0;
 }
 
-int dmtr::posix_queue::pop(dmtr_qtoken_t qt)
-{
+int dmtr::posix_queue::complete_push(task::yield_type &yield, task &t, io_queue &q) {
+    auto * const self = dynamic_cast<posix_queue *>(&q);
+    DMTR_NOTNULL(EINVAL, self);
+
+    const dmtr_sgarray_t *sga = NULL;
+    DMTR_TRUE(EINVAL, t.arg(sga));
+
+    //std::cerr << "push(" << qt << "): preparing message." << std::endl;
+
+    size_t sgalen = 0;
+    DMTR_OK(dmtr_sgalen(&sgalen, sga));
+    if (0 == sgalen) {
+        return ENOMSG;
+    }
+
+    size_t iov_len = 2 * sga->sga_numsegs + 1;
+    struct iovec iov[iov_len];
+    size_t data_size = 0;
+    size_t message_bytes = 0;
+    uint32_t seg_lens[sga->sga_numsegs];
+
+    // calculate size and fill in iov
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {
+        static_assert(sizeof(*seg_lens) == sizeof(sga->sga_segs[i].sgaseg_len), "type mismatch");
+        const auto j = 2 * i + 1;
+        seg_lens[i] = htonl(sga->sga_segs[i].sgaseg_len);
+        iov[j].iov_base = &seg_lens[i];
+        iov[j].iov_len = sizeof(sga->sga_segs[i].sgaseg_len);
+
+        const auto k = j + 1;
+        iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
+        iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
+
+        // add up actual data size
+        data_size += sga->sga_segs[i].sgaseg_len;
+
+        // add up expected packet size (not yet including header)
+        message_bytes += sga->sga_segs[i].sgaseg_len;
+        message_bytes += sizeof(sga->sga_segs[i].sgaseg_len);
+    }
+
+    // fill in header
+    dmtr_header_t header = {};
+    header.h_magic = htonl(DMTR_HEADER_MAGIC);
+    header.h_bytes = htonl(message_bytes);
+    header.h_sgasegs = htonl(sga->sga_numsegs);
+
+    // set up header at beginning of packet
+    iov[0].iov_base = &header;
+    iov[0].iov_len = sizeof(header);
+    message_bytes += sizeof(header);
+
+    //std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
+    size_t bytes_written = 0;
+    bool done = false;
+    while (!done) {
+        int ret = writev(bytes_written, self->my_fd, iov, iov_len);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                yield();
+                continue;
+            // these can occur if the peer closes the connection before
+            // completion.
+            case ECONNABORTED:
+            case ECONNRESET:
+                return ECONNABORTED;
+            // `EBADF` can occur if the queue is closed before completion.
+            case EBADF:
+                return ret;
+            case 0:
+                done = true;
+                break;
+        }
+    }
+    //std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
+
+    DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
+
+    t.complete(*sga);
+    return 0;
+}
+
+int dmtr::posix_queue::pop(dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        while (boost::none != my_active_recv) {
-            yield();
-        }
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, complete_pop));
 
-        my_active_recv = qt;
-        raii_guard rg0([=]() {
-            my_active_recv = boost::none;
-        });
+    return 0;
+}
 
-        // if we don't have a full header yet, get one.
-        size_t header_bytes = 0;
-        dmtr_header_t header;
-        while (header_bytes < sizeof(header)) {
-            uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
-            size_t remaining_bytes = sizeof(header) - header_bytes;
-            size_t bytes_read = 0;
-            //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
-            int ret = read(bytes_read, my_fd, p, remaining_bytes);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    yield();
-                    continue;
-                // these can occur if the peer closes the connection before
-                // completion.
-                case ECONNABORTED:
-                case ECONNRESET:
-                    return ECONNABORTED;
-                // `EBADF` can occur if the queue is closed before completion.
-                case EBADF:
-                    return ret;
-                case 0:
-                    break;
-            }
+int dmtr::posix_queue::complete_pop(task::yield_type &yield, task &t, io_queue &q) {
+    auto * const self = dynamic_cast<posix_queue *>(&q);
+    DMTR_NOTNULL(EINVAL, self);
 
-            if (0 == bytes_read) {
+    while (boost::none != self->my_active_recv) {
+        yield();
+    }
+
+    self->my_active_recv = t.qt();
+    raii_guard rg0(std::bind(std::mem_fn(&posix_queue::clear_active_recv), self));
+
+    // if we don't have a full header yet, get one.
+    size_t header_bytes = 0;
+    dmtr_header_t header;
+    while (header_bytes < sizeof(header)) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
+        size_t remaining_bytes = sizeof(header) - header_bytes;
+        size_t bytes_read = 0;
+        //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+        int ret = read(bytes_read, self->my_fd, p, remaining_bytes);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                yield();
+                continue;
+            // these can occur if the peer closes the connection before
+            // completion.
+            case ECONNABORTED:
+            case ECONNRESET:
                 return ECONNABORTED;
-            }
-
-            header_bytes += bytes_read;
+            // `EBADF` can occur if the queue is closed before completion.
+            case EBADF:
+                return ret;
+            case 0:
+                break;
         }
 
-        //std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
-
-        header.h_magic = ntohl(header.h_magic);
-        header.h_bytes = ntohl(header.h_bytes);
-        header.h_sgasegs = ntohl(header.h_sgasegs);
-
-        if (DMTR_HEADER_MAGIC != header.h_magic) {
-            return EILSEQ;
+        if (0 == bytes_read) {
+            return ECONNABORTED;
         }
 
-        //std::cerr << "pop(" << qt << "): header magic number is correct." << std::endl;
+        header_bytes += bytes_read;
+    }
 
-        // grab the rest of the message
-        dmtr_sgarray_t sga = {};
-        DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
-        std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
-        size_t data_bytes = 0;
-        while (data_bytes < header.h_bytes) {
-            uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
-            size_t remaining_bytes = header.h_bytes - data_bytes;
-            size_t bytes_read = 0;
-            //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
-            int ret = read(bytes_read, my_fd, p, remaining_bytes);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case EAGAIN:
-                    yield();
-                    continue;
-                // these can occur if the peer closes the connection before
-                // completion.
-                case ECONNABORTED:
-                case ECONNRESET:
-                    return ECONNABORTED;
-                // `EBADF` can occur if the queue is closed before completion.
-                case EBADF:
-                    return ret;
-                case 0:
-                    break;
-            }
+    //std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
 
-            if (0 == bytes_read) {
+    header.h_magic = ntohl(header.h_magic);
+    header.h_bytes = ntohl(header.h_bytes);
+    header.h_sgasegs = ntohl(header.h_sgasegs);
+
+    if (DMTR_HEADER_MAGIC != header.h_magic) {
+        return EILSEQ;
+    }
+
+    //std::cerr << "pop(" << qt << "): header magic number is correct." << std::endl;
+
+    // grab the rest of the message
+    dmtr_sgarray_t sga = {};
+    DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
+    std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
+    size_t data_bytes = 0;
+    while (data_bytes < header.h_bytes) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
+        size_t remaining_bytes = header.h_bytes - data_bytes;
+        size_t bytes_read = 0;
+        //std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+        int ret = read(bytes_read, self->my_fd, p, remaining_bytes);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                yield();
+                continue;
+            // these can occur if the peer closes the connection before
+            // completion.
+            case ECONNABORTED:
+            case ECONNRESET:
                 return ECONNABORTED;
-            }
-
-            data_bytes += bytes_read;
+            // `EBADF` can occur if the queue is closed before completion.
+            case EBADF:
+                return ret;
+            case 0:
+                break;
         }
 
-        //std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
-        //std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
-
-        // now we have the whole buffer, start filling sga
-        uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
-        sga.sga_numsegs = header.h_sgasegs;
-        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
-            sga.sga_segs[i].sgaseg_len = seglen;
-            //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
-            p += sizeof(uint32_t);
-            sga.sga_segs[i].sgaseg_buf = p;
-            p += seglen;
+        if (0 == bytes_read) {
+            return ECONNABORTED;
         }
 
-        //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
-        buf.release();
-        set_qresult(qr_out, sga);
-        return 0;
-    }));
+        data_bytes += bytes_read;
+    }
+
+    //std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
+    //std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
+
+    // now we have the whole buffer, start filling sga
+    uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
+    sga.sga_numsegs = header.h_sgasegs;
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
+        sga.sga_segs[i].sgaseg_len = seglen;
+        //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
+        p += sizeof(uint32_t);
+        sga.sga_segs[i].sgaseg_buf = p;
+        p += seglen;
+    }
+
+    //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
+    buf.release();
+    t.complete(sga);
     return 0;
 }
 
 int dmtr::posix_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
-    qr_out = {};
+    DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EINVAL, my_fd != -1);
 
     return io_queue::poll(qr_out, qt);
