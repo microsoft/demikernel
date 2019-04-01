@@ -179,7 +179,7 @@ int dmtr::rdma_queue::socket(int domain, int type, int protocol)
     DMTR_NULL(EPERM, my_rdma_id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
-    DMTR_OK(our_rdmacm_router->create_id(my_rdma_id, protocol));
+    DMTR_OK(our_rdmacm_router->create_id(my_rdma_id, type));
     return 0;
 }
 

@@ -64,7 +64,7 @@ dmtr::rdmacm_router::~rdmacm_router()
 /* Called when a socket is created to listen for events for it
 */
 int dmtr::rdmacm_router::create_id(struct rdma_cm_id *&id, int type) {
-    DMTR_NOTNULL(EINVAL, id);
+    DMTR_NULL(EINVAL, id);
     DMTR_NOTNULL(EINVAL, my_channel);
     DMTR_TRUE(EEXIST, my_event_queues.cend() == my_event_queues.find(id));
 
