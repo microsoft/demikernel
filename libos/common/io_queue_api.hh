@@ -77,11 +77,11 @@ class io_queue_api
     public: int close(int qd);
     public: int push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t &qtok_out, int qd);
-    public: int poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt);
+    public: int poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
     public: int drop(dmtr_qtoken_t qt);
     public: int is_qd_valid(bool &flag, int qd);
 
-    private: static void on_accept_failure(dmtr_qresult_t * const qr_out, io_queue_api *self, const dmtr_qresult_t * const qr);
+    private: static void on_poll_failure(dmtr_qresult_t * const qr_out, io_queue_api *self);
 };
 
 } // namespace dmtr
