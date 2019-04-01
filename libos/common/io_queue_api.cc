@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <dmtr/annot.h>
+#include <iostream>
 #include <libos/common/raii_guard.hh>
 #include <unistd.h>
 
@@ -252,17 +253,7 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
 
     dmtr_qresult_t qr = {};
     int ret = q->poll(qr, qt);
-    raii_guard rg0([=]() {
-        // if there's a failure on an accept token, we remove the queue
-        // we created at the beginning of the operation.
-        if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-            (void)remove_queue(qr.qr_value.ares.qd);
-            if (NULL != qr_out) {
-                *qr_out = qr;
-                qr_out->qr_value.ares.qd = 0;
-            }
-        }
-    });
+    raii_guard rg0(std::bind(on_accept_failure, qr_out, this, &qr));
 
     switch (ret) {
         default:
@@ -286,6 +277,35 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     }
 
     return ret;
+}
+
+void dmtr::io_queue_api::on_accept_failure(dmtr_qresult_t * const qr_out, io_queue_api *self, const dmtr_qresult_t * const qr)  {
+    // this is called from a destructor, so we need to be cautious not to
+    // trigger an exception in this method.
+    if (NULL == qr_out) {
+        std::cerr << "Unexpected NULL pointer `q_out` in dmtr::io_queue_api::on_accept_failure()." << std::endl;
+        abort();
+    }
+
+    if (NULL == self) {
+        std::cerr << "Unexpected NULL pointer `self` in dmtr::io_queue_api::on_accept_failure()." << std::endl;
+        abort();
+    }
+
+    if (NULL == qr) {
+        std::cerr << "Unexpected NULL pointer `qr` in dmtr::io_queue_api::on_accept_failure()." << std::endl;
+        abort();
+    }
+
+    // if there's a failure on an accept token, we remove the queue
+    // we created at the beginning of the operation.
+    if (DMTR_OPC_ACCEPT == qr->qr_opcode) {
+        (void)self->remove_queue(qr->qr_value.ares.qd);
+        if (NULL != qr_out) {
+            *qr_out = *qr;
+            qr_out->qr_value.ares.qd = 0;
+        }
+    }
 }
 
 int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {
