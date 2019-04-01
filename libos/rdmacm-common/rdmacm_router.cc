@@ -144,6 +144,8 @@ int dmtr::rdmacm_router::poll(struct rdma_cm_event &e_out, struct rdma_cm_id* id
 /* Polls for a new rdma_cm_event and puts it in the right socket's queue
 */
 int dmtr::rdmacm_router::service_event_channel() {
+    // todo: i don't know if it's really safe to acknowledge the event
+    // from within this function.
     DMTR_NOTNULL(EINVAL, my_channel);
     struct rdma_cm_event *e = NULL;
 
@@ -157,9 +159,6 @@ int dmtr::rdmacm_router::service_event_channel() {
             break;
     }
 
-    // todo: i don't know if it's really safe to destroy the event here.
-    raii_guard rg0(std::bind(rdma_ack_cm_event, e));
-
     // Usually the destination rdma_cm_id is the e->id, except for connect requests.
     // There, the e->id is the NEW socket id and the destination id is in e->listen_id
     struct rdma_cm_id *importantId = e->id;
@@ -172,10 +171,12 @@ int dmtr::rdmacm_router::service_event_channel() {
     // For that and maybe other reasons, we still want to acknowledge (and not crash)
     // cm_events that aren't destined for one of the alive queues.
     if (it == my_event_queues.cend()) {
+        DMTR_OK(rdma_ack_cm_event(e));
         return EAGAIN;
     }
 
     it->second.push(*e);
+    DMTR_OK(rdma_ack_cm_event(e));
     return 0;
 }
 
