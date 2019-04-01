@@ -20,6 +20,7 @@ int dmtr_sztol(long *to_arg, size_t from_arg);
 int dmtr_sztou(unsigned int *to_arg, size_t from_arg);
 int dmtr_sztou16(uint16_t *to_arg, size_t from_arg);
 int dmtr_sztou32(uint32_t *to_arg, size_t from_arg);
+int dmtr_u32toi(int32_t *to_arg, uint32_t from_arg);
 int dmtr_u32tou16(uint16_t *to_arg, uint32_t from_arg);
 int dmtr_ultoc(char *to_arg, unsigned long from_arg);
 int dmtr_ultol(long *to_arg, unsigned long from_arg);

@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <dmtr/annot.h>
-#include <libos/common/raii_guard.hh>
+#include <iostream>
 #include <unistd.h>
 
 static dmtr_timer_t *pop_timer = NULL;
@@ -270,9 +270,7 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     return 0;
 }
 
-int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
-    DMTR_OK(dmtr_start_timer(poll_timer));
-              
+int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, qt != 0);
 
     int qd = qttoqd(qt);
@@ -280,44 +278,51 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
 
-    dmtr_qresult_t qr = {};
-    int ret = q->poll(qr, qt);
-    raii_guard rg0([=]() {
-        // if there's a failure on an accept token, we remove the queue
-        // we created at the beginning of the operation.
-        if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-            (void)remove_queue(qr.qr_value.ares.qd);
-            if (NULL != qr_out) {
-                *qr_out = qr;
-                qr_out->qr_value.ares.qd = 0;
-            }
-        }
-    });
+    dmtr_qresult_t unused_qr = {};
+    if (NULL == qr_out) {
+        qr_out = &unused_qr;
+    }
 
+    int ret = q->poll(*qr_out, qt);
     switch (ret) {
         default:
+            on_poll_failure(qr_out, this);
             DMTR_FAIL(ret);
         case EAGAIN:
         case ECONNABORTED:
         case ECONNRESET:
         // `EBADF` can occur if the queue is closed before completion.
         case EBADF:
+            on_poll_failure(qr_out, this);
             return ret;
         case 0:
-            // callers that know they're waiting on a push token can specify
-            // `NULL` for `qr_out` without causing a fuss.
-            DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_OPC_PUSH == qr.qr_opcode);
-            if (NULL != qr_out) {
-                *qr_out = qr;
-            }
-            DMTR_OK(dmtr_stop_timer(poll_timer));
-            rg0.cancel();
             return 0;
    
    
     }
 
     return ret;
+}
+
+void dmtr::io_queue_api::on_poll_failure(dmtr_qresult_t * const qr_out, io_queue_api *self)  {
+    // this is called from a destructor, so we need to be cautious not to
+    // trigger an exception in this method.
+    if (NULL == qr_out) {
+        std::cerr << "Unexpected NULL pointer `q_out` in dmtr::io_queue_api::on_poll_failure()." << std::endl;
+        abort();
+    }
+
+    if (NULL == self) {
+        std::cerr << "Unexpected NULL pointer `self` in dmtr::io_queue_api::on_poll_failure()." << std::endl;
+        abort();
+    }
+
+    // if there's a failure on an accept token, we remove the queue
+    // we created at the beginning of the operation.
+    if (DMTR_OPC_ACCEPT == qr_out->qr_opcode) {
+        (void)self->remove_queue(qr_out->qr_value.ares.qd);
+        qr_out->qr_value.ares.qd = 0;
+    }
 }
 
 int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {
