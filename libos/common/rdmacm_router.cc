@@ -97,9 +97,16 @@ int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rd
 int dmtr::rdmacm_router::poll() {
     DMTR_NOTNULL(EINVAL, my_channel);
     struct rdma_cm_event *e = NULL;
-    int ret = 0;
 
-    DMTR_OK(rdma_get_cm_event(&e));
+    int ret = rdma_get_cm_event(&e);
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case EAGAIN:
+            return ret;
+        case 0:
+            break;
+    }
 
     // Usually the destination rdma_cm_id is the e->id, except for connect requests.
     // There, the e->id is the NEW socket id and the destination id is in e->listen_id
