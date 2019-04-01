@@ -32,13 +32,11 @@
 #define DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 
 #include <libos/common/io_queue.hh>
-
+#include <libos/rdmacm-common/rdmacm_router.hh>
 #include <memory>
 #include <queue>
 #include <rdma/rdma_cma.h>
 #include <unordered_set>
-
-#include <libos/common/rdmacm_router.hh>
 
 namespace dmtr {
 
