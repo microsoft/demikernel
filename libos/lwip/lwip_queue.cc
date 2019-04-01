@@ -26,6 +26,7 @@
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -36,7 +37,6 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 #include <include/dmtr/libos.h>
-#include <netinet/in.h>
 
 namespace bpo = boost::program_options;
 
@@ -157,7 +157,7 @@ struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 // default to use to give out port ids
 uint16_t dmtr::lwip_queue::our_port_counter = 12345;
-
+boost::optional<struct in_addr> dmtr::lwip_queue::our_ip_addr;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
 
@@ -392,10 +392,13 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     node = config["dpdk"]["host"];
     if (YAML::NodeType::Scalar == node.Type()) {
         std::string s = node.as<std::string>();
-        if (inet_pton(AF_INET, s, &our_ip_addr) != 1) {
+	struct in_addr addr = {};
+	void * addr_addr = reinterpret_cast<void *>(&addr);
+        if (inet_pton(AF_INET, s.c_str(), addr_addr) != 1) {
             std::cerr << "Unable to parse IP address." << std::endl;
         }
-
+	our_ip_addr = addr;
+	std::cout << "Our IP address: " << s << std::endl;
     }
 
     int unused = -1;
@@ -574,10 +577,11 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 
     // give the connection the local ip;
-    my_bound_src.sin_family = AF_INET;
+    my_bound_src->sin_family = AF_INET;
     DMTR_TRUE(EPERM, boost::none != our_ip_addr);
-    my_bound_src.sin_port = htons(our_port_counter++);
-    my_bound_src.sin_addr = boost::get(our_ip_addr);
+    my_bound_src->sin_port = htons(our_port_counter++);
+    my_bound_src->sin_addr = boost::get(our_ip_addr);
+    std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
     return 0;
 }
 
@@ -614,11 +618,12 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
         return ENOMSG;
     }
 
-     const struct sockaddr_in *saddr = NULL;
+    const struct sockaddr_in *saddr = NULL;
     if (!self->is_connected()) {
-        saddr = &sga->sga_addr;
-    } else {
+      saddr = &sga->sga_addr;
+     } else {
       saddr = &boost::get(self->my_default_dst);
+      std::cout << "Sending to default address: " << saddr->sin_addr.s_addr << std::endl;
     }
     struct rte_mbuf *pkt = NULL;
     DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
@@ -654,9 +659,10 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     ip_hdr->next_proto_id = IPPROTO_UDP;
     // todo: need a way to get my own IP address even if `bind()` wasn't
     // called.
-    if (self->is_bound()) {
-        auto bound_addr = *self->my_bound_src;
-        ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
+    if(self->is_bound()) {
+	auto bound_addr = *self->my_bound_src;
+	ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
+	std::cout << "Sending from address: " << bound_addr.sin_addr.s_addr << std::endl;
     } else {
         ip_hdr->src_addr = mac_to_ip(eth_hdr->s_addr);
     }
@@ -720,13 +726,13 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
     printf("send: udp dst port: %d\n", ntohs(udp_hdr->dst_port));
     printf("send: sga_numsegs: %d\n", sga->sga_numsegs);
-    for (size_t i = 0; i < sga->sga_numsegs; ++i) {
-        printf("send: buf [%lu] len: %u\n", i, sga->sga_segs[i].sgaseg_len);
-        printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
-    }
+    // for (size_t i = 0; i < sga->sga_numsegs; ++i) {
+    //     printf("send: buf [%lu] len: %u\n", i, sga->sga_segs[i].sgaseg_len);
+    //     printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
+    // }
     printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
     printf("send: pkt len: %d\n", total_len);
-    rte_pktmbuf_dump(stderr, pkt, total_len);
+    //rte_pktmbuf_dump(stderr, pkt, total_len);
 #endif
 
     size_t pkts_sent = 0;
@@ -939,7 +945,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         p += seg_len;
 
 #if DMTR_DEBUG
-        printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+        //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
 #endif
     }
     sga.sga_addr.sin_family = AF_INET;
