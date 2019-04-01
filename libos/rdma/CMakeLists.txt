@@ -11,4 +11,4 @@ target_add_hoard(dmtr-libos-rdma hoard-rdma)
 # files are normally culled if none of their symbols are referenced.
 target_link_libraries(dmtr-libos-rdma "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
 
-target_link_libraries(dmtr-libos-rdma rdmacm ibverbs boost_context boost_coroutine)
+target_link_libraries(dmtr-libos-rdma dmtr-libos-rdmacm-common rdmacm ibverbs boost_context boost_coroutine)
