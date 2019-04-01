@@ -155,8 +155,6 @@ operator<(const lwip_addr &a,
 
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
-// default to use to give out port ids
-uint16_t dmtr::lwip_queue::our_port_counter = 12345;
 boost::optional<struct in_addr> dmtr::lwip_queue::our_ip_addr;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
@@ -580,7 +578,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
     DMTR_TRUE(EPERM, boost::none != our_ip_addr);
-    src.sin_port = htons(our_port_counter++);
+    src.sin_port = htons(12345);
     src.sin_addr = boost::get(our_ip_addr);
     my_bound_src = src;
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;

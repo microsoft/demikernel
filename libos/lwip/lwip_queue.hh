@@ -44,7 +44,6 @@ class lwip_queue : public io_queue {
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     private: static boost::optional<struct in_addr> our_ip_addr;
-    private: static uint16_t our_port_counter;
     // demultiplexing incoming packets into queues
     private: static std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
 
