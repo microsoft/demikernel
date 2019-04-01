@@ -83,7 +83,9 @@ class lwip_queue : public io_queue {
     private: bool is_connected() const {
         return boost::none != my_default_dst;
     }
-
+    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
     private: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: static int service_incoming_packets();

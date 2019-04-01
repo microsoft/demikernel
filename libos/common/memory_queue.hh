@@ -54,6 +54,9 @@ class memory_queue : public io_queue
     public: virtual int pop(dmtr_qtoken_t qt);
     public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
+
+    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
 };
 
 } // namespace dmtr

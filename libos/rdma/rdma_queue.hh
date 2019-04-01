@@ -47,7 +47,7 @@ class rdma_queue : public io_queue {
 
     private: struct metadata {
         dmtr_header_t header;
-        uint32_t lengths[]; 
+        uint32_t lengths[];
     };
 
     // queued scatter gather arrays
@@ -112,6 +112,9 @@ class rdma_queue : public io_queue {
     private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
+    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
     private: int get_pd(struct ibv_pd *&pd_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();

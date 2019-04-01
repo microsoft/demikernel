@@ -72,7 +72,13 @@ class posix_queue : public io_queue {
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
     private: static int accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen);
 
-    private: int complete_accept(task &t);
+    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
+
+    private: void clear_active_recv() {
+        my_active_recv = boost::none;
+    }
 };
 
 } // namespace dmtr

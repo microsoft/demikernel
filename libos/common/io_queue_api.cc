@@ -5,6 +5,8 @@
 #include <dmtr/libos.h>
 #include <cassert>
 #include <cstdlib>
+#include <dmtr/annot.h>
+#include <libos/common/raii_guard.hh>
 #include <unistd.h>
 
 static dmtr_timer_t *pop_timer = NULL;
@@ -280,27 +282,36 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t * const qr_out, dmtr_qtoken_t qt) {
 
     dmtr_qresult_t qr = {};
     int ret = q->poll(qr, qt);
-    switch (ret) {
-        default:
-            // if there's a failure on an accept token, we remove the queue we created at the beginning of the operation.
-            if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
-                DMTR_OK(remove_queue(qr.qr_value.ares.qd));
-                DMTR_NOTNULL(EINVAL, qr_out);
+    raii_guard rg0([=]() {
+        // if there's a failure on an accept token, we remove the queue
+        // we created at the beginning of the operation.
+        if (DMTR_OPC_ACCEPT == qr.qr_opcode) {
+            (void)remove_queue(qr.qr_value.ares.qd);
+            if (NULL != qr_out) {
                 *qr_out = qr;
                 qr_out->qr_value.ares.qd = 0;
             }
+        }
+    });
+
+    switch (ret) {
+        default:
             DMTR_FAIL(ret);
         case EAGAIN:
         case ECONNABORTED:
         case ECONNRESET:
+        // `EBADF` can occur if the queue is closed before completion.
+        case EBADF:
             return ret;
         case 0:
-            // callers that know they're waiting on a push token can specify `NULL` for `qr_out` without causing a fuss.
+            // callers that know they're waiting on a push token can specify
+            // `NULL` for `qr_out` without causing a fuss.
             DMTR_TRUE(EINVAL, NULL != qr_out || DMTR_OPC_PUSH == qr.qr_opcode);
             if (NULL != qr_out) {
                 *qr_out = qr;
             }
             DMTR_OK(dmtr_stop_timer(poll_timer));
+            rg0.cancel();
             return 0;
    
    

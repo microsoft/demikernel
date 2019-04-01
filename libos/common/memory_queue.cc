@@ -45,36 +45,41 @@ int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     std::lock_guard<std::recursive_mutex> lock(my_lock);
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-                //std::lock_guard<std::recursive_mutex> lock(my_lock);
-        my_ready_queue.push(sga);
-        set_push_qresult(qr_out, sga);
-        return 0;
-    }));
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, complete_push));
     return 0;
 }
 
-int
-dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
-    std::lock_guard<std::recursive_mutex> lock(my_lock);
-    DMTR_OK(new_task(qt, DMTR_OPC_POP, [=](task::yield_type &yield, dmtr_qresult_t &qr_out) {
-        dmtr_sgarray_t sga;
-        while (true) {
-            {
-                // std::lock_guard<std::recursive_mutex> lock(my_lock);
-                if (!my_ready_queue.empty()) {
-                    sga = my_ready_queue.front();
-                    my_ready_queue.pop();
-                    break;
-                }
-            }
+int dmtr::memory_queue::complete_push(task::yield_type &yield, task &t, io_queue &q) {
+    auto * const self = dynamic_cast<memory_queue *>(&q);
+    DMTR_NOTNULL(EINVAL, self);
+    const dmtr_sgarray_t *sga = NULL;
+    DMTR_TRUE(EINVAL, t.arg(sga));
 
-            yield();
+    self->my_ready_queue.push(*sga);
+    t.complete(*sga);
+    return 0;
+}
+
+int dmtr::memory_queue::pop(dmtr_qtoken_t qt) {
+    std::lock_guard<std::recursive_mutex> lock(my_lock);
+    DMTR_OK(new_task(qt, DMTR_OPC_POP, complete_pop));
+    return 0;
+}
+
+int dmtr::memory_queue::complete_pop(task::yield_type &yield, task &t, io_queue &q) {
+    auto * const self = dynamic_cast<memory_queue *>(&q);
+    DMTR_NOTNULL(EINVAL, self);
+
+    while (true) {
+        if (!self->my_ready_queue.empty()) {
+            break;
         }
 
-        set_pop_qresult(qr_out, sga);
-        return 0;
-    }));
+        yield();
+    }
+
+    auto sga = self->my_ready_queue.front();
+    t.complete(sga);
     return 0;
 }
 

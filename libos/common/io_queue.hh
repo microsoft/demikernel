@@ -34,8 +34,6 @@
 #include <boost/coroutine2/coroutine.hpp>
 #include <dmtr/annot.h>
 #include <dmtr/types.h>
-#include <dmtr/libos.h>
-#include <functional>
 #include <memory>
 #include <sys/socket.h>
 #include <unordered_map>
@@ -54,20 +52,60 @@ class io_queue
         FILE_Q,
     };
 
-
-    // todo: reorder largest to smallest.
     protected: class task {
         public: typedef boost::coroutines2::coroutine<void> coroutine_type;
         public: typedef coroutine_type::push_type yield_type;
-        public: typedef std::function<int (yield_type &, dmtr_qresult_t &qr_out)> completion_type;
+        public: typedef int (*completion_type)(yield_type &, task &t, io_queue &);
+        private: class completion_adaptor {
+            private: task * const my_task;
+            private: int * const my_error;
+            private: io_queue * const my_queue;
+            private: completion_type my_completion;
+            public: completion_adaptor(task &t, int &error, io_queue &q, completion_type completion);
+            public: completion_adaptor(task &t, int &error, io_queue &q, completion_type completion, const dmtr_sgarray_t &input);
+
+            public: void operator()(yield_type &y) {
+                *my_error = my_completion(y, *my_task, *my_queue);
+            }
+        };
 
         private: dmtr_qresult_t my_qr;
         private: int my_error;
+        private: dmtr_sgarray_t my_sga_arg;
+        private: io_queue *my_queue_arg;
         private: coroutine_type::pull_type my_coroutine;
 
         private: task();
-        public: static int new_object(std::unique_ptr<task> &task_out, completion_type completion);
+        private: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode);
+        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, completion_type completion);
+        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, completion_type completion, const dmtr_sgarray_t &arg);
+        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, completion_type completion, io_queue *arg);
+        public: static int initialize_result(dmtr_qresult_t &qr, int qd, dmtr_qtoken_t qt);
+        private: static void coroutine_nop(yield_type &);
+
         public: int poll(dmtr_qresult_t &qr_out);
+        public: void complete(const dmtr_sgarray_t &sga);
+        public: void complete(int qd, const sockaddr_in &addr, socklen_t len);
+        public: bool arg(const dmtr_sgarray_t *&arg_out) const;
+        public: bool arg(io_queue *&arg_out) const;
+
+        private: void start_coroutine(completion_type completion, io_queue &q);
+
+        public: bool done() const {
+            return !my_coroutine;
+        }
+
+        public: int qd() const {
+            return my_qr.qr_qd;
+        }
+
+        public: int qt() const {
+            return my_qr.qr_qt;
+        }
+
+        public: dmtr_opcode_t opcode() const {
+            return my_qr.qr_opcode;
+        }
     };
 
     private: std::unordered_map<dmtr_qtoken_t, std::unique_ptr<task>> my_tasks;
@@ -105,12 +143,10 @@ class io_queue
 
     protected: static int set_non_blocking(int fd);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion);
+    protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion, const dmtr_sgarray_t &arg);
+    protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion, io_queue *arg);
     private: int get_task(task *&t, dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
-    protected: void set_qresult(dmtr_qresult_t &qr_out, dmtr_opcode_t opcode) const;
-    protected: void set_push_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
-    protected: void set_pop_qresult(dmtr_qresult_t &qr_out, const dmtr_sgarray_t &sga) const;
-    protected: void set_accept_qresult(dmtr_qresult_t &qr_out, int qd, const sockaddr_in &addr, socklen_t len) const;
 };
 
 } // namespace dmtr
