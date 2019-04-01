@@ -1,63 +1,32 @@
-#include <dmtr/annot.h>
-#include <dmtr/libos.h>
-#include <libos/common/mem.h>
-#include <dmtr/wait.h>
+#include "common.hh"
 
 #include <arpa/inet.h>
-#include <boost/optional.hpp>
-#include <boost/program_options/options_description.hpp>
-#include <boost/program_options/parsers.hpp>
-#include <boost/program_options/variables_map.hpp>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/libos.h>
+#include <dmtr/wait.h>
 #include <iostream>
+#include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <yaml-cpp/yaml.h>
 
 #define ITERATION_COUNT 10000
 #define BUFFER_SIZE 10
 #define FILL_CHAR 'a'
 
-namespace po = boost::program_options;
-
 int main(int argc, char *argv[])
 {
-    std::string config_path;
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+    parse_args(argc, argv, false);
 
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
+    if (boost::none == server_ip_addr) {
+        std::cerr << "Server IP address is required" << std::endl;
         return -1;
-    }
-
-    YAML::Node config = YAML::LoadFile(config_path);
-    std::string server_ip_addr = "127.0.0.1";
-    uint16_t port = 12345;
-    YAML::Node node = config["client"]["connect_to"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        server_ip_addr = node.as<std::string>();
-    }
-    node = config["client"]["connect_to"]["port"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        port = node.as<uint16_t>();
     }
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     saddr.sin_port = htons(port);
-    if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
+    if (inet_pton(AF_INET, server_ip_addr->c_str(), &saddr.sin_addr) != 1) {
         std::cerr << "Unable to parse IP address." << std::endl;
         return -1;
     }
@@ -73,7 +42,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
 
-    std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
+    std::cerr << "Attempting to connect to `" << *server_ip_addr << ":" << port << "`..." << std::endl;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     std::cerr << "Connected." << std::endl;
 
@@ -89,17 +58,17 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < ITERATION_COUNT; i++) {
         dmtr_qtoken_t qt;
-        DMTR_OK(dmtr_start_timer(pop_timer));
+        DMTR_OK(dmtr_start_timer(push_timer));
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_stop_timer(pop_timer));
+        DMTR_OK(dmtr_stop_timer(push_timer));
         //fprintf(stderr, "send complete.\n");
 
         dmtr_qresult_t qr = {};
-        DMTR_OK(dmtr_start_timer(push_timer));
+        DMTR_OK(dmtr_start_timer(pop_timer));
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
-        DMTR_OK(dmtr_stop_timer(push_timer));
+        DMTR_OK(dmtr_stop_timer(pop_timer));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);

@@ -32,7 +32,7 @@
 #define DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 
 #include <libos/common/io_queue.hh>
-
+#include <libos/rdmacm-common/rdmacm_router.hh>
 #include <memory>
 #include <queue>
 #include <rdma/rdma_cma.h>
@@ -47,7 +47,7 @@ class rdma_queue : public io_queue {
 
     private: struct metadata {
         dmtr_header_t header;
-        uint32_t lengths[]; 
+        uint32_t lengths[];
     };
 
     // queued scatter gather arrays
@@ -58,6 +58,7 @@ class rdma_queue : public io_queue {
     // rdma data structures
     // connection manager for this connection queue
     private: static struct ibv_pd *our_pd;
+    private: static rdmacm_router* our_rdmacm_router;
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
@@ -93,8 +94,6 @@ class rdma_queue : public io_queue {
     private: static int rdma_destroy_qp(struct rdma_cm_id * const id);
     private: static int rdma_listen(struct rdma_cm_id * const id, int backlog);
     private: static int rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms);
-    private: static int rdma_get_cm_event(struct rdma_cm_event *&event_out, struct rdma_event_channel *channel);
-    private: static int rdma_ack_cm_event(struct rdma_cm_event * const event);
     private: static int rdma_resolve_route(struct rdma_cm_id * const id, int timeout_ms);
     private: static int rdma_connect(struct rdma_cm_id * const id, struct rdma_conn_param * const conn_param);
     private: static int rdma_create_qp(struct rdma_cm_id * const id, struct ibv_pd * const pd, struct ibv_qp_init_attr * const qp_init_attr);
@@ -112,6 +111,9 @@ class rdma_queue : public io_queue {
     private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
+    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
+    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
     private: int get_pd(struct ibv_pd *&pd_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();
