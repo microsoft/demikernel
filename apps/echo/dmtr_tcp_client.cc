@@ -1,3 +1,4 @@
+#include "common.hh"
 #include <dmtr/annot.h>
 #include <dmtr/libos.h>
 #include <libos/common/mem.h>
@@ -22,45 +23,12 @@ namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
-    std::string config_path;
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
-
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return -1;
-    }
-
-    YAML::Node config = YAML::LoadFile(config_path);
-    std::string server_ip_addr = "127.0.0.1";
-    uint16_t port = 12345;
-    YAML::Node node = config["client"]["connect_to"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        server_ip_addr = node.as<std::string>();
-    }
-    node = config["client"]["connect_to"]["port"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        port = node.as<uint16_t>();
-    }
-
-    struct sockaddr_in saddr = {};
+    parse_args(argc, argv, false);
+        struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
+    std::cerr << "Listening on `*:" << port << "`..." << std::endl;
+    saddr.sin_addr.s_addr = INADDR_ANY;
     saddr.sin_port = htons(port);
-    if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
-        std::cerr << "Unable to parse IP address." << std::endl;
-        return -1;
-    }
 
     DMTR_OK(dmtr_init(argc, argv));
 
@@ -71,7 +39,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
 
-    std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
+    std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     std::cerr << "Connected." << std::endl;
 

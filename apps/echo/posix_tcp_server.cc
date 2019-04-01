@@ -9,7 +9,6 @@
 #include <cassert>
 #include <cstring>
 #include <dmtr/annot.h>
-#include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
 #include <libos/common/mem.h>
@@ -28,6 +27,7 @@
 #include <netdb.h>
 #include <signal.h>
 
+#include "common.hh"
 
 #define ITERATION_COUNT 10000
 #define MAX_EVENTS 10
@@ -35,9 +35,6 @@
 
 namespace po = boost::program_options;
 int lfd = 0, epoll_fd;
-dmtr_timer_t *pop_timer = NULL;
-dmtr_timer_t *push_timer = NULL;
-
 
 void sig_handler(int signo)
 {
@@ -47,6 +44,7 @@ void sig_handler(int signo)
     close(epoll_fd);
     exit(0);
 }
+
 
 int process_read(int fd, char *buf)
 {
@@ -87,37 +85,7 @@ int process_write(int fd, char *buf)
 
 int main(int argc, char *argv[])
 {
-    std::string config_path;
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
-
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return -1;
-    }
-    
-    YAML::Node config = YAML::LoadFile(config_path);
-    boost::optional<std::string> server_ip_addr;
-    uint16_t port = 12345;
-    YAML::Node node = config["server"]["bind"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        server_ip_addr = node.as<std::string>();
-    }
-    node = config["server"]["bind"]["port"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        port = node.as<uint16_t>();
-    }
+    parse_args(argc, argv, true);
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -134,8 +102,10 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
+    dmtr_timer_t *pop_timer = NULL;
+    dmtr_timer_t *push_timer = NULL;
+    DMTR_OK(dmtr_new_timer(&pop_timer, "server pop"));
+    DMTR_OK(dmtr_new_timer(&push_timer, "server push"));
 
     lfd = socket(AF_INET, SOCK_STREAM, 0);
     std::cout << "listen qd: " << lfd;

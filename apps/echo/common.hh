@@ -8,6 +8,7 @@
 #include <libos/common/mem.h>
 #include <string.h>
 #include <yaml-cpp/yaml.h>
+#include <dmtr/libos.h>
 
 uint16_t port = 12345;
 boost::optional<std::string> server_ip_addr;
@@ -15,6 +16,9 @@ uint32_t packet_size = 64;
 uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
+dmtr_timer_t *pop_timer = NULL;
+dmtr_timer_t *push_timer = NULL;
+int lqd = 0;
 
 using namespace boost::program_options;
 

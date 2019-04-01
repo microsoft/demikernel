@@ -5,14 +5,23 @@
 #include <cassert>
 #include <cstring>
 #include <dmtr/annot.h>
-#include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
-
+#include <signal.h>
+#include <dmtr/libos.h>
 #define ITERATION_COUNT 10000
+
+
+void sig_handler(int signo)
+{
+  dmtr_dump_timer(stderr, pop_timer);
+  dmtr_dump_timer(stderr, push_timer);
+  dmtr_close(lqd);
+  exit(0);
+}
 
 int main(int argc, char *argv[])
 {
@@ -34,8 +43,8 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     DMTR_OK(dmtr_init(argc, argv));
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
+    DMTR_OK(dmtr_new_timer(&pop_timer, "pop server"));
+    DMTR_OK(dmtr_new_timer(&push_timer, "push server"));
 
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token;
