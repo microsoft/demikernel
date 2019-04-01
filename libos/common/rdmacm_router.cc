@@ -99,7 +99,7 @@ int dmtr::rdmacm_router::poll() {
     struct rdma_cm_event *e = NULL;
     int ret = 0;
 
-    rdma_get_cm_event(&e);
+    DMTR_OK(rdma_get_cm_event(&e));
 
     // Usually the destination rdma_cm_id is the e->id, except for connect requests.
     // There, the e->id is the NEW socket id and the destination id is in e->listen_id
@@ -112,11 +112,11 @@ int dmtr::rdmacm_router::poll() {
     if (it != my_event_queues.cend()) {
         it->second.push(*e);
     }
+
     // RDMA sends status messages on closed connections to signal QP reuse availability
     // For that and maybe other reasons, we still want to acknowledge (and not crash)
     // cm_events that aren't destined for one of the alive queues.
-
-    rdma_ack_cm_event(e);
+    DMTR_OK(rdma_ack_cm_event(e));
     return ret;
 }
 
