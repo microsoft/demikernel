@@ -2,8 +2,8 @@
 /***********************************************************************
  *
  * libos/common/rdmacm_router.cc
- *   Router for RDMACM events which come in on a global channel and 
- *   must be delivered to the correct RDMA socket/queue. Used in any 
+ *   Router for RDMACM events which come in on a global channel and
+ *   must be delivered to the correct RDMA socket/queue. Used in any
  *   RDMA-based libos.
  *
  * Copyright 2019 Anna Kornfeld Simpson <aksimpso@cs.washington.edu>
@@ -34,12 +34,12 @@
 
 #include <dmtr/annot.h>
 
-dmtr::rdmacm_router::rdmacm_router() 
+dmtr::rdmacm_router::rdmacm_router()
 {}
 dmtr::rdmacm_router::~rdmacm_router()
 {}
 
-/* We only one one rdmacm_router, no matter now many sockets we have 
+/* We only one one rdmacm_router, no matter now many sockets we have
 */
 int dmtr::rdmacm_router::get_rdmacm_router(rdmacm_router *&r_out) {
     static dmtr::rdmacm_router my_rdmacm_router;
@@ -48,7 +48,7 @@ int dmtr::rdmacm_router::get_rdmacm_router(rdmacm_router *&r_out) {
 }
 
 /* Called when a socket is created to listen for events for it
-*/ 
+*/
 int dmtr::rdmacm_router::add_rdma_queue(struct rdma_cm_id* id) {
     DMTR_NOTNULL(EINVAL, id);
     my_event_queues[id] = std::queue<struct rdma_cm_event>();
@@ -87,12 +87,12 @@ int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rd
     if (q->empty()) {
         return EAGAIN;
     }
-    *e_out = my_event_queues[id].front();
-    my_event_queues[id].pop();
+    *e_out = q->front();
+    q->pop();
     return 0;
 }
 
-/* Polls for a new rdma_cm_event and puts it in the right socket's queue 
+/* Polls for a new rdma_cm_event and puts it in the right socket's queue
 */
 int dmtr::rdmacm_router::poll() {
     DMTR_NOTNULL(EINVAL, my_channel);
