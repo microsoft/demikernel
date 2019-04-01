@@ -24,11 +24,6 @@ namespace po = boost::program_options;
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, false);
-        struct sockaddr_in saddr = {};
-    saddr.sin_family = AF_INET;
-    std::cerr << "Listening on `*:" << port << "`..." << std::endl;
-    saddr.sin_addr.s_addr = INADDR_ANY;
-    saddr.sin_port = htons(port);
 
     DMTR_OK(dmtr_init(argc, argv));
 
@@ -38,6 +33,15 @@ int main(int argc, char *argv[])
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
+    
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    const char *server_ip = boost::get(server_ip_addr).c_str();
+    if (inet_pton(AF_INET, server_ip, &saddr.sin_addr) != 1) {
+	std::cerr << "Unable to parse IP address." << std::endl;
+	return -1;
+    }
+    saddr.sin_port = htons(port);
 
     std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
@@ -74,6 +78,6 @@ int main(int argc, char *argv[])
     free(p);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
     DMTR_OK(dmtr_close(qd));
-
+    
     return 0;
 }

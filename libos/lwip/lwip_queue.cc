@@ -35,6 +35,7 @@
 #include <rte_udp.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
+#include <include/dmtr/libos.h>
 
 namespace bpo = boost::program_options;
 
@@ -487,8 +488,8 @@ int dmtr::lwip_queue::complete_accept(task::yield_type &yield, task &t, io_queue
 
     io_queue *new_q = NULL;
     DMTR_TRUE(EINVAL, t.arg(new_q));
-    auto * const new_lq = dynamic_cast<posix_queue *>(new_q);
-    DMTR_NOTNULL(EINVAL, new_pq);
+    auto * const new_lq = dynamic_cast<lwip_queue *>(new_q);
+    DMTR_NOTNULL(EINVAL, new_lq);
 
 
     while (self->my_recv_queue.empty()) {
@@ -501,13 +502,14 @@ int dmtr::lwip_queue::complete_accept(task::yield_type &yield, task &t, io_queue
     sockaddr_in &src = sga.sga_addr;
     lwip_addr addr = lwip_addr(src);
     DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
-    new_lq->my_bound_src = my_bound_src;
+    new_lq->my_bound_src = self->my_bound_src;
     new_lq->my_default_dst = src;
     our_recv_queues[addr] = &new_lq->my_recv_queue;
     // add the packet as the first to the new queue
     new_lq->my_recv_queue.push(sga);
-    t.complete(new_qd, src, sizeof(src));
+    t.complete(new_lq->qd(), src, sizeof(src));
     self->my_recv_queue.pop();
+    return 0;
 } 
 
 int dmtr::lwip_queue::listen(int backlog)
@@ -597,10 +599,10 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     }
 
      const struct sockaddr_in *saddr = NULL;
-    if (!is_connected()) {
-        saddr = &sga.sga_addr;
+    if (!self->is_connected()) {
+        saddr = &sga->sga_addr;
     } else {
-        saddr = &boost::get(my_default_dst);
+      saddr = &boost::get(self->my_default_dst);
     }
     struct rte_mbuf *pkt = NULL;
     DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
@@ -657,7 +659,7 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     // todo: need a way to get my own IP address even if `bind()` wasn't
     // called.
     if (self->is_bound()) {
-        auto bound_addr = *self->my_bound_addr;
+        auto bound_addr = *self->my_bound_src;
         udp_hdr->src_port = htons(bound_addr.sin_port);
     } else {
         udp_hdr->src_port = udp_hdr->dst_port;
@@ -746,7 +748,6 @@ int dmtr::lwip_queue::complete_pop(task::yield_type &yield, task &t, io_queue &q
 
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    const uint16_t dpdk_port_id = *our_dpdk_port_id;
     while (self->my_recv_queue.empty()) {
         if (service_incoming_packets() == EAGAIN ||
             self->my_recv_queue.empty())

@@ -12,13 +12,12 @@
 
 uint16_t port = 12345;
 boost::optional<std::string> server_ip_addr;
-uint32_t packet_size = 64;
+uint32_t packet_size = 1024;
 uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 dmtr_timer_t *pop_timer = NULL;
 dmtr_timer_t *push_timer = NULL;
-int lqd = 0;
 
 using namespace boost::program_options;
 
@@ -45,9 +44,9 @@ void parse_args(int argc, char **argv, bool server)
     }
 
     if (!server) {
-        server_ip_addr = "127.0.0.1";
+	server_ip_addr = "127.0.0.1";
     }
-
+    
     if (access(config_path.c_str(), R_OK) == -1) {
         std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
     } else {
@@ -105,5 +104,4 @@ void* generate_packet()
     s[packet_size - 1] = '\0';
     return p;
 };
-
 #endif

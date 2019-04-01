@@ -14,6 +14,7 @@
 #include <dmtr/libos.h>
 #define ITERATION_COUNT 10000
 
+int lqd = 0;
 
 void sig_handler(int signo)
 {
@@ -68,7 +69,7 @@ int main(int argc, char *argv[])
 
         // if we got an EOK back from wait
         if (status == 0) {
-            std::cout << "Found something: qd=" << wait_out.qr_qd;
+	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers

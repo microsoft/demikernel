@@ -94,3 +94,6 @@ target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp b
 # RDMA client & server
 add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
+
+add_custom_target(echo)
+add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
