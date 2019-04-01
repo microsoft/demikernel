@@ -280,16 +280,19 @@ int dmtr::rdma_queue::listen(int backlog)
 int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    // Don't spin waiting for an RDMA event.
-    auto timeout = timeout_type(0);
+    // Spin for 10 seconds before giving up.
+    auto timeout = timeout_type(1000 * 10);
+
+    int timeout_int = 0;
+    DMTR_OK(dmtr_u32toi(&timeout_int, timeout.count()));
 
     // Convert regular address into an rdma address
-    DMTR_OK(rdma_resolve_addr(my_rdma_id, NULL, saddr, 1));
+    DMTR_OK(rdma_resolve_addr(my_rdma_id, NULL, saddr, timeout_int));
     // Wait for address resolution
     DMTR_OK(expect_rdma_cm_event(EADDRNOTAVAIL, RDMA_CM_EVENT_ADDR_RESOLVED, my_rdma_id, timeout));
 
     // Find path to rdma address
-    DMTR_OK(rdma_resolve_route(my_rdma_id, 1));
+    DMTR_OK(rdma_resolve_route(my_rdma_id, timeout_int));
     // Wait for path resolution
     DMTR_OK(expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id, timeout));
 
