@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 #include <include/dmtr/libos.h>
+#include <netinet/in.h>
 
 namespace bpo = boost::program_options;
 
@@ -388,7 +389,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
-    YAML::Node node = config["dpdk"]["host"];
+    node = config["dpdk"]["host"];
     if (YAML::NodeType::Scalar == node.Type()) {
         std::string s = node.as<std::string>();
         if (inet_pton(AF_INET, s, &our_ip_addr) != 1) {
