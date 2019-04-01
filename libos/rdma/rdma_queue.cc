@@ -249,7 +249,6 @@ int dmtr::rdma_queue::complete_accept(task::yield_type &yield, task &t, io_queue
 
     new_rq->my_rdma_id = new_rdma_id;
     DMTR_OK(our_rdmacm_router->add_rdma_queue(new_rdma_id));
-    DMTR_OK(set_non_blocking(new_rdma_id->channel->fd));
     DMTR_OK(new_rq->setup_rdma_qp());
     DMTR_OK(new_rq->setup_recv_queue());
 
@@ -281,16 +280,18 @@ int dmtr::rdma_queue::listen(int backlog)
 int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
+    // Don't spin waiting for an RDMA event.
+    auto timeout = timeout_type(0);
 
     // Convert regular address into an rdma address
     DMTR_OK(rdma_resolve_addr(my_rdma_id, NULL, saddr, 1));
     // Wait for address resolution
-    DMTR_OK(expect_rdma_cm_event(EADDRNOTAVAIL, RDMA_CM_EVENT_ADDR_RESOLVED, my_rdma_id));
+    DMTR_OK(expect_rdma_cm_event(EADDRNOTAVAIL, RDMA_CM_EVENT_ADDR_RESOLVED, my_rdma_id, timeout));
 
     // Find path to rdma address
     DMTR_OK(rdma_resolve_route(my_rdma_id, 1));
     // Wait for path resolution
-    DMTR_OK(expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id));
+    DMTR_OK(expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id, timeout));
 
     DMTR_OK(setup_rdma_qp());
     DMTR_OK(setup_recv_queue());
@@ -301,7 +302,7 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     params.responder_resources = 1;
     params.rnr_retry_count = 1;
     DMTR_OK(rdma_connect(my_rdma_id, &params));
-    int ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id);
+    int ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -311,7 +312,6 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
         break;
     }
 
-    DMTR_OK(set_non_blocking(my_rdma_id->channel->fd));
     return 0;
 }
 
@@ -619,16 +619,37 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
     }
 }
 
-int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id) {
+
+int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, timeout_type timeout) {
     DMTR_NOTNULL(EINVAL, id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event = {};
-    DMTR_OK(our_rdmacm_router->get_rdmacm_event(&event, id));
+    auto t0 = boost::chrono::steady_clock::now();
+    int ret = EAGAIN;
+    while (0 != ret) {
+        ret = our_rdmacm_router->get_rdmacm_event(&event, id);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN: {
+                auto dt = boost::chrono::steady_clock::now() - t0;
+                if (dt <= timeout) {
+                    continue;
+                } else {
+                    return EAGAIN;
+                }
+            }
+            case 0:
+                break;
+        }
+    }
+
     if (expected != event.event) {
         std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event.event << "." << std::endl;
         return err;
     }
+
     return 0;
 }
 

@@ -31,6 +31,7 @@
 #ifndef DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 
+#include <boost/chrono.hpp>
 #include <libos/common/io_queue.hh>
 #include <libos/rdmacm-common/rdmacm_router.hh>
 #include <memory>
@@ -41,6 +42,8 @@
 namespace dmtr {
 
 class rdma_queue : public io_queue {
+    public: typedef boost::chrono::duration<uint32_t, boost::milli> timeout_type;
+
     private: static const size_t recv_buf_count;
     private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
@@ -108,7 +111,7 @@ class rdma_queue : public io_queue {
 
     private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
 
-    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id);
+    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, timeout_type timeout);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);

@@ -33,6 +33,7 @@
 #include "rdmacm_router.hh"
 
 #include <dmtr/annot.h>
+#include <libos/common/io_queue.hh>
 
 dmtr::rdmacm_router::rdmacm_router()
 {}
@@ -56,6 +57,7 @@ int dmtr::rdmacm_router::add_rdma_queue(struct rdma_cm_id* id) {
     // If this is our first id, get the global channel from it
     if (NULL == my_channel) {
         my_channel = id->channel;
+        DMTR_OK(io_queue::set_non_blocking(my_channel->fd));
     }
     return 0;
 }
@@ -78,15 +80,25 @@ int dmtr::rdmacm_router::delete_rdma_queue(struct rdma_cm_id* id) {
 int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rdma_cm_id* id) {
     auto it = my_event_queues.find(id);
     DMTR_TRUE(ENOENT, it != my_event_queues.cend());
-    int ret = poll();
-    if (ret != EAGAIN && ret != 0) {
-        fprintf(stderr, "Unexpected rdmacm_router poll() return value %d\n", ret);
-        return ret;
-    }
+
     auto *q = &it->second;
-    if (q->empty()) {
-        return EAGAIN;
+    if (!q->empty()) {
+        *e_out = q->front();
+        q->pop();
+        return 0;
     }
+
+    int ret = poll();
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case EAGAIN:
+            return ret;
+        case 0:
+            break;
+    }
+
+    DMTR_TRUE(ENOTSUP, !q->empty());
     *e_out = q->front();
     q->pop();
     return 0;
@@ -110,7 +122,7 @@ int dmtr::rdmacm_router::poll() {
 
     // Usually the destination rdma_cm_id is the e->id, except for connect requests.
     // There, the e->id is the NEW socket id and the destination id is in e->listen_id
-    struct rdma_cm_id* importantId = e->id;
+    struct rdma_cm_id *importantId = e->id;
     if (e->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
         importantId = e->listen_id;
     }
