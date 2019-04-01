@@ -154,6 +154,8 @@ operator<(const lwip_addr &a,
 
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
+// default to use to give out port ids
+uint16_t dmtr::lwip_queue::our_port_counter = 12345;
 
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
@@ -376,7 +378,6 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     if (YAML::NodeType::Sequence == node.Type()) {
         init_args = node.as<std::vector<std::string>>();
     }
-
     std::cerr << "eal_init: [";
     std::vector<char *> init_cargs;
     for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
@@ -387,6 +388,14 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
+    YAML::Node node = config["dpdk"]["host"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        std::string s = node.as<std::string>();
+        if (inet_pton(AF_INET, s, &our_ip_addr) != 1) {
+            std::cerr << "Unable to parse IP address." << std::endl;
+        }
+
+    }
 
     int unused = -1;
     DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
@@ -562,6 +571,12 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
+
+    // give the connection the local ip;
+    my_bound_src.sin_family = AF_INET;
+    DMTR_TRUE(EPERM, boost::none != our_ip_addr);
+    my_bound_src.sin_port = htons(our_port_counter++);
+    my_bound_src.sin_addr = boost::get(our_ip_addr);
     return 0;
 }
 
