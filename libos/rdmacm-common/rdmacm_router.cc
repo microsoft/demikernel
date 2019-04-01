@@ -116,13 +116,13 @@ int dmtr::rdmacm_router::poll() {
     }
 
     auto it = my_event_queues.find(importantId);
+    // RDMA sends status messages on closed connections to signal QP reuse availability
+    // For that and maybe other reasons, we still want to acknowledge (and not crash)
+    // cm_events that aren't destined for one of the alive queues.
     if (it != my_event_queues.cend()) {
         it->second.push(*e);
     }
 
-    // RDMA sends status messages on closed connections to signal QP reuse availability
-    // For that and maybe other reasons, we still want to acknowledge (and not crash)
-    // cm_events that aren't destined for one of the alive queues.
     DMTR_OK(rdma_ack_cm_event(e));
     return ret;
 }
