@@ -577,10 +577,12 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 
     // give the connection the local ip;
-    my_bound_src->sin_family = AF_INET;
+    struct sockaddr_in src = {};
+    src.sin_family = AF_INET;
     DMTR_TRUE(EPERM, boost::none != our_ip_addr);
-    my_bound_src->sin_port = htons(our_port_counter++);
-    my_bound_src->sin_addr = boost::get(our_ip_addr);
+    src.sin_port = htons(our_port_counter++);
+    src.sin_addr = boost::get(our_ip_addr);
+    my_bound_src = src;
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
     return 0;
 }
@@ -623,7 +625,7 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
       saddr = &sga->sga_addr;
      } else {
       saddr = &boost::get(self->my_default_dst);
-      std::cout << "Sending to default address: " << saddr->sin_addr.s_addr << std::endl;
+      //std::cout << "Sending to default address: " << saddr->sin_addr.s_addr << std::endl;
     }
     struct rte_mbuf *pkt = NULL;
     DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
@@ -662,7 +664,7 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     if(self->is_bound()) {
 	auto bound_addr = *self->my_bound_src;
 	ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
-	std::cout << "Sending from address: " << bound_addr.sin_addr.s_addr << std::endl;
+	//std::cout << "Sending from address: " << bound_addr.sin_addr.s_addr << std::endl;
     } else {
         ip_hdr->src_addr = mac_to_ip(eth_hdr->s_addr);
     }
