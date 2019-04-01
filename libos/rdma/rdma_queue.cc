@@ -143,7 +143,7 @@ int dmtr::rdma_queue::service_event_queue() {
     DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
-    struct rdma_cm_event event = {};
+    struct rdma_cm_event event;
     int ret = our_rdmacm_router->poll(event, my_rdma_id);
     switch (ret) {
         default:
@@ -786,9 +786,9 @@ int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
         return EAGAIN;
     }
 
-    auto pair = my_pending_recvs.front();
-    buf_out = pair.first;
-    len_out = pair.second;
+    const auto * pair = &my_pending_recvs.front();
+    buf_out = pair->first;
+    len_out = pair->second;
     my_pending_recvs.pop();
     return 0;
 }
