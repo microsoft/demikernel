@@ -61,7 +61,7 @@ class rdma_queue : public io_queue {
     // rdma data structures
     // connection manager for this connection queue
     private: static struct ibv_pd *our_pd;
-    private: static rdmacm_router* our_rdmacm_router;
+    private: static std::unique_ptr<rdmacm_router> our_rdmacm_router;
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
@@ -90,10 +90,6 @@ class rdma_queue : public io_queue {
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);
-    private: static int rdma_create_event_channel(struct rdma_event_channel *&channel_out);
-    private: static int rdma_create_id(struct rdma_cm_id *&id_out, struct rdma_event_channel *channel, void *context, enum rdma_port_space ps);
-    private: static int rdma_destroy_event_channel(struct rdma_event_channel *&channel);
-    private: static int rdma_destroy_id(struct rdma_cm_id *&id);
     private: static int rdma_destroy_qp(struct rdma_cm_id * const id);
     private: static int rdma_listen(struct rdma_cm_id * const id, int backlog);
     private: static int rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms);
