@@ -138,7 +138,7 @@ class io_queue
     public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
 
-    protected: static int set_non_blocking(int fd);
+    public: static int set_non_blocking(int fd);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion, const dmtr_sgarray_t &arg);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, task::completion_type completion, io_queue *arg);

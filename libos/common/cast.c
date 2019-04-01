@@ -119,7 +119,7 @@ int dmtr_itosz(size_t *to_arg, int from_arg) {
    return 0;
 }
 
-int ramcast_ltouc(unsigned char *to_arg, long from_arg) {
+int dmtr_ltouc(unsigned char *to_arg, long from_arg) {
     DMTR_NOTNULL(EINVAL, to_arg);
 
     DMTR_CAST_ITOU(to_arg, unsigned char, UCHAR_MAX, from_arg);
@@ -177,3 +177,9 @@ int dmtr_u32tou16(uint16_t *to_arg, uint32_t from_arg) {
     return 0;
 }
 
+int dmtr_u32toi(int *to_arg, uint32_t from_arg) {
+    DMTR_NOTNULL(EINVAL, to_arg);
+
+    DMTR_CAST_UTOI(to_arg, int, INT_MAX, from_arg);
+    return 0;
+}
