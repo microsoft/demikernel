@@ -34,6 +34,7 @@
 
 #include <dmtr/annot.h>
 #include <libos/common/io_queue.hh>
+#include <libos/common/raii_guard.hh>
 
 dmtr::rdmacm_router::rdmacm_router()
 {}
@@ -98,7 +99,13 @@ int dmtr::rdmacm_router::get_rdmacm_event(struct rdma_cm_event* e_out, struct rd
             break;
     }
 
-    DMTR_TRUE(ENOTSUP, !q->empty());
+    // `poll()` is guaranteed to put something into a queue if it returns 0
+    // but it may not have been `q` that was serviced. if it wasn't we need
+    // to tell the caller to try again.
+    if (q->empty()) {
+        return EAGAIN;
+    }
+
     *e_out = q->front();
     q->pop();
     return 0;
@@ -120,6 +127,9 @@ int dmtr::rdmacm_router::poll() {
             break;
     }
 
+    // todo: i don't know if it's really safe to destroy the event here.
+    raii_guard rg0(std::bind(rdma_ack_cm_event, e));
+
     // Usually the destination rdma_cm_id is the e->id, except for connect requests.
     // There, the e->id is the NEW socket id and the destination id is in e->listen_id
     struct rdma_cm_id *importantId = e->id;
@@ -131,12 +141,12 @@ int dmtr::rdmacm_router::poll() {
     // RDMA sends status messages on closed connections to signal QP reuse availability
     // For that and maybe other reasons, we still want to acknowledge (and not crash)
     // cm_events that aren't destined for one of the alive queues.
-    if (it != my_event_queues.cend()) {
-        it->second.push(*e);
+    if (it == my_event_queues.cend()) {
+        return EAGAIN;
     }
 
-    DMTR_OK(rdma_ack_cm_event(e));
-    return ret;
+    it->second.push(*e);
+    return 0;
 }
 
 int dmtr::rdmacm_router::rdma_get_cm_event(struct rdma_cm_event** e_out) {

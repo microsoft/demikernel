@@ -2,8 +2,8 @@
 /***********************************************************************
  *
  * libos/common/rdmacm_router.hh
- *   Router for RDMACM events which come in on a global channel and 
- *   must be delivered to the correct RDMA socket/queue. Used in any 
+ *   Router for RDMACM events which come in on a global channel and
+ *   must be delivered to the correct RDMA socket/queue. Used in any
  *   RDMA-based libos.
  *
  * Copyright 2019 Anna Kornfeld Simpson <aksimpso@cs.washington.edu>
@@ -53,7 +53,7 @@ class rdmacm_router {
 
     private: int poll();
     private: int rdma_get_cm_event(struct rdma_cm_event** e_out);
-    private: int rdma_ack_cm_event(struct rdma_cm_event* e);
+    private: static int rdma_ack_cm_event(struct rdma_cm_event* e);
 };
 
 } // namespace dmtr
