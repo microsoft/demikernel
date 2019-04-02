@@ -42,7 +42,7 @@
 namespace dmtr {
 
 class rdma_queue : public io_queue {
-    public: typedef boost::chrono::steady_clock clock_type;
+    public: typedef boost::chrono::system_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
 
     private: static const size_t recv_buf_count;
