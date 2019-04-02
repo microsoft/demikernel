@@ -41,10 +41,6 @@ int main(int argc, char *argv[])
 
     dmtr_timer_t *timer = NULL;
     DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
-    dmtr_timer_t *pop_timer = NULL;
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    dmtr_timer_t *push_timer = NULL;
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     printf("client fd:\t%d\n", fd);
@@ -66,7 +62,6 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < iterations; i++) {
         DMTR_OK(dmtr_start_timer(timer));
-        DMTR_OK(dmtr_start_timer(push_timer));
         int bytes_written = 0, ret;
         while (bytes_written < (int)packet_size) {
             ret = write(fd,
@@ -77,20 +72,15 @@ int main(int argc, char *argv[])
             }
             bytes_written += ret;
         }
-        DMTR_OK(dmtr_stop_timer(push_timer));
-        DMTR_OK(dmtr_start_timer(pop_timer));
         int bytes_read = 0;
         while(bytes_read < (int)packet_size) {
             ret += read(fd, (void *)&buf, packet_size);
             if (ret < 0) exit(-1);
             bytes_read += ret;
         }
-        DMTR_OK(dmtr_stop_timer(pop_timer));
         DMTR_OK(dmtr_stop_timer(timer));
     }
     close(fd);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
-    DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
-    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
     return 0;
 }

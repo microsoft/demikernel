@@ -13,56 +13,18 @@
 #include <netinet/in.h>
 #include <yaml-cpp/yaml.h>
 
+#include "common.hh"
+
 #define USE_CONNECT 1
-#define ITERATION_COUNT 10000
-#define BUFFER_SIZE 64
 #define FILL_CHAR 'a'
 
 namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
-    std::string config_path;
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+    parse_args(argc, argv, false);
 
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return -1;
-    }
-
-    YAML::Node config = YAML::LoadFile(config_path);
-    std::string server_ip_addr = "127.0.0.1";
-    uint16_t port = 12345;
-    YAML::Node node = config["client"]["connect_to"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        server_ip_addr = node.as<std::string>();
-    }
-    node = config["client"]["connect_to"]["port"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        port = node.as<uint16_t>();
-    }
-
-    struct sockaddr_in saddr = {};
-    saddr.sin_family = AF_INET;
-    saddr.sin_port = htons(port);
-    if (inet_pton(AF_INET, server_ip_addr.c_str(), &saddr.sin_addr) != 1) {
-        std::cerr << "Unable to parse IP address." << std::endl;
-        return -1;
-    }
-
-    DMTR_OK(dmtr_init(argc, argv));
+    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
     dmtr_timer_t *timer = NULL;
     DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
@@ -71,15 +33,19 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
     printf("client qd:\t%d\n", qd);
 
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    const char *server_ip = boost::get(server_ip_addr).c_str();
+    if (inet_pton(AF_INET, server_ip, &saddr.sin_addr) != 1) {
+        std::cerr << "Unable to parse IP address." << std::endl;
+        return -1;
+    }
+    saddr.sin_port = htons(port);
+
     dmtr_sgarray_t sga = {};
-    void *p = NULL;
-    DMTR_OK(dmtr_malloc(&p, BUFFER_SIZE));
-    char *s = reinterpret_cast<char *>(p);
-    memset(s, FILL_CHAR, BUFFER_SIZE);
-    s[BUFFER_SIZE - 1] = '\0';
     sga.sga_numsegs = 1;
-    sga.sga_segs[0].sgaseg_len = BUFFER_SIZE;
-    sga.sga_segs[0].sgaseg_buf = p;
+    sga.sga_segs[0].sgaseg_len = packet_size;
+    sga.sga_segs[0].sgaseg_buf = generate_packet();
 
 #if USE_CONNECT
     std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
@@ -89,7 +55,7 @@ int main(int argc, char *argv[])
     sga.sga_addrlen = sizeof(saddr);
 #endif
 
-    for (size_t i = 0; i < ITERATION_COUNT; i++) {
+    for (size_t i = 0; i < iterations; i++) {
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_start_timer(timer));
         DMTR_OK(dmtr_push(&qt, qd, &sga));

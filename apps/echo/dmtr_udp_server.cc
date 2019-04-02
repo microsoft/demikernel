@@ -12,45 +12,27 @@
 #include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <yaml-cpp/yaml.h>
+#include <signal.h>
 
-#define ITERATION_COUNT 10000
+#include "common.hh"
 
+int lqd = 0;
+dmtr_timer_t *pop_timer = NULL;
+dmtr_timer_t *push_timer = NULL;
 namespace po = boost::program_options;
+
+void sig_handler(int signo)
+{
+  dmtr_dump_timer(stderr, pop_timer);
+  dmtr_dump_timer(stderr, push_timer);
+  dmtr_close(lqd);
+  exit(0);
+}
 
 int main(int argc, char *argv[])
 {
-    std::string config_path;
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", po::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
-
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return -1;
-    }
-
-    YAML::Node config = YAML::LoadFile(config_path);
-    boost::optional<std::string> server_ip_addr;
-    uint16_t port = 12345;
-    YAML::Node node = config["server"]["bind"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        server_ip_addr = node.as<std::string>();
-    }
-    node = config["server"]["bind"]["port"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        port = node.as<uint16_t>();
-    }
-
+    parse_args(argc, argv, true);
+    
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     if (boost::none == server_ip_addr) {
@@ -66,24 +48,24 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(argc, argv));
+    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    dmtr_timer_t *pop_timer = NULL;
     DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    dmtr_timer_t *push_timer = NULL;
     DMTR_OK(dmtr_new_timer(&push_timer, "push"));
 
-    int qd = 0;
-    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_DGRAM, 0));
-    printf("server qd:\t%d\n", qd);
+    DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_DGRAM, 0));
+    printf("server qd:\t%d\n", lqd);
 
-    DMTR_OK(dmtr_bind(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
-    for (size_t i = 0; i < ITERATION_COUNT; i++) {
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+        std::cout << "\ncan't catch SIGINT\n";
+
+    while(1) {
         dmtr_qresult_t qr = {};
         dmtr_qtoken_t qt = 0;
         DMTR_OK(dmtr_start_timer(pop_timer));
-        DMTR_OK(dmtr_pop(&qt, qd));
+        DMTR_OK(dmtr_pop(&qt, lqd));
         DMTR_OK(dmtr_wait(&qr, qt));
         DMTR_OK(dmtr_stop_timer(pop_timer));
         assert(DMTR_OPC_POP == qr.qr_opcode);
@@ -91,7 +73,7 @@ int main(int argc, char *argv[])
 
         //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
         DMTR_OK(dmtr_start_timer(push_timer));
-        DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
+        DMTR_OK(dmtr_push(&qt, lqd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         DMTR_OK(dmtr_stop_timer(push_timer));
 
@@ -99,8 +81,5 @@ int main(int argc, char *argv[])
         free(qr.qr_value.sga.sga_buf);
     }
 
-    DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
-    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
-    DMTR_OK(dmtr_close(qd));
     return 0;
 }
