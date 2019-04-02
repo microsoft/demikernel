@@ -2,8 +2,9 @@
 #define DMTR_FAIL_H_IS_INCLUDED
 
 #include "meta.h"
-#include <stdlib.h>
+#include "sys/gcc.h"
 #include <errno.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,12 +16,11 @@ typedef void (*dmtr_onfail_t)(int error_arg,
 
 #define DMTR_TRUE2(Error, Condition, ErrorCache) \
     do { \
-        int ErrorCache = (Error); \
-        DMTR_IFTE(\
-            !(Condition), \
-            dmtr_fail(ErrorCache, #Condition, NULL, __FILE__, \
-                    __LINE__); return ErrorCache, \
-            DMTR_NOP()); \
+        const int ErrorCache = (Error); \
+        if (DMTR_UNLIKELY(!(Condition))) { \
+            dmtr_fail(ErrorCache, #Condition, NULL, __FILE__, __LINE__);  \
+            return ErrorCache; \
+        } \
    } while (0)
 
 #define DMTR_TRUE(Error, Condition) \
@@ -29,10 +29,10 @@ typedef void (*dmtr_onfail_t)(int error_arg,
 #define DMTR_OK2(Error, ErrorCache) \
     do { \
         const int ErrorCache = (Error); \
-        DMTR_IFTE(0 != ErrorCache, \
-            dmtr_fail(ErrorCache, #Error, NULL, __FILE__, \
-                    __LINE__); return ErrorCache, \
-            DMTR_NOP()); \
+        if (DMTR_UNLIKELY(0 != ErrorCache)) { \
+            dmtr_fail(ErrorCache, #Error, NULL, __FILE__, __LINE__); \
+            return ErrorCache; \
+        } \
     } while (0)
 
 #define DMTR_OK(Error) \
