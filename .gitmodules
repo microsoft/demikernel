@@ -40,3 +40,7 @@
 	path = apps/tapir-lwip
 	url = git@github.com:UWSysLab/tapir.git
 	branch = dmtr-lwip
+[submodule "tapir-posix"]
+	path = apps/tapir-posix
+	url = git@github.com:UWSysLab/tapir.git
+	branch = dmtr-posix
