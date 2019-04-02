@@ -21,14 +21,22 @@ dmtr_timer_t *pop_timer = NULL;
 dmtr_timer_t *push_timer = NULL;
 namespace po = boost::program_options;
 
+/* Will dump the timers when Ctrl-C to close server 
+*  Since we MUST exit, not return after this function, cannot use DMTR_OK here
+*/
 void sig_handler(int signo)
 {
-  dmtr_dump_timer(stderr, pop_timer);
-  dmtr_dump_timer(stderr, push_timer);
-  dmtr_close(lqd);
-  exit(0);
+    std::cout << std::endl;
+    if (NULL != pop_timer && NULL != push_timer) {
+        dmtr_dump_timer(stderr, pop_timer);
+        dmtr_dump_timer(stderr, push_timer);
+    }
+
+    dmtr_close(lqd);
+    exit(0);
 }
 
+/* Server that loops for multiple clients of arbitrary iterations */
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, true);
