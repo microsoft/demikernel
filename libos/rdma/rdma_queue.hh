@@ -42,11 +42,13 @@
 namespace dmtr {
 
 class rdma_queue : public io_queue {
-    public: typedef boost::chrono::duration<uint32_t, boost::milli> timeout_type;
+    public: typedef boost::chrono::steady_clock clock_type;
+    public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
 
     private: static const size_t recv_buf_count;
     private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
+    private: static const duration_type event_polling_period;
 
     private: struct metadata {
         dmtr_header_t header;
@@ -57,6 +59,7 @@ class rdma_queue : public io_queue {
     private: std::queue<struct rdma_cm_id *> my_pending_accepts;
     private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
     private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
+    private: clock_type::time_point my_last_event_channel_poll;
 
     // rdma data structures
     // connection manager for this connection queue
@@ -65,7 +68,7 @@ class rdma_queue : public io_queue {
     private: struct rdma_cm_id *my_rdma_id = NULL;
     private: bool my_listening_flag;
 
-    private: int service_event_queue();
+    private: int service_event_channel();
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
     private: int on_work_completed(const struct ibv_wc &wc);
     private: int setup_rdma_qp();
@@ -108,7 +111,7 @@ class rdma_queue : public io_queue {
 
     private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
 
-    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, timeout_type timeout);
+    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);

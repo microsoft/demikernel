@@ -53,9 +53,11 @@ std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
 const size_t dmtr::rdma_queue::recv_buf_count = 10;
 const size_t dmtr::rdma_queue::recv_buf_size = 8000;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
+const dmtr::rdma_queue::duration_type dmtr::rdma_queue::event_polling_period = duration_type(1000);
 
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
+    my_last_event_channel_poll(clock_type::now()),
     my_listening_flag(false)
 {}
 
@@ -137,7 +139,7 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
     return 0;
 }
 
-int dmtr::rdma_queue::service_event_queue() {
+int dmtr::rdma_queue::service_event_channel() {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
@@ -232,7 +234,18 @@ int dmtr::rdma_queue::complete_accept(task::yield_type &yield, task &t, io_queue
     DMTR_NOTNULL(EINVAL, new_rq);
 
     while (self->my_pending_accepts.empty()) {
-        yield();
+        int ret = self->service_event_channel();
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EAGAIN:
+                yield();
+                continue;
+            case ECONNABORTED:
+                return ret;
+            case 0:
+                break;
+        }
     }
 
     auto * const new_rdma_id = self->my_pending_accepts.front();
@@ -272,7 +285,7 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     // Spin for 10 seconds before giving up.
-    auto timeout = timeout_type(1000 * 10);
+    auto timeout = duration_type(1000 * 10);
 
     int timeout_int = 0;
     DMTR_OK(dmtr_u32toi(&timeout_int, timeout.count()));
@@ -515,15 +528,20 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_NOTNULL(EPERM, my_rdma_id);
 
-    int ret = service_event_queue();
-    switch (ret) {
-        default:
-            DMTR_FAIL(ret);
-        case 0:
-        case EAGAIN:
-            break;
-        case ECONNABORTED:
-            return ret;
+    const auto now = clock_type::now();
+    if (now - my_last_event_channel_poll > event_polling_period) {
+        int ret = service_event_channel();
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case 0:
+            case EAGAIN:
+                break;
+            case ECONNABORTED:
+                return ret;
+        }
+
+        my_last_event_channel_poll = now;
     }
 
     return io_queue::poll(qr_out, qt);
@@ -593,12 +611,12 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
     }
 }
 
-int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, timeout_type timeout) {
+int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout) {
     DMTR_NOTNULL(EINVAL, id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event = {};
-    auto t0 = boost::chrono::steady_clock::now();
+    auto t0 = clock_type::now();
     int ret = EAGAIN;
     while (0 != ret) {
         ret = our_rdmacm_router->poll(event, id);
@@ -606,7 +624,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
             default:
                 DMTR_FAIL(ret);
             case EAGAIN: {
-                auto dt = boost::chrono::steady_clock::now() - t0;
+                auto dt = clock_type::now() - t0;
                 if (dt <= timeout) {
                     continue;
                 } else {
