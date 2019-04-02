@@ -29,10 +29,8 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    dmtr_timer_t *pop_timer = NULL;
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    dmtr_timer_t *push_timer = NULL;
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
+    dmtr_timer_t *timer = NULL;
+    DMTR_OK(dmtr_new_timer(&timer, "timer"));
 
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
@@ -50,27 +48,24 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < iterations; i++) {
         dmtr_qtoken_t qt;
-        DMTR_OK(dmtr_start_timer(push_timer));
+        DMTR_OK(dmtr_start_timer(timer));
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_stop_timer(push_timer));
         //fprintf(stderr, "send complete.\n");
 
         dmtr_qresult_t qr = {};
-        DMTR_OK(dmtr_start_timer(pop_timer));
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
-        DMTR_OK(dmtr_stop_timer(pop_timer));
-        DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
-        DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
-        DMTR_TRUE(EPERM, reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
+        DMTR_OK(dmtr_stop_timer(timer));
+        assert(DMTR_OPC_POP == qr.qr_opcode);
+        assert(qr.qr_value.sga.sga_numsegs == 1);
+        assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         free(qr.qr_value.sga.sga_buf);
     }
 
-    DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
-    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
+    DMTR_OK(dmtr_dump_timer(stderr, timer));
     DMTR_OK(dmtr_close(qd));
 
     return 0;
