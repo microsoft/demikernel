@@ -48,6 +48,7 @@ class io_queue_api
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
+    public: ~io_queue_api(); 
     private: int get_queue(io_queue *&q_out, int qd) const;
     private: int new_qd();
     private: int new_qtoken(dmtr_qtoken_t &qt_out, int qd);
@@ -82,6 +83,7 @@ class io_queue_api
     public: int is_qd_valid(bool &flag, int qd);
 
     private: static void on_poll_failure(dmtr_qresult_t * const qr_out, io_queue_api *self);
+
 };
 
 } // namespace dmtr
