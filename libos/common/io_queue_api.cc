@@ -261,11 +261,13 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
             on_poll_failure(qr_out, this);
             DMTR_FAIL(ret);
         case EAGAIN:
-        case ECONNABORTED:
-        case ECONNRESET:
         // `EBADF` can occur if the queue is closed before completion.
         case EBADF:
             on_poll_failure(qr_out, this);
+            return ret;
+        case ECONNABORTED:
+        case ECONNRESET:
+            // We need the result and the qd even if aborted!
             return ret;
         case 0:
             return 0;

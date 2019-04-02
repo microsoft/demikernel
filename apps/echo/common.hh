@@ -15,6 +15,7 @@ uint32_t packet_size = 64;
 uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
+const char FILL_CHAR = 'a';
 
 using namespace boost::program_options;
 
@@ -97,7 +98,7 @@ void* generate_packet()
     void *p = NULL;
     dmtr_malloc(&p, packet_size);
     char *s = reinterpret_cast<char *>(p);
-    memset(s, 'a', packet_size);
+    memset(s, FILL_CHAR, packet_size);
     s[packet_size - 1] = '\0';
     return p;
 };

@@ -11,9 +11,28 @@
 #include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <signal.h>
 
-#define ITERATION_COUNT 10000
+int lqd = 0;
+dmtr_timer_t *pop_timer = NULL;
+dmtr_timer_t *push_timer = NULL;
 
+/* Will dump the timers when Ctrl-C to close server 
+*  Since we MUST exit, not return after this function, cannot use DMTR_OK here
+*/
+void sig_handler(int signo)
+{
+    std::cout << std::endl;
+    if (NULL != pop_timer && NULL != push_timer) {
+        dmtr_dump_timer(stderr, pop_timer);
+        dmtr_dump_timer(stderr, push_timer);
+    }
+
+    dmtr_close(lqd);
+    exit(0);
+}
+
+/* Server that loops for multiple clients of arbitrary iterations */
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, true);
@@ -33,53 +52,71 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(argc, argv));
+    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    dmtr_timer_t *pop_timer = NULL;
     DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    dmtr_timer_t *push_timer = NULL;
     DMTR_OK(dmtr_new_timer(&push_timer, "push"));
 
-    int lqd = 0;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
-    printf("listen qd:\t%d\n", lqd);
-
+ 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-
-    printf("listening for connections\n");
     DMTR_OK(dmtr_listen(lqd, 3));
 
+    std::vector<dmtr_qtoken_t> qts;
     dmtr_qtoken_t qt = 0;
-    dmtr_qresult_t qr = {};
     DMTR_OK(dmtr_accept(&qt, lqd));
-    DMTR_OK(dmtr_wait(&qr, qt));
-    DMTR_TRUE(EPERM, DMTR_OPC_ACCEPT == qr.qr_opcode);
-    int qd = qr.qr_value.ares.qd;
-    std::cerr << "Connection accepted." << std::endl;
+    qts.push_back(qt);
 
-    // process ITERATION_COUNT packets from client
-    for (size_t i = 0; i < ITERATION_COUNT; i++) {
-        DMTR_OK(dmtr_start_timer(pop_timer));
-        DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&qr, qt));
-        DMTR_OK(dmtr_stop_timer(pop_timer));
-        assert(DMTR_OPC_POP == qr.qr_opcode);
-        assert(qr.qr_value.sga.sga_numsegs == 1);
-
-        //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
-        DMTR_OK(dmtr_start_timer(push_timer));
-        DMTR_OK(dmtr_push(&qt, qd, &qr.qr_value.sga));
-        DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_stop_timer(push_timer));
-
-        //fprintf(stderr, "send complete.\n");
-        free(qr.qr_value.sga.sga_buf);
+    if(signal(SIGINT, sig_handler) == SIG_ERR) {
+        std::cout << "\nWARNING: can't catch SIGINT" << std::endl;
     }
 
-    DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
-    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
-    DMTR_OK(dmtr_close(qd));
-    DMTR_OK(dmtr_close(lqd));
+    while(1) {
+        dmtr_qresult_t qr = {};
+        int idx;
+        int status = dmtr_wait_any(&qr, &idx, qts.data(), qts.size());
 
-    return 0;
+        if(0 == status) { // EOK
+            // Task was to accept a new connection
+            if (qr.qr_qd == lqd) {
+                DMTR_TRUE(EPERM, DMTR_OPC_ACCEPT == qr.qr_opcode);
+
+                // put new qtoken in for new connection
+                int new_qd = qr.qr_value.ares.qd;
+                dmtr_qtoken_t new_qt = 0;
+
+                DMTR_OK(dmtr_start_timer(pop_timer));
+                DMTR_OK(dmtr_pop(&new_qt, new_qd));
+                DMTR_OK(dmtr_stop_timer(pop_timer));
+                qts.push_back(new_qt);
+
+                DMTR_OK(dmtr_accept(&qt, lqd));
+                qts[idx] = qt;
+            }
+            // Task was a read complete 
+            else {
+                DMTR_TRUE(EPERM, DMTR_OPC_POP == qr.qr_opcode);
+                DMTR_TRUE(EPERM, qr.qr_value.sga.sga_numsegs == 1);
+
+                DMTR_OK(dmtr_start_timer(push_timer));
+                DMTR_OK(dmtr_push(&qt, qr.qr_qd, &qr.qr_value.sga));
+                DMTR_OK(dmtr_wait(NULL, qt));
+                DMTR_OK(dmtr_stop_timer(push_timer));
+
+                DMTR_OK(dmtr_start_timer(pop_timer));
+                DMTR_OK(dmtr_pop(&qt, qr.qr_qd));
+                DMTR_OK(dmtr_stop_timer(pop_timer));
+                qts[idx] = qt;
+
+                free(qr.qr_value.sga.sga_buf);
+            }
+        }
+        else if (ECONNABORTED == status || ECONNRESET == status) {
+            DMTR_OK(dmtr_close(qr.qr_qd));
+            qts.erase(qts.begin()+idx);
+        }
+        else {
+            DMTR_UNREACHABLE();
+        }
+    } // end while(1)
 }
