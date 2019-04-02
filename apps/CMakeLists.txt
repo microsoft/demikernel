@@ -1,5 +1,7 @@
 add_subdirectory(echo)
-add_subdirectory(tapir)
+add_subdirectory(tapir-posix)
+add_subdirectory(tapir-lwip)
+add_subdirectory(tapir-rdma)
 add_redis(redis-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/redis-posix)
 add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
 

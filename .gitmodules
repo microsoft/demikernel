@@ -1,7 +1,3 @@
-[submodule "apps/tapir"]
-	path = apps/tapir
-	url = https://github.com/UWSysLab/tapir.git
-	branch = io-queue
 [submodule "src/Hoard"]
 	path = src/Hoard
 	url = https://github.com/iyzhang/Hoard.git
@@ -41,6 +37,10 @@
 	url = git@github.com:UWSysLab/tapir.git
 	branch = dmtr-lwip
 [submodule "tapir-posix"]
+	path = apps/tapir-posix
+	url = git@github.com:UWSysLab/tapir.git
+	branch = dmtr-posix
+[submodule "apps/tapir-posix"]
 	path = apps/tapir-posix
 	url = git@github.com:UWSysLab/tapir.git
 	branch = dmtr-posix
