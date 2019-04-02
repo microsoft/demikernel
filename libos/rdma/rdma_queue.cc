@@ -50,7 +50,7 @@
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
-const size_t dmtr::rdma_queue::recv_buf_count = 1;
+const size_t dmtr::rdma_queue::recv_buf_count = 10;
 const size_t dmtr::rdma_queue::recv_buf_size = 8000;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
