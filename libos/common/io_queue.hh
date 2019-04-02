@@ -99,7 +99,7 @@ class io_queue
             return my_qr.qr_qd;
         }
 
-        public: int qt() const {
+        public: dmtr_qtoken_t qt() const {
             return my_qr.qr_qt;
         }
 
