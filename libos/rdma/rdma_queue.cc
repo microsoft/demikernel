@@ -39,7 +39,6 @@
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <dmtr/sga.h>
-#include <fcntl.h>
 #include <hoard/zeusrdma.h>
 #include <iostream>
 #include <libos/common/mem.h>
@@ -140,7 +139,6 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
 
 int dmtr::rdma_queue::service_event_queue() {
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    DMTR_TRUE(EPERM, fcntl(my_rdma_id->channel->fd, F_GETFL) & O_NONBLOCK);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event;
