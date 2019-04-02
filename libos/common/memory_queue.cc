@@ -30,7 +30,7 @@
 #include "memory_queue.hh"
 #include <dmtr/annot.h>
 #include <libos/common/mem.h>
-
+#include <iostream>
 dmtr::memory_queue::memory_queue(int qd) :
     io_queue(MEMORY_Q, qd)
 {}
@@ -45,11 +45,12 @@ int
 dmtr::memory_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     std::lock_guard<std::recursive_mutex> lock(my_lock);
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, complete_push));
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, complete_push, sga));
     return 0;
 }
 
 int dmtr::memory_queue::complete_push(task::yield_type &yield, task &t, io_queue &q) {
+    std::cout << "Pushing to queue ..." << std::endl;
     auto * const self = dynamic_cast<memory_queue *>(&q);
     DMTR_NOTNULL(EINVAL, self);
     const dmtr_sgarray_t *sga = NULL;
@@ -79,6 +80,7 @@ int dmtr::memory_queue::complete_pop(task::yield_type &yield, task &t, io_queue 
     }
 
     auto sga = self->my_ready_queue.front();
+    self->my_ready_queue.pop();
     t.complete(sga);
     return 0;
 }
