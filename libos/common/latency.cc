@@ -34,10 +34,10 @@
 #include <dmtr/libos.h>
 
 #include <algorithm>
+#include <boost/chrono.hpp>
 #include <cassert>
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
-#include <plf_nanotimer.h>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -61,6 +61,8 @@
 // The maximum number of iterations we will record latencies for
 #define MAX_ITERATIONS 1000000
 
+typedef boost::chrono::duration<uint64_t, boost::nano> duration_type;
+
 typedef struct Latency_Dist_t
 {
     uint64_t min, max, total, count;
@@ -71,7 +73,7 @@ typedef struct Latency_Dist_t
 typedef struct dmtr_timer
 {
     std::string name;
-    plf::nanotimer timer;
+    boost::chrono::steady_clock::time_point t0;
 
     Latency_Dist_t *dists[LATENCY_MAX_DIST];
     Latency_Dist_t distPool[LATENCY_DIST_POOL_SIZE];
@@ -300,15 +302,15 @@ int dmtr_new_timer(dmtr_timer_t **timer_out, const char *name) {
 int dmtr_start_timer(dmtr_timer_t *timer) {
     DMTR_NOTNULL(EINVAL, timer);
 
-    timer->timer.start();
+    timer->t0 = boost::chrono::steady_clock::now();
     return 0;
 }
 
 int dmtr_stop_timer(dmtr_timer_t *timer) {
     DMTR_NOTNULL(EINVAL, timer);
 
-    auto elapsed = timer->timer.get_elapsed_ns();
-    LatencyAdd(timer, '=', elapsed);
+    auto elapsed = boost::chrono::steady_clock::now() - timer->t0;
+    LatencyAdd(timer, '=', elapsed.count());
     return 0;
 }
 
