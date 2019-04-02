@@ -91,6 +91,7 @@ class rdma_queue : public io_queue {
 
     private: static int rdma_bind_addr(struct rdma_cm_id * const id, const struct sockaddr * const addr);
     private: static int rdma_destroy_qp(struct rdma_cm_id * const id);
+    private: static int rdma_disconnect(struct rdma_cm_id * const id);
     private: static int rdma_listen(struct rdma_cm_id * const id, int backlog);
     private: static int rdma_resolve_addr(struct rdma_cm_id * const id, const struct sockaddr * const src_addr, const struct sockaddr * const dst_addr, int timeout_ms);
     private: static int rdma_resolve_route(struct rdma_cm_id * const id, int timeout_ms);
