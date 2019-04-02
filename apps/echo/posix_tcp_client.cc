@@ -22,8 +22,6 @@
 #include <yaml-cpp/yaml.h>
 #include "common.hh"
 
-#define ITERATION_COUNT 10000
-#define BUFFER_SIZE 1024
 #define FILL_CHAR 'a'
 
 namespace po = boost::program_options;
@@ -34,11 +32,19 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
-    std::cerr << "Listening on `*:" << port << "`..." << std::endl;
-    saddr.sin_addr.s_addr = INADDR_ANY;
     saddr.sin_port = htons(port);
+    if (inet_pton(AF_INET, server_ip_addr->c_str(), &saddr.sin_addr) != 1) {
+        std::cerr << "Unable to parse IP address." << std::endl;
+        return -1;
+    }
+
+
     dmtr_timer_t *timer = NULL;
-    DMTR_OK(dmtr_new_timer(&timer, "timer"));
+    DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
+    dmtr_timer_t *pop_timer = NULL;
+    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
+    dmtr_timer_t *push_timer = NULL;
+    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     printf("client fd:\t%d\n", fd);
@@ -54,31 +60,37 @@ int main(int argc, char *argv[])
     DMTR_OK(connect(fd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     std::cerr << "Connected." << std::endl;
 
-    char buf[BUFFER_SIZE];
-    memset(&buf, FILL_CHAR, BUFFER_SIZE);
-    buf[BUFFER_SIZE - 1] = '\0';
- 
-    for (size_t i = 0; i < ITERATION_COUNT; i++) {
-      DMTR_OK(dmtr_start_timer(timer));
-	int bytes_written = 0, ret;
-	while (bytes_written < BUFFER_SIZE) {
-	  ret = write(fd,
-		      (void *)&(buf[bytes_written]),
-		      BUFFER_SIZE-bytes_written);
-	  if (ret < 0) {
-	    exit(-1);
-	  }
-	  bytes_written += ret;
-	}
-	int bytes_read = 0;
-        while(bytes_read < BUFFER_SIZE) {
-            ret += read(fd, (void *)&buf, BUFFER_SIZE);
-	    if (ret < 0) exit(-1);
-	    bytes_read += ret;
+    char buf[packet_size];
+    memset(&buf, FILL_CHAR, packet_size);
+    buf[packet_size - 1] = '\0';
+
+    for (size_t i = 0; i < iterations; i++) {
+        DMTR_OK(dmtr_start_timer(timer));
+        DMTR_OK(dmtr_start_timer(push_timer));
+        int bytes_written = 0, ret;
+        while (bytes_written < (int)packet_size) {
+            ret = write(fd,
+                  (void *)&(buf[bytes_written]),
+                  packet_size-bytes_written);
+            if (ret < 0) {
+              exit(-1);
+            }
+            bytes_written += ret;
         }
-	DMTR_OK(dmtr_stop_timer(timer));
+        DMTR_OK(dmtr_stop_timer(push_timer));
+        DMTR_OK(dmtr_start_timer(pop_timer));
+        int bytes_read = 0;
+        while(bytes_read < (int)packet_size) {
+            ret += read(fd, (void *)&buf, packet_size);
+            if (ret < 0) exit(-1);
+            bytes_read += ret;
+        }
+        DMTR_OK(dmtr_stop_timer(pop_timer));
+        DMTR_OK(dmtr_stop_timer(timer));
     }
     close(fd);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
+    DMTR_OK(dmtr_dump_timer(stderr, pop_timer));
+    DMTR_OK(dmtr_dump_timer(stderr, push_timer));
     return 0;
 }

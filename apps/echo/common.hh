@@ -8,16 +8,14 @@
 #include <libos/common/mem.h>
 #include <string.h>
 #include <yaml-cpp/yaml.h>
-#include <dmtr/libos.h>
 
 uint16_t port = 12345;
 boost::optional<std::string> server_ip_addr;
-uint32_t packet_size = 1024;
-uint32_t iterations = 1;
+uint32_t packet_size = 64;
+uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
-dmtr_timer_t *pop_timer = NULL;
-dmtr_timer_t *push_timer = NULL;
+const char FILL_CHAR = 'a';
 
 using namespace boost::program_options;
 
@@ -30,7 +28,7 @@ void parse_args(int argc, char **argv, bool server)
         ("ip", value<std::string>(), "server ip address")
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
-        ("iterations,i", value<uint32_t>(&iterations)->default_value(1), "test iterations")
+        ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
         ("config-path,c", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
 
     variables_map vm;
@@ -44,9 +42,9 @@ void parse_args(int argc, char **argv, bool server)
     }
 
     if (!server) {
-	server_ip_addr = "127.0.0.1";
+        server_ip_addr = "127.0.0.1";
     }
-    
+
     if (access(config_path.c_str(), R_OK) == -1) {
         std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
     } else {
@@ -100,8 +98,9 @@ void* generate_packet()
     void *p = NULL;
     dmtr_malloc(&p, packet_size);
     char *s = reinterpret_cast<char *>(p);
-    memset(s, 'a', packet_size);
+    memset(s, FILL_CHAR, packet_size);
     s[packet_size - 1] = '\0';
     return p;
 };
+
 #endif

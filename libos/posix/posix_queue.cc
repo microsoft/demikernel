@@ -152,9 +152,6 @@ int dmtr::posix_queue::complete_accept(task::yield_type &yield, task &t, io_queu
     auto * const self = dynamic_cast<posix_queue *>(&q);
     DMTR_NOTNULL(EINVAL, self);
 
-    DMTR_TRUE(EPERM, self->my_listening_flag);
-    DMTR_TRUE(EPERM, self->my_tcp_flag);
-    
     io_queue *new_q = NULL;
     DMTR_TRUE(EINVAL, t.arg(new_q));
     auto * const new_pq = dynamic_cast<posix_queue *>(new_q);
@@ -181,7 +178,6 @@ int dmtr::posix_queue::complete_accept(task::yield_type &yield, task &t, io_queu
     DMTR_OK(set_non_blocking(new_fd));
     new_pq->my_fd = new_fd;
     new_pq->my_tcp_flag = true;
-    new_pq->my_listening_flag = false;
     t.complete(new_pq->qd(), addr, len);
     return 0;
 }

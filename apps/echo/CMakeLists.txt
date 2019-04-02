@@ -71,16 +71,16 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   add_dependencies(mtcp_echo mtcp_server mtcp_client)
 
   # "raw" MTCP server
-  add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES})
-  target_link_libraries(raw_mtcp_server Threads::Threads gmp)
+  #add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES})
+  #target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
   # "raw" MTCP client
-  add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES})
-  target_link_libraries(raw_mtcp_client Threads::Threads gmp)
+  #add_executable(raw_mtcp_client ${RAW_MTCP_ECHO_CLIENT_SOURCES})
+  #target_link_libraries(raw_mtcp_client Threads::Threads gmp)
 
   # "raw" MTCP client & server
-  add_custom_target(raw_mtcp_echo)
-  add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
+  #add_custom_target(raw_mtcp_echo)
+  #add_dependencies(raw_mtcp_echo raw_mtcp_server raw_mtcp_client)
 endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server

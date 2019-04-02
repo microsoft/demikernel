@@ -15,17 +15,13 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
-#define ITERATION_COUNT 10000
-#define BUFFER_SIZE 1024
-#define FILL_CHAR 'a'
-
 namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, false);
 
-    DMTR_OK(dmtr_init(argc, argv));
+    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
     dmtr_timer_t *timer = NULL;
     DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
@@ -48,16 +44,11 @@ int main(int argc, char *argv[])
     std::cerr << "Connected." << std::endl;
 
     dmtr_sgarray_t sga = {};
-    void *p = NULL;
-    DMTR_OK(dmtr_malloc(&p, BUFFER_SIZE));
-    char *s = reinterpret_cast<char *>(p);
-    memset(s, FILL_CHAR, BUFFER_SIZE);
-    s[BUFFER_SIZE - 1] = '\0';
     sga.sga_numsegs = 1;
-    sga.sga_segs[0].sgaseg_len = BUFFER_SIZE;
-    sga.sga_segs[0].sgaseg_buf = p;
+    sga.sga_segs[0].sgaseg_len = packet_size;
+    sga.sga_segs[0].sgaseg_buf = generate_packet();
 
-    for (size_t i = 0; i < ITERATION_COUNT; i++) {
+    for (size_t i = 0; i < iterations; i++) {
         dmtr_qtoken_t qt;
         DMTR_OK(dmtr_start_timer(timer));
         DMTR_OK(dmtr_push(&qt, qd, &sga));
@@ -75,7 +66,6 @@ int main(int argc, char *argv[])
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         free(qr.qr_value.sga.sga_buf);
     }
-    free(p);
     DMTR_OK(dmtr_dump_timer(stderr, timer));
     DMTR_OK(dmtr_close(qd));
     

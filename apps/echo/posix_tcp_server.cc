@@ -10,6 +10,7 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/wait.h>
+#include <dmtr/libos.h>
 #include <iostream>
 #include <libos/common/mem.h>
 
@@ -29,9 +30,9 @@
 
 #include "common.hh"
 
-#define ITERATION_COUNT 10000
-#define MAX_EVENTS 10
-#define PACKET_SIZE 1024
+int lqd = 0;
+dmtr_timer_t *pop_timer = NULL;
+dmtr_timer_t *push_timer = NULL;
 
 namespace po = boost::program_options;
 int lfd = 0, epoll_fd;
@@ -50,10 +51,10 @@ int process_read(int fd, char *buf)
 {
     int bytes_read = 0, ret;
     DMTR_OK(dmtr_start_timer(pop_timer));
-    while (bytes_read < PACKET_SIZE) {
+    while (bytes_read < (int)packet_size) {
         ret = read(fd,
                    (void *)&(buf[bytes_read]),
-                   PACKET_SIZE - bytes_read);
+                   packet_size - bytes_read);
         if (ret < 0) {
             close(fd);
             return ret;
@@ -68,10 +69,10 @@ int process_write(int fd, char *buf)
 {
     int bytes_written = 0, ret;
     DMTR_OK(dmtr_start_timer(push_timer));
-    while (bytes_written < PACKET_SIZE) {
+    while (bytes_written < (int)packet_size) {
         ret = write(fd,
                     (void *)&(buf[bytes_written]),
-                    PACKET_SIZE - bytes_written);
+                    packet_size - bytes_written);
         if (ret < 0) {
             close(fd);
             return ret;
@@ -102,13 +103,11 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    dmtr_timer_t *pop_timer = NULL;
-    dmtr_timer_t *push_timer = NULL;
     DMTR_OK(dmtr_new_timer(&pop_timer, "server pop"));
     DMTR_OK(dmtr_new_timer(&push_timer, "server push"));
 
     lfd = socket(AF_INET, SOCK_STREAM, 0);
-    std::cout << "listen qd: " << lfd;
+    std::cout << "listen qd: " << lfd << std::endl;
 
     // Put it in non-blocking mode
     DMTR_OK(fcntl(lfd, F_SETFL, O_NONBLOCK, 1));
@@ -158,7 +157,7 @@ int main(int argc, char *argv[])
                 event.data.fd = newfd;
                 DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event));
             } else {
-                char *buf = (char *)malloc(PACKET_SIZE);
+                char *buf = (char *)malloc(packet_size);
                 if (process_read(events[i].data.fd, buf) < 0) {
                     free(buf);
                     continue;

@@ -52,7 +52,7 @@
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
 const size_t dmtr::rdma_queue::recv_buf_count = 1;
-const size_t dmtr::rdma_queue::recv_buf_size = 1024;
+const size_t dmtr::rdma_queue::recv_buf_size = 8000;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 
 dmtr::rdma_queue::rdma_queue(int qd) :
@@ -158,14 +158,16 @@ int dmtr::rdma_queue::service_event_queue() {
         default:
             fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
             return ENOTSUP;
+        case RDMA_CM_EVENT_TIMEWAIT_EXIT:
+            //fprintf(stderr, "An uninteresting event about recycling QP\n");
+            return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             my_pending_accepts.push(event.id);
             fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
-            DMTR_OK(close());
-            return ECONNABORTED;
+            return ECONNABORTED; // client should call close
         case RDMA_CM_EVENT_ESTABLISHED:
             fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
             break;
@@ -317,13 +319,27 @@ int dmtr::rdma_queue::close()
         return 0;
     }
 
+    // In RDMA, both client and server should be calling rdma_disconnect
+    if (my_rdma_id->qp != NULL)
+    {
+        DMTR_OK(rdma_disconnect(my_rdma_id));
+        DMTR_OK(rdma_destroy_qp(my_rdma_id));
+        my_rdma_id->qp = NULL;
+    }
+
     struct rdma_cm_id *rdma_id = my_rdma_id;
     my_rdma_id = NULL;
 
-    DMTR_OK(rdma_destroy_qp(rdma_id));
     // todo: until we deal with unregistering memory, deallocating the protection domain will fail.
+    // Similarly destroying the id and the event channel will fail.
     //DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
-    DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
+
+    //rdma_event_channel *channel = rdma_id->channel;
+    //DMTR_OK(rdma_destroy_event_channel(channel));
+
+    //DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
+    rdma_id->channel = NULL;
+
     return 0;
 }
 
@@ -530,6 +546,20 @@ int dmtr::rdma_queue::rdma_bind_addr(struct rdma_cm_id * const id, const struct 
 
 int dmtr::rdma_queue::rdma_listen(struct rdma_cm_id * const id, int backlog) {
     int ret = ::rdma_listen(id, backlog);
+    switch (ret) {
+        default:
+            DMTR_UNREACHABLE();
+        case -1:
+            return errno;
+        case 0:
+            return 0;
+    }
+}
+
+int dmtr::rdma_queue::rdma_disconnect(struct rdma_cm_id * const id) {
+    DMTR_NOTNULL(EINVAL, id);
+
+    int ret = ::rdma_disconnect(id);
     switch (ret) {
         default:
             DMTR_UNREACHABLE();

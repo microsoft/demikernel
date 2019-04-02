@@ -12,9 +12,10 @@
 #include <unistd.h>
 #include <signal.h>
 #include <dmtr/libos.h>
-#define ITERATION_COUNT 10000
 
 int lqd = 0;
+dmtr_timer_t *pop_timer = NULL;
+dmtr_timer_t *push_timer = NULL;
 
 void sig_handler(int signo)
 {
