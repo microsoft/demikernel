@@ -7,24 +7,31 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
+	branch = libos
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
 	url = https://github.com/emeryberger/Heap-Layers
+	branch = master
 [submodule "submodules/Hoard"]
 	path = submodules/Hoard
 	url = https://github.com/mlr-msft/Hoard.git
+	branch = msft/vanilla
 [submodule "submodules/HoardRdma"]
 	path = submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
+	branch = msft/rdma-pinned
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/mlr-msft/dpdk.git
+	branch = msft/v18.11/dmtr
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
+	branch = msft/4.0.9/mirobert
 [submodule "submodules/redis-rdma"]
 	path = submodules/redis-rdma
 	url = https://github.com/mlr-msft/redis.git
+	branch = msft/4.0.9/mirobert
 [submodule "submodules/plf_nanotimer"]
 	path = submodules/plf_nanotimer
 	url = https://github.com/mattreecebentley/plf_nanotimer.git
