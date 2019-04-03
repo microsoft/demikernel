@@ -30,17 +30,17 @@
 	url = https://github.com/mattreecebentley/plf_nanotimer.git
 [submodule "apps/tapir-rdma"]
 	path = apps/tapir-rdma
-	url = git@github.com:UWSysLab/tapir.git
+	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-rdma
 [submodule "apps/tapir-lwip"]
 	path = apps/tapir-lwip
-	url = git@github.com:UWSysLab/tapir.git
+	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-lwip
 [submodule "tapir-posix"]
 	path = apps/tapir-posix
-	url = git@github.com:UWSysLab/tapir.git
+	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
 [submodule "apps/tapir-posix"]
 	path = apps/tapir-posix
-	url = git@github.com:UWSysLab/tapir.git
+	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
