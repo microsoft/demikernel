@@ -1,31 +1,47 @@
-[submodule "apps/tapir"]
-	path = apps/tapir
-	url = https://github.com/UWSysLab/tapir.git
-	branch = io-queue
-[submodule "src/Hoard"]
-	path = src/Hoard
-	url = https://github.com/iyzhang/Hoard.git
 [submodule "submodules/mtcp"]
 	path = submodules/mtcp
 	url = https://github.com/mlr-msft/mtcp.git
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
+	branch = libos
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
 	url = https://github.com/emeryberger/Heap-Layers
+	branch = master
 [submodule "submodules/Hoard"]
 	path = submodules/Hoard
 	url = https://github.com/mlr-msft/Hoard.git
+	branch = msft/vanilla
 [submodule "submodules/HoardRdma"]
 	path = submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
+	branch = msft/rdma-pinned
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/mlr-msft/dpdk.git
+	branch = msft/v18.11/dmtr
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
+	branch = msft/4.0.9/mirobert
 [submodule "submodules/redis-rdma"]
 	path = submodules/redis-rdma
 	url = https://github.com/mlr-msft/redis.git
+	branch = msft/4.0.9/mirobert
+[submodule "apps/tapir-rdma"]
+	path = apps/tapir-rdma
+	url = https://github.com/UWSysLab/tapir.git
+	branch = dmtr-rdma
+[submodule "apps/tapir-lwip"]
+	path = apps/tapir-lwip
+	url = https://github.com/UWSysLab/tapir.git
+	branch = dmtr-lwip
+[submodule "tapir-posix"]
+	path = apps/tapir-posix
+	url = https://github.com/UWSysLab/tapir.git
+	branch = dmtr-posix
+[submodule "apps/tapir-posix"]
+	path = apps/tapir-posix
+	url = https://github.com/UWSysLab/tapir.git
+	branch = dmtr-posix

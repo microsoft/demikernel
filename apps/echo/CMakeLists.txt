@@ -73,6 +73,7 @@ if(BUILD_MTCP AND NOT AZURE_SUPPORT)
   add_dependencies(mtcp_echo mtcp_server mtcp_client)
 
   # "raw" MTCP server
+
   #add_executable(raw_mtcp_server ${RAW_MTCP_ECHO_SERVER_SOURCES})
   #target_link_libraries(raw_mtcp_server Threads::Threads gmp)
 
