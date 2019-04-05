@@ -26,6 +26,7 @@ int dmtr_ultoc(char *to_arg, unsigned long from_arg);
 int dmtr_ultol(long *to_arg, unsigned long from_arg);
 int dmtr_ultou(unsigned int *to_arg, unsigned long from_arg);
 int dmtr_ultouc(unsigned char *to_arg, unsigned long from_arg);
+int dmtr_utou8(uint8_t *to_arg, unsigned int from_arg);
 
 #ifdef __cplusplus
 }

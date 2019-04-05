@@ -16,13 +16,14 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <unordered_map>
 #include <map>
 
 class lwip_addr {
 public:
     lwip_addr();
     lwip_addr(const struct sockaddr_in &addr);
-    
+
 private:
     sockaddr_in addr;
     friend class lwip_queue;
@@ -37,15 +38,15 @@ private:
 namespace dmtr {
 
 class lwip_queue : public io_queue {
-   
-    
+    private: static const struct ether_addr ether_broadcast;
     private: static const size_t our_max_queue_depth;
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
-    private: static boost::optional<struct in_addr> our_ip_addr;
     // demultiplexing incoming packets into queues
     private: static std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
+    private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
+    private: static std::unordered_map<in_addr_t, struct ether_addr> our_ip_to_mac_table;
 
     private: bool my_listening_flag = false;
     protected: boost::optional<struct sockaddr_in> my_bound_src;
@@ -78,6 +79,7 @@ class lwip_queue : public io_queue {
     private: static int print_ether_addr(FILE *f, struct ether_addr &eth_addr);
     private: static int print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link = NULL);
     private: static int wait_for_link_status_up(uint16_t port_id);
+    private: static int parse_ether_addr(struct ether_addr &mac_out, const char *s);
     private: bool is_bound() const {
         return boost::none != my_bound_src;
     }
@@ -91,6 +93,11 @@ class lwip_queue : public io_queue {
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: static int service_incoming_packets();
     private: static bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
+    private: static int learn_addrs(const struct ether_addr &mac, const struct in_addr &ip);
+    private: static int learn_addrs(const char *mac_s, const char *ip_s);
+    private: static int ip_to_mac(struct ether_addr &mac_out, const struct in_addr &ip);
+    private: static int mac_to_ip(struct in_addr &ip_out, const struct ether_addr &mac);
+
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
     private: static int rte_eth_tx_burst(size_t &count_out, uint16_t port_id,uint16_t queue_id, struct rte_mbuf **tx_pkts, uint16_t nb_pkts);

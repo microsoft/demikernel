@@ -45,3 +45,6 @@
 	path = apps/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
+[submodule "submodules/redis-lwip"]
+	path = submodules/redis-lwip
+	url = https://github.com/mlr-msft/redis.git

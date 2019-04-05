@@ -183,3 +183,10 @@ int dmtr_u32toi(int *to_arg, uint32_t from_arg) {
     DMTR_CAST_UTOI(to_arg, int, INT_MAX, from_arg);
     return 0;
 }
+
+int dmtr_utou8(uint8_t *to_arg, unsigned int from_arg) {
+    DMTR_NOTNULL(EINVAL, to_arg);
+
+    DMTR_CAST_UTOU(to_arg, uint8_t, from_arg, unsigned int);
+    return 0;
+}

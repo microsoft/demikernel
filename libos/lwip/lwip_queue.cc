@@ -70,47 +70,13 @@ namespace bpo = boost::program_options;
 #define TX_HTHRESH          0  /**< Default values of TX host threshold reg. */
 #define TX_WTHRESH          0  /**< Default values of TX write-back threshold reg. */
 
-
 /*
  * Configurable number of RX/TX ring descriptors
  */
 #define RTE_TEST_RX_DESC_DEFAULT    128
 #define RTE_TEST_TX_DESC_DEFAULT    128
 
-struct mac2ip {
-    struct ether_addr mac;
-    uint32_t ip;
-};
-
-static struct mac2ip ip_config[] = {
-    // eth1 on cassance
-    {       { 0x00, 0x0d, 0x3a, 0x70, 0x25, 0x75 },
-            ((10U << 24) | (0 <<16) | (0 << 8) | 5),
-    },
-    // eth1 on hightent
-    {       { 0x00, 0x0d, 0x3a, 0x5e, 0x4f, 0x6e },
-            ((10U << 24) | (0 << 16) | (0 << 8) | 7),
-    },
-    // ens1 on iyzhang-test
-    {       { 0x24, 0x8a, 0x07, 0x50, 0x95, 0x08 },
-            ((192U << 24) | (168 << 16) | (1 << 8) | 1),
-    },
-    // ens4f1 on iyzhang-test2
-    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
-            ((192U << 24) | (168 << 16) | (1 << 8) | 2),
-    },
-};
-/*
-static struct mac2ip ip_config[] = {
-    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf2 },
-            0x040c0c0c,       // 12.12.12.4
-    },
-    {       { 0x50, 0x6b, 0x4b, 0x48, 0xf8, 0xf3 },
-            0x050c0c0c,       // 12.12.12.5
-    },
-};
-*/
-static struct ether_addr ether_broadcast = {
+const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 };
 
@@ -155,31 +121,25 @@ operator<(const lwip_addr &a,
 
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
-boost::optional<struct in_addr> dmtr::lwip_queue::our_ip_addr;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
+std::unordered_map<std::string, struct in_addr> dmtr::lwip_queue::our_mac_to_ip_table;
+std::unordered_map<in_addr_t, struct ether_addr> dmtr::lwip_queue::our_ip_to_mac_table;
 
-struct ether_addr*
-ip_to_mac(in_addr_t ip)
+int dmtr::lwip_queue::ip_to_mac(struct ether_addr &mac_out, const struct in_addr &ip)
 {
-   for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
-        struct mac2ip *e = &ip_config[i];
-        if (ip == e->ip) {
-            return &e->mac;
-        }
-    }
-    return &ether_broadcast;
+    auto it = our_ip_to_mac_table.find(ip.s_addr);
+    DMTR_TRUE(ENOENT, our_ip_to_mac_table.cend() != it);
+    mac_out = it->second;
+    return 0;
 }
 
-uint32_t
-mac_to_ip(struct ether_addr mac)
+int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct ether_addr &mac)
 {
-    for (unsigned int i = 0; i < sizeof(ip_config) / sizeof(struct mac2ip); i++) {
-         struct mac2ip *e = &ip_config[i];
-         if (is_same_ether_addr(&mac, &e->mac)) {
-             return e->ip;
-         }
-     }
+    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
+    auto it = our_mac_to_ip_table.find(mac_s);
+    DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != it);
+    ip_out = it->second;
     return 0;
 }
 
@@ -387,16 +347,13 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
-    node = config["dpdk"]["host"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        std::string s = node.as<std::string>();
-	struct in_addr addr = {};
-	void * addr_addr = reinterpret_cast<void *>(&addr);
-        if (inet_pton(AF_INET, s.c_str(), addr_addr) != 1) {
-            std::cerr << "Unable to parse IP address." << std::endl;
+    node = config["dpdk"]["known_hosts"];
+    if (YAML::NodeType::Map == node.Type()) {
+        for (auto i = node.begin(); i != node.end(); ++i) {
+            auto mac = i->first.as<std::string>();
+            auto ip = i->second.as<std::string>();
+            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
         }
-	our_ip_addr = addr;
-	std::cout << "Our IP address: " << s << std::endl;
     }
 
     int unused = -1;
@@ -465,17 +422,15 @@ int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
 }
 
 int
-dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size)
-{
-    if (is_bound()) {
-        sockaddr_in *local_addr = &boost::get(my_bound_src);
-        memcpy(saddr, local_addr, sizeof(sockaddr_in));
-        *size = sizeof(sockaddr_in);
-        return 0; // eok
-    }
-    return -1;
-}
+dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
+    DMTR_NOTNULL(EINVAL, size);
+    DMTR_TRUE(ENOMEM, *size >= sizeof(struct sockaddr_in));
+    DMTR_TRUE(EINVAL, boost::none != my_bound_src);
 
+    struct sockaddr_in *saddr_in = reinterpret_cast<struct sockaddr_in *>(saddr);
+    *saddr_in = *my_bound_src;
+    return 0;
+}
 
 int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd)
 {
@@ -508,7 +463,7 @@ int dmtr::lwip_queue::complete_accept(task::yield_type &yield, task &t, io_queue
             self->my_recv_queue.empty())
             yield();
     }
-                
+
     dmtr_sgarray_t &sga = self->my_recv_queue.front();
     sockaddr_in &src = sga.sga_addr;
     lwip_addr addr = lwip_addr(src);
@@ -521,7 +476,7 @@ int dmtr::lwip_queue::complete_accept(task::yield_type &yield, task &t, io_queue
     t.complete(new_lq->qd(), src, sizeof(src));
     self->my_recv_queue.pop();
     return 0;
-} 
+}
 
 int dmtr::lwip_queue::listen(int backlog)
 {
@@ -541,15 +496,20 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     // only one socket can be bound to an address at a time
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
+    struct ether_addr mac = {};
+    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
+    struct in_addr ip;
+    DMTR_OK(mac_to_ip(ip, mac));
+
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
 
     if (INADDR_ANY == saddr_copy.sin_addr.s_addr) {
-        struct ether_addr mac_addr = {};
-        DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac_addr));
-        saddr_copy.sin_addr.s_addr = mac_to_ip(mac_addr);
-        
+        saddr_copy.sin_addr = ip;
+    } else {
+        // we cannot deviate from associations found in `config.yaml`.
+        DMTR_TRUE(EPERM, 0 == memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
     }
     DMTR_TRUE(EINVAL, our_recv_queues.find(lwip_addr(saddr_copy)) == our_recv_queues.end());
     my_bound_src = saddr_copy;
@@ -565,7 +525,9 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, !is_bound());
     DMTR_TRUE(EPERM, !is_connected());
-    
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
     my_default_dst = *reinterpret_cast<const struct sockaddr_in *>(saddr);
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
@@ -575,11 +537,12 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 
     // give the connection the local ip;
+    struct ether_addr mac;
+    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
-    DMTR_TRUE(EPERM, boost::none != our_ip_addr);
     src.sin_port = htons(12345);
-    src.sin_addr = boost::get(our_ip_addr);
+    DMTR_OK(mac_to_ip(src.sin_addr, mac));
     my_bound_src = src;
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
     return 0;
@@ -647,7 +610,9 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
     memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
     eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
     rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
-    ether_addr_copy(ip_to_mac(htonl(saddr->sin_addr.s_addr)), &eth_hdr->d_addr);
+    struct ether_addr mac;
+    DMTR_OK(ip_to_mac(mac, saddr->sin_addr));
+    ether_addr_copy(&mac, &eth_hdr->d_addr);
 
     // set up IP header
     auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
@@ -664,7 +629,9 @@ int dmtr::lwip_queue::complete_push(task::yield_type &yield, task &t, io_queue &
 	ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
 	//std::cout << "Sending from address: " << bound_addr.sin_addr.s_addr << std::endl;
     } else {
-        ip_hdr->src_addr = mac_to_ip(eth_hdr->s_addr);
+        struct in_addr ip;
+        DMTR_OK(mac_to_ip(ip, eth_hdr->s_addr));
+        ip_hdr->src_addr = ip.s_addr;
     }
     ip_hdr->dst_addr = htonl(saddr->sin_addr.s_addr);
     ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
@@ -774,8 +741,8 @@ int dmtr::lwip_queue::complete_pop(task::yield_type &yield, task &t, io_queue &q
         if (service_incoming_packets() == EAGAIN ||
             self->my_recv_queue.empty())
             yield();
-    }                        
-                
+    }
+
     dmtr_sgarray_t &sga = self->my_recv_queue.front();
     t.complete(sga);
     self->
@@ -810,7 +777,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         struct sockaddr_in src, dst;
         dmtr_sgarray_t sga;
         // check the packet header
-        
+
         bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
         rte_pktmbuf_free(pkts[i]);
 
@@ -818,7 +785,7 @@ dmtr::lwip_queue::service_incoming_packets() {
             // found valid packet, try to place in queue based on src
             if (insert_recv_queue(lwip_addr(src), sga)) {
                 // placed in appropriate queue, work is done
-#if DMTR_DEBUG                
+#if DMTR_DEBUG
                 std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
 #endif
                 continue;
@@ -917,7 +884,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_port = udp_dst_port;
     src.sin_family = AF_INET;
     dst.sin_family = AF_INET;
-    
+
     // segment count
     sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
     p += sizeof(uint32_t);
@@ -953,7 +920,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
     return true;
 }
- 
+
 int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
     qr_out = {};
@@ -1177,5 +1144,48 @@ int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_l
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     ::rte_eth_link_get_nowait(port_id, &link);
+    return 0;
+}
+
+int dmtr::lwip_queue::learn_addrs(const struct ether_addr &mac, const struct in_addr &ip) {
+    DMTR_TRUE(EINVAL, !is_same_ether_addr(&mac, &ether_broadcast));
+    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
+    DMTR_TRUE(EEXIST, our_mac_to_ip_table.find(mac_s) == our_mac_to_ip_table.cend());
+    DMTR_TRUE(EEXIST, our_ip_to_mac_table.find(ip.s_addr) == our_ip_to_mac_table.cend());
+
+    our_mac_to_ip_table.insert(std::make_pair(mac_s, ip));
+    our_ip_to_mac_table.insert(std::make_pair(ip.s_addr, mac));
+    return 0;
+}
+
+int dmtr::lwip_queue::learn_addrs(const char *mac_s, const char *ip_s) {
+    DMTR_NOTNULL(EINVAL, mac_s);
+    DMTR_NOTNULL(EINVAL, ip_s);
+
+    struct ether_addr mac;
+    DMTR_OK(parse_ether_addr(mac, mac_s));
+
+    struct in_addr ip = {};
+    if (inet_pton(AF_INET, ip_s, &ip) != 1) {
+        DMTR_FAIL(EINVAL);
+    }
+
+    DMTR_OK(learn_addrs(mac, ip));
+    return 0;
+}
+
+int dmtr::lwip_queue::parse_ether_addr(struct ether_addr &mac_out, const char *s) {
+    static_assert(ETHER_ADDR_LEN == 6);
+    DMTR_NOTNULL(EINVAL, s);
+
+    unsigned int values[ETHER_ADDR_LEN];
+    if (6 != sscanf(s, "%2x:%2x:%2x:%2x:%2x:%2x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])) {
+        return EINVAL;
+    }
+
+    for (size_t i = 0; i < ETHER_ADDR_LEN; ++i) {
+        DMTR_OK(dmtr_utou8(&mac_out.addr_bytes[i], values[i]));
+    }
+
     return 0;
 }
