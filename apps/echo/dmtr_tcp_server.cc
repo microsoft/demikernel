@@ -1,26 +1,28 @@
 #include "common.hh"
-
 #include <arpa/inet.h>
+#include <boost/chrono.hpp>
 #include <boost/optional.hpp>
 #include <cassert>
 #include <cstring>
 #include <dmtr/annot.h>
+#include <dmtr/latency.h>
+#include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #include <signal.h>
-#include <dmtr/libos.h>
+#include <unistd.h>
+#include <unordered_map>
 
 int lqd = 0;
-dmtr_timer_t *pop_timer = NULL;
-dmtr_timer_t *push_timer = NULL;
+dmtr_latency_t *pop_latency = NULL;
+dmtr_latency_t *push_latency = NULL;
 
 void sig_handler(int signo)
 {
-  dmtr_dump_timer(stderr, pop_timer);
-  dmtr_dump_timer(stderr, push_timer);
+  dmtr_dump_latency(stderr, pop_latency);
+  dmtr_dump_latency(stderr, push_latency);
   dmtr_close(lqd);
   exit(0);
 }
@@ -28,7 +30,7 @@ void sig_handler(int signo)
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, true);
-    
+
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     if (boost::none == server_ip_addr) {
@@ -45,21 +47,21 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop server"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "push server"));
+    DMTR_OK(dmtr_new_latency(&pop_latency, "pop server"));
+    DMTR_OK(dmtr_new_latency(&push_latency, "push server"));
 
     std::vector<dmtr_qtoken_t> tokens;
+    std::unordered_map<dmtr_qtoken_t, boost::chrono::time_point<boost::chrono::steady_clock>> start_times;
     dmtr_qtoken_t token;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
     std::cout << "listen qd: " << lqd << std::endl;
 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
-
     DMTR_OK(dmtr_listen(lqd, 3));
     DMTR_OK(dmtr_accept(&token, lqd));
     tokens.push_back(token);
-    
+
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
@@ -74,9 +76,9 @@ int main(int argc, char *argv[])
 
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers
-                DMTR_OK(dmtr_start_timer(pop_timer));
+                auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
-                DMTR_OK(dmtr_stop_timer(pop_timer));
+                start_times[token] = t0;
                 tokens.push_back(token);
                 DMTR_OK(dmtr_accept(&token, lqd));
                 tokens[idx] = token;
@@ -84,13 +86,18 @@ int main(int argc, char *argv[])
                 assert(DMTR_OPC_POP == wait_out.qr_opcode);
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
                 //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
-                DMTR_OK(dmtr_start_timer(push_timer));
+                token = tokens[idx];
+                auto dt = boost::chrono::steady_clock::now() - start_times[token];
+                start_times.erase(token);
+                DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));
+                auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
                 DMTR_OK(dmtr_wait(NULL, token));
-                DMTR_OK(dmtr_stop_timer(push_timer));
-                DMTR_OK(dmtr_start_timer(pop_timer));
+                dt = boost::chrono::steady_clock::now() - t0;
+                DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
+                t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
-                DMTR_OK(dmtr_stop_timer(pop_timer));
+                start_times[token] = t0;
                 tokens[idx] = token;
                 //fprintf(stderr, "send complete.\n");
                 free(wait_out.qr_value.sga.sga_buf);

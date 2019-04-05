@@ -9,7 +9,6 @@ include(dpdk)
 include(hoard)
 include(mtcp)
 include(redis)
-include(plf)
 #include(spdk)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -25,5 +24,6 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+add_subdirectory(latency)
 add_subdirectory(libos)
 add_subdirectory(apps)

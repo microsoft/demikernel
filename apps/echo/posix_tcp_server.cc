@@ -1,7 +1,5 @@
-#include <netinet/in.h>
-#include <unistd.h>
+#include "common.hh"
 #include <arpa/inet.h>
-
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -9,38 +7,34 @@
 #include <cassert>
 #include <cstring>
 #include <dmtr/annot.h>
-#include <dmtr/wait.h>
-#include <dmtr/libos.h>
+#include <boost/chrono.hpp>
+#include <dmtr/latency.h>
+#include <fcntl.h>
 #include <iostream>
 #include <libos/common/mem.h>
-
-#include <yaml-cpp/yaml.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <sys/epoll.h>
-#include <vector>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>
-#include <signal.h>
-
-#include "common.hh"
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
+#include <yaml-cpp/yaml.h>
 
 int lqd = 0;
-dmtr_timer_t *pop_timer = NULL;
-dmtr_timer_t *push_timer = NULL;
+dmtr_latency_t *pop_latency = NULL;
+dmtr_latency_t *push_latency = NULL;
 
 namespace po = boost::program_options;
 int lfd = 0, epoll_fd;
 
 void sig_handler(int signo)
 {
-    dmtr_dump_timer(stderr, pop_timer);
-    dmtr_dump_timer(stderr, push_timer);
+    dmtr_dump_latency(stderr, pop_latency);
+    dmtr_dump_latency(stderr, push_latency);
     close(lfd);
     close(epoll_fd);
     exit(0);
@@ -50,7 +44,7 @@ void sig_handler(int signo)
 int process_read(int fd, char *buf)
 {
     int bytes_read = 0, ret;
-    DMTR_OK(dmtr_start_timer(pop_timer));
+    auto t0 = boost::chrono::steady_clock::now();
     while (bytes_read < (int)packet_size) {
         ret = read(fd,
                    (void *)&(buf[bytes_read]),
@@ -61,14 +55,16 @@ int process_read(int fd, char *buf)
         }
         bytes_read += ret;
     }
-    DMTR_OK(dmtr_stop_timer(pop_timer));
+
+    auto dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));
     return bytes_read;
 }
 
 int process_write(int fd, char *buf)
 {
     int bytes_written = 0, ret;
-    DMTR_OK(dmtr_start_timer(push_timer));
+    auto t0 = boost::chrono::steady_clock::now();
     while (bytes_written < (int)packet_size) {
         ret = write(fd,
                     (void *)&(buf[bytes_written]),
@@ -78,11 +74,13 @@ int process_write(int fd, char *buf)
             return ret;
         }
         bytes_written += ret;
-    }                         
-    DMTR_OK(dmtr_stop_timer(push_timer));
+    }
+
+    auto dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
     return bytes_written;
 }
- 
+
 
 int main(int argc, char *argv[])
 {
@@ -103,8 +101,8 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_new_timer(&pop_timer, "server pop"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "server push"));
+    DMTR_OK(dmtr_new_latency(&pop_latency, "server pop"));
+    DMTR_OK(dmtr_new_latency(&push_latency, "server push"));
 
     lfd = socket(AF_INET, SOCK_STREAM, 0);
     std::cout << "listen qd: " << lfd << std::endl;
@@ -118,7 +116,7 @@ int main(int argc, char *argv[])
                    TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
         exit(-1);
     }
-    
+
     DMTR_OK(bind(lfd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     std::cout << "listening for connections\n";
@@ -145,7 +143,7 @@ int main(int argc, char *argv[])
 
                 // Put it in non-blocking mode
                 DMTR_OK(fcntl(newfd, F_SETFL, O_NONBLOCK, 1));
-                
+
                 // Set TCP_NODELAY
                 int n = 1;
                 if (setsockopt(newfd, IPPROTO_TCP,
@@ -166,7 +164,7 @@ int main(int argc, char *argv[])
                     free(buf);
                     continue;
                 }
-                free(buf);                
+                free(buf);
             }
         }
     }

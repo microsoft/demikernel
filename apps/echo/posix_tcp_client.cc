@@ -1,26 +1,23 @@
-#include <dmtr/annot.h>
-#include <dmtr/libos.h>
-#include <libos/common/mem.h>
-#include <dmtr/wait.h>
-
-#include <netinet/tcp.h>
+#include "common.hh"
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <signal.h>
-
+#include <boost/chrono.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/latency.h>
+#include <fcntl.h>
 #include <iostream>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <yaml-cpp/yaml.h>
-#include "common.hh"
 
 #define FILL_CHAR 'a'
 
@@ -38,9 +35,8 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-
-    dmtr_timer_t *timer = NULL;
-    DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
+    dmtr_latency_t *latency = NULL;
+    DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     printf("client fd:\t%d\n", fd);
@@ -61,7 +57,7 @@ int main(int argc, char *argv[])
     buf[packet_size - 1] = '\0';
 
     for (size_t i = 0; i < iterations; i++) {
-        DMTR_OK(dmtr_start_timer(timer));
+        auto t0 = boost::chrono::steady_clock::now();
         int bytes_written = 0, ret;
         while (bytes_written < (int)packet_size) {
             ret = write(fd,
@@ -78,9 +74,10 @@ int main(int argc, char *argv[])
             if (ret < 0) exit(-1);
             bytes_read += ret;
         }
-        DMTR_OK(dmtr_stop_timer(timer));
+        auto dt = boost::chrono::steady_clock::now() - t0;
+        DMTR_OK(dmtr_record_latency(latency, dt.count()));
     }
     close(fd);
-    DMTR_OK(dmtr_dump_timer(stderr, timer));
+    DMTR_OK(dmtr_dump_latency(stderr, latency));
     return 0;
 }

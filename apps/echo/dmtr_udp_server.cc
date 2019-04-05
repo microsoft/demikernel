@@ -1,4 +1,6 @@
+#include "common.hh"
 #include <arpa/inet.h>
+#include <boost/chrono.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -6,30 +8,29 @@
 #include <cassert>
 #include <cstring>
 #include <dmtr/annot.h>
+#include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <netinet/in.h>
-#include <yaml-cpp/yaml.h>
 #include <signal.h>
-
-#include "common.hh"
+#include <yaml-cpp/yaml.h>
 
 int lqd = 0;
-dmtr_timer_t *pop_timer = NULL;
-dmtr_timer_t *push_timer = NULL;
+dmtr_latency_t *pop_latency = NULL;
+dmtr_latency_t *push_latency = NULL;
 namespace po = boost::program_options;
 
-/* Will dump the timers when Ctrl-C to close server 
+/* Will dump the latencys when Ctrl-C to close server
 *  Since we MUST exit, not return after this function, cannot use DMTR_OK here
 */
 void sig_handler(int signo)
 {
     std::cout << std::endl;
-    if (NULL != pop_timer && NULL != push_timer) {
-        dmtr_dump_timer(stderr, pop_timer);
-        dmtr_dump_timer(stderr, push_timer);
+    if (NULL != pop_latency && NULL != push_latency) {
+        dmtr_dump_latency(stderr, pop_latency);
+        dmtr_dump_latency(stderr, push_latency);
     }
 
     dmtr_close(lqd);
@@ -40,7 +41,7 @@ void sig_handler(int signo)
 int main(int argc, char *argv[])
 {
     parse_args(argc, argv, true);
-    
+
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     if (boost::none == server_ip_addr) {
@@ -58,8 +59,8 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
+    DMTR_OK(dmtr_new_latency(&pop_latency, "pop"));
+    DMTR_OK(dmtr_new_latency(&push_latency, "push"));
 
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_DGRAM, 0));
     printf("server qd:\t%d\n", lqd);
@@ -72,18 +73,20 @@ int main(int argc, char *argv[])
     while(1) {
         dmtr_qresult_t qr = {};
         dmtr_qtoken_t qt = 0;
-        DMTR_OK(dmtr_start_timer(pop_timer));
+        auto t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_pop(&qt, lqd));
         DMTR_OK(dmtr_wait(&qr, qt));
-        DMTR_OK(dmtr_stop_timer(pop_timer));
+        auto dt = boost::chrono::steady_clock::now() - t0;
+        DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
 
         //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
-        DMTR_OK(dmtr_start_timer(push_timer));
+        t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_push(&qt, lqd, &qr.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, qt));
-        DMTR_OK(dmtr_stop_timer(push_timer));
+        dt = boost::chrono::steady_clock::now() - t0;
+        DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
 
         //fprintf(stderr, "send complete.\n");
         free(qr.qr_value.sga.sga_buf);

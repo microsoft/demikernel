@@ -9,35 +9,18 @@
 #include <iostream>
 #include <unistd.h>
 
-static dmtr_timer_t *pop_timer = NULL;
-static dmtr_timer_t *push_timer = NULL;
-static dmtr_timer_t *poll_timer = NULL;
-dmtr_timer_t *write_timer = NULL;
-dmtr_timer_t *read_timer = NULL;
-
 dmtr::io_queue_api::io_queue_api() :
     my_qd_counter(0),
     my_qt_counter(0)
 {}
 
 dmtr::io_queue_api::~io_queue_api()
-{
-    dmtr_dump_timer(stderr, pop_timer);
-    dmtr_dump_timer(stderr, push_timer);
-    dmtr_dump_timer(stderr, poll_timer);
-    dmtr_dump_timer(stderr, read_timer);
-    dmtr_dump_timer(stderr, write_timer);
-}
+{}
 
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
     DMTR_NULL(EINVAL, newobj_out);
 
     newobj_out = new io_queue_api();
-    DMTR_OK(dmtr_new_timer(&pop_timer, "pop"));
-    DMTR_OK(dmtr_new_timer(&push_timer, "push"));
-    DMTR_OK(dmtr_new_timer(&poll_timer, "poll"));
-    DMTR_OK(dmtr_new_timer(&read_timer, "read"));
-    DMTR_OK(dmtr_new_timer(&write_timer, "write"));
     return 0;
 }
 
@@ -237,8 +220,6 @@ int dmtr::io_queue_api::is_qd_valid(bool &flag, int qd)
 }
 
 int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga) {
-    DMTR_OK(dmtr_start_timer(push_timer));
-              
     qtok_out = 0;
     DMTR_TRUE(EINVAL, qd != 0);
 
@@ -249,13 +230,10 @@ int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray
     DMTR_OK(q->push(qt, sga));
 
     qtok_out = qt;
-    DMTR_OK(dmtr_stop_timer(push_timer));
     return 0;
 }
 
 int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
-    DMTR_OK(dmtr_start_timer(pop_timer));
-
     qtok_out = 0;
     DMTR_TRUE(EINVAL, qd != 0);
 
@@ -266,7 +244,6 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     DMTR_OK(q->pop(qt));
 
     qtok_out = qt;
-    DMTR_OK(dmtr_stop_timer(pop_timer));
     return 0;
 }
 
@@ -297,8 +274,8 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
             return ret;
         case 0:
             return 0;
-   
-   
+
+
     }
 
     return ret;
