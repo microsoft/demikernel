@@ -354,7 +354,6 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
             auto ip = i->second.as<std::string>();
             DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
         }
-        std::string s = node.as<std::string>();
     }
 
     int unused = -1;
