@@ -16,7 +16,7 @@
 [submodule "submodules/HoardRdma"]
 	path = submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
-	branch = msft/rdma-pinned
+	branch = msft/rdma
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/mlr-msft/dpdk.git
