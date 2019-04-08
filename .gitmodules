@@ -48,3 +48,6 @@
 [submodule "submodules/redis-lwip"]
 	path = submodules/redis-lwip
 	url = https://github.com/mlr-msft/redis.git
+[submodule "submodules/redis-vanilla"]
+	path = submodules/redis-vanilla
+	url = https://github.com/mlr-msft/redis.git
