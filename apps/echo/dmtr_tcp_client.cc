@@ -1,16 +1,17 @@
 #include "common.hh"
-#include <dmtr/annot.h>
-#include <dmtr/libos.h>
-#include <libos/common/mem.h>
-#include <dmtr/wait.h>
-
 #include <arpa/inet.h>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <boost/chrono.hpp>
 #include <cstring>
+#include <dmtr/annot.h>
+#include <dmtr/latency.h>
+#include <dmtr/libos.h>
+#include <dmtr/wait.h>
 #include <iostream>
+#include <libos/common/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
@@ -23,13 +24,13 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    dmtr_timer_t *timer = NULL;
-    DMTR_OK(dmtr_new_timer(&timer, "end-to-end"));
+    dmtr_latency_t *latency = NULL;
+    DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
 
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
-    
+
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     const char *server_ip = boost::get(server_ip_addr).c_str();
@@ -50,7 +51,7 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < iterations; i++) {
         dmtr_qtoken_t qt;
-        DMTR_OK(dmtr_start_timer(timer));
+        auto t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_push(&qt, qd, &sga));
         DMTR_OK(dmtr_wait(NULL, qt));
         //fprintf(stderr, "send complete.\n");
@@ -58,7 +59,8 @@ int main(int argc, char *argv[])
         dmtr_qresult_t qr = {};
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
-        DMTR_OK(dmtr_stop_timer(timer));
+        auto dt = boost::chrono::steady_clock::now() - t0;
+        DMTR_OK(dmtr_record_latency(latency, dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
@@ -66,8 +68,8 @@ int main(int argc, char *argv[])
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         free(qr.qr_value.sga.sga_buf);
     }
-    DMTR_OK(dmtr_dump_timer(stderr, timer));
+    DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
-    
+
     return 0;
 }

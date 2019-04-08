@@ -25,11 +25,11 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DI
 
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-server dmtr-libos-posix dmtr-latency yaml-cpp boost_program_options)
 
 # POSIX TCP client
 add_executable(dmtr-posix-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-posix-client dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-client dmtr-libos-posix dmtr-latency yaml-cpp boost_program_options)
 
 # POSIX TCP client & server
 add_custom_target(dmtr-posix-echo)
@@ -37,11 +37,11 @@ add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-server dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-server dmtr-libos-lwip dmtr-latency yaml-cpp boost_program_options)
 
 # LWIP TCP client
 add_executable(dmtr-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-lwip-client dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-client dmtr-libos-lwip dmtr-latency yaml-cpp boost_program_options)
 
 # LWIP TCP client & server
 add_custom_target(dmtr-lwip-echo)
@@ -49,11 +49,11 @@ add_dependencies(dmtr-lwip-echo dmtr-lwip-server dmtr-lwip-client)
 
 # POSIX "raw" non-demeter server
 add_executable(posix-server ${RAW_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-server dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(posix-server dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
 
 # POSIX "raw" non-demeter client
 add_executable(posix-client ${RAW_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-client dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(posix-client dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
 
 # POSIX "raw" client & server
 add_custom_target(posix-echo)
@@ -88,11 +88,11 @@ endif(BUILD_MTCP AND NOT AZURE_SUPPORT)
 
 # RDMA server
 add_executable(dmtr-rdma-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-rdma-server dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-server dmtr-libos-rdma dmtr-latency rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client
 add_executable(dmtr-rdma-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-client dmtr-libos-rdma dmtr-latency rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client & server
 add_custom_target(dmtr-rdma-echo)

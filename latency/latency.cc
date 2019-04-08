@@ -31,7 +31,7 @@
  *
  **********************************************************************/
 
-#include <dmtr/libos.h>
+#include <dmtr/latency.h>
 
 #include <algorithm>
 #include <boost/chrono.hpp>
@@ -70,20 +70,19 @@ typedef struct Latency_Dist_t
     char type;
 } Latency_Dist_t;
 
-typedef struct dmtr_timer
+typedef struct dmtr_latency
 {
     std::string name;
-    boost::chrono::steady_clock::time_point t0;
 
     Latency_Dist_t *dists[LATENCY_MAX_DIST];
     Latency_Dist_t distPool[LATENCY_DIST_POOL_SIZE];
     int distPoolNext = 0;
 
     std::vector<uint64_t> latencies;
-} dmtr_timer_t;
+} dmtr_latency_t;
 
 static inline void
-LatencyAddStat(dmtr_timer_t *l, char type, uint64_t val)
+LatencyAddStat(dmtr_latency_t *l, char type, uint64_t val)
 {
     //if (l->latencies.size() == 0)
 
@@ -91,9 +90,8 @@ LatencyAddStat(dmtr_timer_t *l, char type, uint64_t val)
 	l->latencies.push_back(val);
 }
 
-
 static inline Latency_Dist_t *
-LatencyAddHist(dmtr_timer_t *l, char type, uint64_t val, uint32_t count)
+LatencyAddHist(dmtr_latency_t *l, char type, uint64_t val, uint32_t count)
 {
     if (!l->dists[(int)type]) {
         if (l->distPoolNext == LATENCY_DIST_POOL_SIZE) {
@@ -118,7 +116,7 @@ LatencyAddHist(dmtr_timer_t *l, char type, uint64_t val, uint32_t count)
 }
 
 static void
-LatencyAdd(dmtr_timer_t *l, char type, uint64_t val)
+LatencyAdd(dmtr_latency_t *l, char type, uint64_t val)
 {
     Latency_Dist_t *d = LatencyAddHist(l, type, val, 1);
     LatencyAddStat(l, type, val);
@@ -132,7 +130,7 @@ LatencyAdd(dmtr_timer_t *l, char type, uint64_t val)
 }
 
 void
-Latency_Sum(dmtr_timer_t *dest, dmtr_timer_t *summand)
+Latency_Sum(dmtr_latency_t *dest, dmtr_latency_t *summand)
 {
     for (int i = 0; i < summand->distPoolNext; ++i) {
         Latency_Dist_t *d = &summand->distPool[i];
@@ -172,7 +170,7 @@ LatencyFmtNS(uint64_t ns, char *buf)
 }
 
 int
-Latency_Dump(FILE *f, dmtr_timer_t *l)
+Latency_Dump(FILE *f, dmtr_latency_t *l)
 {
     DMTR_NOTNULL(EINVAL, f);
     DMTR_NOTNULL(EINVAL, l);
@@ -279,50 +277,41 @@ Latency_Dump(FILE *f, dmtr_timer_t *l)
     return 0;
 }
 
-typedef dmtr_timer_t dmtr_timer_t;
-
-int dmtr_new_timer(dmtr_timer_t **timer_out, const char *name) {
-    DMTR_NOTNULL(EINVAL, timer_out);
-    *timer_out = NULL;
+int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name) {
+    DMTR_NOTNULL(EINVAL, latency_out);
+    *latency_out = NULL;
     DMTR_NOTNULL(EINVAL, name);
 
-    auto timer = new dmtr_timer_t();
-    timer->name = name;
-    timer->latencies.reserve(MAX_ITERATIONS);
+    auto latency = new dmtr_latency_t();
+    latency->name = name;
+    latency->latencies.reserve(MAX_ITERATIONS);
 
     for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
-        Latency_Dist_t *d = &timer->distPool[i];
+        Latency_Dist_t *d = &latency->distPool[i];
         d->min = ~0ll;
     }
 
-    *timer_out = timer;
+    *latency_out = latency;
     return 0;
 }
 
-int dmtr_start_timer(dmtr_timer_t *timer) {
-    DMTR_NOTNULL(EINVAL, timer);
+int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns) {
+    DMTR_NOTNULL(EINVAL, latency);
+    DMTR_NONZERO(EINVAL, ns);
 
-    timer->t0 = boost::chrono::steady_clock::now();
+    LatencyAdd(latency, '=', ns);
     return 0;
 }
 
-int dmtr_stop_timer(dmtr_timer_t *timer) {
-    DMTR_NOTNULL(EINVAL, timer);
-
-    auto elapsed = boost::chrono::steady_clock::now() - timer->t0;
-    LatencyAdd(timer, '=', elapsed.count());
+int dmtr_dump_latency(FILE *f, dmtr_latency_t *latency) {
+    DMTR_OK(Latency_Dump(f, latency));
     return 0;
 }
 
-int dmtr_dump_timer(FILE *f, dmtr_timer_t *timer) {
-    DMTR_OK(Latency_Dump(f, timer));
-    return 0;
-}
+int dmtr_delete_latency(dmtr_latency_t **latency) {
+    DMTR_NOTNULL(EINVAL, latency);
 
-int dmtr_delete_timer(dmtr_timer_t **timer) {
-    DMTR_NOTNULL(EINVAL, timer);
-
-    delete *timer;
-    *timer = NULL;
+    delete *latency;
+    *latency = NULL;
     return 0;
 }

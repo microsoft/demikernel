@@ -30,12 +30,6 @@ DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qt_out, int qd);
 DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
 DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 
-DMTR_EXPORT int dmtr_new_timer(dmtr_timer_t **timer_out, const char *name);
-DMTR_EXPORT int dmtr_start_timer(dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_stop_timer(dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_dump_timer(FILE *f, dmtr_timer_t *timer);
-DMTR_EXPORT int dmtr_delete_timer(dmtr_timer_t **timer);
-
 #ifdef __cplusplus
 }
 #endif

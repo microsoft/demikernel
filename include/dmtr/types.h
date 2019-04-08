@@ -14,9 +14,7 @@ extern "C" {
 
 #define QT2QD(qtoken) ((qtoken) >> 32)
 
-
 typedef uint64_t dmtr_qtoken_t;
-typedef struct dmtr_timer dmtr_timer_t;
 
 typedef struct dmtr_sgaseg {
     void *sgaseg_buf;
