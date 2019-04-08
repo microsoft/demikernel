@@ -70,7 +70,7 @@ class io_queue
         private: int my_error;
         private: dmtr_sgarray_t my_sga_arg;
         private: io_queue *my_queue_arg;
-        private: coroutine_type::pull_type my_coroutine;
+        private: std::unique_ptr<coroutine_type::pull_type> my_coroutine;
 
         private: task();
         private: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode);
@@ -78,7 +78,6 @@ class io_queue
         public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, completion_type completion, const dmtr_sgarray_t &arg);
         public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, completion_type completion, io_queue *arg);
         public: static int initialize_result(dmtr_qresult_t &qr, int qd, dmtr_qtoken_t qt);
-        private: static void coroutine_nop(yield_type &);
 
         public: int poll(dmtr_qresult_t &qr_out);
         public: void complete(const dmtr_sgarray_t &sga);
@@ -89,7 +88,7 @@ class io_queue
         private: void start_coroutine(completion_type completion, io_queue &q);
 
         public: bool done() const {
-            return !my_coroutine;
+            return !(bool)*my_coroutine;
         }
 
         public: int qd() const {

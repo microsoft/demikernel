@@ -11,13 +11,11 @@ dmtr::io_queue::task::completion_adaptor::completion_adaptor(task &t, int &error
     my_completion(completion)
 {}
 
-dmtr::io_queue::task::task() :
-    my_coroutine(coroutine_nop)
+dmtr::io_queue::task::task()
 {}
 
 void dmtr::io_queue::task::start_coroutine(completion_type completion, io_queue &q) {
-    coroutine_type::pull_type cor{completion_adaptor(*this, my_error, q, completion)};
-    my_coroutine = std::move(cor);
+    my_coroutine = std::unique_ptr<coroutine_type::pull_type>(new coroutine_type::pull_type{completion_adaptor(*this, my_error, q, completion)});
 }
 
 int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
@@ -73,15 +71,12 @@ int dmtr::io_queue::task::initialize_result(dmtr_qresult_t &qr, int qd, dmtr_qto
     return 0;
 }
 
-void dmtr::io_queue::task::coroutine_nop(yield_type &)
-{}
-
 int dmtr::io_queue::task::poll(dmtr_qresult_t &qr_out) {
     if (!done()) {
-        my_coroutine();
+        (*my_coroutine)();
     }
 
-    if (my_coroutine) {
+    if ((bool)*my_coroutine) {
         return EAGAIN;
     }
 
