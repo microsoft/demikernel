@@ -160,15 +160,8 @@ int dmtr::io_queue::poll(dmtr_qresult &qr_out, dmtr_qtoken_t qt) {
 
 int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 {
-    dmtr_qresult_t qr;
-    int ret = poll(qr, qt);
-    switch (ret) {
-        default:
-            return ret;
-        case 0:
-            DMTR_OK(drop_task(qt));
-            return 0;
-    }
+    DMTR_OK(drop_task(qt));
+    return 0;
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
