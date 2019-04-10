@@ -44,7 +44,7 @@ int dmtr::io_queue::task::initialize_result(dmtr_qresult_t &qr_out, int qd, dmtr
     DMTR_TRUE(EINVAL, qd > 0);
     DMTR_TRUE(EINVAL, qt != 0);
 
-    qr_out = {};
+    qr_out.qr_opcode = DMTR_OPC_INVALID;
     qr_out.qr_qd = qd;
     qr_out.qr_qt = qt;
     return 0;
@@ -118,18 +118,6 @@ int dmtr::io_queue::connect(const struct sockaddr * const saddr, socklen_t size)
 
 int dmtr::io_queue::close() {
     return 0;
-}
-
-int dmtr::io_queue::poll(dmtr_qresult &qr_out, dmtr_qtoken_t qt) {
-    // some systems rely upon the queue descriptor and queue token being
-    // valid, even after a failure. we provide this information as early as
-    // possible.
-    DMTR_OK(task::initialize_result(qr_out, qd(), qt));
-
-    task *t = NULL;
-    DMTR_OK(get_task(t, qt));
-
-    return t->poll(qr_out);
 }
 
 int dmtr::io_queue::drop(dmtr_qtoken_t qt)

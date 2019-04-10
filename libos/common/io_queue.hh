@@ -110,7 +110,7 @@ class io_queue
     // data plane functions
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;
     public: virtual int pop(dmtr_qtoken_t qt) = 0;
-    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
+    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) = 0;
     public: virtual int drop(dmtr_qtoken_t qt);
 
     public: static int set_non_blocking(int fd);

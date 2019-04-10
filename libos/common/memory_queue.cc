@@ -141,7 +141,7 @@ int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             break;
     }
 
-    return io_queue::poll(qr_out, qt);
+    return t->poll(qr_out);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt) {
