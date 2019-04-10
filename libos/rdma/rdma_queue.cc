@@ -58,6 +58,7 @@ const dmtr::rdma_queue::duration_type dmtr::rdma_queue::event_polling_period = d
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_last_event_channel_poll(clock_type::now()),
+    my_rdma_id(NULL),
     my_listening_flag(false)
 {}
 
