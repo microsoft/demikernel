@@ -962,12 +962,40 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
-    qr_out = {};
+    DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    // todo: check preconditions.
+    DMTR_TRUE(EINVAL, good());
 
-    return io_queue::poll(qr_out, qt);
-}
+    task *t;
+    DMTR_OK(get_task(t, qt));
+
+    int ret;
+    switch (t->opcode()) {
+        default:
+            return ENOTSUP;
+        case DMTR_OPC_ACCEPT:
+            ret = my_accept_thread->service();
+            break;
+        case DMTR_OPC_PUSH:
+            ret = my_push_thread->service();
+            break;
+        case DMTR_OPC_POP:
+            ret = my_pop_thread->service();
+            break;
+    }
+
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case EAGAIN:
+            break;
+        case 0:
+            // the threads should only exit if the queue has been closed
+            // (`good()` => `false`).
+            DMTR_UNREACHABLE();
+    }
+
+    return io_queue::poll(qr_out, qt);}
 
 int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
