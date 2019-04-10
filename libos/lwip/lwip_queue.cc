@@ -48,7 +48,7 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-//#define DMTR_DEBUG 1
+#define DMTR_DEBUG 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -484,6 +484,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         our_recv_queues[addr] = &new_lq->my_recv_queue;
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
+        new_lq->start_threads();
         t->complete(0, new_lq->qd(), src, sizeof(src));
         my_recv_queue.pop();
     }
