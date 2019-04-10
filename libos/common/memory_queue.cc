@@ -72,8 +72,7 @@ int dmtr::memory_queue::push_thread(task::thread_type::yield_type &yield, task::
         const dmtr_sgarray_t *sga = NULL;
         DMTR_TRUE(EINVAL, t->arg(sga));
 
-        std::cout << "Pushing to queue ..." << std::endl;
-        my_ready_queue.push(*sga);
+	my_ready_queue.push(*sga);
         t->complete(0, *sga);
     }
 
