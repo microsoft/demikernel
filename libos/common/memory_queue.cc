@@ -135,9 +135,11 @@ int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         default:
             DMTR_FAIL(ret);
         case EAGAIN:
-            return ret;
-        case 0:
             break;
+        case 0:
+            // the threads should only exit if the queue has been closed
+            // (`good()` => `false`).
+            DMTR_UNREACHABLE();
     }
 
     return io_queue::poll(qr_out, qt);
