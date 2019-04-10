@@ -31,10 +31,7 @@
 #ifndef DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 
-
 #include <libos/common/io_queue.hh>
-
-#include <boost/optional.hpp>
 #include <memory>
 #include <queue>
 #include <sys/socket.h>
@@ -43,10 +40,12 @@ namespace dmtr {
 
 class posix_queue : public io_queue {
     // queued scatter gather arrays
-    private: boost::optional<dmtr_qtoken_t> my_active_recv;
     private: int my_fd;
     private: bool my_listening_flag;
     private: bool my_tcp_flag;
+    private: std::unique_ptr<task::thread_type> my_accept_thread;
+    private: std::unique_ptr<task::thread_type> my_push_thread;
+    private: std::unique_ptr<task::thread_type> my_pop_thread;
     // todo: may not be needed for production code.
     private: struct sockaddr *my_peer_saddr;
 
@@ -72,13 +71,14 @@ class posix_queue : public io_queue {
     private: static int writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt);
     private: static int accept(int &newfd_out, int fd, struct sockaddr * const saddr, socklen_t * const addrlen);
 
-    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
-
-    private: void clear_active_recv() {
-        my_active_recv = boost::none;
+    private: bool good() const {
+        return my_fd > -1;
     }
+
+    private: void start_threads();
+    private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
 };
 
 } // namespace dmtr

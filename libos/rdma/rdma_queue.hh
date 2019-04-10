@@ -65,8 +65,11 @@ class rdma_queue : public io_queue {
     // connection manager for this connection queue
     private: static struct ibv_pd *our_pd;
     private: static std::unique_ptr<rdmacm_router> our_rdmacm_router;
-    private: struct rdma_cm_id *my_rdma_id = NULL;
+    private: struct rdma_cm_id *my_rdma_id;
     private: bool my_listening_flag;
+    private: std::unique_ptr<task::thread_type> my_accept_thread;
+    private: std::unique_ptr<task::thread_type> my_push_thread;
+    private: std::unique_ptr<task::thread_type> my_pop_thread;
 
     private: int service_event_channel();
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
@@ -114,14 +117,19 @@ class rdma_queue : public io_queue {
     private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
-    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
     private: int get_pd(struct ibv_pd *&pd_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_buf();
     private: int service_recv_queue(void *&buf_out, size_t &len_out);
     private: int setup_recv_queue();
+    private: void start_threads();
+    private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+
+    private: bool good() const {
+        return my_rdma_id != NULL;
+    }
 };
 
 } // namespace dmtr

@@ -58,6 +58,7 @@ const dmtr::rdma_queue::duration_type dmtr::rdma_queue::event_polling_period = d
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_last_event_channel_poll(clock_type::now()),
+    my_rdma_id(NULL),
     my_listening_flag(false)
 {}
 
@@ -163,13 +164,13 @@ int dmtr::rdma_queue::service_event_channel() {
             return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             my_pending_accepts.push(event.id);
-            fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
-            fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
             return ECONNABORTED; // client should call close
         case RDMA_CM_EVENT_ESTABLISHED:
-            fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
             break;
     }
 
@@ -211,62 +212,75 @@ int dmtr::rdma_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
     q_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
+    DMTR_NOTNULL(EINVAL, my_accept_thread);
 
     auto * const q = new rdma_queue(new_qd);
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, complete_accept, q));
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q));
+    my_accept_thread->enqueue(qt);
 
     q_out = std::move(qq);
     return 0;
 }
 
 
-int dmtr::rdma_queue::complete_accept(task::yield_type &yield, task &t, io_queue &q) {
-    auto * const self = dynamic_cast<rdma_queue *>(&q);
-    DMTR_NOTNULL(EINVAL, self);
+int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
-    io_queue *new_q = NULL;
-    DMTR_TRUE(EINVAL, t.arg(new_q));
-    auto * const new_rq = dynamic_cast<rdma_queue *>(new_q);
-    DMTR_NOTNULL(EINVAL, new_rq);
-
-    while (self->my_pending_accepts.empty()) {
-        int ret = self->service_event_channel();
-        switch (ret) {
-            default:
-                DMTR_FAIL(ret);
-            case EAGAIN:
-                yield();
-                continue;
-            case ECONNABORTED:
-                return ret;
-            case 0:
-                break;
+    while (good()) {
+        while (tq.empty()) {
+            yield();
         }
+
+        auto qt = tq.front();
+        tq.pop();
+        task *t;
+        DMTR_OK(get_task(t, qt));
+
+        io_queue *new_q = NULL;
+        DMTR_TRUE(EINVAL, t->arg(new_q));
+        auto * const new_rq = dynamic_cast<rdma_queue *>(new_q);
+        DMTR_NOTNULL(EINVAL, new_rq);
+
+        while (my_pending_accepts.empty()) {
+            int ret = service_event_channel();
+            switch (ret) {
+                default:
+                    DMTR_FAIL(ret);
+                case EAGAIN:
+                    yield();
+                    continue;
+                case ECONNABORTED:
+                    return ret;
+                case 0:
+                    break;
+            }
+        }
+
+        auto * const new_rdma_id = my_pending_accepts.front();
+        my_pending_accepts.pop();
+
+        new_rq->my_rdma_id = new_rdma_id;
+        DMTR_OK(our_rdmacm_router->bind_id(new_rdma_id));
+        DMTR_OK(new_rq->setup_rdma_qp());
+        DMTR_OK(new_rq->setup_recv_queue());
+        new_rq->start_threads();
+
+        // accept the connection
+        struct rdma_conn_param params = {};
+        params.initiator_depth = 1;
+        params.responder_resources = 1;
+        params.rnr_retry_count = 7;
+        DMTR_OK(rdma_accept(new_rdma_id, &params));
+
+        // get the address
+        sockaddr *saddr;
+        DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
+        t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
     }
 
-    auto * const new_rdma_id = self->my_pending_accepts.front();
-    self->my_pending_accepts.pop();
-
-    new_rq->my_rdma_id = new_rdma_id;
-    DMTR_OK(our_rdmacm_router->bind_id(new_rdma_id));
-    DMTR_OK(new_rq->setup_rdma_qp());
-    DMTR_OK(new_rq->setup_recv_queue());
-
-    // accept the connection
-    struct rdma_conn_param params = {};
-    params.initiator_depth = 1;
-    params.responder_resources = 1;
-    params.rnr_retry_count = 7;
-    DMTR_OK(rdma_accept(new_rdma_id, &params));
-
-    // get the address
-    sockaddr *saddr;
-    DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
-    t.complete(new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
     return 0;
 }
 
@@ -278,6 +292,7 @@ int dmtr::rdma_queue::listen(int backlog)
     set_non_blocking(my_rdma_id->channel->fd);
     DMTR_OK(rdma_listen(my_rdma_id, backlog));
     my_listening_flag = true;
+    start_threads();
     return 0;
 }
 
@@ -316,9 +331,10 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
         case ECONNREFUSED:
             return ret;
         case 0:
-        break;
+            break;
     }
 
+    start_threads();
     return 0;
 }
 
@@ -358,100 +374,111 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
+    DMTR_NOTNULL(EINVAL, my_push_thread);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, complete_push, sga));
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
+    my_push_thread->enqueue(qt);
 
     return 0;
 }
 
-int dmtr::rdma_queue::complete_push(task::yield_type &yield, task &t, io_queue &q) {
-    auto * const self = dynamic_cast<rdma_queue *>(&q);
-    DMTR_NOTNULL(EINVAL, self);
-
-    const dmtr_sgarray_t *sga = NULL;
-    DMTR_TRUE(EINVAL, t.arg(sga));
-
-    size_t sgalen = 0;
-    DMTR_OK(dmtr_sgalen(&sgalen, sga));
-    if (0 == sgalen) {
-        return ENOMSG;
-    }
-
-    size_t num_sge = 2 * sga->sga_numsegs + 1;
-    struct ibv_sge sge[num_sge];
-    size_t data_size = 0;
-    size_t total_len = 0;
-
-    // we need to allocate space to serialize metadata.
-    void *buf = NULL;
-    DMTR_OK(dmtr_malloc(&buf, sizeof(struct metadata) + sga->sga_numsegs * sizeof(uint32_t)));
-    auto md = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(buf));
-    struct ibv_mr *md_mr = NULL;
-    DMTR_OK(self->get_rdma_mr(md_mr, md.get()));
-
-    // calculate size and fill in iov
-    for (size_t i = 0; i < sga->sga_numsegs; ++i) {
-        md->lengths[i] = htonl(sga->sga_segs[i].sgaseg_len);
-
-        const auto j = 2 * i + 1;
-        sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
-        sge[j].length = sizeof(*md->lengths);
-        sge[j].lkey = md_mr->lkey;
-
-        const auto k = j + 1;
-        void * const p = sga->sga_segs[i].sgaseg_buf;
-        struct ibv_mr *mr = NULL;
-        DMTR_OK(self->get_rdma_mr(mr, p));
-        sge[k].addr = reinterpret_cast<uintptr_t>(p);
-        sge[k].length = sga->sga_segs[i].sgaseg_len;
-        sge[k].lkey = mr->lkey;
-
-        // add up actual data size
-        data_size += sga->sga_segs[i].sgaseg_len;
-
-        // add up expected packet size minus header
-        total_len += sga->sga_segs[i].sgaseg_len;
-        total_len += sizeof(sga->sga_segs[i].sgaseg_len);
-    }
-
-    // fill in header
-    md->header.h_magic = htonl(DMTR_HEADER_MAGIC);
-    md->header.h_bytes = htonl(total_len);
-    md->header.h_sgasegs = htonl(sga->sga_numsegs);
-
-    // set up header at beginning of packet
-    sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
-    sge[0].length = sizeof(md->header);
-    sge[0].lkey = md_mr->lkey;
-
-    const auto qt = t.qt();
-
-    // set up RDMA work request.
-    struct ibv_send_wr wr = {};
-    wr.opcode = IBV_WR_SEND;
-    // warning: if you don't set the send flag, it will not
-    // give a meaningful error.
-    wr.send_flags = IBV_SEND_SIGNALED;
-    wr.wr_id = qt;
-    wr.sg_list = sge;
-    wr.num_sge = num_sge;
-
-    struct ibv_send_wr *bad_wr = NULL;
-    pin(*sga);
-    DMTR_OK(ibv_post_send(bad_wr, self->my_rdma_id->qp, &wr));
-
-    while (true) {
-        DMTR_OK(self->service_completion_queue(self->my_rdma_id->send_cq, 1));
-        auto it = self->my_completed_sends.find(qt);
-        if (self->my_completed_sends.cend() != it) {
-            self->my_completed_sends.erase(it);
-            break;
+int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+    while (good()) {
+        while (tq.empty()) {
+            yield();
         }
 
-        yield();
+        auto qt = tq.front();
+        tq.pop();
+        task *t;
+        DMTR_OK(get_task(t, qt));
+
+        const dmtr_sgarray_t *sga = NULL;
+        DMTR_TRUE(EINVAL, t->arg(sga));
+
+        size_t sgalen = 0;
+        DMTR_OK(dmtr_sgalen(&sgalen, sga));
+        if (0 == sgalen) {
+            DMTR_OK(t->complete(ENOMSG));
+            // move onto the next task.
+            continue;
+        }
+
+        size_t num_sge = 2 * sga->sga_numsegs + 1;
+        struct ibv_sge sge[num_sge];
+        size_t data_size = 0;
+        size_t total_len = 0;
+
+        // we need to allocate space to serialize metadata.
+        void *buf = NULL;
+        DMTR_OK(dmtr_malloc(&buf, sizeof(struct metadata) + sga->sga_numsegs * sizeof(uint32_t)));
+        auto md = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(buf));
+        struct ibv_mr *md_mr = NULL;
+        DMTR_OK(get_rdma_mr(md_mr, md.get()));
+
+        // calculate size and fill in iov
+        for (size_t i = 0; i < sga->sga_numsegs; ++i) {
+            md->lengths[i] = htonl(sga->sga_segs[i].sgaseg_len);
+
+            const auto j = 2 * i + 1;
+            sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
+            sge[j].length = sizeof(*md->lengths);
+            sge[j].lkey = md_mr->lkey;
+
+            const auto k = j + 1;
+            void * const p = sga->sga_segs[i].sgaseg_buf;
+            struct ibv_mr *mr = NULL;
+            DMTR_OK(get_rdma_mr(mr, p));
+            sge[k].addr = reinterpret_cast<uintptr_t>(p);
+            sge[k].length = sga->sga_segs[i].sgaseg_len;
+            sge[k].lkey = mr->lkey;
+
+            // add up actual data size
+            data_size += sga->sga_segs[i].sgaseg_len;
+
+            // add up expected packet size minus header
+            total_len += sga->sga_segs[i].sgaseg_len;
+            total_len += sizeof(sga->sga_segs[i].sgaseg_len);
+        }
+
+        // fill in header
+        md->header.h_magic = htonl(DMTR_HEADER_MAGIC);
+        md->header.h_bytes = htonl(total_len);
+        md->header.h_sgasegs = htonl(sga->sga_numsegs);
+
+        // set up header at beginning of packet
+        sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
+        sge[0].length = sizeof(md->header);
+        sge[0].lkey = md_mr->lkey;
+
+        // set up RDMA work request.
+        struct ibv_send_wr wr = {};
+        wr.opcode = IBV_WR_SEND;
+        // warning: if you don't set the send flag, it will not
+        // give a meaningful error.
+        wr.send_flags = IBV_SEND_SIGNALED;
+        wr.wr_id = qt;
+        wr.sg_list = sge;
+        wr.num_sge = num_sge;
+
+        struct ibv_send_wr *bad_wr = NULL;
+        pin(*sga);
+        DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
+
+        while (true) {
+            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+            auto it = my_completed_sends.find(qt);
+            if (my_completed_sends.cend() != it) {
+                my_completed_sends.erase(it);
+                break;
+            }
+
+            yield();
+        }
+
+        t->complete(0, *sga);
     }
 
-    t.complete(*sga);
     return 0;
 }
 
@@ -461,72 +488,82 @@ int dmtr::rdma_queue::pop(dmtr_qtoken_t qt)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     assert(my_rdma_id->verbs != NULL);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_POP, complete_pop));
+    DMTR_OK(new_task(qt, DMTR_OPC_POP));
+    my_pop_thread->enqueue(qt);
 
     return 0;
 }
 
-int dmtr::rdma_queue::complete_pop(task::yield_type &yield, task &t, io_queue &q) {
-    auto * const self = dynamic_cast<rdma_queue *>(&q);
-    DMTR_NOTNULL(EINVAL, self);
-
-    void *buf = NULL;
-    size_t sz_buf = 0;
-    while (NULL == buf) {
-        DMTR_OK(self->service_completion_queue(self->my_rdma_id->recv_cq, 1));
-        int ret = self->service_recv_queue(buf, sz_buf);
-        switch (ret) {
-            default:
-                DMTR_FAIL(ret);
-            case EAGAIN:
-                yield();
-                buf = NULL;
-                continue;
-            case 0:
-                DMTR_NOTNULL(EPERM, buf);
-                continue;
+int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+    while (good()) {
+        while (tq.empty()) {
+            yield();
         }
-    }
+
+        auto qt = tq.front();
+        tq.pop();
+        task *t;
+        DMTR_OK(get_task(t, qt));
+
+        void *buf = NULL;
+        size_t sz_buf = 0;
+        while (NULL == buf) {
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            int ret = service_recv_queue(buf, sz_buf);
+            switch (ret) {
+                default:
+                    DMTR_FAIL(ret);
+                case EAGAIN:
+                    yield();
+                    buf = NULL;
+                    continue;
+                case 0:
+                    DMTR_NOTNULL(ENOTSUP, buf);
+                    continue;
+            }
+        }
 
 #if USE_HOARD_PINNING
-    raii_guard rg0(std::bind(Zeus::RDMA::Hoard::unpin, buf));
+        raii_guard rg0(std::bind(Zeus::RDMA::Hoard::unpin, buf));
 #endif
 
-    if (sz_buf < sizeof(dmtr_header_t)) {
-        return EPROTO;
+        if (sz_buf < sizeof(dmtr_header_t)) {
+            return EPROTO;
+        }
+
+        uint8_t *p = reinterpret_cast<uint8_t *>(buf);
+        dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
+        p += sizeof(dmtr_header_t);
+
+        header->h_magic = ntohl(header->h_magic);
+        header->h_bytes = ntohl(header->h_bytes);
+        header->h_sgasegs = ntohl(header->h_sgasegs);
+
+        if (DMTR_HEADER_MAGIC != header->h_magic) {
+            return EILSEQ;
+        }
+
+        dmtr_sgarray_t sga = {};
+        sga.sga_numsegs = header->h_sgasegs;
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
+            sga.sga_segs[i].sgaseg_len = seglen;
+            //printf("[%x] sga sz_buf= %ld\n", qd, t.sga.bufs[i].sz_buf);
+            p += sizeof(uint32_t);
+            sga.sga_segs[i].sgaseg_buf = p;
+            p += seglen;
+        }
+
+        sga.sga_buf = buf;
+        t->complete(0, sga);
     }
 
-    uint8_t *p = reinterpret_cast<uint8_t *>(buf);
-    dmtr_header_t * const header = reinterpret_cast<dmtr_header_t *>(p);
-    p += sizeof(dmtr_header_t);
-
-    header->h_magic = ntohl(header->h_magic);
-    header->h_bytes = ntohl(header->h_bytes);
-    header->h_sgasegs = ntohl(header->h_sgasegs);
-
-    if (DMTR_HEADER_MAGIC != header->h_magic) {
-        return EILSEQ;
-    }
-
-    dmtr_sgarray_t sga = {};
-    sga.sga_numsegs = header->h_sgasegs;
-    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
-        sga.sga_segs[i].sgaseg_len = seglen;
-        //printf("[%x] sga sz_buf= %ld\n", qd, t.sga.bufs[i].sz_buf);
-        p += sizeof(uint32_t);
-        sga.sga_segs[i].sgaseg_buf = p;
-        p += seglen;
-    }
-
-    sga.sga_buf = buf;
-    t.complete(sga);
     return 0;
 }
 
 int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
-    DMTR_NOTNULL(EPERM, my_rdma_id);
+    DMTR_TRUE(EINVAL, good());
 
     const auto now = clock_type::now();
     if (now - my_last_event_channel_poll > event_polling_period) {
@@ -542,6 +579,35 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         }
 
         my_last_event_channel_poll = now;
+    }
+
+    task *t;
+    DMTR_OK(get_task(t, qt));
+
+    int ret;
+    switch (t->opcode()) {
+        default:
+            return ENOTSUP;
+        case DMTR_OPC_ACCEPT:
+            ret = my_accept_thread->service();
+            break;
+        case DMTR_OPC_PUSH:
+            ret = my_push_thread->service();
+            break;
+        case DMTR_OPC_POP:
+            ret = my_pop_thread->service();
+            break;
+    }
+
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case EAGAIN:
+            break;
+        case 0:
+            // the threads should only exit if the queue has been closed
+            // (`good()` => `false`).
+            DMTR_UNREACHABLE();
     }
 
     return io_queue::poll(qr_out, qt);
@@ -886,3 +952,18 @@ int dmtr::rdma_queue::getsockname(int sockfd, struct sockaddr *saddr, socklen_t 
     }
 }
 
+void dmtr::rdma_queue::start_threads() {
+    if (my_listening_flag) {
+        my_accept_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+            return accept_thread(yield, tq);
+        }));
+    } else {
+        my_push_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+            return push_thread(yield, tq);
+        }));
+
+        my_pop_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+            return pop_thread(yield, tq);
+        }));
+    }
+}
