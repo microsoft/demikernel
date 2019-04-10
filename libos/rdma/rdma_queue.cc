@@ -164,13 +164,13 @@ int dmtr::rdma_queue::service_event_channel() {
             return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             my_pending_accepts.push(event.id);
-            fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
-            fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
             return ECONNABORTED; // client should call close
         case RDMA_CM_EVENT_ESTABLISHED:
-            fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
+            //fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
             break;
     }
 
