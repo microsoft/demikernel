@@ -46,6 +46,9 @@ class memory_queue : public io_queue
 {
     private: std::queue<dmtr_sgarray_t> my_ready_queue;
     private: std::recursive_mutex my_lock;
+    private: std::unique_ptr<task::thread_type> my_push_thread;
+    private: std::unique_ptr<task::thread_type> my_pop_thread;
+    private: bool my_good_flag;
 
     private: memory_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -54,9 +57,15 @@ class memory_queue : public io_queue
     public: virtual int pop(dmtr_qtoken_t qt);
     public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
+    public: virtual int close();
 
-    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
+    private: bool good() const {
+        return my_good_flag;
+    }
+
+    private: void start_threads();
+    private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
 };
 
 } // namespace dmtr
