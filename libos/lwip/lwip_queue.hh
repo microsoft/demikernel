@@ -48,10 +48,13 @@ class lwip_queue : public io_queue {
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct ether_addr> our_ip_to_mac_table;
 
-    private: bool my_listening_flag = false;
+    private: bool my_listening_flag;
     protected: boost::optional<struct sockaddr_in> my_bound_src;
     protected: boost::optional<struct sockaddr_in> my_default_dst;
     protected: std::queue<dmtr_sgarray_t> my_recv_queue;
+    private: std::unique_ptr<task::thread_type> my_accept_thread;
+    private: std::unique_ptr<task::thread_type> my_push_thread;
+    private: std::unique_ptr<task::thread_type> my_pop_thread;
 
     private: lwip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -80,15 +83,23 @@ class lwip_queue : public io_queue {
     private: static int print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link = NULL);
     private: static int wait_for_link_status_up(uint16_t port_id);
     private: static int parse_ether_addr(struct ether_addr &mac_out, const char *s);
+
     private: bool is_bound() const {
         return boost::none != my_bound_src;
     }
+
     private: bool is_connected() const {
         return boost::none != my_default_dst;
     }
-    private: static int complete_accept(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_push(task::yield_type &yield, task &t, io_queue &q);
-    private: static int complete_pop(task::yield_type &yield, task &t, io_queue &q);
+
+    private: bool good() const {
+        return is_bound() || is_connected();
+    }
+
+    private: void start_threads();
+    private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: static int service_incoming_packets();
