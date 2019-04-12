@@ -471,7 +471,18 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
     struct ibv_send_wr *bad_wr = NULL;
     pin(sga_copy);
+#if DMTR_PROFILE
+    boost::chrono::duration<uint64_t, boost::nano> dt(0);
+    auto t0 = boost::chrono::steady_clock::now();
+#endif
+
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
+    
+#if DMTR_PROFILE
+    dt += (boost::chrono::steady_clock::now() - t0);
+    DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+#endif
+
     md.release();
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga_copy));
@@ -495,10 +506,6 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         DMTR_TRUE(EINVAL, t->arg(sga));
         auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
-#if DMTR_PROFILE
-        boost::chrono::duration<uint64_t, boost::nano> dt(0);
-        auto t0 = boost::chrono::steady_clock::now();
-#endif
         while (true) {
             DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
@@ -506,21 +513,8 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 my_completed_sends.erase(it);
                 break;
             }
-
-#if DMTR_PROFILE
-            dt += (boost::chrono::steady_clock::now() - t0);
-#endif
             yield();
-#if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
-#endif
         }
-
-#if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
-        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
-#endif
-
         DMTR_OK(t->complete(0, *sga));
     }
 
