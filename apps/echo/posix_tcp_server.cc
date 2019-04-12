@@ -27,12 +27,14 @@
 int lqd = 0;
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
+dmtr_latency_t *e2e_latency = NULL;
 
 namespace po = boost::program_options;
 int lfd = 0, epoll_fd;
 
 void sig_handler(int signo)
 {
+    dmtr_dump_latency(stderr, e2e_latency);
     dmtr_dump_latency(stderr, pop_latency);
     dmtr_dump_latency(stderr, push_latency);
     close(lfd);
@@ -103,6 +105,7 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_new_latency(&pop_latency, "server pop"));
     DMTR_OK(dmtr_new_latency(&push_latency, "server push"));
+    DMTR_OK(dmtr_new_latency(&e2e_latency, "server end-to-end"));
 
     lfd = socket(AF_INET, SOCK_STREAM, 0);
     std::cout << "listen qd: " << lfd << std::endl;
@@ -156,6 +159,7 @@ int main(int argc, char *argv[])
                 DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event));
             } else {
                 char *buf = (char *)malloc(packet_size);
+		auto t0 = boost::chrono::steady_clock::now();
                 if (process_read(events[i].data.fd, buf) < 0) {
                     free(buf);
                     continue;
@@ -164,6 +168,9 @@ int main(int argc, char *argv[])
                     free(buf);
                     continue;
                 }
+		auto dt = boost::chrono::steady_clock::now() - t0;
+		DMTR_OK(dmtr_record_latency(e2e_latency, dt.count()));
+   
                 free(buf);
             }
         }
