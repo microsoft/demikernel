@@ -404,7 +404,77 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     DMTR_NOTNULL(EINVAL, my_push_thread);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
+    size_t sgalen = 0;
+    DMTR_OK(dmtr_sgalen(&sgalen, &sga));
+    if (0 == sgalen) {
+        return ENOMSG;
+    }
+
+    dmtr_sgarray_t sga_copy = sga;
+    size_t num_sge = 2 * sga_copy.sga_numsegs + 1;
+    struct ibv_sge sge[num_sge];
+    size_t data_size = 0;
+    size_t total_len = 0;
+
+    // we need to allocate space to serialize metadata.
+    void *buf = NULL;
+    DMTR_OK(dmtr_malloc(&buf, sizeof(struct metadata) + sga_copy.sga_numsegs * sizeof(uint32_t)));
+    auto md = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(buf));
+    sga_copy.sga_buf = buf;
+    struct ibv_mr *md_mr = NULL;
+    DMTR_OK(get_rdma_mr(md_mr, md.get()));
+
+    // calculate size and fill in iov
+    for (size_t i = 0; i < sga_copy.sga_numsegs; ++i) {
+        md->lengths[i] = htonl(sga_copy.sga_segs[i].sgaseg_len);
+
+        const auto j = 2 * i + 1;
+        sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
+        sge[j].length = sizeof(*md->lengths);
+        sge[j].lkey = md_mr->lkey;
+
+        const auto k = j + 1;
+        void * const p = sga_copy.sga_segs[i].sgaseg_buf;
+        struct ibv_mr *mr = NULL;
+        DMTR_OK(get_rdma_mr(mr, p));
+        sge[k].addr = reinterpret_cast<uintptr_t>(p);
+        sge[k].length = sga_copy.sga_segs[i].sgaseg_len;
+        sge[k].lkey = mr->lkey;
+
+        // add up actual data size
+        data_size += sga_copy.sga_segs[i].sgaseg_len;
+
+        // add up expected packet size minus header
+        total_len += sga_copy.sga_segs[i].sgaseg_len;
+        total_len += sizeof(sga_copy.sga_segs[i].sgaseg_len);
+    }
+
+    // fill in header
+    md->header.h_magic = htonl(DMTR_HEADER_MAGIC);
+    md->header.h_bytes = htonl(total_len);
+    md->header.h_sgasegs = htonl(sga_copy.sga_numsegs);
+
+    // set up header at beginning of packet
+    sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
+    sge[0].length = sizeof(md->header);
+    sge[0].lkey = md_mr->lkey;
+
+    // set up RDMA work request.
+    struct ibv_send_wr wr = {};
+    wr.opcode = IBV_WR_SEND;
+    // warning: if you don't set the send flag, it will not
+    // give a meaningful error.
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr_id = qt;
+    wr.sg_list = sge;
+    wr.num_sge = num_sge;
+
+    struct ibv_send_wr *bad_wr = NULL;
+    pin(sga_copy);
+    DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
+    md.release();
+
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga_copy));
     my_push_thread->enqueue(qt);
 
     return 0;
@@ -423,80 +493,12 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         const dmtr_sgarray_t *sga = NULL;
         DMTR_TRUE(EINVAL, t->arg(sga));
+        auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
-        size_t sgalen = 0;
-        DMTR_OK(dmtr_sgalen(&sgalen, sga));
-        if (0 == sgalen) {
-            DMTR_OK(t->complete(ENOMSG));
-            // move onto the next task.
-            continue;
-        }
-
-        size_t num_sge = 2 * sga->sga_numsegs + 1;
-        struct ibv_sge sge[num_sge];
-        size_t data_size = 0;
-        size_t total_len = 0;
-
-        // we need to allocate space to serialize metadata.
-        void *buf = NULL;
-        DMTR_OK(dmtr_malloc(&buf, sizeof(struct metadata) + sga->sga_numsegs * sizeof(uint32_t)));
-        auto md = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(buf));
-        struct ibv_mr *md_mr = NULL;
-        DMTR_OK(get_rdma_mr(md_mr, md.get()));
-
-        // calculate size and fill in iov
-        for (size_t i = 0; i < sga->sga_numsegs; ++i) {
-            md->lengths[i] = htonl(sga->sga_segs[i].sgaseg_len);
-
-            const auto j = 2 * i + 1;
-            sge[j].addr = reinterpret_cast<uintptr_t>(&md->lengths[i]);
-            sge[j].length = sizeof(*md->lengths);
-            sge[j].lkey = md_mr->lkey;
-
-            const auto k = j + 1;
-            void * const p = sga->sga_segs[i].sgaseg_buf;
-            struct ibv_mr *mr = NULL;
-            DMTR_OK(get_rdma_mr(mr, p));
-            sge[k].addr = reinterpret_cast<uintptr_t>(p);
-            sge[k].length = sga->sga_segs[i].sgaseg_len;
-            sge[k].lkey = mr->lkey;
-
-            // add up actual data size
-            data_size += sga->sga_segs[i].sgaseg_len;
-
-            // add up expected packet size minus header
-            total_len += sga->sga_segs[i].sgaseg_len;
-            total_len += sizeof(sga->sga_segs[i].sgaseg_len);
-        }
-
-        // fill in header
-        md->header.h_magic = htonl(DMTR_HEADER_MAGIC);
-        md->header.h_bytes = htonl(total_len);
-        md->header.h_sgasegs = htonl(sga->sga_numsegs);
-
-        // set up header at beginning of packet
-        sge[0].addr = reinterpret_cast<uintptr_t>(&md->header);
-        sge[0].length = sizeof(md->header);
-        sge[0].lkey = md_mr->lkey;
-
-        // set up RDMA work request.
-        struct ibv_send_wr wr = {};
-        wr.opcode = IBV_WR_SEND;
-        // warning: if you don't set the send flag, it will not
-        // give a meaningful error.
-        wr.send_flags = IBV_SEND_SIGNALED;
-        wr.wr_id = qt;
-        wr.sg_list = sge;
-        wr.num_sge = num_sge;
-
-        struct ibv_send_wr *bad_wr = NULL;
-        pin(*sga);
 #if DMTR_PROFILE
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
         auto t0 = boost::chrono::steady_clock::now();
 #endif
-        DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
-
         while (true) {
             DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
