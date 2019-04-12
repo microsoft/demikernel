@@ -1048,7 +1048,8 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
             DMTR_UNREACHABLE();
     }
 
-    return io_queue::poll(qr_out, qt);}
+    return t->poll(qr_out);
+}
 
 int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
