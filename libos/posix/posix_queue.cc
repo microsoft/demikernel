@@ -36,6 +36,7 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
+#include <dmtr/latency.h>
 #include <dmtr/sga.h>
 #include <fcntl.h>
 #include <iostream>
