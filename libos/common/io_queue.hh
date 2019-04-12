@@ -58,10 +58,10 @@ class io_queue
         private: dmtr_sgarray_t my_sga_arg;
         private: io_queue *my_queue_arg;
 
-        private: task();
-        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode);
-        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg);
-        public: static int new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg);
+        public: task();
+        public: int initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode);
+        public: int initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg);
+        public: int initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg);
         public: static int initialize_result(dmtr_qresult_t &qr_out, int qd, dmtr_qtoken_t qt);
 
         public: int poll(dmtr_qresult_t &qr_out) const;
@@ -80,7 +80,7 @@ class io_queue
         }
     };
 
-    private: std::unordered_map<dmtr_qtoken_t, std::unique_ptr<task>> my_tasks;
+    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
     protected: const category_id my_cid;
     protected: const int my_qd;
 

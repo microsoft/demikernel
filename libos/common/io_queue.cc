@@ -1,42 +1,38 @@
 #include "io_queue.hh"
 
 #include <cerrno>
+#include <dmtr/annot.h>
 #include <fcntl.h>
 #include <sstream>
 
-dmtr::io_queue::task::task()
+dmtr::io_queue::task::task() :
+    my_error(EAGAIN)
 {}
 
-int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
-    task_out = NULL;
+int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
     DMTR_NONZERO(EINVAL, qt);
     DMTR_TRUE(EINVAL, DMTR_OPC_INVALID != opcode);
 
-    auto * const t = new task();
-    DMTR_NOTNULL(ENOMEM, t);
-    auto tt = std::unique_ptr<task>(t);
+    DMTR_OK(initialize_result(my_qr, q.qd(), qt));
+    my_qr.qr_opcode = opcode;
+    my_error = EAGAIN;
 
-    DMTR_OK(initialize_result(t->my_qr, q.qd(), qt));
-    t->my_qr.qr_opcode = opcode;
-    t->my_error = EAGAIN;
-
-    task_out = std::move(tt);
     return 0;
 }
 
-int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg) {
+int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg) {
     DMTR_NONZERO(EINVAL, arg.sga_numsegs);
 
-    DMTR_OK(new_object(task_out, q, qt, opcode));
-    task_out->my_sga_arg = arg;
+    DMTR_OK(initialize(q, qt, opcode));
+    my_sga_arg = arg;
     return 0;
 }
 
-int dmtr::io_queue::task::new_object(std::unique_ptr<task> &task_out, io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg) {
+int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg) {
     DMTR_NOTNULL(EINVAL, arg);
 
-    DMTR_OK(new_object(task_out, q, qt, opcode));
-    task_out->my_queue_arg = arg;
+    DMTR_OK(initialize(q, qt, opcode));
+    my_queue_arg = arg;
     return 0;
 }
 
@@ -144,27 +140,27 @@ int dmtr::io_queue::set_non_blocking(int fd) {
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
 
-    std::unique_ptr<task> t;
-    DMTR_OK(task::new_object(t, *this, qt, opcode));
-    my_tasks.insert(std::make_pair(qt, std::move(t)));
+    task t;
+    DMTR_OK(t.initialize(*this, qt, opcode));
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg) {
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
 
-    std::unique_ptr<task> t;
-    DMTR_OK(task::new_object(t, *this, qt, opcode, arg));
-    my_tasks.insert(std::make_pair(qt, std::move(t)));
+    task t;
+    DMTR_OK(t.initialize(*this, qt, opcode, arg));
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg) {
     DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
 
-    std::unique_ptr<task> t;
-    DMTR_OK(task::new_object(t, *this, qt, opcode, arg));
-    my_tasks.insert(std::make_pair(qt, std::move(t)));
+    task t;
+    DMTR_OK(t.initialize(*this, qt, opcode, arg));
+    my_tasks.insert(std::make_pair(qt, t));
     return 0;
 }
 
@@ -173,7 +169,7 @@ int dmtr::io_queue::get_task(task *&t_out, dmtr_qtoken_t qt) {
     auto it = my_tasks.find(qt);
     DMTR_TRUE(ENOENT, it != my_tasks.cend());
 
-    t_out = it->second.get();
+    t_out = &it->second;
     DMTR_NOTNULL(ENOTSUP, t_out);
     return 0;
 }
