@@ -72,8 +72,8 @@ int dmtr::memory_queue::push_thread(task::thread_type::yield_type &yield, task::
         const dmtr_sgarray_t *sga = NULL;
         DMTR_TRUE(EINVAL, t->arg(sga));
 
-	my_ready_queue.push(*sga);
-        t->complete(0, *sga);
+        my_ready_queue.push(*sga);
+        DMTR_OK(t->complete(0, *sga));
     }
 
     return 0;
@@ -106,7 +106,7 @@ int dmtr::memory_queue::pop_thread(task::thread_type::yield_type &yield, task::t
 
         auto sga = my_ready_queue.front();
         my_ready_queue.pop();
-        t->complete(0, sga);
+        DMTR_OK(t->complete(0, sga));
     }
 
     return 0;
@@ -142,7 +142,7 @@ int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             DMTR_UNREACHABLE();
     }
 
-    return t->poll(qr_out);
+    return io_queue::poll(qr_out, qt);
 }
 
 int dmtr::memory_queue::drop(dmtr_qtoken_t qt) {
