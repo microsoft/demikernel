@@ -18,9 +18,11 @@
 int lqd = 0;
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
+dmtr_latency_t *e2e_latency = NULL;
 
 void sig_handler(int signo)
 {
+  dmtr_dump_latency(stderr, e2e_latency);
   dmtr_dump_latency(stderr, pop_latency);
   dmtr_dump_latency(stderr, push_latency);
   dmtr_close(lqd);
@@ -47,6 +49,7 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_new_latency(&e2e_latency, "end-to-end server"));
     DMTR_OK(dmtr_new_latency(&pop_latency, "pop server"));
     DMTR_OK(dmtr_new_latency(&push_latency, "push server"));
 
@@ -87,14 +90,16 @@ int main(int argc, char *argv[])
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
                 //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
                 token = tokens[idx];
-                auto dt = boost::chrono::steady_clock::now() - start_times[token];
+                auto pop_dt = boost::chrono::steady_clock::now() - start_times[token];
                 start_times.erase(token);
-                DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));
+                DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
                 auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
                 DMTR_OK(dmtr_wait(NULL, token));
-                dt = boost::chrono::steady_clock::now() - t0;
-                DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
+                auto push_dt = boost::chrono::steady_clock::now() - t0;
+                DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
+		auto e2e_count = pop_dt.count() + push_dt.count();
+		DMTR_OK(dmtr_record_latency(e2e_latency, e2e_count));
                 t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 start_times[token] = t0;
