@@ -30,14 +30,13 @@
 
 #include "rdma_queue.hh"
 
-#define USE_HOARD_PINNING 0
-
 #include <arpa/inet.h>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/latency.h>
 #include <dmtr/sga.h>
 #include <hoard/zeusrdma.h>
 #include <iostream>
@@ -47,6 +46,15 @@
 #include <rdma/rdma_verbs.h>
 #include <sys/uio.h>
 #include <unistd.h>
+
+//#define DMTR_PIN_MEMORY 1
+#define DMTR_PROFILE 1
+
+#if DMTR_PROFILE
+typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
+static latency_ptr_type read_latency;
+static latency_ptr_type write_latency;
+#endif
 
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
@@ -66,6 +74,26 @@ int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     if (NULL == our_rdmacm_router) {
         DMTR_OK(rdmacm_router::new_object(our_rdmacm_router));
     }
+
+#if DMTR_PROFILE
+    if (NULL == read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "read"));
+        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "write"));
+        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+#endif
 
     q_out = std::unique_ptr<io_queue>(new rdma_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
@@ -278,7 +306,7 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
-        t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in));
+        DMTR_OK(t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in)));
     }
 
     return 0;
@@ -463,6 +491,10 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         struct ibv_send_wr *bad_wr = NULL;
         pin(*sga);
+#if DMTR_PROFILE
+        boost::chrono::duration<uint64_t, boost::nano> dt(0);
+        auto t0 = boost::chrono::steady_clock::now();
+#endif
         DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
 
         while (true) {
@@ -473,10 +505,21 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 break;
             }
 
+#if DMTR_PROFILE
+            dt += (boost::chrono::steady_clock::now() - t0);
+#endif
             yield();
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
         }
 
-        t->complete(0, *sga);
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+#endif
+
+        DMTR_OK(t->complete(0, *sga));
     }
 
     return 0;
@@ -505,16 +548,29 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         task *t;
         DMTR_OK(get_task(t, qt));
 
+#if DMTR_PROFILE
+        boost::chrono::steady_clock::time_point t0;
+        boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
         void *buf = NULL;
         size_t sz_buf = 0;
         while (NULL == buf) {
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
             DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
             int ret = service_recv_queue(buf, sz_buf);
             switch (ret) {
                 default:
                     DMTR_FAIL(ret);
                 case EAGAIN:
+#if DMTR_PROFILE
+                    dt += (boost::chrono::steady_clock::now() - t0);
+#endif
                     yield();
+#if DMTR_PROFILE
+                    t0 = boost::chrono::steady_clock::now();
+#endif
                     buf = NULL;
                     continue;
                 case 0:
@@ -523,7 +579,12 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
             }
         }
 
-#if USE_HOARD_PINNING
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+        DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
+#endif
+
+#if DMTR_PIN_MEMORY
         raii_guard rg0(std::bind(Zeus::RDMA::Hoard::unpin, buf));
 #endif
 
@@ -555,7 +616,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         sga.sga_buf = buf;
-        t->complete(0, sga);
+        DMTR_OK(t->complete(0, sga));
     }
 
     return 0;
@@ -868,7 +929,7 @@ int dmtr::rdma_queue::new_recv_buf() {
     // `recv_buf_size`,
     void *buf = NULL;
     DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
-#if USE_HOARD_PINNING
+#if DMTR_PIN_MEMORY
     Zeus::RDMA::Hoard::pin(buf);
 #endif
 
@@ -914,7 +975,7 @@ int dmtr::rdma_queue::setup_recv_queue() {
 }
 
 int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
-#if USE_HOARD_PINNING
+#if DMTR_PIN_MEMORY
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
         DMTR_NOTNULL(EINVAL, buf);
@@ -926,7 +987,7 @@ int dmtr::rdma_queue::pin(const dmtr_sgarray_t &sga) {
 }
 
 int dmtr::rdma_queue::unpin(const dmtr_sgarray_t &sga) {
-#if USE_HOARD_PINNING
+#if DMTR_PIN_MEMORY
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         void *buf = sga.sga_segs[i].sgaseg_buf;
         DMTR_NOTNULL(EINVAL, buf);

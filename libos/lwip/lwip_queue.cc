@@ -10,6 +10,8 @@
 
 #include "lwip_queue.hh"
 
+#include <arpa/inet.h>
+#include <boost/chrono.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
@@ -21,12 +23,13 @@
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
+#include <dmtr/latency.h>
+#include <dmtr/libos.h>
 #include <dmtr/sga.h>
 #include <iostream>
 #include <libos/common/mem.h>
 #include <libos/common/raii_guard.hh>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -36,7 +39,6 @@
 #include <rte_udp.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
-#include <include/dmtr/libos.h>
 
 namespace bpo = boost::program_options;
 
@@ -49,6 +51,7 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
+#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -75,6 +78,12 @@ namespace bpo = boost::program_options;
  */
 #define RTE_TEST_RX_DESC_DEFAULT    128
 #define RTE_TEST_TX_DESC_DEFAULT    128
+
+#if DMTR_PROFILE
+typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
+static latency_ptr_type read_latency;
+static latency_ptr_type write_latency;
+#endif
 
 const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -403,6 +412,26 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
 
+#if DMTR_PROFILE
+    if (NULL == read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "read"));
+        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "write"));
+        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+#endif
+
     q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
@@ -476,6 +505,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         }
 
         dmtr_sgarray_t &sga = my_recv_queue.front();
+        // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
         sockaddr_in &src = sga.sga_addr;
         lwip_addr addr = lwip_addr(src);
         DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
@@ -485,7 +515,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
         new_lq->start_threads();
-        t->complete(0, new_lq->qd(), src, sizeof(src));
+        DMTR_OK(t->complete(0, new_lq->qd(), src, sizeof(src)));
         my_recv_queue.pop();
     }
 
@@ -730,6 +760,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 #endif
 
         size_t pkts_sent = 0;
+#if DMTR_PROFILE
+        auto t0 = boost::chrono::steady_clock::now();
+        boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
         while (pkts_sent < 1) {
             int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, &pkt, 1);
             switch (ret) {
@@ -739,12 +773,23 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     DMTR_TRUE(ENOTSUP, 1 == pkts_sent);
                     continue;
                 case EAGAIN:
+#if DMTR_PROFILE
+                    dt += boost::chrono::steady_clock::now() - t0;
+#endif
                     yield();
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
                     continue;
             }
         }
 
-        t->complete(0, *sga);
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+#endif
+
+        DMTR_OK(t->complete(0, *sga));
     }
 
     return 0;
@@ -783,7 +828,8 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         dmtr_sgarray_t &sga = my_recv_queue.front();
-        t->complete(0, sga);
+        // todo: pop from queue in `raii_guard`.
+        DMTR_OK(t->complete(0, sga));
         my_recv_queue.pop();
     }
 
@@ -801,16 +847,23 @@ dmtr::lwip_queue::service_incoming_packets() {
     uint16_t depth = 0;
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
+#if DMTR_PROFILE
+    auto t0 = boost::chrono::steady_clock::now();
+#endif
     int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
     switch (ret) {
-    default:
-        DMTR_OK(ret);
-        DMTR_UNREACHABLE();
-    case 0:
-        break;
-    case EAGAIN:
-        return ret;
+        default:
+            DMTR_FAIL(ret);
+        case 0:
+            break;
+        case EAGAIN:
+            return ret;
     }
+
+#if DMTR_PROFILE
+    auto dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
+#endif
 
     for (size_t i = 0; i < count; ++i) {
         struct sockaddr_in src, dst;

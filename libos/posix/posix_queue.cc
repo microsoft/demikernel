@@ -31,10 +31,12 @@
 #include "posix_queue.hh"
 
 #include <arpa/inet.h>
+#include <boost/chrono.hpp>
 #include <cassert>
 #include <cerrno>
 #include <climits>
 #include <cstring>
+#include <dmtr/latency.h>
 #include <dmtr/sga.h>
 #include <fcntl.h>
 #include <iostream>
@@ -46,6 +48,13 @@
 #include <unistd.h>
 
 //#define DMTR_DEBUG 1
+#define DMTR_PROFILE 1
+
+#if DMTR_PROFILE
+typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
+static latency_ptr_type read_latency;
+static latency_ptr_type write_latency;
+#endif
 
 dmtr::posix_queue::posix_queue(int qd) :
     io_queue(NETWORK_Q, qd),
@@ -56,6 +65,26 @@ dmtr::posix_queue::posix_queue(int qd) :
 {}
 
 int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+#if DMTR_PROFILE
+    if (NULL == read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "read"));
+        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "write"));
+        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+#endif
+
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
@@ -365,11 +394,26 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
 #endif
 
         size_t bytes_written = 0;
+#if DMTR_PROFILE
+        auto t0 = boost::chrono::steady_clock::now();
+        boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
         int ret = writev(bytes_written, my_fd, iov, iov_len);
         while (EAGAIN == ret) {
+#if DMTR_PROFILE
+            dt += boost::chrono::steady_clock::now() - t0;
+#endif
             yield();
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
             ret = writev(bytes_written, my_fd, iov, iov_len);
         }
+
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+#endif
 
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
@@ -418,17 +462,25 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
         size_t header_bytes = 0;
         dmtr_header_t header;
         int ret = -1;
+#if DMTR_PROFILE
+        boost::chrono::steady_clock::time_point t0;
+        boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
         while (header_bytes < sizeof(header)) {
             uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
             size_t remaining_bytes = sizeof(header) - header_bytes;
             size_t bytes_read = 0;
-
 #if DMTR_DEBUG
             std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
-
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
             ret = read(bytes_read, my_fd, p, remaining_bytes);
             if (EAGAIN == ret) {
+#if DMTR_PROFILE
+                dt += (boost::chrono::steady_clock::now() - t0);
+#endif
                 yield();
                 continue;
             }
@@ -440,6 +492,10 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
 
             header_bytes += bytes_read;
         }
+
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+#endif
 
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
@@ -475,13 +531,17 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
             uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
             size_t remaining_bytes = header.h_bytes - data_bytes;
             size_t bytes_read = 0;
-
 #if DMTR_DEBUG
             std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
-
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
             ret = read(bytes_read, my_fd, p, remaining_bytes);
             if (EAGAIN == ret) {
+#if DMTR_PROFILE
+                dt += (boost::chrono::steady_clock::now() - t0);
+#endif
                 yield();
                 continue;
             }
@@ -493,6 +553,11 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
 
             data_bytes += bytes_read;
         }
+
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+        DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
+#endif
 
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
