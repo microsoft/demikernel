@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
         }
         int bytes_read = 0;
         while(bytes_read < (int)packet_size) {
-            ret += read(fd, (void *)&buf, packet_size);
+            ret = read(fd, (void *)&buf, packet_size);
             if (ret < 0) exit(-1);
             bytes_read += ret;
         }
