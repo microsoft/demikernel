@@ -88,6 +88,8 @@ int main(int argc, char *argv[])
 {
     parse_args(argc, argv, true);
 
+    std::cerr << "packet_size is: " << packet_size << std::endl;
+    
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     if (boost::none == server_ip_addr) {
@@ -145,7 +147,8 @@ int main(int argc, char *argv[])
                 int newfd = accept(lfd, NULL, NULL);
 
                 // Put it in non-blocking mode
-                DMTR_OK(fcntl(newfd, F_SETFL, O_NONBLOCK, 1));
+		// COMMENTED OUT FOR NOW TO SEE IF FIX BUG
+                // DMTR_OK(fcntl(newfd, F_SETFL, O_NONBLOCK, 1));
 
                 // Set TCP_NODELAY
                 int n = 1;
