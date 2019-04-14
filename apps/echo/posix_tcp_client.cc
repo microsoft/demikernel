@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     printf("client fd:\t%d\n", fd);
-
+   
     // Set TCP_NODELAY
     int n = 1;
     if (setsockopt(fd, IPPROTO_TCP,
@@ -64,18 +64,23 @@ int main(int argc, char *argv[])
                   (void *)&(buf[bytes_written]),
                   packet_size-bytes_written);
             if (ret < 0) {
+	      fprintf(stderr, "write says bye\n");
               exit(-1);
             }
             bytes_written += ret;
         }
         int bytes_read = 0;
         while(bytes_read < (int)packet_size) {
-            ret = read(fd, (void *)&buf, packet_size);
-            if (ret < 0) exit(-1);
+	    ret = read(fd, (void *)&(buf[bytes_read]), packet_size - bytes_read);
+            if (ret < 0) {
+	        fprintf(stderr, "read says bye\n");
+	        exit(-1);
+	    }
             bytes_read += ret;
         }
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(latency, dt.count()));
+	buf[packet_size - 1] = '\0';
     }
     close(fd);
     DMTR_OK(dmtr_dump_latency(stderr, latency));

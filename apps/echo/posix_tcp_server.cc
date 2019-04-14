@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
 
     epoll_fd = epoll_create1(0);
     struct epoll_event event, events[10];
-    event.events = EPOLLIN;
+    event.events = EPOLLIN | EPOLLET;
     event.data.fd = lfd;
     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, lfd, &event));
     while (1) {
@@ -154,17 +154,19 @@ int main(int argc, char *argv[])
                     exit(-1);
                 }
 
-                event.events = EPOLLIN;
+                event.events = EPOLLIN | EPOLLET;
                 event.data.fd = newfd;
                 DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event));
             } else {
                 char *buf = (char *)malloc(packet_size);
 		auto t0 = boost::chrono::steady_clock::now();
-                if (process_read(events[i].data.fd, buf) < 0) {
+		int read_ret = process_read(events[i].data.fd, buf);
+		if (read_ret < 0) {
                     free(buf);
                     continue;
                 }
-                if (process_write(events[i].data.fd, buf) < 0) {
+		int write_ret = process_write(events[i].data.fd, buf);
+		if (write_ret < 0) {
                     free(buf);
                     continue;
                 }
