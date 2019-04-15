@@ -51,7 +51,7 @@ int process_read(int fd, char *buf)
         ret = read(fd,
                    (void *)&(buf[bytes_read]),
                    packet_size - bytes_read);
-        if (ret < 0) {
+        if (ret <= 0) {
             close(fd);
             return ret;
         }
@@ -71,7 +71,7 @@ int process_write(int fd, char *buf)
         ret = write(fd,
                     (void *)&(buf[bytes_written]),
                     packet_size - bytes_written);
-        if (ret < 0) {
+        if (ret <= 0) {
             close(fd);
             return ret;
         }
@@ -134,11 +134,12 @@ int main(int argc, char *argv[])
 
     epoll_fd = epoll_create1(0);
     struct epoll_event event, events[10];
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN;
     event.data.fd = lfd;
     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, lfd, &event));
     while (1) {
         int event_count = epoll_wait(epoll_fd, events, 10, -1);
+
         for (int i = 0; i < event_count; i++) {
             //std::cout << "Found something!" << std::endl;
             if (events[i].data.fd == lfd) {
@@ -164,12 +165,12 @@ int main(int argc, char *argv[])
                 char *buf = (char *)malloc(packet_size);
 		auto t0 = boost::chrono::steady_clock::now();
 		int read_ret = process_read(events[i].data.fd, buf);
-		if (read_ret < 0) {
+		if (read_ret <= 0) {
                     free(buf);
                     continue;
                 }
 		int write_ret = process_write(events[i].data.fd, buf);
-		if (write_ret < 0) {
+		if (write_ret <= 0) {
                     free(buf);
                     continue;
                 }
