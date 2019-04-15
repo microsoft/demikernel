@@ -315,3 +315,8 @@ int dmtr_delete_latency(dmtr_latency_t **latency) {
     *latency = NULL;
     return 0;
 }
+
+uint64_t dmtr_now_ns() {
+    auto t = boost::chrono::steady_clock::now();
+    return t.time_since_epoch().count();
+}
