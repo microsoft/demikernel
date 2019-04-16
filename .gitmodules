@@ -1,6 +1,3 @@
-[submodule "submodules/mtcp"]
-	path = submodules/mtcp
-	url = https://github.com/mlr-msft/mtcp.git
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
