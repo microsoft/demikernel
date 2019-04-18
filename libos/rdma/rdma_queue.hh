@@ -60,6 +60,7 @@ class rdma_queue : public io_queue {
     private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
     private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
     private: clock_type::time_point my_last_event_channel_poll;
+    private: std::unordered_map<uintptr_t, std::unique_ptr<uint8_t>> my_recv_bufs;
 
     // rdma data structures
     // connection manager for this connection queue

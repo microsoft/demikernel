@@ -477,7 +477,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 #endif
 
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
-    
+
 #if DMTR_PROFILE
     dt += (boost::chrono::steady_clock::now() - t0);
     DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
@@ -584,6 +584,12 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         raii_guard rg0(std::bind(Zeus::RDMA::Hoard::unpin, buf));
 #endif
 
+        const auto key = reinterpret_cast<uintptr_t>(buf);
+        auto it = my_recv_bufs.find(key);
+        DMTR_TRUE(ENOTSUP, it != my_recv_bufs.cend());
+        auto ubuf = std::move(it->second);
+        my_recv_bufs.erase(it);
+
         if (sz_buf < sizeof(dmtr_header_t)) {
             return EPROTO;
         }
@@ -613,6 +619,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 
         sga.sga_buf = buf;
         DMTR_OK(t->complete(0, sga));
+        ubuf.release();
     }
 
     return 0;
@@ -925,6 +932,9 @@ int dmtr::rdma_queue::new_recv_buf() {
     // `recv_buf_size`,
     void *buf = NULL;
     DMTR_OK(dmtr_malloc(&buf, recv_buf_size));
+    const auto key = reinterpret_cast<uintptr_t>(buf);
+    DMTR_TRUE(ENOTSUP, my_recv_bufs.find(key) == my_recv_bufs.cend());
+    my_recv_bufs.insert(std::make_pair(key, std::unique_ptr<uint8_t>(reinterpret_cast<uint8_t *>(buf))));
 #if DMTR_PIN_MEMORY
     Zeus::RDMA::Hoard::pin(buf);
 #endif
