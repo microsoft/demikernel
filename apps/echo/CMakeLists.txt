@@ -9,7 +9,7 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS
-  program_options chrono)
+  program_options chrono context system coroutine)
 include_directories(${Boost_INCLUDE_DIR})
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
