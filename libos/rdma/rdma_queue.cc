@@ -59,7 +59,7 @@ static latency_ptr_type write_latency;
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
 const size_t dmtr::rdma_queue::recv_buf_count = 32;
-const size_t dmtr::rdma_queue::recv_buf_size = 1100;
+const size_t dmtr::rdma_queue::recv_buf_size = 131100;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE;
 const dmtr::rdma_queue::duration_type dmtr::rdma_queue::event_polling_period = duration_type(1000);
 
