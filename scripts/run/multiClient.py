@@ -1,5 +1,7 @@
 # Python 3 script for logging into and running the echo server on multiple clients
 # Written by Anna Kornfeld Simpson 2019
+# To get a Python virtual environment with the correct packages, run "python3 -m venv venv",
+# "source venv/bin/activate", and "pip3 install -r requirements.txt"
 # Note: fabric currently uses some deprecated API from python/cryptography so you will see warnings
 #       about that. However this does not current prevent correct execution.
 
