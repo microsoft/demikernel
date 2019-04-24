@@ -491,11 +491,11 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
             }
 
             header_bytes += bytes_read;
-        }
 
 #if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
+	    dt += (boost::chrono::steady_clock::now() - t0);
 #endif
+	}
 
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
@@ -552,10 +552,13 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
             }
 
             data_bytes += bytes_read;
-        }
 
 #if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
+	    dt += (boost::chrono::steady_clock::now() - t0);
+#endif
+
+        }
+#if DMTR_PROFILE
         DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
