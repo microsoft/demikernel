@@ -51,7 +51,7 @@ typedef struct dmtr_qresult {
     } qr_value;
 } dmtr_qresult_t;
 
-// todo: move to <dmtr/libos/common/types.hh>
+// todo: move to <dmtr/dmtr/libos/types.hh>
 typedef struct dmtr_header {
     uint32_t h_magic;
     uint32_t h_bytes;
