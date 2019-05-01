@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 pub mod fail;
 pub mod prelude;
 pub mod result;
