@@ -1,4 +1,8 @@
-use crate::prelude::*;
+mod options;
+
+#[cfg(test)]
+mod tests;
+
 use eui48::MacAddress;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -6,8 +10,7 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
-#[cfg(test)]
-mod tests;
+pub use options::ArpCacheOptions;
 
 #[derive(Debug, Clone)]
 struct Record {
@@ -39,31 +42,32 @@ impl PartialOrd for Expiry {
     }
 }
 
-struct State {
+pub struct ArpCache {
     records: HashMap<Ipv4Addr, Record>,
     rmap: HashMap<MacAddress, Ipv4Addr>,
     expiries: BinaryHeap<Expiry>,
     ttl: Duration,
+    now: Instant,
 }
 
-impl State {
-    pub fn new(ttl: Duration) -> State {
+impl ArpCache {
+    pub fn new(ttl: Duration, now: Instant) -> ArpCache {
         assert!(ttl > Duration::new(0, 0));
-        State {
+        ArpCache {
             records: HashMap::new(),
             rmap: HashMap::new(),
             expiries: BinaryHeap::new(),
             ttl,
+            now,
         }
     }
 
     pub fn insert(
         &mut self,
         ipv4_addr: Ipv4Addr,
-        link_addr: MacAddress,
-        now: Instant,
+        link_addr: MacAddress
     ) {
-        let expires = now + self.ttl;
+        let expires = self.now + self.ttl;
         let record = Record {
             ipv4_addr,
             link_addr,
@@ -101,11 +105,10 @@ impl State {
 
     pub fn get_link_addr(
         &self,
-        ipv4_addr: &Ipv4Addr,
-        now: Instant,
+        ipv4_addr: &Ipv4Addr
     ) -> Option<&MacAddress> {
         if let Some(record) = self.records.get(ipv4_addr) {
-            if now < record.expires {
+            if self.now < record.expires {
                 return Some(&record.link_addr);
             }
         }
@@ -115,12 +118,11 @@ impl State {
 
     pub fn get_ipv4_addr(
         &self,
-        link_addr: &MacAddress,
-        now: Instant,
+        link_addr: &MacAddress
     ) -> Option<&Ipv4Addr> {
         if let Some(ipv4_addr) = self.rmap.get(link_addr) {
             let record = self.records.get(ipv4_addr).unwrap();
-            if now < record.expires {
+            if self.now < record.expires {
                 return Some(ipv4_addr);
             }
         }
@@ -128,9 +130,11 @@ impl State {
         None
     }
 
-    pub fn flush(&mut self, now: Instant) {
+    pub fn touch(&mut self, now: Instant) {
+        self.now = now;
+
         loop {
-            if let Some(when) = self.remove_expired(now) {
+            if let Some(when) = self.remove_expired() {
                 if when != now {
                     continue;
                 }
@@ -140,13 +144,13 @@ impl State {
         }
     }
 
-    fn remove_expired(&mut self, now: Instant) -> Option<Instant> {
+    fn remove_expired(&mut self) -> Option<Instant> {
         let expiry = match self.expiries.peek() {
             Some(e) => (*e).clone(),
             None => return None,
         };
 
-        if now < expiry.when {
+        if self.now < expiry.when {
             return None;
         }
 

@@ -1,15 +1,15 @@
 use crate::rand::{Rng, Seed};
 use rand_core::SeedableRng;
 
-pub struct Partition {
+pub struct PartitionedState {
     seed: Seed,
     pub rng: Rng,
 }
 
-impl Partition {
-    pub fn new() -> Partition {
+impl PartitionedState {
+    pub fn new() -> PartitionedState {
         let seed = Seed::default();
-        Partition {
+        PartitionedState {
             seed,
             rng: Rng::from_seed(seed),
         }
