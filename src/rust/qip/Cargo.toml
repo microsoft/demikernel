@@ -6,3 +6,8 @@ edition = "2018"
 
 [dependencies]
 custom_error = "1.6.0"
+etherparse = "0.8.0"
+eui48 = "0.4.6"
+lazy_static = "1.3.0"
+rand_chacha = "0.1.1"
+rand_core = "0.4.0"
