@@ -134,7 +134,7 @@ impl ArpCache {
         self.now = now;
 
         loop {
-            if let Some(when) = self.remove_expired() {
+            if let Some(when) = self.try_evict() {
                 if when != now {
                     continue;
                 }
@@ -144,7 +144,7 @@ impl ArpCache {
         }
     }
 
-    fn remove_expired(&mut self) -> Option<Instant> {
+    fn try_evict(&mut self) -> Option<Instant> {
         let expiry = match self.expiries.peek() {
             Some(e) => (*e).clone(),
             None => return None,
