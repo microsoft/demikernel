@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn default_ttl() {
+fn with_default_ttl() {
     // tests to ensure that an entry without an explicit TTL gets evicted at the right time (using the default TTL).
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
@@ -11,13 +11,12 @@ fn default_ttl() {
     assert!(cache.get(&"a") == Some(&'a'));
     let evicted = cache.try_evict(later);
     assert_eq!(evicted.len(), 1);
-    assert!(evicted.contains(&"a"));
+    assert!(evicted.contains_key(&"a"));
     assert!(cache.get(&"a").is_none());
 }
 
-
 #[test]
-fn no_default_ttl() {
+fn without_default_ttl() {
     // tests to ensure that entries without a TTL do not get evicted.
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
@@ -31,7 +30,7 @@ fn no_default_ttl() {
 }
 
 #[test]
-fn explicit_ttl() {
+fn with_explicit_ttl() {
     // tests to ensure that an entry with an explicit TTL gets evicted at the right time.
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
@@ -41,7 +40,7 @@ fn explicit_ttl() {
     assert!(cache.get(&"a") == Some(&'a'));
     let evicted = cache.try_evict(later);
     assert_eq!(evicted.len(), 1);
-    assert!(evicted.contains(&"a"));
+    assert!(evicted.contains_key(&"a"));
     assert!(cache.get(&"a").is_none());
 }
 
@@ -61,6 +60,6 @@ fn replace_entry() {
     assert!(cache.get(&"a") == Some(&'a'));
     let evicted = cache.try_evict(even_later);
     assert_eq!(evicted.len(), 1);
-    assert!(evicted.contains(&"a"));
+    assert!(evicted.contains_key(&"a"));
     assert!(cache.get(&"a").is_none());
 }

@@ -1,15 +1,15 @@
-use std::time::{Duration, Instant};
 use super::ArpCache;
+use std::time::{Duration, Instant};
 
 pub struct ArpCacheOptions {
-    ttl: Duration
+    ttl: Option<Duration>,
 }
 
 impl Default for ArpCacheOptions {
     fn default() -> Self {
         ArpCacheOptions {
             // todo: need citation for default value.
-            ttl: Duration::from_secs(20),
+            ttl: Some(Duration::from_secs(20)),
         }
     }
 }

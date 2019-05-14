@@ -8,13 +8,17 @@ lazy_static! {
 }
 
 #[test]
-fn black_box() {
+fn with_default_ttl() {
+    // tests to ensure that an entry without an explicit TTL gets evicted at the right time (using the default TTL).
     let now = Instant::now();
-    let later = now + *TTL;
-    let mut state = ArpCache::new(*TTL, now);
-    state.insert(ALICE_IP.clone(), ALICE_MAC.clone());
-    assert!(state.get_link_addr(&ALICE_IP) == Some(&ALICE_MAC));
-    assert!(state.get_ipv4_addr(&ALICE_MAC) == Some(&ALICE_IP));
-    state.touch(later);
-    assert!(state.get_link_addr(&ALICE_IP).is_none());
+    let later = now + Duration::from_secs(1);
+
+    let mut cache = ArpCache::new(Some(Duration::from_secs(1)), now);
+    cache.insert(ALICE_IP.clone(), ALICE_MAC.clone());
+    assert!(cache.get_link_addr(&ALICE_IP) == Some(&ALICE_MAC));
+    assert!(cache.get_ipv4_addr(&ALICE_MAC) == Some(&ALICE_IP));
+    let evicted = cache.try_evict(later);
+    assert_eq!(evicted.len(), 1);
+    assert!(evicted.contains_key(&ALICE_IP));
+    assert!(cache.get_link_addr(&ALICE_IP).is_none());
 }
