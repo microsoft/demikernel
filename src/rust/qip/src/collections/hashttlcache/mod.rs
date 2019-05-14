@@ -170,10 +170,14 @@ where
         self.map.get(key).map(|r| &r.value)
     }
 
-    pub fn try_evict(&mut self, now: Instant) -> HashMap<K, V> {
+    pub fn advance_clock(&mut self, now: Instant) {
         assert!(now > self.now);
         self.now = now;
+    }
+
+    pub fn try_evict(&mut self, count: usize) -> HashMap<K, V> {
         let mut evicted = HashMap::new();
+        let mut i = 0;
 
         loop {
             match self.try_evict_once() {
@@ -181,6 +185,11 @@ where
                     assert!(evicted.insert(key, value).is_none());
                 }
                 None => return evicted,
+            }
+
+            i = i + 1;
+            if i == count {
+                return evicted;
             }
         }
     }

@@ -83,11 +83,15 @@ impl ArpCache {
         self.rmap.get(link_addr)
     }
 
+    pub fn advance_clock(&mut self, now: Instant) {
+        self.cache.advance_clock(now)
+    }
+
     pub fn try_evict(
         &mut self,
-        now: Instant,
+        count: usize,
     ) -> HashMap<Ipv4Addr, MacAddress> {
-        let evicted = self.cache.try_evict(now);
+        let evicted = self.cache.try_evict(count);
         let mut result = HashMap::new();
         for (k, v) in &evicted {
             self.rmap.remove(&v.link_addr);
