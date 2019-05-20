@@ -68,8 +68,8 @@ impl ArpCache {
         result
     }
 
-    pub fn remove(&mut self, ipv4_addr: &Ipv4Addr) {
-        if let Some(record) = self.cache.remove(ipv4_addr) {
+    pub fn remove(&mut self, ipv4_addr: Ipv4Addr) {
+        if let Some(record) = self.cache.remove(&ipv4_addr) {
             assert!(self.rmap.remove(&record.link_addr).is_some());
         } else {
             panic!(
@@ -79,12 +79,12 @@ impl ArpCache {
         }
     }
 
-    pub fn get_link_addr(&self, ipv4_addr: &Ipv4Addr) -> Option<&MacAddress> {
-        self.cache.get(ipv4_addr).map(|r| &r.link_addr)
+    pub fn get_link_addr(&self, ipv4_addr: Ipv4Addr) -> Option<&MacAddress> {
+        self.cache.get(&ipv4_addr).map(|r| &r.link_addr)
     }
 
-    pub fn get_ipv4_addr(&self, link_addr: &MacAddress) -> Option<&Ipv4Addr> {
-        self.rmap.get(link_addr)
+    pub fn get_ipv4_addr(&self, link_addr: MacAddress) -> Option<&Ipv4Addr> {
+        self.rmap.get(&link_addr)
     }
 
     pub fn advance_clock(&mut self, now: Instant) {

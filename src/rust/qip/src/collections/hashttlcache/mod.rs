@@ -187,7 +187,7 @@ where
                 None => return evicted,
             }
 
-            i = i + 1;
+            i += 1;
             if i == count {
                 return evicted;
             }

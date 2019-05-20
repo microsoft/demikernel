@@ -15,11 +15,11 @@ fn with_default_ttl() {
 
     let mut cache = ArpCache::new(Some(Duration::from_secs(1)), now);
     cache.insert(ALICE_IP.clone(), ALICE_MAC.clone());
-    assert!(cache.get_link_addr(&ALICE_IP) == Some(&ALICE_MAC));
-    assert!(cache.get_ipv4_addr(&ALICE_MAC) == Some(&ALICE_IP));
+    assert!(cache.get_link_addr(ALICE_IP.clone()) == Some(&ALICE_MAC));
+    assert!(cache.get_ipv4_addr(ALICE_MAC.clone()) == Some(&ALICE_IP));
     cache.advance_clock(later);
     let evicted = cache.try_evict(usize::max_value());
     assert_eq!(evicted.len(), 1);
     assert!(evicted.contains_key(&ALICE_IP));
-    assert!(cache.get_link_addr(&ALICE_IP).is_none());
+    assert!(cache.get_link_addr(ALICE_IP.clone()).is_none());
 }
