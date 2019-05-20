@@ -1,10 +1,10 @@
 use crate::prelude::*;
+use crate::protocols::ethernet2::EtherType;
 use crate::rand::Rng;
 use crate::sync::{Arc, Mutex};
 use eui48::{MacAddress, MacAddressFormat};
 use rand_core::SeedableRng;
 use std::time::Instant;
-use crate::protocols::ethernet2::EtherType;
 
 pub use crate::protocols::arp;
 

@@ -1,6 +1,6 @@
 use crate::prelude::*;
-use std::time::Instant;
 use crate::protocols::ethernet2::EtherType;
+use std::time::Instant;
 
 use super::cache::ArpCache;
 use super::options::ArpOptions;

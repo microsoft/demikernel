@@ -29,11 +29,9 @@ impl Error for EtherParseError {
 
     fn cause(&self) -> Option<&Error> {
         match self {
-            EtherParseError::ReadError(ref e) => {
-                match e {
-                    ReadError::IoError(ref f) => Some(f),
-                    _ => None
-                }
+            EtherParseError::ReadError(ref e) => match e {
+                ReadError::IoError(ref f) => Some(f),
+                _ => None,
             },
         }
     }
