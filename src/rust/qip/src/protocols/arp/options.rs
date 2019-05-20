@@ -1,13 +1,6 @@
-use std::time::Duration;
+use super::cache::ArpCacheOptions;
 
-pub struct Options {
-    cache_ttl: Duration
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            cache_ttl:
-        }
-    }
+#[derive(Default)]
+pub struct ArpOptions {
+    pub cache: ArpCacheOptions,
 }

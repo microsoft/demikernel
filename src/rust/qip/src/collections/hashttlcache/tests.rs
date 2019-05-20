@@ -90,4 +90,3 @@ fn limited_evictions() {
     assert!(evicted.contains_key(&"b"));
     assert!(cache.get(&"b").is_none());
 }
-

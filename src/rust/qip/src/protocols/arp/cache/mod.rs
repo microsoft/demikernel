@@ -30,6 +30,10 @@ impl ArpCache {
         }
     }
 
+    pub fn from_options(options: &ArpCacheOptions, now: Instant) -> ArpCache {
+        ArpCache::new(options.default_ttl, now)
+    }
+
     pub fn insert_with_ttl(
         &mut self,
         ipv4_addr: Ipv4Addr,
