@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use etherparse::{Ethernet2Header, Ethernet2HeaderSlice};
+use etherparse::{Ethernet2Header, Ethernet2HeaderSlice, SlicedPacket};
 use fail::EtherParseError;
 
 #[derive(From)]
@@ -23,6 +23,10 @@ impl Packet {
             .map_err(EtherParseError::ReadError)?;
         assert_eq!(0, extra.len());
         Ok(header)
+    }
+
+    pub fn payload(&self) -> Result<&[u8]> {
+        Ok(SlicedPacket::from_ethernet(&self.bytes).map_err(EtherParseError::ReadError)?.payload)
     }
 
     pub fn bytes(&self) -> &[u8] {

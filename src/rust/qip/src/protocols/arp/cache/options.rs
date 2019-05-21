@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct ArpCacheOptions {
     pub default_ttl: Option<Duration>,
 }

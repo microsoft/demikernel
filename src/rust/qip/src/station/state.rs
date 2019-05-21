@@ -2,13 +2,13 @@ use crate::prelude::*;
 use crate::protocols::ethernet2::EtherType;
 use crate::rand::Rng;
 use crate::sync::{Arc, Mutex};
-use eui48::{MacAddress, MacAddressFormat};
+use eui48::MacAddress;
 use rand_core::SeedableRng;
 use std::time::Instant;
 
 pub use crate::protocols::arp;
 
-const ARP_ETHER_TYPE: u16 = EtherType::Arp as u16;
+const ETHER_TYPE_ARP: u16 = EtherType::Arp as u16;
 
 pub struct State {
     options: Options,
@@ -43,20 +43,15 @@ impl State {
         if self.options.my_link_addr != dest_link_addr
             && MacAddress::broadcast() != dest_link_addr
         {
-            return Err(Fail::Misdelivered {
-                dest: dest_link_addr.to_string(MacAddressFormat::Canonical),
-            });
+            return Err(Fail::Misdelivered {});
         }
 
         match ether2_header.ether_type {
-            ARP_ETHER_TYPE => {
+            ETHER_TYPE_ARP => {
                 let mut shared = self.shared.lock();
                 shared.arp.receive(packet)
             }
-            _ => Err(Fail::UnrecognizedFieldValue {
-                name: From::from("ether2.ether_type"),
-                value: From::from(ether2_header.ether_type),
-            }),
+            _ => Err(Fail::Unsupported {}),
         }
     }
 }
@@ -71,7 +66,7 @@ impl SharedState {
         now: Instant,
     ) -> Result<SharedState> {
         Ok(SharedState {
-            arp: arp::State::from_options(&options.arp, now),
+            arp: arp::State::from_options(options, now),
         })
     }
 }

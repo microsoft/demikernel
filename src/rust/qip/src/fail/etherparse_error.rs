@@ -1,10 +1,11 @@
-use etherparse::ReadError;
+use etherparse::{ReadError, WriteError};
 use std::error::Error;
 
 #[derive(Debug, Display)]
 #[display(fmt = "{0}", "self.description()")]
 pub enum EtherParseError {
     ReadError(ReadError),
+    WriteError(WriteError),
 }
 
 impl Error for EtherParseError {
@@ -22,6 +23,13 @@ impl Error for EtherParseError {
                     ReadError::Ipv6UnexpectedVersion(_) => "The ip header version field is not equal 6. The value is the version that was received.",
                     ReadError::Ipv6TooManyHeaderExtensions => "more then 7 header extensions are present (according to RFC82000 this should never happen).",
                     ReadError::TcpDataOffsetTooSmall(_) => "the data_offset field in a TCP header is smaller then the minimum size of the tcp header itself.",
+                }
+            },
+            EtherParseError::WriteError(ref e) => {
+                match e {
+                    WriteError::IoError(ref f) => f.description(),
+                    WriteError::ValueError(_) => "There is an error in the data that was given to build a packet",
+                    WriteError::SliceTooSmall(_) => "a given slice is not big enough to serialize packet data"
                 }
             },
         }

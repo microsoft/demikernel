@@ -1,12 +1,14 @@
 mod etherparse_error;
 
 use custom_error::custom_error;
+use std::io;
 
 pub use etherparse_error::EtherParseError;
 
 custom_error! {pub Fail
-    // todo: using `MacAddress` instead of `String` here doesn't work because `MacAddress::to_string()` does not conform to the `ToString` trait.
-    EtherParseError{source: EtherParseError} = "failure to encode or decode a packet",
-    Misdelivered{dest: String} = "misdelivered packet (intended for {dest})",
-    UnrecognizedFieldValue{ name: String, value: usize } = "unrecognized value ({value}) in field `{name}`.",
+    IoError{source: io::Error} = "I/O failure",
+    EtherParseError{source: EtherParseError} = "error reported by etherparse crate",
+    Misdelivered{} = "misdelivered packet",
+    Unsupported{} = "unsupported",
+    Ignored{} = "operation has no effect",
 }

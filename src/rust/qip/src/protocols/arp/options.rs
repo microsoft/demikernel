@@ -1,6 +1,6 @@
 use super::cache::ArpCacheOptions;
 
-#[derive(Default)]
+#[derive(Clone)]
 pub struct ArpOptions {
     pub cache: ArpCacheOptions,
 }
