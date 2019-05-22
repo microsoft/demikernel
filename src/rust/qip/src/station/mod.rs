@@ -8,13 +8,13 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Instant;
 
-pub struct Station {
-    rt: Rc<RefCell<runtime::State>>,
-    arp: arp::State,
+pub struct Station<'a> {
+    rt: Rc<RefCell<runtime::State<'a>>>,
+    arp: arp::State<'a>,
 }
 
-impl Station {
-    pub fn from_options(options: Options, now: Instant) -> Station {
+impl<'a> Station<'a> {
+    pub fn from_options(options: Options, now: Instant) -> Station<'a> {
         let rt = Rc::new(RefCell::new(runtime::State::from_options(options)));
         let arp = arp::State::new(rt.clone(), now);
         Station { rt, arp }

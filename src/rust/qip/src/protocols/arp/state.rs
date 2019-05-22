@@ -9,12 +9,12 @@ use std::mem::swap;
 use std::rc::Rc;
 use std::time::Instant;
 
-pub struct ArpState {
-    rt: Rc<RefCell<runtime::State>>,
+pub struct ArpState<'a> {
+    rt: Rc<RefCell<runtime::State<'a>>>,
     cache: ArpCache,
 }
 
-impl ArpState {
+impl<'a> ArpState<'a> {
     pub fn new(rt: Rc<RefCell<runtime::State>>, now: Instant) -> ArpState {
         let cache = {
             let rt = rt.borrow();

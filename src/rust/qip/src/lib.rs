@@ -1,3 +1,5 @@
+#![feature(generators, generator_trait)]
+#![feature(impl_trait_in_bindings)]
 #![warn(clippy::all)]
 
 #[macro_use]
@@ -16,6 +18,7 @@ mod protocols;
 mod rand;
 mod sync;
 
+pub mod r#async;
 pub mod collections;
 pub mod fail;
 pub mod result;
