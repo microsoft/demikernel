@@ -1,14 +1,12 @@
 use crate::prelude::*;
-use crate::protocols::ethernet2::EtherType;
+use crate::protocols::arp;
+use crate::protocols::ethernet2;
 use crate::rand::Rng;
 use crate::sync::{Arc, Mutex};
 use eui48::MacAddress;
 use rand_core::SeedableRng;
+use std::convert::TryFrom;
 use std::time::Instant;
-
-pub use crate::protocols::arp;
-
-const ETHER_TYPE_ARP: u16 = EtherType::Arp as u16;
 
 pub struct State {
     options: Options,
@@ -34,24 +32,22 @@ impl State {
         shared.arp.advance_clock(now)
     }
 
-    pub fn receive(&mut self, packet: Vec<u8>) -> Result<Vec<Effect>> {
-        let packet = Packet::from(packet);
-        let ether2_header = packet.parse_ether2_header()?;
+    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<Vec<Effect>> {
+        let frame = ethernet2::Frame::try_from(bytes)?;
 
-        let dest_link_addr =
-            MacAddress::from_bytes(&ether2_header.destination).unwrap();
-        if self.options.my_link_addr != dest_link_addr
-            && MacAddress::broadcast() != dest_link_addr
+        let dest_addr = frame.header().dest_addr;
+        if self.options.my_link_addr != dest_addr
+            && MacAddress::broadcast() != dest_addr
         {
             return Err(Fail::Misdelivered {});
         }
 
-        match ether2_header.ether_type {
-            ETHER_TYPE_ARP => {
+        match frame.header().ether_type {
+            ethernet2::EtherType::Arp => {
+                let payload = frame.payload().to_vec();
                 let mut shared = self.shared.lock();
-                shared.arp.receive(packet)
+                shared.arp.receive(payload)
             }
-            _ => Err(Fail::Unsupported {}),
         }
     }
 }

@@ -1,9 +1,10 @@
-use std::convert::{TryFrom, TryInto};
 use crate::prelude::*;
-use std::io::{Read, Write, Cursor};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use std::net::Ipv4Addr;
 use eui48::MacAddress;
+use num_traits::FromPrimitive;
+use std::convert::TryFrom;
+use std::io::{Cursor, Read, Write};
+use std::net::Ipv4Addr;
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;
@@ -11,6 +12,7 @@ const PROT_TYPE_IPV4: u16 = 0x800;
 const PROT_SIZE_IPV4: u8 = 4;
 
 #[repr(u16)]
+#[derive(FromPrimitive, Clone)]
 pub enum ArpOp {
     ArpRequest = 1,
     ArpReply = 2,
@@ -20,19 +22,14 @@ impl TryFrom<u16> for ArpOp {
     type Error = Fail;
 
     fn try_from(n: u16) -> Result<ArpOp> {
-        if n == ArpOp::ArpRequest as u16 {
-            return Ok(ArpOp::ArpRequest);
+        match FromPrimitive::from_u16(n) {
+            Some(op) => Ok(op),
+            None => Err(Fail::Unsupported {}),
         }
-
-        if n == ArpOp::ArpReply as u16 {
-            return Ok(ArpOp::ArpReply);
-        }
-
-        Err(Fail::Unsupported {})
     }
 }
 
-pub struct ArpMessage {
+pub struct ArpPdu {
     pub op: ArpOp,
     pub sender_link_addr: MacAddress,
     pub sender_ip_addr: Ipv4Addr,
@@ -40,8 +37,8 @@ pub struct ArpMessage {
     pub target_ip_addr: Ipv4Addr,
 }
 
-impl ArpMessage {
-    pub fn read(reader: &mut Read) -> Result<ArpMessage> {
+impl ArpPdu {
+    pub fn read(reader: &mut Read) -> Result<ArpPdu> {
         let hard_type = reader.read_u16::<NetworkEndian>()?;
         if hard_type != HARD_TYPE_ETHER2 {
             return Err(Fail::Unsupported {});
@@ -73,11 +70,13 @@ impl ArpMessage {
         reader.read_exact(&mut target_link_addr)?;
         let target_ip_addr = reader.read_u32::<NetworkEndian>()?;
 
-        Ok(ArpMessage {
+        Ok(ArpPdu {
             op: ArpOp::try_from(op)?,
-            sender_link_addr: MacAddress::from_bytes(&sender_link_addr).unwrap(),
+            sender_link_addr: MacAddress::from_bytes(&sender_link_addr)
+                .unwrap(),
             sender_ip_addr: From::from(sender_ip_addr),
-            target_link_addr: MacAddress::from_bytes(&target_link_addr).unwrap(),
+            target_link_addr: MacAddress::from_bytes(&target_link_addr)
+                .unwrap(),
             target_ip_addr: From::from(target_ip_addr),
         })
     }
@@ -89,33 +88,24 @@ impl ArpMessage {
         writer.write_all(&byte)?;
         let byte = [PROT_SIZE_IPV4; 1];
         writer.write_all(&byte)?;
-        writer.write_u16::<NetworkEndian>(self.op as u16)?;
-        let mut sender_link_addr = [0; 6];
-        writer.write_all(&sender_link_addr)?;
+        writer.write_u16::<NetworkEndian>(self.op.clone() as u16)?;
+        writer.write_all(self.sender_link_addr.as_bytes())?;
         writer.write_u32::<NetworkEndian>(self.sender_ip_addr.into())?;
-        let mut target_link_addr = [0; 6];
-        writer.write_all(&target_link_addr)?;
+        writer.write_all(self.target_link_addr.as_bytes())?;
         writer.write_u32::<NetworkEndian>(self.target_ip_addr.into())?;
         Ok(())
     }
+
+    pub fn size() -> usize {
+        28
+    }
 }
 
-impl TryFrom<&[u8]> for ArpMessage {
+impl TryFrom<&[u8]> for ArpPdu {
     type Error = Fail;
 
-    fn try_from(bytes: &[u8]) -> Result<ArpMessage> {
+    fn try_from(bytes: &[u8]) -> Result<ArpPdu> {
         let mut reader = Cursor::new(bytes);
-        ArpMessage::read(&mut reader)
+        ArpPdu::read(&mut reader)
     }
 }
-
-impl TryInto<Vec<u8>> for ArpMessage {
-    type Error = Fail;
-
-    fn try_into(self) -> Result<Vec<u8>> {
-        let mut bytes = Vec::new();
-        self.write(&mut bytes)?;
-        Ok(bytes)
-    }
-}
-
