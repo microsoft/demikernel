@@ -25,12 +25,12 @@ impl ArpState {
 
     pub fn receive(&mut self, bytes: Vec<u8>) -> Result<Vec<Effect>> {
         let mut arp = ArpPdu::try_from(bytes.as_slice())?;
+        if arp.target_ip_addr != self.options.my_ipv4_addr {
+            return Err(Fail::Ignored {});
+        }
+
         match arp.op {
             ArpOp::ArpRequest => {
-                if arp.target_ip_addr != self.options.my_ipv4_addr {
-                    return Err(Fail::Ignored {});
-                }
-
                 arp.op = ArpOp::ArpReply;
                 arp.target_link_addr = self.options.my_link_addr;
                 swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
@@ -48,8 +48,11 @@ impl ArpState {
                 ether2_header.write(&mut packet)?;
                 arp.write(&mut packet)?;
                 Ok(vec![Effect::Transmit(packet)])
+            },
+            ArpOp::ArpReply => {
+                self.cache.insert(arp.target_ip_addr, arp.target_link_addr);
+                Ok(vec![])
             }
-            _ => Err(Fail::Unsupported {}),
         }
     }
 }
