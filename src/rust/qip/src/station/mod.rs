@@ -27,7 +27,7 @@ impl Station {
     pub fn receive(&mut self, bytes: Vec<u8>) -> Result<Vec<Effect>> {
         let frame = ethernet2::Frame::try_from(bytes)?;
 
-        let dest_addr = {
+        {
             let dest_addr = frame.header().dest_addr;
             let rt = self.rt.borrow();
             if rt.options().my_link_addr != dest_addr
@@ -35,9 +35,7 @@ impl Station {
             {
                 return Err(Fail::Misdelivered {});
             }
-
-            dest_addr
-        };
+        }
 
         match frame.header().ether_type {
             ethernet2::EtherType::Arp => {
