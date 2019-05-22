@@ -77,7 +77,7 @@ where
     map: HashMap<K, Record<V>>,
     graveyard: BinaryHeap<Tombstone<K>>,
     default_ttl: Option<Duration>,
-    now: Instant,
+    clock: Instant,
 }
 
 impl<K, V> HashTtlCache<K, V>
@@ -97,7 +97,7 @@ where
             map: HashMap::new(),
             graveyard: BinaryHeap::new(),
             default_ttl,
-            now,
+            clock: now,
         }
     }
 
@@ -111,13 +111,13 @@ where
             assert!(ttl > Duration::new(0, 0));
         }
 
-        let expiry = ttl.map(|dt| Expiry(self.now + dt));
+        let expiry = ttl.map(|dt| Expiry(self.clock + dt));
 
         let old_value = match self.map.entry(key) {
             HashMapEntry::Occupied(mut e) => {
                 let mut record = e.get_mut();
                 let old_value = if let Some(ref expiry) = record.expiry {
-                    if expiry.has_expired(self.now) {
+                    if expiry.has_expired(self.clock) {
                         None
                     } else {
                         Some(record.value)
@@ -157,7 +157,7 @@ where
     pub fn remove(&mut self, key: &K) -> Option<V> {
         if let Some(ref record) = self.map.remove(key) {
             if let Some(ref expiry) = record.expiry {
-                if !expiry.has_expired(self.now) {
+                if !expiry.has_expired(self.clock) {
                     return Some(record.value);
                 }
             }
@@ -171,8 +171,8 @@ where
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
-        assert!(now > self.now);
-        self.now = now;
+        assert!(now >= self.clock);
+        self.clock = now;
     }
 
     pub fn try_evict(&mut self, count: usize) -> HashMap<K, V> {
@@ -206,7 +206,7 @@ where
             };
 
             // the next tombstone has time from the future; nothing to evict.
-            if !graveyard_expiry.has_expired(self.now) {
+            if !graveyard_expiry.has_expired(self.clock) {
                 return None;
             }
 
@@ -225,7 +225,7 @@ where
                         return Some((key, value));
                     } else {
                         // the entry hasn't expired yet; keep looking.
-                        assert!(!record_expiry.has_expired(self.now));
+                        assert!(!record_expiry.has_expired(self.clock));
                         continue;
                     }
                 }

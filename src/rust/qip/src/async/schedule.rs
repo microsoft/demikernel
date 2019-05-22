@@ -31,6 +31,7 @@ impl PartialOrd for Record {
 pub struct Schedule {
     ids: HashSet<Id>,
     heap: BinaryHeap<Record>,
+    clock: Option<Instant>
 }
 
 impl Schedule {
@@ -54,6 +55,7 @@ impl Schedule {
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<Id> {
+        self.advance_clock(now);
         if let Some(rec) = self.heap.peek() {
             if rec.when < now {
                 // next task due isn't due yet.
@@ -72,6 +74,15 @@ impl Schedule {
         } else {
             // nothing in the heap.
             None
+        }
+    }
+
+    fn advance_clock(&mut self, now: Instant) {
+        if let Some(clock) = self.clock.as_mut() {
+            assert!(*clock <= now);
+            *clock = now;
+        } else {
+            self.clock = Some(now)
         }
     }
 }
