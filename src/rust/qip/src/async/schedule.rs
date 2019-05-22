@@ -27,19 +27,13 @@ impl PartialOrd for Record {
     }
 }
 
+#[derive(Default)]
 pub struct Schedule {
     ids: HashSet<Id>,
     heap: BinaryHeap<Record>,
 }
 
 impl Schedule {
-    pub fn new() -> Schedule {
-        Schedule {
-            ids: HashSet::new(),
-            heap: BinaryHeap::new(),
-        }
-    }
-
     pub fn schedule(&mut self, t: &Task) {
         match t.status() {
             Status::Completed(_) => {
@@ -55,8 +49,8 @@ impl Schedule {
         }
     }
 
-    pub fn cancel(&mut self, id: &Id) {
-        assert!(self.ids.remove(id));
+    pub fn cancel(&mut self, id: Id) {
+        assert!(self.ids.remove(&id));
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<Id> {
@@ -68,7 +62,7 @@ impl Schedule {
                 // next task is due.
                 let rec = self.heap.pop().unwrap();
                 if self.ids.contains(&rec.tid) {
-                    self.cancel(&rec.tid);
+                    self.cancel(rec.tid);
                     Some(rec.tid)
                 } else {
                     // task is due but was cancelled; discard and try again.

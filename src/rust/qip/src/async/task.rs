@@ -65,7 +65,7 @@ impl<'a> Task<'a> {
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {
                             let duration =
-                                duration.unwrap_or(Duration::new(0, 0));
+                                duration.unwrap_or_else(|| Duration::new(0, 0));
                             self.status = Status::AsleepUntil(now + duration);
                             return Ok(false);
                         }

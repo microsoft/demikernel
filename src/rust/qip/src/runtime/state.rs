@@ -15,7 +15,7 @@ impl<'a> RuntimeState<'a> {
         RuntimeState {
             options,
             rng: Rng::from_seed(seed),
-            r#async: r#async::State::new(),
+            r#async: r#async::State::default(),
         }
     }
 
