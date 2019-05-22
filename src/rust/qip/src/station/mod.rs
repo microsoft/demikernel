@@ -1,3 +1,3 @@
 mod state;
 
-pub use state::{SharedState, State};
+pub use state::State;
