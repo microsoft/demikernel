@@ -1,16 +1,13 @@
 use super::task::{Id, Status, Task};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::collections::HashSet;
 use std::time::Instant;
 
 #[derive(PartialEq, Eq)]
 struct Record {
     when: Instant,
     tid: Id,
-}
-
-pub struct Schedule {
-    heap: BinaryHeap<Record>,
 }
 
 impl Ord for Record {
@@ -30,9 +27,15 @@ impl PartialOrd for Record {
     }
 }
 
+pub struct Schedule {
+    ids: HashSet<Id>,
+    heap: BinaryHeap<Record>,
+}
+
 impl Schedule {
     pub fn new() -> Schedule {
         Schedule {
+            ids: HashSet::new(),
             heap: BinaryHeap::new(),
         }
     }
@@ -43,6 +46,7 @@ impl Schedule {
                 panic!("attempt to schedule a completed task")
             }
             Status::AsleepUntil(when) => {
+                self.ids.insert(*t.id());
                 self.heap.push(Record {
                     when: *when,
                     tid: *t.id(),
@@ -51,7 +55,11 @@ impl Schedule {
         }
     }
 
-    pub fn pop_if_due(&mut self, now: Instant) -> Option<Id> {
+    pub fn cancel(&mut self, id: &Id) {
+        assert!(self.ids.remove(id));
+    }
+
+    pub fn poll(&mut self, now: Instant) -> Option<Id> {
         if let Some(rec) = self.heap.peek() {
             if rec.when < now {
                 // next task due isn't due yet.
@@ -59,7 +67,13 @@ impl Schedule {
             } else {
                 // next task is due.
                 let rec = self.heap.pop().unwrap();
-                Some(rec.tid)
+                if self.ids.contains(&rec.tid) {
+                    self.cancel(&rec.tid);
+                    Some(rec.tid)
+                } else {
+                    // task is due but was cancelled; discard and try again.
+                    self.poll(now)
+                }
             }
         } else {
             // nothing in the heap.

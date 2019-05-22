@@ -42,7 +42,18 @@ impl<'a> State<'a> {
         id
     }
 
-    pub fn resume(&mut self, now: Instant) {
-        if let Some(id) = self.schedule.pop_if_due(now) {}
+    pub fn resume_task(&mut self, now: Instant) -> Result<bool> {
+        if let Some(id) = self.schedule.poll(now) {
+            // we don't anticipate a reasonable situation where the schedule would give us an ID that isn't in `self.tasks`.
+            let task = self.tasks.get_mut(&id).unwrap();
+            task.resume(now)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn drop_task(&mut self, id: Id) {
+        self.schedule.cancel(&id);
+        assert!(self.tasks.remove(&id).is_some());
     }
 }
