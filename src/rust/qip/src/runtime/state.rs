@@ -1,5 +1,4 @@
-use crate::prelude::*;
-use crate::rand::Rng;
+use crate::{prelude::*, rand::Rng};
 use rand_core::SeedableRng;
 
 pub struct RuntimeState {

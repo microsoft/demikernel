@@ -1,8 +1,9 @@
 use super::task::{Id, Status, Task};
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::collections::HashSet;
-use std::time::Instant;
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashSet},
+    time::Instant,
+};
 
 #[derive(PartialEq, Eq)]
 struct Record {
@@ -12,7 +13,9 @@ struct Record {
 
 impl Ord for Record {
     fn cmp(&self, other: &Record) -> Ordering {
-        // `BinaryHeap` is a max-heap, so we need to reverse the order of comparisons in order to get `peek()` and `pop()` to return the smallest time.
+        // `BinaryHeap` is a max-heap, so we need to reverse the order of
+        // comparisons in order to get `peek()` and `pop()` to return the
+        // smallest time.
         match self.when.cmp(&other.when) {
             Ordering::Equal => Ordering::Equal,
             Ordering::Less => Ordering::Greater,
@@ -36,7 +39,8 @@ pub struct Schedule {
 
 impl Schedule {
     pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>) {
-        // todo: there must be a way to segregate tasks from different namespaces.
+        // todo: there must be a way to segregate tasks from different
+        // namespaces.
         match t.status() {
             Status::Completed(_) => {
                 panic!("attempt to schedule a completed task")

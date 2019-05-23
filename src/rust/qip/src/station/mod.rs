@@ -1,12 +1,10 @@
-use crate::prelude::*;
-use crate::protocols::arp;
-use crate::protocols::ethernet2;
-use crate::runtime;
+use crate::{
+    prelude::*,
+    protocols::{arp, ethernet2},
+    runtime,
+};
 use eui48::MacAddress;
-use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::rc::Rc;
-use std::time::Instant;
+use std::{cell::RefCell, convert::TryFrom, rc::Rc, time::Instant};
 
 pub struct Station<'a> {
     rt: Rc<RefCell<runtime::State>>,

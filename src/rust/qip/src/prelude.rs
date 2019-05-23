@@ -1,2 +1,1 @@
-pub use crate::*;
-pub use crate::{fail::*, result::*};
+pub use crate::{fail::*, result::*, *};

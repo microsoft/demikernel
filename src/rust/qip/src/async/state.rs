@@ -1,10 +1,12 @@
-use super::schedule::Schedule;
-use super::task::{Id, Task};
+use super::{
+    schedule::Schedule,
+    task::{Id, Task},
+};
 use crate::prelude::*;
-use std::rc::Rc;
 use std::{
     collections::HashMap,
     ops::Generator,
+    rc::Rc,
     time::{Duration, Instant},
 };
 
@@ -45,7 +47,8 @@ impl<'a, T> State<'a, T> {
 
     pub fn poll(&mut self, now: Instant) -> Result<Rc<T>> {
         if let Some(id) = self.schedule.poll(now) {
-            // we don't anticipate a reasonable situation where the schedule would give us an ID that isn't in `self.tasks`.
+            // we don't anticipate a reasonable situation where the schedule
+            // would give us an ID that isn't in `self.tasks`.
             let task = self.tasks.get_mut(&id).unwrap();
             task.resume(now)
         } else {

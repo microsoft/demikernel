@@ -1,5 +1,4 @@
-use crate::protocols::arp;
-use crate::rand::Seed;
+use crate::{protocols::arp, rand::Seed};
 use eui48::MacAddress;
 use std::net::Ipv4Addr;
 

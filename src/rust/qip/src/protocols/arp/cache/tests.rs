@@ -9,7 +9,8 @@ lazy_static! {
 
 #[test]
 fn with_default_ttl() {
-    // tests to ensure that an entry without an explicit TTL gets evicted at the right time (using the default TTL).
+    // tests to ensure that an entry without an explicit TTL gets evicted at
+    // the right time (using the default TTL).
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 

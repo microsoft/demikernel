@@ -2,7 +2,8 @@ use super::*;
 
 #[test]
 fn with_default_ttl() {
-    // tests to ensure that an entry without an explicit TTL gets evicted at the right time (using the default TTL).
+    // tests to ensure that an entry without an explicit TTL gets evicted at
+    // the right time (using the default TTL).
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
@@ -33,7 +34,8 @@ fn without_default_ttl() {
 
 #[test]
 fn with_explicit_ttl() {
-    // tests to ensure that an entry with an explicit TTL gets evicted at the right time.
+    // tests to ensure that an entry with an explicit TTL gets evicted at the
+    // right time.
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
@@ -49,7 +51,8 @@ fn with_explicit_ttl() {
 
 #[test]
 fn replace_entry() {
-    // tests to ensure that an entry that gets replaced doesn't get prematurely evicted.
+    // tests to ensure that an entry that gets replaced doesn't get prematurely
+    // evicted.
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
     let even_later = now + Duration::from_secs(2);
@@ -71,7 +74,8 @@ fn replace_entry() {
 
 #[test]
 fn limited_evictions() {
-    // tests to ensure that an entry without an explicit TTL gets evicted at the right time (using the default TTL).
+    // tests to ensure that an entry without an explicit TTL gets evicted at
+    // the right time (using the default TTL).
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 

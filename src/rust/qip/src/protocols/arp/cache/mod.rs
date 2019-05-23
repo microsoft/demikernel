@@ -5,9 +5,11 @@ mod tests;
 
 use crate::collections::HashTtlCache;
 use eui48::MacAddress;
-use std::collections::HashMap;
-use std::net::Ipv4Addr;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    net::Ipv4Addr,
+    time::{Duration, Instant},
+};
 
 pub use options::ArpCacheOptions;
 

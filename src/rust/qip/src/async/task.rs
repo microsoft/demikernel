@@ -1,9 +1,9 @@
 use crate::prelude::*;
-use std::rc::Rc;
 use std::{
     marker::Unpin,
     ops::{Generator, GeneratorState},
     pin::Pin,
+    rc::Rc,
     time::{Duration, Instant},
 };
 
@@ -27,7 +27,8 @@ impl<T> Into<Result<Rc<T>>> for Status<T> {
 }
 
 impl<T> Clone for Status<T> {
-    // deriving `Clone` for this struct didn't appear to work, so we implement it ourselves.
+    // deriving `Clone` for this struct didn't appear to work, so we implement
+    // it ourselves.
     fn clone(&self) -> Self {
         match self {
             Status::Completed(r) => match r {
@@ -89,7 +90,7 @@ impl<'a, T> Task<'a, T> {
             Status::Completed(_) => (),
             Status::AsleepUntil(when) => {
                 if now < *when {
-                    panic!("attempt to awaken a sleeping task");
+                    panic!("attempt to resume a sleeping task");
                 } else {
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {

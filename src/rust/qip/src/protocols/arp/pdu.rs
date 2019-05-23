@@ -2,9 +2,11 @@ use crate::prelude::*;
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use eui48::MacAddress;
 use num_traits::FromPrimitive;
-use std::convert::TryFrom;
-use std::io::{Cursor, Read, Write};
-use std::net::Ipv4Addr;
+use std::{
+    convert::TryFrom,
+    io::{Cursor, Read, Write},
+    net::Ipv4Addr,
+};
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;

@@ -3,12 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::cmp::Ordering;
-use std::collections::hash_map::Entry as HashMapEntry;
-use std::collections::BinaryHeap;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::time::{Duration, Instant};
+use std::{
+    cmp::Ordering,
+    collections::{hash_map::Entry as HashMapEntry, BinaryHeap, HashMap},
+    hash::Hash,
+    time::{Duration, Instant},
+};
 
 #[derive(PartialEq, Eq, Clone)]
 struct Expiry(Instant);
@@ -21,7 +21,9 @@ impl Expiry {
 
 impl Ord for Expiry {
     fn cmp(&self, other: &Expiry) -> Ordering {
-        // `BinaryHeap` is a max-heap, so we need to reverse the order of comparisons in order to get `peek()` and `pop()` to return the smallest time.
+        // `BinaryHeap` is a max-heap, so we need to reverse the order of
+        // comparisons in order to get `peek()` and `pop()` to return the
+        // smallest time.
         match self.0.cmp(&other.0) {
             Ordering::Equal => Ordering::Equal,
             Ordering::Less => Ordering::Greater,
@@ -68,7 +70,9 @@ where
     }
 }
 
-// todo: `HashMap<>` has an `S` parameter that i'd like to include but causes problems with the inference engine. the workaround is to leave it out but what am i doing wrong?
+// todo: `HashMap<>` has an `S` parameter that i'd like to include but causes
+// problems with the inference engine. the workaround is to leave it out but
+// what am i doing wrong?
 
 pub struct HashTtlCache<K, V>
 where
@@ -220,7 +224,8 @@ where
                     };
 
                     if &graveyard_expiry == record_expiry {
-                        // the entry's expiry matches our tombstone; time to evict.
+                        // the entry's expiry matches our tombstone; time to
+                        // evict.
                         e.remove_entry();
                         return Some((key, value));
                     } else {
