@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use std::rc::Rc;
 use std::{
     marker::Unpin,
     ops::{Generator, GeneratorState},
@@ -6,10 +7,36 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone)]
-pub enum Status {
-    Completed(Result<()>),
+pub enum Status<T> {
+    Completed(Result<Rc<T>>),
     AsleepUntil(Instant),
+}
+
+impl<T> Into<Result<Rc<T>>> for Status<T> {
+    fn into(self) -> Result<Rc<T>> {
+        match self {
+            Status::Completed(r) => match r {
+                Err(Fail::TryAgain {}) => panic!(
+                    "coroutines are not allowed to return `Fail::TryAgain`"
+                ),
+                _ => r,
+            },
+            _ => Err(Fail::TryAgain {}),
+        }
+    }
+}
+
+impl<T> Clone for Status<T> {
+    // deriving `Clone` for this struct didn't appear to work, so we implement it ourselves.
+    fn clone(&self) -> Self {
+        match self {
+            Status::Completed(r) => match r {
+                Ok(t) => Status::Completed(Ok(t.clone())),
+                Err(e) => Status::Completed(Err(e.clone())),
+            },
+            Status::AsleepUntil(t) => Status::AsleepUntil(*t),
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
@@ -21,18 +48,20 @@ impl From<u64> for Id {
     }
 }
 
-pub struct Task<'a> {
+pub struct Task<'a, T> {
     id: Id,
-    status: Status,
+    status: Status<T>,
     gen: Box<
-        Generator<Yield = Option<Duration>, Return = Result<()>> + 'a + Unpin,
+        Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
+            + 'a
+            + Unpin,
     >,
 }
 
-impl<'a> Task<'a> {
-    pub fn new<G>(id: Id, gen: G, now: Instant) -> Task<'a>
+impl<'a, T> Task<'a, T> {
+    pub fn new<G>(id: Id, gen: G, now: Instant) -> Task<'a, T>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<()>>
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
             + 'a
             + Unpin,
     {
@@ -49,11 +78,11 @@ impl<'a> Task<'a> {
         &self.id
     }
 
-    pub fn status(&self) -> &Status {
+    pub fn status(&self) -> &Status<T> {
         &self.status
     }
 
-    pub fn resume(&mut self, now: Instant) -> Result<bool> {
+    pub fn resume(&mut self, now: Instant) -> Result<Rc<T>> {
         match &self.status {
             // if the task has already completed, do nothing with the
             // generator (we would panic).
@@ -64,10 +93,9 @@ impl<'a> Task<'a> {
                 } else {
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {
-                            let duration =
-                                duration.unwrap_or_else(|| Duration::new(0, 0));
+                            let duration = duration
+                                .unwrap_or_else(|| Duration::new(0, 0));
                             self.status = Status::AsleepUntil(now + duration);
-                            return Ok(false);
                         }
                         GeneratorState::Complete(result) => {
                             self.status = Status::Completed(result);
@@ -77,15 +105,6 @@ impl<'a> Task<'a> {
             }
         }
 
-        // at this point, we expect `self.status` to be `Completed(_)`.
-        match &self.status {
-            Status::Completed(result) => match result {
-                Ok(()) => Ok(true),
-                Err(e) => Err(e.clone()),
-            },
-            _ => {
-                panic!("expected task status to be `Completed(_)`");
-            }
-        }
+        self.status.clone().into()
     }
 }

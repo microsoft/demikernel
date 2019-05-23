@@ -2,26 +2,34 @@ use super::cache::ArpCache;
 use super::pdu::{ArpOp, ArpPdu};
 use crate::prelude::*;
 use crate::protocols::ethernet2;
+use crate::r#async;
 use crate::runtime;
+use eui48::MacAddress;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::mem::swap;
+use std::net::Ipv4Addr;
 use std::rc::Rc;
 use std::time::Instant;
 
 pub struct ArpState<'a> {
-    rt: Rc<RefCell<runtime::State<'a>>>,
+    rt: Rc<RefCell<runtime::State>>,
     cache: ArpCache,
+    r#async: r#async::State<'a, (Ipv4Addr, MacAddress)>,
 }
 
 impl<'a> ArpState<'a> {
-    pub fn new(rt: Rc<RefCell<runtime::State>>, now: Instant) -> ArpState {
+    pub fn new(rt: Rc<RefCell<runtime::State>>, now: Instant) -> ArpState<'a> {
         let cache = {
             let rt = rt.borrow();
             ArpCache::from_options(&rt.options().arp.cache, now)
         };
 
-        ArpState { rt, cache }
+        ArpState {
+            rt,
+            cache,
+            r#async: r#async::State::new(),
+        }
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
@@ -65,5 +73,4 @@ impl<'a> ArpState<'a> {
             }
         }
     }
-
 }

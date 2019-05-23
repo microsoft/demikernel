@@ -7,6 +7,7 @@ custom_error! {#[derive(Clone)] pub Fail
     Misdelivered{} = "misdelivered packet",
     Unsupported{} = "unsupported",
     Ignored{} = "operation has no effect",
+    TryAgain{} = "try again later",
 }
 
 impl From<Error> for Fail {

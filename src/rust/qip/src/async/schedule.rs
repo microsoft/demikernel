@@ -31,11 +31,12 @@ impl PartialOrd for Record {
 pub struct Schedule {
     ids: HashSet<Id>,
     heap: BinaryHeap<Record>,
-    clock: Option<Instant>
+    clock: Option<Instant>,
 }
 
 impl Schedule {
-    pub fn schedule(&mut self, t: &Task) {
+    pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>) {
+        // todo: there must be a way to segregate tasks from different namespaces.
         match t.status() {
             Status::Completed(_) => {
                 panic!("attempt to schedule a completed task")

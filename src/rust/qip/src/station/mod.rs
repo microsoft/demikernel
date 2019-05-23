@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 pub struct Station<'a> {
-    rt: Rc<RefCell<runtime::State<'a>>>,
+    rt: Rc<RefCell<runtime::State>>,
     arp: arp::State<'a>,
 }
 
