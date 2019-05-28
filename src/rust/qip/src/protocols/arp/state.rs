@@ -2,14 +2,12 @@ use super::{
     cache::ArpCache,
     pdu::{ArpOp, ArpPdu},
 };
-use crate::{prelude::*, protocols::ethernet2, runtime};
+use crate::{prelude::*, protocols::ethernet2, r#async::Async, runtime};
 use eui48::MacAddress;
 use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
     time::Instant,
 };
-
-use crate::r#async::Async;
 
 pub struct ArpState<'a> {
     rt: Rc<RefCell<runtime::State>>,
