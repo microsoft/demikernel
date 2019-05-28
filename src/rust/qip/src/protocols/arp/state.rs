@@ -8,6 +8,7 @@ use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
     time::Instant,
 };
+use crate::r#async::Future;
 
 pub struct ArpState<'a> {
     rt: Rc<RefCell<runtime::State>>,
@@ -69,5 +70,9 @@ impl<'a> ArpState<'a> {
                 Ok(vec![])
             }
         }
+    }
+
+    pub fn query(&mut self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
+        
     }
 }
