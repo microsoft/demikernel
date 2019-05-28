@@ -1,4 +1,4 @@
-use super::task::{Id, Status, Task};
+use super::task::{Task, TaskId, TaskStatus};
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashSet},
@@ -8,7 +8,7 @@ use std::{
 #[derive(PartialEq, Eq)]
 struct Record {
     when: Instant,
-    tid: Id,
+    tid: TaskId,
 }
 
 impl Ord for Record {
@@ -32,7 +32,7 @@ impl PartialOrd for Record {
 
 #[derive(Default)]
 pub struct Schedule {
-    ids: HashSet<Id>,
+    ids: HashSet<TaskId>,
     heap: BinaryHeap<Record>,
     clock: Option<Instant>,
 }
@@ -42,24 +42,24 @@ impl Schedule {
         // todo: there must be a way to segregate tasks from different
         // namespaces.
         match t.status() {
-            Status::Completed(_) => {
+            TaskStatus::Completed(_) => {
                 panic!("attempt to schedule a completed task")
             }
-            Status::AsleepUntil(when) => {
-                self.ids.insert(*t.id());
+            TaskStatus::AsleepUntil(when) => {
+                self.ids.insert(t.id());
                 self.heap.push(Record {
                     when: *when,
-                    tid: *t.id(),
+                    tid: t.id(),
                 });
             }
         }
     }
 
-    pub fn cancel(&mut self, id: Id) {
+    pub fn cancel(&mut self, id: TaskId) {
         assert!(self.ids.remove(&id));
     }
 
-    pub fn poll(&mut self, now: Instant) -> Option<Id> {
+    pub fn poll(&mut self, now: Instant) -> Option<TaskId> {
         self.advance_clock(now);
         if let Some(rec) = self.heap.peek() {
             if rec.when < now {

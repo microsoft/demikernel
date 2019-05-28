@@ -7,15 +7,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub enum Status<T> {
+pub enum TaskStatus<T> {
     Completed(Result<Rc<T>>),
     AsleepUntil(Instant),
 }
 
-impl<T> Into<Result<Rc<T>>> for Status<T> {
+impl<T> Into<Result<Rc<T>>> for TaskStatus<T> {
     fn into(self) -> Result<Rc<T>> {
         match self {
-            Status::Completed(r) => match r {
+            TaskStatus::Completed(r) => match r {
                 Err(Fail::TryAgain {}) => panic!(
                     "coroutines are not allowed to return `Fail::TryAgain`"
                 ),
@@ -26,32 +26,32 @@ impl<T> Into<Result<Rc<T>>> for Status<T> {
     }
 }
 
-impl<T> Clone for Status<T> {
+impl<T> Clone for TaskStatus<T> {
     // deriving `Clone` for this struct didn't appear to work, so we implement
     // it ourselves.
     fn clone(&self) -> Self {
         match self {
-            Status::Completed(r) => match r {
-                Ok(t) => Status::Completed(Ok(t.clone())),
-                Err(e) => Status::Completed(Err(e.clone())),
+            TaskStatus::Completed(r) => match r {
+                Ok(t) => TaskStatus::Completed(Ok(t.clone())),
+                Err(e) => TaskStatus::Completed(Err(e.clone())),
             },
-            Status::AsleepUntil(t) => Status::AsleepUntil(*t),
+            TaskStatus::AsleepUntil(t) => TaskStatus::AsleepUntil(*t),
         }
     }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
-pub struct Id(u64);
+pub struct TaskId(u64);
 
-impl From<u64> for Id {
-    fn from(n: u64) -> Id {
-        Id(n)
+impl From<u64> for TaskId {
+    fn from(n: u64) -> TaskId {
+        TaskId(n)
     }
 }
 
 pub struct Task<'a, T> {
-    id: Id,
-    status: Status<T>,
+    id: TaskId,
+    status: TaskStatus<T>,
     gen: Box<
         Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
             + 'a
@@ -60,7 +60,7 @@ pub struct Task<'a, T> {
 }
 
 impl<'a, T> Task<'a, T> {
-    pub fn new<G>(id: Id, gen: G, now: Instant) -> Task<'a, T>
+    pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a, T>
     where
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
             + 'a
@@ -70,16 +70,16 @@ impl<'a, T> Task<'a, T> {
             id,
             // initialize the task with a status that will cause it to be
             // awakened immediately.
-            status: Status::AsleepUntil(now),
+            status: TaskStatus::AsleepUntil(now),
             gen: Box::new(gen),
         }
     }
 
-    pub fn id(&self) -> &Id {
-        &self.id
+    pub fn id(&self) -> TaskId {
+        self.id
     }
 
-    pub fn status(&self) -> &Status<T> {
+    pub fn status(&self) -> &TaskStatus<T> {
         &self.status
     }
 
@@ -87,8 +87,8 @@ impl<'a, T> Task<'a, T> {
         match &self.status {
             // if the task has already completed, do nothing with the
             // generator (we would panic).
-            Status::Completed(_) => (),
-            Status::AsleepUntil(when) => {
+            TaskStatus::Completed(_) => (),
+            TaskStatus::AsleepUntil(when) => {
                 if now < *when {
                     panic!("attempt to resume a sleeping task");
                 } else {
@@ -96,10 +96,11 @@ impl<'a, T> Task<'a, T> {
                         GeneratorState::Yielded(duration) => {
                             let duration = duration
                                 .unwrap_or_else(|| Duration::new(0, 0));
-                            self.status = Status::AsleepUntil(now + duration);
+                            self.status =
+                                TaskStatus::AsleepUntil(now + duration);
                         }
                         GeneratorState::Complete(result) => {
-                            self.status = Status::Completed(result);
+                            self.status = TaskStatus::Completed(result);
                         }
                     }
                 }

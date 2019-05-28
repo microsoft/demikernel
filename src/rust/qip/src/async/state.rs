@@ -1,6 +1,6 @@
 use super::{
     schedule::Schedule,
-    task::{Id, Task},
+    task::{Task, TaskId},
 };
 use crate::prelude::*;
 use std::{
@@ -10,54 +10,63 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct State<'a, T> {
+pub struct AsyncState<'a, T> {
     next_unused_id: u64,
-    tasks: HashMap<Id, Task<'a, T>>,
+    tasks: HashMap<TaskId, Task<'a, T>>,
     schedule: Schedule,
+    clock: Instant,
 }
 
-impl<'a, T> State<'a, T> {
-    pub fn new() -> State<'a, T> {
-        State {
+impl<'a, T> AsyncState<'a, T> {
+    pub fn new(now: Instant) -> AsyncState<'a, T> {
+        AsyncState {
             next_unused_id: 0,
             tasks: HashMap::new(),
             schedule: Schedule::default(),
+            clock: now,
         }
     }
 
-    pub fn new_task<G>(&mut self, gen: G, now: Instant) -> Id
+    pub fn start_task<G>(&mut self, gen: G) -> TaskId
     where
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
             + 'a
             + Unpin,
     {
-        let id = self.new_id();
-        let t = Task::new(id, gen, now);
+        let tid = self.new_tid();
+        let t = Task::new(tid, gen, self.clock);
         self.schedule.schedule(&t);
-        self.tasks.insert(id, t);
-        id
+        self.tasks.insert(tid, t);
+        tid
     }
 
-    fn new_id(&mut self) -> Id {
-        let id = Id::from(self.next_unused_id);
+    fn new_tid(&mut self) -> TaskId {
+        let tid = TaskId::from(self.next_unused_id);
         // todo: we should deal with overflow.
         self.next_unused_id += self.next_unused_id;
-        id
+        tid
     }
 
-    pub fn poll(&mut self, now: Instant) -> Result<Rc<T>> {
-        if let Some(id) = self.schedule.poll(now) {
+    pub fn poll(&mut self, now: Instant) -> Result<TaskId> {
+        assert!(now >= self.clock);
+        self.clock = now;
+        if let Some(tid) = self.schedule.poll(now) {
             // we don't anticipate a reasonable situation where the schedule
             // would give us an ID that isn't in `self.tasks`.
-            let task = self.tasks.get_mut(&id).unwrap();
-            task.resume(now)
+            let task = self.tasks.get_mut(&tid).unwrap();
+            task.resume(now)?;
+            Ok(task.id())
         } else {
             Err(Fail::TryAgain {})
         }
     }
 
-    pub fn drop_task(&mut self, id: Id) {
-        self.schedule.cancel(id);
-        assert!(self.tasks.remove(&id).is_some());
+    pub fn drop_task(&mut self, tid: TaskId) {
+        self.schedule.cancel(tid);
+        assert!(self.tasks.remove(&tid).is_some());
+    }
+
+    pub fn get_task(&self, tid: TaskId) -> &Task<'a, T> {
+        self.tasks.get(&tid).unwrap()
     }
 }
