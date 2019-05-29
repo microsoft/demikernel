@@ -3,16 +3,16 @@ use crate::prelude::*;
 use std::{marker::PhantomData, time::Instant};
 
 #[derive(Clone)]
-pub struct MapFuture<Source, F, T> {
+pub struct MapFuture<'a, Source, F, T> {
     source: Source,
     mapping: F,
     _marker: PhantomData<T>,
 }
 
-impl<Source, F, T> MapFuture<Source, F, T> {
-    pub fn new<U>(source: Source, mapping: F) -> MapFuture<Source, F, T>
+impl<'a, Source, F, T> MapFuture<'a, Source, F, T> {
+    pub fn new<U>(source: Source, mapping: F) -> MapFuture<'a, Source, F, T>
     where
-        Source: Future<T>,
+        Source: Future<'a, T>,
         F: Fn(&T) -> U,
         T: Copy,
         U: Sized,
@@ -25,9 +25,9 @@ impl<Source, F, T> MapFuture<Source, F, T> {
     }
 }
 
-impl<Source, F, T, U> Future<U> for MapFuture<Source, F, T>
+impl<'a, Source, F, T, U> Future<'a, U> for MapFuture<'a, Source, F, T>
 where
-    Source: Future<T>,
+    Source: Future<'a, T>,
     F: Clone + Fn(&T) -> U,
     T: Copy,
     U: Copy,

@@ -10,8 +10,12 @@ use crate::{
 };
 use eui48::MacAddress;
 use std::{
-    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
-    time::Instant,
+    cell::RefCell,
+    convert::TryFrom,
+    mem::swap,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{Duration, Instant},
 };
 
 pub struct ArpState<'a> {
@@ -76,7 +80,15 @@ impl<'a> ArpState<'a> {
         }
     }
 
-    /*pub fn query(&mut self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
-
-    }*/
+    fn query(
+        &self,
+        ipv4_addr: Ipv4Addr,
+    ) -> impl Future<'a, (Ipv4Addr, MacAddress)> {
+        self.r#async.start_task(|| {
+            // rust does not recognize the closure as a generator unless a
+            // `yield` statement is present.
+            yield None;
+            Ok((Ipv4Addr::BROADCAST, MacAddress::broadcast()))
+        })
+    }
 }

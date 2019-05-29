@@ -3,7 +3,7 @@ pub mod ops;
 use crate::prelude::*;
 use std::time::Instant;
 
-pub trait Future<T>: Clone
+pub trait Future<'a, T>: Clone
 where
     T: Copy,
 {

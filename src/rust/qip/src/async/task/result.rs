@@ -20,7 +20,7 @@ impl<'a, T> TaskResult<'a, T> {
     }
 }
 
-impl<'a, T> Future<T> for TaskResult<'a, T>
+impl<'a, T> Future<'a, T> for TaskResult<'a, T>
 where
     T: Sized + Copy,
 {
