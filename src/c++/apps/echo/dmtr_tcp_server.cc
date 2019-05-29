@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }
-                
+
                 auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
                 auto push_dt = boost::chrono::steady_clock::now() - t0;
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
                 DMTR_OK(dmtr_wait(NULL, token));
                 auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
-                t0 = boost::chrono::steady_clock::now();
+        		t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 start_times[token] = t0;
                 tokens[idx] = token;
@@ -142,5 +142,3 @@ int main(int argc, char *argv[])
         }
     }
 }
-
-
