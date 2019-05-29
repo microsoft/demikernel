@@ -6,7 +6,6 @@ use crate::prelude::*;
 use std::{
     collections::HashMap,
     ops::Generator,
-    rc::Rc,
     time::{Duration, Instant},
 };
 
@@ -17,7 +16,10 @@ pub struct AsyncState<'a, T> {
     clock: Instant,
 }
 
-impl<'a, T> AsyncState<'a, T> {
+impl<'a, T> AsyncState<'a, T>
+where
+    T: Copy,
+{
     pub fn new(now: Instant) -> AsyncState<'a, T> {
         AsyncState {
             next_unused_id: 0,
@@ -29,7 +31,7 @@ impl<'a, T> AsyncState<'a, T> {
 
     pub fn start_task<G>(&mut self, gen: G) -> TaskId
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
+        G: Generator<Yield = Option<Duration>, Return = Result<T>>
             + 'a
             + Unpin,
     {

@@ -1,19 +1,22 @@
+mod result;
+
 use crate::prelude::*;
 use std::{
     marker::Unpin,
     ops::{Generator, GeneratorState},
     pin::Pin,
-    rc::Rc,
     time::{Duration, Instant},
 };
 
+pub use result::TaskResult;
+
 pub enum TaskStatus<T> {
-    Completed(Result<Rc<T>>),
+    Completed(Result<T>),
     AsleepUntil(Instant),
 }
 
-impl<T> Into<Result<Rc<T>>> for TaskStatus<T> {
-    fn into(self) -> Result<Rc<T>> {
+impl<T> Into<Result<T>> for TaskStatus<T> {
+    fn into(self) -> Result<T> {
         match self {
             TaskStatus::Completed(r) => match r {
                 Err(Fail::TryAgain {}) => panic!(
@@ -26,13 +29,16 @@ impl<T> Into<Result<Rc<T>>> for TaskStatus<T> {
     }
 }
 
-impl<T> Clone for TaskStatus<T> {
+impl<T> Clone for TaskStatus<T>
+where
+    T: Copy,
+{
     // deriving `Clone` for this struct didn't appear to work, so we implement
     // it ourselves.
     fn clone(&self) -> Self {
         match self {
             TaskStatus::Completed(r) => match r {
-                Ok(t) => TaskStatus::Completed(Ok(t.clone())),
+                Ok(t) => TaskStatus::Completed(Ok(*t)),
                 Err(e) => TaskStatus::Completed(Err(e.clone())),
             },
             TaskStatus::AsleepUntil(t) => TaskStatus::AsleepUntil(*t),
@@ -53,16 +59,17 @@ pub struct Task<'a, T> {
     id: TaskId,
     status: TaskStatus<T>,
     gen: Box<
-        Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
-            + 'a
-            + Unpin,
+        Generator<Yield = Option<Duration>, Return = Result<T>> + 'a + Unpin,
     >,
 }
 
-impl<'a, T> Task<'a, T> {
+impl<'a, T> Task<'a, T>
+where
+    T: Copy,
+{
     pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a, T>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
+        G: Generator<Yield = Option<Duration>, Return = Result<T>>
             + 'a
             + Unpin,
     {
@@ -83,7 +90,7 @@ impl<'a, T> Task<'a, T> {
         &self.status
     }
 
-    pub fn resume(&mut self, now: Instant) -> Result<Rc<T>> {
+    pub fn resume(&mut self, now: Instant) -> Result<T> {
         match &self.status {
             // if the task has already completed, do nothing with the
             // generator (we would panic).

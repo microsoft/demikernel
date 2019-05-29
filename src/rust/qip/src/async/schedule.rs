@@ -38,7 +38,10 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>) {
+    pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>)
+    where
+        T: Copy,
+    {
         // todo: there must be a way to segregate tasks from different
         // namespaces.
         match t.status() {

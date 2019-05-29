@@ -4,7 +4,6 @@ mod state;
 mod task;
 
 use crate::prelude::*;
-use future::Future;
 use state::AsyncState;
 use std::{
     cell::RefCell,
@@ -12,28 +11,33 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use task::TaskId;
+use task::{TaskId, TaskResult};
+
+pub use future::Future;
 
 pub struct Async<'a, T> {
     state: Rc<RefCell<AsyncState<'a, T>>>,
 }
 
-impl<'a, T> Async<'a, T> {
+impl<'a, T> Async<'a, T>
+where
+    T: Copy,
+{
     pub fn new(now: Instant) -> Self {
         Async {
             state: Rc::new(RefCell::new(AsyncState::new(now))),
         }
     }
 
-    pub fn start_task<G>(&self, gen: G) -> Future<'a, T>
+    pub fn start_task<G>(&self, gen: G) -> TaskResult<'a, T>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<T>>>
+        G: Generator<Yield = Option<Duration>, Return = Result<T>>
             + 'a
             + Unpin,
     {
         let mut state = self.state.borrow_mut();
         let tid = state.start_task(gen);
-        Future::new(self.state.clone(), tid)
+        TaskResult::new(self.state.clone(), tid)
     }
 
     pub fn drop_task(&mut self, tid: TaskId) {
