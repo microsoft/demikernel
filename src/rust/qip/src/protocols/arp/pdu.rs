@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{prelude::*, protocols::ethernet2};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use eui48::MacAddress;
 use num_traits::FromPrimitive;
@@ -100,6 +100,21 @@ impl ArpPdu {
 
     pub fn size() -> usize {
         28
+    }
+
+    pub fn to_packet(&self) -> Result<Vec<u8>> {
+        let ether2_header = ethernet2::Header {
+            dest_addr: self.target_link_addr,
+            src_addr: self.sender_link_addr,
+            ether_type: ethernet2::EtherType::Arp,
+        };
+
+        let mut packet =
+            Vec::with_capacity(ArpPdu::size() + ethernet2::Header::size());
+        ether2_header.write(&mut packet)?;
+        self.write(&mut packet)?;
+
+        Ok(packet)
     }
 }
 

@@ -11,7 +11,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use task::{TaskId, TaskResult};
+use task::TaskId;
 
 pub use future::Future;
 
@@ -29,7 +29,7 @@ where
         }
     }
 
-    pub fn start_task<G>(&self, gen: G) -> TaskResult<'a, T>
+    pub fn start_task<G>(&self, gen: G) -> Future<'a, T>
     where
         G: Generator<Yield = Option<Duration>, Return = Result<T>>
             + 'a
@@ -37,7 +37,10 @@ where
     {
         let mut state = self.state.borrow_mut();
         let tid = state.start_task(gen);
-        TaskResult::new(self.state.clone(), tid)
+        Future::TaskResult {
+            r#async: self.state.clone(),
+            tid,
+        }
     }
 
     pub fn drop_task(&mut self, tid: TaskId) {

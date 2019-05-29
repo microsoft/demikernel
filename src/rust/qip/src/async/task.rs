@@ -1,5 +1,3 @@
-mod result;
-
 use crate::prelude::*;
 use std::{
     marker::Unpin,
@@ -7,8 +5,6 @@ use std::{
     pin::Pin,
     time::{Duration, Instant},
 };
-
-pub use result::TaskResult;
 
 pub enum TaskStatus<T> {
     Completed(Result<T>),

@@ -10,18 +10,14 @@ use crate::{
 };
 use eui48::MacAddress;
 use std::{
-    cell::RefCell,
-    convert::TryFrom,
-    mem::swap,
-    net::Ipv4Addr,
-    rc::Rc,
-    time::{Duration, Instant},
+    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
+    time::Instant,
 };
 
 pub struct ArpState<'a> {
     rt: Rc<RefCell<runtime::State>>,
-    cache: ArpCache,
-    r#async: Async<'a, (Ipv4Addr, MacAddress)>,
+    cache: Rc<RefCell<ArpCache>>,
+    r#async: Async<'a, MacAddress>,
 }
 
 impl<'a> ArpState<'a> {
@@ -33,22 +29,24 @@ impl<'a> ArpState<'a> {
 
         ArpState {
             rt,
-            cache,
+            cache: Rc::new(RefCell::new(cache)),
             r#async: Async::new(now),
         }
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
-        self.cache.advance_clock(now)
+        let mut cache = self.cache.borrow_mut();
+        cache.advance_clock(now)
     }
 
-    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<Vec<Effect>> {
+    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
         let (my_ipv4_addr, my_link_addr) = {
             let rt = self.rt.borrow();
             (rt.options().my_ipv4_addr, rt.options().my_link_addr)
         };
 
         let mut arp = ArpPdu::try_from(bytes.as_slice())?;
+        // drop request if it's not intended for this station.
         if arp.target_ip_addr != my_ipv4_addr {
             return Err(Fail::Ignored {});
         }
@@ -60,35 +58,65 @@ impl<'a> ArpState<'a> {
                 swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
                 swap(&mut arp.sender_link_addr, &mut arp.target_link_addr);
 
-                let ether2_header = ethernet2::Header {
-                    dest_addr: arp.target_link_addr,
-                    src_addr: arp.sender_link_addr,
-                    ether_type: ethernet2::EtherType::Arp,
-                };
-
-                let mut packet = Vec::with_capacity(
-                    ArpPdu::size() + ethernet2::Header::size(),
-                );
-                ether2_header.write(&mut packet)?;
-                arp.write(&mut packet)?;
-                Ok(vec![Effect::Transmit(packet)])
+                let packet = arp.to_packet()?;
+                let mut rt = self.rt.borrow_mut();
+                rt.effects().push_back(Effect::Transmit(packet));
+                Ok(())
             }
             ArpOp::ArpReply => {
-                self.cache.insert(arp.target_ip_addr, arp.target_link_addr);
-                Ok(vec![])
+                let mut cache = self.cache.borrow_mut();
+                cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
+                Ok(())
             }
         }
     }
 
-    fn query(
-        &self,
-        ipv4_addr: Ipv4Addr,
-    ) -> impl Future<'a, (Ipv4Addr, MacAddress)> {
-        self.r#async.start_task(|| {
-            // rust does not recognize the closure as a generator unless a
-            // `yield` statement is present.
-            yield None;
-            Ok((Ipv4Addr::BROADCAST, MacAddress::broadcast()))
+    fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
+        {
+            let cache = self.cache.borrow();
+            if let Some(link_addr) = cache.get_link_addr(ipv4_addr) {
+                return Future::Const(Ok(*link_addr));
+            }
+        }
+
+        let cache = self.cache.clone();
+        let rt = self.rt.clone();
+        self.r#async.start_task(move || {
+            let (my_ipv4_addr, my_link_addr) = {
+                let rt = rt.borrow();
+                (rt.options().my_ipv4_addr, rt.options().my_link_addr)
+            };
+
+            {
+                let arp = ArpPdu {
+                    op: ArpOp::ArpRequest,
+                    sender_link_addr: my_link_addr,
+                    sender_ip_addr: my_ipv4_addr,
+                    target_link_addr: MacAddress::nil(),
+                    target_ip_addr: ipv4_addr,
+                };
+
+                let packet = arp.to_packet()?;
+                let mut rt = rt.borrow_mut();
+                rt.effects().push_back(Effect::Transmit(packet));
+            }
+
+            // can't make progress until a reply deposits an entry in the
+            // cache.
+            loop {
+                let result = {
+                    let cache = cache.borrow();
+                    cache.get_link_addr(my_ipv4_addr).copied()
+                };
+
+                if let Some(link_addr) = result {
+                    return Ok(link_addr);
+                } else {
+                    // unable to make progress until the appropriate entry is
+                    // inserted into the cache.
+                    yield None;
+                }
+            }
         })
     }
 }

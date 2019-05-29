@@ -22,7 +22,7 @@ impl<'a> Station<'a> {
         self.arp.advance_clock(now)
     }
 
-    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<Vec<Effect>> {
+    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
         let frame = ethernet2::Frame::try_from(bytes)?;
 
         {
