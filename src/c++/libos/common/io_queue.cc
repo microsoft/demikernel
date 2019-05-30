@@ -12,7 +12,7 @@ dmtr::io_queue::task::task() :
     my_error(EAGAIN)
 {}
 
-int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
+int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
     DMTR_NONZERO(EINVAL, qt);
     DMTR_TRUE(EINVAL, DMTR_OPC_INVALID != opcode);
 

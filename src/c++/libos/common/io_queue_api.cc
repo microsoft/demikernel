@@ -326,8 +326,6 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
             return ret;
         case 0:
             return 0;
-
-
     }
 
     return ret;
