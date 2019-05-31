@@ -18,7 +18,7 @@ impl<'a, T> Future<'a, T>
 where
     T: Copy,
 {
-    fn completed(&self) -> bool {
+    pub fn completed(&self) -> bool {
         match self {
             Future::Const(_) => true,
             Future::TaskResult { r#async, tid } => {
@@ -32,7 +32,7 @@ where
         }
     }
 
-    fn poll(&mut self, now: Instant) -> Result<T> {
+    pub fn poll(&mut self, now: Instant) -> Result<T> {
         match self {
             Future::Const(v) => v.clone(),
             Future::TaskResult { r#async, tid } => {

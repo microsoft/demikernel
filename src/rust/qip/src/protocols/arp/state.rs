@@ -4,7 +4,6 @@ use super::{
 };
 use crate::{
     prelude::*,
-    protocols::ethernet2,
     r#async::{Async, Future},
     runtime,
 };
@@ -71,7 +70,7 @@ impl<'a> ArpState<'a> {
         }
     }
 
-    fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
         {
             let cache = self.cache.borrow();
             if let Some(link_addr) = cache.get_link_addr(ipv4_addr) {
@@ -118,5 +117,10 @@ impl<'a> ArpState<'a> {
                 }
             }
         })
+    }
+
+    #[cfg(test)]
+    pub fn rt(&self) -> Rc<RefCell<runtime::State>> {
+        self.rt.clone()
     }
 }
