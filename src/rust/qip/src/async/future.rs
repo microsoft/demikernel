@@ -16,7 +16,7 @@ pub enum Future<'a, T> {
 
 impl<'a, T> Future<'a, T>
 where
-    T: Copy,
+    T: Clone,
 {
     pub fn completed(&self) -> bool {
         match self {

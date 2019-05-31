@@ -88,8 +88,8 @@ pub type Iter<'a, K, V> = Iterator<Item = (&'a K, &'a V)>;
 
 impl<K, V> HashTtlCache<K, V>
 where
-    K: Eq + Hash + Copy,
-    V: Copy,
+    K: Eq + Hash + Clone,
+    V: Clone,
 {
     pub fn new(
         now: Instant,
@@ -119,17 +119,17 @@ where
 
         let expiry = ttl.map(|dt| Expiry(self.clock + dt));
 
-        let old_value = match self.map.entry(key) {
+        let old_value = match self.map.entry(key.clone()) {
             HashMapEntry::Occupied(mut e) => {
                 let mut record = e.get_mut();
                 let old_value = if let Some(ref expiry) = record.expiry {
                     if expiry.has_expired(self.clock) {
                         None
                     } else {
-                        Some(record.value)
+                        Some(record.value.clone())
                     }
                 } else {
-                    Some(record.value)
+                    Some(record.value.clone())
                 };
 
                 record.value = value;
@@ -164,7 +164,7 @@ where
         if let Some(ref record) = self.map.remove(key) {
             if let Some(ref expiry) = record.expiry {
                 if !expiry.has_expired(self.clock) {
-                    return Some(record.value);
+                    return Some(record.value.clone());
                 }
             }
         }
@@ -227,7 +227,7 @@ where
     fn try_evict_once(&mut self) -> Option<(K, V)> {
         loop {
             let (key, graveyard_expiry) = match self.graveyard.peek() {
-                Some(e) => ((*e).key, (*e).expiry.clone()),
+                Some(e) => ((*e).key.clone(), (*e).expiry.clone()),
                 None =>
                 // the graveyard is empty, so we cannot evict anything.
                 {
@@ -241,19 +241,19 @@ where
             }
 
             assert!(self.graveyard.pop().is_some());
-            match self.map.entry(key) {
+            match self.map.entry(key.clone()) {
                 HashMapEntry::Occupied(e) => {
                     let (record_expiry, value) = {
                         let record = e.get();
                         let expiry = record.expiry.as_ref().unwrap();
-                        (expiry, record.value)
+                        (expiry, record.value.clone())
                     };
 
                     if &graveyard_expiry == record_expiry {
                         // the entry's expiry matches our tombstone; time to
                         // evict.
                         e.remove_entry();
-                        return Some((key, value));
+                        return Some((key.clone(), value));
                     } else {
                         // the entry hasn't expired yet; keep looking.
                         assert!(!record_expiry.has_expired(self.clock));

@@ -12,7 +12,7 @@ use std::{
 
 pub use options::ArpCacheOptions;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct Record {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,

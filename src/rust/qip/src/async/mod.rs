@@ -21,7 +21,7 @@ pub struct Async<'a, T> {
 
 impl<'a, T> Async<'a, T>
 where
-    T: Copy,
+    T: Clone,
 {
     pub fn new(now: Instant) -> Self {
         Async {

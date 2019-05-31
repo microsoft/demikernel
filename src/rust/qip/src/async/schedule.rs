@@ -40,7 +40,7 @@ pub struct Schedule {
 impl Schedule {
     pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>)
     where
-        T: Copy,
+        T: Clone,
     {
         // todo: there must be a way to segregate tasks from different
         // namespaces.

@@ -18,7 +18,7 @@ pub struct AsyncState<'a, T> {
 
 impl<'a, T> AsyncState<'a, T>
 where
-    T: Copy,
+    T: Clone,
 {
     pub fn new(now: Instant) -> AsyncState<'a, T> {
         AsyncState {

@@ -28,14 +28,14 @@ impl<T> Into<Result<T>> for TaskStatus<T> {
 
 impl<T> Clone for TaskStatus<T>
 where
-    T: Copy,
+    T: Clone,
 {
     // deriving `Clone` for this struct didn't appear to work, so we implement
     // it ourselves.
     fn clone(&self) -> Self {
         match self {
             TaskStatus::Completed(r) => match r {
-                Ok(t) => TaskStatus::Completed(Ok(*t)),
+                Ok(t) => TaskStatus::Completed(Ok(t.clone())),
                 Err(e) => TaskStatus::Completed(Err(e.clone())),
             },
             TaskStatus::AsleepUntil(t) => TaskStatus::AsleepUntil(*t),
@@ -43,7 +43,7 @@ where
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct TaskId(u64);
 
 impl From<u64> for TaskId {
@@ -74,7 +74,7 @@ pub struct Task<'a, T> {
 
 impl<'a, T> Task<'a, T>
 where
-    T: Copy,
+    T: Clone,
 {
     pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a, T>
     where
