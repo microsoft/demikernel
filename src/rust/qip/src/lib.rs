@@ -11,6 +11,9 @@ extern crate derive_more;
 #[macro_use]
 extern crate num_derive;
 
+#[macro_use]
+extern crate serde_yaml;
+
 mod effect;
 mod options;
 mod prelude;
@@ -27,3 +30,4 @@ pub mod station;
 
 pub use effect::Effect;
 pub use options::Options;
+pub use station::Station;

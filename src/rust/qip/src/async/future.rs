@@ -33,6 +33,7 @@ where
     }
 
     pub fn poll(&mut self, now: Instant) -> Result<T> {
+        eprintln!("# Future::poll()");
         match self {
             Future::Const(v) => v.clone(),
             Future::TaskResult { r#async, tid } => {

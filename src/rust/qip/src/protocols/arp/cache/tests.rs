@@ -14,7 +14,7 @@ fn with_default_ttl() {
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
-    let mut cache = ArpCache::new(Some(Duration::from_secs(1)), now);
+    let mut cache = ArpCache::new(now, Some(Duration::from_secs(1)));
     cache.insert(ALICE_IP.clone(), ALICE_MAC.clone());
     assert!(cache.get_link_addr(ALICE_IP.clone()) == Some(&ALICE_MAC));
     assert!(cache.get_ipv4_addr(ALICE_MAC.clone()) == Some(&ALICE_IP));

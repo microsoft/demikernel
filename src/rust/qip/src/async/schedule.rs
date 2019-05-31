@@ -65,7 +65,7 @@ impl Schedule {
     pub fn poll(&mut self, now: Instant) -> Option<TaskId> {
         self.advance_clock(now);
         if let Some(rec) = self.heap.peek() {
-            if rec.when < now {
+            if rec.when > now {
                 // next task due isn't due yet.
                 None
             } else {

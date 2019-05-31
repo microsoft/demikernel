@@ -1,6 +1,5 @@
-use crate::prelude::*;
+use crate::{prelude::*, protocols::ethernet2::MacAddress};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use eui48::MacAddress;
 use num_traits::FromPrimitive;
 use std::io::{Read, Write};
 

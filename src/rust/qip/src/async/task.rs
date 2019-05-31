@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use std::{
+    fmt,
     marker::Unpin,
     ops::{Generator, GeneratorState},
     pin::Pin,
@@ -48,6 +49,18 @@ pub struct TaskId(u64);
 impl From<u64> for TaskId {
     fn from(n: u64) -> TaskId {
         TaskId(n)
+    }
+}
+
+impl fmt::Display for TaskId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Debug for TaskId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MacAddress({})", self.0)
     }
 }
 

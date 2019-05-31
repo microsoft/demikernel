@@ -1,6 +1,8 @@
-use crate::{prelude::*, protocols::ethernet2};
+use crate::{
+    prelude::*,
+    protocols::ethernet2::{self, MacAddress},
+};
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use eui48::MacAddress;
 use num_traits::FromPrimitive;
 use std::{
     convert::TryFrom,
@@ -74,11 +76,9 @@ impl ArpPdu {
 
         Ok(ArpPdu {
             op: ArpOp::try_from(op)?,
-            sender_link_addr: MacAddress::from_bytes(&sender_link_addr)
-                .unwrap(),
+            sender_link_addr: MacAddress::new(sender_link_addr),
             sender_ip_addr: From::from(sender_ip_addr),
-            target_link_addr: MacAddress::from_bytes(&target_link_addr)
-                .unwrap(),
+            target_link_addr: MacAddress::new(target_link_addr),
             target_ip_addr: From::from(target_ip_addr),
         })
     }
@@ -103,8 +103,38 @@ impl ArpPdu {
     }
 
     pub fn to_packet(&self) -> Result<Vec<u8>> {
+        let dest_addr = match self.op {
+            ArpOp::ArpRequest => {
+                if MacAddress::nil() != self.target_link_addr {
+                    panic!(
+                        "the target link address of an ARP request must be \
+                         `MacAddress::nil()`"
+                    );
+                }
+
+                MacAddress::broadcast()
+            }
+            ArpOp::ArpReply => {
+                if MacAddress::nil() == self.target_link_addr {
+                    panic!(
+                        "the target link address of an ARP reply must not be \
+                         `MacAddress::nil()`"
+                    );
+                }
+
+                if MacAddress::broadcast() == self.target_link_addr {
+                    panic!(
+                        "the target link address of an ARP reply must not be \
+                         `MacAddress::broadcast()`"
+                    );
+                }
+
+                self.target_link_addr
+            }
+        };
+
         let ether2_header = ethernet2::Header {
-            dest_addr: self.target_link_addr,
+            dest_addr,
             src_addr: self.sender_link_addr,
             ether_type: ethernet2::EtherType::Arp,
         };

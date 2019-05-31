@@ -4,13 +4,13 @@ use super::{
 };
 use crate::{
     prelude::*,
+    protocols::ethernet2::MacAddress,
     r#async::{Async, Future},
     runtime,
 };
-use eui48::MacAddress;
 use std::{
-    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
-    time::Instant,
+    cell::RefCell, collections::HashMap, convert::TryFrom, mem::swap,
+    net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
 pub struct ArpState<'a> {
@@ -20,10 +20,10 @@ pub struct ArpState<'a> {
 }
 
 impl<'a> ArpState<'a> {
-    pub fn new(rt: Rc<RefCell<runtime::State>>, now: Instant) -> ArpState<'a> {
+    pub fn new(now: Instant, rt: Rc<RefCell<runtime::State>>) -> ArpState<'a> {
         let cache = {
             let rt = rt.borrow();
-            ArpCache::from_options(&rt.options().arp.cache, now)
+            ArpCache::from_options(now, &rt.options().arp.cache)
         };
 
         ArpState {
@@ -52,6 +52,7 @@ impl<'a> ArpState<'a> {
 
         match arp.op {
             ArpOp::ArpRequest => {
+                eprintln!("# received arp request");
                 arp.op = ArpOp::ArpReply;
                 arp.target_link_addr = my_link_addr;
                 swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
@@ -63,6 +64,10 @@ impl<'a> ArpState<'a> {
                 Ok(())
             }
             ArpOp::ArpReply => {
+                eprintln!(
+                    "# received arp reply: `{}` -> `{}`",
+                    arp.sender_ip_addr, arp.sender_link_addr
+                );
                 let mut cache = self.cache.borrow_mut();
                 cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
                 Ok(())
@@ -103,9 +108,10 @@ impl<'a> ArpState<'a> {
             // can't make progress until a reply deposits an entry in the
             // cache.
             loop {
+                eprintln!("# looking up `{}` in ARP cache...", my_ipv4_addr);
                 let result = {
                     let cache = cache.borrow();
-                    cache.get_link_addr(my_ipv4_addr).copied()
+                    cache.get_link_addr(ipv4_addr).copied()
                 };
 
                 if let Some(link_addr) = result {
@@ -119,8 +125,8 @@ impl<'a> ArpState<'a> {
         })
     }
 
-    #[cfg(test)]
-    pub fn rt(&self) -> Rc<RefCell<runtime::State>> {
-        self.rt.clone()
+    pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+        let cache = self.cache.borrow();
+        cache.export()
     }
 }

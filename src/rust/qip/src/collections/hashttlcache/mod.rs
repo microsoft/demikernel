@@ -84,14 +84,16 @@ where
     clock: Instant,
 }
 
+pub type Iter<'a, K, V> = Iterator<Item = (&'a K, &'a V)>;
+
 impl<K, V> HashTtlCache<K, V>
 where
     K: Eq + Hash + Copy,
     V: Copy,
 {
     pub fn new(
-        default_ttl: Option<Duration>,
         now: Instant,
+        default_ttl: Option<Duration>,
     ) -> HashTtlCache<K, V> {
         if let Some(ttl) = default_ttl {
             assert!(ttl > Duration::new(0, 0));
@@ -171,7 +173,31 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.map.get(key).map(|r| &r.value)
+        eprintln!("# HashTtlCache.get(): self.map.len() -> {}", self.map.len());
+        match self.map.get(key) {
+            // not present.
+            None => {
+                eprintln!("# HashTtlCache.get() -> not present");
+                None
+            }
+            Some(r) => match r.expiry.as_ref() {
+                None =>
+                // no expiration on entry.
+                {
+                    Some(&r.value)
+                }
+                Some(e) => {
+                    if e.has_expired(self.clock) {
+                        eprintln!("# HashTtlCache.get() -> present & expired");
+                        // present and expired
+                        None
+                    } else {
+                        // present and not yet exipred.
+                        Some(&r.value)
+                    }
+                }
+            },
+        }
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
@@ -237,5 +263,19 @@ where
                 HashMapEntry::Vacant(_) => continue,
             }
         }
+    }
+
+    // todo: how do i implement `std::iter::IntoIterator` for this type?
+    pub fn iter(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
+        let clock = self.clock;
+        self.map.iter().flat_map(move |(key, record)| {
+            if let Some(e) = record.expiry.clone() {
+                if e.has_expired(clock) {
+                    return None;
+                }
+            }
+
+            Some((key, &record.value))
+        })
     }
 }

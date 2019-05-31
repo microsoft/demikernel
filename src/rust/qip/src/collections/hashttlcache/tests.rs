@@ -7,7 +7,7 @@ fn with_default_ttl() {
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
-    let mut cache = HashTtlCache::new(Some(Duration::from_secs(1)), now);
+    let mut cache = HashTtlCache::new(now, Some(Duration::from_secs(1)));
     cache.insert("a", 'a');
     assert!(cache.get(&"a") == Some(&'a'));
     cache.advance_clock(later);
@@ -23,7 +23,7 @@ fn without_default_ttl() {
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
-    let mut cache = HashTtlCache::new(Some(Duration::from_secs(1)), now);
+    let mut cache = HashTtlCache::new(now, Some(Duration::from_secs(1)));
     cache.insert_with_ttl("a", 'a', None);
     assert!(cache.get(&"a") == Some(&'a'));
     cache.advance_clock(later);
@@ -39,7 +39,7 @@ fn with_explicit_ttl() {
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
-    let mut cache = HashTtlCache::new(Some(Duration::from_secs(2)), now);
+    let mut cache = HashTtlCache::new(now, Some(Duration::from_secs(2)));
     cache.insert_with_ttl("a", 'a', Some(Duration::from_secs(1)));
     assert!(cache.get(&"a") == Some(&'a'));
     cache.advance_clock(later);
@@ -57,7 +57,7 @@ fn replace_entry() {
     let later = now + Duration::from_secs(1);
     let even_later = now + Duration::from_secs(2);
 
-    let mut cache = HashTtlCache::new(Some(Duration::from_secs(1)), now);
+    let mut cache = HashTtlCache::new(now, Some(Duration::from_secs(1)));
     cache.insert("a", 'a');
     assert!(cache.get(&"a") == Some(&'a'));
     cache.insert_with_ttl("a", 'a', Some(Duration::from_secs(2)));
@@ -79,7 +79,7 @@ fn limited_evictions() {
     let now = Instant::now();
     let later = now + Duration::from_secs(1);
 
-    let mut cache = HashTtlCache::new(Some(Duration::from_secs(1)), now);
+    let mut cache = HashTtlCache::new(now, Some(Duration::from_secs(1)));
     cache.insert_with_ttl("a", 'a', Some(Duration::from_millis(500)));
     assert!(cache.get(&"a") == Some(&'a'));
     cache.insert("b", 'b');

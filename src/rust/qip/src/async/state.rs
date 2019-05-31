@@ -50,13 +50,21 @@ where
     }
 
     pub fn poll(&mut self, now: Instant) -> Result<TaskId> {
+        eprintln!("# async::State::poll()");
         assert!(now >= self.clock);
         self.clock = now;
         if let Some(tid) = self.schedule.poll(now) {
+            eprintln!(
+                "# async::Schedule::poll() returned a task (tid = {})",
+                tid
+            );
             // we don't anticipate a reasonable situation where the schedule
             // would give us an ID that isn't in `self.tasks`.
             let task = self.tasks.get_mut(&tid).unwrap();
-            task.resume(now)?;
+            if let Err(Fail::TryAgain {}) = task.resume(now) {
+                self.schedule.schedule(task);
+            }
+
             Ok(task.id())
         } else {
             Err(Fail::TryAgain {})

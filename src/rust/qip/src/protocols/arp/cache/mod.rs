@@ -3,8 +3,7 @@ mod options;
 #[cfg(test)]
 mod tests;
 
-use crate::collections::HashTtlCache;
-use eui48::MacAddress;
+use crate::{collections::HashTtlCache, protocols::ethernet2::MacAddress};
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -25,15 +24,15 @@ pub struct ArpCache {
 }
 
 impl ArpCache {
-    pub fn new(default_ttl: Option<Duration>, now: Instant) -> ArpCache {
+    pub fn new(now: Instant, default_ttl: Option<Duration>) -> ArpCache {
         ArpCache {
-            cache: HashTtlCache::new(default_ttl, now),
+            cache: HashTtlCache::new(now, default_ttl),
             rmap: HashMap::new(),
         }
     }
 
-    pub fn from_options(options: &ArpCacheOptions, now: Instant) -> ArpCache {
-        ArpCache::new(options.default_ttl, now)
+    pub fn from_options(now: Instant, options: &ArpCacheOptions) -> ArpCache {
+        ArpCache::new(now, options.default_ttl)
     }
 
     pub fn insert_with_ttl(
@@ -82,7 +81,9 @@ impl ArpCache {
     }
 
     pub fn get_link_addr(&self, ipv4_addr: Ipv4Addr) -> Option<&MacAddress> {
-        self.cache.get(&ipv4_addr).map(|r| &r.link_addr)
+        let result = self.cache.get(&ipv4_addr).map(|r| &r.link_addr);
+        eprintln!("# get_link_addr() -> {:?}", result);
+        result
     }
 
     pub fn get_ipv4_addr(&self, link_addr: MacAddress) -> Option<&Ipv4Addr> {
@@ -105,5 +106,14 @@ impl ArpCache {
         }
 
         result
+    }
+
+    pub fn export(&self) -> HashMap<Ipv4Addr, MacAddress> {
+        let mut map = HashMap::new();
+        for (k, v) in self.cache.iter() {
+            map.insert(*k, v.link_addr);
+        }
+
+        map
     }
 }
