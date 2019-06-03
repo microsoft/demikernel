@@ -79,7 +79,7 @@ impl<'a> ArpState<'a> {
         {
             let cache = self.cache.borrow();
             if let Some(link_addr) = cache.get_link_addr(ipv4_addr) {
-                return Future::Const(Ok(*link_addr));
+                return Future::r#const(*link_addr);
             }
         }
 

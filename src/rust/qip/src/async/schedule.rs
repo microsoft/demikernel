@@ -59,7 +59,7 @@ impl Schedule {
     }
 
     pub fn cancel(&mut self, id: TaskId) {
-        assert!(self.ids.remove(&id));
+        self.ids.remove(&id);
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<TaskId> {

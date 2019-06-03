@@ -173,7 +173,10 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        eprintln!("# HashTtlCache.get(): self.map.len() -> {}", self.map.len());
+        eprintln!(
+            "# HashTtlCache.get(): self.map.len() -> {}",
+            self.map.len()
+        );
         match self.map.get(key) {
             // not present.
             None => {

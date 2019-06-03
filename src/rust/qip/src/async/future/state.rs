@@ -1,4 +1,4 @@
-use super::{
+use super::super::{
     state::AsyncState,
     task::{TaskId, TaskStatus},
 };
@@ -6,7 +6,10 @@ use crate::prelude::*;
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
 #[derive(Clone)]
-pub enum Future<'a, T> {
+pub enum FutureState<'a, T>
+where
+    T: Clone,
+{
     Const(Result<T>),
     TaskResult {
         r#async: Rc<RefCell<AsyncState<'a, T>>>,
@@ -14,14 +17,14 @@ pub enum Future<'a, T> {
     },
 }
 
-impl<'a, T> Future<'a, T>
+impl<'a, T> FutureState<'a, T>
 where
     T: Clone,
 {
     pub fn completed(&self) -> bool {
         match self {
-            Future::Const(_) => true,
-            Future::TaskResult { r#async, tid } => {
+            FutureState::Const(_) => true,
+            FutureState::TaskResult { r#async, tid } => {
                 let r#async = r#async.borrow();
                 let task = r#async.get_task(*tid);
                 match task.status() {
@@ -33,10 +36,10 @@ where
     }
 
     pub fn poll(&mut self, now: Instant) -> Result<T> {
-        eprintln!("# Future::poll()");
+        eprintln!("# FutureState::poll()");
         match self {
-            Future::Const(v) => v.clone(),
-            Future::TaskResult { r#async, tid } => {
+            FutureState::Const(v) => v.clone(),
+            FutureState::TaskResult { r#async, tid } => {
                 let mut r#async = r#async.borrow_mut();
                 r#async.poll(now)?;
                 let task = r#async.get_task(*tid);
@@ -44,6 +47,21 @@ where
                     TaskStatus::AsleepUntil(_) => Err(Fail::TryAgain {}),
                     TaskStatus::Completed(r) => r.clone(),
                 }
+            }
+        }
+    }
+}
+
+impl<'a, T> Drop for FutureState<'a, T>
+where
+    T: Clone,
+{
+    fn drop(&mut self) {
+        match self {
+            FutureState::Const(_) => (),
+            FutureState::TaskResult { r#async, tid } => {
+                let mut r#async = r#async.borrow_mut();
+                r#async.drop_task(*tid);
             }
         }
     }

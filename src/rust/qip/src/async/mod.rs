@@ -37,10 +37,7 @@ where
     {
         let mut state = self.state.borrow_mut();
         let tid = state.start_task(gen);
-        Future::TaskResult {
-            r#async: self.state.clone(),
-            tid,
-        }
+        Future::task_result(self.state.clone(), tid)
     }
 
     pub fn drop_task(&mut self, tid: TaskId) {
