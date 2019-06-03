@@ -99,11 +99,11 @@ where
         &self.status
     }
 
-    pub fn resume(&mut self, now: Instant) -> Result<T> {
+    pub fn resume(&mut self, now: Instant) -> bool {
         match &self.status {
             // if the task has already completed, do nothing with the
             // generator (we would panic).
-            TaskStatus::Completed(_) => (),
+            TaskStatus::Completed(_) => true,
             TaskStatus::AsleepUntil(when) => {
                 if now < *when {
                     panic!("attempt to resume a sleeping task");
@@ -114,15 +114,15 @@ where
                                 .unwrap_or_else(|| Duration::new(0, 0));
                             self.status =
                                 TaskStatus::AsleepUntil(now + duration);
+                            false
                         }
                         GeneratorState::Complete(result) => {
                             self.status = TaskStatus::Completed(result);
+                            true
                         }
                     }
                 }
             }
         }
-
-        self.status.clone().into()
     }
 }

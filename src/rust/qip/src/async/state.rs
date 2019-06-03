@@ -1,6 +1,6 @@
 use super::{
     schedule::Schedule,
-    task::{Task, TaskId},
+    task::{Task, TaskId, TaskStatus},
 };
 use crate::prelude::*;
 use std::{
@@ -61,7 +61,7 @@ where
             // we don't anticipate a reasonable situation where the schedule
             // would give us an ID that isn't in `self.tasks`.
             let task = self.tasks.get_mut(&tid).unwrap();
-            if let Err(Fail::TryAgain {}) = task.resume(now) {
+            if !task.resume(now) {
                 self.schedule.schedule(task);
             }
 
@@ -76,7 +76,7 @@ where
         assert!(self.tasks.remove(&tid).is_some());
     }
 
-    pub fn get_task(&self, tid: TaskId) -> &Task<'a, T> {
-        self.tasks.get(&tid).unwrap()
+    pub fn task_status(&self, tid: TaskId) -> &TaskStatus<T> {
+        self.tasks.get(&tid).unwrap().status()
     }
 }

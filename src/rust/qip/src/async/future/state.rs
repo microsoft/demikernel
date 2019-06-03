@@ -26,8 +26,7 @@ where
             FutureState::Const(_) => true,
             FutureState::TaskResult { r#async, tid } => {
                 let r#async = r#async.borrow();
-                let task = r#async.get_task(*tid);
-                match task.status() {
+                match r#async.task_status(*tid) {
                     TaskStatus::Completed(_) => true,
                     TaskStatus::AsleepUntil(_) => false,
                 }
@@ -42,8 +41,8 @@ where
             FutureState::TaskResult { r#async, tid } => {
                 let mut r#async = r#async.borrow_mut();
                 r#async.poll(now)?;
-                let task = r#async.get_task(*tid);
-                match task.status() {
+                let status = r#async.task_status(*tid);
+                match status {
                     TaskStatus::AsleepUntil(_) => Err(Fail::TryAgain {}),
                     TaskStatus::Completed(r) => r.clone(),
                 }
