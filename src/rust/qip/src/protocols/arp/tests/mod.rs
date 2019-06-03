@@ -1,7 +1,5 @@
 use super::{cache::ArpCacheOptions, options::ArpOptions};
-use crate::{
-    prelude::*, protocols::ethernet2::MacAddress, Options,
-};
+use crate::{prelude::*, protocols::ethernet2::MacAddress, Options};
 use serde_yaml;
 use std::{
     net::Ipv4Addr,

@@ -1,6 +1,4 @@
-use crate::{
-    protocols::{arp, ethernet2::MacAddress},
-};
+use crate::protocols::{arp, ethernet2::MacAddress};
 use std::net::Ipv4Addr;
 
 #[derive(Clone)]
