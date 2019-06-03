@@ -51,7 +51,7 @@ fn new_carrie<'a>(now: Instant) -> Station<'a> {
 }
 
 #[test]
-fn basic() {
+fn immediate_reply() {
     // tests to ensure that an are request results in a reply.
     let now = Instant::now();
     let mut alice = new_alice(now);
