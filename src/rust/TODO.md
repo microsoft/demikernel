@@ -1,0 +1,3 @@
+- automatically drop task when future(s) are dropped.
+- single async struct (low priority).
+- integrate rust logging macros
