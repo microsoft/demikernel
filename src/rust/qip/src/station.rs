@@ -43,8 +43,7 @@ impl<'a> Station<'a> {
 
         match frame.header().ether_type {
             ethernet2::EtherType::Arp => {
-                let payload = frame.payload().to_vec();
-                self.arp.receive(payload)
+                self.arp.receive(frame.payload())
             }
         }
     }

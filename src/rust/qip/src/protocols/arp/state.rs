@@ -38,13 +38,13 @@ impl<'a> ArpState<'a> {
         cache.advance_clock(now)
     }
 
-    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
+    pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
         let (my_ipv4_addr, my_link_addr) = {
             let rt = self.rt.borrow();
             (rt.options().my_ipv4_addr, rt.options().my_link_addr)
         };
 
-        let mut arp = ArpPdu::try_from(bytes.as_slice())?;
+        let mut arp = ArpPdu::try_from(bytes)?;
         // drop request if it's not intended for this station.
         if arp.target_ip_addr != my_ipv4_addr {
             return Err(Fail::Ignored {});
