@@ -1,6 +1,6 @@
 use super::{cache::ArpCacheOptions, options::ArpOptions};
 use crate::{
-    prelude::*, protocols::ethernet2::MacAddress, rand::Seed, Options,
+    prelude::*, protocols::ethernet2::MacAddress, Options,
 };
 use serde_yaml;
 use std::{
@@ -31,7 +31,6 @@ fn new_station<'a>(
         Options {
             my_link_addr: link_addr,
             my_ipv4_addr: ipv4_addr,
-            rng_seed: Seed::default(),
             arp: ArpOptions {
                 cache: ArpCacheOptions {
                     default_ttl: Some(*TTL),

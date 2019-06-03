@@ -1,19 +1,15 @@
-use crate::{prelude::*, rand::Rng};
-use rand_core::SeedableRng;
+use crate::prelude::*;
 use std::collections::VecDeque;
 
 pub struct RuntimeState {
     options: Options,
-    rng: Rng,
     effects: VecDeque<Effect>,
 }
 
 impl RuntimeState {
     pub fn from_options(options: Options) -> RuntimeState {
-        let seed = options.rng_seed;
         RuntimeState {
             options,
-            rng: Rng::from_seed(seed),
             effects: VecDeque::new(),
         }
     }

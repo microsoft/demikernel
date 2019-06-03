@@ -17,7 +17,6 @@ mod options;
 mod prelude;
 mod protocols;
 mod rand;
-mod sync;
 
 pub mod r#async;
 pub mod collections;
