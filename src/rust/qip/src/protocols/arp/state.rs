@@ -33,9 +33,20 @@ impl<'a> ArpState<'a> {
         }
     }
 
-    pub fn advance_clock(&mut self, now: Instant) {
+    fn advance_clock(&mut self, now: Instant) {
         let mut cache = self.cache.borrow_mut();
         cache.advance_clock(now)
+    }
+
+    pub fn service(&mut self, now: Instant) {
+        self.advance_clock(now);
+
+        {
+            let mut cache = self.cache.borrow_mut();
+            cache.try_evict(2);
+        }
+
+        self.r#async.service(now);
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
@@ -60,7 +71,7 @@ impl<'a> ArpState<'a> {
 
                 let packet = arp.to_packet()?;
                 let mut rt = self.rt.borrow_mut();
-                rt.effects().push_back(Effect::Transmit(packet));
+                rt.emit(Effect::Transmit(packet));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -102,7 +113,7 @@ impl<'a> ArpState<'a> {
 
                 let packet = arp.to_packet()?;
                 let mut rt = rt.borrow_mut();
-                rt.effects().push_back(Effect::Transmit(packet));
+                rt.emit(Effect::Transmit(packet));
             }
 
             // can't make progress until a reply deposits an entry in the

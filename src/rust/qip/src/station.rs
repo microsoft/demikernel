@@ -24,10 +24,6 @@ impl<'a> Station<'a> {
         Station { rt, arp }
     }
 
-    pub fn advance_clock(&mut self, now: Instant) {
-        self.arp.advance_clock(now)
-    }
-
     pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
         let frame = ethernet2::Frame::try_from(bytes)?;
 
@@ -46,9 +42,10 @@ impl<'a> Station<'a> {
         }
     }
 
-    pub fn pop_effect(&self) -> Option<Effect> {
+    pub fn poll(&mut self, now: Instant) -> Option<Effect> {
+        self.arp.service(now);
         let mut rt = self.rt.borrow_mut();
-        rt.effects().pop_front()
+        rt.poll()
     }
 
     pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {

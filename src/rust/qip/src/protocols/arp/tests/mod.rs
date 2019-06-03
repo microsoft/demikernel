@@ -61,7 +61,7 @@ fn basic() {
     let mut bob = new_bob(now);
     let mut carrie = new_carrie(now);
 
-    let mut fut = alice.arp_query(*CARRIE_IPV4);
+    let fut = alice.arp_query(*CARRIE_IPV4);
     let now = now + Duration::from_millis(1);
     match fut.poll(now) {
         Err(Fail::TryAgain {}) => (),
@@ -69,7 +69,7 @@ fn basic() {
     }
 
     let request = {
-        let effect = alice.pop_effect().expect("expected an effect");
+        let effect = alice.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet,
         }
@@ -82,7 +82,7 @@ fn basic() {
 
     carrie.receive(request).unwrap();
     let reply = {
-        let effect = carrie.pop_effect().expect("expected an effect");
+        let effect = carrie.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet,
         }

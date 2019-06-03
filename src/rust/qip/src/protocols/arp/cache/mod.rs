@@ -35,6 +35,7 @@ impl ArpCache {
         ArpCache::new(now, options.default_ttl)
     }
 
+    #[allow(dead_code)]
     pub fn insert_with_ttl(
         &mut self,
         ipv4_addr: Ipv4Addr,
@@ -69,6 +70,7 @@ impl ArpCache {
         result
     }
 
+    #[allow(dead_code)]
     pub fn remove(&mut self, ipv4_addr: Ipv4Addr) {
         if let Some(record) = self.cache.remove(&ipv4_addr) {
             assert!(self.rmap.remove(&record.link_addr).is_some());
@@ -86,6 +88,7 @@ impl ArpCache {
         result
     }
 
+    #[allow(dead_code)]
     pub fn get_ipv4_addr(&self, link_addr: MacAddress) -> Option<&Ipv4Addr> {
         self.rmap.get(&link_addr)
     }

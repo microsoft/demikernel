@@ -40,8 +40,13 @@ where
         Future::task_result(self.state.clone(), tid)
     }
 
-    pub fn drop_task(&mut self, tid: TaskId) {
+    pub fn drop_task(&self, tid: TaskId) {
         let mut state = self.state.borrow_mut();
         state.drop_task(tid)
+    }
+
+    pub fn service(&self, now: Instant) {
+        let mut state = self.state.borrow_mut();
+        let _ = state.poll(now);
     }
 }

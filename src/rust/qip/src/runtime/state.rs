@@ -22,7 +22,11 @@ impl RuntimeState {
         &self.options
     }
 
-    pub fn effects(&mut self) -> &mut VecDeque<Effect> {
-        &mut self.effects
+    pub fn poll(&mut self) -> Option<Effect> {
+        self.effects.pop_front()
+    }
+
+    pub fn emit(&mut self, effect: Effect) {
+        self.effects.push_back(effect)
     }
 }

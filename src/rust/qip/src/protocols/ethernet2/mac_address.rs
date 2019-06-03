@@ -19,19 +19,19 @@ impl MacAddress {
         MacAddress(eui48::MacAddress::nil())
     }
 
-    pub fn is_broadcast(&self) -> bool {
+    pub fn is_broadcast(self) -> bool {
         self.0.is_broadcast()
     }
 
-    pub fn to_canonical(&self) -> String {
+    pub fn to_canonical(self) -> String {
         self.0.to_canonical()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes<'a>(&'a self) -> &'a [u8] {
         self.0.as_bytes()
     }
 
-    pub fn to_array(&self) -> [u8; 6] {
+    pub fn to_array(self) -> [u8; 6] {
         self.0.to_array()
     }
 }

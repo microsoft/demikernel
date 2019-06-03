@@ -2,6 +2,7 @@
 #![feature(impl_trait_in_bindings)]
 #![warn(clippy::all)]
 
+#[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 
@@ -10,9 +11,6 @@ extern crate derive_more;
 
 #[macro_use]
 extern crate num_derive;
-
-#[macro_use]
-extern crate serde_yaml;
 
 mod effect;
 mod options;
