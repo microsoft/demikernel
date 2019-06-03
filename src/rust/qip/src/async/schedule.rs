@@ -66,7 +66,7 @@ impl Schedule {
         self.advance_clock(now);
         if let Some(rec) = self.heap.peek() {
             if rec.when > now {
-                // next task due isn't due yet.
+                // next task isn't due yet.
                 None
             } else {
                 // next task is due.
