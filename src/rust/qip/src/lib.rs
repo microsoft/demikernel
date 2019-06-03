@@ -25,6 +25,9 @@ pub mod result;
 pub mod runtime;
 pub mod station;
 
+#[cfg(test)]
+pub mod test;
+
 pub use effect::Effect;
 pub use options::Options;
 pub use station::Station;
