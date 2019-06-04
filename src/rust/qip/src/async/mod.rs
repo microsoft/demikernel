@@ -11,10 +11,11 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use task::TaskId;
+use task::{TaskId, TaskStatus};
 
 pub use future::Future;
 
+#[derive(Clone)]
 pub struct Async<'a, T> {
     state: Rc<RefCell<AsyncState<'a, T>>>,
 }
@@ -37,12 +38,17 @@ where
     {
         let mut state = self.state.borrow_mut();
         let tid = state.start_task(gen);
-        Future::task_result(self.state.clone(), tid)
+        Future::task_result(self.clone(), tid)
     }
 
     pub fn drop_task(&self, tid: TaskId) {
         let mut state = self.state.borrow_mut();
         state.drop_task(tid)
+    }
+
+    pub fn task_status(&self, tid: TaskId) -> TaskStatus<T> {
+        let state = self.state.borrow();
+        state.task_status(tid).clone()
     }
 
     pub fn service(&self, now: Instant) {
