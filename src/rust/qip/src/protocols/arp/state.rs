@@ -3,24 +3,23 @@ use super::{
     pdu::{ArpOp, ArpPdu},
 };
 use crate::{
-    prelude::*,
-    protocols::ethernet2::MacAddress,
-    r#async::{Async, Future},
-    runtime,
+    prelude::*, protocols::ethernet2::MacAddress, r#async::Future, runtime,
 };
 use std::{
-    cell::RefCell, collections::HashMap, convert::TryFrom, mem::swap,
-    net::Ipv4Addr, rc::Rc, time::Instant,
+    any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
+    mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
 pub struct ArpState<'a> {
-    rt: Rc<RefCell<runtime::State>>,
+    rt: Rc<RefCell<runtime::State<'a>>>,
     cache: Rc<RefCell<ArpCache>>,
-    r#async: Async<'a, MacAddress>,
 }
 
 impl<'a> ArpState<'a> {
-    pub fn new(now: Instant, rt: Rc<RefCell<runtime::State>>) -> ArpState<'a> {
+    pub fn new(
+        now: Instant,
+        rt: Rc<RefCell<runtime::State<'a>>>,
+    ) -> ArpState<'a> {
         let cache = {
             let rt = rt.borrow();
             ArpCache::from_options(now, &rt.options().arp.cache)
@@ -29,7 +28,6 @@ impl<'a> ArpState<'a> {
         ArpState {
             rt,
             cache: Rc::new(RefCell::new(cache)),
-            r#async: Async::new(now),
         }
     }
 
@@ -40,13 +38,8 @@ impl<'a> ArpState<'a> {
 
     pub fn service(&mut self, now: Instant) {
         self.advance_clock(now);
-
-        {
-            let mut cache = self.cache.borrow_mut();
-            cache.try_evict(2);
-        }
-
-        self.r#async.service(now);
+        let mut cache = self.cache.borrow_mut();
+        cache.try_evict(2);
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
@@ -71,7 +64,7 @@ impl<'a> ArpState<'a> {
 
                 let packet = arp.to_packet()?;
                 let mut rt = self.rt.borrow_mut();
-                rt.emit(Effect::Transmit(packet));
+                rt.emit_effect(Effect::Transmit(packet));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -94,9 +87,10 @@ impl<'a> ArpState<'a> {
             }
         }
 
+        let rt1 = self.rt.borrow_mut();
         let cache = self.cache.clone();
         let rt = self.rt.clone();
-        self.r#async.start_task(move || {
+        rt1.start_task(move || {
             let (my_ipv4_addr, my_link_addr) = {
                 let rt = rt.borrow();
                 (rt.options().my_ipv4_addr, rt.options().my_link_addr)
@@ -113,7 +107,7 @@ impl<'a> ArpState<'a> {
 
                 let packet = arp.to_packet()?;
                 let mut rt = rt.borrow_mut();
-                rt.emit(Effect::Transmit(packet));
+                rt.emit_effect(Effect::Transmit(packet));
             }
 
             // can't make progress until a reply deposits an entry in the
@@ -126,7 +120,8 @@ impl<'a> ArpState<'a> {
                 };
 
                 if let Some(link_addr) = result {
-                    return Ok(link_addr);
+                    let x: Rc<Any> = Rc::new(link_addr);
+                    return Ok(x);
                 } else {
                     // unable to make progress until the appropriate entry is
                     // inserted into the cache.

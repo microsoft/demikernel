@@ -11,18 +11,18 @@ where
     T: Clone,
 {
     Const(Result<T>),
-    TaskResult { r#async: Async<'a, T>, tid: TaskId },
+    TaskResult { r#async: Async<'a>, tid: TaskId },
 }
 
 impl<'a, T> Future<'a, T>
 where
-    T: Clone,
+    T: Clone + 'static,
 {
     pub fn r#const(value: T) -> Future<'a, T> {
         Future::Const(Ok(value))
     }
 
-    pub fn task_result(r#async: Async<'a, T>, tid: TaskId) -> Future<'a, T> {
+    pub fn task_result(r#async: Async<'a>, tid: TaskId) -> Future<'a, T> {
         Future::TaskResult { r#async, tid }
     }
 

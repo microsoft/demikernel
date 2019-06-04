@@ -13,13 +13,14 @@ use std::{
 };
 
 pub struct Station<'a> {
-    rt: Rc<RefCell<runtime::State>>,
+    rt: Rc<RefCell<runtime::State<'a>>>,
     arp: arp::State<'a>,
 }
 
 impl<'a> Station<'a> {
     pub fn from_options(now: Instant, options: Options) -> Station<'a> {
-        let rt = Rc::new(RefCell::new(runtime::State::from_options(options)));
+        let rt =
+            Rc::new(RefCell::new(runtime::State::from_options(now, options)));
         let arp = arp::State::new(now, rt.clone());
         Station { rt, arp }
     }
@@ -45,7 +46,7 @@ impl<'a> Station<'a> {
     pub fn poll(&mut self, now: Instant) -> Option<Effect> {
         self.arp.service(now);
         let mut rt = self.rt.borrow_mut();
-        rt.poll()
+        rt.poll(now)
     }
 
     pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {

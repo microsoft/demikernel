@@ -6,6 +6,7 @@ mod task;
 use crate::prelude::*;
 use state::AsyncState;
 use std::{
+    any::Any,
     cell::RefCell,
     ops::Generator,
     rc::Rc,
@@ -16,23 +17,21 @@ use task::{TaskId, TaskStatus};
 pub use future::Future;
 
 #[derive(Clone)]
-pub struct Async<'a, T> {
-    state: Rc<RefCell<AsyncState<'a, T>>>,
+pub struct Async<'a> {
+    state: Rc<RefCell<AsyncState<'a>>>,
 }
 
-impl<'a, T> Async<'a, T>
-where
-    T: Clone,
-{
+impl<'a> Async<'a> {
     pub fn new(now: Instant) -> Self {
         Async {
             state: Rc::new(RefCell::new(AsyncState::new(now))),
         }
     }
 
-    pub fn start_task<G>(&self, gen: G) -> Future<'a, T>
+    pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<T>>
+        T: Any + Clone + 'static,
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
@@ -46,7 +45,7 @@ where
         state.drop_task(tid)
     }
 
-    pub fn task_status(&self, tid: TaskId) -> TaskStatus<T> {
+    pub fn task_status(&self, tid: TaskId) -> TaskStatus {
         let state = self.state.borrow();
         state.task_status(tid).clone()
     }

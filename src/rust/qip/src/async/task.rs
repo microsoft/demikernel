@@ -1,44 +1,34 @@
 use crate::prelude::*;
 use std::{
+    any::Any,
     fmt,
     marker::Unpin,
     ops::{Generator, GeneratorState},
     pin::Pin,
+    rc::Rc,
     time::{Duration, Instant},
 };
 
-pub enum TaskStatus<T> {
-    Completed(Result<T>),
+#[derive(Clone)]
+pub enum TaskStatus {
+    Completed(Result<Rc<Any>>),
     AsleepUntil(Instant),
 }
 
-impl<T> Into<Result<T>> for TaskStatus<T> {
+impl<T> Into<Result<T>> for TaskStatus
+where
+    T: 'static + Clone,
+{
     fn into(self) -> Result<T> {
         match self {
             TaskStatus::Completed(r) => match r {
+                Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),
                 Err(Fail::TryAgain {}) => panic!(
                     "coroutines are not allowed to return `Fail::TryAgain`"
                 ),
-                _ => r,
+                Err(e) => Err(e.clone()),
             },
             _ => Err(Fail::TryAgain {}),
-        }
-    }
-}
-
-impl<T> Clone for TaskStatus<T>
-where
-    T: Clone,
-{
-    // deriving `Clone` for this struct didn't appear to work, so we implement
-    // it ourselves.
-    fn clone(&self) -> Self {
-        match self {
-            TaskStatus::Completed(r) => match r {
-                Ok(t) => TaskStatus::Completed(Ok(t.clone())),
-                Err(e) => TaskStatus::Completed(Err(e.clone())),
-            },
-            TaskStatus::AsleepUntil(t) => TaskStatus::AsleepUntil(*t),
         }
     }
 }
@@ -64,21 +54,20 @@ impl fmt::Debug for TaskId {
     }
 }
 
-pub struct Task<'a, T> {
+pub struct Task<'a> {
     id: TaskId,
-    status: TaskStatus<T>,
+    status: TaskStatus,
     gen: Box<
-        Generator<Yield = Option<Duration>, Return = Result<T>> + 'a + Unpin,
+        Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
+            + 'a
+            + Unpin,
     >,
 }
 
-impl<'a, T> Task<'a, T>
-where
-    T: Clone,
-{
-    pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a, T>
+impl<'a> Task<'a> {
+    pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<T>>
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
@@ -95,7 +84,7 @@ where
         self.id
     }
 
-    pub fn status(&self) -> &TaskStatus<T> {
+    pub fn status(&self) -> &TaskStatus {
         &self.status
     }
 

@@ -38,12 +38,7 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn schedule<'a, T>(&mut self, t: &Task<'a, T>)
-    where
-        T: Clone,
-    {
-        // todo: there must be a way to segregate tasks from different
-        // namespaces.
+    pub fn schedule<'a>(&mut self, t: &Task<'a>) {
         match t.status() {
             TaskStatus::Completed(_) => {
                 panic!("attempt to schedule a completed task")

@@ -4,23 +4,22 @@ use super::{
 };
 use crate::prelude::*;
 use std::{
+    any::Any,
     collections::HashMap,
     ops::Generator,
+    rc::Rc,
     time::{Duration, Instant},
 };
 
-pub struct AsyncState<'a, T> {
+pub struct AsyncState<'a> {
     next_unused_id: u64,
-    tasks: HashMap<TaskId, Task<'a, T>>,
+    tasks: HashMap<TaskId, Task<'a>>,
     schedule: Schedule,
     clock: Instant,
 }
 
-impl<'a, T> AsyncState<'a, T>
-where
-    T: Clone,
-{
-    pub fn new(now: Instant) -> AsyncState<'a, T> {
+impl<'a> AsyncState<'a> {
+    pub fn new(now: Instant) -> AsyncState<'a> {
         AsyncState {
             next_unused_id: 0,
             tasks: HashMap::new(),
@@ -31,7 +30,7 @@ where
 
     pub fn start_task<G>(&mut self, gen: G) -> TaskId
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<T>>
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
@@ -76,7 +75,7 @@ where
         assert!(self.tasks.remove(&tid).is_some());
     }
 
-    pub fn task_status(&self, tid: TaskId) -> &TaskStatus<T> {
+    pub fn task_status(&self, tid: TaskId) -> &TaskStatus {
         self.tasks.get(&tid).unwrap().status()
     }
 }
