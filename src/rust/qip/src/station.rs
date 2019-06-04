@@ -1,7 +1,7 @@
 use crate::{
     prelude::*,
     protocols::{
-        arp,
+        arp::Arp,
         ethernet2::{self, MacAddress},
     },
     runtime,
@@ -14,14 +14,14 @@ use std::{
 
 pub struct Station<'a> {
     rt: Rc<RefCell<runtime::State<'a>>>,
-    arp: arp::State<'a>,
+    arp: Arp<'a>,
 }
 
 impl<'a> Station<'a> {
     pub fn from_options(now: Instant, options: Options) -> Station<'a> {
         let rt =
             Rc::new(RefCell::new(runtime::State::from_options(now, options)));
-        let arp = arp::State::new(now, rt.clone());
+        let arp = Arp::new(now, rt.clone());
         Station { rt, arp }
     }
 

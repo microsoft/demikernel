@@ -1,6 +1,9 @@
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2::MacAddress},
+    protocols::{
+        arp::{ArpCacheOptions, ArpOptions},
+        ethernet2::MacAddress,
+    },
     Options,
 };
 use std::{
@@ -31,8 +34,8 @@ pub fn new_station<'a>(
         Options {
             my_link_addr: link_addr,
             my_ipv4_addr: ipv4_addr,
-            arp: arp::Options {
-                cache: arp::CacheOptions {
+            arp: ArpOptions {
+                cache: ArpCacheOptions {
                     default_ttl: Some(*DEFAULT_TTL),
                 },
             },
