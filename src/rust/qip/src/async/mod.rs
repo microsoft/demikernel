@@ -35,23 +35,19 @@ impl<'a> Async<'a> {
             + 'a
             + Unpin,
     {
-        let mut state = self.state.borrow_mut();
-        let tid = state.start_task(gen);
+        let tid = self.state.borrow_mut().start_task(gen);
         Future::task_result(self.clone(), tid)
     }
 
     pub fn drop_task(&self, tid: TaskId) {
-        let mut state = self.state.borrow_mut();
-        state.drop_task(tid)
+        self.state.borrow_mut().drop_task(tid)
     }
 
     pub fn task_status(&self, tid: TaskId) -> TaskStatus {
-        let state = self.state.borrow();
-        state.task_status(tid).clone()
+        self.state.borrow().task_status(tid).clone()
     }
 
     pub fn service(&self, now: Instant) {
-        let mut state = self.state.borrow_mut();
-        let _ = state.poll(now);
+        let _ = self.state.borrow_mut().poll(now);
     }
 }

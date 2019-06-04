@@ -30,10 +30,7 @@ pub struct Arp<'a> {
 impl<'a> Arp<'a> {
     pub fn new(now: Instant, rt: Rc<RefCell<runtime::State<'a>>>) -> Arp<'a> {
         let state = ArpState {
-            cache: {
-                let rt = rt.borrow();
-                ArpCache::from_options(now, &rt.options().arp.cache)
-            },
+            cache: ArpCache::from_options(now, &rt.borrow().options().arp.cache),
         };
 
         Arp {
@@ -49,14 +46,10 @@ impl<'a> Arp<'a> {
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        let (my_ipv4_addr, my_link_addr) = {
-            let rt = self.rt.borrow();
-            (rt.options().my_ipv4_addr, rt.options().my_link_addr)
-        };
-
+        let options = self.rt.borrow().options();
         let mut arp = ArpPdu::try_from(bytes)?;
         // drop request if it's not intended for this station.
-        if arp.target_ip_addr != my_ipv4_addr {
+        if arp.target_ip_addr != options.my_ipv4_addr {
             return Err(Fail::Ignored {});
         }
 
@@ -64,13 +57,12 @@ impl<'a> Arp<'a> {
             ArpOp::ArpRequest => {
                 eprintln!("# received arp request");
                 arp.op = ArpOp::ArpReply;
-                arp.target_link_addr = my_link_addr;
+                arp.target_link_addr = options.my_link_addr;
                 swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
                 swap(&mut arp.sender_link_addr, &mut arp.target_link_addr);
 
                 let packet = arp.to_packet()?;
-                let mut rt = self.rt.borrow_mut();
-                rt.emit_effect(Effect::Transmit(packet));
+                self.rt.borrow_mut().emit_effect(Effect::Transmit(packet));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -96,33 +88,23 @@ impl<'a> Arp<'a> {
         let rt = self.rt.clone();
         let state = self.state.clone();
         self.rt.borrow_mut().start_task(move || {
-            let (my_ipv4_addr, my_link_addr) = {
-                let rt = rt.borrow();
-                (rt.options().my_ipv4_addr, rt.options().my_link_addr)
+            let options = rt.borrow().options();
+            let arp = ArpPdu {
+                op: ArpOp::ArpRequest,
+                sender_link_addr: options.my_link_addr,
+                sender_ip_addr: options.my_ipv4_addr,
+                target_link_addr: MacAddress::nil(),
+                target_ip_addr: ipv4_addr,
             };
 
-            {
-                let arp = ArpPdu {
-                    op: ArpOp::ArpRequest,
-                    sender_link_addr: my_link_addr,
-                    sender_ip_addr: my_ipv4_addr,
-                    target_link_addr: MacAddress::nil(),
-                    target_ip_addr: ipv4_addr,
-                };
-
-                let packet = arp.to_packet()?;
-                let mut rt = rt.borrow_mut();
-                rt.emit_effect(Effect::Transmit(packet));
-            }
+            let packet = arp.to_packet()?;
+            rt.borrow_mut().emit_effect(Effect::Transmit(packet));
 
             // can't make progress until a reply deposits an entry in the
             // cache.
             loop {
-                eprintln!("# looking up `{}` in ARP cache...", my_ipv4_addr);
-                let result = {
-                    let state = state.borrow();
-                    state.cache.get_link_addr(ipv4_addr).copied()
-                };
+                eprintln!("# looking up `{}` in ARP cache...", options.my_ipv4_addr);
+                let result = state.borrow().cache.get_link_addr(ipv4_addr).copied();
 
                 if let Some(link_addr) = result {
                     let x: Rc<Any> = Rc::new(link_addr);
@@ -137,7 +119,6 @@ impl<'a> Arp<'a> {
     }
 
     pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
-        let state = self.state.borrow();
-        state.cache.export()
+        self.state.borrow().cache.export()
     }
 }
