@@ -11,7 +11,7 @@ fn immediate_reply() {
     let mut bob = test::new_bob(now);
     let mut carrie = test::new_carrie(now);
 
-    // this test is written based on certain assumtptions.
+    // this test is written based on certain assumptions.
     let options = alice.options();
     assert_eq!(
         options.arp.request_timeout.unwrap(),
@@ -73,7 +73,7 @@ fn slow_reply() {
     let mut bob = test::new_bob(now);
     let mut carrie = test::new_carrie(now);
 
-    // this test is written based on certain assumtptions.
+    // this test is written based on certain assumptions.
     let options = alice.options();
     assert!(options.arp.retry_count.unwrap() > 0);
     assert_eq!(
@@ -135,9 +135,9 @@ fn no_reply() {
     let now = Instant::now();
     let alice = test::new_alice(now);
 
-    // this test is written based on certain assumtptions.
+    // this test is written based on certain assumptions.
     let options = alice.options();
-    assert!(options.arp.retry_count.unwrap() <= 2);
+    assert_eq!(options.arp.retry_count.unwrap(), 2);
     assert_eq!(
         options.arp.request_timeout.unwrap(),
         FloatDuration::seconds(1.0)
@@ -165,5 +165,4 @@ fn no_reply() {
         Err(Fail::Timeout {}) => (),
         x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),
     }
-
 }
