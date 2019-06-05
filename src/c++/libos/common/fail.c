@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 static void default_onfail(int error_arg,
       const char *expr_arg, const char *fnn_arg, const char *filen_arg,
@@ -46,8 +48,14 @@ void dmtr_fail(int error_arg, const char *expr_arg,
 }
 
 void default_onfail(int error_arg, const char *expr_arg,
-   const char *fnn_arg, const char *filen_arg, int lineno_arg) {
+    const char *fnn_arg, const char *filen_arg, int lineno_arg) {
     int n = -1;
+    pid_t tid;
+#ifdef SYS_gettid
+    tid = syscall(SYS_gettid);
+#else
+    tid = 0;
+#endif
 
     if (0 == error_arg) {
         DMTR_PANIC("attempt to fail with a success code.");
@@ -63,13 +71,13 @@ void default_onfail(int error_arg, const char *expr_arg,
     }
 
     if (NULL == fnn_arg) {
-        n = fprintf(stderr, "FAIL (%d => %s) at %s, line %d: %s\n", error_arg, err_msg,
+        n = fprintf(stderr, "[%d] FAIL (%d => %s) at %s, line %d: %s\n", tid, error_arg, err_msg,
                 filen_arg, lineno_arg, expr_arg);
         if (n < 1) {
             DMTR_PANIC("fprintf() failed.");
         }
     } else {
-        n = fprintf(stderr, "FAIL (%d => %s) in %s, at %s, line %d: %s\n", error_arg, err_msg,
+        n = fprintf(stderr, "[%d] FAIL (%d => %s) in %s, at %s, line %d: %s\n", tid, error_arg, err_msg,
                 fnn_arg, filen_arg, lineno_arg, expr_arg);
         if (n < 1) {
             DMTR_PANIC("fprintf() failed.");
