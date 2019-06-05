@@ -103,7 +103,7 @@ impl ArpPdu {
         28
     }
 
-    pub fn to_packet(&self) -> Result<Rc<Vec<u8>>> {
+    pub fn to_packet(&self) -> Result<Rc<ethernet2::Frame>> {
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
                 if MacAddress::nil() != self.target_link_addr {
@@ -134,18 +134,16 @@ impl ArpPdu {
             }
         };
 
-        let ether2_header = ethernet2::Header {
-            dest_addr,
-            src_addr: self.sender_link_addr,
-            ether_type: ethernet2::EtherType::Arp,
-        };
-
-        let mut bytes =
-            Vec::with_capacity(ArpPdu::size() + ethernet2::Header::size());
-        ether2_header.write(&mut bytes)?;
-        self.write(&mut bytes)?;
-
-        Ok(Rc::new(bytes))
+        let mut frame = ethernet2::Frame::new(
+            ArpPdu::size(),
+            ethernet2::Header {
+                dest_addr,
+                src_addr: self.sender_link_addr,
+                ether_type: ethernet2::EtherType::Arp,
+            },
+        )?;
+        self.write(&mut frame.payload_mut())?;
+        Ok(Rc::new(frame))
     }
 }
 

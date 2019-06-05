@@ -10,6 +10,7 @@ custom_error! {#[derive(Clone)] pub Fail
     TryAgain{} = "try again later",
     Timeout{} = "an asynchronous operation timed out",
     OutOfRange{} = "a value is out of range",
+    Malformed{} = "failed to parse a sequence of bytes",
 }
 
 impl From<IoError> for Fail {

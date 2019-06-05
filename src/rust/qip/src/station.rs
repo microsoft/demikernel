@@ -6,10 +6,7 @@ use crate::{
     },
 };
 use r#async::Future;
-use std::{
-    collections::HashMap, convert::TryFrom, net::Ipv4Addr, rc::Rc,
-    time::Instant,
-};
+use std::{collections::HashMap, net::Ipv4Addr, rc::Rc, time::Instant};
 
 pub struct Station<'a> {
     rt: Runtime<'a>,
@@ -27,8 +24,7 @@ impl<'a> Station<'a> {
         self.rt.options()
     }
 
-    pub fn receive(&mut self, bytes: Rc<Vec<u8>>) -> Result<()> {
-        let frame = ethernet2::Frame::try_from(bytes)?;
+    pub fn receive(&mut self, frame: Rc<ethernet2::Frame>) -> Result<()> {
         let dest_addr = frame.header().dest_addr;
         if self.rt.options().my_link_addr != dest_addr
             && !dest_addr.is_broadcast()

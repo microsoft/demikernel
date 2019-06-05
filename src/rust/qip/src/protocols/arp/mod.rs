@@ -10,10 +10,15 @@ use cache::ArpCache;
 use float_duration::FloatDuration;
 use pdu::{ArpOp, ArpPdu};
 use std::{
-    any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
-    mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
+    any::Any,
+    cell::RefCell,
+    collections::HashMap,
+    convert::TryFrom,
+    mem::swap,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{Duration, Instant},
 };
-use std::time::Duration;
 
 pub use cache::ArpCacheOptions;
 pub use options::ArpOptions;

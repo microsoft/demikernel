@@ -1,4 +1,4 @@
-use crate::{prelude::*, test};
+use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};
@@ -31,6 +31,8 @@ fn immediate_reply() {
             Effect::Transmit(packet) => packet,
         }
     };
+
+    assert!(request.bytes().len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     match bob.receive(request.clone()) {
@@ -95,6 +97,8 @@ fn slow_reply() {
             Effect::Transmit(packet) => packet,
         }
     };
+
+    assert!(request.bytes().len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     match bob.receive(request.clone()) {
