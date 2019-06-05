@@ -9,18 +9,20 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use std::cell::RefCell;
 
-pub struct RuntimeState<'a> {
+#[derive(Clone)]
+pub struct Runtime<'a> {
     options: Rc<Options>,
-    effects: VecDeque<Effect>,
+    effects: Rc<RefCell<VecDeque<Effect>>>,
     r#async: Async<'a>,
 }
 
-impl<'a> RuntimeState<'a> {
-    pub fn from_options(now: Instant, options: Options) -> RuntimeState<'a> {
-        RuntimeState {
+impl<'a> Runtime<'a> {
+    pub fn from_options(now: Instant, options: Options) -> Runtime<'a> {
+        Runtime {
             options: Rc::new(options),
-            effects: VecDeque::new(),
+            effects: Rc::new(RefCell::new(VecDeque::new())),
             r#async: Async::new(now),
         }
     }
@@ -41,10 +43,10 @@ impl<'a> RuntimeState<'a> {
 
     pub fn poll(&mut self, now: Instant) -> Option<Effect> {
         self.r#async.service(now);
-        self.effects.pop_front()
+        self.effects.borrow_mut().pop_front()
     }
 
     pub fn emit_effect(&mut self, effect: Effect) {
-        self.effects.push_back(effect)
+        self.effects.borrow_mut().push_back(effect)
     }
 }

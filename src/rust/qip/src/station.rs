@@ -4,31 +4,33 @@ use crate::{
         arp::Arp,
         ethernet2::{self, MacAddress},
     },
-    runtime,
 };
 use r#async::Future;
 use std::{
-    cell::RefCell, collections::HashMap, convert::TryFrom, net::Ipv4Addr,
+    collections::HashMap, convert::TryFrom, net::Ipv4Addr,
     rc::Rc, time::Instant,
 };
 
 pub struct Station<'a> {
-    rt: Rc<RefCell<runtime::State<'a>>>,
+    rt: Runtime<'a>,
     arp: Arp<'a>,
 }
 
 impl<'a> Station<'a> {
     pub fn from_options(now: Instant, options: Options) -> Station<'a> {
-        let rt =
-            Rc::new(RefCell::new(runtime::State::from_options(now, options)));
+        let rt = Runtime::from_options(now, options);
         let arp = Arp::new(now, rt.clone());
         Station { rt, arp }
     }
 
-    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
+    pub fn options(&self) -> Rc<Options> {
+        self.rt.options()
+    }
+
+    pub fn receive(&mut self, bytes: Rc<Vec<u8>>) -> Result<()> {
         let frame = ethernet2::Frame::try_from(bytes)?;
         let dest_addr = frame.header().dest_addr;
-        if self.rt.borrow().options().my_link_addr != dest_addr
+        if self.rt.options().my_link_addr != dest_addr
             && !dest_addr.is_broadcast()
         {
             return Err(Fail::Misdelivered {});
@@ -41,8 +43,7 @@ impl<'a> Station<'a> {
 
     pub fn poll(&mut self, now: Instant) -> Option<Effect> {
         self.arp.service(now);
-        let mut rt = self.rt.borrow_mut();
-        rt.poll(now)
+        self.rt.poll(now)
     }
 
     pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {

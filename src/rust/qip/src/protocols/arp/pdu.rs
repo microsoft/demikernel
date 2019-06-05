@@ -9,6 +9,7 @@ use std::{
     io::{Cursor, Read, Write},
     net::Ipv4Addr,
 };
+use std::rc::Rc;
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;
@@ -102,7 +103,7 @@ impl ArpPdu {
         28
     }
 
-    pub fn to_packet(&self) -> Result<Vec<u8>> {
+    pub fn to_packet(&self) -> Result<Rc<Vec<u8>>> {
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
                 if MacAddress::nil() != self.target_link_addr {
@@ -139,12 +140,12 @@ impl ArpPdu {
             ether_type: ethernet2::EtherType::Arp,
         };
 
-        let mut packet =
+        let mut bytes =
             Vec::with_capacity(ArpPdu::size() + ethernet2::Header::size());
-        ether2_header.write(&mut packet)?;
-        self.write(&mut packet)?;
+        ether2_header.write(&mut bytes)?;
+        self.write(&mut bytes)?;
 
-        Ok(packet)
+        Ok(Rc::new(bytes))
     }
 }
 

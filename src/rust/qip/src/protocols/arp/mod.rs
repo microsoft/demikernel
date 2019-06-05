@@ -6,7 +6,7 @@ mod pdu;
 mod tests;
 
 use crate::{
-    prelude::*, protocols::ethernet2::MacAddress, r#async::Future, runtime,
+    prelude::*, protocols::ethernet2::MacAddress, r#async::Future,
 };
 use cache::ArpCache;
 use pdu::{ArpOp, ArpPdu};
@@ -14,26 +14,29 @@ use std::{
     any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
     mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
 };
+use float_duration::FloatDuration;
 
 pub use cache::ArpCacheOptions;
 pub use options::ArpOptions;
 
 struct ArpState {
     cache: ArpCache,
+    clock: Instant,
 }
 
 pub struct Arp<'a> {
-    rt: Rc<RefCell<runtime::State<'a>>>,
+    rt: Runtime<'a>,
     state: Rc<RefCell<ArpState>>,
 }
 
 impl<'a> Arp<'a> {
-    pub fn new(now: Instant, rt: Rc<RefCell<runtime::State<'a>>>) -> Arp<'a> {
+    pub fn new(now: Instant, rt: Runtime<'a>) -> Arp<'a> {
         let state = ArpState {
             cache: ArpCache::from_options(
                 now,
-                &rt.borrow().options().arp.cache,
+                &rt.options().arp.cache,
             ),
+            clock: now,
         };
 
         Arp {
@@ -44,12 +47,14 @@ impl<'a> Arp<'a> {
 
     pub fn service(&mut self, now: Instant) {
         let mut state = self.state.borrow_mut();
+        assert!(now >= state.clock);
+        state.clock = now;
         state.cache.advance_clock(now);
         state.cache.try_evict(2);
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        let options = self.rt.borrow().options();
+        let options = self.rt.options();
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
@@ -108,7 +113,7 @@ impl<'a> Arp<'a> {
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
                 let packet = arp.to_packet()?;
-                self.rt.borrow_mut().emit_effect(Effect::Transmit(packet));
+                self.rt.emit_effect(Effect::Transmit(packet));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -131,10 +136,10 @@ impl<'a> Arp<'a> {
             }
         }
 
-        let rt = self.rt.clone();
+        let mut rt = self.rt.clone();
         let state = self.state.clone();
-        self.rt.borrow_mut().start_task(move || {
-            let options = rt.borrow().options();
+        self.rt.start_task(move || {
+            let options = rt.options();
             let arp = ArpPdu {
                 op: ArpOp::ArpRequest,
                 sender_link_addr: options.my_link_addr,
@@ -144,27 +149,38 @@ impl<'a> Arp<'a> {
             };
 
             let packet = arp.to_packet()?;
-            rt.borrow_mut().emit_effect(Effect::Transmit(packet));
+            let timeout = options.arp.request_timeout.unwrap_or_else(|| FloatDuration::seconds(5.0)).to_std()?;
+            let mut retries_remaining = options.arp.retry_count.unwrap_or(20) + 1;
+            while retries_remaining > 0 {
+                rt.emit_effect(Effect::Transmit(packet.clone()));
+                retries_remaining -= 1;
+                // can't make progress until a reply deposits an entry in the
+                // cache.
+                let t0 = state.borrow().clock;
+                let mut now = t0;
+                while now - t0 < timeout {
+                    eprintln!(
+                        "# looking up `{}` in ARP cache...",
+                        options.my_ipv4_addr
+                    );
+                    let result =
+                        state.borrow().cache.get_link_addr(ipv4_addr).copied();
 
-            // can't make progress until a reply deposits an entry in the
-            // cache.
-            loop {
-                eprintln!(
-                    "# looking up `{}` in ARP cache...",
-                    options.my_ipv4_addr
-                );
-                let result =
-                    state.borrow().cache.get_link_addr(ipv4_addr).copied();
-
-                if let Some(link_addr) = result {
-                    let x: Rc<Any> = Rc::new(link_addr);
-                    return Ok(x);
-                } else {
-                    // unable to make progress until the appropriate entry is
-                    // inserted into the cache.
-                    yield None;
+                    if let Some(link_addr) = result {
+                        let x: Rc<Any> = Rc::new(link_addr);
+                        return Ok(x);
+                    } else {
+                        // unable to make progress until the appropriate entry is
+                        // inserted into the cache.
+                        yield None;
+                        now = state.borrow().clock;
+                    }
                 }
+
+                eprintln!("ARP request timeout; {} retries remain.",retries_remaining);
             }
+
+            Err(Fail::Timeout {})
         })
     }
 

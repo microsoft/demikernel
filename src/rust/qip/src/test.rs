@@ -8,11 +8,13 @@ use crate::{
 };
 use std::{
     net::Ipv4Addr,
-    time::{Duration, Instant},
+    time::Instant,
 };
+use float_duration::FloatDuration;
 
 lazy_static! {
-    static ref DEFAULT_TTL: Duration = Duration::new(1, 0);
+    static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);
+    static ref DEFAULT_TTL: FloatDuration = FloatDuration::seconds(10.0);
     static ref ALICE_MAC: MacAddress =
         MacAddress::new([0x11, 0x11, 0x11, 0x11, 0x11, 0x11]);
     static ref ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
@@ -35,6 +37,8 @@ pub fn new_station<'a>(
             my_link_addr: link_addr,
             my_ipv4_addr: ipv4_addr,
             arp: ArpOptions {
+                request_timeout: Some(*DEFAULT_TIMEOUT),
+                retry_count: Some(2),
                 cache: ArpCacheOptions {
                     default_ttl: Some(*DEFAULT_TTL),
                 },

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 pub enum Effect {
-    Transmit(Vec<u8>),
+    Transmit(Rc<Vec<u8>>),
 }

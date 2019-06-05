@@ -35,7 +35,7 @@ impl ArpCache {
     }
 
     pub fn from_options(now: Instant, options: &ArpCacheOptions) -> ArpCache {
-        ArpCache::new(now, options.default_ttl)
+        ArpCache::new(now, options.default_ttl.map(|f| f.to_std().unwrap()))
     }
 
     pub fn insert_with_ttl(
