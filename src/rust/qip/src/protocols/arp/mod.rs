@@ -5,23 +5,21 @@ mod pdu;
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    prelude::*, protocols::ethernet2::MacAddress, r#async::Future,
-};
+use crate::{prelude::*, protocols::ethernet2::MacAddress, r#async::Future};
 use cache::ArpCache;
+use float_duration::FloatDuration;
 use pdu::{ArpOp, ArpPdu};
 use std::{
     any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
     mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
 };
-use float_duration::FloatDuration;
+use std::time::Duration;
 
 pub use cache::ArpCacheOptions;
 pub use options::ArpOptions;
 
 struct ArpState {
     cache: ArpCache,
-    clock: Instant,
 }
 
 pub struct Arp<'a> {
@@ -32,11 +30,7 @@ pub struct Arp<'a> {
 impl<'a> Arp<'a> {
     pub fn new(now: Instant, rt: Runtime<'a>) -> Arp<'a> {
         let state = ArpState {
-            cache: ArpCache::from_options(
-                now,
-                &rt.options().arp.cache,
-            ),
-            clock: now,
+            cache: ArpCache::from_options(now, &rt.options().arp.cache),
         };
 
         Arp {
@@ -45,11 +39,9 @@ impl<'a> Arp<'a> {
         }
     }
 
-    pub fn service(&mut self, now: Instant) {
+    pub fn service(&mut self) {
         let mut state = self.state.borrow_mut();
-        assert!(now >= state.clock);
-        state.clock = now;
-        state.cache.advance_clock(now);
+        state.cache.advance_clock(self.rt.clock());
         state.cache.try_evict(2);
     }
 
@@ -149,16 +141,21 @@ impl<'a> Arp<'a> {
             };
 
             let packet = arp.to_packet()?;
-            let timeout = options.arp.request_timeout.unwrap_or_else(|| FloatDuration::seconds(5.0)).to_std()?;
-            let mut retries_remaining = options.arp.retry_count.unwrap_or(20) + 1;
+            let timeout = options
+                .arp
+                .request_timeout
+                .unwrap_or_else(|| FloatDuration::seconds(5.0))
+                .to_std()?;
+            let mut retries_remaining =
+                options.arp.retry_count.unwrap_or(20) + 1;
             while retries_remaining > 0 {
                 rt.emit_effect(Effect::Transmit(packet.clone()));
                 retries_remaining -= 1;
                 // can't make progress until a reply deposits an entry in the
                 // cache.
-                let t0 = state.borrow().clock;
-                let mut now = t0;
-                while now - t0 < timeout {
+                let t0 = rt.clock();
+                let mut dt = Duration::new(0, 0);
+                while dt < timeout {
                     eprintln!(
                         "# looking up `{}` in ARP cache...",
                         options.my_ipv4_addr
@@ -170,14 +167,18 @@ impl<'a> Arp<'a> {
                         let x: Rc<Any> = Rc::new(link_addr);
                         return Ok(x);
                     } else {
-                        // unable to make progress until the appropriate entry is
-                        // inserted into the cache.
+                        // unable to make progress until the appropriate entry
+                        // is inserted into the cache.
                         yield None;
-                        now = state.borrow().clock;
+                        dt = rt.clock() - t0;
+                        eprintln!("# dt = {:?}", dt);
                     }
                 }
 
-                eprintln!("ARP request timeout; {} retries remain.",retries_remaining);
+                eprintln!(
+                    "ARP request timeout; {} retries remain.",
+                    retries_remaining
+                );
             }
 
             Err(Fail::Timeout {})

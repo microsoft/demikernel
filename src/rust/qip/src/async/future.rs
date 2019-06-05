@@ -43,7 +43,7 @@ where
         match self {
             Future::Const(v) => v.clone(),
             Future::TaskResult { r#async, tid } => {
-                r#async.service(now);
+                let _ = r#async.poll(now);
                 r#async.task_status(*tid).into()
             }
         }

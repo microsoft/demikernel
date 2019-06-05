@@ -1,31 +1,39 @@
 mod future;
 mod schedule;
-mod state;
 mod task;
 
 use crate::prelude::*;
-use state::AsyncState;
+use schedule::Schedule;
 use std::{
     any::Any,
-    cell::RefCell,
+    cell::{Cell, RefCell},
+    collections::HashMap,
     ops::Generator,
     rc::Rc,
     time::{Duration, Instant},
 };
-use task::{TaskId, TaskStatus};
+use task::{Task, TaskId, TaskStatus};
 
 pub use future::Future;
 
 #[derive(Clone)]
 pub struct Async<'a> {
-    state: Rc<RefCell<AsyncState<'a>>>,
+    next_unused_id: Rc<Cell<u64>>,
+    tasks: Rc<RefCell<HashMap<TaskId, Task<'a>>>>,
+    schedule: Rc<RefCell<Schedule>>,
 }
 
 impl<'a> Async<'a> {
     pub fn new(now: Instant) -> Self {
         Async {
-            state: Rc::new(RefCell::new(AsyncState::new(now))),
+            next_unused_id: Rc::new(Cell::new(0)),
+            tasks: Rc::new(RefCell::new(HashMap::new())),
+            schedule: Rc::new(RefCell::new(Schedule::new(now))),
         }
+    }
+
+    pub fn clock(&self) -> Instant {
+        self.schedule.borrow().clock()
     }
 
     pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
@@ -35,19 +43,56 @@ impl<'a> Async<'a> {
             + 'a
             + Unpin,
     {
-        let tid = self.state.borrow_mut().start_task(gen);
-        Future::task_result(self.clone(), tid)
+        let tid = self.new_tid();
+        let t = Task::new(tid, gen, self.clock());
+        self.schedule.borrow_mut().schedule(&t);
+        self.tasks.borrow_mut().insert(tid, t);
+        let fut = Future::task_result(self.clone(), tid);
+        let _ = fut.poll(self.clock());
+        fut
+    }
+
+    fn new_tid(&self) -> TaskId {
+        let n = self.next_unused_id.get();
+        let tid = TaskId::from(n);
+        // todo: we should deal with overflow.
+        self.next_unused_id.set(n + 1);
+        tid
+    }
+
+    pub fn poll_schedule(&self, now: Instant) -> Option<TaskId> {
+        // we had to extract this into its own function to limit the scope
+        // of the mutable borrow (it was causing borrowing deadlocks).
+        self.schedule.borrow_mut().poll(now)
+    }
+
+    pub fn poll(&self, now: Instant) -> Result<TaskId> {
+        eprintln!("# async::State::poll({:?})", now);
+        if let Some(tid) = self.poll_schedule(now) {
+            eprintln!(
+                "# async::Schedule::poll() returned a task (tid = {})",
+                tid
+            );
+            // we don't anticipate a reasonable situation where the schedule
+            // would give us an ID that isn't in `self.tasks`.
+            let mut tasks = self.tasks.borrow_mut();
+            let task = tasks.get_mut(&tid).unwrap();
+            if !task.resume(now) {
+                self.schedule.borrow_mut().schedule(task);
+            }
+
+            Ok(task.id())
+        } else {
+            Err(Fail::TryAgain {})
+        }
     }
 
     pub fn drop_task(&self, tid: TaskId) {
-        self.state.borrow_mut().drop_task(tid)
+        self.schedule.borrow_mut().cancel(tid);
+        assert!(self.tasks.borrow_mut().remove(&tid).is_some());
     }
 
     pub fn task_status(&self, tid: TaskId) -> TaskStatus {
-        self.state.borrow().task_status(tid).clone()
-    }
-
-    pub fn service(&self, now: Instant) {
-        let _ = self.state.borrow_mut().poll(now);
+        self.tasks.borrow().get(&tid).unwrap().status().clone()
     }
 }

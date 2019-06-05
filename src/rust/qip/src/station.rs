@@ -7,8 +7,8 @@ use crate::{
 };
 use r#async::Future;
 use std::{
-    collections::HashMap, convert::TryFrom, net::Ipv4Addr,
-    rc::Rc, time::Instant,
+    collections::HashMap, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+    time::Instant,
 };
 
 pub struct Station<'a> {
@@ -42,7 +42,7 @@ impl<'a> Station<'a> {
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<Effect> {
-        self.arp.service(now);
+        self.arp.service();
         self.rt.poll(now)
     }
 

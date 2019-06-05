@@ -30,14 +30,21 @@ impl PartialOrd for Record {
     }
 }
 
-#[derive(Default)]
 pub struct Schedule {
     ids: HashSet<TaskId>,
     heap: BinaryHeap<Record>,
-    clock: Option<Instant>,
+    clock: Instant,
 }
 
 impl Schedule {
+    pub fn new(now: Instant) -> Schedule {
+        Schedule {
+            ids: HashSet::new(),
+            heap: BinaryHeap::new(),
+            clock: now,
+        }
+    }
+
     pub fn schedule<'a>(&mut self, t: &Task<'a>) {
         match t.status() {
             TaskStatus::Completed(_) => {
@@ -53,12 +60,18 @@ impl Schedule {
         }
     }
 
+    pub fn clock(&self) -> Instant {
+        self.clock
+    }
+
     pub fn cancel(&mut self, id: TaskId) {
         self.ids.remove(&id);
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<TaskId> {
-        self.advance_clock(now);
+        assert!(self.clock <= now);
+        self.clock = now;
+
         if let Some(rec) = self.heap.peek() {
             if rec.when > now {
                 // next task isn't due yet.
@@ -77,15 +90,6 @@ impl Schedule {
         } else {
             // nothing in the heap.
             None
-        }
-    }
-
-    fn advance_clock(&mut self, now: Instant) {
-        if let Some(clock) = self.clock.as_mut() {
-            assert!(*clock <= now);
-            *clock = now;
-        } else {
-            self.clock = Some(now)
         }
     }
 }

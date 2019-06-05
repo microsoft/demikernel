@@ -1,7 +1,6 @@
 use custom_error::custom_error;
-use std::io::Error as IoError;
-use std::rc::Rc;
 use float_duration;
+use std::{io::Error as IoError, rc::Rc};
 
 custom_error! {#[derive(Clone)] pub Fail
     IoError{source: Rc<IoError>} = "I/O failure",

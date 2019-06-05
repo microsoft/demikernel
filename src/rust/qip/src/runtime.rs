@@ -4,12 +4,12 @@ use crate::{
 };
 use std::{
     any::Any,
+    cell::RefCell,
     collections::VecDeque,
     ops::Generator,
     rc::Rc,
     time::{Duration, Instant},
 };
-use std::cell::RefCell;
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
@@ -31,6 +31,10 @@ impl<'a> Runtime<'a> {
         self.options.clone()
     }
 
+    pub fn clock(&self) -> Instant {
+        self.r#async.clock()
+    }
+
     pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
     where
         T: Any + Clone + 'static,
@@ -42,7 +46,7 @@ impl<'a> Runtime<'a> {
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<Effect> {
-        self.r#async.service(now);
+        let _ = self.r#async.poll(now);
         self.effects.borrow_mut().pop_front()
     }
 

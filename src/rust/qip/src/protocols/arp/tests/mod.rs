@@ -1,7 +1,7 @@
 use crate::{prelude::*, test};
+use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};
-use float_duration::FloatDuration;
 
 #[test]
 fn immediate_reply() {
@@ -13,7 +13,10 @@ fn immediate_reply() {
 
     // this test is written based on certain assumtptions.
     let options = alice.options();
-    assert_eq!(options.arp.request_timeout.unwrap(), FloatDuration::seconds(1.0));
+    assert_eq!(
+        options.arp.request_timeout.unwrap(),
+        FloatDuration::seconds(1.0)
+    );
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     let now = now + Duration::from_millis(1);
@@ -73,7 +76,10 @@ fn slow_reply() {
     // this test is written based on certain assumtptions.
     let options = alice.options();
     assert!(options.arp.retry_count.unwrap() > 0);
-    assert_eq!(options.arp.request_timeout.unwrap(), FloatDuration::seconds(1.0));
+    assert_eq!(
+        options.arp.request_timeout.unwrap(),
+        FloatDuration::seconds(1.0)
+    );
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     // move time forward enough to trigger a timeout.
@@ -121,4 +127,43 @@ fn slow_reply() {
         Ok(link_addr) => assert_eq!(*test::carrie_link_addr(), link_addr),
         x => panic!("expected future completion, got `{:?}`", x),
     }
+}
+
+#[test]
+fn no_reply() {
+    // tests to ensure that an are request results in a reply.
+    let now = Instant::now();
+    let alice = test::new_alice(now);
+
+    // this test is written based on certain assumtptions.
+    let options = alice.options();
+    assert!(options.arp.retry_count.unwrap() <= 2);
+    assert_eq!(
+        options.arp.request_timeout.unwrap(),
+        FloatDuration::seconds(1.0)
+    );
+
+    let fut = alice.arp_query(*test::carrie_ipv4_addr());
+
+    // move time forward enough to trigger a timeout.
+    let now = now + Duration::from_secs(1);
+    match fut.poll(now) {
+        Err(Fail::TryAgain {}) => (),
+        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
+    }
+
+    // retry #1
+    let now = now + Duration::from_secs(1);
+    match fut.poll(now) {
+        Err(Fail::TryAgain {}) => (),
+        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
+    }
+
+    // retry #2
+    let now = now + Duration::from_secs(1);
+    match fut.poll(now) {
+        Err(Fail::Timeout {}) => (),
+        x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),
+    }
+
 }

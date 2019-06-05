@@ -8,8 +8,8 @@ use std::{
     convert::TryFrom,
     io::{Cursor, Read, Write},
     net::Ipv4Addr,
+    rc::Rc,
 };
-use std::rc::Rc;
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;

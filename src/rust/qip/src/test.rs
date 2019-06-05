@@ -6,11 +6,8 @@ use crate::{
     },
     Options,
 };
-use std::{
-    net::Ipv4Addr,
-    time::Instant,
-};
 use float_duration::FloatDuration;
+use std::{net::Ipv4Addr, time::Instant};
 
 lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);

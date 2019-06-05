@@ -1,7 +1,6 @@
 use super::header::Ethernet2Header;
 use crate::prelude::*;
-use std::{convert::TryFrom, io::Cursor};
-use std::rc::Rc;
+use std::{convert::TryFrom, io::Cursor, rc::Rc};
 
 #[derive(From)]
 pub struct Ethernet2Frame {
