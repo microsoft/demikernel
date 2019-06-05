@@ -12,16 +12,16 @@ use std::{
 };
 
 lazy_static! {
-    pub static ref DEFAULT_TTL: Duration = Duration::new(1, 0);
-    pub static ref ALICE_MAC: MacAddress =
+    static ref DEFAULT_TTL: Duration = Duration::new(1, 0);
+    static ref ALICE_MAC: MacAddress =
         MacAddress::new([0x11, 0x11, 0x11, 0x11, 0x11, 0x11]);
-    pub static ref ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
-    pub static ref BOB_MAC: MacAddress =
+    static ref ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
+    static ref BOB_MAC: MacAddress =
         MacAddress::new([0x22, 0x22, 0x22, 0x22, 0x22, 0x22]);
-    pub static ref BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
-    pub static ref CARRIE_MAC: MacAddress =
+    static ref BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
+    static ref CARRIE_MAC: MacAddress =
         MacAddress::new([0x33, 0x33, 0x33, 0x33, 0x33, 0x33]);
-    pub static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
+    static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 
 pub fn new_station<'a>(
@@ -47,10 +47,34 @@ pub fn new_alice<'a>(now: Instant) -> Station<'a> {
     new_station(*ALICE_MAC, *ALICE_IPV4, now)
 }
 
+pub fn alice_ipv4_addr() -> &'static Ipv4Addr {
+    &ALICE_IPV4
+}
+
+pub fn alice_link_addr() -> &'static MacAddress {
+    &ALICE_MAC
+}
+
 pub fn new_bob<'a>(now: Instant) -> Station<'a> {
     new_station(*BOB_MAC, *BOB_IPV4, now)
 }
 
+pub fn bob_ipv4_addr() -> &'static Ipv4Addr {
+    &BOB_IPV4
+}
+
+pub fn bob_link_addr() -> &'static MacAddress {
+    &BOB_MAC
+}
+
 pub fn new_carrie<'a>(now: Instant) -> Station<'a> {
     new_station(*CARRIE_MAC, *CARRIE_IPV4, now)
+}
+
+pub fn carrie_ipv4_addr() -> &'static Ipv4Addr {
+    &CARRIE_IPV4
+}
+
+pub fn carrie_link_addr() -> &'static MacAddress {
+    &CARRIE_MAC
 }
