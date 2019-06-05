@@ -26,6 +26,7 @@ class Worker {
     public: int my_memqfd;
 };
 std::vector<Worker *> http_workers;
+std::vector<pthread_t *> worker_threads;
 
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
@@ -39,8 +40,9 @@ void sig_handler(int signo) {
     */
 
     dmtr_close(lqd);
-    for (auto &w: http_workers) {
-        delete w;
+    http_workers.clear();
+    for (pthread_t *w: worker_threads) {
+        pthread_kill(*w, SIGKILL);
     }
     exit(0);
 }
@@ -178,6 +180,17 @@ int main(int argc, char *argv[]) {
     }
     saddr.sin_port = htons(port);
 
+    /* Block SIGINT to ensure handler will only be run in main thread */
+    sigset_t mask, oldmask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGQUIT);
+    int ret;
+    ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
+    if (ret != 0) {
+        fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+    }
+
     /* Init Demeter */
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
@@ -190,13 +203,21 @@ int main(int argc, char *argv[]) {
         http_workers.push_back(worker);
 
         pthread_t http_worker;
+        worker_threads.push_back(&http_worker);
         pthread_create(&http_worker, NULL, &http_work, (void *) worker);
     }
 
     /* Create TCP worker thread */
     pthread_mutex_init(&qfds_mutex, NULL);
     pthread_t tcp_worker;
+    worker_threads.push_back(&tcp_worker);
     pthread_create(&tcp_worker, NULL, &tcp_work, NULL);
+
+    /* Re-enable SIGINT and SIGQUIT */
+    ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
+    if (ret != 0) {
+        fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+    }
 
     dmtr_qtoken_t token;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
