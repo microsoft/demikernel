@@ -23,31 +23,25 @@ use std::{
 pub use cache::ArpCacheOptions;
 pub use options::ArpOptions;
 
-struct ArpState {
-    cache: ArpCache,
-}
-
 pub struct Arp<'a> {
     rt: Runtime<'a>,
-    state: Rc<RefCell<ArpState>>,
+    cache: Rc<RefCell<ArpCache>>,
 }
 
 impl<'a> Arp<'a> {
     pub fn new(now: Instant, rt: Runtime<'a>) -> Arp<'a> {
-        let state = ArpState {
-            cache: ArpCache::from_options(now, &rt.options().arp.cache),
-        };
+        let cache = ArpCache::from_options(now, &rt.options().arp.cache);
 
         Arp {
             rt,
-            state: Rc::new(RefCell::new(state)),
+            cache: Rc::new(RefCell::new(cache)),
         }
     }
 
     pub fn service(&mut self) {
-        let mut state = self.state.borrow_mut();
-        state.cache.advance_clock(self.rt.clock());
-        state.cache.try_evict(2);
+        let mut cache = self.cache.borrow_mut();
+        cache.advance_clock(self.rt.clock());
+        cache.try_evict(2);
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
@@ -65,9 +59,9 @@ impl<'a> Arp<'a> {
         // > hardware address field of the entry with the new
         // > information in the packet and set Merge_flag to true.
         let merge_flag = {
-            let mut state = self.state.borrow_mut();
-            if state.cache.get_link_addr(arp.sender_ip_addr).is_some() {
-                state.cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
+            let mut cache = self.cache.borrow_mut();
+            if cache.get_link_addr(arp.sender_ip_addr).is_some() {
+                cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
                 true
             } else {
                 false
@@ -90,15 +84,17 @@ impl<'a> Arp<'a> {
         // > sender protocol address, sender hardware address> to
         // > the translation table.
         if !merge_flag {
-            self.state
+            self.cache
                 .borrow_mut()
-                .cache
                 .insert(arp.sender_ip_addr, arp.sender_link_addr);
         }
 
         match arp.op {
             ArpOp::ArpRequest => {
-                debug!("Arp::receive(): request from `{}`", arp.sender_link_addr);
+                debug!(
+                    "Arp::receive(): request from `{}`",
+                    arp.sender_link_addr
+                );
                 // from RFC 826:
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
@@ -118,8 +114,9 @@ impl<'a> Arp<'a> {
                     "Arp::receive(): reply from `{}/{}`",
                     arp.sender_ip_addr, arp.sender_link_addr
                 );
-                let mut state = self.state.borrow_mut();
-                state.cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
+                self.cache
+                    .borrow_mut()
+                    .insert(arp.sender_ip_addr, arp.sender_link_addr);
                 Ok(())
             }
         }
@@ -127,14 +124,15 @@ impl<'a> Arp<'a> {
 
     pub fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
         {
-            let state = self.state.borrow();
-            if let Some(link_addr) = state.cache.get_link_addr(ipv4_addr) {
+            if let Some(link_addr) =
+                self.cache.borrow().get_link_addr(ipv4_addr)
+            {
                 return Future::r#const(*link_addr);
             }
         }
 
-        let mut rt = self.rt.clone();
-        let state = self.state.clone();
+        let rt = self.rt.clone();
+        let cache = self.cache.clone();
         self.rt.start_task(move || {
             let options = rt.options();
             let arp = ArpPdu {
@@ -166,7 +164,7 @@ impl<'a> Arp<'a> {
                         options.my_ipv4_addr
                     );
                     let result =
-                        state.borrow().cache.get_link_addr(ipv4_addr).copied();
+                        cache.borrow().get_link_addr(ipv4_addr).copied();
 
                     if let Some(link_addr) = result {
                         let x: Rc<Any> = Rc::new(link_addr);
@@ -191,6 +189,6 @@ impl<'a> Arp<'a> {
     }
 
     pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
-        self.state.borrow().cache.export()
+        self.cache.borrow().export()
     }
 }

@@ -6,10 +6,10 @@ mod tests;
 use std::{
     cmp::Ordering,
     collections::{hash_map::Entry as HashMapEntry, BinaryHeap, HashMap},
+    fmt::Debug,
     hash::Hash,
     time::{Duration, Instant},
 };
-use std::fmt::Debug;
 
 #[derive(PartialEq, Eq, Clone)]
 struct Expiry(Instant);
@@ -173,14 +173,12 @@ where
         None
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> where K: Debug {
-        trace!(
-            "entering HashTtlCache::get()"
-        );
-        debug!(
-            "HashTtlCache::map::len() -> {}",
-            self.map.len()
-        );
+    pub fn get(&self, key: &K) -> Option<&V>
+    where
+        K: Debug,
+    {
+        trace!("entering HashTtlCache::get()");
+        debug!("HashTtlCache::map::len() -> {}", self.map.len());
         match self.map.get(key) {
             // not present.
             None => {
@@ -195,7 +193,10 @@ where
                 }
                 Some(e) => {
                     if e.has_expired(self.clock) {
-                        debug!("HashTtlCache::get({:?}): present but expired", key);
+                        debug!(
+                            "HashTtlCache::get({:?}): present but expired",
+                            key
+                        );
                         // present and expired
                         None
                     } else {

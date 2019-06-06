@@ -45,12 +45,12 @@ impl<'a> Runtime<'a> {
         self.r#async.start_task(gen)
     }
 
-    pub fn poll(&mut self, now: Instant) -> Option<Effect> {
+    pub fn poll(&self, now: Instant) -> Option<Effect> {
         let _ = self.r#async.poll(now);
         self.effects.borrow_mut().pop_front()
     }
 
-    pub fn emit_effect(&mut self, effect: Effect) {
+    pub fn emit_effect(&self, effect: Effect) {
         self.effects.borrow_mut().push_back(effect)
     }
 }
