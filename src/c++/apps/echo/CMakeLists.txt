@@ -15,7 +15,7 @@ include_directories(${Boost_INCLUDE_DIR})
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(TCP_ECHO_THREADED_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_http_server_threaded.cc)
+set(HTTP_THREADED_SERVER_SOURCES ${ECHO_APPS_DIR}/http_parser.c ${ECHO_APPS_DIR}/request_parser.c ${ECHO_APPS_DIR}/dmtr_http_server_threaded.cc)
 set(TCP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_server.cc)
 set(TCP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_client.cc)
 set(UDP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_server.cc)
@@ -25,10 +25,10 @@ set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 
-# POSIX TCP server threaded
-add_executable(dmtr-posix-server-threaded ${TCP_ECHO_THREADED_SERVER_SOURCES})
-target_link_libraries(dmtr-posix-server-threaded dmtr-libos-posix yaml-cpp boost_program_options)
-target_link_libraries(dmtr-posix-server-threaded Threads::Threads)
+# POSIX HTTP server threaded
+add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-http-server-threaded Threads::Threads)
 
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})

@@ -15,6 +15,7 @@
 #include <queue>
 
 #include "common.hh"
+#include "request_parser.h"
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
@@ -75,6 +76,10 @@ int match_filter(std::string message) {
 
 static void *http_work(void *args) {
     printf("Hello I am an HTTP worker\n");
+    struct parser_state *state =
+        (struct parser_state *) malloc(sizeof(*state));
+    init_parser_state(state);
+
     Worker *me = (Worker *) args;
     dmtr_qtoken_t token = 0;
     dmtr_qresult_t wait_out;
@@ -86,11 +91,32 @@ static void *http_work(void *args) {
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
             fprintf(stdout, "HTTP worker received %s\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
+
+            size_t msg_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
+            char *msg = (char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
+            enum parser_status status = parse_http(state, msg, msg_size);
+            switch (status) {
+                case REQ_COMPLETE:
+                    fprintf(stdout, "HTTP worker got complete request\n");
+                    break;
+                case REQ_ERROR:
+                    fprintf(stdout, "HTTP worker got malformed request\n");
+                    break;
+                case REQ_INCOMPLETE:
+                    fprintf(stdout, "HTTP worker got incomplete request: %.*s\n",
+                        (int) msg_size, msg);
+                    break;
+            }
+            //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+
             dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
-            //free(wait_out.qr_value.sga.sga_buf);
         }
     }
+
+    free(state->url);
+    free(state->body);
+    free(state);
     return NULL;
 }
 
