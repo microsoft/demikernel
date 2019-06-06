@@ -6,10 +6,13 @@ use crate::{
     },
     Options,
 };
-use float_duration::FloatDuration;
-use std::{net::Ipv4Addr, time::Instant};
-use std::sync::{Once, ONCE_INIT};
 use flexi_logger::Logger;
+use float_duration::FloatDuration;
+use std::{
+    net::Ipv4Addr,
+    sync::{Once, ONCE_INIT},
+    time::Instant,
+};
 
 lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);
