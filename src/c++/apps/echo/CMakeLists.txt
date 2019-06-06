@@ -15,7 +15,7 @@ include_directories(${Boost_INCLUDE_DIR})
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(TCP_ECHO_THREADED_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_server_threaded.cc)
+set(TCP_ECHO_THREADED_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_http_server_threaded.cc)
 set(TCP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_server.cc)
 set(TCP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_client.cc)
 set(UDP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_server.cc)
