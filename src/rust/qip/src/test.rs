@@ -1,7 +1,7 @@
 use crate::{
     prelude::*,
     protocols::{
-        arp::{ArpCacheOptions, ArpOptions},
+        arp,
         ethernet2::MacAddress,
     },
     Options,
@@ -47,15 +47,13 @@ pub fn new_station<'a>(
         Options {
             my_link_addr: link_addr,
             my_ipv4_addr: ipv4_addr,
-            arp: ArpOptions {
+            arp: arp::Options {
                 request_timeout: Some(*DEFAULT_TIMEOUT),
                 retry_count: Some(2),
-                cache: ArpCacheOptions {
-                    default_ttl: Some(*DEFAULT_TTL),
-                },
+                cache_ttl: Some(*DEFAULT_TTL),
             },
         },
-    )
+    ).unwrap()
 }
 
 pub fn new_alice<'a>(now: Instant) -> Station<'a> {

@@ -1,8 +1,6 @@
 // todo: remove once all functions are referenced.
 #![allow(dead_code)]
 
-mod options;
-
 #[cfg(test)]
 mod tests;
 
@@ -12,8 +10,6 @@ use std::{
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
-
-pub use options::ArpCacheOptions;
 
 #[derive(Debug, Clone)]
 struct Record {
@@ -32,10 +28,6 @@ impl ArpCache {
             cache: HashTtlCache::new(now, default_ttl),
             rmap: HashMap::new(),
         }
-    }
-
-    pub fn from_options(now: Instant, options: &ArpCacheOptions) -> ArpCache {
-        ArpCache::new(now, options.default_ttl.map(|f| f.to_std().unwrap()))
     }
 
     pub fn insert_with_ttl(

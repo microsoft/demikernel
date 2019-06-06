@@ -1,7 +1,7 @@
 use crate::{
     prelude::*,
     protocols::{
-        arp::Arp,
+        arp,
         ethernet2::{self, MacAddress},
     },
 };
@@ -10,14 +10,14 @@ use std::{collections::HashMap, net::Ipv4Addr, rc::Rc, time::Instant};
 
 pub struct Station<'a> {
     rt: Runtime<'a>,
-    arp: Arp<'a>,
+    arp: arp::Peer<'a>,
 }
 
 impl<'a> Station<'a> {
-    pub fn from_options(now: Instant, options: Options) -> Station<'a> {
+    pub fn from_options(now: Instant, options: Options) -> Result<Station<'a>> {
         let rt = Runtime::from_options(now, options);
-        let arp = Arp::new(now, rt.clone());
-        Station { rt, arp }
+        let arp = arp::Peer::new(now, rt.clone())?;
+        Ok(Station { rt, arp })
     }
 
     pub fn options(&self) -> Rc<Options> {
