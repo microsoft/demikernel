@@ -6,8 +6,8 @@
 
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
-#include <dmtr/annot.h>
 #include <iostream>
+#include <dmtr/annot.h>
 #include <dmtr/libos/mem.h>
 #include <string.h>
 #include <yaml-cpp/yaml.h>
@@ -23,10 +23,14 @@ boost::optional<std::string> file;
 
 using namespace boost::program_options;
 
-void parse_args(int argc, char **argv, bool server)
+void parse_args(int argc, char **argv, bool server, const options_description &d = {})
 {
     std::string config_path;
     options_description desc{"echo experiment options"};
+    if (d.get_option_column_width() > 0) {
+        const options_description &add_desc = d;
+        desc.add(add_desc);
+    }
     desc.add_options()
         ("help", "produce help message")
         ("ip", value<std::string>(), "server ip address")
