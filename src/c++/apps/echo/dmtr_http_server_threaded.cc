@@ -84,7 +84,7 @@ static void *http_work(void *args) {
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
-            fprintf(stdout, "received %s\n",
+            fprintf(stdout, "HTTP worker received %s\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
             dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
@@ -119,25 +119,23 @@ static void *tcp_work(void *args) {
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
-            char client[32];
-            inet_aton(client, &wait_out.qr_value.ares.addr.sin_addr); //FIXME
-            fprintf(stdout, "received %s on queue %d from client %s\n",
+            fprintf(stdout, "received %s on queue %d\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
-                     wait_out.qr_qd,
-                     client);
+                     wait_out.qr_qd);
             num_rcvd++;
             printf("num received: %d\n", num_rcvd);
 
             /* First case: echo back to the client */
             token = tokens[idx];
-            if ((num_rcvd % 3) == 0) {
+            tokens.erase(tokens.begin()+idx);
+            if ((num_rcvd % worker_threads.size()) == 0) {
                 fprintf(stdout, "echo-ing back to client\n");
                 dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
                 dmtr_wait(NULL, token);
                 dmtr_pop(&token, wait_out.qr_qd);
                 free(wait_out.qr_value.sga.sga_buf);
             } else {
-                int worker_idx = (num_rcvd % 3) - 1;
+                int worker_idx = (num_rcvd % worker_threads.size()) - 1;
                 fprintf(stdout, "passing to http worker #%d\n", worker_idx);
                 dmtr_push(&token, http_workers[worker_idx]->my_memqfd, &wait_out.qr_value.sga);
                 dmtr_wait(NULL, token);
@@ -152,7 +150,7 @@ static void *tcp_work(void *args) {
                 dmtr_pop(&token, wait_out.qr_qd);
                 free(wait_out.qr_value.sga.sga_buf); // is it the same reference shared by http_out?
             }
-            tokens[idx] = token;
+            tokens.push_back(token);
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
@@ -161,9 +159,12 @@ static void *tcp_work(void *args) {
     }
 }
 
-//TODO: make those arguments tunable in config file
 int main(int argc, char *argv[]) {
-    parse_args(argc, argv, true);
+    uint16_t n_http_workers;
+    options_description desc{"HTTP server options"};
+    desc.add_options()
+        ("http-workers,w", value<uint16_t>(&n_http_workers)->default_value(1), "num HTTP workers");
+    parse_args(argc, argv, true, desc);
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -194,7 +195,6 @@ int main(int argc, char *argv[]) {
     /* Init Demeter */
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
-    int n_http_workers = 2;
     /* Create http worker threads */
     for (int i = 0; i < n_http_workers; ++i) {
         Worker *worker = new Worker();
