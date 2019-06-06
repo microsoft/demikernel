@@ -8,6 +8,8 @@ use crate::{
 };
 use float_duration::FloatDuration;
 use std::{net::Ipv4Addr, time::Instant};
+use std::sync::{Once, ONCE_INIT};
+use flexi_logger::Logger;
 
 lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);
@@ -23,11 +25,20 @@ lazy_static! {
     static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 
+static INIT_LOG: Once = ONCE_INIT;
+
+fn initialize_logger() {
+    INIT_LOG.call_once(|| {
+        Logger::with_env_or_str("").start().unwrap();
+    });
+}
+
 pub fn new_station<'a>(
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     now: Instant,
 ) -> Station<'a> {
+    initialize_logger();
     Station::from_options(
         now,
         Options {

@@ -12,6 +12,9 @@ extern crate derive_more;
 #[macro_use]
 extern crate num_derive;
 
+#[macro_use]
+extern crate log;
+
 mod effect;
 mod options;
 mod prelude;

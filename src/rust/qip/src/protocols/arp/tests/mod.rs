@@ -56,8 +56,8 @@ fn immediate_reply() {
     };
 
     alice.receive(reply).unwrap();
-    eprintln!(
-        "# ARP cache: \n{}",
+    debug!(
+        "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_millis(1);
@@ -122,8 +122,8 @@ fn slow_reply() {
     };
 
     alice.receive(reply).unwrap();
-    eprintln!(
-        "# ARP cache: \n{}",
+    debug!(
+        "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_millis(1);

@@ -98,7 +98,7 @@ impl<'a> Arp<'a> {
 
         match arp.op {
             ArpOp::ArpRequest => {
-                eprintln!("# received arp request");
+                debug!("Arp::receive(): request from `{}`", arp.sender_link_addr);
                 // from RFC 826:
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
@@ -114,8 +114,8 @@ impl<'a> Arp<'a> {
                 Ok(())
             }
             ArpOp::ArpReply => {
-                eprintln!(
-                    "# received arp reply: `{}` -> `{}`",
+                debug!(
+                    "Arp::receive(): reply from `{}/{}`",
                     arp.sender_ip_addr, arp.sender_link_addr
                 );
                 let mut state = self.state.borrow_mut();
@@ -161,8 +161,8 @@ impl<'a> Arp<'a> {
                 let t0 = rt.clock();
                 let mut dt = Duration::new(0, 0);
                 while dt < timeout {
-                    eprintln!(
-                        "# looking up `{}` in ARP cache...",
+                    debug!(
+                        "Arp::query(): looking up `{}` in cache...",
                         options.my_ipv4_addr
                     );
                     let result =
@@ -176,11 +176,11 @@ impl<'a> Arp<'a> {
                         // is inserted into the cache.
                         yield None;
                         dt = rt.clock() - t0;
-                        eprintln!("# dt = {:?}", dt);
+                        debug!("Arp::query(): dt = {:?}", dt);
                     }
                 }
 
-                eprintln!(
+                warn!(
                     "ARP request timeout; {} retries remain.",
                     retries_remaining
                 );

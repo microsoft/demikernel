@@ -9,6 +9,7 @@ use std::{
     hash::Hash,
     time::{Duration, Instant},
 };
+use std::fmt::Debug;
 
 #[derive(PartialEq, Eq, Clone)]
 struct Expiry(Instant);
@@ -172,15 +173,18 @@ where
         None
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
-        eprintln!(
-            "# HashTtlCache.get(): self.map.len() -> {}",
+    pub fn get(&self, key: &K) -> Option<&V> where K: Debug {
+        trace!(
+            "entering HashTtlCache::get()"
+        );
+        debug!(
+            "HashTtlCache::map::len() -> {}",
             self.map.len()
         );
         match self.map.get(key) {
             // not present.
             None => {
-                eprintln!("# HashTtlCache.get() -> not present");
+                debug!("HashTtlCache::get({:?}): not present", key);
                 None
             }
             Some(r) => match r.expiry.as_ref() {
@@ -191,7 +195,7 @@ where
                 }
                 Some(e) => {
                     if e.has_expired(self.clock) {
-                        eprintln!("# HashTtlCache.get() -> present & expired");
+                        debug!("HashTtlCache::get({:?}): present but expired", key);
                         // present and expired
                         None
                     } else {

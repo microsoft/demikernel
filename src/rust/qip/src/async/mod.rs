@@ -67,10 +67,10 @@ impl<'a> Async<'a> {
     }
 
     pub fn poll(&self, now: Instant) -> Result<TaskId> {
-        eprintln!("# async::State::poll({:?})", now);
+        trace!("entering Async::poll({:?})", now);
         if let Some(tid) = self.poll_schedule(now) {
-            eprintln!(
-                "# async::Schedule::poll() returned a task (tid = {})",
+            debug!(
+                "Async::poll_schedule() returned a task (tid = {})",
                 tid
             );
             // we don't anticipate a reasonable situation where the schedule
