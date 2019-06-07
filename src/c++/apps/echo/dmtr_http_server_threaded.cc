@@ -157,43 +157,49 @@ static void *tcp_work(void *args) {
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
+            /*
             fprintf(stdout, "received %s on queue %d\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
                      wait_out.qr_qd);
+            */
             num_rcvd++;
-            printf("num received: %d\n", num_rcvd);
+            printf("received: %d requests\n", num_rcvd);
 
-            /* First case: echo back to the client */
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
-            if ((num_rcvd % worker_threads.size()) == 0) {
-                fprintf(stdout, "echo-ing back to client\n");
-                dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
-                dmtr_wait(NULL, token);
-                dmtr_pop(&token, wait_out.qr_qd);
-                free(wait_out.qr_value.sga.sga_buf);
-            } else {
-                int worker_idx = (num_rcvd % worker_threads.size()) - 1;
-                fprintf(stdout, "passing to http worker #%d\n", worker_idx);
-                dmtr_push(&token, http_workers[worker_idx]->my_memqfd, &wait_out.qr_value.sga);
-                dmtr_wait(NULL, token);
-                // Wait for HTTP worker to give us an answer
-                dmtr_pop(&token, http_workers[worker_idx]->my_memqfd);
-                dmtr_qresult_t http_out;
-                dmtr_wait(&http_out, token);
-                // Answer the client
-                dmtr_push(&token, wait_out.qr_qd, &http_out.qr_value.sga);
-                dmtr_wait(NULL, token);
-                // Re-enable TCP queue for reading
-                dmtr_pop(&token, wait_out.qr_qd);
-                free(wait_out.qr_value.sga.sga_buf); // is it the same reference shared by http_out?
-            }
+
+            int worker_idx = (num_rcvd % http_workers.size());
+            fprintf(stdout, "passing to http worker #%d\n", worker_idx);
+            dmtr_push(&token, http_workers[worker_idx]->my_memqfd, &wait_out.qr_value.sga);
+            dmtr_wait(NULL, token);
+            // Wait for HTTP worker to give us an answer
+            dmtr_pop(&token, http_workers[worker_idx]->my_memqfd);
+            dmtr_qresult_t http_out;
+            dmtr_wait(&http_out, token);
+            // Answer the client
+            dmtr_push(&token, wait_out.qr_qd, &http_out.qr_value.sga);
+            dmtr_wait(NULL, token);
+            // Re-enable TCP queue for reading
+            dmtr_pop(&token, wait_out.qr_qd);
+            free(wait_out.qr_value.sga.sga_buf); // is it the same reference shared by http_out?
+
             tokens.push_back(token);
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
         }
+    }
+}
+
+void pin_thread(pthread_t thread, uint16_t cpu) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu, &cpuset);
+
+    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (rtn != 0) {
+        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
     }
 }
 
@@ -233,6 +239,9 @@ int main(int argc, char *argv[]) {
     /* Init Demeter */
     DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
 
+    /* Pin main thread */
+    pin_thread(pthread_self(), 0);
+
     /* Create http worker threads */
     for (int i = 0; i < n_http_workers; ++i) {
         Worker *worker = new Worker();
@@ -243,6 +252,7 @@ int main(int argc, char *argv[]) {
         pthread_t http_worker;
         worker_threads.push_back(&http_worker);
         pthread_create(&http_worker, NULL, &http_work, (void *) worker);
+        pin_thread(http_worker, i+1);
     }
 
     /* Create TCP worker thread */
@@ -250,6 +260,7 @@ int main(int argc, char *argv[]) {
     pthread_t tcp_worker;
     worker_threads.push_back(&tcp_worker);
     pthread_create(&tcp_worker, NULL, &tcp_work, NULL);
+    pin_thread(tcp_worker, n_http_workers+1);
 
     /* Re-enable SIGINT and SIGQUIT */
     ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
