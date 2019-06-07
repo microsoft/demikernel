@@ -5,9 +5,11 @@ authors = ["Michael Lowell Roberts <mirobert@microsoft.com>"]
 edition = "2018"
 
 [dependencies]
+bitfield = "0.13.2"
 byteorder = "1.3.1"
 custom_error = "1.6.0"
 derive_more = "0.14.0"
+either = "1.5"
 eui48 = "0.4.6"
 float_duration = "0.3.3"
 lazy_static = "1.3.0"

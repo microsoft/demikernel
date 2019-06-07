@@ -14,7 +14,10 @@ pub struct Station<'a> {
 }
 
 impl<'a> Station<'a> {
-    pub fn from_options(now: Instant, options: Options) -> Result<Station<'a>> {
+    pub fn from_options(
+        now: Instant,
+        options: Options,
+    ) -> Result<Station<'a>> {
         let rt = Runtime::from_options(now, options);
         let arp = arp::Peer::new(now, rt.clone())?;
         Ok(Station { rt, arp })

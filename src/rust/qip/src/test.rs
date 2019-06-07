@@ -1,9 +1,6 @@
 use crate::{
     prelude::*,
-    protocols::{
-        arp,
-        ethernet2::MacAddress,
-    },
+    protocols::{arp, ethernet2::MacAddress},
     Options,
 };
 use flexi_logger::Logger;
@@ -53,7 +50,8 @@ pub fn new_station<'a>(
                 cache_ttl: Some(*DEFAULT_TTL),
             },
         },
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 pub fn new_alice<'a>(now: Instant) -> Station<'a> {

@@ -1,7 +1,9 @@
+use super::{
+    cache::ArpCache,
+    pdu::{ArpOp, ArpPdu},
+};
 use crate::{prelude::*, protocols::ethernet2::MacAddress, r#async::Future};
-use super::cache::ArpCache;
 use float_duration::FloatDuration;
-use super::pdu::{ArpOp, ArpPdu};
 use std::{
     any::Any,
     cell::RefCell,
@@ -21,7 +23,11 @@ pub struct ArpPeer<'a> {
 impl<'a> ArpPeer<'a> {
     pub fn new(now: Instant, rt: Runtime<'a>) -> Result<ArpPeer<'a>> {
         let options = rt.options();
-        let cache_ttl = options.arp.cache_ttl.unwrap_or_else(|| FloatDuration::seconds(20.0)).to_std()?;
+        let cache_ttl = options
+            .arp
+            .cache_ttl
+            .unwrap_or_else(|| FloatDuration::seconds(20.0))
+            .to_std()?;
         let cache = ArpCache::new(now, Some(cache_ttl));
         Ok(ArpPeer {
             rt,
