@@ -78,7 +78,9 @@ static void *http_work(void *args) {
     printf("Hello I am an HTTP worker\n");
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
-    init_parser_state(state);
+
+    std::string answer_ok("200 OK");
+    std::string answer_nok("400 BAD REQUEST");
 
     Worker *me = (Worker *) args;
     dmtr_qtoken_t token = 0;
@@ -92,30 +94,40 @@ static void *http_work(void *args) {
             fprintf(stdout, "HTTP worker received %s\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
 
+            init_parser_state(state);
             size_t msg_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
             char *msg = (char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
             enum parser_status status = parse_http(state, msg, msg_size);
             switch (status) {
                 case REQ_COMPLETE:
                     fprintf(stdout, "HTTP worker got complete request\n");
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_ok.size();
+                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
+                             answer_ok.c_str(), answer_ok.size());
                     break;
                 case REQ_ERROR:
                     fprintf(stdout, "HTTP worker got malformed request\n");
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_nok.size();
+                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
+                             answer_nok.c_str(), answer_nok.size());
                     break;
                 case REQ_INCOMPLETE:
                     fprintf(stdout, "HTTP worker got incomplete request: %.*s\n",
                         (int) msg_size, msg);
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_nok.size();
+                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
+                             answer_nok.c_str(), answer_nok.size());
                     break;
             }
             //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
 
             dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
+            free(state->url);
+            free(state->body);
         }
     }
 
-    free(state->url);
-    free(state->body);
     free(state);
     return NULL;
 }
