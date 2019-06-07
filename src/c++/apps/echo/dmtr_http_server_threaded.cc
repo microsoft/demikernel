@@ -17,33 +17,12 @@
 
 #include "common.hh"
 #include "request_parser.h"
+#include "httpops.hh"
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
-
-#define MAX_FILEPATH_LEN 512
-#define MAX_MIME_TYPE 80
-
-#define FILE_DIR "/media/wiki/"
-
-#define REGEX_KEY "regex="
-
-#define BASE_HTTP_HEADER\
-    "HTTP/1.1 %d OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n"
-#define OK_HEADER\
-    "HTTP/1.1 200 OK\r\n\r\n"
-#define BAD_REQUEST_HEADER\
-    "HTTP/1.1 400 Bad Request\r\n\r\n"
-#define NOT_FOUND_HEADER\
-    "HTTP/1.1 404 Not Found\r\n\r\n"
-#define NOT_IMPLEMENTED_HEADER\
-    "HTTP/1.1 501 Not Implemented\r\n\r\n"
-#define DEFAULT_MIME_TYPE\
-    "text/html"
-
-enum http_req_type {REGEX_REQ, FILE_REQ};
 
 int lqd = 0;
 class Worker {
@@ -97,102 +76,16 @@ int match_filter(std::string message) {
     return 0;
 }
 
-void replace_special(char *url) {
-    for (uint32_t i=0; i<strlen(url); i++) {
-        if (url[i] == '%') {
-            char hex[3];
-            hex[0] = url[i+1];
-            hex[1] = url[i+2];
-            hex[2] = '\0';
-            char sub = (char)strtol(hex, NULL, 16);
-            url[i] = sub;
-            for (uint32_t j=i+1; j<strlen(url) - 1; j++) {
-                url[j] = url[j+2];
-            }
-        }
-    }
-}
-
-int url_to_path(char *url, const char *dir, char *path, int capacity) {
-    int len = 0;
-    for (char *c=url; *c!='\0' && *c!='?'; c++, len++);
-
-    int dir_len = strlen(dir);
-    int dir_slash = (dir[dir_len - 1] == '/');
-    int url_slash = (url[0] == '/');
-    dir_len -= (dir_slash && url_slash);
-    int both_missing_slash = (!dir_slash && !url_slash);
-
-    if (dir_len + len + both_missing_slash >= capacity) {
-        fprintf(stderr, "Path from url (%s) too large for buffer (%d)", url, capacity);
-        return -1;
-    }
-
-    char *dest = path;
-
-    strncpy(dest, dir, dir_len);
-    if (both_missing_slash) {
-        dest[dir_len] = '/';
-    }
-    strncpy(&dest[dir_len + both_missing_slash], url, len + 1);
-    dest[dir_len + both_missing_slash + len] = '\0';
-    replace_special(dest);
-    return dir_len + len;
-}
-
-void path_to_mime_type(char *path, char buf[], int capacity) {
-    char *extension = &path[strlen(path) - 1];
-    for (; extension != path && *extension != '.' && *extension != '/'; extension--);
-
-    if (*extension != '.')
-        strncpy(buf, DEFAULT_MIME_TYPE, capacity);
-
-    extension++; // Advance past the dot
-
-    // TODO: Necessary to replace this by loading /etc/mime.types into hashmap?
-    if (strcasecmp(extension, "html") == 0 ||
-        strcasecmp(extension, "htm") == 0 ||
-        strcasecmp(extension, "txt") == 0) {
-        strncpy(buf, "text/html", capacity);
-    } else if (strcasecmp(extension, "png") == 0) {
-        strncpy(buf, "image/png", capacity);
-    } else if (strcasecmp(extension, "jpg") == 0 ||
-               strcasecmp(extension, "jpeg") == 0) {
-        strncpy(buf, "image/jpeg", capacity);
-    } else if (strcasecmp(extension, "gif") == 0) {
-        strncpy(buf, "image/gif", capacity);
-    } else {
-        strncpy(buf, DEFAULT_MIME_TYPE, capacity);
-    }
-}
-
-int generate_header(char **dest, int code, int body_len, char *mime_type) {
-    if (code == 200) {
-        size_t alloc_size = snprintf(*dest, 0, BASE_HTTP_HEADER, code, mime_type, body_len) + 1;
-        *dest = reinterpret_cast<char *>(malloc(alloc_size));
-        return snprintf(*dest, alloc_size, BASE_HTTP_HEADER, code, mime_type, body_len);
-    } else if (code == 404) {
-        size_t alloc_size = strlen(NOT_FOUND_HEADER) + 1;
-        *dest = reinterpret_cast<char *>(malloc(alloc_size));
-        return snprintf(*dest, alloc_size, NOT_FOUND_HEADER);
-    } else {
-        size_t alloc_size = strlen(NOT_IMPLEMENTED_HEADER) + 1;
-        *dest = reinterpret_cast<char *>(malloc(alloc_size));
-        return snprintf(*dest, alloc_size, NOT_IMPLEMENTED_HEADER);
-    }
-}
-
 static void file_work(char *url, char **response) {
     char filepath[MAX_FILEPATH_LEN];
     url_to_path(url, FILE_DIR, filepath, MAX_FILEPATH_LEN);
     struct stat st;
     int status = stat(filepath, &st);
 
-    void *body = NULL;
+    char *body = NULL;
     int body_len = -1;
     int code = 404;
     char mime_type[MAX_MIME_TYPE];
-
     if (status != 0 || S_ISDIR(st.st_mode)) {
         if (status != 0) {
             fprintf(stderr, "Failed to get status of requested file %s\n", filepath);
@@ -229,28 +122,34 @@ static void file_work(char *url, char **response) {
 
     char *header = NULL;
     generate_header(&header, code, body_len, mime_type);
-    size_t response_len = strlen(header);
-    if (body) {
-        response_len += body_len;
-    }
-    *response = reinterpret_cast<char *>(malloc(response_len));
-    strncpy(*response, header, strlen(header));
-    if (body) {
-        strncpy(*response + strlen(header), reinterpret_cast<char *>(body), body_len);
-        free(body);
-    }
-    free(header);
+    generate_response(response, header, body, strlen(header), body_len);
 }
 
-static void regex_work(void *args, char **response) {
-    char *req = reinterpret_cast<char *>(args);
-}
-
-enum http_req_type get_request_type(char *url) {
-    if (strstr(url, REGEX_KEY) != NULL) {
-        return REGEX_REQ;
+static void regex_work(char *url, char **response) {
+    char *body = NULL;
+    int body_len = -1;
+    int code = 200;
+    char mime_type[MAX_MIME_TYPE];
+    char regex_value[MAX_REGEX_VALUE_LEN];
+    int rtn = get_regex_value(url, regex_value);
+    if (rtn != 0) {
+        fprintf(stderr, "Non-regex URL passed to craft_regex_response!\n");
+        code = 501;
+    } else {
+        char html[8192];
+        rtn = regex_html(regex_value, html, 8192);
+        if (rtn < 0) {
+            fprintf(stderr, "Error crafting regex response\n");
+            code = 501;
+        }
+        body_len = strlen(html) + 1;
+        body = reinterpret_cast<char *>(malloc(body_len));
+        snprintf(body, body_len, "%s", html);
     }
-    return FILE_REQ;
+
+    char *header = NULL;
+    generate_header(&header, code, body_len, mime_type);
+    generate_response(response, header, body, strlen(header), body_len);
 }
 
 static void clean_state(struct parser_state *state) {
@@ -388,7 +287,7 @@ static void *tcp_work(void *args) {
     }
 }
 
-void pin_thread(pthread_t thread, uint16_t cpu) {
+void pin_thread(pthread_t thread, u_int16_t cpu) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(cpu, &cpuset);
@@ -400,10 +299,10 @@ void pin_thread(pthread_t thread, uint16_t cpu) {
 }
 
 int main(int argc, char *argv[]) {
-    uint16_t n_http_workers;
+    u_int16_t n_http_workers;
     options_description desc{"HTTP server options"};
     desc.add_options()
-        ("http-workers,w", value<uint16_t>(&n_http_workers)->default_value(1), "num HTTP workers");
+        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers");
     parse_args(argc, argv, true, desc);
 
     struct sockaddr_in saddr = {};
