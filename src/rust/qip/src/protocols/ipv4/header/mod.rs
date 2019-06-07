@@ -2,34 +2,55 @@ mod checksum;
 
 use crate::prelude::*;
 use checksum::Hasher;
-use std::net::Ipv4Addr;
+use num_traits::FromPrimitive;
+use std::{convert::TryFrom, net::Ipv4Addr};
 
 const IPV4_VERSION: u32 = 4;
 pub const IPV4_HEADER_SIZE: usize = 20;
+
+#[repr(u32)]
+#[derive(FromPrimitive, Clone)]
+pub enum Ipv4Protocol {
+    Udp = 0x11,
+}
+
+impl TryFrom<u32> for Ipv4Protocol {
+    type Error = Fail;
+
+    fn try_from(n: u32) -> Result<Self> {
+        match FromPrimitive::from_u32(n) {
+            Some(op) => Ok(op),
+            None => Err(Fail::Unsupported {}),
+        }
+    }
+}
 
 bitfield! {
     pub struct Ipv4Header(MSB0 [u8]);
     impl Debug;
     u32;
-    get_version, _: 3, 0;
-    get_ihl, _: 7, 4;
-    get_dscp, _: 13, 8;
-    get_ecn, _: 15, 14;
-    get_total_len, _: 31, 16;
-    get_id, _: 47, 31;
-    get_df, _: 49;
-    get_mf, _: 50;
-    get_frag_offset, _: 63, 51;
-    get_ttl, _: 71, 64;
-    get_proto, _: 79, 72;
-    get_header_checksum, set_header_checksum: 95, 79;
-    u32, into Ipv4Addr, get_src_addr, _: 103, 96, 4;
-    u32, into Ipv4Addr, get_dst_addr, _: 159, 128;
+    pub get_version, set_version: 3, 0;
+    pub get_ihl, set_ihl: 7, 4;
+    pub get_dscp, set_dscp: 13, 8;
+    pub get_ecn, set_ecn: 15, 14;
+    pub get_total_len, set_total_len: 31, 16;
+    pub get_id, set_id: 47, 31;
+    pub get_df, set_df: 49;
+    pub get_mf, set_mf: 50;
+    pub get_frag_offset, set_frag_offset: 63, 51;
+    pub get_ttl, set_ttl: 71, 64;
+    pub get_proto, set_proto: 79, 72;
+    pub get_header_checksum, set_header_checksum: 95, 79;
+    pub u32, into Ipv4Addr, get_src_addr, _: 103, 96, 4;
+    pub u32, into Ipv4Addr, get_dst_addr, _: 159, 128;
 }
 
-impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4Header<T> {
-    pub fn new(mut bytes: T) -> Result<Ipv4Header<T>> {
-        if bytes.as_mut().len() != IPV4_HEADER_SIZE {
+impl<T> Ipv4Header<T>
+where
+    T: AsRef<[u8]> + AsMut<[u8]>,
+{
+    pub fn validate(bytes: T) -> Result<()> {
+        if bytes.as_ref().len() != IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {});
         }
 
@@ -66,14 +87,19 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Ipv4Header<T> {
             return Err(Fail::Unsupported {});
         }
 
-        Ok(header)
+        let _ = Ipv4Protocol::try_from(header.get_proto())?;
+        Ok(())
     }
 
-    pub fn recompute_checksum(&mut self) {
+    pub fn get_protocol(&self) -> Ipv4Protocol {
+        Ipv4Protocol::try_from(self.get_proto()).unwrap()
+    }
+
+    /*pub fn recompute_checksum(&mut self) {
         let mut hasher = Hasher::new();
         let bytes = self.0.as_ref();
         hasher.write(&bytes[..10]);
         hasher.write(&bytes[12..]);
         self.set_header_checksum(hasher.finish() as u32);
-    }
+    }*/
 }

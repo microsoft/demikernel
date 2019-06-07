@@ -103,7 +103,7 @@ impl ArpPdu {
         28
     }
 
-    pub fn to_packet(&self) -> Result<Rc<ethernet2::Frame>> {
+    pub fn to_packet(&self) -> Result<ethernet2::Frame> {
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
                 if MacAddress::nil() != self.target_link_addr {
@@ -143,7 +143,7 @@ impl ArpPdu {
             },
         )?;
         self.write(&mut frame.payload_mut())?;
-        Ok(Rc::new(frame))
+        Ok(frame)
     }
 }
 

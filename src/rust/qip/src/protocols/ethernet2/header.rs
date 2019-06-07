@@ -4,9 +4,10 @@ use num_traits::FromPrimitive;
 use std::io::{Read, Write};
 
 #[repr(u16)]
-#[derive(FromPrimitive, Clone)]
+#[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
 pub enum EtherType {
     Arp = 0x806,
+    Ipv4 = 0x800,
 }
 
 pub struct Ethernet2Header {

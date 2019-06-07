@@ -27,7 +27,7 @@ impl<'a> Station<'a> {
         self.rt.options()
     }
 
-    pub fn receive(&mut self, frame: Rc<ethernet2::Frame>) -> Result<()> {
+    pub fn receive(&mut self, frame: ethernet2::Frame) -> Result<()> {
         let dest_addr = frame.header().dest_addr;
         if self.rt.options().my_link_addr != dest_addr
             && !dest_addr.is_broadcast()
