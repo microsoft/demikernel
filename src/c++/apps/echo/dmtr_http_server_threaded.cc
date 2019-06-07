@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 #include <unordered_map>
 #include <cassert>
@@ -21,6 +22,28 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
+
+#define MAX_FILEPATH_LEN 512
+#define MAX_MIME_TYPE 80
+
+#define FILE_DIR "/media/wiki/"
+
+#define REGEX_KEY "regex="
+
+#define BASE_HTTP_HEADER\
+    "HTTP/1.1 %d OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n"
+#define OK_HEADER\
+    "HTTP/1.1 200 OK\r\n\r\n"
+#define BAD_REQUEST_HEADER\
+    "HTTP/1.1 400 Bad Request\r\n\r\n"
+#define NOT_FOUND_HEADER\
+    "HTTP/1.1 404 Not Found\r\n\r\n"
+#define NOT_IMPLEMENTED_HEADER\
+    "HTTP/1.1 501 Not Implemented\r\n\r\n"
+#define DEFAULT_MIME_TYPE\
+    "text/html"
+
+enum http_req_type {REGEX_REQ, FILE_REQ};
 
 int lqd = 0;
 class Worker {
@@ -74,13 +97,171 @@ int match_filter(std::string message) {
     return 0;
 }
 
+void replace_special(char *url) {
+    for (uint32_t i=0; i<strlen(url); i++) {
+        if (url[i] == '%') {
+            char hex[3];
+            hex[0] = url[i+1];
+            hex[1] = url[i+2];
+            hex[2] = '\0';
+            char sub = (char)strtol(hex, NULL, 16);
+            url[i] = sub;
+            for (uint32_t j=i+1; j<strlen(url) - 1; j++) {
+                url[j] = url[j+2];
+            }
+        }
+    }
+}
+
+int url_to_path(char *url, const char *dir, char *path, int capacity) {
+    int len = 0;
+    for (char *c=url; *c!='\0' && *c!='?'; c++, len++);
+
+    int dir_len = strlen(dir);
+    int dir_slash = (dir[dir_len - 1] == '/');
+    int url_slash = (url[0] == '/');
+    dir_len -= (dir_slash && url_slash);
+    int both_missing_slash = (!dir_slash && !url_slash);
+
+    if (dir_len + len + both_missing_slash >= capacity) {
+        fprintf(stderr, "Path from url (%s) too large for buffer (%d)", url, capacity);
+        return -1;
+    }
+
+    char *dest = path;
+
+    strncpy(dest, dir, dir_len);
+    if (both_missing_slash) {
+        dest[dir_len] = '/';
+    }
+    strncpy(&dest[dir_len + both_missing_slash], url, len + 1);
+    dest[dir_len + both_missing_slash + len] = '\0';
+    replace_special(dest);
+    return dir_len + len;
+}
+
+void path_to_mime_type(char *path, char buf[], int capacity) {
+    char *extension = &path[strlen(path) - 1];
+    for (; extension != path && *extension != '.' && *extension != '/'; extension--);
+
+    if (*extension != '.')
+        strncpy(buf, DEFAULT_MIME_TYPE, capacity);
+
+    extension++; // Advance past the dot
+
+    // TODO: Necessary to replace this by loading /etc/mime.types into hashmap?
+    if (strcasecmp(extension, "html") == 0 ||
+        strcasecmp(extension, "htm") == 0 ||
+        strcasecmp(extension, "txt") == 0) {
+        strncpy(buf, "text/html", capacity);
+    } else if (strcasecmp(extension, "png") == 0) {
+        strncpy(buf, "image/png", capacity);
+    } else if (strcasecmp(extension, "jpg") == 0 ||
+               strcasecmp(extension, "jpeg") == 0) {
+        strncpy(buf, "image/jpeg", capacity);
+    } else if (strcasecmp(extension, "gif") == 0) {
+        strncpy(buf, "image/gif", capacity);
+    } else {
+        strncpy(buf, DEFAULT_MIME_TYPE, capacity);
+    }
+}
+
+int generate_header(char **dest, int code, int body_len, char *mime_type) {
+    if (code == 200) {
+        size_t alloc_size = snprintf(*dest, 0, BASE_HTTP_HEADER, code, mime_type, body_len) + 1;
+        *dest = reinterpret_cast<char *>(malloc(alloc_size));
+        return snprintf(*dest, alloc_size, BASE_HTTP_HEADER, code, mime_type, body_len);
+    } else if (code == 404) {
+        size_t alloc_size = strlen(NOT_FOUND_HEADER) + 1;
+        *dest = reinterpret_cast<char *>(malloc(alloc_size));
+        return snprintf(*dest, alloc_size, NOT_FOUND_HEADER);
+    } else {
+        size_t alloc_size = strlen(NOT_IMPLEMENTED_HEADER) + 1;
+        *dest = reinterpret_cast<char *>(malloc(alloc_size));
+        return snprintf(*dest, alloc_size, NOT_IMPLEMENTED_HEADER);
+    }
+}
+
+static void file_work(char *url, char **response) {
+    char filepath[MAX_FILEPATH_LEN];
+    url_to_path(url, FILE_DIR, filepath, MAX_FILEPATH_LEN);
+    struct stat st;
+    int status = stat(filepath, &st);
+
+    void *body = NULL;
+    int body_len = -1;
+    int code = 404;
+    char mime_type[MAX_MIME_TYPE];
+
+    if (status != 0 || S_ISDIR(st.st_mode)) {
+        if (status != 0) {
+            fprintf(stderr, "Failed to get status of requested file %s\n", filepath);
+        } else {
+            fprintf(stderr, "Directory requested (%s). Returning 404.\n", filepath);
+        }
+        strncpy(mime_type, "text/html", MAX_MIME_TYPE);
+    } else {
+        FILE *file = fopen(filepath, "rb");
+        if (file == NULL) {
+            fprintf(stdout, "Failed to access requested file %s: %s\n", filepath, strerror(errno));
+            strncpy(mime_type, "text/html", MAX_MIME_TYPE);
+        } else {
+            // Get file size
+            fseek(file, 0, SEEK_END);
+            int size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+
+            body = reinterpret_cast<char *>(malloc(size));
+            body_len = fread(body, sizeof(char), size, file);
+
+            if (body_len != size) {
+                fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
+            }
+
+            fclose(file);
+
+            path_to_mime_type(filepath, mime_type, MAX_MIME_TYPE);
+
+            code = 200;
+            fprintf(stdout, "Found file: %s\n", filepath);
+        }
+    }
+
+    char *header = NULL;
+    generate_header(&header, code, body_len, mime_type);
+    size_t response_len = strlen(header);
+    if (body) {
+        response_len += body_len;
+    }
+    *response = reinterpret_cast<char *>(malloc(response_len));
+    strncpy(*response, header, strlen(header));
+    if (body) {
+        strncpy(*response + strlen(header), reinterpret_cast<char *>(body), body_len);
+        free(body);
+    }
+    free(header);
+}
+
+static void regex_work(void *args, char **response) {
+    char *req = reinterpret_cast<char *>(args);
+}
+
+enum http_req_type get_request_type(char *url) {
+    if (strstr(url, REGEX_KEY) != NULL) {
+        return REGEX_REQ;
+    }
+    return FILE_REQ;
+}
+
+static void clean_state(struct parser_state *state) {
+    free(state->url);
+    free(state->body);
+}
+
 static void *http_work(void *args) {
     printf("Hello I am an HTTP worker\n");
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
-
-    std::string answer_ok("200 OK");
-    std::string answer_nok("400 BAD REQUEST");
 
     Worker *me = (Worker *) args;
     dmtr_qtoken_t token = 0;
@@ -95,36 +276,51 @@ static void *http_work(void *args) {
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
 
             init_parser_state(state);
-            size_t msg_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
-            char *msg = (char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
-            enum parser_status status = parse_http(state, msg, msg_size);
+            size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
+            char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+            enum parser_status status = parse_http(state, req, req_size);
             switch (status) {
                 case REQ_COMPLETE:
                     fprintf(stdout, "HTTP worker got complete request\n");
-                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_ok.size();
-                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
-                             answer_ok.c_str(), answer_ok.size());
                     break;
                 case REQ_ERROR:
                     fprintf(stdout, "HTTP worker got malformed request\n");
-                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_nok.size();
-                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
-                             answer_nok.c_str(), answer_nok.size());
-                    break;
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
+                    strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
+                    dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
+                    dmtr_wait(NULL, token);
+                    clean_state(state);
+                    continue;
                 case REQ_INCOMPLETE:
                     fprintf(stdout, "HTTP worker got incomplete request: %.*s\n",
-                        (int) msg_size, msg);
-                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = answer_nok.size();
-                    strncpy((char *) wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
-                             answer_nok.c_str(), answer_nok.size());
+                        (int) req_size, req);
+                    fprintf(stdout, "Partial requests not implemented\n");
+                    clean_state(state);
+                    continue;
+            }
+
+            char *response = NULL;
+            switch(get_request_type(state->url)) {
+                case REGEX_REQ:
+                    regex_work(state->url, &response);
+                    break;
+                case FILE_REQ:
+                    file_work(state->url, &response);
                     break;
             }
-            //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
 
+            if (response == NULL) {
+                fprintf(stderr, "Error formatting HTTP response\n");
+                clean_state(state);
+                continue;
+            }
+
+            wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(response);
+            strncpy(req, response, strlen(response));
             dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
-            free(state->url);
-            free(state->body);
+            clean_state(state);
+            free(response);
         }
     }
 
