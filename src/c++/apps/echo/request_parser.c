@@ -14,14 +14,14 @@ static int url_callback(http_parser *parser, const char *at, size_t length) {
     strncpy(&state->url[state->url_len], at, length);
     state->url[state->url_len + length] = '\0';
     state->url_len += length;
-    printf("Got URL: %s", state->url);
+    printf("Got URL: %s\n", state->url);
     return 0;
 }
 
 static int headers_complete_callback(http_parser *parser) {
     struct parser_state *state = parser->data;
     state->headers_complete = 1;
-    printf("Got end of headers");
+    printf("Got end of headers\n");
     return 0;
 }
 
@@ -32,7 +32,7 @@ static int header_field_callback(http_parser *parser,
     size_t trunc_length = length < MAX_FIELD_NAME_LEN ? length : MAX_FIELD_NAME_LEN;
     strncpy(state->last_field_name, at, trunc_length);
     state->last_field_name[trunc_length] = '\0';
-    printf("Got header field: %s", state->last_field_name);
+    printf("Got header field: %s\n", state->last_field_name);
     return 0;
 }
 
@@ -45,7 +45,7 @@ static int header_value_callback(http_parser *parser,
         strncpy(tmp, at, length);
         tmp[length] = '\0';
         state->specified_body_len = atoi(tmp);
-        printf("Got header value: %s", tmp);
+        printf("Got header value: %s\n", tmp);
     }
     return 0;
 }
@@ -57,7 +57,7 @@ static int body_callback(http_parser *parser,
     strncpy(&state->body[state->body_len], at, length);
     state->body[state->body_len + length] = '\0';
     state->body_len += length;
-    printf("Got body: %s", state->body);
+    printf("Got body: %s\n", state->body);
     return 0;
 }
 
