@@ -18,7 +18,7 @@ namespace dmtr {
 
 class io_queue_api
 {
-    private: boost::atomic<int> my_qd_counter; /** Not thread safe */
+    private: boost::atomic<int> my_qd_counter;
     private: boost::atomic<uint32_t> my_qt_counter;
     private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
     private: mutable std::mutex my_queues_mutex;
