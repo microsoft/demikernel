@@ -41,16 +41,15 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         ("file", value<std::string>(), "log file");
 
     variables_map vm;
-    store(parse_command_line(argc, argv, desc), vm);
     try {
+        store(parse_command_line(argc, argv, desc), vm);
+        if (vm.count("help")) {
+            std::cout << desc << std::endl;
+            exit(0);
+        }
         notify(vm);
     } catch (const error &e) {
         std::cout << e.what() << std::endl;
-        exit(0);
-    }
-
-    // print help
-    if (vm.count("help")) {
         std::cout << desc << std::endl;
         exit(0);
     }
