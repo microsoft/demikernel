@@ -25,37 +25,37 @@ fn immediate_reply() {
         x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
     }
 
-    let request = {
+    let mut request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet,
+            Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    assert!(request.bytes().len() >= ethernet2::MIN_PAYLOAD_SIZE);
+    assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(request.clone()) {
+    match bob.receive(&mut request) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(request).unwrap();
+    carrie.receive(&mut request).unwrap();
     let cache = carrie.export_arp_cache();
     assert_eq!(
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
-    let reply = {
+    let mut reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet,
+            Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    alice.receive(reply).unwrap();
+    alice.receive(&mut reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
@@ -91,37 +91,37 @@ fn slow_reply() {
         x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
     }
 
-    let request = {
+    let mut request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet,
+            Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    assert!(request.bytes().len() >= ethernet2::MIN_PAYLOAD_SIZE);
+    assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(request.clone()) {
+    match bob.receive(&mut request) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(request).unwrap();
+    carrie.receive(&mut request).unwrap();
     let cache = carrie.export_arp_cache();
     assert_eq!(
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
-    let reply = {
+    let mut reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet,
+            Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    alice.receive(reply).unwrap();
+    alice.receive(&mut reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()

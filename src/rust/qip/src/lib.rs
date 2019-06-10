@@ -1,13 +1,9 @@
 #![feature(generators, generator_trait)]
-#![feature(impl_trait_in_bindings)]
 #![warn(clippy::all)]
 
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
-
-#[macro_use]
-extern crate derive_more;
 
 #[macro_use]
 extern crate num_derive;

@@ -19,14 +19,16 @@ impl TryFrom<u32> for Ipv4Protocol {
 
     fn try_from(n: u32) -> Result<Self> {
         match FromPrimitive::from_u32(n) {
-            Some(op) => Ok(op),
+            Some(n) => Ok(n),
             None => Err(Fail::Unsupported {}),
         }
     }
 }
 
+// todo: the `bitfield` crate has yet to implement immutable access to fields. see [this github issue](https://github.com/dzamlo/rust-bitfield/issues/23) for details.
+
 bitfield! {
-    pub struct Ipv4Header(MSB0 [u8]);
+    pub struct Ipv4HeaderMut(MSB0 [u8]);
     impl Debug;
     u32;
     pub get_version, set_version: 3, 0;
@@ -45,7 +47,7 @@ bitfield! {
     pub u32, into Ipv4Addr, get_dst_addr, _: 159, 128;
 }
 
-impl<T> Ipv4Header<T>
+impl<T> Ipv4HeaderMut<T>
 where
     T: AsRef<[u8]> + AsMut<[u8]>,
 {
@@ -60,7 +62,7 @@ where
             hasher.finish()
         };
 
-        let header: Ipv4Header<T> = Ipv4Header(bytes);
+        let header: Ipv4HeaderMut<T> = Ipv4HeaderMut(bytes);
         if header.get_version() != IPV4_VERSION {
             return Err(Fail::Unsupported {});
         }
@@ -89,10 +91,6 @@ where
 
         let _ = Ipv4Protocol::try_from(header.get_proto())?;
         Ok(())
-    }
-
-    pub fn get_protocol(&self) -> Ipv4Protocol {
-        Ipv4Protocol::try_from(self.get_proto()).unwrap()
     }
 
     /*pub fn recompute_checksum(&mut self) {

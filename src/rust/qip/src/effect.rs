@@ -1,5 +1,5 @@
-use crate::protocols::ethernet2;
+use std::rc::Rc;
 
 pub enum Effect {
-    Transmit(ethernet2::Frame),
+    Transmit(Rc<Vec<u8>>),
 }

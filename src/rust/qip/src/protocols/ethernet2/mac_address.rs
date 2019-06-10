@@ -11,6 +11,10 @@ impl MacAddress {
         MacAddress(eui48::MacAddress::new(bytes))
     }
 
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        MacAddress(eui48::MacAddress::from_bytes(bytes).unwrap())
+    }
+
     pub fn broadcast() -> MacAddress {
         MacAddress(eui48::MacAddress::broadcast())
     }

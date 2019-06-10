@@ -2,7 +2,11 @@ use super::{
     cache::ArpCache,
     pdu::{ArpOp, ArpPdu},
 };
-use crate::{prelude::*, protocols::ethernet2::MacAddress, r#async::Future};
+use crate::{
+    prelude::*,
+    protocols::ethernet2::{self, MacAddress},
+    r#async::Future,
+};
 use float_duration::FloatDuration;
 use std::{
     any::Any,
@@ -15,6 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone)]
 pub struct ArpPeer<'a> {
     rt: Runtime<'a>,
     cache: Rc<RefCell<ArpCache>>,
@@ -41,14 +46,15 @@ impl<'a> ArpPeer<'a> {
         cache.try_evict(2);
     }
 
-    pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
+    pub fn receive(&mut self, bytes: &mut [u8]) -> Result<()> {
+        let frame = ethernet2::Frame::from_bytes(bytes)?;
         let options = self.rt.options();
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
-        let mut arp = ArpPdu::try_from(bytes)?;
+        let mut arp = ArpPdu::try_from(frame.payload())?;
         // from RFC 826:
         // > Merge_flag := false
         // > If the pair <protocol type, sender protocol address> is
@@ -102,7 +108,7 @@ impl<'a> ArpPeer<'a> {
                 arp.op = ArpOp::ArpReply;
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
-                let packet = arp.to_packet()?;
+                let packet = Rc::new(arp.to_packet()?);
                 self.rt.emit_effect(Effect::Transmit(packet));
                 Ok(())
             }
@@ -140,7 +146,7 @@ impl<'a> ArpPeer<'a> {
                 target_ip_addr: ipv4_addr,
             };
 
-            let packet = arp.to_packet()?;
+            let packet = Rc::new(arp.to_packet()?);
             let timeout = options
                 .arp
                 .request_timeout
