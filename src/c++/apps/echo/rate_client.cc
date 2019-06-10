@@ -126,11 +126,6 @@ hr_clock::time_point last_flush = hr_clock::now();
  */
 const int SMALLEST_INTERVAL_NS = 1000000;
 
-/* Maximum number of currently open connections. */
-const int MAX_CONCURRENCY_C = 65500;
-int MAX_CONCURRENCY = MAX_CONCURRENCY_C;
-int MAX_THREAD_CONCURRENCY = MAX_CONCURRENCY;
-
 /* Upper bound on request response time XXX */
 int timeout_ns = 10000000;
 
@@ -189,9 +184,6 @@ struct Results {
 */
 /* Pre-formatted HTTP GET requests */
 std::vector<std::unique_ptr<std::string> > http_requests;
-
-/* Each thread group has a queue of I/O queues */
-std::vector<std::queue<int> > threads_qfds;
 
 /* Mutex for queue shared between init and process threads */
 std::mutex connected_qfds_mutex;
@@ -315,7 +307,7 @@ int log_responses(int total_requests, FILE *log_fd, hr_clock::time_point *time_e
  ****************** PROCESS CONNECTIONS **************************
  *****************************************************************/
 
-int process_connections(int total_requests, std::queue<int> *qfds, int whoami,
+int process_connections(int total_requests, std::queue<int> &qfds, int whoami,
                         hr_clock::time_point *time_end) {
     int completed = 0;
     int http_request_idx;
@@ -326,16 +318,16 @@ int process_connections(int total_requests, std::queue<int> *qfds, int whoami,
         {
             int qd;
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
-            if (!qfds->empty()) {
-                qd = qfds->front();
-                qfds->pop();
+            if (!qfds.empty()) {
+                qd = qfds.front();
+                qfds.pop();
                 http_request_idx = completed + total_requests * whoami;
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
                 std::unique_ptr<std::string> http_req =
                     std::move(http_requests.at(http_request_idx));
-                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(http_req.get());
                 sga.sga_segs[0].sgaseg_len = http_req.get()->size();
+                sga.sga_segs[0].sgaseg_buf = const_cast<char *>(http_req.release()->c_str());
                 DMTR_OK(dmtr_push(&token, qd, &sga));
                 tokens.push_back(token);
             }
@@ -361,6 +353,7 @@ int process_connections(int total_requests, std::queue<int> *qfds, int whoami,
                 dmtr_close(wait_out.qr_qd);
                 tokens.erase(tokens.begin()+idx);
                 free(wait_out.qr_value.sga.sga_buf);
+                completed++;
             } else {
                 log_warn("Non supported OP code");
             }
@@ -382,8 +375,8 @@ int process_connections(int total_requests, std::queue<int> *qfds, int whoami,
  ****************** CREATE I/O QUEUES ****************************
  *****************************************************************/
 
-int create_queues(double rate, double interval_ns, int n_requests,
-                  std::string host, int port, std::queue<int> *qfds,
+int create_queues(double interval_ns, int n_requests,
+                  std::string host, int port, std::queue<int> &qfds,
                   hr_clock::time_point *time_end) {
 
     hr_clock::time_point start_time = hr_clock::now();
@@ -417,7 +410,7 @@ int create_queues(double rate, double interval_ns, int n_requests,
         /* Make this qd available to the request handler thread */
         {
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
-            qfds->push(qd);
+            qfds.push(qd);
         }
 
         if (hr_clock::now() > *time_end) {
@@ -427,14 +420,6 @@ int create_queues(double rate, double interval_ns, int n_requests,
 
     return 0;
 }
-
-/**
- * For printing usage
- */
-const char *USAGE = "Usage: %s -r rate/second [-R end_rate/second] \n"\
-                        "\t-d request_duration (seconds)  [-D response_duration (seconds) ] \n"\
-                        "\t-u URL -p port [-s (for secure)] [-l logfile] [-t timeout] [-T n_threads] [-s (secure)] \n"
-                        "\t[--renegs n_renegs [--end-renegs n_end_renegs] ] [--tsung tsung_cfg.xml]\n";
 
 /**
  * Each thread-group consists of an init thread, an async response thread, and a logging thread
@@ -452,7 +437,6 @@ void print_result(const char *label, int result, bool print_if_zero=true) {
     if (print_if_zero || result != 0)
         printf("%-28s%d\n",label, result);
 }
-
 
 /**
  * Prints the aggregate results across all thread groups
@@ -521,7 +505,7 @@ void print_results(struct PollState *poll_states, int n_states, bool secure) {
  * - Handle maximum concurrency?
  */
 int main(int argc, char **argv) {
-    int rate, duration, n_threads, port;
+    int rate, duration, n_threads;
     std::string url, log, uri_list;
     namespace po = boost::program_options;
     po::options_description desc{"Rate client options"};
@@ -529,7 +513,6 @@ int main(int argc, char **argv) {
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
         ("url,u", po::value<std::string>(&url)->required(), "Target URL")
-        ("port,p", po::value<int>(&port)->required(), "Target port")
         ("log,l", po::value<std::string>(&log)->default_value("./rate_client.log"), "Log file location")
         ("client-threads,T", po::value<int>(&n_threads)->default_value(1), "Number of client threads")
         ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request");
@@ -537,18 +520,11 @@ int main(int argc, char **argv) {
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
-        log_error("Wrong URL format given (%s)", url);
+        log_error("Wrong URL format given (%s)", url.c_str());
         return -1;
     }
-    std::string uri = url.substr(host_idx + 1);
+    std::string uri = url.substr(host_idx);
     std::string host = url.substr(0, host_idx);
-
-    struct rlimit rlim;
-    getrlimit(RLIMIT_NOFILE, &rlim);
-    if ((int)rlim.rlim_cur < MAX_CONCURRENCY - 5) {
-        log_warn("MAX_CONCURRENCY is too high! Reducing to %d", (int)rlim.rlim_cur - 5);
-        MAX_CONCURRENCY = (int)rlim.rlim_cur - 5;
-    }
 
     FILE *log_fd = fopen(log.c_str(), "w");
     if (!log_fd) {
@@ -560,7 +536,7 @@ int main(int argc, char **argv) {
 
     if (rate < n_threads ) {
         n_threads = rate;
-        log_warn("Adjusting number of threads to match rate (now %s)", n_threads);
+        log_warn("Adjusting number of threads to match rate (now %d)", n_threads);
     }
 
     /* Compute request per interval per thread */
@@ -582,7 +558,7 @@ int main(int argc, char **argv) {
     /* Setup worker threads */
     log_info("Starting %d*3 threads to serve %d requests (%d reqs / thread)",
               n_threads, total_requests, req_per_thread);
-    log_info("Requests per second: %d. Total requests: %d", rate, total_requests);
+    log_info("Requests per second: %d. Adjusted total requests: %d", rate, req_per_thread*n_threads);
     log_info("Interval size: %.2f ns", interval_ns_per_thread);
 
     /* Pre-compute the HTTP requests */
@@ -616,10 +592,13 @@ int main(int argc, char **argv) {
     */
 
     /* Initialize responses first, then logging, then request initialization */
+    std::vector<std::queue<int> > threads_qfds(n_threads);
     state_threads threads[n_threads];
     for (int i = 0; i < n_threads; ++i) {
-        threads[i].resp = new std::thread(process_connections, req_per_thread,
-                                     &threads_qfds[i], i, &time_end_process);
+        threads[i].resp = new std::thread(
+            process_connections, req_per_thread,
+            std::ref(threads_qfds[i]), i, &time_end_process
+        );
         /*
         threads[i].log = new std::thread(
             log_responses, this_thread_reqs, log_fd, &state,
@@ -628,7 +607,7 @@ int main(int argc, char **argv) {
         */
         threads[i].init = new std::thread(
             create_queues, interval_ns_per_thread, req_per_thread,
-            host, port, &threads_qfds[i], &time_end_init
+            host, port, std::ref(threads_qfds[i]), &time_end_init
         );
     }
 
