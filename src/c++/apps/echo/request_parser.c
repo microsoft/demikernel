@@ -94,7 +94,7 @@ enum parser_status parse_http(struct parser_state *state, char *buf, size_t byte
         printf("Parsing even though header is already complete\n");
     }
 
-    printf("Attempting to parse %.*s", (int)bytes, buf);
+    printf("Attempting to parse %.*s\n", (int)bytes, buf);
     size_t nparsed = http_parser_execute(&state->parser, &state->settings,
                                          buf, bytes);
 
