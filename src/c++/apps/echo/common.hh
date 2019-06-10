@@ -42,7 +42,12 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
 
     variables_map vm;
     store(parse_command_line(argc, argv, desc), vm);
-    notify(vm);
+    try {
+        notify(vm);
+    } catch (const error &e) {
+        std::cout << e.what() << std::endl;
+        exit(0);
+    }
 
     // print help
     if (vm.count("help")) {
