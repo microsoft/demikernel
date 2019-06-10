@@ -335,7 +335,6 @@ struct http_parser_settings {
   http_cb      on_chunk_complete;
 };
 
-
 enum http_parser_url_fields
   { UF_SCHEMA           = 0
   , UF_HOST             = 1

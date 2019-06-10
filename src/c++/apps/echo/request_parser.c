@@ -94,14 +94,17 @@ enum parser_status parse_http(struct parser_state *state, char *buf, size_t byte
         printf("Parsing even though header is already complete\n");
     }
 
-    printf("Attempting to parse %.*s\n", (int)bytes, buf);
+    printf("Attempting to parse '%.*s'\n", (int)bytes, buf);
     size_t nparsed = http_parser_execute(&state->parser, &state->settings,
                                          buf, bytes);
 
     if (nparsed != bytes) {
         buf[bytes] = '\0';
-        printf("Error parsing HTTP request %s (rcvd: %d, parsed: %d)\n",
-                buf, (int)bytes, (int)nparsed);
+        printf("Error parsing HTTP request '%s'\n(%s:%s)\n",
+                buf,
+                http_errno_name(state->parser.http_errno),
+                http_errno_description(state->parser.http_errno)
+        );
         return REQ_ERROR;
     }
     if (state->headers_complete && state->specified_body_len <= state->body_len) {
