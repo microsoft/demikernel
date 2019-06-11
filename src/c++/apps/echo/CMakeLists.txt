@@ -37,7 +37,7 @@ target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml
 
 # POSIX HTTP rate client
 add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix boost_program_options Threads::Threads)
+target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})
