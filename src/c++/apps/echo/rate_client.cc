@@ -12,6 +12,7 @@
 #include <ctime>
 #include <queue>
 #include <vector>
+#include <unordered_map>
 
 #include "common.hh"
 
@@ -94,26 +95,21 @@
 auto start_time = std::chrono::system_clock::now();
 using hr_clock = std::chrono::high_resolution_clock;
 
-/* Returns the number of microseconds since the epoch for a given high-res time point */
-/*
+/* Returns the number of nanoseconds since the epoch for a given high-res time point */
 static inline long int since_epoch(hr_clock::time_point &time){
-    return chrono::time_point_cast<chrono::microseconds>(time).time_since_epoch().count();
+    return std::chrono::time_point_cast<std::chrono::nanoseconds>(time).time_since_epoch().count();
 }
-*/
 
-/* Returns the number of microseconds between a start and end point */
-/*
-static inline long int us_diff(hr_clock::time_point &start, hr_clock::time_point &end) {
-    auto us = chrono::duration_cast<chrono::microseconds>(end-start).count();
-    if (us < 0) {
-        us = -1;
+/* Returns the number of nanoseconds between a start and end point */
+static inline long int ns_diff(hr_clock::time_point &start, hr_clock::time_point &end) {
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    if (ns < 0) {
+        ns = -1;
     }
-    return us;
+    return ns;
 }
-*/
 
 std::chrono::seconds FLUSH_INTERVAL(1);
-hr_clock::time_point last_flush = hr_clock::now();
 
 /*****************************************************************
  *********************** RATE VARIABLES **************************
@@ -137,19 +133,20 @@ int timeout_ns = 10000000;
 const char *REQ_STR =
         "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: dmtr\r\n\r\n";
 /* Start of the string for a valid HTTP response */
-const char *VALID_RESP="HTTP/1.1 200 OK";
-int VALID_RESP_SIZE=strlen(VALID_RESP);
+const std::string VALID_RESP="HTTP/1.1 200 OK";
 
 /* Validates the given response, checking it against the valid response string */
-/*
-static inline bool validate_response(string response, char *request, size_t request_size) {
-    if (strstr(response.c_str(), VALID_RESP) != NULL) {
+static inline bool validate_response(dmtr_sgarray_t response) {
+    assert(response.sga_numsegs == 1);
+    std::string resp_str =
+        std::string(reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf));
+    std::cout << "str " << resp_str << std::endl;
+    if (resp_str == VALID_RESP) {
         return true;
     }
-    print_request_error("Invalid response received: %s", response.c_str());
+    print_request_error("Invalid response received: %s", resp_str.c_str());
     return false;
 }
-*/
 
 #define MAX_REQUEST_SIZE 4192
 
@@ -157,170 +154,129 @@ static inline bool validate_response(string response, char *request, size_t requ
  *********************** CLIENT STRUCTS **************************
  *****************************************************************/
 
-/* Per-thread-group results and summary statistics */
+enum ReqStatus {
+    CONNECTING,
+    CONNECTED,
+    SENDING,
+    READING,
+    COMPLETED,
+};
+
 /*
+const char *ReqStatusStrings[] {
+    "CONNECTING",
+    "CONNECTED",
+    "SENDING",
+    "READING",
+    "COMPLETED",
+};
+*/
+
+/* Holds the state of a single attempted request. */
+struct RequestState {
+    enum ReqStatus status; /**< Current status of request (where in async it is) */
+    hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
+    hr_clock::time_point connected;   /**< Time that dmrt_connect() completed */
+    hr_clock::time_point sending;       /**< Time that dmtr_push() started */
+    hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
+    hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
+    bool valid; /** Whether the response was valid */
+};
+
+/* Per-thread-group results and summary statistics */
 struct Results {
-    std::chrono::microseconds total_time; // Total amount of time spent on connections per thread
+    std::chrono::nanoseconds total_time; // Total amount of time spent on connections per thread
     // The rest of these are counters for the number of requests that
     // reached/errored on stages of connection
     int initiated = 0;
     int valid = 0;
     int invalid = 0;
     int connected = 0;
-    int ssl_connected = 0;
     int written = 0;
     int renegs = 0;
 
     int errored = 0;
-    int err_timeout = 0;
-    int err_connect = 0;
-    int err_ssl = 0;
-    int err_write = 0;
-    int err_read = 0;
 
     // Default constructor
     Results(): total_time(0) {}
 };
-*/
+
 /* Pre-formatted HTTP GET requests */
 std::vector<std::unique_ptr<std::string> > http_requests;
 
 /* Mutex for queue shared between init and process threads */
 std::mutex connected_qfds_mutex;
 
+/* Mutex for queue of request state shared between init and process threads */
+std::mutex completed_qfds_mutex;
+
 /*****************************************************************
  *********************** LOGGING *********************************
  *****************************************************************/
 
-/*
-static inline int log_response(FILE *log_fd, struct RequestState &state) {
-    fprintf(log_fd, "%ld\t%ld\t%ld\t%ld\t%d\n",
-            since_epoch(state.connect),
-            us_diff(state.connect, state.ssl_connect),
-            us_diff(state.connect, state.write),
-            us_diff(state.connect, state.read),
-            state.valid
-    );
-    if (hr_clock::now() - last_flush > FLUSH_INTERVAL) {
-        fflush(log_fd);
-        last_flush = hr_clock::now();
-    }
-    return 0;
-}
-*/
+int log_responses(int total_requests, FILE *log_fd,
+                  std::queue<std::pair<int, RequestState> > &qfds,
+                  hr_clock::time_point *time_end) {
 
-/*
-int log_responses(int total_requests, FILE *log_fd, hr_clock::time_point *time_end,
-                  char *request, size_t request_size) {
-
-    // This thread validates responses (and thus still needs to run) even if logging is turned off
-    bool do_log = log_fd != NULL;
-
-    // Number of loggings that have been completed
-    int completed = 0;
-
-    // Timeout for the condition variable so we can exit even if numbers don't add up
-    std::chrono::seconds sec(1);
-
-    // Index (matched with response index) at which we have recorded responses
-    int record_i = 0;
-
-    while (completed < total_requests) {
-        // Get a lock
-        unique_lock<mutex> lk(poll_state.rec_mutex);
-        // wait_for releases the lock, checks condition, locks again and continues if condition met
-        poll_state.rec_cv.wait_for(lk, sec,
-                [poll_state_ptr, record_i]{return poll_state_ptr->resp_index != record_i;});
-        int response_i = poll_state.resp_index;
-        // Unlock once condition met
-        lk.unlock();
-
-        // Deal with rollover
-        if (response_i < record_i) {
-            response_i += MAX_THREAD_CONCURRENCY;
+    int logged = 0;
+    hr_clock::time_point last_flush = hr_clock::now();
+    while (logged < total_requests) {
+        bool has_pair = false;
+        std::pair<int, RequestState> request;
+        {
+            std::lock_guard<std::mutex> lock(completed_qfds_mutex);
+            if (!qfds.empty()) {
+                request = qfds.front();
+                qfds.pop();
+                has_pair = true;
+            }
+        }
+        if (!has_pair) {
+            continue;
         }
 
-        // Write all of the responses
-        for (; record_i<response_i; record_i++) {
-            int fd = poll_state.resp_fd[record_i % MAX_THREAD_CONCURRENCY];
-            int index = poll_state.fd_index[fd];
-
-            struct RequestState &req_state = poll_state.req_state[index];
-
-            // Add to the total time spent waiting for responses if the response is valid
-            req_state.valid = validate_response(req_state.response, echo_server, request, request_size);
-            if (req_state.valid) {
-                using namespace std::chrono;
-                poll_state.results.total_time +=
-                    duration_cast<microseconds>(req_state.read - req_state.connect);
-            }
-
-            if (do_log) {
-                log_response(log_fd, req_state);
-            }
-
-            // If it's a secure connection, we need to free the SSL instance
-            int ret;
-            if (secure && req_state.ssl) {
-                ret = SSL_shutdown(req_state.ssl);
-                if (ret == 0) {
-                    ret = SSL_shutdown(req_state.ssl);
-                } else if (ret == -1) {
-                    //int err = SSL_get_error(req_state.ssl, ret);
-                    print_ssl_error(req_state.ssl, ret);
-                }
-
-                SSL_free(req_state.ssl);
-                req_state.ssl = NULL;
-            }
-            epoll_ctl(poll_state.epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-            close(fd);
-
-            // Mark the index as unused
-            poll_state.in_use[index] = false;
-
-            // Increment the number of valid/invalid responses
-            if (req_state.valid) {
-                poll_state.results.valid++;
-            } else {
-                poll_state.results.invalid++;
-            }
-
-            completed++;
-            log_debug("logged response %d (completed: %d)", record_i, completed);
+        RequestState req = request.second;
+        fprintf(log_fd, "%ld\t%ld\t%ld\t%ld\t%ld\t%d\n",
+                since_epoch(req.connecting),
+                ns_diff(req.connecting, req.connected),
+                //ns_diff(req.connected, req.sending),
+                ns_diff(req.sending, req.reading),
+                ns_diff(req.reading, req.completed),
+                since_epoch(req.completed),
+                req.valid
+        );
+        logged++;
+        if (hr_clock::now() - last_flush > FLUSH_INTERVAL) {
+            fflush(log_fd);
+            last_flush = hr_clock::now();
         }
-
-        // Rollover
-        if (record_i > MAX_THREAD_CONCURRENCY) {
-            record_i %= MAX_THREAD_CONCURRENCY;
-        }
-
-        // Exit if too much time has passed, even if we haven't gathered the responses
-        if (hr_clock::now() > *time_end)
+        if (hr_clock::now() > *time_end) {
             break;
+        }
     }
     return 0;
 }
-*/
 
 /*****************************************************************
  ****************** PROCESS CONNECTIONS **************************
  *****************************************************************/
 
-int process_connections(int total_requests, std::queue<int> &qfds, int whoami,
-                        hr_clock::time_point *time_end) {
+int process_connections(int whoami, int total_requests, hr_clock::time_point *time_end,
+                        std::queue<std::pair<int, RequestState> > &qfds,
+                        std::queue<std::pair<int, RequestState> > &c_qfds) {
     int completed = 0;
     int http_request_idx;
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0;
+    std::unordered_map<int, RequestState> requests;
     while (completed < total_requests) {
         /* First check if we have a new qd to use */
         {
-            int qd;
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
             if (!qfds.empty()) {
-                qd = qfds.front();
+                std::pair<int, RequestState> request = qfds.front();
                 qfds.pop();
+                int qd = request.first;
                 http_request_idx = completed + total_requests * whoami;
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
@@ -328,8 +284,13 @@ int process_connections(int total_requests, std::queue<int> &qfds, int whoami,
                     std::move(http_requests.at(http_request_idx));
                 sga.sga_segs[0].sgaseg_len = http_req.get()->size();
                 sga.sga_segs[0].sgaseg_buf = const_cast<char *>(http_req.release()->c_str());
+
+                RequestState req_state = request.second;
+                req_state.status = SENDING;
+                req_state.sending = hr_clock::now();
                 DMTR_OK(dmtr_push(&token, qd, &sga));
                 tokens.push_back(token);
+                requests.insert(std::pair<int, RequestState>(qd, req_state));
             }
         }
 
@@ -342,22 +303,39 @@ int process_connections(int total_requests, std::queue<int> &qfds, int whoami,
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         if (status == 0) {
+            auto req = requests.find(wait_out.qr_qd);
+            if (req == requests.end()) {
+                log_error("OP'ed on an unlogged request qd?");
+                exit(1);
+            }
+            RequestState request = req->second;
             if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
                 /* Create pop task now that data was sent */
                 tokens.erase(tokens.begin() + idx);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
+                request.reading = hr_clock::now();
+                request.status = READING;
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 /* Log and complete request now that we have the answer */
-                //TODO log
+                request.completed = hr_clock::now();
+                request.status = COMPLETED;
+                request.valid = validate_response(wait_out.qr_value.sga);
+                {
+                    std::lock_guard<std::mutex> lock(completed_qfds_mutex);
+                    const int qd = wait_out.qr_qd;
+                    c_qfds.push(std::pair<int, RequestState>(qd, request));
+                }
+                free(wait_out.qr_value.sga.sga_buf);
                 dmtr_close(wait_out.qr_qd);
                 tokens.erase(tokens.begin()+idx);
-                free(wait_out.qr_value.sga.sga_buf);
                 completed++;
             } else {
                 log_warn("Non supported OP code");
             }
         } else {
+            //TODO log errors
+            log_warn("Got status %d out of dmtr_wait_any", status);
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
@@ -375,8 +353,8 @@ int process_connections(int total_requests, std::queue<int> &qfds, int whoami,
  ****************** CREATE I/O QUEUES ****************************
  *****************************************************************/
 
-int create_queues(double interval_ns, int n_requests,
-                  std::string host, int port, std::queue<int> &qfds,
+int create_queues(double interval_ns, int n_requests, std::string host, int port,
+                  std::queue<std::pair<int, RequestState>> &qfds,
                   hr_clock::time_point *time_end) {
 
     hr_clock::time_point start_time = hr_clock::now();
@@ -393,6 +371,8 @@ int create_queues(double interval_ns, int n_requests,
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
 
+        struct RequestState req = {};
+
         /* Create Demeter queue */
         int qd = 0;
         DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
@@ -405,12 +385,17 @@ int create_queues(double interval_ns, int n_requests,
             return -1;
         }
         saddr.sin_port = htons(port);
+
+        req.status = CONNECTING;
+        req.connecting = hr_clock::now();
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+        req.status = CONNECTED;
+        req.connected = hr_clock::now();
 
         /* Make this qd available to the request handler thread */
         {
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
-            qfds.push(qd);
+            qfds.push(std::pair<int, RequestState>(qd, std::ref(req)));
         }
 
         if (hr_clock::now() > *time_end) {
@@ -421,18 +406,14 @@ int create_queues(double interval_ns, int n_requests,
     return 0;
 }
 
-/**
- * Each thread-group consists of an init thread, an async response thread, and a logging thread
- */
+/* Each thread-group consists of a connect thread, a send/rcv thread, and a logging thread */
 struct state_threads {
     std::thread *init;
     std::thread *resp;
     std::thread *log;
 };
 
-/**
- * Outputs a single result to stdout
- */
+/* Outputs a single result to stdout */
 void print_result(const char *label, int result, bool print_if_zero=true) {
     if (print_if_zero || result != 0)
         printf("%-28s%d\n",label, result);
@@ -531,7 +512,7 @@ int main(int argc, char **argv) {
         log_error("File opening failed: %s", strerror(errno));
         return -1;
     }
-    fprintf(log_fd, "Start\tConnected\tSSL\tReceived\tValid\n");
+    fprintf(log_fd, "Start\tConnect\tSend\tCompleted\tEnd\tValid\n");
     fflush(log_fd);
 
     if (rate < n_threads ) {
@@ -580,34 +561,31 @@ int main(int argc, char **argv) {
     hr_clock::time_point time_end_init = hr_clock::now() + duration_init;
 
     // Give five extra second to send and gather responses
-    //int timeout_s = timeout_ns / 1000000000;
-    //std::chrono::seconds duration_process(duration + timeout_s + 5);
     std::chrono::seconds duration_process(duration + 5);
     hr_clock::time_point time_end_process = hr_clock::now() + duration_process;
 
     // Give ten extra seconds to log responses
-    /*
-    chrono::seconds duration_log(timeout_ns/1e9 + 10);
+    std::chrono::seconds duration_log(duration + 10);
     hr_clock::time_point time_end_log = hr_clock::now() + duration_log;
-    */
 
     /* Initialize responses first, then logging, then request initialization */
-    std::vector<std::queue<int> > threads_qfds(n_threads);
+    std::vector<std::queue<std::pair<int, RequestState> > > req_qfds(n_threads);
+    std::vector<std::queue<std::pair<int, RequestState> > > log_qfds(n_threads);
     state_threads threads[n_threads];
     for (int i = 0; i < n_threads; ++i) {
         threads[i].resp = new std::thread(
-            process_connections, req_per_thread,
-            std::ref(threads_qfds[i]), i, &time_end_process
+            process_connections,
+            i, req_per_thread, &time_end_process,
+            std::ref(req_qfds[i]), std::ref(log_qfds[i])
         );
-        /*
         threads[i].log = new std::thread(
-            log_responses, this_thread_reqs, log_fd, &state,
-            &time_end_log, echo_server, request, strlen(request)
+            log_responses,
+            req_per_thread, log_fd, std::ref(log_qfds[i]), &time_end_log
         );
-        */
         threads[i].init = new std::thread(
-            create_queues, interval_ns_per_thread, req_per_thread,
-            host, port, std::ref(threads_qfds[i]), &time_end_init
+            create_queues,
+            interval_ns_per_thread, req_per_thread,
+            host, port, std::ref(req_qfds[i]), &time_end_init
         );
     }
 
