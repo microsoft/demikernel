@@ -16,7 +16,9 @@ extern "C" {
 typedef struct dmtr_latency dmtr_latency_t;
 
 int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name);
+int dmtr_record_timed_latency(dmtr_latency_t *latency, uint64_t record_time, uint64_t ns);
 int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns);
+int dmtr_generate_timeseries(FILE *f, dmtr_latency_t *latency);
 int dmtr_dump_latency(FILE *f, dmtr_latency_t *latency);
 int dmtr_delete_latency(dmtr_latency_t **latency);
 uint64_t dmtr_now_ns();

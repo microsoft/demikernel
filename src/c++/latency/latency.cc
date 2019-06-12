@@ -51,15 +51,19 @@ typedef struct dmtr_latency
     int distPoolNext = 0;
 
     std::vector<uint64_t> latencies;
+    std::vector<uint64_t> record_times;
 } dmtr_latency_t;
 
 static inline void
-LatencyAddStat(dmtr_latency_t *l, char type, uint64_t val)
+LatencyAddStat(dmtr_latency_t *l, char type, uint64_t val, uint64_t record_time)
 {
     //if (l->latencies.size() == 0)
 
     if (l->latencies.size() < MAX_ITERATIONS)
 	l->latencies.push_back(val);
+    if (record_time) {
+        l->record_times.push_back(record_time);
+    }
 }
 
 static inline Latency_Dist_t *
@@ -88,10 +92,10 @@ LatencyAddHist(dmtr_latency_t *l, char type, uint64_t val, uint32_t count)
 }
 
 static void
-LatencyAdd(dmtr_latency_t *l, char type, uint64_t val)
+LatencyAdd(dmtr_latency_t *l, char type, uint64_t val, uint64_t record_time)
 {
     Latency_Dist_t *d = LatencyAddHist(l, type, val, 1);
-    LatencyAddStat(l, type, val);
+    LatencyAddStat(l, type, val, record_time);
 
     if (val < d->min)
         d->min = val;
@@ -139,6 +143,20 @@ LatencyFmtNS(uint64_t ns, char *buf)
     }
     sprintf(buf, "%lu %s", ns, units[unit]);
     return buf;
+}
+
+int
+LatencyToCsv(FILE *f, dmtr_latency_t *l)
+{
+    DMTR_NOTNULL(EINVAL, f);
+    DMTR_NOTNULL(EINVAL, l);
+
+    fprintf(f, "TIME\tVALUE\n");
+    for (unsigned int i = 0; i < l->latencies.size(); ++i) {
+        fprintf(f, "%ld\t%ld\n", l->record_times[i], l->latencies[i]);
+    }
+    fflush(f);
+    return 0;
 }
 
 int
@@ -267,16 +285,30 @@ int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name) {
     return 0;
 }
 
+int dmtr_record_timed_latency(dmtr_latency_t *latency, uint64_t record_time, uint64_t ns) {
+    DMTR_NOTNULL(EINVAL, latency);
+    DMTR_NONZERO(EINVAL, ns);
+
+    LatencyAdd(latency, '=', ns, record_time);
+    return 0;
+}
+
 int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns) {
     DMTR_NOTNULL(EINVAL, latency);
     DMTR_NONZERO(EINVAL, ns);
 
-    LatencyAdd(latency, '=', ns);
+    LatencyAdd(latency, '=', ns, -1);
+    return 0;
+}
+
+int dmtr_generate_timeseries(FILE *f, dmtr_latency_t *latency) {
+    DMTR_OK(LatencyToCsv(f, latency));
     return 0;
 }
 
 int dmtr_dump_latency(FILE *f, dmtr_latency_t *latency) {
     DMTR_OK(Latency_Dump(f, latency));
+
     return 0;
 }
 

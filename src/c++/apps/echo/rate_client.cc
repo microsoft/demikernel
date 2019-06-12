@@ -19,17 +19,17 @@
 #include <boost/optional.hpp>
 
 #include <dmtr/annot.h>
+#include <dmtr/fail.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
-#include <dmtr/libos/mem.h>
 
 /*****************************************************************
  *********************** LOGGING MACROS   ************************
  *****************************************************************/
 
 /* Enable debug statements  */
-#define LOG_DEBUG
+//#define LOG_DEBUG
 
 /* Where command-line output gets printed to  */
 #define LOG_FD stderr
@@ -109,8 +109,6 @@ static inline long int ns_diff(hr_clock::time_point &start, hr_clock::time_point
     return ns;
 }
 
-std::chrono::seconds FLUSH_INTERVAL(1);
-
 /*****************************************************************
  *********************** RATE VARIABLES **************************
  *****************************************************************/
@@ -140,7 +138,7 @@ static inline bool validate_response(dmtr_sgarray_t response) {
     assert(response.sga_numsegs == 1);
     std::string resp_str =
         std::string(reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf));
-    std::cout << "str " << resp_str << std::endl;
+    log_debug("Received response:\n%s", resp_str.c_str());
     if (resp_str == VALID_RESP) {
         return true;
     }
@@ -162,16 +160,6 @@ enum ReqStatus {
     COMPLETED,
 };
 
-/*
-const char *ReqStatusStrings[] {
-    "CONNECTING",
-    "CONNECTED",
-    "SENDING",
-    "READING",
-    "COMPLETED",
-};
-*/
-
 /* Holds the state of a single attempted request. */
 struct RequestState {
     enum ReqStatus status; /**< Current status of request (where in async it is) */
@@ -181,24 +169,6 @@ struct RequestState {
     hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
     hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
     bool valid; /** Whether the response was valid */
-};
-
-/* Per-thread-group results and summary statistics */
-struct Results {
-    std::chrono::nanoseconds total_time; // Total amount of time spent on connections per thread
-    // The rest of these are counters for the number of requests that
-    // reached/errored on stages of connection
-    int initiated = 0;
-    int valid = 0;
-    int invalid = 0;
-    int connected = 0;
-    int written = 0;
-    int renegs = 0;
-
-    int errored = 0;
-
-    // Default constructor
-    Results(): total_time(0) {}
 };
 
 /* Pre-formatted HTTP GET requests */
@@ -213,13 +183,44 @@ std::mutex completed_qfds_mutex;
 /*****************************************************************
  *********************** LOGGING *********************************
  *****************************************************************/
+#define MAX_FILE_PATH_LEN 128
 
-int log_responses(int total_requests, FILE *log_fd,
+std::string generate_log_file_path(std::string log_dir,
+                                   std::string exp_label,
+                                   char const *log_label) {
+    char pathname[MAX_FILE_PATH_LEN];
+    snprintf(pathname, MAX_FILE_PATH_LEN, "%s/%s_%s",
+             log_dir.c_str(), exp_label.c_str(), log_label);
+    std::string str_pathname(pathname);
+    return pathname;
+}
+
+struct log_data {
+    dmtr_latency_t *l;
+    char const *name;
+};
+
+int log_responses(int total_requests,
                   std::queue<std::pair<int, RequestState> > &qfds,
-                  hr_clock::time_point *time_end) {
+                  hr_clock::time_point *time_end,
+                  std::string log_dir, std::string label) {
 
+    std::vector<struct log_data> logs;
+    struct log_data e2e = {.l = NULL, .name = "end-to-end"};
+    DMTR_OK(dmtr_new_latency(&e2e.l, "end-to-end"));
+    logs.push_back(e2e);
+    /*
+    struct log_data connect = {.l = NULL, .name = "connect"};
+    DMTR_OK(dmtr_new_latency(&connect.l, "connect"));
+    logs.push_back(connect);
+    struct log_data send = {.l = NULL, .name = "send"};
+    DMTR_OK(dmtr_new_latency(&send.l, "send"));
+    logs.push_back(send);
+    struct log_data receive = {.l = NULL, .name = "receive"};
+    DMTR_OK(dmtr_new_latency(&receive.l, "receive"));
+    logs.push_back(receive);
+    */
     int logged = 0;
-    hr_clock::time_point last_flush = hr_clock::now();
     while (logged < total_requests) {
         bool has_pair = false;
         std::pair<int, RequestState> request;
@@ -236,23 +237,28 @@ int log_responses(int total_requests, FILE *log_fd,
         }
 
         RequestState req = request.second;
-        fprintf(log_fd, "%ld\t%ld\t%ld\t%ld\t%ld\t%d\n",
-                since_epoch(req.connecting),
-                ns_diff(req.connecting, req.connected),
-                //ns_diff(req.connected, req.sending),
-                ns_diff(req.sending, req.reading),
-                ns_diff(req.reading, req.completed),
-                since_epoch(req.completed),
-                req.valid
-        );
+        DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req.connecting),
+                                          ns_diff(req.connecting, req.completed)));
+        /*
+        DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req.connecting),
+                                          ns_diff(req.connecting, req.connected)));
+        DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req.sending),
+                                          ns_diff(req.sending, req.reading)));
+        DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req.reading),
+                                          ns_diff(req.reading, req.completed)));
+        */
         logged++;
-        if (hr_clock::now() - last_flush > FLUSH_INTERVAL) {
-            fflush(log_fd);
-            last_flush = hr_clock::now();
-        }
         if (hr_clock::now() > *time_end) {
             break;
         }
+    }
+
+    for (auto &log: logs) {
+        FILE *log_fd = fopen(
+            (const char *)generate_log_file_path(log_dir, label, log.name).c_str(), "w"
+        );
+        DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
+        fclose(log_fd);
     }
     return 0;
 }
@@ -265,6 +271,7 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
                         std::queue<std::pair<int, RequestState> > &qfds,
                         std::queue<std::pair<int, RequestState> > &c_qfds) {
     int completed = 0;
+    int dequeued = 0;
     int http_request_idx;
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0;
@@ -274,16 +281,21 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
         {
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
             if (!qfds.empty()) {
+                if (dequeued >= total_requests) {
+                    log_error("How can we have more requests to dequeue than total requests?");
+                }
                 std::pair<int, RequestState> request = qfds.front();
                 qfds.pop();
                 int qd = request.first;
-                http_request_idx = completed + total_requests * whoami;
+                http_request_idx = dequeued + total_requests * whoami;
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
                 std::unique_ptr<std::string> http_req =
                     std::move(http_requests.at(http_request_idx));
+                assert(http_req.get() != NULL); //This should not happen
                 sga.sga_segs[0].sgaseg_len = http_req.get()->size();
                 sga.sga_segs[0].sgaseg_buf = const_cast<char *>(http_req.release()->c_str());
+                dequeued++;
 
                 RequestState req_state = request.second;
                 req_state.status = SENDING;
@@ -360,14 +372,14 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
     hr_clock::time_point start_time = hr_clock::now();
 
     /* Times at which the connections should be initiated */
-    hr_clock::time_point send_times[n_requests + 1];
+    hr_clock::time_point send_times[n_requests];
 
-    for (int i = 0; i < n_requests+1; ++i) {
+    for (int i = 0; i < n_requests; ++i) {
         std::chrono::nanoseconds elapsed_time((int)(interval_ns * i));
         send_times[i] = start_time + elapsed_time;
     }
 
-    for (int interval = 0; interval < n_requests+1; interval++) {
+    for (int interval = 0; interval < n_requests; interval++) {
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
 
@@ -419,82 +431,20 @@ void print_result(const char *label, int result, bool print_if_zero=true) {
         printf("%-28s%d\n",label, result);
 }
 
-/**
- * Prints the aggregate results across all thread groups
- */
-/*
-void print_results(struct PollState *poll_states, int n_states, bool secure) {
-
-    int init=0, valid=0, invalid=0, connected=0, ssl_connected=0, written=0, renegs=0, errored=0;
-    int err_connect=0, err_ssl=0, err_write=0, err_read=0, err_timeout=0;
-    chrono::microseconds total_time(0);
-    for (int i=0; i<n_states; i++) {
-        struct PollState &state = poll_states[i];
-        init+=state.results.initiated;
-        valid+=state.results.valid;
-        invalid+=state.results.invalid;
-        connected+=state.results.connected;
-        ssl_connected+=state.results.ssl_connected;
-        written+=state.results.written;
-        errored+=state.results.errored;
-        renegs+=state.results.renegs;
-
-        err_connect+=state.results.err_connect;
-        err_ssl+=state.results.err_ssl;
-        err_write+=state.results.err_write;
-        err_read+=state.results.err_read;
-        err_timeout+=state.results.err_timeout;
-
-        total_time += state.results.total_time;
-    }
-
-    double avg_time = (double) (total_time.count()) / (valid * 1000);
-
-    printf("\n------ Connection stats ------\n");
-    print_result("# Initiated:", init);
-    print_result("# Connected:", connected);
-    if (secure)
-        print_result("# SSL connected:", ssl_connected);
-    print_result("# Sent:", written);
-    print_result("# Completed & valid:", valid);
-    print_result("# Completed & invalid:", invalid);
-    print_result("# Renegotiations:", renegs);
-    print_result("# Errored:", errored);
-
-    if (errored)
-        printf("\nDistribution of errors:\n");
-    print_result("Connection errors:", err_connect, false);
-    print_result("SSL connect errors:", err_ssl, false);
-    print_result("Write() errors:", err_write, false);
-    print_result("Read() errors:", err_read, false);
-    print_result("Timeout errors:", err_timeout, false);
-    if ( valid > 0 ) {
-        printf("\n-------------------\n");
-        printf("Average time per valid completed request: %.3f ms\n",
-                   avg_time);
-        printf("-------------------\n");
-    }
-    printf("\n");
-}
-*/
-
 /* TODO
- * - Default log file takes current timestamp?
- * - Default value can be set to another option (e.g end-rate at start-rate)?
- * - URI needs to start with '/' ?
- * - use demeter latency objects
  * - Handle maximum concurrency?
  */
 int main(int argc, char **argv) {
     int rate, duration, n_threads;
-    std::string url, log, uri_list;
+    std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
     po::options_description desc{"Rate client options"};
     desc.add_options()
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
         ("url,u", po::value<std::string>(&url)->required(), "Target URL")
-        ("log,l", po::value<std::string>(&log)->default_value("./rate_client.log"), "Log file location")
+        ("label,l", po::value<std::string>(&label)->default_value("rate_client"), "experiment label")
+        ("log-dir,L", po::value<std::string>(&log_dir)->default_value("./"), "Log directory")
         ("client-threads,T", po::value<int>(&n_threads)->default_value(1), "Number of client threads")
         ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request");
     parse_args(argc, argv, true, desc);
@@ -506,14 +456,6 @@ int main(int argc, char **argv) {
     }
     std::string uri = url.substr(host_idx);
     std::string host = url.substr(0, host_idx);
-
-    FILE *log_fd = fopen(log.c_str(), "w");
-    if (!log_fd) {
-        log_error("File opening failed: %s", strerror(errno));
-        return -1;
-    }
-    fprintf(log_fd, "Start\tConnect\tSend\tCompleted\tEnd\tValid\n");
-    fflush(log_fd);
 
     if (rate < n_threads ) {
         n_threads = rate;
@@ -580,7 +522,8 @@ int main(int argc, char **argv) {
         );
         threads[i].log = new std::thread(
             log_responses,
-            req_per_thread, log_fd, std::ref(log_qfds[i]), &time_end_log
+            req_per_thread, std::ref(log_qfds[i]), &time_end_log,
+            log_dir, label
         );
         threads[i].init = new std::thread(
             create_queues,
@@ -589,7 +532,6 @@ int main(int argc, char **argv) {
         );
     }
 
-    // Initialize each thread-group
     // Wait on all of the initialization threads
     for (int i=0; i<n_threads; i++) {
         threads[i].init->join();
@@ -606,23 +548,10 @@ int main(int argc, char **argv) {
     log_info("Responses gathered");
 
     // Wait on the logging threads
-    /*
-    for (int i=0; i<n_threads; i++) {
+    for (int i = 0; i < n_threads; i++) {
         threads[i].log->join();
         delete threads[i].log;
     }
-    if (do_log) {
-        log_info("Log written");
-    }
-    */
-
-    // Print the results
-    /*
-    print_results(poll_states, n_threads, secure);
-
-    if (do_log)
-        fclose(log_fd);
-    */
 
     return 0;
 }
