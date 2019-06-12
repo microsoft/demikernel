@@ -187,8 +187,8 @@ static void *http_work(void *args) {
             init_parser_state(state);
             size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
             char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-            enum parser_status status = parse_http(state, req, req_size);
-            switch (status) {
+            enum parser_status pstatus = parse_http(state, req, req_size);
+            switch (pstatus) {
                 case REQ_COMPLETE:
                     //fprintf(stdout, "HTTP worker got complete request\n");
                     break;
@@ -268,7 +268,7 @@ static void *tcp_work(void *args) {
                      wait_out.qr_qd);
             */
             num_rcvd++;
-            if (num_rcvd % 100 == 0) {
+            if (num_rcvd % 10 == 0) {
                 printf("received: %d requests\n", num_rcvd);
             }
 
@@ -276,25 +276,26 @@ static void *tcp_work(void *args) {
             tokens.erase(tokens.begin()+idx);
 
             int worker_idx = (num_rcvd % http_workers.size());
+            int client_qfd = wait_out.qr_qd;
             //fprintf(stdout, "passing to http worker #%d\n", worker_idx);
             dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
-            // Wait for HTTP worker to give us an answer
+            /*  Wait for HTTP worker to give us an answer */
             dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
             do {
                 status = dmtr_wait(&wait_out, token);
-            } while (status != 0);
+            } while (status != 0); // XXX ?
             /*
             fprintf(stdout, "TCP worker popped %s stored at %p\n",
                     reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
                     &wait_out.qr_value.sga.sga_buf);
             */
-            // Answer the client
-            dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
+            /* Answer the client */
+            dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
             free(wait_out.qr_value.sga.sga_buf);
             // Re-enable TCP queue for reading
-            dmtr_pop(&token, wait_out.qr_qd);
+            dmtr_pop(&token, client_qfd);
 
             tokens.push_back(token);
         } else {
