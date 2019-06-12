@@ -24,9 +24,17 @@
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
 
+
+/**
+ * Notes:
+ *  - We could have used a dmtr memory queue between main thread and tcp thread
+ *
+ */
+
 int lqd = 0;
 class Worker {
-    public: int my_memqfd;
+    public: int in_qfd;
+    public: int out_qfd;
 };
 std::vector<Worker *> http_workers;
 std::vector<pthread_t *> worker_threads;
@@ -166,14 +174,15 @@ static void *http_work(void *args) {
     dmtr_qtoken_t token = 0;
     dmtr_qresult_t wait_out;
     while (1) {
-        dmtr_pop(&token, me->my_memqfd);
+        dmtr_pop(&token, me->in_qfd);
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
             /*
-            fprintf(stdout, "HTTP worker received %s\n",
-                     reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
+            fprintf(stdout, "HTTP worker popped %s stored at %p\n",
+                    reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
+                    &wait_out.qr_value.sga.sga_buf);
             */
             init_parser_state(state);
             size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
@@ -185,10 +194,8 @@ static void *http_work(void *args) {
                     break;
                 case REQ_ERROR:
                     fprintf(stdout, "HTTP worker got malformed request\n");
-                    /*
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
                     strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
-                    */
                     dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
                     dmtr_wait(NULL, token);
                     clean_state(state);
@@ -217,11 +224,9 @@ static void *http_work(void *args) {
                 continue;
             }
 
-                    /*
             wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(response);
             strncpy(req, response, strlen(response));
-                    */
-            dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
+            dmtr_push(&token, me->out_qfd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
             clean_state(state);
             free(response);
@@ -272,18 +277,24 @@ static void *tcp_work(void *args) {
 
             int worker_idx = (num_rcvd % http_workers.size());
             //fprintf(stdout, "passing to http worker #%d\n", worker_idx);
-            dmtr_push(&token, http_workers[worker_idx]->my_memqfd, &wait_out.qr_value.sga);
+            dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
             // Wait for HTTP worker to give us an answer
-            dmtr_pop(&token, http_workers[worker_idx]->my_memqfd);
-            dmtr_qresult_t http_out;
-            dmtr_wait(&http_out, token);
+            dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
+            do {
+                status = dmtr_wait(&wait_out, token);
+            } while (status != 0);
+            /*
+            fprintf(stdout, "TCP worker popped %s stored at %p\n",
+                    reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
+                    &wait_out.qr_value.sga.sga_buf);
+            */
             // Answer the client
-            dmtr_push(&token, wait_out.qr_qd, &http_out.qr_value.sga);
+            dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
+            free(wait_out.qr_value.sga.sga_buf);
             // Re-enable TCP queue for reading
             dmtr_pop(&token, wait_out.qr_qd);
-            free(wait_out.qr_value.sga.sga_buf); // is it the same reference shared by http_out?
 
             tokens.push_back(token);
         } else {
@@ -347,8 +358,10 @@ int main(int argc, char *argv[]) {
     /* Create http worker threads */
     for (int i = 0; i < n_http_workers; ++i) {
         Worker *worker = new Worker();
-        worker->my_memqfd = -1;
-        dmtr_queue(&worker->my_memqfd);
+        worker->in_qfd = -1;
+        worker->out_qfd = -1;
+        DMTR_OK(dmtr_queue(&worker->in_qfd));
+        DMTR_OK(dmtr_queue(&worker->out_qfd));
         http_workers.push_back(worker);
 
         pthread_t http_worker;
