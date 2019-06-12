@@ -116,7 +116,7 @@ static void file_work(char *url, char **response) {
             path_to_mime_type(filepath, mime_type, MAX_MIME_TYPE);
 
             code = 200;
-            fprintf(stdout, "Found file: %s\n", filepath);
+            //fprintf(stdout, "Found file: %s\n", filepath);
         }
     }
 
@@ -171,21 +171,24 @@ static void *http_work(void *args) {
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
+            /*
             fprintf(stdout, "HTTP worker received %s\n",
                      reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf));
-
+            */
             init_parser_state(state);
             size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
             char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
             enum parser_status status = parse_http(state, req, req_size);
             switch (status) {
                 case REQ_COMPLETE:
-                    fprintf(stdout, "HTTP worker got complete request\n");
+                    //fprintf(stdout, "HTTP worker got complete request\n");
                     break;
                 case REQ_ERROR:
                     fprintf(stdout, "HTTP worker got malformed request\n");
+                    /*
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
                     strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
+                    */
                     dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
                     dmtr_wait(NULL, token);
                     clean_state(state);
@@ -214,8 +217,10 @@ static void *http_work(void *args) {
                 continue;
             }
 
+                    /*
             wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(response);
             strncpy(req, response, strlen(response));
+                    */
             dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
             clean_state(state);
@@ -258,13 +263,15 @@ static void *tcp_work(void *args) {
                      wait_out.qr_qd);
             */
             num_rcvd++;
-            printf("received: %d requests\n", num_rcvd);
+            if (num_rcvd % 100 == 0) {
+                printf("received: %d requests\n", num_rcvd);
+            }
 
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
 
             int worker_idx = (num_rcvd % http_workers.size());
-            fprintf(stdout, "passing to http worker #%d\n", worker_idx);
+            //fprintf(stdout, "passing to http worker #%d\n", worker_idx);
             dmtr_push(&token, http_workers[worker_idx]->my_memqfd, &wait_out.qr_value.sga);
             dmtr_wait(NULL, token);
             // Wait for HTTP worker to give us an answer
@@ -381,8 +388,7 @@ int main(int argc, char *argv[]) {
             accepted_qfds.push(wait_out.qr_value.ares.qd);
             pthread_mutex_unlock(&qfds_mutex);
         } else {
-            fprintf(stdout, "dmtr_wait on accept socket got status %d\n",
-                    status);
+            fprintf(stdout, "dmtr_wait on accept socket got status %d\n", status);
         }
     }
 
