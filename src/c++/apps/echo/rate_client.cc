@@ -233,6 +233,10 @@ int log_responses(int total_requests,
             }
         }
         if (!has_pair) {
+            if (hr_clock::now() > *time_end) {
+                log_warn("logging time has passed. %d requests were logged.", logged);
+                break;
+            }
             continue;
         }
 
@@ -249,7 +253,7 @@ int log_responses(int total_requests,
         */
         logged++;
         if (hr_clock::now() > *time_end) {
-            break;
+            log_warn("logging time has passed. %d requests were logged.", logged);
         }
     }
 
@@ -281,9 +285,7 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
         {
             std::lock_guard<std::mutex> lock(connected_qfds_mutex);
             if (!qfds.empty()) {
-                if (dequeued >= total_requests) {
-                    log_error("How can we have more requests to dequeue than total requests?");
-                }
+                assert(dequeued < total_requests);
                 std::pair<int, RequestState> request = qfds.front();
                 qfds.pop();
                 int qd = request.first;
@@ -307,6 +309,10 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
         }
 
         if (tokens.empty()) {
+            if (hr_clock::now() > *time_end) {
+                log_warn("process time has passed. %d requests were processed.", completed);
+                break;
+            }
             continue;
         }
 
@@ -317,7 +323,7 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
         if (status == 0) {
             auto req = requests.find(wait_out.qr_qd);
             if (req == requests.end()) {
-                log_error("OP'ed on an unlogged request qd?");
+                log_error("OP'ed on an unknown request qd?");
                 exit(1);
             }
             RequestState request = req->second;
@@ -354,6 +360,7 @@ int process_connections(int whoami, int total_requests, hr_clock::time_point *ti
         }
 
         if (hr_clock::now() > *time_end) {
+            log_warn("process time has passed. %d requests were processed.", completed);
             break;
         }
     }
@@ -411,6 +418,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         }
 
         if (hr_clock::now() > *time_end) {
+            log_warn("create time has passed. %d connection were established.", interval+1);
             break;
         }
     }
@@ -541,7 +549,7 @@ int main(int argc, char **argv) {
 
     // Wait on the response threads
     // TODO: If init threads stop early, signal this to stop
-    for (int i=0; i<n_threads; i++) {
+    for (int i = 0; i < n_threads; i++) {
         threads[i].resp->join();
         delete threads[i].resp;
     }
