@@ -46,8 +46,8 @@ impl<'a> ArpPeer<'a> {
         cache.try_evict(2);
     }
 
-    pub fn receive(&mut self, bytes: &mut [u8]) -> Result<()> {
-        let frame = ethernet2::Frame::from_bytes(bytes)?;
+    pub fn receive(&mut self, frame: ethernet2::Frame) -> Result<()> {
+        trace!("entering `arp::Peer::receive()`");
         let options = self.rt.options();
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?

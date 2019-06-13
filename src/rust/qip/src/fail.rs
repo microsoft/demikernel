@@ -1,6 +1,6 @@
 use custom_error::custom_error;
 use float_duration;
-use std::{io::Error as IoError, rc::Rc};
+use std::{io::Error as IoError, num::TryFromIntError, rc::Rc};
 
 custom_error! {#[derive(Clone)] pub Fail
     IoError{source: Rc<IoError>} = "I/O failure",
@@ -10,7 +10,7 @@ custom_error! {#[derive(Clone)] pub Fail
     TryAgain{} = "try again later",
     Timeout{} = "an asynchronous operation timed out",
     OutOfRange{} = "a value is out of range",
-    Malformed{} = "failed to parse a sequence of bytes",
+    Malformed{} = "received a malformed packet",
 }
 
 impl From<IoError> for Fail {
@@ -21,6 +21,12 @@ impl From<IoError> for Fail {
 
 impl From<float_duration::error::OutOfRangeError> for Fail {
     fn from(_: float_duration::error::OutOfRangeError) -> Self {
+        Fail::OutOfRange {}
+    }
+}
+
+impl From<TryFromIntError> for Fail {
+    fn from(_: TryFromIntError) -> Self {
         Fail::OutOfRange {}
     }
 }

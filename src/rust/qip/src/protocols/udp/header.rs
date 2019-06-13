@@ -1,14 +1,38 @@
-pub const UDP_HEADER_SIZE: usize = 8;
+use crate::prelude::*;
+use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use std::{
+    convert::TryFrom,
+    io::{Read, Write},
+};
 
-// todo: the `bitfield` crate has yet to implement immutable access to fields. see [this github issue](https://github.com/dzamlo/rust-bitfield/issues/23) for details.
+const UDP_HEADER_SIZE: usize = 8;
 
-bitfield! {
-    pub struct UdpHeaderMut(MSB0 [u8]);
-    impl Debug;
-    u16;
-    pub get_src_port, set_src_port: 15, 0;
-    pub get_dst_port, set_dst_port: 31, 16;
-    pub get_length, set_length: 47, 32;
-    // todo: we don't yet support computing UDP checksums. it's optional for IPv4 support, so it's not critical, but having it at some point is desirable.
-    pub get_checksum, set_checksum: 63, 48;
+pub struct UdpHeader {
+    pub src_port: u16,
+    pub dest_port: u16,
+}
+
+impl UdpHeader {
+    pub fn read(reader: &mut Read) -> Result<Self> {
+        let src_port = reader.read_u16::<NetworkEndian>()?;
+        let dest_port = reader.read_u16::<NetworkEndian>()?;
+        Ok(UdpHeader {
+            src_port,
+            dest_port,
+        })
+    }
+
+    pub fn write(&self, writer: &mut Write, length: usize) -> Result<()> {
+        writer.write_u16::<NetworkEndian>(self.src_port)?;
+        writer.write_u16::<NetworkEndian>(self.dest_port)?;
+        writer.write_u16::<NetworkEndian>(u16::try_from(length)?)?;
+        // todo: UDP checksum is optional, so we're not going to implement it
+        // until it becomes a priority.
+        writer.write_u16::<NetworkEndian>(0)?;
+        Ok(())
+    }
+
+    pub fn size() -> usize {
+        UDP_HEADER_SIZE
+    }
 }

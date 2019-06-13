@@ -1,29 +1,55 @@
-use super::header::{UdpHeaderMut, UDP_HEADER_SIZE};
-use crate::{
-    prelude::*,
-    protocols::{ethernet2, ipv4},
-};
+use super::header::UdpHeader;
+use crate::{prelude::*, protocols::ipv4};
+use std::io::Cursor;
 
-pub struct UdpPacketMut<'a>(ipv4::PacketMut<'a>);
+pub struct UdpPacket {
+    ipv4: ipv4::Packet,
+}
 
-impl<'a> UdpPacketMut<'a> {
-    pub fn from_bytes(bytes: &mut [u8]) -> Result<UdpPacketMut> {
-        Ok(UdpPacketMut(ipv4::PacketMut::from_bytes(bytes)?))
+impl UdpPacket {
+    pub fn new(payload_sz: usize) -> Self {
+        UdpPacket {
+            ipv4: ipv4::Packet::new(payload_sz + UdpHeader::size()),
+        }
     }
 
-    pub fn frame_mut(&mut self) -> &mut ethernet2::FrameMut<'a> {
-        self.0.frame_mut()
+    pub fn ipv4(&self) -> &ipv4::Packet {
+        &self.ipv4
     }
 
-    pub fn ipv4_mut(&mut self) -> &mut ipv4::PacketMut<'a> {
-        &mut self.0
+    pub fn ipv4_mut(&mut self) -> &mut ipv4::Packet {
+        &mut self.ipv4
     }
 
-    pub fn header_mut(&mut self) -> UdpHeaderMut<&mut [u8]> {
-        UdpHeaderMut(&mut self.0.payload_mut()[..UDP_HEADER_SIZE])
+    pub fn read_header(&self) -> Result<UdpHeader> {
+        let bytes = &self.ipv4().payload()[..UdpHeader::size()];
+        Ok(UdpHeader::read(&mut Cursor::new(bytes))?)
+    }
+
+    pub fn write_header(&mut self, header: UdpHeader) -> Result<()> {
+        let payload_len = self.ipv4().payload().len();
+        let payload = self.ipv4_mut().payload_mut();
+        let mut bytes = &mut payload[..UdpHeader::size()];
+        Ok(header.write(&mut bytes, payload_len)?)
+    }
+
+    pub fn payload(&mut self) -> &[u8] {
+        &self.ipv4().payload()[UdpHeader::size()..]
     }
 
     pub fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.0.payload_mut()[UDP_HEADER_SIZE..]
+        &mut self.ipv4_mut().payload_mut()[UdpHeader::size()..]
+    }
+}
+
+impl From<ipv4::Packet> for UdpPacket {
+    fn from(ipv4: ipv4::Packet) -> Self {
+        UdpPacket { ipv4 }
+    }
+}
+
+impl Into<Vec<u8>> for UdpPacket {
+    fn into(self) -> Vec<u8> {
+        self.ipv4.into()
     }
 }

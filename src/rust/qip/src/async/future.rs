@@ -39,7 +39,7 @@ where
     }
 
     pub fn poll(&self, now: Instant) -> Result<T> {
-        trace!("entering Future::poll()");
+        trace!("entering `Future::poll()`");
         match self {
             Future::Const(v) => v.clone(),
             Future::TaskResult { r#async, tid } => {

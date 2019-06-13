@@ -7,7 +7,10 @@ use crate::{
     },
 };
 use r#async::Future;
-use std::{collections::HashMap, net::Ipv4Addr, rc::Rc, time::Instant};
+use std::{
+    collections::HashMap, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+    time::Instant,
+};
 
 pub struct Station<'a> {
     rt: Runtime<'a>,
@@ -30,19 +33,20 @@ impl<'a> Station<'a> {
         self.rt.options()
     }
 
-    pub fn receive(&mut self, bytes: &mut [u8]) -> Result<()> {
-        let frame = ethernet2::Frame::from_bytes(bytes)?;
-        let dest_addr = frame.header().dest_addr();
-        if self.rt.options().my_link_addr != dest_addr
-            && !dest_addr.is_broadcast()
+    pub fn receive(&mut self, bytes: Vec<u8>) -> Result<()> {
+        trace!("entering `Station::receive()`");
+        let frame = ethernet2::Frame::try_from(bytes)?;
+        let header = frame.read_header()?;
+        if self.rt.options().my_link_addr != header.dest_addr
+            && !header.dest_addr.is_broadcast()
         {
             return Err(Fail::Misdelivered {});
         }
 
         #[allow(unreachable_patterns)]
-        match frame.header().ether_type()? {
-            ethernet2::EtherType::Arp => self.arp.receive(bytes),
-            ethernet2::EtherType::Ipv4 => self.ipv4.receive(bytes),
+        match header.ether_type {
+            ethernet2::EtherType::Arp => self.arp.receive(frame),
+            ethernet2::EtherType::Ipv4 => self.ipv4.receive(frame),
             _ => Err(Fail::Unsupported {}),
         }
     }

@@ -2,6 +2,7 @@ use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};
+use super::pdu::ArpPdu;
 
 #[test]
 fn immediate_reply() {
@@ -25,7 +26,7 @@ fn immediate_reply() {
         x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
     }
 
-    let mut request = {
+    let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
@@ -35,27 +36,30 @@ fn immediate_reply() {
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(&mut request) {
+    info!("passing ARP request to bob (should be ignored)...");
+    match bob.receive(request.clone()) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(&mut request).unwrap();
+    carrie.receive(request).unwrap();
+    info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
-    let mut reply = {
+    let reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    alice.receive(&mut reply).unwrap();
+    info!("passing ARP reply to alice...");
+    alice.receive(reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
@@ -91,7 +95,7 @@ fn slow_reply() {
         x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
     }
 
-    let mut request = {
+    let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
@@ -101,27 +105,30 @@ fn slow_reply() {
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(&mut request) {
+    info!("passing ARP request to bob (should be ignored)...");
+    match bob.receive(request.clone()) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(&mut request).unwrap();
+    carrie.receive(request).unwrap();
+    info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
-    let mut reply = {
+    let reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
         }
     };
 
-    alice.receive(&mut reply).unwrap();
+    info!("passing ARP reply to alice...");
+    alice.receive(reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()

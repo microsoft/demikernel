@@ -15,13 +15,13 @@ lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);
     static ref DEFAULT_TTL: FloatDuration = FloatDuration::seconds(10.0);
     static ref ALICE_MAC: MacAddress =
-        MacAddress::new([0x11, 0x11, 0x11, 0x11, 0x11, 0x11]);
+        MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
     static ref ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
     static ref BOB_MAC: MacAddress =
-        MacAddress::new([0x22, 0x22, 0x22, 0x22, 0x22, 0x22]);
+        MacAddress::new([0xab, 0x89, 0x67, 0x45, 0x23, 0x12]);
     static ref BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
     static ref CARRIE_MAC: MacAddress =
-        MacAddress::new([0x33, 0x33, 0x33, 0x33, 0x33, 0x33]);
+        MacAddress::new([0xef, 0xcd, 0xab, 0x89, 0x67, 0x45]);
     static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 

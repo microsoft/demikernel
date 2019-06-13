@@ -177,7 +177,7 @@ where
     where
         K: Debug,
     {
-        trace!("entering HashTtlCache::get()");
+        trace!("entering `HashTtlCache::get()`");
         debug!("HashTtlCache::map::len() -> {}", self.map.len());
         match self.map.get(key) {
             // not present.
