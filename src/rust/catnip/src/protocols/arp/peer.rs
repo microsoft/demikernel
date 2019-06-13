@@ -170,6 +170,10 @@ impl<'a> ArpPeer<'a> {
                         cache.borrow().get_link_addr(ipv4_addr).copied();
 
                     if let Some(link_addr) = result {
+                        debug!(
+                            "ArpPeer::query(): result available ({})",
+                            link_addr
+                        );
                         let x: Rc<Any> = Rc::new(link_addr);
                         return Ok(x);
                     } else {

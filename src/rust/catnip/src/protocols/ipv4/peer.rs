@@ -18,8 +18,10 @@ impl<'a> Ipv4Peer<'a> {
     }
 
     pub fn receive(&mut self, frame: ethernet2::Frame) -> Result<()> {
+        trace!("Ipv4Peer::receive");
         let options = self.rt.options();
         let packet = Ipv4Packet::from(frame);
+        debug!("a");
         let header = packet.read_header()?;
 
         let dst_addr = header.dest_addr;
@@ -27,6 +29,7 @@ impl<'a> Ipv4Peer<'a> {
             return Err(Fail::Misdelivered {});
         }
 
+        debug!("b {:?}", header.protocol);
         #[allow(unreachable_patterns)]
         match header.protocol {
             Ipv4Protocol::Udp => self.udp.receive(packet),

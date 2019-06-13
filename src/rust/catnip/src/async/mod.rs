@@ -8,6 +8,7 @@ use std::{
     any::Any,
     cell::{Cell, RefCell},
     collections::HashMap,
+    fmt::Debug,
     ops::Generator,
     rc::Rc,
     time::{Duration, Instant},
@@ -38,7 +39,7 @@ impl<'a> Async<'a> {
 
     pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
     where
-        T: Any + Clone + 'static,
+        T: Any + Clone + Debug + 'static,
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
@@ -70,15 +71,29 @@ impl<'a> Async<'a> {
         trace!("entering `Async::poll({:?})`", now);
         if let Some(tid) = self.poll_schedule(now) {
             debug!("Async::poll_schedule() returned a task (tid = {})", tid);
-            // we don't anticipate a reasonable situation where the schedule
-            // would give us an ID that isn't in `self.tasks`.
-            let mut tasks = self.tasks.borrow_mut();
-            let task = tasks.get_mut(&tid).unwrap();
+            let mut task = {
+                let mut tasks = self.tasks.borrow_mut();
+                // task has to be removed from tasks in order to work around a
+                // mutablility deadlock when futures are used from within a
+                // coroutine. we also don't anticipate a reasonable situation
+                // where the schedule would give us an ID that isn't in
+                // `self.tasks`.
+                tasks.remove(&tid).unwrap()
+            };
+
             if !task.resume(now) {
-                self.schedule.borrow_mut().schedule(task);
+                self.schedule.borrow_mut().schedule(&task);
             }
 
-            Ok(task.id())
+            let tid = task.id();
+            debug!(
+                "coroutine {} successfully resumed; status is now `{:?}`",
+                tid,
+                task.status()
+            );
+            let mut tasks = self.tasks.borrow_mut();
+            assert!(tasks.insert(tid, task).is_none());
+            Ok(tid)
         } else {
             Err(Fail::TryAgain {})
         }

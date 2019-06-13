@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use std::{
     any::Any,
-    fmt,
+    fmt::{self, Debug},
     marker::Unpin,
     ops::{Generator, GeneratorState},
     pin::Pin,
@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TaskStatus {
     Completed(Result<Rc<Any>>),
     AsleepUntil(Instant),
@@ -17,9 +17,10 @@ pub enum TaskStatus {
 
 impl<T> Into<Result<T>> for TaskStatus
 where
-    T: 'static + Clone,
+    T: 'static + Clone + Debug,
 {
     fn into(self) -> Result<T> {
+        trace!("entered TaskStatus<T>::into()");
         match self {
             TaskStatus::Completed(r) => match r {
                 Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),
@@ -44,7 +45,7 @@ impl From<u64> for TaskId {
 
 impl fmt::Display for TaskId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
+        Debug::fmt(&self.0, f)
     }
 }
 
@@ -99,6 +100,9 @@ impl<'a> Task<'a> {
                 } else {
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {
+                            // if `yield None` is used, then we schedule
+                            // something for the next tick.
+                            // todo: ensure that a zero duration is not used.
                             let duration = duration
                                 .unwrap_or_else(|| Duration::new(0, 0));
                             self.status =
@@ -106,6 +110,10 @@ impl<'a> Task<'a> {
                             false
                         }
                         GeneratorState::Complete(result) => {
+                            debug!(
+                                "coroutine {} status is now completed.",
+                                self.id
+                            );
                             self.status = TaskStatus::Completed(result);
                             true
                         }

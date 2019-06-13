@@ -6,6 +6,7 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::VecDeque,
+    fmt::Debug,
     ops::Generator,
     rc::Rc,
     time::{Duration, Instant},
@@ -37,7 +38,7 @@ impl<'a> Runtime<'a> {
 
     pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
     where
-        T: Any + Clone + 'static,
+        T: Any + Clone + Debug + 'static,
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,

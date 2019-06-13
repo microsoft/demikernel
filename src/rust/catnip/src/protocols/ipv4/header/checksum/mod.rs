@@ -30,7 +30,6 @@ impl Hasher {
         if let Some(odd_byte) = accum.odd_byte {
             let pair = [odd_byte, bytes[0]];
             let n = u32::from(NetworkEndian::read_u16(&pair));
-            eprintln!("{:x}", n);
             accum.sum += n;
             bytes = &bytes[1..];
             accum.odd_byte = None;
@@ -38,7 +37,6 @@ impl Hasher {
 
         while bytes.len() >= 2 {
             let n = u32::from(NetworkEndian::read_u16(bytes));
-            eprintln!("{:x}", n);
             accum.sum += n;
             bytes = &bytes[2..];
         }
@@ -57,7 +55,6 @@ impl Hasher {
         if let Some(odd_byte) = accum.odd_byte {
             let pair = [odd_byte, 0];
             let n = u32::from(NetworkEndian::read_u16(&pair));
-            eprintln!("{:x}", n);
             accum.sum += n;
         }
 

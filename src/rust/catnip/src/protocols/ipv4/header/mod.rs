@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 pub mod checksum;
 
 use crate::prelude::*;
@@ -58,6 +61,7 @@ impl Into<u32> for Ipv4Protocol {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Ipv4Header {
     pub protocol: Ipv4Protocol,
     pub src_addr: Ipv4Addr,
@@ -66,6 +70,7 @@ pub struct Ipv4Header {
 
 impl Ipv4Header {
     pub fn read(reader: &mut Read, payload_len: usize) -> Result<Self> {
+        trace!("*");
         // todo: the `bitfield` crate has yet to implement immutable access to fields. see [this github issue](https://github.com/dzamlo/rust-bitfield/issues/23) for details.
         let mut bytes = [0; IPV4_HEADER_SIZE];
         reader.read_exact(&mut bytes)?;
@@ -78,6 +83,7 @@ impl Ipv4Header {
 
         let bits = BitsMut(&mut bytes);
 
+        debug!("a {}", bits.get_version());
         if bits.get_version() != IPV4_VERSION {
             return Err(Fail::Unsupported {});
         }
@@ -91,11 +97,13 @@ impl Ipv4Header {
             return Err(Fail::Malformed {});
         }
 
+        debug!("b");
         // we don't currently support IPv4 options.
         if ihl > IPV4_IHL_NO_OPTIONS {
             return Err(Fail::Unsupported {});
         }
 
+        debug!("c");
         // we don't currently support fragmented packets.
         if bits.get_frag_offset() != 0 {
             return Err(Fail::Unsupported {});
@@ -113,6 +121,7 @@ impl Ipv4Header {
             return Err(Fail::Malformed {});
         }
 
+        debug!("d");
         let protocol = Ipv4Protocol::try_from(bits.get_proto())?;
         Ok(Ipv4Header {
             protocol,
