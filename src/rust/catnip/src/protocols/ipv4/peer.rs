@@ -3,6 +3,8 @@ use crate::{
     prelude::*,
     protocols::{arp, ethernet2, udp},
 };
+use crate::r#async::Future;
+use std::net::Ipv4Addr;
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
@@ -30,5 +32,15 @@ impl<'a> Ipv4Peer<'a> {
             Ipv4Protocol::Udp => self.udp.receive(packet),
             _ => Err(Fail::Unsupported {}),
         }
+    }
+
+    pub fn udp_cast(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        dest_port: u16,
+        src_port: u16,
+        payload: Vec<u8>,
+    ) -> Future<'a, ()> {
+        self.udp.cast(dest_ipv4_addr, dest_port, src_port, payload)
     }
 }

@@ -1,4 +1,5 @@
 use super::packet::UdpPacket;
+use super::header::UdpHeader;
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, ipv4},
@@ -32,9 +33,11 @@ impl<'a> UdpPeer<'a> {
         Ok(())
     }
 
-    pub fn send(
+    pub fn cast(
         &self,
         dest_ipv4_addr: Ipv4Addr,
+        dest_port: u16,
+        src_port: u16,
         payload: Vec<u8>,
     ) -> Future<'a, ()> {
         let rt = self.rt.clone();
@@ -77,6 +80,10 @@ impl<'a> UdpPeer<'a> {
                 protocol: ipv4::Protocol::Udp,
                 src_addr: options.my_ipv4_addr,
                 dest_addr: dest_ipv4_addr,
+            })?;
+            packet.write_header(UdpHeader {
+                dest_port,
+                src_port,
             })?;
 
             rt.emit_effect(Effect::Transmit(Rc::new(packet.into())));

@@ -60,6 +60,16 @@ impl<'a> Station<'a> {
         self.arp.query(ipv4_addr)
     }
 
+    pub fn udp_cast(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        dest_port: u16,
+        src_port: u16,
+        payload: Vec<u8>,
+    ) -> Future<'a, ()> {
+        self.ipv4.udp_cast(dest_ipv4_addr, dest_port, src_port, payload)
+    }
+
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.arp.export_cache()
     }
