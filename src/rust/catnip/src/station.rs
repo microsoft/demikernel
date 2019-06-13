@@ -67,7 +67,8 @@ impl<'a> Station<'a> {
         src_port: u16,
         payload: Vec<u8>,
     ) -> Future<'a, ()> {
-        self.ipv4.udp_cast(dest_ipv4_addr, dest_port, src_port, payload)
+        self.ipv4
+            .udp_cast(dest_ipv4_addr, dest_port, src_port, payload)
     }
 
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {

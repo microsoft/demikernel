@@ -1,5 +1,4 @@
-use super::packet::UdpPacket;
-use super::header::UdpHeader;
+use super::{header::UdpHeader, packet::UdpPacket};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, ipv4},

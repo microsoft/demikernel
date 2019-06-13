@@ -1,6 +1,5 @@
-use std::rc::Rc;
-use std::net::Ipv4Addr;
 use crate::protocols::ipv4;
+use std::{net::Ipv4Addr, rc::Rc};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Effect {

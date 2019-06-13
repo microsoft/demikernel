@@ -55,4 +55,3 @@ impl Into<Vec<u8>> for Ipv4Packet {
         self.frame.into()
     }
 }
-

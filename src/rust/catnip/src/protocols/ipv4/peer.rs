@@ -2,8 +2,8 @@ use super::{header::Ipv4Protocol, packet::Ipv4Packet};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, udp},
+    r#async::Future,
 };
-use crate::r#async::Future;
 use std::net::Ipv4Addr;
 
 pub struct Ipv4Peer<'a> {
