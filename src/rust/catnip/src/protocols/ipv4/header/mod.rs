@@ -36,7 +36,7 @@ bitfield! {
 }
 
 #[repr(u32)]
-#[derive(FromPrimitive, Clone)]
+#[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
 pub enum Ipv4Protocol {
     Udp = 0x11,
 }

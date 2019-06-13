@@ -141,7 +141,6 @@ impl ArpPdu {
             ether_type: ethernet2::EtherType::Arp,
         })?;
         self.write(&mut frame.payload_mut())?;
-        let header = frame.read_header()?;
         Ok(frame.into())
     }
 }

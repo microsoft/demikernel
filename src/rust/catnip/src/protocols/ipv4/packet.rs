@@ -8,6 +8,7 @@ pub struct Ipv4Packet {
 
 impl Ipv4Packet {
     pub fn new(payload_sz: usize) -> Self {
+        assert_ne!(0, payload_sz);
         Ipv4Packet {
             frame: ethernet2::Frame::new(payload_sz + Ipv4Header::size()),
         }

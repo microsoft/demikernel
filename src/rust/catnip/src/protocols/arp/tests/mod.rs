@@ -2,7 +2,6 @@ use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};
-use super::pdu::ArpPdu;
 
 #[test]
 fn immediate_reply() {
@@ -30,6 +29,7 @@ fn immediate_reply() {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
+            e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
 
@@ -55,6 +55,7 @@ fn immediate_reply() {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
+            e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
 
@@ -99,6 +100,7 @@ fn slow_reply() {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
+            e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
 
@@ -124,6 +126,7 @@ fn slow_reply() {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
             Effect::Transmit(packet) => packet.to_vec(),
+            e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
 

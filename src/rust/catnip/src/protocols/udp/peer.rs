@@ -17,6 +17,18 @@ impl<'a> UdpPeer<'a> {
     }
 
     pub fn receive(&mut self, packet: ipv4::Packet) -> Result<()> {
+        let packet = UdpPacket::from(packet);
+        let ipv4_header = packet.ipv4().read_header()?;
+        assert_eq!(ipv4_header.protocol, ipv4::Protocol::Udp);
+        let udp_header = packet.read_header()?;
+        self.rt.emit_effect(Effect::Received {
+            protocol: ipv4::Protocol::Udp,
+            src_addr: ipv4_header.src_addr,
+            src_port: udp_header.src_port,
+            dest_port: udp_header.dest_port,
+            payload: packet.payload().to_vec(),
+        });
+
         Ok(())
     }
 

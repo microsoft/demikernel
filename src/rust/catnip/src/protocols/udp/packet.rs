@@ -8,6 +8,7 @@ pub struct UdpPacket {
 
 impl UdpPacket {
     pub fn new(payload_sz: usize) -> Self {
+        assert_ne!(0, payload_sz);
         UdpPacket {
             ipv4: ipv4::Packet::new(payload_sz + UdpHeader::size()),
         }
@@ -33,7 +34,7 @@ impl UdpPacket {
         Ok(header.write(&mut bytes, payload_len)?)
     }
 
-    pub fn payload(&mut self) -> &[u8] {
+    pub fn payload(&self) -> &[u8] {
         &self.ipv4().payload()[UdpHeader::size()..]
     }
 

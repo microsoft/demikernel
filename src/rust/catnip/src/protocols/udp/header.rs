@@ -7,6 +7,7 @@ use std::{
 
 const UDP_HEADER_SIZE: usize = 8;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct UdpHeader {
     pub src_port: u16,
     pub dest_port: u16,
