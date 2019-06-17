@@ -1,23 +1,5 @@
-use super::*;
 use crate::{prelude::*, protocols::ipv4, test};
-use std::{
-    io::Cursor,
-    time::{Duration, Instant},
-};
-
-#[test]
-fn serialization() {
-    // ensures that a UDP header serializes correctly.
-    trace!("entering `udp::tests::serialization()`");
-    let header = Header {
-        src_port: 12345,
-        dest_port: 54321,
-    };
-    let mut bytes = Vec::new();
-    header.write(&mut bytes, 1).unwrap();
-    let header2 = Header::read(&mut Cursor::new(&bytes)).unwrap();
-    assert_eq!(header, header2);
-}
+use std::time::{Duration, Instant};
 
 #[test]
 fn cast() {
@@ -51,7 +33,7 @@ fn cast() {
         }
     };
 
-    bob.receive(request).unwrap();
+    bob.receive(&request).unwrap();
     info!("passing ARP request to bob...");
     let arp_reply = {
         let effect = bob.poll(now).expect("expected an effect");
@@ -62,7 +44,7 @@ fn cast() {
     };
 
     info!("passing ARP reply back to alice...");
-    alice.receive(arp_reply).unwrap();
+    alice.receive(&arp_reply).unwrap();
     let now = now + Duration::from_millis(1);
     match fut.poll(now) {
         Err(Fail::TryAgain {}) => (),
@@ -91,7 +73,7 @@ fn cast() {
         }
     };
 
-    bob.receive(udp_packet).unwrap();
+    bob.receive(&udp_packet).unwrap();
     info!("passing UDP packet to bob...");
     let effect = alice.poll(now).expect("expected an effect");
     match effect {

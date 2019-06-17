@@ -4,162 +4,186 @@ mod tests;
 pub mod checksum;
 
 use crate::prelude::*;
-use checksum::Hasher;
+use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
-use std::{
-    convert::TryFrom,
-    io::{Read, Write},
-    net::Ipv4Addr,
-};
+use std::{convert::TryFrom, net::Ipv4Addr};
 
-const IPV4_HEADER_SIZE: usize = 20;
+pub const IPV4_HEADER_SIZE: usize = 20;
 // todo: need citation
-const DEFAULT_IPV4_TTL: u32 = 64;
-const IPV4_IHL_NO_OPTIONS: u32 = 5;
-const IPV4_VERSION: u32 = 4;
+pub const DEFAULT_IPV4_TTL: u8 = 64;
+pub const IPV4_IHL_NO_OPTIONS: u8 = 5;
+pub const IPV4_VERSION: u8 = 4;
 
-bitfield! {
-    pub struct BitsMut(MSB0 [u8]);
-    impl Debug;
-    u32;
-    pub get_version, set_version: 3, 0;
-    pub get_ihl, set_ihl: 7, 4;
-    pub get_dscp, set_dscp: 13, 8;
-    pub get_ecn, set_ecn: 15, 14;
-    pub get_total_len, set_total_len: 31, 16;
-    pub get_id, set_id: 47, 31;
-    pub get_df, set_df: 49;
-    pub get_mf, set_mf: 50;
-    pub get_frag_offset, set_frag_offset: 63, 51;
-    pub get_ttl, set_ttl: 71, 64;
-    pub get_proto, set_proto: 79, 72;
-    pub get_header_checksum, set_header_checksum: 95, 79;
-    pub get_src_addr, set_src_addr: 103, 96;
-    pub get_dest_addr, set_dest_addr: 159, 128;
-}
-
-#[repr(u32)]
+#[repr(u8)]
 #[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
 pub enum Ipv4Protocol {
     Udp = 0x11,
 }
 
-impl TryFrom<u32> for Ipv4Protocol {
+impl TryFrom<u8> for Ipv4Protocol {
     type Error = Fail;
 
-    fn try_from(n: u32) -> Result<Self> {
-        match FromPrimitive::from_u32(n) {
+    fn try_from(n: u8) -> Result<Self> {
+        match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
             None => Err(Fail::Unsupported {}),
         }
     }
 }
 
-impl Into<u32> for Ipv4Protocol {
-    fn into(self) -> u32 {
-        self as u32
+impl Into<u8> for Ipv4Protocol {
+    fn into(self) -> u8 {
+        self as u8
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Ipv4Header {
-    pub protocol: Ipv4Protocol,
-    pub src_addr: Ipv4Addr,
-    pub dest_addr: Ipv4Addr,
+pub struct Ipv4Header<'a>(&'a [u8]);
+
+impl<'a> Ipv4Header<'a> {
+    pub fn new(bytes: &'a [u8]) -> Ipv4Header<'a> {
+        assert!(bytes.len() == IPV4_HEADER_SIZE);
+        Ipv4Header(bytes)
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0
+    }
+
+    pub fn version(&self) -> u8 {
+        let n = self.0[0];
+        n >> 4
+    }
+
+    pub fn ihl(&self) -> u8 {
+        let n = self.0[0];
+        n & 0xf
+    }
+
+    pub fn dscp(&self) -> u8 {
+        let n = self.0[1];
+        n >> 2
+    }
+
+    pub fn ecn(&self) -> u8 {
+        let n = self.0[1];
+        n & 3
+    }
+
+    pub fn total_len(&self) -> usize {
+        usize::from(NetworkEndian::read_u16(&self.0[2..4]))
+    }
+
+    pub fn id(&self) -> u16 {
+        NetworkEndian::read_u16(&self.0[4..6])
+    }
+
+    pub fn flags(&self) -> u16 {
+        let n = NetworkEndian::read_u16(&self.0[6..8]);
+        n >> 13
+    }
+
+    pub fn frag_offset(&self) -> u16 {
+        let n = NetworkEndian::read_u16(&self.0[6..8]);
+        n & 0x1fff
+    }
+
+    pub fn ttl(&self) -> u8 {
+        self.0[8]
+    }
+
+    pub fn protocol(&self) -> Result<Ipv4Protocol> {
+        Ok(Ipv4Protocol::try_from(self.0[9])?)
+    }
+
+    pub fn checksum(&self) -> u16 {
+        NetworkEndian::read_u16(&self.0[10..12])
+    }
+
+    pub fn src_addr(&self) -> Ipv4Addr {
+        Ipv4Addr::from(NetworkEndian::read_u32(&self.0[12..16]))
+    }
+
+    pub fn dest_addr(&self) -> Ipv4Addr {
+        Ipv4Addr::from(NetworkEndian::read_u32(&self.0[16..20]))
+    }
 }
 
-impl Ipv4Header {
-    pub fn read(reader: &mut Read, payload_len: usize) -> Result<Self> {
-        trace!("*");
-        // todo: the `bitfield` crate has yet to implement immutable access to fields. see [this github issue](https://github.com/dzamlo/rust-bitfield/issues/23) for details.
-        let mut bytes = [0; IPV4_HEADER_SIZE];
-        reader.read_exact(&mut bytes)?;
+pub struct Ipv4HeaderMut<'a>(&'a mut [u8]);
 
-        let should_be_zero = {
-            let mut hasher = Hasher::new();
-            hasher.write(&bytes);
-            hasher.finish()
-        };
-
-        let bits = BitsMut(&mut bytes);
-
-        debug!("a {}", bits.get_version());
-        if bits.get_version() != IPV4_VERSION {
-            return Err(Fail::Unsupported {});
-        }
-
-        if bits.get_total_len() as usize != payload_len + Ipv4Header::size() {
-            return Err(Fail::Malformed {});
-        }
-
-        let ihl = bits.get_ihl();
-        if ihl < IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Malformed {});
-        }
-
-        debug!("b");
-        // we don't currently support IPv4 options.
-        if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Unsupported {});
-        }
-
-        debug!("c");
-        // we don't currently support fragmented packets.
-        if bits.get_frag_offset() != 0 {
-            return Err(Fail::Unsupported {});
-        }
-
-        // from _TCP/IP Illustrated_, Section 5.2.2:
-        // > Note that for any nontrivial packet or header, the value
-        // > of the Checksum field in the packet can never be FFFF.
-        let checksum = bits.get_header_checksum();
-        if checksum == 0xffff {
-            return Err(Fail::Malformed {});
-        }
-
-        if checksum != 0 && should_be_zero != 0 {
-            return Err(Fail::Malformed {});
-        }
-
-        debug!("d");
-        let protocol = Ipv4Protocol::try_from(bits.get_proto())?;
-        Ok(Ipv4Header {
-            protocol,
-            src_addr: Ipv4Addr::from(bits.get_src_addr()),
-            dest_addr: Ipv4Addr::from(bits.get_dest_addr()),
-        })
+impl<'a> Ipv4HeaderMut<'a> {
+    pub fn new(bytes: &'a mut [u8]) -> Ipv4HeaderMut<'a> {
+        assert!(bytes.len() == IPV4_HEADER_SIZE);
+        Ipv4HeaderMut(bytes)
     }
 
-    pub fn write(&self, writer: &mut Write, payload_len: usize) -> Result<()> {
-        let mut bytes = [0; IPV4_HEADER_SIZE];
-
-        {
-            let mut bits = BitsMut(&mut bytes);
-            bits.set_version(IPV4_VERSION);
-            bits.set_ihl(IPV4_IHL_NO_OPTIONS);
-            bits.set_ttl(DEFAULT_IPV4_TTL);
-            bits.set_total_len(u32::from(u16::try_from(
-                payload_len + Ipv4Header::size(),
-            )?));
-            bits.set_proto(self.protocol.clone().into());
-            bits.set_src_addr(self.src_addr.into());
-            bits.set_dest_addr(self.dest_addr.into());
-        }
-
-        let mut hasher = Hasher::new();
-        hasher.write(&bytes[..10]);
-        hasher.write(&bytes[12..]);
-
-        {
-            let mut bits = BitsMut(&mut bytes);
-            bits.set_header_checksum(u32::from(hasher.finish()));
-        }
-
-        writer.write_all(&bytes)?;
-        Ok(())
+    pub fn as_bytes(&mut self) -> &mut [u8] {
+        self.0
     }
 
-    pub fn size() -> usize {
-        IPV4_HEADER_SIZE
+    pub fn version(&mut self, value: u8) {
+        assert!(value <= 0xf);
+        let n = self.0[0];
+        self.0[0] = (n & 0x0f) | (value << 4);
+    }
+
+    pub fn ihl(&mut self, value: u8) {
+        assert!(value <= 0xf);
+        let n = self.0[0];
+        self.0[0] = (n & 0xf0) | value;
+    }
+
+    pub fn dscp(&mut self, value: u8) {
+        assert!(value <= 0x3f);
+        let n = self.0[1];
+        self.0[1] = (n & 0x3) | (value << 2);
+    }
+
+    pub fn ecn(&mut self, value: u8) {
+        assert!(value <= 0x3);
+        let n = self.0[1];
+        self.0[1] = (n & 0xfc) | value;
+    }
+
+    pub fn total_len(&mut self, value: u16) {
+        NetworkEndian::write_u16(&mut self.0[2..4], value)
+    }
+
+    pub fn id(&mut self, value: u16) {
+        NetworkEndian::write_u16(&mut self.0[4..6], value)
+    }
+
+    pub fn flags(&mut self, value: u16) {
+        assert!(value <= 0x7);
+        let n = NetworkEndian::read_u16(&self.0[6..8]);
+        NetworkEndian::write_u16(
+            &mut self.0[6..8],
+            (n & 0x1fff) | (value << 13),
+        )
+    }
+
+    pub fn frag_offset(&mut self, value: u16) {
+        assert!(value <= 0x1fff);
+        let n = NetworkEndian::read_u16(&self.0[6..8]);
+        NetworkEndian::write_u16(&mut self.0[6..8], (n & 0xe000) | value)
+    }
+
+    pub fn ttl(&mut self, value: u8) {
+        self.0[8] = value;
+    }
+
+    pub fn protocol(&mut self, value: Ipv4Protocol) {
+        self.0[9] = value.into();
+    }
+
+    pub fn checksum(&mut self, value: u16) {
+        NetworkEndian::write_u16(&mut self.0[10..12], value);
+    }
+
+    pub fn src_addr(&mut self, value: Ipv4Addr) {
+        NetworkEndian::write_u32(&mut self.0[12..16], value.into());
+    }
+
+    pub fn dest_addr(&mut self, value: Ipv4Addr) {
+        NetworkEndian::write_u32(&mut self.0[16..20], value.into());
     }
 }

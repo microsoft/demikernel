@@ -20,7 +20,7 @@ where
     T: 'static + Clone + Debug,
 {
     fn into(self) -> Result<T> {
-        trace!("entered TaskStatus<T>::into()");
+        trace!("TaskStatus::into()");
         match self {
             TaskStatus::Completed(r) => match r {
                 Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),

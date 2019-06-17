@@ -11,9 +11,6 @@ extern crate num_derive;
 #[macro_use]
 extern crate log;
 
-#[macro_use]
-extern crate bitfield;
-
 mod effect;
 mod options;
 mod prelude;

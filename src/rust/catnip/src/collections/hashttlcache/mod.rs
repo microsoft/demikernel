@@ -177,27 +177,21 @@ where
     where
         K: Debug,
     {
-        trace!("entering `HashTtlCache::get()`");
-        debug!("HashTtlCache::map::len() -> {}", self.map.len());
+        trace!("HashTtlCache::get({:?})", key);
+        debug!("self.map.len() -> {:?}", self.map.len());
         match self.map.get(key) {
-            // not present.
             None => {
-                debug!("HashTtlCache::get({:?}): not present", key);
+                debug!("key `{:?}` not present", key);
                 None
             }
             Some(r) => match r.expiry.as_ref() {
-                None =>
-                // no expiration on entry.
-                {
+                None => {
+                    // no expiration on entry.
                     Some(&r.value)
                 }
                 Some(e) => {
                     if e.has_expired(self.clock) {
-                        debug!(
-                            "HashTtlCache::get({:?}): present but expired",
-                            key
-                        );
-                        // present and expired
+                        debug!("key `{:?}` present but expired", key);
                         None
                     } else {
                         // present and not yet exipred.

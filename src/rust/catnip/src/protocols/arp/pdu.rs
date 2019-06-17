@@ -43,6 +43,7 @@ pub struct ArpPdu {
 
 impl ArpPdu {
     pub fn read(reader: &mut Read) -> Result<ArpPdu> {
+        trace!("ArpPdu::read(...)");
         let hard_type = reader.read_u16::<NetworkEndian>()?;
         if hard_type != HARD_TYPE_ETHER2 {
             return Err(Fail::Unsupported {});
@@ -103,7 +104,7 @@ impl ArpPdu {
     }
 
     pub fn to_packet(&self) -> Result<Vec<u8>> {
-        trace!("entering `ArpPdu::to_packet()`");
+        trace!("ArpPdu::to_packet()");
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
                 if MacAddress::nil() != self.target_link_addr {
@@ -134,14 +135,17 @@ impl ArpPdu {
             }
         };
 
-        let mut frame = ethernet2::Frame::new(ArpPdu::size());
-        frame.write_header(ethernet2::Header {
-            dest_addr,
-            src_addr: self.sender_link_addr,
-            ether_type: ethernet2::EtherType::Arp,
-        })?;
-        self.write(&mut frame.payload_mut())?;
-        Ok(frame.into())
+        let mut bytes = ethernet2::new_packet(ArpPdu::size());
+        debug!("AAA");
+        let mut frame = ethernet2::FrameMut::from_bytes(&mut bytes)?;
+        debug!("BBB");
+        self.write(&mut frame.payload())?;
+        let mut header = frame.header();
+        header.dest_addr(dest_addr);
+        header.src_addr(self.sender_link_addr);
+        header.ether_type(ethernet2::EtherType::Arp);
+        debug!("ArpPdu::to_packet() -> `{:?}`", bytes);
+        Ok(bytes)
     }
 }
 
@@ -149,6 +153,7 @@ impl TryFrom<&[u8]> for ArpPdu {
     type Error = Fail;
 
     fn try_from(bytes: &[u8]) -> Result<ArpPdu> {
+        trace!("ArpPdu::try_from({:?})", bytes);
         let mut reader = Cursor::new(bytes);
         ArpPdu::read(&mut reader)
     }

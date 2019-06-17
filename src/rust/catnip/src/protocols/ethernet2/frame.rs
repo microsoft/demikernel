@@ -1,56 +1,56 @@
-use super::header::Ethernet2Header;
+use super::header::{
+    Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
+};
 use crate::prelude::*;
-use std::{cmp::max, convert::TryFrom, io::Cursor};
 
 // minimum paylod size is 46 bytes as described at [this wikipedia article](https://en.wikipedia.org/wiki/Ethernet_frame).
 pub static MIN_PAYLOAD_SIZE: usize = 46;
 
-pub struct Ethernet2Frame {
-    bytes: Vec<u8>,
-}
+pub struct Ethernet2Frame<'a>(&'a [u8]);
 
-impl Ethernet2Frame {
-    pub fn new(payload_sz: usize) -> Self {
-        let payload_sz = max(payload_sz, MIN_PAYLOAD_SIZE);
-        let packet_len = payload_sz + Ethernet2Header::size();
-        Ethernet2Frame {
-            bytes: vec![0u8; packet_len],
-        }
-    }
-
-    pub fn read_header(&self) -> Result<Ethernet2Header> {
-        let bytes = &self.bytes[..Ethernet2Header::size()];
-        Ok(Ethernet2Header::read(&mut Cursor::new(&bytes))?)
-    }
-
-    pub fn write_header(&mut self, header: Ethernet2Header) -> Result<()> {
-        let mut bytes = &mut self.bytes[..Ethernet2Header::size()];
-        Ok(header.write(&mut bytes)?)
-    }
-
-    pub fn payload(&self) -> &[u8] {
-        &self.bytes[Ethernet2Header::size()..]
-    }
-
-    pub fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.bytes[Ethernet2Header::size()..]
-    }
-}
-
-impl TryFrom<Vec<u8>> for Ethernet2Frame {
-    type Error = Fail;
-
-    fn try_from(bytes: Vec<u8>) -> Result<Self> {
-        if bytes.len() < MIN_PAYLOAD_SIZE + Ethernet2Header::size() {
+impl<'a> Ethernet2Frame<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
+        if bytes.as_ref().len() < ETHERNET2_HEADER_SIZE + MIN_PAYLOAD_SIZE {
             return Err(Fail::Malformed {});
         }
 
-        Ok(Ethernet2Frame { bytes })
+        Ok(Ethernet2Frame(bytes))
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.0
+    }
+
+    pub fn header(&self) -> Ethernet2Header<'_> {
+        Ethernet2Header::new(&self.0[..ETHERNET2_HEADER_SIZE])
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.0[ETHERNET2_HEADER_SIZE..]
     }
 }
 
-impl Into<Vec<u8>> for Ethernet2Frame {
-    fn into(self) -> Vec<u8> {
-        self.bytes
+pub struct Ethernet2FrameMut<'a>(&'a mut [u8]);
+
+impl<'a> Ethernet2FrameMut<'a> {
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
+        let _ = Ethernet2Frame::from_bytes(&bytes)?;
+        Ok(Ethernet2FrameMut(bytes))
+    }
+
+    pub fn bytes(&mut self) -> &mut [u8] {
+        self.0
+    }
+
+    pub fn header(&mut self) -> Ethernet2HeaderMut<'_> {
+        Ethernet2HeaderMut::new(&mut self.0[..ETHERNET2_HEADER_SIZE])
+    }
+
+    pub fn payload(&mut self) -> &mut [u8] {
+        &mut self.0[ETHERNET2_HEADER_SIZE..]
+    }
+
+    pub fn unmut(self) -> Ethernet2Frame<'a> {
+        Ethernet2Frame(self.0)
     }
 }

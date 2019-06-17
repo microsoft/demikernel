@@ -46,14 +46,15 @@ impl<'a> ArpPeer<'a> {
         cache.try_evict(2);
     }
 
-    pub fn receive(&mut self, frame: ethernet2::Frame) -> Result<()> {
-        trace!("entering `arp::Peer::receive()`");
+    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
+        trace!("ArpPeer::receive(...)");
         let options = self.rt.options();
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
+        debug!("aaa");
         let mut arp = ArpPdu::try_from(frame.payload())?;
         // from RFC 826:
         // > Merge_flag := false
@@ -61,6 +62,7 @@ impl<'a> ArpPeer<'a> {
         // > already in my translation table, update the sender
         // > hardware address field of the entry with the new
         // > information in the packet and set Merge_flag to true.
+        debug!("bbb");
         let merge_flag = {
             let mut cache = self.cache.borrow_mut();
             if cache.get_link_addr(arp.sender_ip_addr).is_some() {
@@ -72,6 +74,7 @@ impl<'a> ArpPeer<'a> {
         };
 
         // from RFC 826: ?Am I the target protocol address?
+        debug!("ccc");
         if arp.target_ip_addr != options.my_ipv4_addr {
             if merge_flag {
                 // we did do something.
@@ -86,18 +89,17 @@ impl<'a> ArpPeer<'a> {
         // > If Merge_flag is false, add the triplet <protocol type,
         // > sender protocol address, sender hardware address> to
         // > the translation table.
+        debug!("ddd");
         if !merge_flag {
             self.cache
                 .borrow_mut()
                 .insert(arp.sender_ip_addr, arp.sender_link_addr);
         }
 
+        debug!("eee");
         match arp.op {
             ArpOp::ArpRequest => {
-                debug!(
-                    "ArpPeer::receive(): request from `{}`",
-                    arp.sender_link_addr
-                );
+                debug!("request from `{}`", arp.sender_link_addr);
                 // from RFC 826:
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
@@ -114,7 +116,7 @@ impl<'a> ArpPeer<'a> {
             }
             ArpOp::ArpReply => {
                 debug!(
-                    "ArpPeer::receive(): reply from `{}/{}`",
+                    "reply from `{}/{}`",
                     arp.sender_ip_addr, arp.sender_link_addr
                 );
                 self.cache
@@ -163,17 +165,14 @@ impl<'a> ArpPeer<'a> {
                 let mut dt = Duration::new(0, 0);
                 while dt < timeout {
                     debug!(
-                        "ArpPeer::query(): looking up `{}` in cache...",
+                        "looking up `{}` in cache...",
                         options.my_ipv4_addr
                     );
                     let result =
                         cache.borrow().get_link_addr(ipv4_addr).copied();
 
                     if let Some(link_addr) = result {
-                        debug!(
-                            "ArpPeer::query(): result available ({})",
-                            link_addr
-                        );
+                        debug!("result available ({})", link_addr);
                         let x: Rc<Any> = Rc::new(link_addr);
                         return Ok(x);
                     } else {
@@ -181,7 +180,7 @@ impl<'a> ArpPeer<'a> {
                         // is inserted into the cache.
                         yield None;
                         dt = rt.clock() - t0;
-                        debug!("ArpPeer::query(): dt = {:?}", dt);
+                        debug!("dt = {:?}", dt);
                     }
                 }
 

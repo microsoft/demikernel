@@ -4,7 +4,7 @@ use crate::{
     protocols::{arp, ethernet2, udp},
     r#async::Future,
 };
-use std::net::Ipv4Addr;
+use std::{convert::TryFrom, net::Ipv4Addr};
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
@@ -17,21 +17,20 @@ impl<'a> Ipv4Peer<'a> {
         Ipv4Peer { rt, udp }
     }
 
-    pub fn receive(&mut self, frame: ethernet2::Frame) -> Result<()> {
-        trace!("Ipv4Peer::receive");
+    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
+        trace!("Ipv4Peer::receive(...)");
         let options = self.rt.options();
-        let packet = Ipv4Packet::from(frame);
-        debug!("a");
-        let header = packet.read_header()?;
+        let packet = Ipv4Packet::try_from(frame)?;
+        let header = packet.header();
 
-        let dst_addr = header.dest_addr;
+        let dst_addr = header.dest_addr();
         if dst_addr != options.my_ipv4_addr && !dst_addr.is_broadcast() {
             return Err(Fail::Misdelivered {});
         }
 
-        debug!("b {:?}", header.protocol);
+        debug!("b {:?}", header.protocol()?);
         #[allow(unreachable_patterns)]
-        match header.protocol {
+        match header.protocol()? {
             Ipv4Protocol::Udp => self.udp.receive(packet),
             _ => Err(Fail::Unsupported {}),
         }

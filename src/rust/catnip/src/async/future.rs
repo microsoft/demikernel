@@ -42,7 +42,7 @@ where
     where
         T: Debug,
     {
-        trace!("entering `Future::poll()`");
+        trace!("Future::poll({:?})", now);
         match self {
             Future::Const(v) => v.clone(),
             Future::TaskResult { r#async, tid } => {

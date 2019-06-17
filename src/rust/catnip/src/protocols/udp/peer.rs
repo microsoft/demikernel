@@ -1,10 +1,10 @@
-use super::{header::UdpHeader, packet::UdpPacket};
+use super::packet::{UdpPacket, UdpPacketMut};
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, ipv4},
+    protocols::{arp, ipv4},
     r#async::Future,
 };
-use std::{any::Any, net::Ipv4Addr, rc::Rc};
+use std::{any::Any, convert::TryFrom, net::Ipv4Addr, rc::Rc};
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
@@ -16,17 +16,16 @@ impl<'a> UdpPeer<'a> {
         UdpPeer { rt, arp }
     }
 
-    pub fn receive(&mut self, packet: ipv4::Packet) -> Result<()> {
-        trace!("UdpPeer::receive");
-        let packet = UdpPacket::from(packet);
-        let ipv4_header = packet.ipv4().read_header()?;
-        assert_eq!(ipv4_header.protocol, ipv4::Protocol::Udp);
-        let udp_header = packet.read_header()?;
+    pub fn receive(&mut self, packet: ipv4::Packet<'_>) -> Result<()> {
+        trace!("UdpPeer::receive(...)");
+        let packet = UdpPacket::try_from(packet)?;
+        let ipv4_header = packet.ipv4().header();
+        let udp_header = packet.header();
         self.rt.emit_effect(Effect::Received {
             protocol: ipv4::Protocol::Udp,
-            src_addr: ipv4_header.src_addr,
-            src_port: udp_header.src_port,
-            dest_port: udp_header.dest_port,
+            src_addr: ipv4_header.src_addr(),
+            src_port: udp_header.src_port(),
+            dest_port: udp_header.dest_port(),
             payload: packet.payload().to_vec(),
         });
 
@@ -77,39 +76,25 @@ impl<'a> UdpPeer<'a> {
                 dest_link_addr
             };
 
-            debug!("a");
-            let mut packet = UdpPacket::new(payload.len());
-            debug!("aa {} {}", payload.len(), packet.payload_mut().len());
+            let mut bytes = super::new_packet(payload.len());
+            let mut packet = UdpPacketMut::from_bytes(&mut bytes)?;
             // the payload slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
             // to trim what we get from `packet.payload_mut()` to make it the
             // same size as `payload`.
-            packet.payload_mut()[..payload.len()].copy_from_slice(&payload);
-            debug!("b");
-            packet
-                .ipv4_mut()
-                .frame_mut()
-                .write_header(ethernet2::Header {
-                    dest_addr: dest_link_addr,
-                    src_addr: options.my_link_addr,
-                    // todo: there's got to be a way to automatically set this
-                    // field.
-                    ether_type: ethernet2::EtherType::Ipv4,
-                })?;
-            debug!("c");
-            packet.ipv4_mut().write_header(ipv4::Header {
-                protocol: ipv4::Protocol::Udp,
-                src_addr: options.my_ipv4_addr,
-                dest_addr: dest_ipv4_addr,
-            })?;
-            debug!("d");
-            packet.write_header(UdpHeader {
-                dest_port,
-                src_port,
-            })?;
+            packet.payload()[..payload.len()].copy_from_slice(&payload);
+            let mut udp_header = packet.header();
+            udp_header.dest_port(dest_port);
+            udp_header.src_port(src_port);
+            let mut ipv4_header = packet.ipv4().header();
+            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.dest_addr(dest_ipv4_addr);
+            let mut frame_header = packet.ipv4().frame().header();
+            frame_header.dest_addr(dest_link_addr);
+            frame_header.src_addr(options.my_link_addr);
+            let _ = packet.seal()?;
 
-            debug!("e");
-            rt.emit_effect(Effect::Transmit(Rc::new(packet.into())));
+            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
             let x: Rc<Any> = Rc::new(());
             Ok(x)
         })

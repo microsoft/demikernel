@@ -77,7 +77,7 @@ impl ArpCache {
 
     pub fn get_link_addr(&self, ipv4_addr: Ipv4Addr) -> Option<&MacAddress> {
         let result = self.cache.get(&ipv4_addr).map(|r| &r.link_addr);
-        debug!("ArpCache::get_link_addr({:?}) -> `{:?}`", ipv4_addr, result);
+        debug!("`{:?}` -> `{:?}`", ipv4_addr, result);
         result
     }
 

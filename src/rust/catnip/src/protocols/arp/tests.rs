@@ -37,14 +37,14 @@ fn immediate_reply() {
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    match bob.receive(request.clone()) {
+    match bob.receive(&request) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(request).unwrap();
+    carrie.receive(&request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
@@ -60,7 +60,7 @@ fn immediate_reply() {
     };
 
     info!("passing ARP reply back to alice...");
-    alice.receive(reply).unwrap();
+    alice.receive(&reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
@@ -108,14 +108,14 @@ fn slow_reply() {
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    match bob.receive(request.clone()) {
+    match bob.receive(&request) {
         Err(Fail::Ignored {}) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
-    carrie.receive(request).unwrap();
+    carrie.receive(&request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
@@ -131,7 +131,7 @@ fn slow_reply() {
     };
 
     info!("passing ARP reply back to alice...");
-    alice.receive(reply).unwrap();
+    alice.receive(&reply).unwrap();
     debug!(
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
