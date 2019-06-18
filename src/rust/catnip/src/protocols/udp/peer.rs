@@ -48,9 +48,7 @@ impl<'a> UdpPeer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    debug!("great!");
                     let x = fut.poll(rt.clock());
-                    debug!("o rly?!");
                     match x {
                         Ok(a) => {
                             debug!(
@@ -61,13 +59,10 @@ impl<'a> UdpPeer<'a> {
                             break;
                         }
                         Err(Fail::TryAgain {}) => {
-                            debug!("Not here!");
                             yield None;
-                            debug!("back in action!");
                             continue;
                         }
                         Err(e) => {
-                            debug!("o hai!");
                             return Err(e);
                         }
                     }

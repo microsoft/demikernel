@@ -136,9 +136,7 @@ impl ArpPdu {
         };
 
         let mut bytes = ethernet2::new_packet(ArpPdu::size());
-        debug!("AAA");
         let mut frame = ethernet2::FrameMut::from_bytes(&mut bytes)?;
-        debug!("BBB");
         self.write(&mut frame.payload())?;
         let mut header = frame.header();
         header.dest_addr(dest_addr);
