@@ -17,7 +17,8 @@ impl<'a> Ethernet2Frame<'a> {
         Ok(Ethernet2Frame(bytes))
     }
 
-    pub fn bytes(&self) -> &[u8] {
+    #[allow(dead_code)]
+    pub fn as_bytes(&self) -> &[u8] {
         self.0
     }
 
@@ -38,7 +39,8 @@ impl<'a> Ethernet2FrameMut<'a> {
         Ok(Ethernet2FrameMut(bytes))
     }
 
-    pub fn bytes(&mut self) -> &mut [u8] {
+    #[allow(dead_code)]
+    pub fn as_bytes(&mut self) -> &mut [u8] {
         self.0
     }
 

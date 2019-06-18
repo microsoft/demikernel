@@ -50,11 +50,12 @@ impl<'a> UdpPacketMut<'a> {
         &mut self.0.payload()[UDP_HEADER_SIZE..]
     }
 
+    #[allow(dead_code)]
     pub fn unmut(self) -> UdpPacket<'a> {
         UdpPacket(self.0.unmut())
     }
 
-    pub fn seal(mut self) -> Result<UdpPacket<'a>> {
+    pub fn seal(self) -> Result<UdpPacket<'a>> {
         let ipv4_packet = {
             let mut ipv4 = self.0;
             let mut header = ipv4.header();

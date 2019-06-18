@@ -12,6 +12,7 @@ impl<'a> Ipv4Packet<'a> {
         Ipv4Header::new(&self.0.payload()[..IPV4_HEADER_SIZE])
     }
 
+    #[allow(dead_code)]
     pub fn frame(&self) -> &ethernet2::Frame<'a> {
         &self.0
     }
