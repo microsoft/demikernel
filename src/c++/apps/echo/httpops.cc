@@ -109,10 +109,10 @@ void path_to_mime_type(char *path, char buf[], int capacity) {
     }
 }
 
-
 int generate_header(char **dest, int code, int body_len, char *mime_type) {
     if (code == 200) {
-        size_t alloc_size = snprintf(*dest, 0, BASE_HTTP_HEADER, code, mime_type, body_len) + 1;
+        char header_buf[MAX_HEADER_LEN];
+        size_t alloc_size = snprintf(header_buf, 0, BASE_HTTP_HEADER, code, mime_type, body_len) + 1;
         *dest = reinterpret_cast<char *>(malloc(alloc_size));
         return snprintf(*dest, alloc_size, BASE_HTTP_HEADER, code, mime_type, body_len);
     } else if (code == 404) {

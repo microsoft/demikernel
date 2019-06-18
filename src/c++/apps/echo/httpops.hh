@@ -4,6 +4,7 @@
 #define MAX_FILEPATH_LEN 512
 #define MAX_MIME_TYPE 80
 #define MAX_REGEX_VALUE_LEN 128
+#define MAX_HEADER_LEN 512
 
 #define FILE_DIR "/media/wiki/"
 
