@@ -160,15 +160,16 @@ enum http_req_type get_request_type(char *url) {
     return FILE_REQ;
 }
 
-void generate_response(char **response, char *header, char *body, int header_len, int body_len) {
-    size_t response_len = header_len;
+void generate_response(char **response, char *header, char *body, int header_len,
+                       int body_len, int *response_len) {
+    *response_len = header_len;
     if (body && body_len > 0) {
-        response_len += body_len;
+        *response_len += body_len;
     }
-    *response = reinterpret_cast<char *>(malloc(response_len));
-    strncpy(*response, header, strlen(header));
+    *response = reinterpret_cast<char *>(malloc((size_t)*response_len));
+    strncpy(*response, header, header_len);
     if (body) {
-        strncpy(*response + strlen(header), reinterpret_cast<char *>(body), body_len);
+        strncpy(*response + header_len, reinterpret_cast<char *>(body), body_len);
         free(body);
     }
     free(header);

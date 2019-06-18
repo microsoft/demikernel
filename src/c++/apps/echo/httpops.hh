@@ -32,7 +32,8 @@ void replace_special(char *url);
 int url_to_path(char *url, const char *dir, char *path, int capacity);
 void path_to_mime_type(char *path, char buf[], int capacity);
 int generate_header(char **dest, int code, int body_len, char *mime_type);
-void generate_response(char **response, char *header, char *body, int header_len, int body_len);
+void generate_response(char **response, char *header, char *body,
+                       int header_len, int body_len, int *response_len);
 
 /* Regex functions */
 int regex_html(char *to_match, char *htmlDoc, size_t html_length);

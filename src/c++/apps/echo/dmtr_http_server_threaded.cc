@@ -84,7 +84,7 @@ int match_filter(std::string message) {
     return 0;
 }
 
-static void file_work(char *url, char **response) {
+static void file_work(char *url, char **response, int *response_len) {
     char filepath[MAX_FILEPATH_LEN];
     url_to_path(url, FILE_DIR, filepath, MAX_FILEPATH_LEN);
     struct stat st;
@@ -129,11 +129,11 @@ static void file_work(char *url, char **response) {
     }
 
     char *header = NULL;
-    generate_header(&header, code, body_len, mime_type);
-    generate_response(response, header, body, strlen(header), body_len);
+    int header_len = generate_header(&header, code, body_len, mime_type);
+    generate_response(response, header, body, header_len, body_len, response_len);
 }
 
-static void regex_work(char *url, char **response) {
+static void regex_work(char *url, char **response, int *response_len) {
     char *body = NULL;
     int body_len = -1;
     int code = 200;
@@ -156,8 +156,8 @@ static void regex_work(char *url, char **response) {
     }
 
     char *header = NULL;
-    generate_header(&header, code, body_len, mime_type);
-    generate_response(response, header, body, strlen(header), body_len);
+    int header_len = generate_header(&header, code, body_len, mime_type);
+    generate_response(response, header, body, header_len, body_len, response_len);
 }
 
 static void clean_state(struct parser_state *state) {
@@ -193,6 +193,7 @@ static void *http_work(void *args) {
                     //fprintf(stdout, "HTTP worker got complete request\n");
                     break;
                 case REQ_ERROR:
+                    //FIXME: maybe we should also free and re-create a buffer?
                     fprintf(stdout, "HTTP worker got malformed request\n");
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
                     strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
@@ -209,12 +210,13 @@ static void *http_work(void *args) {
             }
 
             char *response = NULL;
+            int response_size;
             switch(get_request_type(state->url)) {
                 case REGEX_REQ:
-                    regex_work(state->url, &response);
+                    regex_work(state->url, &response, &response_size);
                     break;
                 case FILE_REQ:
-                    file_work(state->url, &response);
+                    file_work(state->url, &response, &response_size);
                     break;
             }
 
@@ -224,9 +226,14 @@ static void *http_work(void *args) {
                 continue;
             }
 
-            wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(response);
-            strncpy(req, response, strlen(response));
-            dmtr_push(&token, me->out_qfd, &wait_out.qr_value.sga);
+            /* Free the sga, prepare a new one
+             * we should not reuse it because it was not sized for this response */
+            free(wait_out.qr_value.sga.sga_buf);
+            dmtr_sgarray_t resp_sga;
+            resp_sga.sga_numsegs = 1;
+            resp_sga.sga_segs[0].sgaseg_len = response_size;
+            resp_sga.sga_segs[0].sgaseg_buf = response;
+            dmtr_push(&token, me->out_qfd, &resp_sga);
             dmtr_wait(NULL, token);
             clean_state(state);
             free(response);
@@ -268,7 +275,7 @@ static void *tcp_work(void *args) {
                      wait_out.qr_qd);
             */
             num_rcvd++;
-            if (num_rcvd % 10 == 0) {
+            if (num_rcvd % 100 == 0) {
                 printf("received: %d requests\n", num_rcvd);
             }
 
