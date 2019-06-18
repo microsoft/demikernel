@@ -55,9 +55,14 @@ impl<'a> UdpPacketMut<'a> {
     }
 
     pub fn seal(mut self) -> Result<UdpPacket<'a>> {
-        let mut header = self.ipv4().header();
-        header.protocol(ipv4::Protocol::Udp);
-        Ok(self.unmut())
+        let ipv4_packet = {
+            let mut ipv4 = self.0;
+            let mut header = ipv4.header();
+            header.protocol(ipv4::Protocol::Udp);
+            ipv4.seal()?
+        };
+
+        Ok(UdpPacket(ipv4_packet))
     }
 }
 

@@ -73,9 +73,9 @@ fn cast() {
         }
     };
 
-    bob.receive(&udp_packet).unwrap();
     info!("passing UDP packet to bob...");
-    let effect = alice.poll(now).expect("expected an effect");
+    bob.receive(&udp_packet).unwrap();
+    let effect = bob.poll(now).expect("expected an effect");
     match effect {
         Effect::Received {
             ref protocol,
@@ -88,7 +88,10 @@ fn cast() {
             assert_eq!(src_addr, test::alice_ipv4_addr());
             assert_eq!(src_port, &ALICE_PORT);
             assert_eq!(dest_port, &BOB_PORT);
-            assert_eq!(&payload, p);
+            assert_eq!(payload.as_slice(), &p[..payload.len()]);
+            for i in &p[payload.len()..] {
+                assert_eq!(&0u8, i);
+            }
         }
         e => panic!("got unanticipated effect `{:?}`", e),
     }

@@ -31,7 +31,8 @@ impl<'a> Station<'a> {
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        trace!("Station::receive(...)");
+        trace!("Station::receive({:?})", bytes);
+        debug!("zzz");
         let frame = ethernet2::Frame::from_bytes(&bytes)?;
         let header = frame.header();
         if self.rt.options().my_link_addr != header.dest_addr()

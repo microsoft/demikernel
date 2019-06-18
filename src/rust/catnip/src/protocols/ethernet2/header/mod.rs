@@ -53,7 +53,9 @@ impl<'a> Ethernet2Header<'a> {
     }
 
     pub fn ether_type(&self) -> Result<EtherType> {
+        trace!("Ethernet2Header::ether_type()");
         let n = NetworkEndian::read_u16(&self.0[12..14]);
+        debug!("ether_type = {:?}", n);
         Ok(EtherType::try_from(n)?)
     }
 }
