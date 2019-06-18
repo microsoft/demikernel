@@ -1,5 +1,5 @@
 use super::{
-    task::{TaskId, TaskStatus},
+    coroutine::{CoroutineId, CoroutineStatus},
     Async,
 };
 use crate::prelude::*;
@@ -11,7 +11,10 @@ where
     T: Clone + Debug,
 {
     Const(Result<T>),
-    TaskResult { r#async: Async<'a>, tid: TaskId },
+    CoroutineResult {
+        r#async: Async<'a>,
+        cid: CoroutineId,
+    },
 }
 
 impl<'a, T> Future<'a, T>
@@ -22,17 +25,20 @@ where
         Future::Const(Ok(value))
     }
 
-    pub fn task_result(r#async: Async<'a>, tid: TaskId) -> Future<'a, T> {
-        Future::TaskResult { r#async, tid }
+    pub fn coroutine_result(
+        r#async: Async<'a>,
+        cid: CoroutineId,
+    ) -> Future<'a, T> {
+        Future::CoroutineResult { r#async, cid }
     }
 
     pub fn completed(&self) -> bool {
         match self {
             Future::Const(_) => true,
-            Future::TaskResult { r#async, tid } => {
-                match r#async.task_status(*tid) {
-                    TaskStatus::Completed(_) => true,
-                    TaskStatus::AsleepUntil(_) => false,
+            Future::CoroutineResult { r#async, cid } => {
+                match r#async.coroutine_status(*cid) {
+                    CoroutineStatus::Completed(_) => true,
+                    CoroutineStatus::AsleepUntil(_) => false,
                 }
             }
         }
@@ -45,11 +51,11 @@ where
         trace!("Future::poll({:?})", now);
         match self {
             Future::Const(v) => v.clone(),
-            Future::TaskResult { r#async, tid } => {
+            Future::CoroutineResult { r#async, cid } => {
                 // todo: should this return an error if poll() fails?
                 let _ = r#async.poll(now);
-                let status = r#async.task_status(*tid);
-                debug!("status of coroutine {} is `{:?}`.", tid, status);
+                let status = r#async.coroutine_status(*cid);
+                debug!("status of coroutine {} is `{:?}`.", cid, status);
                 status.into()
             }
         }
@@ -63,8 +69,8 @@ where
     fn drop(&mut self) {
         match self {
             Future::Const(_) => (),
-            Future::TaskResult { r#async, tid } => {
-                r#async.drop_task(*tid);
+            Future::CoroutineResult { r#async, cid } => {
+                r#async.drop_coroutine(*cid);
             }
         }
     }

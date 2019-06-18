@@ -10,19 +10,19 @@ use std::{
 };
 
 #[derive(Clone, Debug)]
-pub enum TaskStatus {
+pub enum CoroutineStatus {
     Completed(Result<Rc<Any>>),
     AsleepUntil(Instant),
 }
 
-impl<T> Into<Result<T>> for TaskStatus
+impl<T> Into<Result<T>> for CoroutineStatus
 where
     T: 'static + Clone + Debug,
 {
     fn into(self) -> Result<T> {
-        trace!("TaskStatus::into()");
+        trace!("CoroutineStatus::into()");
         match self {
-            TaskStatus::Completed(r) => match r {
+            CoroutineStatus::Completed(r) => match r {
                 Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),
                 Err(Fail::TryAgain {}) => panic!(
                     "coroutines are not allowed to return `Fail::TryAgain`"
@@ -35,29 +35,29 @@ where
 }
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
-pub struct TaskId(u64);
+pub struct CoroutineId(u64);
 
-impl From<u64> for TaskId {
-    fn from(n: u64) -> TaskId {
-        TaskId(n)
+impl From<u64> for CoroutineId {
+    fn from(n: u64) -> CoroutineId {
+        CoroutineId(n)
     }
 }
 
-impl fmt::Display for TaskId {
+impl fmt::Display for CoroutineId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         Debug::fmt(&self.0, f)
     }
 }
 
-impl fmt::Debug for TaskId {
+impl fmt::Debug for CoroutineId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TaskId({})", self.0)
+        write!(f, "CoroutineId({})", self.0)
     }
 }
 
-pub struct Task<'a> {
-    id: TaskId,
-    status: TaskStatus,
+pub struct Coroutine<'a> {
+    id: CoroutineId,
+    status: CoroutineStatus,
     gen: Box<
         Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
@@ -65,38 +65,38 @@ pub struct Task<'a> {
     >,
 }
 
-impl<'a> Task<'a> {
-    pub fn new<G>(id: TaskId, gen: G, now: Instant) -> Task<'a>
+impl<'a> Coroutine<'a> {
+    pub fn new<G>(id: CoroutineId, gen: G, now: Instant) -> Coroutine<'a>
     where
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
-        Task {
+        Coroutine {
             id,
-            // initialize the task with a status that will cause it to be
+            // initialize the coroutine with a status that will cause it to be
             // awakened immediately.
-            status: TaskStatus::AsleepUntil(now),
+            status: CoroutineStatus::AsleepUntil(now),
             gen: Box::new(gen),
         }
     }
 
-    pub fn id(&self) -> TaskId {
+    pub fn id(&self) -> CoroutineId {
         self.id
     }
 
-    pub fn status(&self) -> &TaskStatus {
+    pub fn status(&self) -> &CoroutineStatus {
         &self.status
     }
 
     pub fn resume(&mut self, now: Instant) -> bool {
         match &self.status {
-            // if the task has already completed, do nothing with the
+            // if the coroutine has already completed, do nothing with the
             // generator (we would panic).
-            TaskStatus::Completed(_) => true,
-            TaskStatus::AsleepUntil(when) => {
+            CoroutineStatus::Completed(_) => true,
+            CoroutineStatus::AsleepUntil(when) => {
                 if now < *when {
-                    panic!("attempt to resume a sleeping task");
+                    panic!("attempt to resume a sleeping coroutine");
                 } else {
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {
@@ -106,7 +106,7 @@ impl<'a> Task<'a> {
                             let duration = duration
                                 .unwrap_or_else(|| Duration::new(0, 0));
                             self.status =
-                                TaskStatus::AsleepUntil(now + duration);
+                                CoroutineStatus::AsleepUntil(now + duration);
                             false
                         }
                         GeneratorState::Complete(result) => {
@@ -114,7 +114,7 @@ impl<'a> Task<'a> {
                                 "coroutine {} status is now completed.",
                                 self.id
                             );
-                            self.status = TaskStatus::Completed(result);
+                            self.status = CoroutineStatus::Completed(result);
                             true
                         }
                     }

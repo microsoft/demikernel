@@ -1,4 +1,4 @@
-use super::task::{Task, TaskId, TaskStatus};
+use super::coroutine::{Coroutine, CoroutineId, CoroutineStatus};
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashSet},
@@ -8,7 +8,7 @@ use std::{
 #[derive(PartialEq, Eq)]
 struct Record {
     when: Instant,
-    tid: TaskId,
+    cid: CoroutineId,
 }
 
 impl Ord for Record {
@@ -31,7 +31,7 @@ impl PartialOrd for Record {
 }
 
 pub struct Schedule {
-    ids: HashSet<TaskId>,
+    ids: HashSet<CoroutineId>,
     heap: BinaryHeap<Record>,
     clock: Instant,
 }
@@ -45,16 +45,16 @@ impl Schedule {
         }
     }
 
-    pub fn schedule<'a>(&mut self, t: &Task<'a>) {
+    pub fn schedule<'a>(&mut self, t: &Coroutine<'a>) {
         match t.status() {
-            TaskStatus::Completed(_) => {
-                panic!("attempt to schedule a completed task")
+            CoroutineStatus::Completed(_) => {
+                panic!("attempt to schedule a completed coroutine")
             }
-            TaskStatus::AsleepUntil(when) => {
+            CoroutineStatus::AsleepUntil(when) => {
                 self.ids.insert(t.id());
                 self.heap.push(Record {
                     when: *when,
-                    tid: t.id(),
+                    cid: t.id(),
                 });
             }
         }
@@ -64,26 +64,27 @@ impl Schedule {
         self.clock
     }
 
-    pub fn cancel(&mut self, id: TaskId) {
+    pub fn cancel(&mut self, id: CoroutineId) {
         self.ids.remove(&id);
     }
 
-    pub fn poll(&mut self, now: Instant) -> Option<TaskId> {
+    pub fn poll(&mut self, now: Instant) -> Option<CoroutineId> {
         assert!(self.clock <= now);
         self.clock = now;
 
         if let Some(rec) = self.heap.peek() {
             if rec.when > now {
-                // next task isn't due yet.
+                // next coroutine isn't due yet.
                 None
             } else {
-                // next task is due.
+                // next coroutine is due.
                 let rec = self.heap.pop().unwrap();
-                if self.ids.contains(&rec.tid) {
-                    self.cancel(rec.tid);
-                    Some(rec.tid)
+                if self.ids.contains(&rec.cid) {
+                    self.cancel(rec.cid);
+                    Some(rec.cid)
                 } else {
-                    // task is due but was cancelled; discard and try again.
+                    // coroutine is due but was cancelled; discard and try
+                    // again.
                     self.poll(now)
                 }
             }

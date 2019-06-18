@@ -1,3 +1,3 @@
-- automatically drop task when future(s) are dropped.
-- single async struct (low priority).
-- integrate rust logging macros
+[x] automatically drop coroutine when future(s) are dropped.
+[x] single async struct (low priority).
+[x] integrate rust logging macros

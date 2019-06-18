@@ -36,14 +36,14 @@ impl<'a> Runtime<'a> {
         self.r#async.clock()
     }
 
-    pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
+    pub fn start_coroutine<G, T>(&self, gen: G) -> Future<'a, T>
     where
         T: Any + Clone + Debug + 'static,
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
-        self.r#async.start_task(gen)
+        self.r#async.start_coroutine(gen)
     }
 
     pub fn poll(&self, now: Instant) -> Option<Effect> {

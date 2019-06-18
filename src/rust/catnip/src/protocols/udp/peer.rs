@@ -41,7 +41,7 @@ impl<'a> UdpPeer<'a> {
     ) -> Future<'a, ()> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
-        self.rt.start_task(move || {
+        self.rt.start_coroutine(move || {
             let options = rt.options();
             debug!("initiating ARP query");
             let fut = arp.query(dest_ipv4_addr);

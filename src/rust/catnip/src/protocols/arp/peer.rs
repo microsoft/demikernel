@@ -133,7 +133,7 @@ impl<'a> ArpPeer<'a> {
 
         let rt = self.rt.clone();
         let cache = self.cache.clone();
-        self.rt.start_task(move || {
+        self.rt.start_coroutine(move || {
             let options = rt.options();
             let arp = ArpPdu {
                 op: ArpOp::ArpRequest,

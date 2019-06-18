@@ -1,8 +1,9 @@
+mod coroutine;
 mod future;
 mod schedule;
-mod task;
 
 use crate::prelude::*;
+use coroutine::{Coroutine, CoroutineId, CoroutineStatus};
 use schedule::Schedule;
 use std::{
     any::Any,
@@ -13,14 +14,13 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use task::{Task, TaskId, TaskStatus};
 
 pub use future::Future;
 
 #[derive(Clone)]
 pub struct Async<'a> {
     next_unused_id: Rc<Cell<u64>>,
-    tasks: Rc<RefCell<HashMap<TaskId, Task<'a>>>>,
+    coroutines: Rc<RefCell<HashMap<CoroutineId, Coroutine<'a>>>>,
     schedule: Rc<RefCell<Schedule>>,
 }
 
@@ -28,7 +28,7 @@ impl<'a> Async<'a> {
     pub fn new(now: Instant) -> Self {
         Async {
             next_unused_id: Rc::new(Cell::new(0)),
-            tasks: Rc::new(RefCell::new(HashMap::new())),
+            coroutines: Rc::new(RefCell::new(HashMap::new())),
             schedule: Rc::new(RefCell::new(Schedule::new(now))),
         }
     }
@@ -37,74 +37,75 @@ impl<'a> Async<'a> {
         self.schedule.borrow().clock()
     }
 
-    pub fn start_task<G, T>(&self, gen: G) -> Future<'a, T>
+    pub fn start_coroutine<G, T>(&self, gen: G) -> Future<'a, T>
     where
         T: Any + Clone + Debug + 'static,
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
             + 'a
             + Unpin,
     {
-        let tid = self.new_tid();
-        let t = Task::new(tid, gen, self.clock());
+        let cid = self.new_tid();
+        let t = Coroutine::new(cid, gen, self.clock());
         self.schedule.borrow_mut().schedule(&t);
-        self.tasks.borrow_mut().insert(tid, t);
-        let fut = Future::task_result(self.clone(), tid);
+        self.coroutines.borrow_mut().insert(cid, t);
+        let fut = Future::coroutine_result(self.clone(), cid);
         let _ = fut.poll(self.clock());
         fut
     }
 
-    fn new_tid(&self) -> TaskId {
+    fn new_tid(&self) -> CoroutineId {
         let n = self.next_unused_id.get();
-        let tid = TaskId::from(n);
+        let cid = CoroutineId::from(n);
         // todo: we should deal with overflow.
         self.next_unused_id.set(n + 1);
-        tid
+        cid
     }
 
-    pub fn poll_schedule(&self, now: Instant) -> Option<TaskId> {
+    pub fn poll_schedule(&self, now: Instant) -> Option<CoroutineId> {
         // we had to extract this into its own function to limit the scope
         // of the mutable borrow (it was causing borrowing deadlocks).
         self.schedule.borrow_mut().poll(now)
     }
 
-    pub fn poll(&self, now: Instant) -> Result<TaskId> {
+    pub fn poll(&self, now: Instant) -> Result<CoroutineId> {
         trace!("Async::poll({:?})", now);
-        if let Some(tid) = self.poll_schedule(now) {
-            debug!("task (tid = {:?}) is up", tid);
-            let mut task = {
-                let mut tasks = self.tasks.borrow_mut();
-                // task has to be removed from tasks in order to work around a
-                // mutablility deadlock when futures are used from within a
-                // coroutine. we also don't anticipate a reasonable situation
+        if let Some(cid) = self.poll_schedule(now) {
+            debug!("coroutine (cid = {:?}) is up", cid);
+            let mut coroutine = {
+                let mut coroutines = self.coroutines.borrow_mut();
+                // coroutine has to be removed from coroutines in order to work
+                // around a mutablility deadlock when futures
+                // are used from within a coroutine. we also
+                // don't anticipate a reasonable situation
                 // where the schedule would give us an ID that isn't in
-                // `self.tasks`.
-                tasks.remove(&tid).unwrap()
+                // `self.coroutines`.
+                coroutines.remove(&cid).unwrap()
             };
 
-            if !task.resume(now) {
-                self.schedule.borrow_mut().schedule(&task);
+            if !coroutine.resume(now) {
+                self.schedule.borrow_mut().schedule(&coroutine);
             }
 
-            let tid = task.id();
+            let cid = coroutine.id();
             debug!(
                 "coroutine {} successfully resumed; status is now `{:?}`",
-                tid,
-                task.status()
+                cid,
+                coroutine.status()
             );
-            let mut tasks = self.tasks.borrow_mut();
-            assert!(tasks.insert(tid, task).is_none());
-            Ok(tid)
+            let mut coroutines = self.coroutines.borrow_mut();
+            assert!(coroutines.insert(cid, coroutine).is_none());
+            Ok(cid)
         } else {
             Err(Fail::TryAgain {})
         }
     }
 
-    pub fn drop_task(&self, tid: TaskId) {
-        self.schedule.borrow_mut().cancel(tid);
-        assert!(self.tasks.borrow_mut().remove(&tid).is_some());
+    pub fn drop_coroutine(&self, cid: CoroutineId) {
+        self.schedule.borrow_mut().cancel(cid);
+        assert!(self.coroutines.borrow_mut().remove(&cid).is_some());
     }
 
-    pub fn task_status(&self, tid: TaskId) -> TaskStatus {
-        self.tasks.borrow().get(&tid).unwrap().status().clone()
+    pub fn coroutine_status(&self, cid: CoroutineId) -> CoroutineStatus {
+        self.coroutines.borrow().get(&cid).unwrap().status().clone()
     }
 }
