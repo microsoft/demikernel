@@ -2,9 +2,9 @@ mod datagram;
 mod peer;
 
 pub use datagram::{
-    Ipv4Header as Header, Ipv4HeaderMut as HeaderMut, Ipv4Datagram as Datagram,
-    Ipv4DatagramMut as DatagramMut, Ipv4Protocol as Protocol,
-    IPV4_HEADER_SIZE as HEADER_SIZE,
+    Ipv4Datagram as Datagram, Ipv4DatagramMut as DatagramMut,
+    Ipv4Header as Header, Ipv4HeaderMut as HeaderMut,
+    Ipv4Protocol as Protocol, IPV4_HEADER_SIZE as HEADER_SIZE,
 };
 pub use peer::Ipv4Peer as Peer;
 
