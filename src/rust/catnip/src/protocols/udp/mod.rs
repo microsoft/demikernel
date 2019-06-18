@@ -1,12 +1,12 @@
-mod header;
 mod packet;
 mod peer;
 
 #[cfg(test)]
 mod tests;
 
-pub use header::{UdpHeader as Header, UDP_HEADER_SIZE as HEADER_SIZE};
-pub use packet::UdpPacket as Packet;
+pub use packet::{
+    UdpHeader as Header, UdpPacket as Packet, UDP_HEADER_SIZE as HEADER_SIZE,
+};
 pub use peer::UdpPeer as Peer;
 
 use crate::protocols::ipv4;

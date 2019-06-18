@@ -1,9 +1,12 @@
-use super::header::{
-    checksum::Hasher, Ipv4Header, Ipv4HeaderMut, DEFAULT_IPV4_TTL,
-    IPV4_HEADER_SIZE, IPV4_IHL_NO_OPTIONS, IPV4_VERSION,
-};
+mod header;
+
 use crate::{prelude::*, protocols::ethernet2};
+use header::{
+    checksum::Hasher, DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION,
+};
 use std::convert::TryFrom;
+
+pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 
 pub struct Ipv4Packet<'a>(ethernet2::Frame<'a>);
 

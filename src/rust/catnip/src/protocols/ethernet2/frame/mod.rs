@@ -1,7 +1,10 @@
-use super::header::{
-    Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
-};
+mod header;
+
 use crate::prelude::*;
+
+pub use header::{
+    EtherType, Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
+};
 
 // minimum paylod size is 46 bytes as described at [this wikipedia article](https://en.wikipedia.org/wiki/Ethernet_frame).
 pub static MIN_PAYLOAD_SIZE: usize = 46;

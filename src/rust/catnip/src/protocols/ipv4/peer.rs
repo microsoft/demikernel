@@ -1,4 +1,4 @@
-use super::{header::Ipv4Protocol, packet::Ipv4Packet};
+use super::packet::{Ipv4Packet, Ipv4Protocol};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, udp},
