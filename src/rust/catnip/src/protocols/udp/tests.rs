@@ -28,7 +28,7 @@ fn cast() {
     let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
@@ -38,7 +38,7 @@ fn cast() {
     let arp_reply = {
         let effect = bob.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
@@ -65,16 +65,16 @@ fn cast() {
         }
     }
 
-    let udp_packet = {
+    let udp_datagram = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
 
-    info!("passing UDP packet to bob...");
-    bob.receive(&udp_packet).unwrap();
+    info!("passing UDP datagram to bob...");
+    bob.receive(&udp_datagram).unwrap();
     let effect = bob.poll(now).expect("expected an effect");
     match effect {
         Effect::Received {

@@ -28,7 +28,7 @@ fn immediate_reply() {
     let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
@@ -54,7 +54,7 @@ fn immediate_reply() {
     let reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
@@ -99,7 +99,7 @@ fn slow_reply() {
     let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };
@@ -125,7 +125,7 @@ fn slow_reply() {
     let reply = {
         let effect = carrie.poll(now).expect("expected an effect");
         match effect {
-            Effect::Transmit(packet) => packet.to_vec(),
+            Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
         }
     };

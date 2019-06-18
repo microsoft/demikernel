@@ -1,4 +1,4 @@
-use super::packet::{Ipv4Packet, Ipv4Protocol};
+use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, udp},
@@ -20,8 +20,8 @@ impl<'a> Ipv4Peer<'a> {
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
         trace!("Ipv4Peer::receive(...)");
         let options = self.rt.options();
-        let packet = Ipv4Packet::try_from(frame)?;
-        let header = packet.header();
+        let datagram = Ipv4Datagram::try_from(frame)?;
+        let header = datagram.header();
 
         let dst_addr = header.dest_addr();
         if dst_addr != options.my_ipv4_addr && !dst_addr.is_broadcast() {
@@ -31,7 +31,7 @@ impl<'a> Ipv4Peer<'a> {
         debug!("b {:?}", header.protocol()?);
         #[allow(unreachable_patterns)]
         match header.protocol()? {
-            Ipv4Protocol::Udp => self.udp.receive(packet),
+            Ipv4Protocol::Udp => self.udp.receive(datagram),
             _ => Err(Fail::Unsupported {}),
         }
     }

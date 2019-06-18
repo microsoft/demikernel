@@ -4,13 +4,13 @@ use std::{io::Error as IoError, num::TryFromIntError, rc::Rc};
 
 custom_error! {#[derive(Clone)] pub Fail
     IoError{source: Rc<IoError>} = "I/O failure",
-    Misdelivered{} = "misdelivered packet",
+    Misdelivered{} = "misdelivered datagram",
     Unsupported{} = "unsupported",
     Ignored{} = "operation has no effect",
     TryAgain{} = "try again later",
     Timeout{} = "an asynchronous operation timed out",
     OutOfRange{} = "a value is out of range",
-    Malformed{} = "received a malformed packet",
+    Malformed{} = "received a malformed datagram",
 }
 
 impl From<IoError> for Fail {

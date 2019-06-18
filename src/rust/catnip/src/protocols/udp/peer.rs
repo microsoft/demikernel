@@ -1,4 +1,4 @@
-use super::packet::{UdpPacket, UdpPacketMut};
+use super::datagram::{UdpDatagram, UdpDatagramMut};
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
@@ -16,17 +16,17 @@ impl<'a> UdpPeer<'a> {
         UdpPeer { rt, arp }
     }
 
-    pub fn receive(&mut self, packet: ipv4::Packet<'_>) -> Result<()> {
+    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
         trace!("UdpPeer::receive(...)");
-        let packet = UdpPacket::try_from(packet)?;
-        let ipv4_header = packet.ipv4().header();
-        let udp_header = packet.header();
+        let datagram = UdpDatagram::try_from(datagram)?;
+        let ipv4_header = datagram.ipv4().header();
+        let udp_header = datagram.header();
         self.rt.emit_effect(Effect::Received {
             protocol: ipv4::Protocol::Udp,
             src_addr: ipv4_header.src_addr(),
             src_port: udp_header.src_port(),
             dest_port: udp_header.dest_port(),
-            payload: packet.payload().to_vec(),
+            payload: datagram.payload().to_vec(),
         });
 
         Ok(())
@@ -71,23 +71,23 @@ impl<'a> UdpPeer<'a> {
                 dest_link_addr
             };
 
-            let mut bytes = super::new_packet(payload.len());
-            let mut packet = UdpPacketMut::from_bytes(&mut bytes)?;
+            let mut bytes = super::new_datagram(payload.len());
+            let mut datagram = UdpDatagramMut::from_bytes(&mut bytes)?;
             // the payload slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
-            // to trim what we get from `packet.payload_mut()` to make it the
+            // to trim what we get from `datagram.payload_mut()` to make it the
             // same size as `payload`.
-            packet.payload()[..payload.len()].copy_from_slice(&payload);
-            let mut udp_header = packet.header();
+            datagram.payload()[..payload.len()].copy_from_slice(&payload);
+            let mut udp_header = datagram.header();
             udp_header.dest_port(dest_port);
             udp_header.src_port(src_port);
-            let mut ipv4_header = packet.ipv4().header();
+            let mut ipv4_header = datagram.ipv4().header();
             ipv4_header.src_addr(options.my_ipv4_addr);
             ipv4_header.dest_addr(dest_ipv4_addr);
-            let mut frame_header = packet.ipv4().frame().header();
+            let mut frame_header = datagram.ipv4().frame().header();
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
-            let _ = packet.seal()?;
+            let _ = datagram.seal()?;
 
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
             let x: Rc<Any> = Rc::new(());

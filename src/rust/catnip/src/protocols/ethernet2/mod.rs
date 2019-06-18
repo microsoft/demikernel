@@ -15,7 +15,7 @@ use frame::MIN_PAYLOAD_SIZE;
 
 use std::cmp::max;
 
-pub fn new_packet(payload_sz: usize) -> Vec<u8> {
+pub fn new_datagram(payload_sz: usize) -> Vec<u8> {
     let payload_sz = max(payload_sz, MIN_PAYLOAD_SIZE);
     vec![0u8; payload_sz + HEADER_SIZE]
 }

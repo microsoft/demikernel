@@ -8,9 +8,9 @@ use std::convert::TryFrom;
 
 pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 
-pub struct Ipv4Packet<'a>(ethernet2::Frame<'a>);
+pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
-impl<'a> Ipv4Packet<'a> {
+impl<'a> Ipv4Datagram<'a> {
     pub fn header(&self) -> Ipv4Header<'_> {
         Ipv4Header::new(&self.0.payload()[..IPV4_HEADER_SIZE])
     }
@@ -25,19 +25,19 @@ impl<'a> Ipv4Packet<'a> {
     }
 }
 
-impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Packet<'a> {
+impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
     type Error = Fail;
 
     fn try_from(frame: ethernet2::Frame<'a>) -> Result<Self> {
-        trace!("Ipv4Packet::try_from(...)");
+        trace!("Ipv4Datagram::try_from(...)");
         assert_eq!(frame.header().ether_type()?, ethernet2::EtherType::Ipv4);
         if frame.payload().len() <= IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {});
         }
 
-        let packet = Ipv4Packet(frame);
-        let payload_len = packet.payload().len();
-        let header = packet.header();
+        let datagram = Ipv4Datagram(frame);
+        let payload_len = datagram.payload().len();
+        let header = datagram.header();
         if header.version() != IPV4_VERSION {
             return Err(Fail::Unsupported {});
         }
@@ -80,15 +80,15 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Packet<'a> {
         }
 
         let _ = header.protocol()?;
-        Ok(packet)
+        Ok(datagram)
     }
 }
 
-pub struct Ipv4PacketMut<'a>(ethernet2::FrameMut<'a>);
+pub struct Ipv4DatagramMut<'a>(ethernet2::FrameMut<'a>);
 
-impl<'a> Ipv4PacketMut<'a> {
+impl<'a> Ipv4DatagramMut<'a> {
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ok(Ipv4PacketMut(ethernet2::FrameMut::from_bytes(bytes)?))
+        Ok(Ipv4DatagramMut(ethernet2::FrameMut::from_bytes(bytes)?))
     }
 
     pub fn header(&mut self) -> Ipv4HeaderMut<'_> {
@@ -103,11 +103,11 @@ impl<'a> Ipv4PacketMut<'a> {
         &mut self.0.payload()[IPV4_HEADER_SIZE..]
     }
 
-    pub fn unmut(self) -> Ipv4Packet<'a> {
-        Ipv4Packet(self.0.unmut())
+    pub fn unmut(self) -> Ipv4Datagram<'a> {
+        Ipv4Datagram(self.0.unmut())
     }
 
-    pub fn seal(mut self) -> Result<Ipv4Packet<'a>> {
+    pub fn seal(mut self) -> Result<Ipv4Datagram<'a>> {
         let payload_len = self.payload().len();
         let total_len = IPV4_HEADER_SIZE + payload_len;
 
@@ -130,8 +130,8 @@ impl<'a> Ipv4PacketMut<'a> {
     }
 }
 
-impl<'a> From<ethernet2::FrameMut<'a>> for Ipv4PacketMut<'a> {
+impl<'a> From<ethernet2::FrameMut<'a>> for Ipv4DatagramMut<'a> {
     fn from(frame: ethernet2::FrameMut<'a>) -> Self {
-        Ipv4PacketMut(frame)
+        Ipv4DatagramMut(frame)
     }
 }

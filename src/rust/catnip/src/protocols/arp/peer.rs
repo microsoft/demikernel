@@ -105,8 +105,8 @@ impl<'a> ArpPeer<'a> {
                 arp.op = ArpOp::ArpReply;
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
-                let packet = Rc::new(arp.to_packet()?);
-                self.rt.emit_effect(Effect::Transmit(packet));
+                let datagram = Rc::new(arp.to_datagram()?);
+                self.rt.emit_effect(Effect::Transmit(datagram));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -143,7 +143,7 @@ impl<'a> ArpPeer<'a> {
                 target_ip_addr: ipv4_addr,
             };
 
-            let packet = Rc::new(arp.to_packet()?);
+            let datagram = Rc::new(arp.to_datagram()?);
             let timeout = options
                 .arp
                 .request_timeout
@@ -152,7 +152,7 @@ impl<'a> ArpPeer<'a> {
             let mut retries_remaining =
                 options.arp.retry_count.unwrap_or(20) + 1;
             while retries_remaining > 0 {
-                rt.emit_effect(Effect::Transmit(packet.clone()));
+                rt.emit_effect(Effect::Transmit(datagram.clone()));
                 retries_remaining -= 1;
                 // can't make progress until a reply deposits an entry in the
                 // cache.
