@@ -19,6 +19,7 @@ pub const IPV4_VERSION: u8 = 4;
 #[repr(u8)]
 #[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
 pub enum Ipv4Protocol {
+    Tcp = 0x06,
     Udp = 0x11,
 }
 
