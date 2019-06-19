@@ -14,10 +14,12 @@
 #include <iostream>
 #include <vector>
 #include <queue>
+#include <functional>
 
 #include "common.hh"
 #include "request_parser.h"
 #include "httpops.hh"
+#include <dmtr/types.h>
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
@@ -38,6 +40,12 @@ class Worker {
 };
 std::vector<Worker *> http_workers;
 std::vector<pthread_t *> worker_threads;
+
+enum tcp_filters { RR, HTTP_REQ_TYPE };
+struct tcp_worker_args {
+    tcp_filters filter;
+    std::function<int(dmtr_sgarray_t *)> filter_f;
+};
 
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
@@ -244,8 +252,13 @@ static void *http_work(void *args) {
     return NULL;
 }
 
+static int filter_http_req(dmtr_sgarray_t *sga) {
+    return get_request_type((char*) sga->sga_buf);
+}
+
 static void *tcp_work(void *args) {
     printf("Hello I am a TCP worker\n");
+    struct tcp_worker_args *worker_args = (struct tcp_worker_args *) args;
     int num_rcvd = 0;
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0; //temporary token
@@ -282,7 +295,16 @@ static void *tcp_work(void *args) {
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
 
-            int worker_idx = (num_rcvd % http_workers.size());
+            int worker_idx;
+            if (worker_args->filter == RR) {
+                worker_idx = num_rcvd % http_workers.size();
+            } else if (worker_args->filter == HTTP_REQ_TYPE) {
+                worker_idx = worker_args->filter_f(&wait_out.qr_value.sga) % http_workers.size();
+            } else {
+                log_error("Non implemented TCP filter, falling back to RR");
+                worker_idx = num_rcvd % http_workers.size();
+            }
+
             int client_qfd = wait_out.qr_qd;
             //fprintf(stdout, "passing to http worker #%d\n", worker_idx);
             dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
@@ -379,10 +401,15 @@ int main(int argc, char *argv[]) {
     }
 
     /* Create TCP worker thread */
+    struct tcp_worker_args *tcp_args = new tcp_worker_args();
+    //tcp_args->filter = HTTP_REQ_TYPE;
+    tcp_args->filter = RR;
+    tcp_args->filter_f = filter_http_req;
+
     pthread_mutex_init(&qfds_mutex, NULL);
     pthread_t tcp_worker;
     worker_threads.push_back(&tcp_worker);
-    pthread_create(&tcp_worker, NULL, &tcp_work, NULL);
+    pthread_create(&tcp_worker, NULL, &tcp_work, (void *) tcp_args);
     pin_thread(tcp_worker, n_http_workers+1);
 
     /* Re-enable SIGINT and SIGQUIT */
