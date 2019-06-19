@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-pub mod checksum;
-
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;

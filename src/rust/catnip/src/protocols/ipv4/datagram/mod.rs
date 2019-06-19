@@ -1,9 +1,8 @@
 mod header;
 
+use super::checksum::Hasher;
 use crate::{prelude::*, protocols::ethernet2};
-use header::{
-    checksum::Hasher, DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION,
-};
+use header::{DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION};
 use std::convert::TryFrom;
 
 pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};

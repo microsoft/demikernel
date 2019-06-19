@@ -1,3 +1,5 @@
+pub mod checksum;
+
 mod datagram;
 mod peer;
 
