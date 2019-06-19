@@ -26,7 +26,7 @@ impl<'a> UdpPeer<'a> {
             src_addr: ipv4_header.src_addr(),
             src_port: udp_header.src_port(),
             dest_port: udp_header.dest_port(),
-            payload: datagram.payload().to_vec(),
+            payload: IoVec::from(datagram.payload().to_vec()),
         });
 
         Ok(())

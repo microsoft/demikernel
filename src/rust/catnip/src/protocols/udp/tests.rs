@@ -88,8 +88,9 @@ fn cast() {
             assert_eq!(src_addr, test::alice_ipv4_addr());
             assert_eq!(src_port, &ALICE_PORT);
             assert_eq!(dest_port, &BOB_PORT);
-            assert_eq!(payload.as_slice(), &p[..payload.len()]);
-            for i in &p[payload.len()..] {
+            assert_eq!(p.len(), 1);
+            assert_eq!(payload.as_slice(), &p[0][..payload.len()]);
+            for i in &p[0][payload.len()..] {
                 assert_eq!(&0u8, i);
             }
         }
