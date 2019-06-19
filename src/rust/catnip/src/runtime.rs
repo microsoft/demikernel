@@ -1,10 +1,12 @@
 use crate::{
     prelude::*,
     r#async::{Async, Future},
+    rand::Rng,
 };
+use rand_core::SeedableRng;
 use std::{
     any::Any,
-    cell::RefCell,
+    cell::{RefCell, RefMut},
     collections::VecDeque,
     fmt::Debug,
     ops::Generator,
@@ -17,14 +19,17 @@ pub struct Runtime<'a> {
     options: Rc<Options>,
     effects: Rc<RefCell<VecDeque<Effect>>>,
     r#async: Async<'a>,
+    rng: Rc<RefCell<Rng>>,
 }
 
 impl<'a> Runtime<'a> {
     pub fn from_options(now: Instant, options: Options) -> Runtime<'a> {
+        let rng = Rng::from_seed(options.decode_rng_seed());
         Runtime {
             options: Rc::new(options),
             effects: Rc::new(RefCell::new(VecDeque::new())),
             r#async: Async::new(now),
+            rng: Rc::new(RefCell::new(rng)),
         }
     }
 
@@ -53,5 +58,9 @@ impl<'a> Runtime<'a> {
 
     pub fn emit_effect(&self, effect: Effect) {
         self.effects.borrow_mut().push_back(effect)
+    }
+
+    pub fn borrow_rng(&self) -> RefMut<Rng> {
+        self.rng.borrow_mut()
     }
 }

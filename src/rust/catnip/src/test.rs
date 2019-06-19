@@ -49,6 +49,7 @@ pub fn new_station<'a>(
                 retry_count: Some(2),
                 cache_ttl: Some(*DEFAULT_TTL),
             },
+            rng_seed: None,
         },
     )
     .unwrap()

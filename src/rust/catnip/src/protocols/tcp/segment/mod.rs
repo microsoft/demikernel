@@ -34,13 +34,17 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpDatagram<'a> {
             return Err(Fail::Malformed {});
         }
 
-        let prefix = TcpHeader::new(&ipv4_datagram.payload()[..MIN_TCP_HEADER_SIZE]);
+        let prefix =
+            TcpHeader::new(&ipv4_datagram.payload()[..MIN_TCP_HEADER_SIZE]);
         let header_len = prefix.header_len();
         if payload_len < header_len {
             return Err(Fail::Malformed {});
         }
 
-        Ok(TcpDatagram { ipv4: ipv4_datagram, header_len })
+        Ok(TcpDatagram {
+            ipv4: ipv4_datagram,
+            header_len,
+        })
     }
 }
 

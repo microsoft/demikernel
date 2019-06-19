@@ -1,6 +1,5 @@
-use crate::protocols::ipv4;
+use crate::{io::IoVec, protocols::ipv4};
 use std::{net::Ipv4Addr, rc::Rc};
-use crate::io::IoVec;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Effect {
