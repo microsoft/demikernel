@@ -11,7 +11,8 @@ fn serialization() {
     header.src_port(0x5678);
     header.seq_num(0x9abc_def0);
     header.ack_num(0x1234_5678);
-    header.data_offset(0x9);
+    assert!(header.header_len(0x9).is_err());
+    header.header_len(0x20).unwrap();
     header.ns(true);
     header.cwr(true);
     header.ece(true);
@@ -29,7 +30,7 @@ fn serialization() {
     assert_eq!(0x5678, header.src_port());
     assert_eq!(0x9abc_def0, header.seq_num());
     assert_eq!(0x1234_5678, header.ack_num());
-    assert_eq!(0x9, header.data_offset());
+    assert_eq!(0x20, header.header_len());
     assert!(header.ns());
     assert!(header.cwr());
     assert!(header.ece());

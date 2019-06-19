@@ -3,9 +3,12 @@
 #[cfg(test)]
 mod tests;
 
+use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
+use std::convert::TryFrom;
 
 pub const TCP_HEADER_SIZE: usize = 20;
+const MIN_TCP_HEADER_LEN: usize = 5;
 
 pub struct TcpHeader<'a>(&'a [u8]);
 
@@ -35,8 +38,9 @@ impl<'a> TcpHeader<'a> {
         NetworkEndian::read_u32(&self.0[8..12])
     }
 
-    pub fn data_offset(&self) -> u8 {
-        self.0[12] >> 4
+    pub fn header_len(&self) -> usize {
+        let n = usize::from(self.0[12] >> 4);
+        n * 4
     }
 
     pub fn ns(&self) -> bool {
@@ -116,9 +120,28 @@ impl<'a> TcpHeaderMut<'a> {
         NetworkEndian::write_u32(&mut self.0[8..12], value)
     }
 
-    pub fn data_offset(&mut self, value: u8) {
-        assert!(value <= 0xf);
-        self.0[12] = (self.0[12] & 0xf0) | (value << 4)
+    pub fn header_len(&mut self, value: usize) -> Result<()> {
+        // from [wikipedia](https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure)
+        // > Specifies the size of the TCP header in 32-bit words. The
+        // > minimum size header is 5 words and the maximum is 15 words thus
+        // > giving the minimum size of 20 bytes and maximum of 60 bytes,
+        // > allowing for up to 40 bytes of options in the header.
+        let mut n = value / 4;
+        if n * 4 != value {
+            n += 1
+        }
+
+        if n < MIN_TCP_HEADER_LEN {
+            return Err(Fail::OutOfRange {});
+        }
+
+        if n > 0xf {
+            return Err(Fail::OutOfRange {});
+        }
+
+        let n = u8::try_from(n).unwrap();
+        self.0[12] = (self.0[12] & 0xf0) | (n << 4);
+        Ok(())
     }
 
     pub fn ns(&mut self, value: bool) {
