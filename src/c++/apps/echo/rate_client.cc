@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <thread>
 #include <mutex>
 #include <chrono>
@@ -178,6 +179,7 @@ int log_responses(int total_requests,
         RequestState req = request.second;
         DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req.connecting),
                                           ns_diff(req.connecting, req.completed)));
+        //fprintf(stderr, "%ld\n", ns_diff(req.connecting, req.completed));
         /*
         DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req.connecting),
                                           ns_diff(req.connecting, req.connected)));
@@ -384,6 +386,18 @@ void print_result(const char *label, int result, bool print_if_zero=true) {
 /* TODO
  * - Handle maximum concurrency?
  */
+
+void pin_thread(pthread_t thread, u_int16_t cpu) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu, &cpuset);
+
+    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (rtn != 0) {
+        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
+    }
+}
+
 int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
@@ -397,7 +411,7 @@ int main(int argc, char **argv) {
         ("log-dir,L", po::value<std::string>(&log_dir)->default_value("./"), "Log directory")
         ("client-threads,T", po::value<int>(&n_threads)->default_value(1), "Number of client threads")
         ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request");
-    parse_args(argc, argv, true, desc);
+    parse_args(argc, argv, false, desc);
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
@@ -470,6 +484,7 @@ int main(int argc, char **argv) {
             i, req_per_thread, &time_end_process,
             std::ref(req_qfds[i]), std::ref(log_qfds[i])
         );
+        pin_thread(threads[i].resp->native_handle(), i);
         threads[i].log = new std::thread(
             log_responses,
             req_per_thread, std::ref(log_qfds[i]), &time_end_log,
@@ -480,6 +495,7 @@ int main(int argc, char **argv) {
             interval_ns_per_thread, req_per_thread,
             host, port, std::ref(req_qfds[i]), &time_end_init
         );
+        pin_thread(threads[i].init->native_handle(), i);
     }
 
     // Wait on all of the initialization threads
