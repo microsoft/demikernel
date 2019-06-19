@@ -5,7 +5,7 @@ fn serialization() {
     // ensures that a TCP header serializes correctly.
 
     trace!("serialization()");
-    let mut bytes = [0; TCP_HEADER_SIZE];
+    let mut bytes = [0; MIN_TCP_HEADER_SIZE];
     let mut header = TcpHeaderMut::new(&mut bytes);
     header.dest_port(0x1234);
     header.src_port(0x5678);

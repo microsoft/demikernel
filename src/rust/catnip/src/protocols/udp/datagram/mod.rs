@@ -54,8 +54,8 @@ impl<'a> UdpDatagramMut<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn unmut(self) -> UdpDatagram<'a> {
-        UdpDatagram(self.0.unmut())
+    pub fn unmut(self) -> Result<UdpDatagram<'a>> {
+        Ok(UdpDatagram::try_from(self.0.unmut()?)?)
     }
 
     pub fn seal(self) -> Result<UdpDatagram<'a>> {
@@ -66,7 +66,7 @@ impl<'a> UdpDatagramMut<'a> {
             ipv4.seal()?
         };
 
-        Ok(UdpDatagram(ipv4_datagram))
+        Ok(UdpDatagram::try_from(ipv4_datagram)?)
     }
 }
 

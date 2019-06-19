@@ -102,8 +102,8 @@ impl<'a> Ipv4DatagramMut<'a> {
         &mut self.0.payload()[IPV4_HEADER_SIZE..]
     }
 
-    pub fn unmut(self) -> Ipv4Datagram<'a> {
-        Ipv4Datagram(self.0.unmut())
+    pub fn unmut(self) -> Result<Ipv4Datagram<'a>> {
+        Ok(Ipv4Datagram::try_from(self.0.unmut()?)?)
     }
 
     pub fn seal(mut self) -> Result<Ipv4Datagram<'a>> {
@@ -125,7 +125,7 @@ impl<'a> Ipv4DatagramMut<'a> {
 
         let mut frame_header = self.frame().header();
         frame_header.ether_type(ethernet2::EtherType::Ipv4);
-        Ok(self.unmut())
+        Ok(self.unmut()?)
     }
 }
 
