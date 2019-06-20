@@ -15,8 +15,17 @@ def plot_timeseries(df, second_ticks=True):
     lplot = sns.scatterplot(x=df.TIME, y='VALUE', data=df, palette='colorblind')
     lplot.set(xlabel='Timestamp', ylabel='latency (ns)')
     plt.gcf().suptitle('End to end latency')
-    #plt.show()
-    lplot.figure.savefig('end-to-end-latency.pdf', format='pdf')
+    plt.show()
+    lplot.figure.savefig('end-to-end-latency-timeseries.pdf', format='pdf')
+
+def plot_hist(df, second_ticks=True):
+    if second_ticks:
+        df.TIME /= 1e9
+    hplot = sns.distplot(df.VALUE)
+    hplot.set(xlabel='latency (ns)', ylabel='#requests')
+    plt.gcf().suptitle('End to end latency')
+    plt.show()
+    hplot.figure.savefig('end-to-end-latency-histogram.pdf', format='pdf')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -25,3 +34,4 @@ if __name__ == '__main__':
 
     for csv in args.log:
         plot_timeseries(read_csv(csv))
+        plot_hist(read_csv(csv))
