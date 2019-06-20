@@ -3,6 +3,7 @@ use crate::{
     rand::Seed,
 };
 use base64::{decode_config_slice, STANDARD_NO_PAD};
+use rand::{thread_rng, Rng};
 use std::net::Ipv4Addr;
 
 #[derive(Clone)]
@@ -18,6 +19,8 @@ impl Options {
         let mut seed = Seed::default();
         if let Some(s) = self.rng_seed.as_ref() {
             decode_config_slice(&s, STANDARD_NO_PAD, seed.as_mut()).unwrap();
+        } else {
+            thread_rng().fill(seed.as_mut());
         }
 
         seed

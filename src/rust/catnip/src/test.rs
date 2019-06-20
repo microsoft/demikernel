@@ -1,8 +1,10 @@
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2::MacAddress},
+    rand::Seed,
     Options,
 };
+use base64::{encode_config, STANDARD_NO_PAD};
 use flexi_logger::Logger;
 use float_duration::FloatDuration;
 use std::{
@@ -39,6 +41,9 @@ pub fn new_station<'a>(
     now: Instant,
 ) -> Station<'a> {
     initialize_logger();
+    // we always want to use the same seed for our unit tests.
+    let seed = Seed::default();
+    let seed = encode_config(seed.as_ref(), STANDARD_NO_PAD);
     Station::from_options(
         now,
         Options {
@@ -49,7 +54,7 @@ pub fn new_station<'a>(
                 retry_count: Some(2),
                 cache_ttl: Some(*DEFAULT_TTL),
             },
-            rng_seed: None,
+            rng_seed: Some(seed),
         },
     )
     .unwrap()
