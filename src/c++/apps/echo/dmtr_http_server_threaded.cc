@@ -99,7 +99,7 @@ static void file_work(char *url, char **response, int *response_len) {
     int status = stat(filepath, &st);
 
     char *body = NULL;
-    int body_len = -1;
+    int body_len = 0;
     int code = 404;
     char mime_type[MAX_MIME_TYPE];
     if (status != 0 || S_ISDIR(st.st_mode)) {
@@ -143,7 +143,7 @@ static void file_work(char *url, char **response, int *response_len) {
 
 static void regex_work(char *url, char **response, int *response_len) {
     char *body = NULL;
-    int body_len = -1;
+    int body_len = 0;
     int code = 200;
     char mime_type[MAX_MIME_TYPE];
     char regex_value[MAX_REGEX_VALUE_LEN];
@@ -158,9 +158,9 @@ static void regex_work(char *url, char **response, int *response_len) {
             fprintf(stderr, "Error crafting regex response\n");
             code = 501;
         }
-        body_len = strlen(html) + 1;
-        body = reinterpret_cast<char *>(malloc(body_len));
-        snprintf(body, body_len, "%s", html);
+        body_len = strlen(html);
+        body = reinterpret_cast<char *>(malloc(body_len+1));
+        snprintf(body, body_len+1, "%s", html);
     }
 
     char *header = NULL;
@@ -169,8 +169,12 @@ static void regex_work(char *url, char **response, int *response_len) {
 }
 
 static void clean_state(struct parser_state *state) {
-    free(state->url);
-    free(state->body);
+    if (state->url) {
+       free(state->url);
+    }
+    if (state->body) {
+        free(state->body);
+    }
 }
 
 static void *http_work(void *args) {
