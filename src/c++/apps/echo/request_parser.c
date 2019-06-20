@@ -75,15 +75,7 @@ void init_parser_state(struct parser_state *state) {
     state->parser.data = (void*)state;
 }
 
-void free_parser_state(struct parser_state *state) {
-    if (state->url)
-        free(state->url);
-    if (state->body)
-        free(state->body);
-    if (state)
-        free(state);
-}
-
+//FIXME: this parser will overflow the state struct if the URL is too big: URL size is not checked.
 enum parser_status parse_http(struct parser_state *state, char *buf, size_t bytes) {
     if (state == NULL) {
         printf("Cannot handle connection with NULL state\n");
@@ -95,9 +87,7 @@ enum parser_status parse_http(struct parser_state *state, char *buf, size_t byte
     }
 
     //printf("Attempting to parse '%.*s'\n", (int)bytes, buf);
-    size_t nparsed = http_parser_execute(&state->parser, &state->settings,
-                                         buf, bytes);
-
+    size_t nparsed = http_parser_execute(&state->parser, &state->settings, buf, bytes);
     if (nparsed != bytes) {
         buf[bytes] = '\0';
         printf("Error parsing HTTP request '%s'\n(%s:%s) (should have parsed %zd more bytes)\n",
