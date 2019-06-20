@@ -14,6 +14,7 @@
 #include <queue>
 #include <vector>
 #include <unordered_map>
+#include <fstream>
 
 #include "common.hh"
 
@@ -65,7 +66,7 @@ int timeout_ns = 10000000;
 
 /* Default HTTP GET request */
 const char *REQ_STR =
-        "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: dmtr\r\n\r\n";
+        "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: dmtr\r\n\r\n";
 /* Start of the string for a valid HTTP response */
 const std::string VALID_RESP="HTTP/1.1 200 OK";
 
@@ -136,7 +137,7 @@ struct log_data {
     char const *name;
 };
 
-int log_responses(int total_requests,
+int log_responses(uint32_t total_requests,
                   std::queue<std::pair<int, RequestState> > &qfds,
                   hr_clock::time_point *time_end,
                   std::string log_dir, std::string label) {
@@ -156,7 +157,7 @@ int log_responses(int total_requests,
     DMTR_OK(dmtr_new_latency(&receive.l, "receive"));
     logs.push_back(receive);
     */
-    int logged = 0;
+    uint32_t logged = 0;
     while (logged < total_requests) {
         bool has_pair = false;
         std::pair<int, RequestState> request;
@@ -208,12 +209,12 @@ int log_responses(int total_requests,
  ****************** PROCESS CONNECTIONS **************************
  *****************************************************************/
 
-int process_connections(int whoami, int total_requests, hr_clock::time_point *time_end,
+int process_connections(int whoami, uint32_t total_requests, hr_clock::time_point *time_end,
                         std::queue<std::pair<int, RequestState> > &qfds,
                         std::queue<std::pair<int, RequestState> > &c_qfds) {
-    int completed = 0;
-    int dequeued = 0;
-    int http_request_idx;
+    uint32_t completed = 0;
+    uint32_t dequeued = 0;
+    uint32_t http_request_idx;
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0;
     std::unordered_map<int, RequestState> requests;
@@ -418,7 +419,7 @@ int main(int argc, char **argv) {
         log_error("Wrong URL format given (%s)", url.c_str());
         return -1;
     }
-    std::string uri = url.substr(host_idx);
+    std::string uri = url.substr(host_idx+1);
     std::string host = url.substr(0, host_idx);
 
     if (rate < n_threads ) {
@@ -436,8 +437,8 @@ int main(int argc, char **argv) {
         log_warn("Rate too high for this machine's precision");
     }
 
-    int total_requests = rate * duration;
-    int req_per_thread = total_requests / n_threads;
+    uint32_t total_requests = rate * duration;
+    uint32_t req_per_thread = total_requests / n_threads;
 
     /* Setup Demeter */
     DMTR_OK(dmtr_init(0 , NULL));
@@ -449,10 +450,25 @@ int main(int argc, char **argv) {
     log_info("Interval size: %.2f ns", interval_ns_per_thread);
 
     /* Pre-compute the HTTP requests */
-    for (int i = 0; i < total_requests; ++i) {
-        if (!uri_list.empty()) {
-            log_info("Providing a list of URI is not implemented yet");
-        } else {
+    if (!uri_list.empty()) {
+        /* Loop-over URI file to create requests */
+        std::ifstream urifile(uri_list.c_str());
+        if (urifile.bad() || !urifile.is_open()) {
+            log_error("Failed to open uri list file");
+            return -1;
+        }
+        while (http_requests.size() < total_requests) {
+            char req[MAX_REQUEST_SIZE];
+            while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
+                memset(req, '\0', MAX_REQUEST_SIZE);
+                snprintf(req, MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str());
+                std::unique_ptr<std::string> request(new std::string(req));
+                http_requests.push_back(std::move(request));
+            }
+        }
+    } else {
+        /* All requests are the one given to the CLI */
+        for (uint32_t i = 0; i < total_requests; ++i) {
             char req[MAX_REQUEST_SIZE];
             memset(req, '\0', MAX_REQUEST_SIZE);
             snprintf(req, MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str());
