@@ -249,7 +249,6 @@ static void *http_work(void *args) {
             dmtr_push(&token, me->out_qfd, &resp_sga);
             dmtr_wait(NULL, token);
             clean_state(state);
-            free(response);
         }
     }
 
@@ -430,6 +429,8 @@ int main(int argc, char *argv[]) {
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
+    if (signal(SIGTERM, sig_handler) == SIG_ERR)
+        std::cout << "\ncan't catch SIGTERM\n";
 
     while (1) {
         DMTR_OK(dmtr_accept(&token, lqd));
