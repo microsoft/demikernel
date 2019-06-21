@@ -69,6 +69,7 @@ const char *REQ_STR =
         "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: dmtr\r\n\r\n";
 /* Start of the string for a valid HTTP response */
 const std::string VALID_RESP="HTTP/1.1 200 OK";
+const std::string CONTENT_LEN="Content-Length: ";
 
 /* Validates the given response, checking it against the valid response string */
 static inline bool validate_response(dmtr_sgarray_t response) {
@@ -78,6 +79,15 @@ static inline bool validate_response(dmtr_sgarray_t response) {
     log_debug("Received response:\n%s", resp_str.c_str());
     if (resp_str == VALID_RESP) {
         return true;
+    }
+    size_t ctlen = resp_str.find(CONTENT_LEN);
+    size_t hdr_end = resp_str.find("\r\n\r\n");
+    if (ctlen != std::string::npos && hdr_end != std::string::npos) {
+        size_t body_len = std::stoi(resp_str.substr(ctlen+CONTENT_LEN.size(), hdr_end - ctlen));
+        std::string body = resp_str.substr(hdr_end + 4);
+        if (body.size() == body_len) {
+            return true;
+        }
     }
     print_request_error("Invalid response received: %s", resp_str.c_str());
     return false;
