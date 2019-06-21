@@ -164,9 +164,15 @@ void generate_response(char **response, char *header, char *body, int header_len
                        int body_len, int *response_len) {
     *response = reinterpret_cast<char *>(malloc((size_t)body_len+header_len+1));
     *response_len = snprintf(*response, header_len + 1, "%s", header);
+    if (*response_len > header_len) {
+        fprintf(stderr, "response_len > header_len: header was truncated!");
+    }
     if (body) {
         *response_len += snprintf(*response + *response_len, body_len + 1, "%s", body);
         free(body);
+    }
+    if (*response_len > body_len+header_len) {
+        fprintf(stderr, "response_len > header_len+body_len: body was truncated!");
     }
     free(header);
 }
