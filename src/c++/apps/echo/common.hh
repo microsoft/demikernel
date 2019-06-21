@@ -16,7 +16,7 @@
 /*****************************************************************
  *********************** LOGGING MACROS   ************************
  *****************************************************************/
-auto start_time = std::chrono::system_clock::now();
+static const auto start_time = std::chrono::system_clock::now();
 
 /* Enable debug statements  */
 //#define LOG_DEBUG
@@ -78,10 +78,14 @@ auto start_time = std::chrono::system_clock::now();
 #define perror_request(fmt, ...) \
     print_request_error(fmt ": %s", ##__VA_ARGS__, strerror(errno))
 
-uint16_t port = 12345;
+/***************************************************************
+ ************************* ARGS PARSING ************************
+ ***************************************************************/
+
+uint16_t port;
 boost::optional<std::string> server_ip_addr;
-uint32_t packet_size = 64;
-uint32_t iterations = 10;
+uint32_t packet_size;
+uint32_t iterations;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
