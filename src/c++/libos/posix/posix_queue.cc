@@ -291,7 +291,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
@@ -303,7 +303,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags, mode_t mode)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
@@ -315,7 +315,7 @@ int dmtr::posix_queue::creat(const char *pathname, mode_t mode)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
@@ -362,10 +362,10 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         const auto k = j + 1;
         iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
         iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
-        
+
         // add up actual data size
         data_size += sga->sga_segs[i].sgaseg_len;
-        
+
         // add up expected packet size (not yet including header)
         message_bytes += sga->sga_segs[i].sgaseg_len;
         message_bytes += sizeof(sga->sga_segs[i].sgaseg_len);
@@ -391,8 +391,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     auto t0 = boost::chrono::steady_clock::now();
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
-    int ret = writev(bytes_written, my_fd, iov, iov_len);
-    while (EAGAIN == ret) {
+    while (EAGAIN == ret || bytes_written < message_bytes) {
 #if DMTR_PROFILE
         dt += boost::chrono::steady_clock::now() - t0;
 #endif
@@ -400,9 +399,25 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #if DMTR_PROFILE
         t0 = boost::chrono::steady_clock::now();
 #endif
+        //Only handle partial write if it actually happened
+        if (bytes_written > 0 && ret != EAGAIN) {
+#if DMTR_DEBUG
+            std::cout << "Handling partial write (" << bytes_written << "/" << message_bytes << ")";
+            std::cout << " ret was " << strerror(ret) <<  std::endl;
+#endif
+            size_t nr = bytes_written;
+            while (nr >= iov->iov_len) {
+                nr -= iov->iov_len;
+                --iov_len;
+                ++iov;
+            }
+            assert(nr > 0); //Otherwise we would not been handling a partial write
+            iov->iov_len -= nr;
+            iov->iov_base = (char *) iov->iov_base + nr;
+        }
         ret = writev(bytes_written, my_fd, iov, iov_len);
     }
-            
+
 #if DMTR_PROFILE
     dt += (boost::chrono::steady_clock::now() - t0);
     DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
@@ -411,7 +426,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #if DMTR_DEBUG
     std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
 #endif
-    
+
     DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
     return ret;
@@ -493,7 +508,7 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
             ret = ENOTSUP;
             break;
         }
-        
+
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.
@@ -507,7 +522,7 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
 
 int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    
+
     // if we don't have a full header yet, get one.
     size_t header_bytes = 0;
     dmtr_header_t header;
@@ -539,6 +554,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         if (0 == bytes_read) {
             return ECONNABORTED;
         }
+        free(iovbase);
 
         header_bytes += bytes_read;
 
@@ -547,7 +563,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 #endif
 	}
 
-    
+
 #if DMTR_DEBUG
     std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
 #endif
@@ -756,7 +772,6 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
 }
 
 int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt) {
-    count_out = 0;
     ssize_t ret = ::writev(fd, iov, iovcnt);
 
     if (ret == -1) {
@@ -772,7 +787,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
         DMTR_UNREACHABLE();
     }
 
-    count_out = ret;
+    count_out += ret;
     return 0;
 }
 
