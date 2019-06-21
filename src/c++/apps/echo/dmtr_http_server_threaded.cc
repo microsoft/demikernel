@@ -120,8 +120,9 @@ static void file_work(char *url, char **response, int *response_len) {
             int size = ftell(file);
             fseek(file, 0, SEEK_SET);
 
-            body = reinterpret_cast<char *>(malloc(size));
+            body = reinterpret_cast<char *>(malloc(size+1));
             body_len = fread(body, sizeof(char), size, file);
+            body[body_len] = '\0';
 
             if (body_len != size) {
                 fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
@@ -384,7 +385,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Init Demeter */
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(0, NULL));
 
     /* Pin main thread */
     pin_thread(pthread_self(), 0);
