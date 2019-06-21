@@ -314,17 +314,17 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
                   std::queue<std::pair<int, RequestState>> &qfds,
                   hr_clock::time_point *time_end) {
 
-    hr_clock::time_point start_time = hr_clock::now();
+    hr_clock::time_point create_start_time = hr_clock::now();
 
     /* Times at which the connections should be initiated */
     hr_clock::time_point send_times[n_requests];
 
     for (int i = 0; i < n_requests; ++i) {
         std::chrono::nanoseconds elapsed_time((long int)(interval_ns * i));
-        send_times[i] = start_time + elapsed_time;
+        send_times[i] = create_start_time + elapsed_time;
         /*
         fprintf(stdout, "%ld + %ld == %ld\n",
-                start_time.time_since_epoch().count(),
+                create_start_time.time_since_epoch().count(),
                 elapsed_time.count(),
                 send_times[i].time_since_epoch().count());
         */
