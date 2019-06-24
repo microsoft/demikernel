@@ -37,7 +37,7 @@ impl<'a> Runtime<'a> {
         self.options.clone()
     }
 
-    pub fn clock(&self) -> Instant {
+    pub fn now(&self) -> Instant {
         self.r#async.clock()
     }
 
@@ -51,9 +51,18 @@ impl<'a> Runtime<'a> {
         self.r#async.start_coroutine(gen)
     }
 
-    pub fn poll(&self, now: Instant) -> Option<Effect> {
-        let _ = self.r#async.poll(now);
-        self.effects.borrow_mut().pop_front()
+    pub fn poll(&self, now: Instant) -> Result<Effect> {
+        match self.r#async.poll(now) {
+            Ok(_) => (),
+            Err(Fail::TryAgain {}) => (),
+            Err(e) => return Err(e.clone()),
+        }
+
+        if let Some(f) = self.effects.borrow_mut().pop_front() {
+            return Ok(f);
+        } else {
+            return Err(Fail::TryAgain {});
+        }
     }
 
     pub fn emit_effect(&self, effect: Effect) {

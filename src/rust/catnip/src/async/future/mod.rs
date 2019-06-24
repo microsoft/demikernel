@@ -1,9 +1,13 @@
+mod when_any;
+
 use super::{
     coroutine::{CoroutineId, CoroutineStatus},
     Async,
 };
 use crate::prelude::*;
 use std::{fmt::Debug, time::Instant};
+
+pub use when_any::WhenAny;
 
 #[derive(Clone)]
 pub enum Future<'a, T>
@@ -52,7 +56,10 @@ where
         match self {
             Future::Const(v) => v.clone(),
             Future::CoroutineResult { r#async, cid } => {
-                // todo: should this return an error if poll() fails?
+                // we don't care about the result of calling `poll()`. if an
+                // unrelated coroutine completes, the result will be reported
+                // in the relevant future. if coroutine `cid` completes, we'll
+                // pick that up when we check the status of the coroutine.
                 let _ = r#async.poll(now);
                 let status = r#async.coroutine_status(*cid);
                 debug!("status of coroutine {} is `{:?}`.", cid, status);
@@ -67,10 +74,12 @@ where
     T: Clone + Debug,
 {
     fn drop(&mut self) {
+        // warning: this function can be called while unwinding the stack, so
+        // we cannot `panic!()` here.
         match self {
             Future::Const(_) => (),
             Future::CoroutineResult { r#async, cid } => {
-                r#async.drop_coroutine(*cid);
+                let _ = r#async.drop_coroutine(*cid);
             }
         }
     }

@@ -26,7 +26,7 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagram<'a> {
 
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
         assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Udp);
-        if ipv4_datagram.payload().is_empty() {
+        if ipv4_datagram.payload().len() < UDP_HEADER_SIZE {
             return Err(Fail::Malformed {});
         }
 

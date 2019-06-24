@@ -48,7 +48,7 @@ impl<'a> UdpPeer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    let x = fut.poll(rt.clock());
+                    let x = fut.poll(rt.now());
                     match x {
                         Ok(a) => {
                             debug!(

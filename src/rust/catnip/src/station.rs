@@ -48,9 +48,16 @@ impl<'a> Station<'a> {
         }
     }
 
-    pub fn poll(&mut self, now: Instant) -> Option<Effect> {
+    pub fn poll(&mut self, now: Instant) -> Result<Effect> {
         self.arp.service();
-        self.rt.poll(now)
+
+        match self.ipv4.poll(now) {
+            Ok(_) => (),
+            Err(Fail::TryAgain {}) => (),
+            Err(e) => return Err(e),
+        };
+
+        Ok(self.rt.poll(now)?)
     }
 
     pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {

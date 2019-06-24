@@ -42,7 +42,7 @@ impl<'a> ArpPeer<'a> {
 
     pub fn service(&mut self) {
         let mut cache = self.cache.borrow_mut();
-        cache.advance_clock(self.rt.clock());
+        cache.advance_clock(self.rt.now());
         cache.try_evict(2);
     }
 
@@ -156,7 +156,7 @@ impl<'a> ArpPeer<'a> {
                 retries_remaining -= 1;
                 // can't make progress until a reply deposits an entry in the
                 // cache.
-                let t0 = rt.clock();
+                let t0 = rt.now();
                 let mut dt = Duration::new(0, 0);
                 while dt < timeout {
                     debug!(
@@ -174,7 +174,7 @@ impl<'a> ArpPeer<'a> {
                         // unable to make progress until the appropriate entry
                         // is inserted into the cache.
                         yield None;
-                        dt = rt.clock() - t0;
+                        dt = rt.now() - t0;
                         debug!("dt = {:?}", dt);
                     }
                 }

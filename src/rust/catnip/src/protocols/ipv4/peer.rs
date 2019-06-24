@@ -1,20 +1,22 @@
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, udp},
+    protocols::{arp, ethernet2, icmpv4, udp},
     r#async::Future,
 };
-use std::{convert::TryFrom, net::Ipv4Addr};
+use std::{convert::TryFrom, net::Ipv4Addr, time::Instant};
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
     udp: udp::Peer<'a>,
+    icmpv4: icmpv4::Peer<'a>,
 }
 
 impl<'a> Ipv4Peer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Ipv4Peer<'a> {
-        let udp = udp::Peer::new(rt.clone(), arp);
-        Ipv4Peer { rt, udp }
+        let udp = udp::Peer::new(rt.clone(), arp.clone());
+        let icmpv4 = icmpv4::Peer::new(rt.clone(), arp);
+        Ipv4Peer { rt, udp, icmpv4 }
     }
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
@@ -28,12 +30,16 @@ impl<'a> Ipv4Peer<'a> {
             return Err(Fail::Misdelivered {});
         }
 
-        debug!("b {:?}", header.protocol()?);
         #[allow(unreachable_patterns)]
         match header.protocol()? {
+            Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
             Ipv4Protocol::Udp => self.udp.receive(datagram),
             _ => Err(Fail::Unsupported {}),
         }
+    }
+
+    pub fn poll(&mut self, now: Instant) -> Result<()> {
+        Ok(self.icmpv4.poll(now)?)
     }
 
     pub fn udp_cast(

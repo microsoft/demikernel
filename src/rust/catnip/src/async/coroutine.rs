@@ -20,7 +20,7 @@ where
     T: 'static + Clone + Debug,
 {
     fn into(self) -> Result<T> {
-        trace!("CoroutineStatus::into()");
+        trace!("CoroutineStatus::into({:?})", self);
         match self {
             CoroutineStatus::Completed(r) => match r {
                 Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),

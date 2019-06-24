@@ -96,6 +96,7 @@ fn slow_reply() {
         x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
     }
 
+    debug!("!!!");
     let request = {
         let effect = alice.poll(now).expect("expected an effect");
         match effect {
@@ -104,6 +105,7 @@ fn slow_reply() {
         }
     };
 
+    debug!("???");
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.

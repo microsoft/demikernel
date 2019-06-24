@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub use future::Future;
+pub use future::{Future, WhenAny};
 
 #[derive(Clone)]
 pub struct Async<'a> {
@@ -45,9 +45,9 @@ impl<'a> Async<'a> {
             + Unpin,
     {
         let cid = self.new_tid();
-        let t = Coroutine::new(cid, gen, self.clock());
-        self.schedule.borrow_mut().schedule(&t);
-        self.coroutines.borrow_mut().insert(cid, t);
+        let co = Coroutine::new(cid, gen, self.clock());
+        self.schedule.borrow_mut().schedule(&co);
+        self.coroutines.borrow_mut().insert(cid, co);
         let fut = Future::coroutine_result(self.clone(), cid);
         let _ = fut.poll(self.clock());
         fut
@@ -100,9 +100,11 @@ impl<'a> Async<'a> {
         }
     }
 
-    pub fn drop_coroutine(&self, cid: CoroutineId) {
-        self.schedule.borrow_mut().cancel(cid);
-        assert!(self.coroutines.borrow_mut().remove(&cid).is_some());
+    pub fn drop_coroutine(&self, cid: CoroutineId) -> Result<()> {
+        // this function should not panic as it's called from `drop()`.
+        self.schedule.try_borrow_mut()?.cancel(cid);
+        self.coroutines.try_borrow_mut()?.remove(&cid);
+        Ok(())
     }
 
     pub fn coroutine_status(&self, cid: CoroutineId) -> CoroutineStatus {
