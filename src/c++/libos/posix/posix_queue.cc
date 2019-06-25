@@ -391,7 +391,10 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     auto t0 = boost::chrono::steady_clock::now();
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
-    while (EAGAIN == ret || bytes_written < message_bytes) {
+    size_t latest_bytes_written = 0;
+    int ret = writev(latest_bytes_written, my_fd, iov, iov_len);
+    size_t total_bytes_written = latest_bytes_written;
+    while (EAGAIN == ret || total_bytes_written < message_bytes) {
 #if DMTR_PROFILE
         dt += boost::chrono::steady_clock::now() - t0;
 #endif
@@ -400,22 +403,23 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         t0 = boost::chrono::steady_clock::now();
 #endif
         //Only handle partial write if it actually happened
-        if (bytes_written > 0 && ret != EAGAIN) {
+        if (latest_bytes_written > 0) {
 #if DMTR_DEBUG
-            std::cout << "Handling partial write (" << bytes_written << "/" << message_bytes << ")";
+            std::cout << "Handling partial write (" << total_bytes_written << "/" << message_bytes << ")";
             std::cout << " ret was " << strerror(ret) <<  std::endl;
 #endif
-            size_t nr = bytes_written;
+            size_t nr = latest_bytes_written;
             while (nr >= iov->iov_len) {
                 nr -= iov->iov_len;
                 --iov_len;
                 ++iov;
             }
-            assert(nr > 0); //Otherwise we would not been handling a partial write
+            assert(nr > 0); //Otherwise we would not be handling a partial write
             iov->iov_len -= nr;
             iov->iov_base = (char *) iov->iov_base + nr;
         }
-        ret = writev(bytes_written, my_fd, iov, iov_len);
+        ret = writev(latest_bytes_written, my_fd, iov, iov_len);
+        total_bytes_written += latest_bytes_written;
     }
 
 #if DMTR_PROFILE
@@ -424,10 +428,10 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
 
 #if DMTR_DEBUG
-    std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
+    std::cerr << "push(" << qt << "): sent message (" << total_bytes_written << " bytes)." << std::endl;
 #endif
 
-    DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
+    DMTR_TRUE(ENOTSUP, total_bytes_written == message_bytes);
 
     return ret;
 }
@@ -613,14 +617,14 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 #if DMTR_PROFILE
         dt += (boost::chrono::steady_clock::now() - t0);
 #endif
-        
+
     }
 #if DMTR_PROFILE
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
     if (0 != ret) return ret;
-    
+
 #if DMTR_DEBUG
     std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
     std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
@@ -644,7 +648,6 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
 int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    
     return 0;
 }
 
@@ -772,6 +775,7 @@ int dmtr::posix_queue::read(size_t &count_out, int fd, void *buf, size_t len) {
 }
 
 int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov, int iovcnt) {
+    count_out = 0;
     ssize_t ret = ::writev(fd, iov, iovcnt);
 
     if (ret == -1) {
@@ -787,7 +791,7 @@ int dmtr::posix_queue::writev(size_t &count_out, int fd, const struct iovec *iov
         DMTR_UNREACHABLE();
     }
 
-    count_out += ret;
+    count_out = ret;
     return 0;
 }
 
