@@ -451,7 +451,11 @@ int main(int argc, char **argv) {
     uint32_t req_per_thread = total_requests / n_threads;
 
     /* Setup Demeter */
-    DMTR_OK(dmtr_init(0 , NULL));
+    char arg1[] = "--log-dir";
+    char arg2[log_dir.size() + 1];
+    snprintf(arg2, log_dir.size() + 1, "%s", log_dir.c_str());
+    char *dmtr_argv[] = {argv[0], &arg1[0], &arg2[0], NULL};
+    DMTR_OK(dmtr_init(3 , dmtr_argv));
 
     /* Setup worker threads */
     log_info("Starting %d*3 threads to serve %d requests (%d reqs / thread)",

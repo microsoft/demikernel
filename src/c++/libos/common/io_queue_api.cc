@@ -24,6 +24,25 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
     DMTR_NULL(EINVAL, newobj_out);
 
     newobj_out = new io_queue_api();
+
+    if (argc > 0) {
+        std::string log_directory;
+        namespace po = boost::program_options;
+        po::options_description desc{"IO queue API options"};
+        desc.add_options()
+            ("log-dir,L", po::value<std::string>(&log_directory)->default_value("./"), "Log directory");
+        po::variables_map vm;
+        try {
+            po::store(po::parse_command_line(argc, argv, desc), vm);
+            po::notify(vm);
+        } catch (const po::error &e) {
+            std::cerr << e.what() << std::endl;
+            std::cerr << desc << std::endl;
+            exit(0);
+        }
+        newobj_out->my_log_directory = log_directory;
+    }
+
     return 0;
 }
 
