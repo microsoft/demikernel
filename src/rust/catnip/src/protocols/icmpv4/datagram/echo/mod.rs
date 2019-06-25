@@ -26,6 +26,7 @@ impl<'a> Icmpv4Echo<'a> {
     pub fn op(&self) -> Icmpv4EchoOp {
         // precondition: we've ensured the call to `r#type()` will succeed in
         // the implementation of `try_from()`.
+        #[allow(unreachable_patterns)]
         match self.0.header().r#type().unwrap() {
             Icmpv4Type::EchoRequest => Icmpv4EchoOp::Request,
             Icmpv4Type::EchoReply => Icmpv4EchoOp::Reply,

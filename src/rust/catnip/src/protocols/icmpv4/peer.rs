@@ -1,9 +1,8 @@
 use super::{
     datagram::{
-        Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Echo, Icmpv4EchoMut,
+        Icmpv4Datagram, Icmpv4Echo, Icmpv4EchoMut,
         Icmpv4EchoOp, Icmpv4Type,
     },
-    error::Icmpv4Error,
 };
 use crate::{
     prelude::*,

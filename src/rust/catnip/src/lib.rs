@@ -11,6 +11,7 @@ extern crate num_derive;
 #[macro_use]
 extern crate log;
 
+#[cfg(test)]
 #[macro_use]
 extern crate maplit;
 

@@ -1,7 +1,6 @@
 // we don't include the prelude here to avoid circular dependencies
-use super::datagram::{Icmpv4Datagram, Icmpv4Type};
+use super::datagram::Icmpv4Datagram;
 use crate::{fail::Fail, result::Result};
-use byteorder::{ByteOrder, NetworkEndian};
 use std::{convert::TryFrom, error::Error, fmt, net::Ipv4Addr};
 
 #[derive(Clone, Debug)]
@@ -31,7 +30,7 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Error {
     type Error = Fail;
 
     fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self> {
-        let src_addr = datagram.ipv4().header().src_addr();
+        let _src_addr = datagram.ipv4().header().src_addr();
         let header = datagram.header();
         match header.r#type()? {
             _ => Err(Fail::Unimplemented {}),
