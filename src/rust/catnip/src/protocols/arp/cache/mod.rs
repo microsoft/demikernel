@@ -103,6 +103,11 @@ impl ArpCache {
         result
     }
 
+    pub fn clear(&mut self) {
+        self.cache.clear();
+        self.rmap.clear();
+    }
+
     pub fn export(&self) -> HashMap<Ipv4Addr, MacAddress> {
         let mut map = HashMap::new();
         for (k, v) in self.cache.iter() {
@@ -110,5 +115,12 @@ impl ArpCache {
         }
 
         map
+    }
+
+    pub fn import(&mut self, cache: HashMap<Ipv4Addr, MacAddress>) {
+        self.clear();
+        for (k, v) in &cache {
+            self.insert(k.clone(), v.clone());
+        }
     }
 }

@@ -268,6 +268,7 @@ where
     }
 
     // todo: how do i implement `std::iter::IntoIterator` for this type?
+    // todo: how do i get `&cache` to alias to `cache.iter()`?
     pub fn iter(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
         let clock = self.clock;
         self.map.iter().flat_map(move |(key, record)| {
@@ -279,5 +280,10 @@ where
 
             Some((key, &record.value))
         })
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.graveyard.clear();
     }
 }

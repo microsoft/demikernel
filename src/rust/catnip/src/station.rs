@@ -80,6 +80,10 @@ impl<'a> Station<'a> {
         self.arp.export_cache()
     }
 
+    pub fn import_arp_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
+        self.arp.import_cache(cache)
+    }
+
     pub fn ping(
         &self,
         dest_ipv4_addr: Ipv4Addr,

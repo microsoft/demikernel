@@ -94,3 +94,29 @@ fn ping() {
         x => panic!("expected `Ok(_)`, got `{:?}`", x),
     }
 }
+
+#[test]
+fn timeout() {
+    // ensures that a ICMPv4 ping exchange succeeds.
+
+    let t0 = Instant::now();
+    let now = t0;
+    let timeout = Duration::from_secs(1);
+    let alice = test::new_alice(now);
+
+    alice.import_arp_cache(hashmap! {
+        *test::bob_ipv4_addr() => *test::bob_link_addr(),
+    });
+
+    let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
+    match fut.poll(now) {
+        Err(Fail::TryAgain {}) => (),
+        x => panic!("expected `Fail::TryAgain`, got `{:?}`", x),
+    }
+
+    let now = now + timeout;
+    match fut.poll(now) {
+        Err(Fail::Timeout {}) => (),
+        x => panic!("expected `Fail::Timeout`, got `{:?}`", x),
+    }
+}

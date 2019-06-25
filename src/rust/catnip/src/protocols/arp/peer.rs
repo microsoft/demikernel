@@ -192,4 +192,8 @@ impl<'a> ArpPeer<'a> {
     pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.cache.borrow().export()
     }
+
+    pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
+        self.cache.borrow_mut().import(cache);
+    }
 }

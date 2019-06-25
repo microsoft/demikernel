@@ -143,7 +143,7 @@ impl<'a> Icmpv4Peer<'a> {
                 yield None;
 
                 let dt = rt.now() - t0;
-                if dt > timeout {
+                if dt >= timeout {
                     return Err(Fail::Timeout {});
                 }
 
