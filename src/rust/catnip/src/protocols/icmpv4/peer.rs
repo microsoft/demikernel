@@ -1,7 +1,7 @@
 use super::{
     datagram::{
         Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Echo, Icmpv4EchoMut,
-        Icmpv4EchoType, Icmpv4Type,
+        Icmpv4EchoOp, Icmpv4Type,
     },
     error::Icmpv4Error,
 };
@@ -120,7 +120,7 @@ impl<'a> Icmpv4Peer<'a> {
 
             let mut bytes = Icmpv4EchoMut::new_bytes();
             let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
-            echo.r#type(Icmpv4EchoType::Request);
+            echo.r#type(Icmpv4EchoOp::Request);
             echo.id(id);
             echo.seq_num(seq_num);
             let mut ipv4_header = echo.icmpv4().ipv4().header();
@@ -198,7 +198,7 @@ impl<'a> Icmpv4Peer<'a> {
 
             let mut bytes = Icmpv4EchoMut::new_bytes();
             let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
-            echo.r#type(Icmpv4EchoType::Reply);
+            echo.r#type(Icmpv4EchoOp::Reply);
             echo.id(id);
             echo.seq_num(seq_num);
             let ipv4 = echo.icmpv4().ipv4();

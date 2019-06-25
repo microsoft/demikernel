@@ -1,7 +1,7 @@
 mod echo;
 mod header;
 
-pub use echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoType};
+pub use echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp};
 pub use header::{
     Icmpv4Header, Icmpv4HeaderMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
 };
@@ -12,6 +12,10 @@ use std::convert::TryFrom;
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> Icmpv4Datagram<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Icmpv4Datagram::try_from(ipv4::Datagram::from_bytes(bytes)?)?)
+    }
+
     pub fn header(&self) -> Icmpv4Header<'_> {
         Icmpv4Header::new(&self.0.payload()[..ICMPV4_HEADER_SIZE])
     }

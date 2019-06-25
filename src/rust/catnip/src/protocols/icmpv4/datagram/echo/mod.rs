@@ -7,7 +7,7 @@ use byteorder::{ByteOrder, NetworkEndian};
 use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Icmpv4EchoType {
+pub enum Icmpv4EchoOp {
     Request,
     Reply,
 }
@@ -15,16 +15,20 @@ pub enum Icmpv4EchoType {
 pub struct Icmpv4Echo<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Echo<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self>{
+        Ok(Icmpv4Echo::try_from(Icmpv4Datagram::from_bytes(bytes)?)?)
+    }
+
     pub fn icmpv4(&self) -> &Icmpv4Datagram<'a> {
         &self.0
     }
 
-    pub fn r#type(&self) -> Icmpv4EchoType {
+    pub fn op(&self) -> Icmpv4EchoOp {
         // precondition: we've ensured the call to `r#type()` will succeed in
         // the implementation of `try_from()`.
         match self.0.header().r#type().unwrap() {
-            Icmpv4Type::EchoRequest => Icmpv4EchoType::Request,
-            Icmpv4Type::EchoReply => Icmpv4EchoType::Reply,
+            Icmpv4Type::EchoRequest => Icmpv4EchoOp::Request,
+            Icmpv4Type::EchoReply => Icmpv4EchoOp::Reply,
             _ => panic!("unexpected ICMPv4 type"),
         }
     }
@@ -67,12 +71,12 @@ impl<'a> Icmpv4EchoMut<'a> {
         &mut self.0
     }
 
-    pub fn r#type(&mut self, value: Icmpv4EchoType) {
+    pub fn r#type(&mut self, value: Icmpv4EchoOp) {
         match value {
-            Icmpv4EchoType::Request => {
+            Icmpv4EchoOp::Request => {
                 self.0.header().r#type(Icmpv4Type::EchoRequest)
             }
-            Icmpv4EchoType::Reply => {
+            Icmpv4EchoOp::Reply => {
                 self.0.header().r#type(Icmpv4Type::EchoReply)
             }
         }

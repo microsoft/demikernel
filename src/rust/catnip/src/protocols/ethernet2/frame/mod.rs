@@ -14,7 +14,7 @@ pub struct Ethernet2Frame<'a>(&'a [u8]);
 
 impl<'a> Ethernet2Frame<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        if bytes.as_ref().len() < ETHERNET2_HEADER_SIZE + MIN_PAYLOAD_SIZE {
+        if bytes.len() < ETHERNET2_HEADER_SIZE + MIN_PAYLOAD_SIZE {
             return Err(Fail::Malformed {
                 details: "frame is shorter than the minimum length",
             });
@@ -46,7 +46,7 @@ impl<'a> Ethernet2FrameMut<'a> {
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        let _ = Ethernet2Frame::from_bytes(&bytes)?;
+        let _ = Ethernet2Frame::from_bytes(bytes)?;
         Ok(Ethernet2FrameMut(bytes))
     }
 

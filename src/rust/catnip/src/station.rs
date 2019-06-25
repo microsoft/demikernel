@@ -8,6 +8,7 @@ use crate::{
 };
 use r#async::Future;
 use std::{collections::HashMap, net::Ipv4Addr, rc::Rc, time::Instant};
+use std::time::Duration;
 
 pub struct Station<'a> {
     rt: Runtime<'a>,
@@ -77,5 +78,13 @@ impl<'a> Station<'a> {
 
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.arp.export_cache()
+    }
+
+    pub fn ping(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        timeout: Option<Duration>,
+    ) -> Future<'a, Duration> {
+        self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 }

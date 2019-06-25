@@ -5,6 +5,7 @@ use crate::{
     r#async::Future,
 };
 use std::{convert::TryFrom, net::Ipv4Addr, time::Instant};
+use std::time::Duration;
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
@@ -50,5 +51,13 @@ impl<'a> Ipv4Peer<'a> {
         payload: Vec<u8>,
     ) -> Future<'a, ()> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, payload)
+    }
+
+    pub fn ping(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        timeout: Option<Duration>,
+    ) -> Future<'a, Duration> {
+        self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 }

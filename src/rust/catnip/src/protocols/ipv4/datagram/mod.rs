@@ -10,6 +10,10 @@ pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Ipv4Datagram::try_from(ethernet2::Frame::from_bytes(bytes)?)?)
+    }
+
     pub fn header(&self) -> Ipv4Header<'_> {
         Ipv4Header::new(&self.0.payload()[..IPV4_HEADER_SIZE])
     }

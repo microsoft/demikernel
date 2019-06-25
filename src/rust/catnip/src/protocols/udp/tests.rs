@@ -49,18 +49,12 @@ fn cast() {
     match fut.poll(now) {
         Err(Fail::TryAgain {}) => (),
         x => {
-            debug!("expected future completion (got `{:?}`)", x);
-            // the following `panic!()` panics internally, and it's not clear
-            // why.
             panic!("expected future completion (got `{:?}`)", x);
         }
     }
     match fut.poll(now) {
         Ok(()) => (),
         x => {
-            debug!("expected future completion (got `{:?}`)", x);
-            // the following `panic!()` panics internally, and it's not clear
-            // why.
             panic!("expected future completion (got `{:?}`)", x);
         }
     }
