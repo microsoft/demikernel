@@ -1,6 +1,7 @@
 mod header;
 
 use crate::prelude::*;
+use std::cmp::max;
 
 pub use header::{
     EtherType, Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
@@ -14,7 +15,9 @@ pub struct Ethernet2Frame<'a>(&'a [u8]);
 impl<'a> Ethernet2Frame<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
         if bytes.as_ref().len() < ETHERNET2_HEADER_SIZE + MIN_PAYLOAD_SIZE {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "frame is shorter than the minimum length",
+            });
         }
 
         Ok(Ethernet2Frame(bytes))
@@ -37,6 +40,11 @@ impl<'a> Ethernet2Frame<'a> {
 pub struct Ethernet2FrameMut<'a>(&'a mut [u8]);
 
 impl<'a> Ethernet2FrameMut<'a> {
+    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
+        let payload_sz = max(payload_sz, MIN_PAYLOAD_SIZE);
+        vec![0u8; payload_sz + ETHERNET2_HEADER_SIZE]
+    }
+
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
         let _ = Ethernet2Frame::from_bytes(&bytes)?;
         Ok(Ethernet2FrameMut(bytes))

@@ -23,7 +23,9 @@ impl TryFrom<u8> for Icmpv4Type {
     fn try_from(n: u8) -> Result<Self> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
-            None => Err(Fail::Unsupported {}),
+            None => Err(Fail::Unsupported {
+                details: "ICMPv4 echo type must be REQUEST or REPLY",
+            }),
         }
     }
 }

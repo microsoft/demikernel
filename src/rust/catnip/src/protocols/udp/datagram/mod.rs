@@ -27,7 +27,10 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagram<'a> {
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
         assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Udp);
         if ipv4_datagram.payload().len() < UDP_HEADER_SIZE {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "UDP datagram is too small to contain a complete \
+                          header",
+            });
         }
 
         Ok(UdpDatagram(ipv4_datagram))
@@ -37,6 +40,10 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagram<'a> {
 pub struct UdpDatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> UdpDatagramMut<'a> {
+    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
+        ipv4::DatagramMut::new_bytes(payload_sz + UDP_HEADER_SIZE)
+    }
+
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
         Ok(UdpDatagramMut(ipv4::DatagramMut::from_bytes(bytes)?))
     }
@@ -59,6 +66,7 @@ impl<'a> UdpDatagramMut<'a> {
     }
 
     pub fn seal(self) -> Result<UdpDatagram<'a>> {
+        trace!("UdpDatagramMut::seal()");
         let ipv4_datagram = {
             let mut ipv4 = self.0;
             let mut header = ipv4.header();

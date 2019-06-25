@@ -23,7 +23,9 @@ impl TryFrom<u16> for EtherType {
     fn try_from(n: u16) -> Result<Self> {
         match FromPrimitive::from_u16(n) {
             Some(n) => Ok(n),
-            None => Err(Fail::Unsupported {}),
+            None => Err(Fail::Unsupported {
+                details: "given ETHERTYPE is not supported",
+            }),
         }
     }
 }

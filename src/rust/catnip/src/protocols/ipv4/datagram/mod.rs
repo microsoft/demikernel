@@ -31,33 +31,46 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
         trace!("Ipv4Datagram::try_from(...)");
         assert_eq!(frame.header().ether_type()?, ethernet2::EtherType::Ipv4);
         if frame.payload().len() <= IPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "IPv4 datagram is too small to contain a complete \
+                          header",
+            });
         }
 
         let datagram = Ipv4Datagram(frame);
         let payload_len = datagram.payload().len();
         let header = datagram.header();
         if header.version() != IPV4_VERSION {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "unsupported IPv4 version",
+            });
         }
 
         if header.total_len() != payload_len + IPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "IPv4 TOTALLEN mismatch",
+            });
         }
 
         let ihl = header.ihl();
         if ihl < IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "IPv4 IHL is too small",
+            });
         }
 
         // we don't currently support IPv4 options.
         if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "IPv4 options are not supported",
+            });
         }
 
         // we don't currently support fragmented packets.
         if header.frag_offset() != 0 {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "IPv4 fragmentation is not supported",
+            });
         }
 
         // from _TCP/IP Illustrated_, Section 5.2.2:
@@ -65,7 +78,9 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
         // > of the Checksum field in the packet can never be FFFF.
         let checksum = header.checksum();
         if checksum == 0xffff {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "invalid IPv4 checksum",
+            });
         }
 
         let should_be_zero = {
@@ -75,7 +90,9 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
         };
 
         if checksum != 0 && should_be_zero != 0 {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "IPv4 checksum mismatch",
+            });
         }
 
         let _ = header.protocol()?;
@@ -86,6 +103,10 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
 pub struct Ipv4DatagramMut<'a>(ethernet2::FrameMut<'a>);
 
 impl<'a> Ipv4DatagramMut<'a> {
+    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
+        ethernet2::FrameMut::new_bytes(payload_sz + IPV4_HEADER_SIZE)
+    }
+
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
         Ok(Ipv4DatagramMut(ethernet2::FrameMut::from_bytes(bytes)?))
     }
@@ -107,6 +128,7 @@ impl<'a> Ipv4DatagramMut<'a> {
     }
 
     pub fn seal(mut self) -> Result<Ipv4Datagram<'a>> {
+        trace!("Ipv4DatagramMut::seal()");
         let payload_len = self.payload().len();
         let total_len = IPV4_HEADER_SIZE + payload_len;
 

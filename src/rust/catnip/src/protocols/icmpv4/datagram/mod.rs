@@ -31,14 +31,21 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
         assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Icmpv4);
         if ipv4_datagram.payload().len() < ICMPV4_HEADER_SIZE {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "ICMPv4 datagram isn't large enough to contain a \
+                          complete header",
+            });
         }
 
         let icmpv4 = Icmpv4Datagram(ipv4_datagram);
         let mut checksum = ipv4::checksum::Hasher::new();
-        checksum.write(icmpv4.ipv4().payload());
+        let payload = icmpv4.ipv4().payload();
+        checksum.write(&payload[..2]);
+        checksum.write(&payload[4..]);
         if checksum.finish() != icmpv4.header().checksum() {
-            return Err(Fail::Malformed {});
+            return Err(Fail::Malformed {
+                details: "ICMPv4 checksum mismatch",
+            });
         }
 
         Ok(icmpv4)
@@ -48,6 +55,10 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
 pub struct Icmpv4DatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> Icmpv4DatagramMut<'a> {
+    pub fn new_bytes() -> Vec<u8> {
+        ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE)
+    }
+
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
         Ok(Icmpv4DatagramMut(ipv4::DatagramMut::from_bytes(bytes)?))
     }
@@ -70,6 +81,8 @@ impl<'a> Icmpv4DatagramMut<'a> {
     }
 
     pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {
+        trace!("Icmp4DatagramMut::seal()");
+        self.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
         let mut checksum = ipv4::checksum::Hasher::new();
         checksum.write(self.0.payload());
         self.header().checksum(checksum.finish());

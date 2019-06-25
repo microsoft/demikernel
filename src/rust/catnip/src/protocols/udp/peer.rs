@@ -71,7 +71,7 @@ impl<'a> UdpPeer<'a> {
                 dest_link_addr
             };
 
-            let mut bytes = super::new_datagram(payload.len());
+            let mut bytes = UdpDatagramMut::new_bytes(payload.len());
             let mut datagram = UdpDatagramMut::from_bytes(&mut bytes)?;
             // the payload slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need

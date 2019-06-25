@@ -5,18 +5,23 @@ use std::{
     cell::BorrowMutError, io::Error as IoError, num::TryFromIntError, rc::Rc,
 };
 
+// the following type alias is needed because the `custom_error!` macro doesn't
+// allow `&` in type specifications.
+type Str = &'static str;
+
 custom_error! {#[derive(Clone)] pub Fail
-    IoError{source: Rc<IoError>} = "I/O failure",
-    BorrowMutError{source: Rc<BorrowMutError>} = "mutable reference already borrowed",
+    IoError{source: Rc<IoError>} = "{source}",
+    BorrowMutError{source: Rc<BorrowMutError>} = "{source}",
     Icmpv4Error{source: icmpv4::Error} = "received an ICMPv4 message",
     Misdelivered{} = "misdelivered datagram",
-    Unsupported{} = "unsupported",
+    Unsupported{details: Str} = "unsupported ({details})",
     Ignored{} = "operation has no effect",
     TryAgain{} = "try again later",
     Timeout{} = "an asynchronous operation timed out",
     OutOfRange{} = "a value is out of range",
-    Malformed{} = "received a malformed datagram",
+    Malformed{details: Str} = "encountered a malformed datagram ({details})",
     TypeMismatch{} = "type mismatch",
+    Unimplemented{} = "not yet implemented",
 }
 
 impl From<IoError> for Fail {

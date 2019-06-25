@@ -9,13 +9,3 @@ pub use mac_address::MacAddress;
 
 #[cfg(test)]
 pub use frame::MIN_PAYLOAD_SIZE;
-
-#[cfg(not(test))]
-use frame::MIN_PAYLOAD_SIZE;
-
-use std::cmp::max;
-
-pub fn new_datagram(payload_sz: usize) -> Vec<u8> {
-    let payload_sz = max(payload_sz, MIN_PAYLOAD_SIZE);
-    vec![0u8; payload_sz + HEADER_SIZE]
-}

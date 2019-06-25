@@ -28,7 +28,9 @@ impl TryFrom<u16> for ArpOp {
     fn try_from(n: u16) -> Result<ArpOp> {
         match FromPrimitive::from_u16(n) {
             Some(op) => Ok(op),
-            None => Err(Fail::Unsupported {}),
+            None => Err(Fail::Unsupported {
+                details: "ARP opcode must be REQUEST or REPLY",
+            }),
         }
     }
 }
@@ -46,25 +48,33 @@ impl ArpPdu {
         trace!("ArpPdu::read(...)");
         let hard_type = reader.read_u16::<NetworkEndian>()?;
         if hard_type != HARD_TYPE_ETHER2 {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "this ARP implementation only supports Ethernet II",
+            });
         }
 
         let prot_type = reader.read_u16::<NetworkEndian>()?;
         if prot_type != PROT_TYPE_IPV4 {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "this ARP implementation only supports IPv4",
+            });
         }
 
         let mut byte = [0; 1];
         reader.read_exact(&mut byte)?;
         let hard_size = byte[0];
         if hard_size != HARD_SIZE_ETHER2 {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Malformed {
+                details: "ARP field HLEN contains an unexpected value",
+            });
         }
 
         reader.read_exact(&mut byte)?;
         let prot_size = byte[0];
         if prot_size != PROT_SIZE_IPV4 {
-            return Err(Fail::Unsupported {});
+            return Err(Fail::Unsupported {
+                details: "ARP field PLEN contains an unexpected value",
+            });
         }
 
         let op = reader.read_u16::<NetworkEndian>()?;
@@ -135,7 +145,7 @@ impl ArpPdu {
             }
         };
 
-        let mut bytes = ethernet2::new_datagram(ArpPdu::size());
+        let mut bytes = ethernet2::FrameMut::new_bytes(ArpPdu::size());
         let mut frame = ethernet2::FrameMut::from_bytes(&mut bytes)?;
         self.write(&mut frame.payload())?;
         let mut header = frame.header();

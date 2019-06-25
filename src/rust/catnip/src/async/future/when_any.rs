@@ -2,6 +2,7 @@ use super::Future;
 use crate::prelude::*;
 use std::{collections::VecDeque, fmt::Debug, time::Instant};
 
+#[derive(Default)]
 pub struct WhenAny<'a, T>
 where
     T: Clone + Debug,
@@ -13,12 +14,6 @@ impl<'a, T> WhenAny<'a, T>
 where
     T: Clone + Debug + 'static,
 {
-    pub fn new() -> WhenAny<'a, T> {
-        WhenAny {
-            queue: VecDeque::new(),
-        }
-    }
-
     pub fn add_future(&mut self, fut: Future<'a, T>) {
         self.queue.push_back(fut);
     }

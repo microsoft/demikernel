@@ -32,7 +32,7 @@ impl<'a> Icmpv4Peer<'a> {
         Icmpv4Peer {
             rt,
             arp,
-            bg: WhenAny::new(),
+            bg: WhenAny::default(),
             outstanding_requests: Rc::new(RefCell::new(HashSet::new())),
         }
     }

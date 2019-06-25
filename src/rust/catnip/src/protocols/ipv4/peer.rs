@@ -34,7 +34,7 @@ impl<'a> Ipv4Peer<'a> {
         match header.protocol()? {
             Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
             Ipv4Protocol::Udp => self.udp.receive(datagram),
-            _ => Err(Fail::Unsupported {}),
+            _ => Err(Fail::Unimplemented {}),
         }
     }
 

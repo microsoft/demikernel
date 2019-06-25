@@ -44,7 +44,7 @@ impl<'a> Station<'a> {
         match header.ether_type()? {
             ethernet2::EtherType::Arp => self.arp.receive(frame),
             ethernet2::EtherType::Ipv4 => self.ipv4.receive(frame),
-            _ => Err(Fail::Unsupported {}),
+            _ => Err(Fail::Unimplemented {}),
         }
     }
 

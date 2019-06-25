@@ -1,10 +1,12 @@
-use super::{
-    Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
-};
+#[cfg(test)]
+mod tests;
+
+use super::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use std::convert::TryFrom;
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Icmpv4EchoType {
     Request,
     Reply,
@@ -18,9 +20,12 @@ impl<'a> Icmpv4Echo<'a> {
     }
 
     pub fn r#type(&self) -> Icmpv4EchoType {
+        // precondition: we've ensured the call to `r#type()` will succeed in
+        // the implementation of `try_from()`.
         match self.0.header().r#type().unwrap() {
             Icmpv4Type::EchoRequest => Icmpv4EchoType::Request,
             Icmpv4Type::EchoReply => Icmpv4EchoType::Reply,
+            _ => panic!("unexpected ICMPv4 type"),
         }
     }
 
@@ -37,6 +42,7 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Echo<'a> {
     type Error = Fail;
 
     fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self> {
+        trace!("Icmpv4Datagram::try_from()");
         let r#type = datagram.header().r#type()?;
         assert!(
             r#type == Icmpv4Type::EchoRequest
@@ -50,9 +56,7 @@ pub struct Icmpv4EchoMut<'a>(Icmpv4DatagramMut<'a>);
 
 impl<'a> Icmpv4EchoMut<'a> {
     pub fn new_bytes() -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.resize(ICMPV4_HEADER_SIZE, 0);
-        bytes
+        Icmpv4DatagramMut::new_bytes()
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
@@ -88,6 +92,7 @@ impl<'a> Icmpv4EchoMut<'a> {
     }
 
     pub fn seal(self) -> Result<Icmpv4Echo<'a>> {
+        trace!("Icmpv4EchoMut::seal()");
         Ok(Icmpv4Echo::try_from(self.0.seal()?)?)
     }
 }

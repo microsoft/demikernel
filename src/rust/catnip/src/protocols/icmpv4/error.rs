@@ -34,7 +34,7 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Error {
         let src_addr = datagram.ipv4().header().src_addr();
         let header = datagram.header();
         match header.r#type()? {
-            _ => Err(Fail::Unsupported {}),
+            _ => Err(Fail::Unimplemented {}),
         }
     }
 }
