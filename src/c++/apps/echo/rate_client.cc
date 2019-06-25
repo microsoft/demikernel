@@ -209,6 +209,7 @@ int log_responses(uint32_t total_requests,
         FILE *log_fd = fopen(
             (const char *)generate_log_file_path(log_dir, label, log.name).c_str(), "w"
         );
+        DMTR_NOTNULL(EINVAL, log_fd);
         DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
         fclose(log_fd);
     }
