@@ -160,6 +160,20 @@ LatencyToCsv(FILE *f, dmtr_latency_t *l)
 }
 
 int
+LatencyToCsv(const char *filename, dmtr_latency_t *l)
+{
+    DMTR_NOTNULL(EINVAL, l);
+    FILE *f = fopen(filename, "w");
+    DMTR_NOTNULL(EINVAL, f);
+    fprintf(f, "VALUE\n");
+    for (unsigned int i = 0; i < l->latencies.size(); ++i) {
+        fprintf(f, "%ld\n", l->latencies[i]);
+    }
+    DMTR_OK(fclose(f));
+    return 0;
+}
+
+int
 Latency_Dump(FILE *f, dmtr_latency_t *l)
 {
     DMTR_NOTNULL(EINVAL, f);
@@ -303,6 +317,11 @@ int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns) {
 
 int dmtr_generate_timeseries(FILE *f, dmtr_latency_t *latency) {
     DMTR_OK(LatencyToCsv(f, latency));
+    return 0;
+}
+
+int dmtr_dump_latency_to_file(const char *filename, dmtr_latency_t *latency) {
+    DMTR_OK(LatencyToCsv(filename, latency));
     return 0;
 }
 
