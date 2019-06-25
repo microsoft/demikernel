@@ -119,8 +119,8 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         }
         notify(vm);
     } catch (const error &e) {
-        std::cout << e.what() << std::endl;
-        std::cout << desc << std::endl;
+        std::cerr << e.what() << std::endl;
+        std::cerr << desc << std::endl;
         exit(0);
     }
 
