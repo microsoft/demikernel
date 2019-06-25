@@ -7,8 +7,12 @@ use crate::{
     },
 };
 use r#async::Future;
-use std::{collections::HashMap, net::Ipv4Addr, rc::Rc, time::Instant};
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 pub struct Station<'a> {
     rt: Runtime<'a>,

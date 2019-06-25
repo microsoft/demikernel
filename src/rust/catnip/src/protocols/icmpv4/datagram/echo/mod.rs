@@ -15,7 +15,7 @@ pub enum Icmpv4EchoOp {
 pub struct Icmpv4Echo<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Echo<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self>{
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
         Ok(Icmpv4Echo::try_from(Icmpv4Datagram::from_bytes(bytes)?)?)
     }
 

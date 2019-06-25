@@ -8,6 +8,10 @@ use std::convert::TryFrom;
 pub struct UdpDatagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> UdpDatagram<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
+        Ok(UdpDatagram::try_from(ipv4::Datagram::from_bytes(bytes)?)?)
+    }
+
     pub fn header(&self) -> UdpHeader<'_> {
         UdpHeader::new(&self.0.payload()[..UDP_HEADER_SIZE])
     }

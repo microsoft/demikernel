@@ -13,7 +13,9 @@ pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> Icmpv4Datagram<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Icmpv4Datagram::try_from(ipv4::Datagram::from_bytes(bytes)?)?)
+        Ok(Icmpv4Datagram::try_from(ipv4::Datagram::from_bytes(
+            bytes,
+        )?)?)
     }
 
     pub fn header(&self) -> Icmpv4Header<'_> {

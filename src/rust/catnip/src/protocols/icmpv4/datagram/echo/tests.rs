@@ -24,36 +24,16 @@ fn ping() {
     let now = t0;
     let timeout = Duration::from_secs(1);
     let mut alice = test::new_alice(now);
+    alice.import_arp_cache(hashmap! {
+        *test::bob_ipv4_addr() => *test::bob_link_addr(),
+    });
+
     let mut bob = test::new_bob(now);
+    bob.import_arp_cache(hashmap! {
+        *test::alice_ipv4_addr() => *test::alice_link_addr(),
+    });
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected `Fail::TryAgain`, got `{:?}`", x),
-    }
-
-    let arp_request = {
-        let effect = alice.poll(now).expect("expected an effect");
-        match effect {
-            Effect::Transmit(bytes) => bytes.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
-        }
-    };
-
-    info!("passing ARP request #1 to bob...");
-    let now = now + Duration::from_millis(1);
-    bob.receive(&arp_request).unwrap();
-    let arp_reply = {
-        let effect = bob.poll(now).expect("expected an effect");
-        match effect {
-            Effect::Transmit(bytes) => bytes.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
-        }
-    };
-
-    info!("passing ARP reply #1 back to alice...");
-    let now = now + Duration::from_millis(1);
-    alice.receive(&arp_reply).unwrap();
     match fut.poll(now) {
         Err(Fail::TryAgain {}) => (),
         x => panic!("expected `Fail::TryAgain`, got `{:?}`", x),
@@ -103,7 +83,6 @@ fn timeout() {
     let now = t0;
     let timeout = Duration::from_secs(1);
     let alice = test::new_alice(now);
-
     alice.import_arp_cache(hashmap! {
         *test::bob_ipv4_addr() => *test::bob_link_addr(),
     });

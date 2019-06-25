@@ -4,8 +4,11 @@ use crate::{
     protocols::{arp, ethernet2, icmpv4, udp},
     r#async::Future,
 };
-use std::{convert::TryFrom, net::Ipv4Addr, time::Instant};
-use std::time::Duration;
+use std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+    time::{Duration, Instant},
+};
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,

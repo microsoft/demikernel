@@ -11,7 +11,9 @@ pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
     pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Ipv4Datagram::try_from(ethernet2::Frame::from_bytes(bytes)?)?)
+        Ok(Ipv4Datagram::try_from(ethernet2::Frame::from_bytes(
+            bytes,
+        )?)?)
     }
 
     pub fn header(&self) -> Ipv4Header<'_> {
