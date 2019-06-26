@@ -144,10 +144,13 @@ impl<'a> ArpPeer<'a> {
             };
 
             let datagram = Rc::new(arp.to_datagram()?);
+            // from TCP/IP illustrated, chapter 4:
+            // > The frequency of the ARP request is very close to one per
+            // > second, the maximum suggested by [RFC1122].
             let timeout = options
                 .arp
                 .request_timeout
-                .unwrap_or_else(|| FloatDuration::seconds(5.0))
+                .unwrap_or_else(|| FloatDuration::seconds(1.0))
                 .to_std()?;
             let mut retries_remaining =
                 options.arp.retry_count.unwrap_or(20) + 1;
