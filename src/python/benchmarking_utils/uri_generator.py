@@ -63,7 +63,7 @@ def gen_regex_requests(n_req, zalpha):
 
     # First generate the strengths distribution
     strengths = []
-    if (zalpha == -1):
+    if zalpha == -1:
         mini = min(regex_strengths_bins) - 1
         maxi = max(regex_strengths_bins) - 1
         strengths = np.random.randint(mini, maxi, size=n_req, dtype='i')
@@ -95,45 +95,69 @@ def gen_regex_requests(n_req, zalpha):
         regex_str = '?regex=' + ''.join(['a' for i in range(0, strengths[i])]) + 'b'
         regex_uris.append(regex_str)
 
-    return regex_uris
+    return np.array(regex_uris)
+
+
+def gen_file_requests(n_req, zalpha, list_file):
+    files_uris = None
+    with open(list_file, 'r') as f:
+        files_uris = np.array(f.read().splitlines())
+    if files_uris is None:
+        log_fatal('{} was (likely) empty'.format(list_file))
+
+    selected_files_uris = []
+    if zalpha == -1:
+        m = len(files_uris) - 1
+        selected_files_uris = files_uris[np.random.randint(0, m, size=n_req, dtype='i')]
+    else:
+        log_fatal('Zipf file selection not implemented yet')
+
+    return selected_files_uris
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Generate a list of URI for Demeter HTTP server experiments'
+        description='Generate a list of URI for Demeter html server experiments'
     )
     parser.add_argument('output_file', type=str, help='Output file name')
     parser.add_argument('n_requests', type=int, help='Number of requests to generate')
-    parser.add_argument('--http-ratio', type=float, help='Ratio of HTTP requests',
-                        dest='http_ratio', default=1)
+    parser.add_argument('--html-ratio', type=float, help='Ratio of html requests',
+                        dest='html_ratio', default=1)
     parser.add_argument('--regex-ratio', type=float, help='Ratio of RegEX requests',
                         dest='regex_ratio', default=0)
-    parser.add_argument('--http-zalpha', type=float, help='HTTP file size Zipf alpha (-1 to disable)',
-                        dest='http_zalpha', default=-1)
+    parser.add_argument('--html-zalpha', type=float, help='html file size Zipf alpha (-1 to disable)',
+                        dest='html_zalpha', default=-1)
     parser.add_argument('--regex-zalpha', type=float, help='RegEX strength Zipf alpha (-1 to disable)',
                         dest='regex_zalpha', default=-1)
+    parser.add_argument('--html-files-list', type=str, help='File holding html pages to request',
+                        dest='html_files_list', default='./')
 
     args = parser.parse_args()
 
     # Check arguments
-    if args.http_ratio + args.regex_ratio > 1:
-        log_fatal('Given ratios exceed 1 (http: {}, regex: {})'.format(
-            args.http_ratio, args.regex_ratio
+    if args.html_ratio + args.regex_ratio > 1:
+        log_fatal('Given ratios exceed 1 (html: {}, regex: {})'.format(
+            args.html_ratio, args.regex_ratio
         ))
-    if args.http_ratio < 0 or args.regex_ratio < 0:
-        log_fatal('Ratios are between 0 and 1 (http: {}, regex: {})'.format(
-            args.http_ratio, args.regex_ratio
+    if args.html_ratio < 0 or args.regex_ratio < 0:
+        log_fatal('Ratios are between 0 and 1 (html: {}, regex: {})'.format(
+            args.html_ratio, args.regex_ratio
         ))
     if args.regex_zalpha > -1 and args.regex_zalpha < 1:
         log_fatal('Zipf alpha must be greater than 1 (regex zalpha: {})'.format(args.regex_zalpha))
-    if args.http_zalpha > -1 and args.http_zalpha < 1:
-        log_fatal('Zipf alpha must be greater than 1 (http zalpha: {})'.format(args.http_zalpha))
+    if args.html_zalpha > -1 and args.html_zalpha < 1:
+        log_fatal('Zipf alpha must be greater than 1 (html zalpha: {})'.format(args.html_zalpha))
 
-    requests = {}
     # Generate regex requests
     n_regex_requests = int(args.n_requests * args.regex_ratio)
-    requests['regex'] = gen_regex_requests(n_regex_requests, args.regex_zalpha)
-    print(requests)
+    regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha)
+
+    # Generate file requests
+    n_file_requests = int(args.n_requests * args.html_ratio)
+    file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+
+    all_requests = np.concatenate([regex_requests, file_requests])
+    random.shuffle(all_requests)
 
     # interleave requests (of each type) in the output file
     with open(args.output_file, 'w+') as f:
-        f.writelines(['{}\n'.format(request) for request in requests['regex']])
+        f.writelines(['{}\n'.format(request) for request in all_requests])

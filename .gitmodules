@@ -48,3 +48,6 @@
 [submodule "submodules/redis-vanilla"]
 	path = submodules/redis-vanilla
 	url = https://github.com/mlr-msft/redis.git
+[submodule "src/python/benchmarking_utils/Shremote"]
+	path = src/python/benchmarking_utils/Shremote
+	url = https://github.com/maxdml/Shremote.git
