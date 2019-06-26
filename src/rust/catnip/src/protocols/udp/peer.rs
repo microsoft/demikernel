@@ -1,12 +1,12 @@
 use super::datagram::{UdpDatagram, UdpDatagramMut};
 use crate::{
     prelude::*,
-    protocols::{arp, ipv4},
+    protocols::{arp, icmpv4, ipv4},
     r#async::Future,
 };
-use std::{any::Any, convert::TryFrom, net::Ipv4Addr, rc::Rc};
-use std::collections::HashSet;
-use crate::protocols::icmpv4;
+use std::{
+    any::Any, collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+};
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
@@ -16,7 +16,11 @@ pub struct UdpPeer<'a> {
 
 impl<'a> UdpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> UdpPeer<'a> {
-        UdpPeer { rt, arp, open_ports: HashSet::new() }
+        UdpPeer {
+            rt,
+            arp,
+            open_ports: HashSet::new(),
+        }
     }
 
     pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
@@ -25,7 +29,12 @@ impl<'a> UdpPeer<'a> {
         let ipv4_header = datagram.ipv4().header();
         let udp_header = datagram.header();
         if !self.is_port_open(udp_header.dest_port()) {
-            return Err(Fail::from(icmpv4::Error::new(icmpv4::ErrorType::DestinationUnreachable(icmpv4::DestinationUnreachable::DestinationPortUnreachable), datagram.into())))
+            return Err(Fail::from(icmpv4::Error::new(
+                icmpv4::ErrorType::DestinationUnreachable(
+                    icmpv4::DestinationUnreachable::DestinationPortUnreachable,
+                ),
+                datagram.into(),
+            )));
         }
 
         self.rt.emit_effect(Effect::BytesReceived {

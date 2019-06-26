@@ -50,7 +50,7 @@ impl Icmpv4Error {
         let mut bytes = Vec::new();
         // i don't see a reason why writing to `bytes` should fail.
         bytes.write_all(context.header().as_bytes()).unwrap();
-        // from [Wikipedia]():
+        // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
         // > ICMP error messages contain a data section that includes a copy
         // > of the entire IPv4 header, plus at least the first eight bytes of
         // > data from the IPv4 packet that caused the error message.

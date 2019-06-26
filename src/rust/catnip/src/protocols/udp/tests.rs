@@ -1,7 +1,10 @@
 use super::datagram::UdpDatagram;
-use crate::{prelude::*, protocols::ipv4, test};
+use crate::{
+    prelude::*,
+    protocols::{icmpv4, ipv4},
+    test,
+};
 use std::time::{Duration, Instant};
-use crate::protocols::icmpv4;
 
 #[test]
 fn unicast() {
@@ -119,7 +122,12 @@ fn destination_port_unreachable() {
 
     info!("passing UDP datagram to bob...");
     match bob.receive(&udp_datagram) {
-        Err(Fail::Icmpv4Error { source: e }) => assert_eq!(e.r#type(), icmpv4::ErrorType::DestinationUnreachable(icmpv4::DestinationUnreachable::DestinationPortUnreachable)),
+        Err(Fail::Icmpv4Error { source: e }) => assert_eq!(
+            e.r#type(),
+            icmpv4::ErrorType::DestinationUnreachable(
+                icmpv4::DestinationUnreachable::DestinationPortUnreachable
+            )
+        ),
         x => panic!("expected ICMPv4 error, got `{:?}` instead.", x),
     }
 }

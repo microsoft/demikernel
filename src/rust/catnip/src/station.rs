@@ -107,5 +107,4 @@ impl<'a> Station<'a> {
     pub fn close_udp_port(&mut self, port_num: u16) {
         self.ipv4.close_udp_port(port_num);
     }
-
 }
