@@ -944,8 +944,10 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     // check ip header
     auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
     p += sizeof(*ip_hdr);
-    uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
-    uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
+
+    // In network byte order.
+    in_addr_t ipv4_src_addr = ip_hdr->src_addr;
+    in_addr_t ipv4_dst_addr = ip_hdr->dst_addr;
 
     if (IPPROTO_UDP != ip_hdr->next_proto_id) {
 #if DMTR_DEBUG
@@ -955,8 +957,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     }
 
 #if DMTR_DEBUG
-    printf("recv: ip src addr: %x\n", ipv4_src_addr);
-    printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
+    printf("recv: ip src addr: %x\n", ntohl(ipv4_src_addr));
+    printf("recv: ip dst addr: %x\n", ntohl(ipv4_dst_addr));
 #endif
     src.sin_addr.s_addr = ipv4_src_addr;
     dst.sin_addr.s_addr = ipv4_dst_addr;
@@ -964,8 +966,10 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     // check udp header
     auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
     p += sizeof(*udp_hdr);
-    uint16_t udp_src_port = ntohs(udp_hdr->src_port);
-    uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
+
+    // In network byte order.
+    in_port_t udp_src_port = udp_hdr->src_port;
+    in_port_t udp_dst_port = udp_hdr->dst_port;
 
     if (udp_hdr->dst_port != my_app_port) {
 #if DMTR_DEBUG
@@ -975,8 +979,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     }
 
 #if DMTR_DEBUG
-    printf("recv: udp src port: %d\n", udp_src_port);
-    printf("recv: udp dst port: %d\n", udp_dst_port);
+    printf("recv: udp src port: %d\n", ntohs(udp_src_port));
+    printf("recv: udp dst port: %d\n", ntohs(udp_dst_port));
 #endif
 
     src.sin_port = udp_src_port;
