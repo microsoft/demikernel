@@ -5,7 +5,7 @@ use num_traits::FromPrimitive;
 use std::{cmp::min, convert::TryFrom, error::Error, fmt, io::Write};
 
 #[repr(u8)]
-#[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
+#[derive(FromPrimitive, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Icmpv4DestinationUnreachable {
     DestinationNetworkUnreachable = 0,
     DestinationHostUnreachable = 1,
@@ -31,7 +31,7 @@ impl From<u8> for Icmpv4DestinationUnreachable {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Icmpv4ErrorType {
     DestinationUnreachable(Icmpv4DestinationUnreachable),
 }
@@ -43,9 +43,9 @@ pub struct Icmpv4Error {
 }
 
 impl Icmpv4Error {
-    pub fn new<'a>(
+    pub fn new(
         r#type: Icmpv4ErrorType,
-        context: ipv4::Datagram<'a>,
+        context: ipv4::Datagram<'_>,
     ) -> Icmpv4Error {
         let mut bytes = Vec::new();
         // i don't see a reason why writing to `bytes` should fail.
@@ -60,6 +60,14 @@ impl Icmpv4Error {
             r#type,
             context: bytes,
         }
+    }
+
+    pub fn r#type(&self) -> Icmpv4ErrorType {
+        self.r#type
+    }
+
+    pub fn context(&self) -> &[u8] {
+        &self.context
     }
 }
 

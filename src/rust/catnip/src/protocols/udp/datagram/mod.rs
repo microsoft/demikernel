@@ -41,6 +41,12 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagram<'a> {
     }
 }
 
+impl<'a> Into<ipv4::Datagram<'a>> for UdpDatagram<'a> {
+    fn into(self) -> ipv4::Datagram<'a> {
+        self.0
+    }
+}
+
 pub struct UdpDatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> UdpDatagramMut<'a> {

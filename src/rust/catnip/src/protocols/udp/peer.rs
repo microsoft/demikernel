@@ -5,15 +5,18 @@ use crate::{
     r#async::Future,
 };
 use std::{any::Any, convert::TryFrom, net::Ipv4Addr, rc::Rc};
+use std::collections::HashSet;
+use crate::protocols::icmpv4;
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
+    open_ports: HashSet<u16>,
 }
 
 impl<'a> UdpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> UdpPeer<'a> {
-        UdpPeer { rt, arp }
+        UdpPeer { rt, arp, open_ports: HashSet::new() }
     }
 
     pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
@@ -21,6 +24,10 @@ impl<'a> UdpPeer<'a> {
         let datagram = UdpDatagram::try_from(datagram)?;
         let ipv4_header = datagram.ipv4().header();
         let udp_header = datagram.header();
+        if !self.is_port_open(udp_header.dest_port()) {
+            return Err(Fail::from(icmpv4::Error::new(icmpv4::ErrorType::DestinationUnreachable(icmpv4::DestinationUnreachable::DestinationPortUnreachable), datagram.into())))
+        }
+
         self.rt.emit_effect(Effect::BytesReceived {
             protocol: ipv4::Protocol::Udp,
             src_addr: ipv4_header.src_addr(),
@@ -30,6 +37,18 @@ impl<'a> UdpPeer<'a> {
         });
 
         Ok(())
+    }
+
+    pub fn is_port_open(&self, port_num: u16) -> bool {
+        self.open_ports.contains(&port_num)
+    }
+
+    pub fn open_port(&mut self, port_num: u16) {
+        assert!(self.open_ports.replace(port_num).is_none());
+    }
+
+    pub fn close_port(&mut self, port_num: u16) {
+        assert!(self.open_ports.remove(&port_num));
     }
 
     pub fn cast(

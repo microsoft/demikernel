@@ -95,4 +95,17 @@ impl<'a> Station<'a> {
     ) -> Future<'a, Duration> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
+
+    pub fn is_udp_port_open(&self, port_num: u16) -> bool {
+        self.ipv4.is_udp_port_open(port_num)
+    }
+
+    pub fn open_udp_port(&mut self, port_num: u16) {
+        self.ipv4.open_udp_port(port_num);
+    }
+
+    pub fn close_udp_port(&mut self, port_num: u16) {
+        self.ipv4.close_udp_port(port_num);
+    }
+
 }

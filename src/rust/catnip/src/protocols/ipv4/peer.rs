@@ -46,6 +46,26 @@ impl<'a> Ipv4Peer<'a> {
         Ok(self.icmpv4.poll(now)?)
     }
 
+    pub fn ping(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        timeout: Option<Duration>,
+    ) -> Future<'a, Duration> {
+        self.icmpv4.ping(dest_ipv4_addr, timeout)
+    }
+
+    pub fn is_udp_port_open(&self, port_num: u16) -> bool {
+        self.udp.is_port_open(port_num)
+    }
+
+    pub fn open_udp_port(&mut self, port_num: u16) {
+        self.udp.open_port(port_num);
+    }
+
+    pub fn close_udp_port(&mut self, port_num: u16) {
+        self.udp.close_port(port_num);
+    }
+
     pub fn udp_cast(
         &self,
         dest_ipv4_addr: Ipv4Addr,
@@ -54,13 +74,5 @@ impl<'a> Ipv4Peer<'a> {
         payload: Vec<u8>,
     ) -> Future<'a, ()> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, payload)
-    }
-
-    pub fn ping(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        timeout: Option<Duration>,
-    ) -> Future<'a, Duration> {
-        self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 }
