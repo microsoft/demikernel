@@ -61,7 +61,7 @@ pub struct Icmpv4EchoMut<'a>(Icmpv4DatagramMut<'a>);
 
 impl<'a> Icmpv4EchoMut<'a> {
     pub fn new_bytes() -> Vec<u8> {
-        Icmpv4DatagramMut::new_bytes()
+        Icmpv4DatagramMut::new_bytes(4)
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
@@ -88,7 +88,7 @@ impl<'a> Icmpv4EchoMut<'a> {
     }
 
     pub fn seq_num(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0.payload()[2..4], value)
+        NetworkEndian::write_u16(&mut self.0.payload()[2..], value)
     }
 
     #[allow(dead_code)]

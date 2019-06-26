@@ -6,6 +6,9 @@ pub use header::{
 
 use crate::{prelude::*, protocols::ipv4};
 use std::{convert::TryFrom, io::Write};
+use std::cmp::min;
+
+const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
@@ -59,8 +62,10 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
 pub struct Icmpv4DatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> Icmpv4DatagramMut<'a> {
-    pub fn new_bytes() -> Vec<u8> {
-        ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE)
+    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE + payload_sz);
+        bytes.resize(min(bytes.len(), MAX_ICMPV4_DATAGRAM_SIZE), 0);
+        bytes
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
@@ -87,6 +92,7 @@ impl<'a> Icmpv4DatagramMut<'a> {
     pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {
         trace!("Icmp4DatagramMut::seal()");
         self.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
+        self.header().checksum(0);
         let mut checksum = ipv4::Checksum::new();
         checksum.write_all(self.0.payload()).unwrap();
         self.header().checksum(checksum.finish());
