@@ -589,7 +589,12 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     src.sin_port = htons(12345);
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
     my_bound_src = src;
-    std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
+
+    char src_ip_str[INET_ADDRSTRLEN], dst_ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(my_bound_src->sin_addr), src_ip_str, sizeof(src_ip_str));
+    inet_ntop(AF_INET, &(my_default_dst->sin_addr), dst_ip_str, sizeof(dst_ip_str));
+    std::cout << "Connecting from " << src_ip_str << " to " << dst_ip_str << std::endl;
+
     start_threads();
     return 0;
 }
