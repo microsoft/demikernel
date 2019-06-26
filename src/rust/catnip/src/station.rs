@@ -5,8 +5,8 @@ use crate::{
         ethernet2::{self, MacAddress},
         ipv4,
     },
+    r#async::Future,
 };
-use r#async::Future;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,

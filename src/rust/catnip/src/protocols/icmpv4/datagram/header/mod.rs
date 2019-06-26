@@ -14,6 +14,7 @@ pub const ICMPV4_HEADER_SIZE: usize = 4;
 #[derive(FromPrimitive, Clone, PartialEq, Eq, Debug)]
 pub enum Icmpv4Type {
     EchoReply = 0,
+    DestinationUnreachable = 3,
     EchoRequest = 8,
 }
 

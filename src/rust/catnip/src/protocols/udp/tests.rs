@@ -50,7 +50,7 @@ fn unicast() {
     bob.receive(&udp_datagram).unwrap();
     let effect = bob.poll(now).expect("expected an effect");
     match effect {
-        Effect::Received {
+        Effect::BytesReceived {
             ref protocol,
             ref src_addr,
             ref src_port,

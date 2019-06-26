@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
+use super::datagram::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use std::convert::TryFrom;

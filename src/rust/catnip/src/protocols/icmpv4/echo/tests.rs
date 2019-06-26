@@ -1,4 +1,5 @@
 use super::*;
+use crate::test;
 use std::time::{Duration, Instant};
 
 #[test]

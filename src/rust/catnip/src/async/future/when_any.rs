@@ -14,7 +14,7 @@ impl<'a, T> WhenAny<'a, T>
 where
     T: Clone + Debug + 'static,
 {
-    pub fn add_future(&mut self, fut: Future<'a, T>) {
+    pub fn monitor(&mut self, fut: Future<'a, T>) {
         self.queue.push_back(fut);
     }
 

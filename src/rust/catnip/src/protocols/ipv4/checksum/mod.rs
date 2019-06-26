@@ -3,6 +3,7 @@ mod tests;
 
 use byteorder::{ByteOrder, NetworkEndian};
 use either::Either;
+use std::io::{Result as IoResult, Write};
 
 // note: we're following the model of std::hash::Hasher, even though
 // it only supports 64-bit hash widths.
@@ -18,32 +19,6 @@ pub struct Hasher(Either<Accum, u16>);
 impl Hasher {
     pub fn new() -> Hasher {
         Hasher(Either::Left(Accum::default()))
-    }
-
-    pub fn write(&mut self, mut bytes: &[u8]) {
-        let mut accum = self.0.as_mut().left().unwrap();
-
-        if bytes.is_empty() {
-            return;
-        }
-
-        if let Some(odd_byte) = accum.odd_byte {
-            let pair = [odd_byte, bytes[0]];
-            let n = u32::from(NetworkEndian::read_u16(&pair));
-            accum.sum += n;
-            bytes = &bytes[1..];
-            accum.odd_byte = None;
-        }
-
-        while bytes.len() >= 2 {
-            let n = u32::from(NetworkEndian::read_u16(bytes));
-            accum.sum += n;
-            bytes = &bytes[2..];
-        }
-
-        if !bytes.is_empty() {
-            accum.odd_byte = Some(bytes[0])
-        }
     }
 
     pub fn finish(&mut self) -> u16 {
@@ -68,5 +43,41 @@ impl Hasher {
         let result = ((!accum.sum) & 0xffff) as u16;
         self.0 = Either::Right(result);
         result
+    }
+}
+
+impl Write for Hasher {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        let mut bytes = buf;
+        // `write()` shouldn't be called after `finish()` has been called.
+        let mut accum = self.0.as_mut().left().unwrap();
+
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+
+        if let Some(odd_byte) = accum.odd_byte {
+            let pair = [odd_byte, bytes[0]];
+            let n = u32::from(NetworkEndian::read_u16(&pair));
+            accum.sum += n;
+            bytes = &bytes[1..];
+            accum.odd_byte = None;
+        }
+
+        while bytes.len() >= 2 {
+            let n = u32::from(NetworkEndian::read_u16(bytes));
+            accum.sum += n;
+            bytes = &bytes[2..];
+        }
+
+        if !bytes.is_empty() {
+            accum.odd_byte = Some(bytes[0])
+        }
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        Ok(())
     }
 }

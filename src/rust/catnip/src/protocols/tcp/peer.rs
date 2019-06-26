@@ -13,7 +13,7 @@ impl<'a> TcpPeer<'a> {
         TcpPeer { rt, arp }
     }
 
-    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
+    pub fn receive(&mut self, _datagram: ipv4::Datagram<'_>) -> Result<()> {
         trace!("TcpPeer::receive(...)");
         Ok(())
     }

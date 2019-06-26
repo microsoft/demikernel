@@ -3,7 +3,7 @@ mod header;
 use super::checksum::Hasher;
 use crate::{prelude::*, protocols::ethernet2};
 use header::{DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Write};
 
 pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 
@@ -91,7 +91,7 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
 
         let should_be_zero = {
             let mut hasher = Hasher::new();
-            hasher.write(header.as_bytes());
+            hasher.write_all(header.as_bytes()).unwrap();
             hasher.finish()
         };
 
@@ -146,8 +146,8 @@ impl<'a> Ipv4DatagramMut<'a> {
             ipv4_header.total_len(u16::try_from(total_len)?);
 
             let mut hasher = Hasher::new();
-            hasher.write(&ipv4_header.as_bytes()[..10]);
-            hasher.write(&ipv4_header.as_bytes()[12..]);
+            hasher.write_all(&ipv4_header.as_bytes()[..10]).unwrap();
+            hasher.write_all(&ipv4_header.as_bytes()[12..]).unwrap();
             ipv4_header.checksum(hasher.finish());
         }
 

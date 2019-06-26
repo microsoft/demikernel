@@ -1,20 +1,23 @@
 use super::{
-    datagram::{
-        Icmpv4Datagram, Icmpv4Echo, Icmpv4EchoMut,
-        Icmpv4EchoOp, Icmpv4Type,
-    },
+    datagram::{Icmpv4Datagram, Icmpv4Type},
+    echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp},
+    error::Icmpv4Error,
 };
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
     r#async::{Future, WhenAny},
 };
+use byteorder::{NativeEndian, WriteBytesExt};
+use rand::Rng;
 use std::{
     any::Any,
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashSet,
     convert::TryFrom,
+    io::Write,
     net::Ipv4Addr,
+    num::Wrapping,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -22,17 +25,24 @@ use std::{
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
-    bg: WhenAny<'a, ()>,
+    unfinished_work: WhenAny<'a, ()>,
     outstanding_requests: Rc<RefCell<HashSet<(u16, u16)>>>,
+    ping_seq_num_counter: Rc<Cell<Wrapping<u16>>>,
 }
 
 impl<'a> Icmpv4Peer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Icmpv4Peer<'a> {
+        let ping_seq_num_counter = {
+            let mut rng = rt.borrow_rng();
+            Wrapping(rng.gen())
+        };
+
         Icmpv4Peer {
             rt,
             arp,
-            bg: WhenAny::default(),
+            unfinished_work: WhenAny::default(),
             outstanding_requests: Rc::new(RefCell::new(HashSet::new())),
+            ping_seq_num_counter: Rc::new(Cell::new(ping_seq_num_counter)),
         }
     }
 
@@ -55,6 +65,7 @@ impl<'a> Icmpv4Peer<'a> {
                     datagram.id(),
                     datagram.seq_num(),
                 );
+                Ok(())
             }
             Icmpv4Type::EchoReply => {
                 let datagram = Icmpv4Echo::try_from(datagram)?;
@@ -63,14 +74,19 @@ impl<'a> Icmpv4Peer<'a> {
                 let mut outstanding_requests =
                     self.outstanding_requests.borrow_mut();
                 outstanding_requests.remove(&(id, seq_num));
+                Ok(())
             }
+            _ => match Icmpv4Error::try_from(datagram) {
+                Ok(e) => Err(Fail::from(e)),
+                Err(_) => Err(Fail::Unsupported {
+                    details: "unrecognized ICMPv4 TYPE",
+                }),
+            },
         }
-
-        Ok(())
     }
 
     pub fn poll(&mut self, now: Instant) -> Result<()> {
-        self.bg.poll(now).map(|_| ())
+        self.unfinished_work.poll(now).map(|_| ())
     }
 
     pub fn ping(
@@ -82,6 +98,8 @@ impl<'a> Icmpv4Peer<'a> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         let outstanding_requests = self.outstanding_requests.clone();
+        let id = self.generate_ping_id();
+        let seq_num = self.generate_seq_num();
         self.rt.start_coroutine(move || {
             let t0 = rt.now();
             let options = rt.options();
@@ -112,10 +130,6 @@ impl<'a> Icmpv4Peer<'a> {
 
                 dest_link_addr
             };
-
-            // todo: these parameters need to be more carefully selected.
-            let id = 0;
-            let seq_num = 0;
 
             let mut bytes = Icmpv4EchoMut::new_bytes();
             let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
@@ -215,6 +229,24 @@ impl<'a> Icmpv4Peer<'a> {
             Ok(x)
         });
 
-        self.bg.add_future(fut);
+        self.unfinished_work.monitor(fut);
+    }
+
+    fn generate_ping_id(&self) -> u16 {
+        let mut id = ipv4::Checksum::new();
+        let options = self.rt.options();
+        id.write_u32::<NativeEndian>(options.my_ipv4_addr.into())
+            .unwrap();
+        let mut rng = self.rt.borrow_rng();
+        let mut nonce = [0; 2];
+        rng.fill(&mut nonce);
+        id.write_all(&nonce).unwrap();
+        id.finish()
+    }
+
+    fn generate_seq_num(&self) -> u16 {
+        let seq_num = self.ping_seq_num_counter.get();
+        self.ping_seq_num_counter.set(seq_num + Wrapping(1));
+        seq_num.0
     }
 }

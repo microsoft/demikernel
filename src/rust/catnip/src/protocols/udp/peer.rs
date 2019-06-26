@@ -21,7 +21,7 @@ impl<'a> UdpPeer<'a> {
         let datagram = UdpDatagram::try_from(datagram)?;
         let ipv4_header = datagram.ipv4().header();
         let udp_header = datagram.header();
-        self.rt.emit_effect(Effect::Received {
+        self.rt.emit_effect(Effect::BytesReceived {
             protocol: ipv4::Protocol::Udp,
             src_addr: ipv4_header.src_addr(),
             src_port: udp_header.src_port(),

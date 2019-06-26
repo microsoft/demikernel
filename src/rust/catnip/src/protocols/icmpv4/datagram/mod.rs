@@ -1,13 +1,11 @@
-mod echo;
 mod header;
 
-pub use echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp};
 pub use header::{
     Icmpv4Header, Icmpv4HeaderMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
 };
 
 use crate::{prelude::*, protocols::ipv4};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Write};
 
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
@@ -44,10 +42,10 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
         }
 
         let icmpv4 = Icmpv4Datagram(ipv4_datagram);
-        let mut checksum = ipv4::checksum::Hasher::new();
+        let mut checksum = ipv4::Checksum::new();
         let payload = icmpv4.ipv4().payload();
-        checksum.write(&payload[..2]);
-        checksum.write(&payload[4..]);
+        checksum.write_all(&payload[..2]).unwrap();
+        checksum.write_all(&payload[4..]).unwrap();
         if checksum.finish() != icmpv4.header().checksum() {
             return Err(Fail::Malformed {
                 details: "ICMPv4 checksum mismatch",
@@ -89,8 +87,8 @@ impl<'a> Icmpv4DatagramMut<'a> {
     pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {
         trace!("Icmp4DatagramMut::seal()");
         self.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
-        let mut checksum = ipv4::checksum::Hasher::new();
-        checksum.write(self.0.payload());
+        let mut checksum = ipv4::Checksum::new();
+        checksum.write_all(self.0.payload()).unwrap();
         self.header().checksum(checksum.finish());
         Ok(Icmpv4Datagram::try_from(self.0.seal()?)?)
     }
