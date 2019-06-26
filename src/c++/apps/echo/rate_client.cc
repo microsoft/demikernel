@@ -472,6 +472,7 @@ int main(int argc, char **argv) {
             log_error("Failed to open uri list file");
             return -1;
         }
+        /* We loop in case the URI file was not created with the desired amount of requests in mind */
         while (http_requests.size() < total_requests) {
             char req[MAX_REQUEST_SIZE];
             while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
@@ -480,6 +481,8 @@ int main(int argc, char **argv) {
                 std::unique_ptr<std::string> request(new std::string(req));
                 http_requests.push_back(std::move(request));
             }
+            urifile.clear(); //Is this needed in c++11?
+            urifile.seekg(0, std::ios::beg);
         }
     } else {
         /* All requests are the one given to the CLI */
