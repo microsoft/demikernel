@@ -552,7 +552,6 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 #endif
             yield();
             continue;
-
         }
 
         if (0 == bytes_read) {
