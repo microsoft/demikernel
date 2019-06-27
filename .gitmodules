@@ -27,11 +27,11 @@
 	url = https://github.com/mlr-msft/redis.git
 	branch = msft/4.0.9/mirobert
 [submodule "apps/tapir-rdma"]
-	path = apps/tapir-rdma
+	path = submodules/tapir-rdma
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-rdma
 [submodule "apps/tapir-lwip"]
-	path = apps/tapir-lwip
+	path = submodules/tapir-lwip
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-lwip
 [submodule "tapir-posix"]
@@ -39,7 +39,7 @@
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
 [submodule "apps/tapir-posix"]
-	path = apps/tapir-posix
+	path = submodules/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
 [submodule "submodules/redis-lwip"]
