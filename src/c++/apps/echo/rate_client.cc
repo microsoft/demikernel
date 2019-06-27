@@ -152,11 +152,11 @@ int log_responses(uint32_t total_requests,
                   hr_clock::time_point *time_end,
                   std::string log_dir, std::string label) {
 
+    /* Create dmtr_latency objects */
     std::vector<struct log_data> logs;
     struct log_data e2e = {.l = NULL, .name = "end-to-end"};
     DMTR_OK(dmtr_new_latency(&e2e.l, "end-to-end"));
     logs.push_back(e2e);
-    /*
     struct log_data connect = {.l = NULL, .name = "connect"};
     DMTR_OK(dmtr_new_latency(&connect.l, "connect"));
     logs.push_back(connect);
@@ -166,7 +166,7 @@ int log_responses(uint32_t total_requests,
     struct log_data receive = {.l = NULL, .name = "receive"};
     DMTR_OK(dmtr_new_latency(&receive.l, "receive"));
     logs.push_back(receive);
-    */
+
     uint32_t logged = 0;
     while (logged < total_requests) {
         bool has_pair = false;
@@ -190,15 +190,23 @@ int log_responses(uint32_t total_requests,
         RequestState req = request.second;
         DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req.connecting),
                                           ns_diff(req.connecting, req.completed)));
-        //fprintf(stderr, "%ld\n", ns_diff(req.connecting, req.completed));
         /*
+        fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
+                ns_diff(req.connecting, req.connected),
+                since_epoch(req.connected), since_epoch(req.connecting));
+        fprintf(stderr, "Send: %ld (%ld-%ld)\n",
+                ns_diff(req.sending, req.reading),
+                since_epoch(req.reading), since_epoch(req.sending));
+        fprintf(stderr, "Receive: %ld (%ld-%ld)\n",
+                ns_diff(req.reading, req.completed),
+                since_epoch(req.completed), since_epoch(req.reading));
+        */
         DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req.connecting),
                                           ns_diff(req.connecting, req.connected)));
         DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req.sending),
                                           ns_diff(req.sending, req.reading)));
         DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req.reading),
                                           ns_diff(req.reading, req.completed)));
-        */
         logged++;
         if (hr_clock::now() > *time_end) {
             log_warn("logging time has passed. %d requests were logged.", logged);
@@ -270,15 +278,15 @@ int process_connections(int whoami, uint32_t total_requests, hr_clock::time_poin
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         if (status == 0) {
+            tokens.erase(tokens.begin() + idx);
             auto req = requests.find(wait_out.qr_qd);
             if (req == requests.end()) {
                 log_error("OP'ed on an unknown request qd?");
                 exit(1);
             }
-            RequestState request = req->second;
+            RequestState &request = req->second;
             if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
                 /* Create pop task now that data was sent */
-                tokens.erase(tokens.begin() + idx);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
                 request.reading = hr_clock::now();
@@ -295,7 +303,6 @@ int process_connections(int whoami, uint32_t total_requests, hr_clock::time_poin
                 }
                 free(wait_out.qr_value.sga.sga_buf);
                 dmtr_close(wait_out.qr_qd);
-                tokens.erase(tokens.begin()+idx);
                 completed++;
             } else {
                 log_warn("Non supported OP code");
