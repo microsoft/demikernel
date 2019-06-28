@@ -11,7 +11,7 @@ fn serialization() {
     echo.r#type(Icmpv4EchoOp::Reply);
     echo.id(0xab);
     echo.seq_num(0xcd);
-    let echo = echo.seal().unwrap();
+    let echo = echo.unmut();
     assert_eq!(Icmpv4EchoOp::Reply, echo.op());
     assert_eq!(0xab, echo.id());
     assert_eq!(0xcd, echo.seq_num());

@@ -5,8 +5,7 @@ pub use header::{
 };
 
 use crate::{prelude::*, protocols::ipv4};
-use std::{convert::TryFrom, io::Write};
-use std::cmp::min;
+use std::{cmp::min, convert::TryFrom, io::Write};
 
 const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
@@ -63,7 +62,8 @@ pub struct Icmpv4DatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> Icmpv4DatagramMut<'a> {
     pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
-        let mut bytes = ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE + payload_sz);
+        let mut bytes =
+            ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE + payload_sz);
         bytes.resize(min(bytes.len(), MAX_ICMPV4_DATAGRAM_SIZE), 0);
         bytes
     }
@@ -84,9 +84,8 @@ impl<'a> Icmpv4DatagramMut<'a> {
         &mut self.0.payload()[ICMPV4_HEADER_SIZE..]
     }
 
-    #[allow(dead_code)]
-    pub fn unmut(self) -> Result<Icmpv4Datagram<'a>> {
-        Ok(Icmpv4Datagram::try_from(self.0.unmut()?)?)
+    pub fn unmut(self) -> Icmpv4Datagram<'a> {
+        Icmpv4Datagram(self.0.unmut())
     }
 
     pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {

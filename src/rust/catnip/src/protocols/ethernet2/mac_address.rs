@@ -23,6 +23,10 @@ impl MacAddress {
         MacAddress(eui48::MacAddress::nil())
     }
 
+    pub fn is_nil(self) -> bool {
+        self.0.is_nil()
+    }
+
     pub fn is_broadcast(self) -> bool {
         self.0.is_broadcast()
     }

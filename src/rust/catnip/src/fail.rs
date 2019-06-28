@@ -1,4 +1,3 @@
-use crate::protocols::icmpv4;
 use custom_error::custom_error;
 use float_duration;
 use std::{
@@ -12,7 +11,6 @@ type Str = &'static str;
 custom_error! {#[derive(Clone)] pub Fail
     IoError{source: Rc<IoError>} = "{source}",
     BorrowMutError{source: Rc<BorrowMutError>} = "{source}",
-    Icmpv4Error{source: icmpv4::Error} = "received an ICMPv4 message",
     Misdelivered{} = "misdelivered datagram",
     Unsupported{details: Str} = "unsupported ({details})",
     Ignored{} = "operation has no effect",

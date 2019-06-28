@@ -121,13 +121,36 @@ fn destination_port_unreachable() {
     };
 
     info!("passing UDP datagram to bob...");
-    match bob.receive(&udp_datagram) {
-        Err(Fail::Icmpv4Error { source: e }) => assert_eq!(
-            e.r#type(),
-            icmpv4::ErrorType::DestinationUnreachable(
-                icmpv4::DestinationUnreachable::DestinationPortUnreachable
-            )
-        ),
-        x => panic!("expected ICMPv4 error, got `{:?}` instead.", x),
+    bob.receive(&udp_datagram).unwrap();
+    let effect = bob.poll(now).expect("expected an effect");
+    let icmpv4_datagram = {
+        let bytes = match effect {
+            Effect::Transmit(bytes) => bytes,
+            e => panic!("got unanticipated effect `{:?}`", e),
+        };
+
+        let _ = icmpv4::Error::from_bytes(&bytes).unwrap();
+        bytes
+    };
+
+    info!("passing ICMPv4 datagram to alice...");
+    alice.receive(&icmpv4_datagram).unwrap();
+    let effect = alice.poll(now).expect("expected an effect");
+    match effect {
+        Effect::Icmpv4Error {
+            ref id,
+            ref next_hop_mtu,
+            ..
+        } => {
+            assert_eq!(
+                id,
+                &icmpv4::ErrorId::DestinationUnreachable(
+                    icmpv4::DestinationUnreachable::DestinationPortUnreachable
+                )
+            );
+            assert_eq!(next_hop_mtu, &0u16);
+            // todo: validate `context`
+        }
+        e => panic!("got unanticipated effect `{:?}`", e),
     }
 }

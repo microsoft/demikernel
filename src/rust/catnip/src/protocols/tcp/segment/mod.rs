@@ -73,9 +73,9 @@ impl<'a> TcpSegmentMut<'a> {
         &mut self.0.payload()[MIN_TCP_HEADER_SIZE..]
     }
 
-    #[allow(dead_code)]
-    pub fn unmut(self) -> Result<TcpSegment<'a>> {
-        Ok(TcpSegment::try_from(self.0.unmut()?)?)
+    pub fn unmut(self) /* -> TcpSegment<'a> */
+    {
+        unimplemented!()
     }
 
     pub fn seal(self) -> Result<TcpSegment<'a>> {

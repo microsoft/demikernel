@@ -1,9 +1,17 @@
-use crate::{io::IoVec, protocols::ipv4};
+use crate::{
+    io::IoVec,
+    protocols::{icmpv4, ipv4},
+};
 use std::{net::Ipv4Addr, rc::Rc};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Effect {
     Transmit(Rc<Vec<u8>>),
+    Icmpv4Error {
+        id: icmpv4::ErrorId,
+        next_hop_mtu: u16,
+        context: Vec<u8>,
+    },
     BytesReceived {
         protocol: ipv4::Protocol,
         src_addr: Ipv4Addr,

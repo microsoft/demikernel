@@ -91,9 +91,8 @@ impl<'a> Icmpv4EchoMut<'a> {
         NetworkEndian::write_u16(&mut self.0.payload()[2..], value)
     }
 
-    #[allow(dead_code)]
-    pub fn unmut(self) -> Result<Icmpv4Echo<'a>> {
-        Ok(Icmpv4Echo::try_from(self.0.unmut()?)?)
+    pub fn unmut(self) -> Icmpv4Echo<'a> {
+        Icmpv4Echo(self.0.unmut())
     }
 
     pub fn seal(self) -> Result<Icmpv4Echo<'a>> {

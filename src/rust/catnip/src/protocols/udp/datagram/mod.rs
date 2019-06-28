@@ -12,6 +12,10 @@ impl<'a> UdpDatagram<'a> {
         Ok(UdpDatagram::try_from(ipv4::Datagram::from_bytes(bytes)?)?)
     }
 
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0.as_bytes()
+    }
+
     pub fn header(&self) -> UdpHeader<'_> {
         UdpHeader::new(&self.0.payload()[..UDP_HEADER_SIZE])
     }
@@ -70,9 +74,8 @@ impl<'a> UdpDatagramMut<'a> {
         &mut self.0.payload()[UDP_HEADER_SIZE..]
     }
 
-    #[allow(dead_code)]
-    pub fn unmut(self) -> Result<UdpDatagram<'a>> {
-        Ok(UdpDatagram::try_from(self.0.unmut()?)?)
+    pub fn unmut(self) -> UdpDatagram<'a> {
+        UdpDatagram(self.0.unmut())
     }
 
     pub fn seal(self) -> Result<UdpDatagram<'a>> {

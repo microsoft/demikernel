@@ -40,7 +40,7 @@ impl<'a> Icmpv4Peer<'a> {
         Icmpv4Peer {
             rt,
             arp,
-            unfinished_work: WhenAny::default(),
+            unfinished_work: WhenAny::new(),
             outstanding_requests: Rc::new(RefCell::new(HashSet::new())),
             ping_seq_num_counter: Rc::new(Cell::new(ping_seq_num_counter)),
         }
@@ -77,10 +77,15 @@ impl<'a> Icmpv4Peer<'a> {
                 Ok(())
             }
             _ => match Icmpv4Error::try_from(datagram) {
-                Ok(e) => Err(Fail::from(e)),
-                Err(_) => Err(Fail::Unsupported {
-                    details: "unrecognized ICMPv4 TYPE",
-                }),
+                Ok(e) => {
+                    self.rt.emit_effect(Effect::Icmpv4Error {
+                        id: e.id(),
+                        next_hop_mtu: e.next_hop_mtu(),
+                        context: e.context().to_vec(),
+                    });
+                    Ok(())
+                }
+                Err(e) => Err(e.clone()),
             },
         }
     }
