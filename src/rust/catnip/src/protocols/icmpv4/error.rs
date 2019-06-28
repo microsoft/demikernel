@@ -5,7 +5,7 @@ use super::datagram::{
 use crate::{prelude::*, protocols::ipv4};
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
-use std::{cmp::min, convert::TryFrom, fmt};
+use std::{convert::TryFrom, fmt, io::Write};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Clone, Copy, PartialEq, Eq, Debug)]
@@ -161,17 +161,18 @@ pub struct Icmpv4ErrorMut<'a>(Icmpv4DatagramMut<'a>);
 
 impl<'a> Icmpv4ErrorMut<'a> {
     pub fn new_bytes(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
+        let frame = ipv4.frame();
+        // note that the 4 bytes included in the payload size is additional
+        // data that error datagrams include (e.g. NEXT_HOP_MTU).
+        let mut bytes =
+            Icmpv4DatagramMut::new_bytes(4 + frame.payload().len());
+        let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut()).unwrap();
+        let bytes_written = icmpv4.context().write(frame.payload()).unwrap();
         // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
         // > ICMP error messages contain a data section that includes a copy
         // > of the entire IPv4 header, plus at least the first eight bytes of
         // > data from the IPv4 packet that caused the error message.
-        let sample_len = min(8, ipv4.payload().len());
-        let mut bytes =
-            Icmpv4DatagramMut::new_bytes(ipv4::HEADER_SIZE + 4 + sample_len);
-        let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut()).unwrap();
-        icmpv4.context().copy_from_slice(
-            &ipv4.frame().payload()[..(ipv4::HEADER_SIZE + sample_len)],
-        );
+        assert!(bytes_written >= ipv4::HEADER_SIZE + 4 + 8);
         bytes
     }
 
