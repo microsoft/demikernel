@@ -35,16 +35,16 @@ fn initialize_logger() {
     });
 }
 
-pub fn new_station<'a>(
+pub fn new_engine<'a>(
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     now: Instant,
-) -> Station<'a> {
+) -> Engine<'a> {
     initialize_logger();
     // we always want to use the same seed for our unit tests.
     let seed = Seed::default();
     let seed = encode_config(seed.as_ref(), STANDARD_NO_PAD);
-    Station::from_options(
+    Engine::from_options(
         now,
         Options {
             my_link_addr: link_addr,
@@ -60,8 +60,8 @@ pub fn new_station<'a>(
     .unwrap()
 }
 
-pub fn new_alice<'a>(now: Instant) -> Station<'a> {
-    new_station(*ALICE_MAC, *ALICE_IPV4, now)
+pub fn new_alice<'a>(now: Instant) -> Engine<'a> {
+    new_engine(*ALICE_MAC, *ALICE_IPV4, now)
 }
 
 pub fn alice_ipv4_addr() -> &'static Ipv4Addr {
@@ -72,8 +72,8 @@ pub fn alice_link_addr() -> &'static MacAddress {
     &ALICE_MAC
 }
 
-pub fn new_bob<'a>(now: Instant) -> Station<'a> {
-    new_station(*BOB_MAC, *BOB_IPV4, now)
+pub fn new_bob<'a>(now: Instant) -> Engine<'a> {
+    new_engine(*BOB_MAC, *BOB_IPV4, now)
 }
 
 pub fn bob_ipv4_addr() -> &'static Ipv4Addr {
@@ -84,8 +84,8 @@ pub fn bob_link_addr() -> &'static MacAddress {
     &BOB_MAC
 }
 
-pub fn new_carrie<'a>(now: Instant) -> Station<'a> {
-    new_station(*CARRIE_MAC, *CARRIE_IPV4, now)
+pub fn new_carrie<'a>(now: Instant) -> Engine<'a> {
+    new_engine(*CARRIE_MAC, *CARRIE_IPV4, now)
 }
 
 pub fn carrie_ipv4_addr() -> &'static Ipv4Addr {

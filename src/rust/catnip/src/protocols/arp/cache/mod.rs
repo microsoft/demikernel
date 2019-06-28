@@ -69,7 +69,7 @@ impl ArpCache {
             assert!(self.rmap.remove(&record.link_addr).is_some());
         } else {
             panic!(
-                "attempt to remove unrecognized station (`{}`) from ARP cache",
+                "attempt to remove unrecognized engine (`{}`) from ARP cache",
                 ipv4_addr
             );
         }

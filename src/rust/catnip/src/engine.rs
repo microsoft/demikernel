@@ -14,21 +14,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Station<'a> {
+pub struct Engine<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
     ipv4: ipv4::Peer<'a>,
 }
 
-impl<'a> Station<'a> {
-    pub fn from_options(
-        now: Instant,
-        options: Options,
-    ) -> Result<Station<'a>> {
+impl<'a> Engine<'a> {
+    pub fn from_options(now: Instant, options: Options) -> Result<Engine<'a>> {
         let rt = Runtime::from_options(now, options);
         let arp = arp::Peer::new(now, rt.clone())?;
         let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone());
-        Ok(Station { rt, arp, ipv4 })
+        Ok(Engine { rt, arp, ipv4 })
     }
 
     pub fn options(&self) -> Rc<Options> {
@@ -36,7 +33,7 @@ impl<'a> Station<'a> {
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        trace!("Station::receive({:?})", bytes);
+        trace!("Engine::receive({:?})", bytes);
         let frame = ethernet2::Frame::from_bytes(&bytes)?;
         let header = frame.header();
         if self.rt.options().my_link_addr != header.dest_addr()
