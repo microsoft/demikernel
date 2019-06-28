@@ -330,7 +330,17 @@ int process_connections(int whoami, uint32_t total_requests, hr_clock::time_poin
 
 int create_queues(double interval_ns, int n_requests, std::string host, int port,
                   std::queue<std::pair<int, RequestState>> &qfds,
-                  hr_clock::time_point *time_end) {
+                  hr_clock::time_point *time_end, int my_idx) {
+    /* Configure target */
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    if (inet_pton(AF_INET, host.c_str(), &saddr.sin_addr) != 1) {
+        log_error("Unable to parse IP address!: %s", strerror(errno));
+        return -1;
+    }
+    saddr.sin_addr.s_addr = htonl(ntohl(saddr.sin_addr.s_addr) + my_idx * 2);
+    saddr.sin_port = htons(port);
+    log_info("Thread %d sending requests to %s", my_idx, inet_ntoa(saddr.sin_addr));
 
     hr_clock::time_point create_start_time = hr_clock::now();
 
@@ -348,7 +358,6 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         */
     }
 
-
     for (int interval = 0; interval < n_requests; interval++) {
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
@@ -358,15 +367,6 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         /* Create Demeter queue */
         int qd = 0;
         DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
-
-        /* Configure socket and connect */
-        struct sockaddr_in saddr = {};
-        saddr.sin_family = AF_INET;
-        if (inet_pton(AF_INET, host.c_str(), &saddr.sin_addr) != 1) {
-            log_error("Unable to parse IP address.");
-            return -1;
-        }
-        saddr.sin_port = htons(port);
 
         req.status = CONNECTING;
         req.connecting = hr_clock::now();
@@ -534,7 +534,7 @@ int main(int argc, char **argv) {
         threads[i].init = new std::thread(
             create_queues,
             interval_ns_per_thread, req_per_thread,
-            host, port, std::ref(req_qfds[i]), &time_end_init
+            host, port, std::ref(req_qfds[i]), &time_end_init, i
         );
         pin_thread(threads[i].init->native_handle(), i);
     }
