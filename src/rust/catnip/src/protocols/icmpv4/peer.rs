@@ -21,6 +21,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use std::process;
 
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
@@ -32,11 +33,11 @@ pub struct Icmpv4Peer<'a> {
 
 impl<'a> Icmpv4Peer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Icmpv4Peer<'a> {
-        let ping_seq_num_counter = {
-            let mut rng = rt.borrow_rng();
-            Wrapping(rng.gen())
-        };
-
+        // from [TCP/IP Illustrated]():
+        // > When a new instance of the ping program is run, the Sequence
+        // > Number field starts with the value 0 and is increased by 1 every
+        // > time a new Echo Request message is sent.
+        let ping_seq_num_counter = Wrapping(0);
         Icmpv4Peer {
             rt,
             arp,
@@ -238,15 +239,16 @@ impl<'a> Icmpv4Peer<'a> {
     }
 
     fn generate_ping_id(&self) -> u16 {
-        let mut id = ipv4::Checksum::new();
+        let mut checksum = ipv4::Checksum::new();
         let options = self.rt.options();
-        id.write_u32::<NativeEndian>(options.my_ipv4_addr.into())
+        checksum.write_u32::<NativeEndian>(options.my_ipv4_addr.into())
             .unwrap();
+        checksum.write_u32::<NativeEndian>(process::id()).unwrap();
         let mut rng = self.rt.borrow_rng();
         let mut nonce = [0; 2];
         rng.fill(&mut nonce);
-        id.write_all(&nonce).unwrap();
-        id.finish()
+        checksum.write_all(&nonce).unwrap();
+        checksum.finish()
     }
 
     fn generate_seq_num(&self) -> u16 {
