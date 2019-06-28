@@ -267,6 +267,9 @@ static void *tcp_work(void *args) {
     printf("Hello I am a TCP worker\n");
     struct tcp_worker_args *worker_args = (struct tcp_worker_args *) args;
 
+    std::vector<dmtr_qtoken_t> tokens;
+    dmtr_qtoken_t token = 0; //temporary token
+
     /* Create and bind the worker's accept socket */
     int lqd = 0;
     dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0);
@@ -276,10 +279,10 @@ static void *tcp_work(void *args) {
     struct sockaddr_in saddr = worker_args->saddr;
     dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
     dmtr_listen(lqd, 10); //XXX what is a good backlog size here?
+    dmtr_accept(&token, lqd);
+    tokens.push_back(token);
 
     int num_rcvd = 0;
-    std::vector<dmtr_qtoken_t> tokens;
-    dmtr_qtoken_t token = 0; //temporary token
     while (1) {
         dmtr_qresult_t wait_out;
         int idx;
@@ -287,20 +290,21 @@ static void *tcp_work(void *args) {
         if (status == 0) {
             if (wait_out.qr_qd == lqd) {
                 assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
+                token = tokens[idx];
+                tokens.erase(tokens.begin()+idx);
                 /* Enable reading on the accepted socket */
                 dmtr_pop(&token, wait_out.qr_value.ares.qd);
                 tokens.push_back(token);
                 /* Re-enable accepting on the listening socket */
                 dmtr_accept(&token, lqd);
                 tokens.push_back(token);
+                log_debug("Accepted a new connection on %d", lqd);
             } else {
                 assert(DMTR_OPC_POP == wait_out.qr_opcode);
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
-                /*
-                fprintf(stdout, "received %s on queue %d\n",
+                log_debug("received %s on queue %d\n",
                          reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
                          wait_out.qr_qd);
-                */
                 num_rcvd++;
                 if (num_rcvd % 100 == 0) {
                     log_info("received: %d requests\n", num_rcvd);
@@ -309,6 +313,7 @@ static void *tcp_work(void *args) {
                 token = tokens[idx];
                 tokens.erase(tokens.begin()+idx);
 
+                /* Load balance incoming requests among HTTP workers */
                 int worker_idx;
                 if (worker_args->filter == RR) {
                     worker_idx = num_rcvd % http_workers.size();
@@ -320,7 +325,7 @@ static void *tcp_work(void *args) {
                 }
 
                 int client_qfd = wait_out.qr_qd;
-                //fprintf(stdout, "passing to http worker #%d\n", worker_idx);
+                log_debug("passing to http worker #%d\n", worker_idx);
                 dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
                 dmtr_wait(NULL, token);
                 /*  Wait for HTTP worker to give us an answer */
@@ -328,11 +333,9 @@ static void *tcp_work(void *args) {
                 do {
                     status = dmtr_wait(&wait_out, token);
                 } while (status != 0); // XXX ?
-                /*
-                fprintf(stdout, "TCP worker popped %s stored at %p\n",
+                log_debug("TCP worker popped %s stored at %p\n",
                         reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
                         &wait_out.qr_value.sga.sga_buf);
-                */
                 /* Answer the client */
                 dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
                 dmtr_wait(NULL, token);
