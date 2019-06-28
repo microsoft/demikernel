@@ -150,7 +150,7 @@ struct log_data {
 int log_responses(uint32_t total_requests,
                   std::queue<std::pair<int, RequestState> > &qfds,
                   hr_clock::time_point *time_end,
-                  std::string log_dir, std::string label) {
+                  std::string log_dir, std::string label, int my_idx) {
 
     /* Create dmtr_latency objects */
     std::vector<struct log_data> logs;
@@ -167,6 +167,7 @@ int log_responses(uint32_t total_requests,
     DMTR_OK(dmtr_new_latency(&receive.l, "receive"));
     logs.push_back(receive);
 
+    bool expired = false;
     uint32_t logged = 0;
     while (logged < total_requests) {
         bool has_pair = false;
@@ -210,6 +211,7 @@ int log_responses(uint32_t total_requests,
         logged++;
         if (hr_clock::now() > *time_end) {
             log_warn("logging time has passed. %d requests were logged.", logged);
+            expired = true;
         }
     }
 
@@ -221,6 +223,10 @@ int log_responses(uint32_t total_requests,
         DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
         fclose(log_fd);
     }
+
+    if (!expired) {
+        log_info("Log thread %d exiting after having logged %d requests", my_idx, logged);
+    }
     return 0;
 }
 
@@ -228,9 +234,10 @@ int log_responses(uint32_t total_requests,
  ****************** PROCESS CONNECTIONS **************************
  *****************************************************************/
 
-int process_connections(int whoami, uint32_t total_requests, hr_clock::time_point *time_end,
+int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_point *time_end,
                         std::queue<std::pair<int, RequestState> > &qfds,
                         std::queue<std::pair<int, RequestState> > &c_qfds) {
+    bool expired = false;
     uint32_t completed = 0;
     uint32_t dequeued = 0;
     uint32_t http_request_idx;
@@ -246,7 +253,7 @@ int process_connections(int whoami, uint32_t total_requests, hr_clock::time_poin
                 std::pair<int, RequestState> request = qfds.front();
                 qfds.pop();
                 int qd = request.first;
-                http_request_idx = dequeued + total_requests * whoami;
+                http_request_idx = dequeued + total_requests * my_idx;
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
                 std::unique_ptr<std::string> http_req =
@@ -317,10 +324,14 @@ int process_connections(int whoami, uint32_t total_requests, hr_clock::time_poin
 
         if (hr_clock::now() > *time_end) {
             log_warn("process time has passed. %d requests were processed.", completed);
+            expired = true;
             break;
         }
     }
 
+    if (!expired) {
+        log_info("Process thread %d exiting after having processed %d requests", my_idx, completed);
+    }
     return 0;
 }
 
@@ -358,6 +369,8 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         */
     }
 
+    int connected = 0;
+    bool expired = false;
     for (int interval = 0; interval < n_requests; interval++) {
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
@@ -371,6 +384,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         req.status = CONNECTING;
         req.connecting = hr_clock::now();
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+        connected++;
         req.status = CONNECTED;
         req.connected = hr_clock::now();
 
@@ -381,11 +395,15 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         }
 
         if (hr_clock::now() > *time_end) {
-            log_warn("create time has passed. %d connection were established.", interval+1);
+            log_warn("create time has passed. %d connection were established.", connected);
+            expired = true;
             break;
         }
     }
 
+    if (!expired) {
+        log_info("Create thread %d exiting after having created %d requests", my_idx, connected);
+    }
     return 0;
 }
 
@@ -516,6 +534,7 @@ int main(int argc, char **argv) {
     hr_clock::time_point time_end_log = hr_clock::now() + duration_log;
 
     /* Initialize responses first, then logging, then request initialization */
+    //FIXME: do not collocate connections creation and processing?
     std::vector<std::queue<std::pair<int, RequestState> > > req_qfds(n_threads);
     std::vector<std::queue<std::pair<int, RequestState> > > log_qfds(n_threads);
     state_threads threads[n_threads];
@@ -529,7 +548,7 @@ int main(int argc, char **argv) {
         threads[i].log = new std::thread(
             log_responses,
             req_per_thread, std::ref(log_qfds[i]), &time_end_log,
-            log_dir, label
+            log_dir, label, i
         );
         threads[i].init = new std::thread(
             create_queues,
