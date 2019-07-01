@@ -1,9 +1,8 @@
-use super::Future;
+use super::{super::traits::Async, Future};
 use crate::prelude::*;
-use std::{collections::VecDeque, fmt::Debug, time::Instant};
-use super::super::traits::Async;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{
+    cell::RefCell, collections::VecDeque, fmt::Debug, rc::Rc, time::Instant,
+};
 
 pub struct WhenAny<'a, T>
 where

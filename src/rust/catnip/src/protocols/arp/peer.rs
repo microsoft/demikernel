@@ -5,7 +5,7 @@ use super::{
 use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
-    r#async::Future,
+    r#async::{Async, Future},
 };
 use float_duration::FloatDuration;
 use std::{
@@ -18,7 +18,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use crate::r#async::Async;
 
 #[derive(Clone)]
 pub struct ArpPeer<'a> {

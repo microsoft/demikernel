@@ -2,14 +2,13 @@ use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, icmpv4, udp},
-    r#async::Future,
+    r#async::{Async, Future},
 };
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
-use crate::r#async::Async;
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,

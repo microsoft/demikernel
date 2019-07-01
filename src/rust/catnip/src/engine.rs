@@ -5,7 +5,7 @@ use crate::{
         ethernet2::{self, MacAddress},
         ipv4,
     },
-    r#async,
+    r#async::{self, Async},
 };
 use std::{
     collections::HashMap,
@@ -13,7 +13,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use crate::r#async::Async;
 
 pub struct Engine<'a> {
     rt: Runtime<'a>,
@@ -51,7 +50,10 @@ impl<'a> Engine<'a> {
         }
     }
 
-    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> r#async::Future<'a, MacAddress> {
+    pub fn arp_query(
+        &self,
+        ipv4_addr: Ipv4Addr,
+    ) -> r#async::Future<'a, MacAddress> {
         self.arp.query(ipv4_addr)
     }
 

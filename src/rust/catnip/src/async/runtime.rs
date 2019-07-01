@@ -1,6 +1,10 @@
+use super::{
+    coroutine::{Coroutine, CoroutineId, CoroutineStatus},
+    future::Future,
+    schedule::Schedule,
+    traits::Async,
+};
 use crate::prelude::*;
-use super::coroutine::{Coroutine, CoroutineId, CoroutineStatus};
-use super::schedule::Schedule;
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -10,8 +14,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use super::future::Future;
-use super::traits::Async;
 
 #[derive(Clone)]
 pub struct AsyncRuntime<'a> {

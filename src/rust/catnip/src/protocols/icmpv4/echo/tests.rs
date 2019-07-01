@@ -1,7 +1,6 @@
 use super::*;
-use crate::test;
+use crate::{r#async::Async, test};
 use std::time::{Duration, Instant};
-use crate::r#async::Async;
 
 #[test]
 fn serialization() {

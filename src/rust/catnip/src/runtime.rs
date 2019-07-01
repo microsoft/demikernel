@@ -1,6 +1,6 @@
 use crate::{
     prelude::*,
-    r#async,
+    r#async::{self, Async},
     rand::Rng,
 };
 use rand_core::SeedableRng;
@@ -13,7 +13,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use crate::r#async::Async;
 
 #[derive(Clone)]
 pub struct Runtime<'a> {

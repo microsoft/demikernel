@@ -3,10 +3,10 @@ mod macros;
 
 mod coroutine;
 mod future;
+mod runtime;
 mod schedule;
 mod traits;
-mod runtime;
 
 pub use future::{Future, WhenAny};
-pub use traits::Async;
 pub use runtime::AsyncRuntime as Runtime;
+pub use traits::Async;

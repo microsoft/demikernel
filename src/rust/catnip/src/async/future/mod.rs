@@ -3,10 +3,10 @@ mod when_any;
 use super::{
     coroutine::{CoroutineId, CoroutineStatus},
     runtime::AsyncRuntime,
+    traits::Async,
 };
 use crate::prelude::*;
 use std::{fmt::Debug, time::Instant};
-use super::traits::Async;
 
 pub use when_any::WhenAny;
 
@@ -66,11 +66,11 @@ where
     }
 }
 
-impl<'a, T> Async<T> for Future<'a, T> where
-        T: Clone + Debug + 'static
+impl<'a, T> Async<T> for Future<'a, T>
+where
+    T: Clone + Debug + 'static,
 {
-    fn poll(&self, now: Instant) -> Option<Result<T>>
-    {
+    fn poll(&self, now: Instant) -> Option<Result<T>> {
         trace!("Future::poll({:?})", now);
         match self {
             Future::Const(v) => Some(v.clone()),

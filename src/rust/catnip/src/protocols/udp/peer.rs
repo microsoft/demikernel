@@ -2,12 +2,11 @@ use super::datagram::{UdpDatagram, UdpDatagramMut};
 use crate::{
     prelude::*,
     protocols::{arp, icmpv4, ipv4},
-    r#async::{Future, WhenAny},
+    r#async::{Async, Future, WhenAny},
 };
 use std::{
     any::Any, collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
 };
-use crate::r#async::Async;
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
@@ -86,7 +85,8 @@ impl<'a> UdpPeer<'a> {
         self.rt.start_coroutine(move || {
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            let dest_link_addr =
+                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -131,7 +131,8 @@ impl<'a> UdpPeer<'a> {
             );
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            let dest_link_addr =
+                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr

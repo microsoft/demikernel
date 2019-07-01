@@ -6,7 +6,7 @@ use super::{
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
-    r#async::{Future, WhenAny},
+    r#async::{Async, Future, WhenAny},
 };
 use byteorder::{NativeEndian, WriteBytesExt};
 use rand::Rng;
@@ -18,11 +18,10 @@ use std::{
     io::Write,
     net::Ipv4Addr,
     num::Wrapping,
+    process,
     rc::Rc,
     time::{Duration, Instant},
 };
-use std::process;
-use crate::r#async::Async;
 
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
@@ -107,7 +106,8 @@ impl<'a> Icmpv4Peer<'a> {
             let t0 = rt.now();
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            let dest_link_addr =
+                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -164,7 +164,8 @@ impl<'a> Icmpv4Peer<'a> {
         let fut = self.rt.start_coroutine(move || {
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            let dest_link_addr =
+                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -195,7 +196,8 @@ impl<'a> Icmpv4Peer<'a> {
     fn generate_ping_id(&self) -> u16 {
         let mut checksum = ipv4::Checksum::new();
         let options = self.rt.options();
-        checksum.write_u32::<NativeEndian>(options.my_ipv4_addr.into())
+        checksum
+            .write_u32::<NativeEndian>(options.my_ipv4_addr.into())
             .unwrap();
         checksum.write_u32::<NativeEndian>(process::id()).unwrap();
         let mut rng = self.rt.borrow_rng();

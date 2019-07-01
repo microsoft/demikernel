@@ -2,10 +2,10 @@ use super::datagram::UdpDatagram;
 use crate::{
     prelude::*,
     protocols::{icmpv4, ipv4},
+    r#async::Async,
     test,
 };
 use std::time::{Duration, Instant};
-use crate::r#async::Async;
 
 #[test]
 fn unicast() {
