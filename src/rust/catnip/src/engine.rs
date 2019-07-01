@@ -99,8 +99,8 @@ impl<'a> Engine<'a> {
 
 impl<'a> Async<Effect> for Engine<'a> {
     fn poll(&self, now: Instant) -> Option<Result<Effect>> {
-        try_poll!(&self.arp, || now);
-        try_poll!(&self.ipv4, || now);
+        try_poll!(&self.arp, now);
+        try_poll!(&self.ipv4, now);
         self.rt.poll(now)
     }
 }

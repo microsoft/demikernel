@@ -107,7 +107,7 @@ impl<'a> Icmpv4Peer<'a> {
             let options = rt.options();
             debug!("initiating ARP query");
             let dest_link_addr =
-                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+                await_yield!(arp.query(dest_ipv4_addr), rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -165,7 +165,7 @@ impl<'a> Icmpv4Peer<'a> {
             let options = rt.options();
             debug!("initiating ARP query");
             let dest_link_addr =
-                await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+                await_yield!(arp.query(dest_ipv4_addr), rt.now());
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr

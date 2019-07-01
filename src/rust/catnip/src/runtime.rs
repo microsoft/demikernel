@@ -62,13 +62,7 @@ impl<'a> Runtime<'a> {
 
 impl<'a> Async<Effect> for Runtime<'a> {
     fn poll(&self, now: Instant) -> Option<Result<Effect>> {
-        // todo: replace with `try_poll!` macro.
-        match self.r#async.poll(now) {
-            None => (),
-            Some(Ok(_)) => (),
-            Some(Err(e)) => return Some(Err(e)),
-        };
-
+        try_poll!(self.r#async, now);
         self.effects.borrow_mut().pop_front().map(Ok)
     }
 }
