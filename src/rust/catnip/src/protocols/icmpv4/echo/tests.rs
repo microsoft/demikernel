@@ -67,7 +67,7 @@ fn ping() {
     info!("passing ICMPv4 ping reply back to alice...");
     let now = now + Duration::from_millis(1);
     alice.receive(&ping_reply).unwrap();
-    let dt = fut.poll(now).unwrap().unwrap();
+    let _ = fut.poll(now).unwrap().unwrap();
 }
 
 #[test]

@@ -10,6 +10,31 @@ macro_rules! try_poll {
 }
 
 #[macro_export]
+macro_rules! yield_until {
+    ($cond:expr, $now:expr, $($timeout:expr)?) => {{
+        let mut success = false;
+        let t0 = $now;
+        loop {
+            if $cond {
+                success = true;
+                break;
+            }
+
+            yield None;
+
+            $(
+                let dt = $now - t0;
+                if dt >= $timeout {
+                    break;
+                }
+            )?
+        }
+
+        success
+    }};
+}
+
+#[macro_export]
 macro_rules! await_yield {
     ($async:expr, $now:expr) => {{
         let x;
@@ -31,3 +56,4 @@ macro_rules! await_yield {
         x
     }};
 }
+

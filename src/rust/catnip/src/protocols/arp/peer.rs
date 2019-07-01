@@ -16,7 +16,7 @@ use std::{
     mem::swap,
     net::Ipv4Addr,
     rc::Rc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 #[derive(Clone)]
@@ -151,29 +151,12 @@ impl<'a> ArpPeer<'a> {
             while retries_remaining > 0 {
                 rt.emit_effect(Effect::Transmit(datagram.clone()));
                 retries_remaining -= 1;
-                // can't make progress until a reply deposits an entry in the
-                // cache.
-                let t0 = rt.now();
-                let mut dt = Duration::new(0, 0);
-                while dt < timeout {
-                    debug!(
-                        "looking up `{}` in cache...",
-                        options.my_ipv4_addr
-                    );
-                    let result =
-                        cache.borrow().get_link_addr(ipv4_addr).copied();
-
-                    if let Some(link_addr) = result {
-                        debug!("result available ({})", link_addr);
-                        let x: Rc<Any> = Rc::new(link_addr);
-                        return Ok(x);
-                    } else {
-                        // unable to make progress until the appropriate entry
-                        // is inserted into the cache.
-                        yield None;
-                        dt = rt.now() - t0;
-                        debug!("dt = {:?}", dt);
-                    }
+                if yield_until!(cache.borrow().get_link_addr(ipv4_addr).is_some(), rt.now(), timeout) {
+                    let link_addr =
+                        cache.borrow().get_link_addr(ipv4_addr).copied().unwrap();
+                    debug!("ARP result available ({})", link_addr);
+                    let x: Rc<Any> = Rc::new(link_addr);
+                    return Ok(x);
                 }
 
                 warn!(

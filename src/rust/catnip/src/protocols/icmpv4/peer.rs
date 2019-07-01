@@ -134,21 +134,19 @@ impl<'a> Icmpv4Peer<'a> {
                 assert!(outstanding_requests.insert(key));
             }
 
-            loop {
-                yield None;
-
-                let dt = rt.now() - t0;
-                if dt >= timeout {
-                    return Err(Fail::Timeout {});
-                }
-
+            if yield_until!(
                 {
                     let outstanding_requests = outstanding_requests.borrow();
-                    if !outstanding_requests.contains(&key) {
-                        let x: Rc<Any> = Rc::new(dt);
-                        return Ok(x);
-                    }
-                }
+                    !outstanding_requests.contains(&key)
+                },
+                rt.now(),
+                timeout
+            ) {
+                let dt = rt.now() - t0;
+                let x: Rc<Any> = Rc::new(dt);
+                Ok(x)
+            } else {
+                Err(Fail::Timeout {})
             }
         })
     }
