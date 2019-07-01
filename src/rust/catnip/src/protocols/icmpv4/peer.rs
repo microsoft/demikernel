@@ -107,30 +107,11 @@ impl<'a> Icmpv4Peer<'a> {
             let t0 = rt.now();
             let options = rt.options();
             debug!("initiating ARP query");
-            let fut = arp.query(dest_ipv4_addr);
-            let dest_link_addr = {
-                let dest_link_addr;
-                loop {
-                    if let Some(result) = fut.poll(rt.now()) {
-                        match result {
-                            Ok(a) => {
-                                debug!(
-                                    "ARP query complete ({} -> {})",
-                                    dest_ipv4_addr, a
-                                );
-                                dest_link_addr = a;
-                                break;
-                            }
-                            Err(e) => return Err(e),
-                        }
-                    } else {
-                        yield None;
-                        continue;
-                    }
-                }
-
-                dest_link_addr
-            };
+            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
 
             let mut bytes = Icmpv4EchoMut::new_bytes();
             let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
@@ -183,31 +164,11 @@ impl<'a> Icmpv4Peer<'a> {
         let fut = self.rt.start_coroutine(move || {
             let options = rt.options();
             debug!("initiating ARP query");
-            let fut = arp.query(dest_ipv4_addr);
-            let dest_link_addr = {
-                let dest_link_addr;
-                loop {
-                    if let Some(result) = fut.poll(rt.now()) {
-                        match result {
-                            Ok(a) => {
-                                debug!(
-                                    "ARP query complete ({} -> {})",
-                                    dest_ipv4_addr, a
-                                );
-                                dest_link_addr = a;
-                                break;
-                            }
-                            Err(e) => return Err(e),
-                        }
-                    } else {
-                        yield None;
-                        continue;
-                    }
-                }
-
-                dest_link_addr
-            };
-
+            let dest_link_addr = await_yield!(arp.query(dest_ipv4_addr), || rt.now());
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
             let mut bytes = Icmpv4EchoMut::new_bytes();
             let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
             echo.r#type(Icmpv4EchoOp::Reply);
