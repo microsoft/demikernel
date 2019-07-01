@@ -14,7 +14,6 @@ custom_error! {#[derive(Clone)] pub Fail
     Misdelivered{} = "misdelivered datagram",
     Unsupported{details: Str} = "unsupported ({details})",
     Ignored{} = "operation has no effect",
-    TryAgain{} = "try again later",
     Timeout{} = "an asynchronous operation timed out",
     OutOfRange{} = "a value is out of range",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",

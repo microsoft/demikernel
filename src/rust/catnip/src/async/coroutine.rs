@@ -15,21 +15,16 @@ pub enum CoroutineStatus {
     AsleepUntil(Instant),
 }
 
-impl<T> Into<Result<T>> for CoroutineStatus
+impl<T> Into<Option<Result<T>>> for CoroutineStatus
 where
     T: 'static + Clone + Debug,
 {
-    fn into(self) -> Result<T> {
+    fn into(self) -> Option<Result<T>> {
         trace!("CoroutineStatus::into({:?})", self);
-        match self {
-            CoroutineStatus::Completed(r) => match r {
-                Ok(x) => Ok(x.downcast_ref::<T>().unwrap().clone()),
-                Err(Fail::TryAgain {}) => panic!(
-                    "coroutines are not allowed to return `Fail::TryAgain`"
-                ),
-                Err(e) => Err(e.clone()),
-            },
-            _ => Err(Fail::TryAgain {}),
+        if let CoroutineStatus::Completed(r) = self {
+            Some(r.map(|x| x.downcast_ref::<T>().unwrap().clone()))
+        } else {
+            None
         }
     }
 }

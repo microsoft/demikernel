@@ -18,6 +18,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use crate::r#async::Async;
 
 #[derive(Clone)]
 pub struct ArpPeer<'a> {
@@ -38,12 +39,6 @@ impl<'a> ArpPeer<'a> {
             rt,
             cache: Rc::new(RefCell::new(cache)),
         })
-    }
-
-    pub fn service(&mut self) {
-        let mut cache = self.cache.borrow_mut();
-        cache.advance_clock(self.rt.now());
-        cache.try_evict(2);
     }
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
@@ -198,5 +193,14 @@ impl<'a> ArpPeer<'a> {
 
     pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
+    }
+}
+
+impl<'a> Async<()> for ArpPeer<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<()>> {
+        let mut cache = self.cache.borrow_mut();
+        cache.advance_clock(now);
+        cache.try_evict(2);
+        Some(Ok(()))
     }
 }

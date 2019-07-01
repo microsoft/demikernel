@@ -1,6 +1,6 @@
 use crate::{
     prelude::*,
-    r#async::{Async, Future},
+    r#async,
     rand::Rng,
 };
 use rand_core::SeedableRng;
@@ -13,12 +13,13 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use crate::r#async::Async;
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
     options: Rc<Options>,
     effects: Rc<RefCell<VecDeque<Effect>>>,
-    r#async: Async<'a>,
+    r#async: r#async::Runtime<'a>,
     rng: Rc<RefCell<Rng>>,
 }
 
@@ -28,7 +29,7 @@ impl<'a> Runtime<'a> {
         Runtime {
             options: Rc::new(options),
             effects: Rc::new(RefCell::new(VecDeque::new())),
-            r#async: Async::new(now),
+            r#async: r#async::Runtime::new(now),
             rng: Rc::new(RefCell::new(rng)),
         }
     }
@@ -41,7 +42,7 @@ impl<'a> Runtime<'a> {
         self.r#async.clock()
     }
 
-    pub fn start_coroutine<G, T>(&self, gen: G) -> Future<'a, T>
+    pub fn start_coroutine<G, T>(&self, gen: G) -> r#async::Future<'a, T>
     where
         T: Any + Clone + Debug + 'static,
         G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
@@ -51,25 +52,24 @@ impl<'a> Runtime<'a> {
         self.r#async.start_coroutine(gen)
     }
 
-    pub fn poll(&self, now: Instant) -> Result<Effect> {
-        match self.r#async.poll(now) {
-            Ok(_) => (),
-            Err(Fail::TryAgain {}) => (),
-            Err(e) => return Err(e.clone()),
-        }
-
-        if let Some(f) = self.effects.borrow_mut().pop_front() {
-            return Ok(f);
-        } else {
-            return Err(Fail::TryAgain {});
-        }
-    }
-
     pub fn emit_effect(&self, effect: Effect) {
         self.effects.borrow_mut().push_back(effect)
     }
 
     pub fn borrow_rng(&self) -> RefMut<Rng> {
         self.rng.borrow_mut()
+    }
+}
+
+impl<'a> Async<Effect> for Runtime<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Effect>> {
+        // todo: replace with `try_poll!` macro.
+        match self.r#async.poll(now) {
+            None => (),
+            Some(Ok(_)) => (),
+            Some(Err(e)) => return Some(Err(e)),
+        };
+
+        self.effects.borrow_mut().pop_front().map(Ok)
     }
 }

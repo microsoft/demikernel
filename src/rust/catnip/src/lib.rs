@@ -15,13 +15,15 @@ extern crate log;
 #[macro_use]
 extern crate maplit;
 
+#[macro_use]
+pub mod r#async;
+
 mod effect;
 mod options;
 mod prelude;
 mod protocols;
 mod rand;
 
-pub mod r#async;
 pub mod collections;
 pub mod engine;
 pub mod fail;

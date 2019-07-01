@@ -1,6 +1,7 @@
 use super::*;
 use crate::test;
 use std::time::{Duration, Instant};
+use crate::r#async::Async;
 
 #[test]
 fn serialization() {
@@ -35,13 +36,10 @@ fn ping() {
     });
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected `Fail::TryAgain`, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     let ping_request = {
-        let effect = alice.poll(now).expect("expected an effect");
+        let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
             Effect::Transmit(bytes) => bytes.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -56,7 +54,7 @@ fn ping() {
     let now = now + Duration::from_millis(1);
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
-        let effect = bob.poll(now).expect("expected an effect");
+        let effect = bob.poll(now).unwrap().unwrap();
         let bytes = match effect {
             Effect::Transmit(bytes) => bytes.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -70,10 +68,7 @@ fn ping() {
     info!("passing ICMPv4 ping reply back to alice...");
     let now = now + Duration::from_millis(1);
     alice.receive(&ping_reply).unwrap();
-    match fut.poll(now) {
-        Ok(dt) => assert_eq!(dt, now - t0),
-        x => panic!("expected `Ok(_)`, got `{:?}`", x),
-    }
+    let dt = fut.poll(now).unwrap().unwrap();
 }
 
 #[test]
@@ -89,13 +84,10 @@ fn timeout() {
     });
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected `Fail::TryAgain`, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     let now = now + timeout;
-    match fut.poll(now) {
+    match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         x => panic!("expected `Fail::Timeout`, got `{:?}`", x),
     }

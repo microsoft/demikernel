@@ -7,6 +7,7 @@ use crate::{
 use std::{
     any::Any, collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
 };
+use crate::r#async::Async;
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
@@ -89,23 +90,21 @@ impl<'a> UdpPeer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    let x = fut.poll(rt.now());
-                    match x {
-                        Ok(a) => {
-                            debug!(
-                                "ARP query complete ({} -> {})",
-                                dest_ipv4_addr, a
-                            );
-                            dest_link_addr = a;
-                            break;
+                    if let Some(result) = fut.poll(rt.now()) {
+                        match result {
+                            Ok(a) => {
+                                debug!(
+                                    "ARP query complete ({} -> {})",
+                                    dest_ipv4_addr, a
+                                );
+                                dest_link_addr = a;
+                                break;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(Fail::TryAgain {}) => {
-                            yield None;
-                            continue;
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
+                    } else {
+                        yield None;
+                        continue;
                     }
                 }
 
@@ -155,23 +154,21 @@ impl<'a> UdpPeer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    let x = fut.poll(rt.now());
-                    match x {
-                        Ok(a) => {
-                            debug!(
-                                "ARP query complete ({} -> {})",
-                                dest_ipv4_addr, a
-                            );
-                            dest_link_addr = a;
-                            break;
+                    if let Some(result) = fut.poll(rt.now()) {
+                        match result {
+                            Ok(a) => {
+                                debug!(
+                                    "ARP query complete ({} -> {})",
+                                    dest_ipv4_addr, a
+                                );
+                                dest_link_addr = a;
+                                break;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(Fail::TryAgain {}) => {
-                            yield None;
-                            continue;
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
+                    } else {
+                        yield None;
+                        continue;
                     }
                 }
 

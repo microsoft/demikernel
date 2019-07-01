@@ -1,12 +1,15 @@
 use super::Future;
 use crate::prelude::*;
 use std::{collections::VecDeque, fmt::Debug, time::Instant};
+use super::super::traits::Async;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct WhenAny<'a, T>
 where
     T: Clone + Debug,
 {
-    queue: VecDeque<Future<'a, T>>,
+    queue: Rc<RefCell<VecDeque<Future<'a, T>>>>,
 }
 
 impl<'a, T> WhenAny<'a, T>
@@ -15,28 +18,13 @@ where
 {
     pub fn new() -> WhenAny<'a, T> {
         WhenAny {
-            queue: VecDeque::new(),
+            queue: Rc::new(RefCell::new(VecDeque::new())),
         }
     }
 
     pub fn monitor(&mut self, fut: Future<'a, T>) {
-        self.queue.push_back(fut);
-    }
-
-    pub fn poll(&mut self, now: Instant) -> Result<T> {
-        if self.queue.is_empty() {
-            return Err(Fail::TryAgain {});
-        }
-
-        let fut = self.queue.pop_front().unwrap();
-        match fut.poll(now) {
-            Ok(x) => Ok(x),
-            Err(Fail::TryAgain {}) => {
-                self.queue.push_back(fut);
-                Err(Fail::TryAgain {})
-            }
-            Err(e) => Err(e),
-        }
+        let mut queue = self.queue.borrow_mut();
+        queue.push_back(fut);
     }
 }
 
@@ -46,5 +34,25 @@ where
 {
     fn default() -> Self {
         WhenAny::new()
+    }
+}
+
+impl<'a, T> Async<T> for WhenAny<'a, T>
+where
+    T: Clone + Debug + 'static,
+{
+    fn poll(&self, now: Instant) -> Option<Result<T>> {
+        let mut queue = self.queue.borrow_mut();
+        if queue.is_empty() {
+            return None;
+        }
+
+        let fut = queue.pop_front().unwrap();
+        let result = fut.poll(now);
+        if result.is_none() {
+            queue.push_back(fut);
+        }
+
+        result
     }
 }

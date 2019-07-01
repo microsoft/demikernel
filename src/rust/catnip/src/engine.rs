@@ -5,7 +5,7 @@ use crate::{
         ethernet2::{self, MacAddress},
         ipv4,
     },
-    r#async::Future,
+    r#async,
 };
 use std::{
     collections::HashMap,
@@ -13,6 +13,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use crate::r#async::Async;
 
 pub struct Engine<'a> {
     rt: Runtime<'a>,
@@ -50,19 +51,7 @@ impl<'a> Engine<'a> {
         }
     }
 
-    pub fn poll(&mut self, now: Instant) -> Result<Effect> {
-        self.arp.service();
-
-        match self.ipv4.poll(now) {
-            Ok(_) => (),
-            Err(Fail::TryAgain {}) => (),
-            Err(e) => return Err(e),
-        };
-
-        Ok(self.rt.poll(now)?)
-    }
-
-    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
+    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> r#async::Future<'a, MacAddress> {
         self.arp.query(ipv4_addr)
     }
 
@@ -72,7 +61,7 @@ impl<'a> Engine<'a> {
         dest_port: u16,
         src_port: u16,
         payload: Vec<u8>,
-    ) -> Future<'a, ()> {
+    ) -> r#async::Future<'a, ()> {
         self.ipv4
             .udp_cast(dest_ipv4_addr, dest_port, src_port, payload)
     }
@@ -89,7 +78,7 @@ impl<'a> Engine<'a> {
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> Future<'a, Duration> {
+    ) -> r#async::Future<'a, Duration> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -103,5 +92,13 @@ impl<'a> Engine<'a> {
 
     pub fn close_udp_port(&mut self, port_num: u16) {
         self.ipv4.close_udp_port(port_num);
+    }
+}
+
+impl<'a> Async<Effect> for Engine<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Effect>> {
+        try_poll!(&self.arp, || now);
+        try_poll!(&self.ipv4, || now);
+        self.rt.poll(now)
     }
 }

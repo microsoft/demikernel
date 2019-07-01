@@ -9,6 +9,7 @@ use std::{
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
+use crate::r#async::Async;
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
@@ -42,10 +43,6 @@ impl<'a> Ipv4Peer<'a> {
         }
     }
 
-    pub fn poll(&mut self, now: Instant) -> Result<()> {
-        Ok(self.icmpv4.poll(now)?)
-    }
-
     pub fn ping(
         &self,
         dest_ipv4_addr: Ipv4Addr,
@@ -74,5 +71,11 @@ impl<'a> Ipv4Peer<'a> {
         payload: Vec<u8>,
     ) -> Future<'a, ()> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, payload)
+    }
+}
+
+impl<'a> Async<()> for Ipv4Peer<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<()>> {
+        self.icmpv4.poll(now)
     }
 }

@@ -2,10 +2,11 @@ mod when_any;
 
 use super::{
     coroutine::{CoroutineId, CoroutineStatus},
-    Async,
+    runtime::AsyncRuntime,
 };
 use crate::prelude::*;
 use std::{fmt::Debug, time::Instant};
+use super::traits::Async;
 
 pub use when_any::WhenAny;
 
@@ -16,7 +17,7 @@ where
 {
     Const(Result<T>),
     CoroutineResult {
-        r#async: Async<'a>,
+        rt: AsyncRuntime<'a>,
         cid: CoroutineId,
     },
 }
@@ -30,40 +31,20 @@ where
     }
 
     pub fn coroutine_result(
-        r#async: Async<'a>,
+        rt: AsyncRuntime<'a>,
         cid: CoroutineId,
     ) -> Future<'a, T> {
-        Future::CoroutineResult { r#async, cid }
+        Future::CoroutineResult { rt, cid }
     }
 
     pub fn completed(&self) -> bool {
         match self {
             Future::Const(_) => true,
-            Future::CoroutineResult { r#async, cid } => {
-                match r#async.coroutine_status(*cid) {
+            Future::CoroutineResult { rt, cid } => {
+                match rt.coroutine_status(*cid) {
                     CoroutineStatus::Completed(_) => true,
                     CoroutineStatus::AsleepUntil(_) => false,
                 }
-            }
-        }
-    }
-
-    pub fn poll(&self, now: Instant) -> Result<T>
-    where
-        T: Debug,
-    {
-        trace!("Future::poll({:?})", now);
-        match self {
-            Future::Const(v) => v.clone(),
-            Future::CoroutineResult { r#async, cid } => {
-                // we don't care about the result of calling `poll()`. if an
-                // unrelated coroutine completes, the result will be reported
-                // in the relevant future. if coroutine `cid` completes, we'll
-                // pick that up when we check the status of the coroutine.
-                let _ = r#async.poll(now);
-                let status = r#async.coroutine_status(*cid);
-                debug!("status of coroutine {} is `{:?}`.", cid, status);
-                status.into()
             }
         }
     }
@@ -78,8 +59,30 @@ where
         // we cannot `panic!()` here.
         match self {
             Future::Const(_) => (),
-            Future::CoroutineResult { r#async, cid } => {
-                let _ = r#async.drop_coroutine(*cid);
+            Future::CoroutineResult { rt, cid } => {
+                let _ = rt.drop_coroutine(*cid);
+            }
+        }
+    }
+}
+
+impl<'a, T> Async<T> for Future<'a, T> where
+        T: Clone + Debug + 'static
+{
+    fn poll(&self, now: Instant) -> Option<Result<T>>
+    {
+        trace!("Future::poll({:?})", now);
+        match self {
+            Future::Const(v) => Some(v.clone()),
+            Future::CoroutineResult { rt, cid } => {
+                // we don't care about the result of calling `poll()`. if an
+                // unrelated coroutine completes, the result will be reported
+                // in the relevant future. if coroutine `cid` completes, we'll
+                // pick that up when we check the status of the coroutine.
+                let _ = rt.poll(now);
+                let status = rt.coroutine_status(*cid);
+                debug!("status of coroutine {} is `{:?}`.", cid, status);
+                status.into()
             }
         }
     }

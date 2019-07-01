@@ -5,6 +5,7 @@ use crate::{
     test,
 };
 use std::time::{Duration, Instant};
+use crate::r#async::Async;
 
 #[test]
 fn unicast() {
@@ -33,15 +34,10 @@ fn unicast() {
         payload.clone(),
     );
     let now = now + Duration::from_millis(1);
-    match fut.poll(now) {
-        Ok(()) => (),
-        x => {
-            panic!("expected future completion (got `{:?}`)", x);
-        }
-    }
+    fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let effect = alice.poll(now).expect("expected an effect");
+        let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -53,7 +49,7 @@ fn unicast() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let effect = bob.poll(now).expect("expected an effect");
+    let effect = bob.poll(now).unwrap().unwrap();
     match effect {
         Effect::BytesReceived {
             ref protocol,
@@ -102,15 +98,10 @@ fn destination_port_unreachable() {
         payload.clone(),
     );
     let now = now + Duration::from_millis(1);
-    match fut.poll(now) {
-        Ok(()) => (),
-        x => {
-            panic!("expected future completion (got `{:?}`)", x);
-        }
-    }
+    fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let effect = alice.poll(now).expect("expected an effect");
+        let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -122,7 +113,7 @@ fn destination_port_unreachable() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let effect = bob.poll(now).expect("expected an effect");
+    let effect = bob.poll(now).unwrap().unwrap();
     let icmpv4_datagram = {
         let bytes = match effect {
             Effect::Transmit(bytes) => bytes,
@@ -135,7 +126,7 @@ fn destination_port_unreachable() {
 
     info!("passing ICMPv4 datagram to alice...");
     alice.receive(&icmpv4_datagram).unwrap();
-    let effect = alice.poll(now).expect("expected an effect");
+    let effect = alice.poll(now).unwrap().unwrap();
     match effect {
         Effect::Icmpv4Error {
             ref id,

@@ -22,6 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 use std::process;
+use crate::r#async::Async;
 
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
@@ -91,10 +92,6 @@ impl<'a> Icmpv4Peer<'a> {
         }
     }
 
-    pub fn poll(&mut self, now: Instant) -> Result<()> {
-        self.unfinished_work.poll(now).map(|_| ())
-    }
-
     pub fn ping(
         &self,
         dest_ipv4_addr: Ipv4Addr,
@@ -114,23 +111,21 @@ impl<'a> Icmpv4Peer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    let x = fut.poll(rt.now());
-                    match x {
-                        Ok(a) => {
-                            debug!(
-                                "ARP query complete ({} -> {})",
-                                dest_ipv4_addr, a
-                            );
-                            dest_link_addr = a;
-                            break;
+                    if let Some(result) = fut.poll(rt.now()) {
+                        match result {
+                            Ok(a) => {
+                                debug!(
+                                    "ARP query complete ({} -> {})",
+                                    dest_ipv4_addr, a
+                                );
+                                dest_link_addr = a;
+                                break;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(Fail::TryAgain {}) => {
-                            yield None;
-                            continue;
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
+                    } else {
+                        yield None;
+                        continue;
                     }
                 }
 
@@ -192,23 +187,21 @@ impl<'a> Icmpv4Peer<'a> {
             let dest_link_addr = {
                 let dest_link_addr;
                 loop {
-                    let x = fut.poll(rt.now());
-                    match x {
-                        Ok(a) => {
-                            debug!(
-                                "ARP query complete ({} -> {})",
-                                dest_ipv4_addr, a
-                            );
-                            dest_link_addr = a;
-                            break;
+                    if let Some(result) = fut.poll(rt.now()) {
+                        match result {
+                            Ok(a) => {
+                                debug!(
+                                    "ARP query complete ({} -> {})",
+                                    dest_ipv4_addr, a
+                                );
+                                dest_link_addr = a;
+                                break;
+                            }
+                            Err(e) => return Err(e),
                         }
-                        Err(Fail::TryAgain {}) => {
-                            yield None;
-                            continue;
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
+                    } else {
+                        yield None;
+                        continue;
                     }
                 }
 
@@ -255,5 +248,11 @@ impl<'a> Icmpv4Peer<'a> {
         let seq_num = self.ping_seq_num_counter.get();
         self.ping_seq_num_counter.set(seq_num + Wrapping(1));
         seq_num.0
+    }
+}
+
+impl<'a> Async<()> for Icmpv4Peer<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<()>> {
+        self.unfinished_work.poll(now).map(|r| r.map(|_| ()))
     }
 }

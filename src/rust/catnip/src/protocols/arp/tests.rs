@@ -2,6 +2,7 @@ use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};
+use crate::r#async::Async;
 
 #[test]
 fn immediate_reply() {
@@ -20,13 +21,10 @@ fn immediate_reply() {
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     let now = now + Duration::from_millis(1);
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     let request = {
-        let effect = alice.poll(now).expect("expected an effect");
+        let effect = alice.poll(now).unwrap().unwrap();
         match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -52,7 +50,7 @@ fn immediate_reply() {
         Some(test::alice_link_addr())
     );
     let reply = {
-        let effect = carrie.poll(now).expect("expected an effect");
+        let effect = carrie.poll(now).unwrap().unwrap();
         match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -66,10 +64,8 @@ fn immediate_reply() {
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_millis(1);
-    match fut.poll(now) {
-        Ok(link_addr) => assert_eq!(*test::carrie_link_addr(), link_addr),
-        x => panic!("expected future completion, got `{:?}`", x),
-    }
+    let link_addr = fut.poll(now).unwrap().unwrap();
+    assert_eq!(*test::carrie_link_addr(), link_addr);
 }
 
 #[test]
@@ -91,14 +87,11 @@ fn slow_reply() {
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     // move time forward enough to trigger a timeout.
     let now = now + Duration::from_secs(1);
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     debug!("!!!");
     let request = {
-        let effect = alice.poll(now).expect("expected an effect");
+        let effect = alice.poll(now).unwrap().unwrap();
         match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -125,7 +118,7 @@ fn slow_reply() {
         Some(test::alice_link_addr())
     );
     let reply = {
-        let effect = carrie.poll(now).expect("expected an effect");
+        let effect = carrie.poll(now).unwrap().unwrap();
         match effect {
             Effect::Transmit(datagram) => datagram.to_vec(),
             e => panic!("got unanticipated effect `{:?}`", e),
@@ -139,10 +132,8 @@ fn slow_reply() {
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_millis(1);
-    match fut.poll(now) {
-        Ok(link_addr) => assert_eq!(*test::carrie_link_addr(), link_addr),
-        x => panic!("expected future completion, got `{:?}`", x),
-    }
+    let link_addr = fut.poll(now).unwrap().unwrap();
+    assert_eq!(*test::carrie_link_addr(), link_addr);
 }
 
 #[test]
@@ -163,21 +154,15 @@ fn no_reply() {
 
     // move time forward enough to trigger a timeout.
     let now = now + Duration::from_secs(1);
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     // retry #1
     let now = now + Duration::from_secs(1);
-    match fut.poll(now) {
-        Err(Fail::TryAgain {}) => (),
-        x => panic!("expected Fail::TryAgain {{}}, got `{:?}`", x),
-    }
+    assert!(fut.poll(now).is_none());
 
     // retry #2
     let now = now + Duration::from_secs(1);
-    match fut.poll(now) {
+    match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),
     }
