@@ -16,7 +16,7 @@ fn unicast() {
 
     let now = Instant::now();
     let payload = vec![0xffu8; 10];
-    let mut alice = test::new_alice(now);
+    let alice = test::new_alice(now);
     alice.import_arp_cache(hashmap! {
         *test::bob_ipv4_addr() => *test::bob_link_addr(),
     });
