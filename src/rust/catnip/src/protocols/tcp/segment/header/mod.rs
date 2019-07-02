@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+mod options;
+
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use std::convert::TryFrom;

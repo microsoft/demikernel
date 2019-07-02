@@ -1,15 +1,18 @@
 #![feature(generators, generator_trait)]
 #![warn(clippy::all)]
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
-
 #[macro_use]
 extern crate num_derive;
 
 #[macro_use]
 extern crate log;
+
+#[macro_use]
+extern crate nom;
+
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
 
 #[cfg(test)]
 #[macro_use]

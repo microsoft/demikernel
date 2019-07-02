@@ -9,14 +9,8 @@ use crate::{
 };
 use float_duration::FloatDuration;
 use std::{
-    any::Any,
-    cell::RefCell,
-    collections::HashMap,
-    convert::TryFrom,
-    mem::swap,
-    net::Ipv4Addr,
-    rc::Rc,
-    time::Instant,
+    any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
+    mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
 #[derive(Clone)]
@@ -151,9 +145,16 @@ impl<'a> ArpPeer<'a> {
             while retries_remaining > 0 {
                 rt.emit_effect(Effect::Transmit(datagram.clone()));
                 retries_remaining -= 1;
-                if yield_until!(cache.borrow().get_link_addr(ipv4_addr).is_some(), rt.now(), timeout) {
-                    let link_addr =
-                        cache.borrow().get_link_addr(ipv4_addr).copied().unwrap();
+                if yield_until!(
+                    cache.borrow().get_link_addr(ipv4_addr).is_some(),
+                    rt.now(),
+                    timeout
+                ) {
+                    let link_addr = cache
+                        .borrow()
+                        .get_link_addr(ipv4_addr)
+                        .copied()
+                        .unwrap();
                     debug!("ARP result available ({})", link_addr);
                     let x: Rc<Any> = Rc::new(link_addr);
                     return Ok(x);

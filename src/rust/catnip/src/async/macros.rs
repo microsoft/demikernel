@@ -53,4 +53,3 @@ macro_rules! await_yield {
         }
     }};
 }
-
