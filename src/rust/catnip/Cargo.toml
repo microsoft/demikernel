@@ -3,6 +3,7 @@ name = "catnip"
 version = "0.1.0"
 authors = ["Michael Lowell Roberts <mirobert@microsoft.com>"]
 edition = "2018"
+license = "MIT or BSD"
 
 [dependencies]
 base64 = "0.10.1"
