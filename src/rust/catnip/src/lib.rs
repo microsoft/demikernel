@@ -39,3 +39,8 @@ pub use engine::Engine;
 pub use io::IoVec;
 pub use options::Options;
 pub use runtime::Runtime;
+
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
