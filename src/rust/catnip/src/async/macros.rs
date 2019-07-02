@@ -11,7 +11,14 @@ macro_rules! try_poll {
 
 #[macro_export]
 macro_rules! yield_until {
-    ($cond:expr, $now:expr, $($timeout:expr)?) => {{
+    ($cond:expr, $now:expr) => {{
+        while !$cond {
+            yield None;
+        }
+
+        true
+    }};
+    ($cond:expr, $now:expr, $timeout:expr) => {{
         let mut success = false;
         let t0 = $now;
         loop {
@@ -22,12 +29,10 @@ macro_rules! yield_until {
 
             yield None;
 
-            $(
-                let dt = $now - t0;
-                if dt >= $timeout {
-                    break;
-                }
-            )?
+            let dt = $now - t0;
+            if dt >= $timeout {
+                break;
+            }
         }
 
         success
@@ -37,23 +42,15 @@ macro_rules! yield_until {
 #[macro_export]
 macro_rules! await_yield {
     ($async:expr, $now:expr) => {{
-        let x;
-        loop {
-            if let Some(result) = $async.poll($now) {
-                match result {
-                    Ok(y) => {
-                        x = y;
-                        break;
-                    }
-                    Err(e) => return Err(e),
-                }
-            } else {
-                yield None;
-                continue;
-            }
+        assert!(yield_until!($async.poll($now).is_some(), $now));
+        $async.poll($now).unwrap()
+    }};
+    ($async:expr, $now:expr, $timeout:expr) => {{
+        if yield_until!($async.poll($now), $now, $timeout) {
+            $async.poll($now).unwrap()
+        } else {
+            None
         }
-
-        x
     }};
 }
 
