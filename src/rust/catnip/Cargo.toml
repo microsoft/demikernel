@@ -8,6 +8,7 @@ license = "MIT or BSD or Apache-2.0"
 [dependencies]
 base64 = "0.10.1"
 byteorder = "1.3.1"
+crc = "1.8.1"
 custom_error = "1.6.0"
 either = "1.5"
 eui48 = "0.4.6"
@@ -27,9 +28,3 @@ spin = "0.5.0"
 
 [dev-dependencies]
 flexi_logger = { version = "0.13.2", features = ["colors"] }
-
-[profile.release]
-overflow-checks = true
-
-[profile.bench]
-overflow-checks = true
