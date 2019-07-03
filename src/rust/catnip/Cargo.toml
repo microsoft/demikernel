@@ -27,3 +27,9 @@ spin = "0.5.0"
 
 [dev-dependencies]
 flexi_logger = { version = "0.13.2", features = ["colors"] }
+
+[profile.release]
+overflow-checks = true
+
+[profile.bench]
+overflow-checks = true
