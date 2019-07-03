@@ -8,11 +8,12 @@ mod parsers;
 use crate::prelude::*;
 use byteorder::{NetworkEndian, WriteBytesExt};
 use num_traits::FromPrimitive;
-use std::{cmp::max, collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom};
 
 // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch13.html):
 // > if no MSS option is provided, a default value of 536 bytes is used.
 const MIN_MSS: usize = 536;
+const MAX_MSS: usize = u16::max_value() as usize;
 
 #[repr(u8)]
 #[derive(FromPrimitive, Clone, PartialEq, Eq, Debug, Hash)]
@@ -138,7 +139,6 @@ impl TcpOptions {
     }
 
     pub fn encoded_length(&self) -> usize {
-        assert_ne!(0, self.0.len());
         let mut length = TcpOptionKind::Eol.encoded_length();
         for kind in self.0.keys() {
             length += kind.encoded_length();
@@ -165,15 +165,15 @@ impl TcpOptions {
     }
 
     pub fn set_mss(&mut self, mss: usize) {
-        let mss = max(MIN_MSS, mss);
+        assert!(mss >= MIN_MSS);
+        assert!(mss <= MAX_MSS);
         let mss = u16::try_from(mss).unwrap();
         self.0.insert(TcpOptionKind::Mss, TcpOption::Mss(mss));
     }
 
-    // todo: is it possible to write a corresponding `read()` function?
     pub fn encode(&self, mut bytes: &mut [u8]) {
         let length = self.encoded_length();
-        assert_eq!(bytes.len(), length);
+        assert!(bytes.len() >= length);
 
         let mut bytes_written = 0;
         for (k, v) in &self.0 {
@@ -200,5 +200,9 @@ impl TcpOptions {
         }
 
         bytes.write_u8(TcpOptionKind::Eol.into()).unwrap();
+    }
+
+    pub fn header_length(&self) -> usize {
+        self.encoded_length() + super::MIN_TCP_HEADER_SIZE
     }
 }

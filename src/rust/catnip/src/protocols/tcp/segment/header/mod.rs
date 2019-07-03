@@ -9,20 +9,34 @@ use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use std::convert::TryFrom;
 
+pub use options::TcpOptions;
+
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
 pub const MAX_TCP_HEADER_SIZE: usize = 60;
 
 pub struct TcpHeader<'a>(&'a [u8]);
 
 impl<'a> TcpHeader<'a> {
-    pub fn new(bytes: &'a [u8]) -> TcpHeader<'a> {
-        assert!(bytes.len() >= MIN_TCP_HEADER_SIZE);
-        assert!(bytes.len() <= MAX_TCP_HEADER_SIZE);
-        TcpHeader(bytes)
+    pub fn new(bytes: &'a [u8]) -> Result<TcpHeader<'a>> {
+        if bytes.len() < MIN_TCP_HEADER_SIZE {
+            return Err(Fail::Malformed {
+                details: "buffer is too small for minimim TCP header",
+            });
+        }
+
+        let _ = TcpOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
+        let header = TcpHeader(bytes);
+        if bytes.len() < header.header_len() {
+            return Err(Fail::Malformed {
+                details: "buffer is too small for complete TCP header",
+            });
+        }
+
+        Ok(header)
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.0
+        &self.0[..self.header_len()]
     }
 
     pub fn src_port(&self) -> u16 {
@@ -93,15 +107,20 @@ impl<'a> TcpHeader<'a> {
     pub fn urg_ptr(&self) -> u16 {
         NetworkEndian::read_u16(&self.0[18..20])
     }
+
+    pub fn options(&self) -> TcpOptions {
+        assert!(self.0.len() >= self.header_len());
+        TcpOptions::parse(&self.0[MIN_TCP_HEADER_SIZE..]).unwrap()
+    }
 }
 
 pub struct TcpHeaderMut<'a>(&'a mut [u8]);
 
 impl<'a> TcpHeaderMut<'a> {
     pub fn new(bytes: &'a mut [u8]) -> TcpHeaderMut<'a> {
-        // validate `bytes` without duplicating code.
-        let _ = TcpHeader::new(bytes);
-        TcpHeaderMut(bytes)
+        let mut header = TcpHeaderMut(bytes);
+        header.options(TcpOptions::new());
+        header
     }
 
     pub fn as_bytes(&mut self) -> &mut [u8] {
@@ -124,19 +143,14 @@ impl<'a> TcpHeaderMut<'a> {
         NetworkEndian::write_u32(&mut self.0[8..12], value)
     }
 
-    pub fn header_len(&mut self, value: usize) -> Result<()> {
+    fn header_len(&mut self, value: usize) {
         // from [wikipedia](https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure)
         // > Specifies the size of the TCP header in 32-bit words. The
         // > minimum size header is 5 words and the maximum is 15 words thus
         // > giving the minimum size of 20 bytes and maximum of 60 bytes,
         // > allowing for up to 40 bytes of options in the header.
-        if value < MIN_TCP_HEADER_SIZE {
-            return Err(Fail::OutOfRange {});
-        }
-
-        if value > MAX_TCP_HEADER_SIZE {
-            return Err(Fail::OutOfRange {});
-        }
+        assert!(value >= MIN_TCP_HEADER_SIZE);
+        assert!(value <= MAX_TCP_HEADER_SIZE);
 
         let mut n = value / 4;
         if n * 4 != value {
@@ -145,7 +159,6 @@ impl<'a> TcpHeaderMut<'a> {
 
         let n = u8::try_from(n).unwrap();
         self.0[12] = (self.0[12] & 0xf0) | (n << 4);
-        Ok(())
     }
 
     pub fn ns(&mut self, value: bool) {
@@ -230,5 +243,12 @@ impl<'a> TcpHeaderMut<'a> {
 
     pub fn urg_ptr(&mut self, value: u16) {
         NetworkEndian::write_u16(&mut self.0[18..20], value)
+    }
+
+    pub fn options(&mut self, options: TcpOptions) {
+        let header_len = options.header_length();
+        assert!(self.0.len() >= header_len);
+        options.encode(&mut self.0[MIN_TCP_HEADER_SIZE..]);
+        self.header_len(header_len);
     }
 }
