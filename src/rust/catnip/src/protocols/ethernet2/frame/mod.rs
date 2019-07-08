@@ -41,7 +41,7 @@ impl<'a> Ethernet2Frame<'a> {
         Ethernet2Header::new(&self.0[..ETHERNET2_HEADER_SIZE])
     }
 
-    pub fn payload(&self) -> &[u8] {
+    pub fn text(&self) -> &[u8] {
         &self.0[ETHERNET2_HEADER_SIZE..]
     }
 
@@ -59,9 +59,9 @@ impl<'a> Ethernet2Frame<'a> {
 pub struct Ethernet2FrameMut<'a>(&'a mut [u8]);
 
 impl<'a> Ethernet2FrameMut<'a> {
-    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
-        let payload_sz = max(payload_sz, MIN_PAYLOAD_SIZE);
-        vec![0u8; payload_sz + ETHERNET2_HEADER_SIZE]
+    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
+        let text_sz = max(text_sz, MIN_PAYLOAD_SIZE);
+        vec![0u8; text_sz + ETHERNET2_HEADER_SIZE]
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
@@ -78,7 +78,7 @@ impl<'a> Ethernet2FrameMut<'a> {
         Ethernet2HeaderMut::new(&mut self.0[..ETHERNET2_HEADER_SIZE])
     }
 
-    pub fn payload(&mut self) -> &mut [u8] {
+    pub fn text(&mut self) -> &mut [u8] {
         &mut self.0[ETHERNET2_HEADER_SIZE..]
     }
 

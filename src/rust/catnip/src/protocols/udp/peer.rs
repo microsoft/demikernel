@@ -36,7 +36,7 @@ impl<'a> UdpPeer<'a> {
                 src_addr: ipv4_header.src_addr(),
                 src_port: udp_header.src_port(),
                 dest_port: udp_header.dest_port(),
-                payload: IoVec::from(datagram.payload().to_vec()),
+                text: IoVec::from(datagram.text().to_vec()),
             });
 
             Ok(())
@@ -78,7 +78,7 @@ impl<'a> UdpPeer<'a> {
         dest_ipv4_addr: Ipv4Addr,
         dest_port: u16,
         src_port: u16,
-        payload: Vec<u8>,
+        text: Vec<u8>,
     ) -> Future<'a, ()> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
@@ -92,13 +92,13 @@ impl<'a> UdpPeer<'a> {
                 dest_ipv4_addr, dest_link_addr
             );
 
-            let mut bytes = UdpDatagramMut::new_bytes(payload.len());
+            let mut bytes = UdpDatagramMut::new_bytes(text.len());
             let mut datagram = UdpDatagramMut::from_bytes(&mut bytes)?;
-            // the payload slice could end up being larger than what's
+            // the text slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
-            // to trim what we get from `datagram.payload_mut()` to make it the
-            // same size as `payload`.
-            datagram.payload()[..payload.len()].copy_from_slice(&payload);
+            // to trim what we get from `datagram.text_mut()` to make it the
+            // same size as `text`.
+            datagram.text()[..text.len()].copy_from_slice(&text);
             let mut udp_header = datagram.header();
             udp_header.dest_port(dest_port);
             udp_header.src_port(src_port);

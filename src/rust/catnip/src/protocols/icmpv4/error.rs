@@ -129,11 +129,11 @@ impl<'a> Icmpv4Error<'a> {
     }
 
     pub fn next_hop_mtu(&self) -> u16 {
-        NetworkEndian::read_u16(&self.0.payload()[2..4])
+        NetworkEndian::read_u16(&self.0.text()[2..4])
     }
 
     pub fn context(&self) -> &[u8] {
-        &self.0.payload()[4..]
+        &self.0.text()[4..]
     }
 }
 
@@ -162,12 +162,12 @@ pub struct Icmpv4ErrorMut<'a>(Icmpv4DatagramMut<'a>);
 impl<'a> Icmpv4ErrorMut<'a> {
     pub fn new_bytes(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
         let frame = ipv4.frame();
-        // note that the 4 bytes included in the payload size is additional
+        // note that the 4 bytes included in the text size is additional
         // data that error datagrams include (e.g. NEXT_HOP_MTU).
         let mut bytes =
-            Icmpv4DatagramMut::new_bytes(4 + frame.payload().len());
+            Icmpv4DatagramMut::new_bytes(4 + frame.text().len());
         let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut()).unwrap();
-        let bytes_written = icmpv4.context().write(frame.payload()).unwrap();
+        let bytes_written = icmpv4.context().write(frame.text()).unwrap();
         // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
         // > ICMP error messages contain a data section that includes a copy
         // > of the entire IPv4 header, plus at least the first eight bytes of
@@ -192,11 +192,11 @@ impl<'a> Icmpv4ErrorMut<'a> {
     }
 
     pub fn next_hop_mtu(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0.payload()[2..4], value)
+        NetworkEndian::write_u16(&mut self.0.text()[2..4], value)
     }
 
     pub fn context(&mut self) -> &mut [u8] {
-        &mut self.0.payload()[4..]
+        &mut self.0.text()[4..]
     }
 
     pub fn unmut(self) -> Icmpv4Error<'a> {

@@ -42,7 +42,7 @@ impl<'a> ArpPeer<'a> {
         // > [optionally check the hardware length ar$hln]
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
-        let mut arp = ArpPdu::try_from(frame.payload())?;
+        let mut arp = ArpPdu::try_from(frame.text())?;
         // from RFC 826:
         // > Merge_flag := false
         // > If the pair <protocol type, sender protocol address> is

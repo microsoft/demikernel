@@ -17,6 +17,6 @@ pub enum Effect {
         src_addr: Ipv4Addr,
         src_port: u16,
         dest_port: u16,
-        payload: IoVec,
+        text: IoVec,
     },
 }

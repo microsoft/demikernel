@@ -35,11 +35,11 @@ impl<'a> Icmpv4Echo<'a> {
     }
 
     pub fn id(&self) -> u16 {
-        NetworkEndian::read_u16(&self.0.payload()[..2])
+        NetworkEndian::read_u16(&self.0.text()[..2])
     }
 
     pub fn seq_num(&self) -> u16 {
-        NetworkEndian::read_u16(&self.0.payload()[2..4])
+        NetworkEndian::read_u16(&self.0.text()[2..4])
     }
 }
 
@@ -84,11 +84,11 @@ impl<'a> Icmpv4EchoMut<'a> {
     }
 
     pub fn id(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0.payload()[..2], value)
+        NetworkEndian::write_u16(&mut self.0.text()[..2], value)
     }
 
     pub fn seq_num(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0.payload()[2..], value)
+        NetworkEndian::write_u16(&mut self.0.text()[2..], value)
     }
 
     pub fn unmut(self) -> Icmpv4Echo<'a> {

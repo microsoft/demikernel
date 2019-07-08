@@ -67,9 +67,9 @@ impl<'a> Ipv4Peer<'a> {
         dest_ipv4_addr: Ipv4Addr,
         dest_port: u16,
         src_port: u16,
-        payload: Vec<u8>,
+        text: Vec<u8>,
     ) -> Future<'a, ()> {
-        self.udp.cast(dest_ipv4_addr, dest_port, src_port, payload)
+        self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 }
 

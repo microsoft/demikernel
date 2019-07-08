@@ -12,15 +12,15 @@ pub struct TcpSegment<'a>(ipv4::Datagram<'a>);
 impl<'a> TcpSegment<'a> {
     pub fn header(&self) -> TcpHeader<'_> {
         // the header contents were validated when `try_from()` was called.
-        TcpHeader::new(&self.0.payload()).unwrap()
+        TcpHeader::new(&self.0.text()).unwrap()
     }
 
     pub fn ipv4(&self) -> &ipv4::Datagram<'a> {
         &self.0
     }
 
-    pub fn payload(&self) -> &[u8] {
-        &self.0.payload()[self.header().header_len()..]
+    pub fn text(&self) -> &[u8] {
+        &self.0.text()[self.header().header_len()..]
     }
 }
 
@@ -29,7 +29,7 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
 
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
         assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Tcp);
-        let _ = TcpHeader::new(ipv4_datagram.payload())?;
+        let _ = TcpHeader::new(ipv4_datagram.text())?;
         Ok(TcpSegment(ipv4_datagram))
     }
 }
@@ -37,8 +37,8 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
 pub struct TcpSegmentMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> TcpSegmentMut<'a> {
-    pub fn new_bytes(payload_sz: usize) -> Vec<u8> {
-        ipv4::DatagramMut::new_bytes(payload_sz + MAX_TCP_HEADER_SIZE)
+    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
+        ipv4::DatagramMut::new_bytes(text_sz + MAX_TCP_HEADER_SIZE)
     }
 
     pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
@@ -46,17 +46,17 @@ impl<'a> TcpSegmentMut<'a> {
     }
 
     pub fn header(&mut self) -> TcpHeaderMut<'_> {
-        TcpHeaderMut::new(self.0.payload())
+        TcpHeaderMut::new(self.0.text())
     }
 
     pub fn ipv4(&mut self) -> &mut ipv4::DatagramMut<'a> {
         &mut self.0
     }
 
-    pub fn payload(&mut self) -> &mut [u8] {
+    pub fn text(&mut self) -> &mut [u8] {
         let header_len =
-            TcpHeader::new(&self.0.payload()).unwrap().header_len();
-        &mut self.0.payload()[header_len..]
+            TcpHeader::new(&self.0.text()).unwrap().header_len();
+        &mut self.0.text()[header_len..]
     }
 
     pub fn unmut(self) -> TcpSegment<'a> {

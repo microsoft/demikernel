@@ -15,7 +15,7 @@ fn unicast() {
     const BOB_PORT: u16 = 12345;
 
     let now = Instant::now();
-    let payload = vec![0xffu8; 10];
+    let text = vec![0xffu8; 10];
     let alice = test::new_alice(now);
     alice.import_arp_cache(hashmap! {
         *test::bob_ipv4_addr() => *test::bob_link_addr(),
@@ -31,7 +31,7 @@ fn unicast() {
         *test::bob_ipv4_addr(),
         BOB_PORT,
         ALICE_PORT,
-        payload.clone(),
+        text.clone(),
     );
     let now = now + Duration::from_millis(1);
     fut.poll(now).unwrap().unwrap();
@@ -56,15 +56,15 @@ fn unicast() {
             ref src_addr,
             ref src_port,
             ref dest_port,
-            payload: ref p,
+            text: ref p,
         } => {
             assert_eq!(protocol, &ipv4::Protocol::Udp);
             assert_eq!(src_addr, test::alice_ipv4_addr());
             assert_eq!(src_port, &ALICE_PORT);
             assert_eq!(dest_port, &BOB_PORT);
             assert_eq!(p.len(), 1);
-            assert_eq!(payload.as_slice(), &p[0][..payload.len()]);
-            for i in &p[0][payload.len()..] {
+            assert_eq!(text.as_slice(), &p[0][..text.len()]);
+            for i in &p[0][text.len()..] {
                 assert_eq!(&0u8, i);
             }
         }
@@ -80,7 +80,7 @@ fn destination_port_unreachable() {
     const BOB_PORT: u16 = 12345;
 
     let now = Instant::now();
-    let payload = vec![0xffu8; 10];
+    let text = vec![0xffu8; 10];
     let mut alice = test::new_alice(now);
     alice.import_arp_cache(hashmap! {
         *test::bob_ipv4_addr() => *test::bob_link_addr(),
@@ -95,7 +95,7 @@ fn destination_port_unreachable() {
         *test::bob_ipv4_addr(),
         BOB_PORT,
         ALICE_PORT,
-        payload.clone(),
+        text.clone(),
     );
     let now = now + Duration::from_millis(1);
     fut.poll(now).unwrap().unwrap();
