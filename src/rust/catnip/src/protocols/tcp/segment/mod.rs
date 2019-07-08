@@ -54,8 +54,7 @@ impl<'a> TcpSegmentMut<'a> {
     }
 
     pub fn text(&mut self) -> &mut [u8] {
-        let header_len =
-            TcpHeader::new(&self.0.text()).unwrap().header_len();
+        let header_len = TcpHeader::new(&self.0.text()).unwrap().header_len();
         &mut self.0.text()[header_len..]
     }
 

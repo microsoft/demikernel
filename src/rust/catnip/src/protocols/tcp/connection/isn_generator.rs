@@ -1,10 +1,8 @@
-use crate::prelude::*;
-use std::num::Wrapping;
-use crc::crc32;
-use std::hash::Hasher;
-use crc::Hasher32;
 use super::super::connection::TcpConnectionId;
+use crate::prelude::*;
+use crc::{crc32, Hasher32};
 use rand::Rng;
+use std::{hash::Hasher, num::Wrapping};
 
 pub struct IsnGenerator {
     cxn_id: TcpConnectionId,
@@ -14,7 +12,11 @@ pub struct IsnGenerator {
 
 impl IsnGenerator {
     pub fn new<'a>(rt: &Runtime<'a>, cxn_id: TcpConnectionId) -> IsnGenerator {
-        IsnGenerator { cxn_id, nonce: rt.borrow_rng().gen(), counter: Wrapping(0) }
+        IsnGenerator {
+            cxn_id,
+            nonce: rt.borrow_rng().gen(),
+            counter: Wrapping(0),
+        }
     }
 
     pub fn next(&mut self, cxn_id: TcpConnectionId) -> Wrapping<u32> {

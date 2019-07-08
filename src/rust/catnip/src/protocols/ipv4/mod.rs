@@ -3,7 +3,7 @@ mod datagram;
 mod endpoint;
 mod peer;
 
-pub use checksum::Hasher as Checksum;
+pub use checksum::Ipv4Checksum as Checksum;
 pub use datagram::{
     Ipv4Datagram as Datagram, Ipv4DatagramMut as DatagramMut,
     Ipv4Header as Header, Ipv4HeaderMut as HeaderMut,

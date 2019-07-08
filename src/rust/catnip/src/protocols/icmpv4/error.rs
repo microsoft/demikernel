@@ -164,8 +164,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
         let frame = ipv4.frame();
         // note that the 4 bytes included in the text size is additional
         // data that error datagrams include (e.g. NEXT_HOP_MTU).
-        let mut bytes =
-            Icmpv4DatagramMut::new_bytes(4 + frame.text().len());
+        let mut bytes = Icmpv4DatagramMut::new_bytes(4 + frame.text().len());
         let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut()).unwrap();
         let bytes_written = icmpv4.context().write(frame.text()).unwrap();
         // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):

@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, NetworkEndian};
 use either::Either;
 use std::io::{Result as IoResult, Write};
 
-// note: we're following the model of std::hash::Hasher, even though
+// note: we're following the model of std::hash::Ipv4Checksum, even though
 // it only supports 64-bit hash widths.
 
 #[derive(Default)]
@@ -14,11 +14,11 @@ pub struct Accum {
     odd_byte: Option<u8>,
 }
 
-pub struct Hasher(Either<Accum, u16>);
+pub struct Ipv4Checksum(Either<Accum, u16>);
 
-impl Hasher {
-    pub fn new() -> Hasher {
-        Hasher(Either::Left(Accum::default()))
+impl Ipv4Checksum {
+    pub fn new() -> Ipv4Checksum {
+        Ipv4Checksum(Either::Left(Accum::default()))
     }
 
     pub fn finish(&mut self) -> u16 {
@@ -46,7 +46,13 @@ impl Hasher {
     }
 }
 
-impl Write for Hasher {
+impl Default for Ipv4Checksum {
+    fn default() -> Self {
+        Ipv4Checksum::new()
+    }
+}
+
+impl Write for Ipv4Checksum {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         let mut bytes = buf;
         // `write()` shouldn't be called after `finish()` has been called.
