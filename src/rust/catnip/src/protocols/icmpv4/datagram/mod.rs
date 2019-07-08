@@ -1,5 +1,8 @@
 mod header;
 
+#[cfg(test)]
+mod tests;
+
 pub use header::{
     Icmpv4Header, Icmpv4HeaderMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
 };

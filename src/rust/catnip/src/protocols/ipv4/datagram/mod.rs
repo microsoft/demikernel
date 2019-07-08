@@ -1,5 +1,8 @@
 mod header;
 
+#[cfg(test)]
+mod tests;
+
 use super::checksum::Ipv4Checksum;
 use crate::{prelude::*, protocols::ethernet2};
 use header::{DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION};
