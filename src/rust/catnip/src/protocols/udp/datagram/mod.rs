@@ -74,7 +74,7 @@ impl<'a> UdpDatagramMut<'a> {
         &mut self.0.text()[UDP_HEADER_SIZE..]
     }
 
-    pub fn unmut(self) -> UdpDatagram<'a> {
+    pub fn unmut(&self) -> UdpDatagram<'_> {
         UdpDatagram(self.0.unmut())
     }
 

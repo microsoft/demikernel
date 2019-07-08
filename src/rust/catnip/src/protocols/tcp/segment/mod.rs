@@ -5,7 +5,7 @@ pub use header::{
 };
 
 use crate::{prelude::*, protocols::ipv4};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Write};
 
 pub struct TcpSegment<'a>(ipv4::Datagram<'a>);
 
@@ -22,6 +22,20 @@ impl<'a> TcpSegment<'a> {
     pub fn text(&self) -> &[u8] {
         &self.0.text()[self.header().header_len()..]
     }
+
+    fn checksum(&self) -> ipv4::Checksum {
+        let mut checksum = ipv4::Checksum::new();
+        checksum.write_all(self.text()).unwrap();
+
+        let ipv4_header = self.0.header();
+        checksum.write_all(&ipv4_header.as_bytes()[..10]).unwrap();
+        checksum.write_all(&ipv4_header.as_bytes()[12..]).unwrap();
+
+        let tcp_header = self.header();
+        checksum.write_all(&tcp_header.as_bytes()[..16]).unwrap();
+        checksum.write_all(&tcp_header.as_bytes()[18..]).unwrap();
+        checksum
+    }
 }
 
 impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
@@ -30,7 +44,18 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
         assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Tcp);
         let _ = TcpHeader::new(ipv4_datagram.text())?;
-        Ok(TcpSegment(ipv4_datagram))
+        let segment = TcpSegment(ipv4_datagram);
+        let mut checksum = segment.checksum();
+        checksum
+            .write_all(&segment.header().as_bytes()[16..18])
+            .unwrap();
+        if checksum.finish() != 0 {
+            return Err(Fail::Malformed {
+                details: "TCP checksum mismatch",
+            });
+        }
+
+        Ok(segment)
     }
 }
 
@@ -58,20 +83,33 @@ impl<'a> TcpSegmentMut<'a> {
         &mut self.0.text()[header_len..]
     }
 
-    pub fn unmut(self) -> TcpSegment<'a> {
+    pub fn unmut(&self) -> TcpSegment<'_> {
         TcpSegment(self.0.unmut())
     }
 
-    pub fn seal(self) -> Result<TcpSegment<'a>> {
+    pub fn seal(mut self) -> Result<TcpSegment<'a>> {
         trace!("TcpSegmentMut::seal()");
-        let ipv4_datagram = {
-            let mut ipv4 = self.0;
-            let mut header = ipv4.header();
-            header.protocol(ipv4::Protocol::Tcp);
-            ipv4.seal()?
-        };
+        let mut ipv4_header = self.0.header();
+        ipv4_header.protocol(ipv4::Protocol::Tcp);
+        let mut checksum = self.unmut().checksum();
+        let mut tcp_header = self.header();
+        tcp_header.checksum(checksum.finish());
+        Ok(TcpSegment::try_from(self.0.seal()?)?)
+    }
 
-        Ok(TcpSegment::try_from(ipv4_datagram)?)
+    fn checksum(&self) -> ipv4::Checksum {
+        let segment = self.unmut();
+        let mut checksum = ipv4::Checksum::new();
+        checksum.write_all(segment.text()).unwrap();
+
+        let ipv4_header = segment.ipv4().header();
+        checksum.write_all(&ipv4_header.as_bytes()[..10]).unwrap();
+        checksum.write_all(&ipv4_header.as_bytes()[12..]).unwrap();
+
+        let tcp_header = segment.header();
+        checksum.write_all(&tcp_header.as_bytes()[..16]).unwrap();
+        checksum.write_all(&tcp_header.as_bytes()[18..]).unwrap();
+        checksum
     }
 }
 

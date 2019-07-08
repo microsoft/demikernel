@@ -91,7 +91,7 @@ impl<'a> Icmpv4EchoMut<'a> {
         NetworkEndian::write_u16(&mut self.0.text()[2..], value)
     }
 
-    pub fn unmut(self) -> Icmpv4Echo<'a> {
+    pub fn unmut(&self) -> Icmpv4Echo<'_> {
         Icmpv4Echo(self.0.unmut())
     }
 

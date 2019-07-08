@@ -82,7 +82,12 @@ impl<'a> Ethernet2FrameMut<'a> {
         &mut self.0[ETHERNET2_HEADER_SIZE..]
     }
 
-    pub fn unmut(self) -> Ethernet2Frame<'a> {
+    pub fn unmut(&self) -> Ethernet2Frame<'_> {
         Ethernet2Frame(self.0)
+    }
+
+    pub fn seal(self) -> Result<Ethernet2Frame<'a>> {
+        trace!("Ethernet2FrameMut::seal()");
+        Ok(Ethernet2Frame::from_bytes(self.0)?)
     }
 }

@@ -198,7 +198,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
         &mut self.0.text()[4..]
     }
 
-    pub fn unmut(self) -> Icmpv4Error<'a> {
+    pub fn unmut(&self) -> Icmpv4Error<'_> {
         Icmpv4Error(self.0.unmut())
     }
 

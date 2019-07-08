@@ -84,7 +84,7 @@ impl<'a> Icmpv4DatagramMut<'a> {
         &mut self.0.text()[ICMPV4_HEADER_SIZE..]
     }
 
-    pub fn unmut(self) -> Icmpv4Datagram<'a> {
+    pub fn unmut(&self) -> Icmpv4Datagram<'_> {
         Icmpv4Datagram(self.0.unmut())
     }
 
