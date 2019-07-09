@@ -5,18 +5,20 @@
 
 #include <boost/chrono.hpp>
 #include <cerrno>
+#include <mutex>
+#include <unordered_map>
+#include <pthread.h>
+
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
-#include <pthread.h>
-#include <unordered_map>
 
 #define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
-typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
 static std::unordered_map<pthread_t, latency_ptr_type> success_poll_latencies;
+std::mutex poll_latencies_mutex;
 #endif
 
 int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
@@ -32,18 +34,22 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
 #if DMTR_PROFILE
     pthread_t me = pthread_self();
     dmtr_latency_t *l;
-    auto it = success_poll_latencies.find(me);
-    if (it == success_poll_latencies.end()) {
-        DMTR_OK(dmtr_new_latency(&l, "dmtr success poll"));
-        latency_ptr_type success_poll_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-        success_poll_latencies.insert(
-            std::pair<pthread_t, latency_ptr_type>(me, std::move(success_poll_latency))
-        );
-    } else {
-        l = it->second.get();
+    {
+        std::lock_guard<std::mutex> lock(poll_latencies_mutex);
+        auto it = success_poll_latencies.find(me);
+        if (it == success_poll_latencies.end()) {
+            DMTR_OK(dmtr_new_latency(&l, "dmtr success poll"));
+            latency_ptr_type success_poll_latency =
+                latency_ptr_type(l, [](dmtr_latency_t *latency) {
+                    dmtr_dump_latency(stderr, latency);
+                    dmtr_delete_latency(&latency);
+                });
+            success_poll_latencies.insert(
+                std::pair<pthread_t, latency_ptr_type>(me, std::move(success_poll_latency))
+            );
+        } else {
+            l = it->second.get();
+        }
     }
 #endif
     while (1) {

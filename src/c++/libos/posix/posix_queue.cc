@@ -4,31 +4,33 @@
 // Licensed under the MIT license.
 
 #include "posix_queue.hh"
-
-#include <arpa/inet.h>
-#include <boost/chrono.hpp>
+#include <dmtr/latency.h>
+#include <dmtr/sga.h>
+#include <dmtr/libos/io_queue_api.hh>
+#include <dmtr/annot.h>
+#include <dmtr/fail.h>
+#include <dmtr/libos/mem.h>
+#include <dmtr/libos/raii_guard.hh>
 #include <cassert>
 #include <cerrno>
 #include <climits>
 #include <cstring>
-#include <dmtr/latency.h>
-#include <dmtr/sga.h>
-#include <fcntl.h>
 #include <iostream>
-#include <dmtr/libos/io_queue_api.hh>
-#include <dmtr/libos/mem.h>
-#include <dmtr/libos/raii_guard.hh>
+#include <boost/chrono.hpp>
+#include <fcntl.h>
 #include <netinet/tcp.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 //#define DMTR_DEBUG 1
 #define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
-typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
-static latency_ptr_type read_latency;
-static latency_ptr_type write_latency;
+std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
+std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
+static std::mutex r_latencies_mutex;
+static std::mutex w_latencies_mutex;
 #endif
 
 dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
@@ -173,10 +175,10 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q));
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q.get()));
     my_accept_thread->enqueue(qt);
 
-    q_out = std::move(qq);
+    q_out = std::move(q);
     return 0;
 }
 
@@ -623,12 +625,20 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
 #if DMTR_PROFILE
         dt += (boost::chrono::steady_clock::now() - t0);
+        {
+            std::lock_guard<std::mutex> lock(w_latencies_mutex);
+            pthread_t me = pthread_self();
+            auto it = write_latencies.find(me);
+            if (it != write_latencies.end()) {
+                DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+            } else {
+                DMTR_OK(dmtr_register_latencies("write", write_latencies));
+                it = write_latencies.find(me);
+                DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+            }
+        }
 #endif
-
     }
-#if DMTR_PROFILE
-    DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
-#endif
 
     if (0 != ret) return ret;
 
@@ -702,7 +712,7 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
             yield();
             continue;
         }
-        
+
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.

@@ -54,12 +54,6 @@ dmtr_latency_t *push_latency = NULL;
 dmtr_latency_t *push_wait_latency = NULL;
 
 void sig_handler(int signo) {
-    /*
-    dmtr_dump_latency(stderr, pop_latency);
-    dmtr_dump_latency(stderr, push_latency);
-    dmtr_dump_latency(stderr, push_wait_latency);
-    */
-
     http_workers.clear();
     for (pthread_t *w: worker_threads) {
         pthread_kill(*w, SIGKILL);
@@ -67,7 +61,6 @@ void sig_handler(int signo) {
     for (int &lqd: lqds) {
         dmtr_close(lqd);
     }
-
     exit(0);
 }
 

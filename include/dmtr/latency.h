@@ -8,6 +8,10 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <memory>
+#include <functional>
+#include <unordered_map>
+#include <mutex>
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +23,14 @@ extern "C" {
 extern std::string dmtr_log_directory;
 
 typedef struct dmtr_latency dmtr_latency_t;
+typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)> > latency_ptr_type;
+int dmtr_register_latencies(const char *label,
+                            std::unordered_map<pthread_t, latency_ptr_type> &latencies);
+
+#if DMTR_PROFILING
+extern std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
+extern std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
+#endif
 
 int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name);
 int dmtr_record_timed_latency(dmtr_latency_t *latency, uint64_t record_time, uint64_t ns);

@@ -9,8 +9,11 @@
 #include <boost/coroutine2/coroutine.hpp>
 #include <dmtr/annot.h>
 #include <dmtr/types.h>
+#include <dmtr/latency.h>
 #include <dmtr/libos/user_thread.hh>
 #include <memory>
+#include <iostream>
+#include <mutex>
 #include <sys/socket.h>
 #include <unordered_map>
 
@@ -24,6 +27,8 @@ class io_queue
         NETWORK_Q,
         FILE_Q,
     };
+
+    public: std::mutex my_mutex;
 
     protected: class task {
         public: typedef user_thread<dmtr_qtoken_t> thread_type;

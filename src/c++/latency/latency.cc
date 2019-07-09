@@ -343,3 +343,28 @@ uint64_t dmtr_now_ns() {
     auto t = boost::chrono::steady_clock::now();
     return t.time_since_epoch().count();
 }
+
+int dmtr_register_latencies(const char *label,
+                            std::unordered_map<pthread_t, latency_ptr_type> &latencies) {
+    char log_filename[MAX_LOG_FILENAME_LEN];
+    const char *log_dir = dmtr_log_directory.c_str();
+    pthread_t me = pthread_self();
+
+    auto it = latencies.find(me);
+    if (it == latencies.end()) {
+        snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-latencies", log_dir, me, label);
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, label));
+        latency_ptr_type latency =
+            latency_ptr_type(l, [log_filename](dmtr_latency_t *lat) {
+                //dmtr_dump_latency(stderr, lat);
+                dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log_filename), lat);
+                dmtr_delete_latency(&lat);
+            });
+        latencies.insert(
+            std::pair<pthread_t, latency_ptr_type>(me, std::move(latency))
+        );
+    }
+
+    return 0;
+}
