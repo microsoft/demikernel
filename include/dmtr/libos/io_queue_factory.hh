@@ -24,7 +24,8 @@ class io_queue_factory
 
     public: io_queue_factory();
     public: int register_ctor(enum io_queue::category_id cid, ctor_type ctor);
-    public: int construct(std::unique_ptr<io_queue> &q_out, enum io_queue::category_id cid, int qd) const;
+    public: int construct(std::unique_ptr<io_queue> &q_out, enum io_queue::category_id cid,
+                          int qd) const;
 };
 
 } // namespace dmtr

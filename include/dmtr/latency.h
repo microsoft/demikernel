@@ -16,6 +16,8 @@ extern "C" {
 // The maximum lenth for the log URI
 #define MAX_LOG_FILENAME_LEN 128
 
+extern std::string dmtr_log_directory;
+
 typedef struct dmtr_latency dmtr_latency_t;
 
 int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name);

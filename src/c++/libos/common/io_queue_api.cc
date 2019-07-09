@@ -2,13 +2,12 @@
 // Licensed under the MIT license.
 
 #include <dmtr/libos/io_queue_api.hh>
-
-#include <cassert>
-#include <cstdlib>
 #include <dmtr/annot.h>
-#include <dmtr/annot.h>
+#include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/libos/memory_queue.hh>
+#include <cassert>
+#include <cstdlib>
 #include <iostream>
 #include <unistd.h>
 
@@ -19,6 +18,8 @@ dmtr::io_queue_api::io_queue_api() :
 
 dmtr::io_queue_api::~io_queue_api()
 {}
+
+std::string dmtr_log_directory;
 
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
     DMTR_NULL(EINVAL, newobj_out);
@@ -40,7 +41,7 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
             std::cerr << desc << std::endl;
             exit(0);
         }
-        newobj_out->my_log_directory = log_directory;
+        dmtr_log_directory = log_directory;
     }
 
     return 0;

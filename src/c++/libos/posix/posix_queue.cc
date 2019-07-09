@@ -63,7 +63,7 @@ int dmtr::posix_queue::alloc_latency()
 
 int dmtr::posix_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
 #if DMTR_PROFILE
-    DMTR_OK(alloc_latency());        
+    DMTR_OK(alloc_latency());
 #endif
 
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd, NETWORK_Q));
@@ -78,6 +78,14 @@ int dmtr::posix_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int qd)
 
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd, FILE_Q));
     DMTR_NOTNULL(ENOMEM, q_out);
+
+    return 0;
+}
+
+int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    q_out = std::unique_ptr<io_queue>(new posix_queue(qd));
+    DMTR_NOTNULL(ENOMEM, q_out);
+
     return 0;
 }
 
