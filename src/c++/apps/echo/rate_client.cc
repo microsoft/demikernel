@@ -222,6 +222,7 @@ int log_responses(uint32_t total_requests,
         DMTR_NOTNULL(EINVAL, log_fd);
         DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
         fclose(log_fd);
+        DMTR_OK(dmtr_delete_latency(&log.l));
     }
 
     if (!expired) {
@@ -572,6 +573,11 @@ int main(int argc, char **argv) {
         delete threads[i].resp;
     }
     log_info("Responses gathered");
+
+    // This quiets Valgrind, but seems unecessary
+    for (auto &req: http_requests) {
+        delete req.release();
+    }
 
     // Wait on the logging threads
     for (int i = 0; i < n_threads; i++) {
