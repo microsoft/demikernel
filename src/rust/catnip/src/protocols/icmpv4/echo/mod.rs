@@ -64,8 +64,8 @@ impl<'a> Icmpv4EchoMut<'a> {
         Icmpv4DatagramMut::new_bytes(4)
     }
 
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ok(Icmpv4EchoMut(Icmpv4DatagramMut::from_bytes(bytes)?))
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+        Icmpv4EchoMut(Icmpv4DatagramMut::from_bytes(bytes))
     }
 
     pub fn icmpv4(&mut self) -> &mut Icmpv4DatagramMut<'a> {

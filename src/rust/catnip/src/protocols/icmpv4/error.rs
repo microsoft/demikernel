@@ -165,7 +165,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
         // note that the 4 bytes included in the text size is additional
         // data that error datagrams include (e.g. NEXT_HOP_MTU).
         let mut bytes = Icmpv4DatagramMut::new_bytes(4 + frame.text().len());
-        let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut()).unwrap();
+        let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut());
         let bytes_written = icmpv4.context().write(frame.text()).unwrap();
         // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
         // > ICMP error messages contain a data section that includes a copy
@@ -175,8 +175,8 @@ impl<'a> Icmpv4ErrorMut<'a> {
         bytes
     }
 
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ok(Icmpv4ErrorMut(Icmpv4DatagramMut::from_bytes(bytes)?))
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+        Icmpv4ErrorMut(Icmpv4DatagramMut::from_bytes(bytes))
     }
 
     pub fn icmpv4(&mut self) -> &mut Icmpv4DatagramMut<'a> {
@@ -204,10 +204,9 @@ impl<'a> Icmpv4ErrorMut<'a> {
 
     pub fn seal(self) -> Result<Icmpv4Error<'a>> {
         trace!("Icmpv4ErrorMut::seal()");
-        let error = Icmpv4Error::try_from(self.0.seal()?)?;
         // todo: we don't yet support setting the next hop MTU. when we do,
         // we'll need to ensure this is 0 when not needed.
-        assert_eq!(0, error.next_hop_mtu());
-        Ok(error)
+        assert_eq!(0, self.unmut().next_hop_mtu());
+        Ok(Icmpv4Error::try_from(self.0.seal()?)?)
     }
 }

@@ -114,7 +114,7 @@ impl<'a> Icmpv4Peer<'a> {
             );
 
             let mut bytes = Icmpv4EchoMut::new_bytes();
-            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
+            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
             echo.r#type(Icmpv4EchoOp::Request);
             echo.id(id);
             echo.seq_num(seq_num);
@@ -169,7 +169,7 @@ impl<'a> Icmpv4Peer<'a> {
                 dest_ipv4_addr, dest_link_addr
             );
             let mut bytes = Icmpv4EchoMut::new_bytes();
-            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes)?;
+            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
             echo.r#type(Icmpv4EchoOp::Reply);
             echo.id(id);
             echo.seq_num(seq_num);
@@ -181,9 +181,9 @@ impl<'a> Icmpv4Peer<'a> {
             let mut frame_header = frame.header();
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
-
             let _ = echo.seal()?;
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+
             let x: Rc<Any> = Rc::new(());
             Ok(x)
         });

@@ -93,7 +93,7 @@ impl<'a> UdpPeer<'a> {
             );
 
             let mut bytes = UdpDatagramMut::new_bytes(text.len());
-            let mut datagram = UdpDatagramMut::from_bytes(&mut bytes)?;
+            let mut datagram = UdpDatagramMut::from_bytes(&mut bytes);
             // the text slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
             // to trim what we get from `datagram.text_mut()` to make it the
@@ -109,8 +109,8 @@ impl<'a> UdpPeer<'a> {
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
             let _ = datagram.seal()?;
-
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+
             let x: Rc<Any> = Rc::new(());
             Ok(x)
         })
@@ -142,7 +142,7 @@ impl<'a> UdpPeer<'a> {
             let datagram =
                 ipv4::Datagram::from_bytes(datagram.as_slice()).unwrap();
             let mut bytes = icmpv4::ErrorMut::new_bytes(datagram);
-            let mut error = icmpv4::ErrorMut::from_bytes(&mut bytes)?;
+            let mut error = icmpv4::ErrorMut::from_bytes(&mut bytes);
             error.id(icmpv4::ErrorId::DestinationUnreachable(
                 icmpv4::DestinationUnreachable::DestinationPortUnreachable,
             ));
@@ -154,9 +154,9 @@ impl<'a> UdpPeer<'a> {
             let mut frame_header = frame.header();
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
-
             let _ = error.seal()?;
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+
             let x: Rc<Any> = Rc::new(());
             Ok(x)
         });

@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn no_options() {
     trace!("no_options()");
-    let mut bytes = [0; MAX_TCP_HEADER_SIZE];
-    let mut header = TcpHeaderMut::new(&mut bytes);
+    let mut bytes = [0u8; MAX_TCP_HEADER_SIZE];
+    let mut header = TcpHeaderMut::new(bytes.as_mut());
     header.dest_port(0x1234);
     header.src_port(0x5678);
     header.seq_num(0x9abc_def0);
@@ -21,12 +21,13 @@ fn no_options() {
     header.window_sz(0xbcde);
     header.checksum(0xf0ed);
     header.urg_ptr(0xcba9);
+    let no_options = TcpOptions::new();
+    header.options(no_options.clone());
     let header = TcpHeader::new(&bytes).unwrap();
     assert_eq!(0x1234, header.dest_port());
     assert_eq!(0x5678, header.src_port());
     assert_eq!(0x9abc_def0, header.seq_num());
     assert_eq!(0x1234_5678, header.ack_num());
-    let no_options = TcpOptions::new();
     assert_eq!(no_options.header_length(), header.header_len());
     assert!(header.ns());
     assert!(header.cwr());

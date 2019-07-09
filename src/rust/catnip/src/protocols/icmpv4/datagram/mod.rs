@@ -8,7 +8,8 @@ pub use header::{
 };
 
 use crate::{prelude::*, protocols::ipv4};
-use std::{cmp::min, convert::TryFrom, io::Write};
+use byteorder::{NetworkEndian, WriteBytesExt};
+use std::{convert::TryFrom, io::Write};
 
 const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
@@ -67,12 +68,14 @@ impl<'a> Icmpv4DatagramMut<'a> {
     pub fn new_bytes(text_sz: usize) -> Vec<u8> {
         let mut bytes =
             ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE + text_sz);
-        bytes.resize(min(bytes.len(), MAX_ICMPV4_DATAGRAM_SIZE), 0);
+        assert!(bytes.len() <= MAX_ICMPV4_DATAGRAM_SIZE);
+        let mut datagram = Icmpv4DatagramMut::from_bytes(bytes.as_mut());
+        datagram.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
         bytes
     }
 
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ok(Icmpv4DatagramMut(ipv4::DatagramMut::from_bytes(bytes)?))
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+        Icmpv4DatagramMut(ipv4::DatagramMut::from_bytes(bytes))
     }
 
     pub fn header(&mut self) -> Icmpv4HeaderMut<'_> {
@@ -93,11 +96,13 @@ impl<'a> Icmpv4DatagramMut<'a> {
 
     pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {
         trace!("Icmp4DatagramMut::seal()");
-        self.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
-        self.header().checksum(0);
+        let ipv4_text = self.0.text();
         let mut checksum = ipv4::Checksum::new();
-        checksum.write_all(self.0.text()).unwrap();
-        self.header().checksum(checksum.finish());
+        checksum.write_all(&ipv4_text[..2]).unwrap();
+        checksum.write_u16::<NetworkEndian>(0u16).unwrap();
+        checksum.write_all(&ipv4_text[4..]).unwrap();
+        let mut icmp_header = self.header();
+        icmp_header.checksum(checksum.finish());
         Ok(Icmpv4Datagram::try_from(self.0.seal()?)?)
     }
 }

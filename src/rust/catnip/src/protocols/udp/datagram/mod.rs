@@ -55,11 +55,15 @@ pub struct UdpDatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> UdpDatagramMut<'a> {
     pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        ipv4::DatagramMut::new_bytes(text_sz + UDP_HEADER_SIZE)
+        let mut bytes =
+            ipv4::DatagramMut::new_bytes(text_sz + UDP_HEADER_SIZE);
+        let mut datagram = UdpDatagramMut::from_bytes(bytes.as_mut());
+        datagram.ipv4().header().protocol(ipv4::Protocol::Udp);
+        bytes
     }
 
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ok(UdpDatagramMut(ipv4::DatagramMut::from_bytes(bytes)?))
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+        UdpDatagramMut(ipv4::DatagramMut::from_bytes(bytes))
     }
 
     pub fn header(&mut self) -> UdpHeaderMut<'_> {
@@ -80,14 +84,7 @@ impl<'a> UdpDatagramMut<'a> {
 
     pub fn seal(self) -> Result<UdpDatagram<'a>> {
         trace!("UdpDatagramMut::seal()");
-        let ipv4_datagram = {
-            let mut ipv4 = self.0;
-            let mut header = ipv4.header();
-            header.protocol(ipv4::Protocol::Udp);
-            ipv4.seal()?
-        };
-
-        Ok(UdpDatagram::try_from(ipv4_datagram)?)
+        Ok(UdpDatagram::try_from(self.0.seal()?)?)
     }
 }
 

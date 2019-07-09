@@ -77,6 +77,7 @@ impl TcpOption {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct TcpOptions(HashMap<TcpOptionKind, TcpOption>);
 
 impl TcpOptions {

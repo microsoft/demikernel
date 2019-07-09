@@ -7,7 +7,10 @@ mod options;
 
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
-use std::convert::TryFrom;
+use std::{
+    cmp::{max, min},
+    convert::TryFrom,
+};
 
 pub use options::TcpOptions;
 
@@ -20,19 +23,29 @@ impl<'a> TcpHeader<'a> {
     pub fn new(bytes: &'a [u8]) -> Result<TcpHeader<'a>> {
         if bytes.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
-                details: "buffer is too small for minimim TCP header",
+                details: "buffer is too small for minimum TCP header",
             });
         }
 
-        let _ = TcpOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
         let header = TcpHeader(bytes);
-        if bytes.len() < header.header_len() {
+        let header_len = header.header_len();
+        if header_len > MAX_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
-                details: "buffer is too small for complete TCP header",
+                details: "TCP header length is too large",
             });
         }
 
-        Ok(header)
+        if header_len > MIN_TCP_HEADER_SIZE {
+            let options = TcpOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
+            if header_len != options.header_length() {
+                return Err(Fail::Malformed {
+                    details: "TCP header length mismatch",
+                });
+            }
+            Ok(TcpHeader(&bytes[..header_len]))
+        } else {
+            Ok(header)
+        }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -109,8 +122,11 @@ impl<'a> TcpHeader<'a> {
     }
 
     pub fn options(&self) -> TcpOptions {
-        assert!(self.0.len() >= self.header_len());
-        TcpOptions::parse(&self.0[MIN_TCP_HEADER_SIZE..]).unwrap()
+        if self.header_len() == MIN_TCP_HEADER_SIZE {
+            TcpOptions::new()
+        } else {
+            TcpOptions::parse(&self.0[MIN_TCP_HEADER_SIZE..]).unwrap()
+        }
     }
 }
 
@@ -118,13 +134,17 @@ pub struct TcpHeaderMut<'a>(&'a mut [u8]);
 
 impl<'a> TcpHeaderMut<'a> {
     pub fn new(bytes: &'a mut [u8]) -> TcpHeaderMut<'a> {
-        let mut header = TcpHeaderMut(bytes);
-        header.options(TcpOptions::new());
-        header
+        let len = min(bytes.len(), MAX_TCP_HEADER_SIZE + 1);
+        TcpHeaderMut(&mut bytes[..len])
+    }
+
+    pub fn unmut(&self) -> TcpHeader<'_> {
+        TcpHeader(self.0)
     }
 
     pub fn as_bytes(&mut self) -> &mut [u8] {
-        self.0
+        let header_len = max(MIN_TCP_HEADER_SIZE, self.unmut().header_len());
+        &mut self.0[..header_len]
     }
 
     pub fn src_port(&mut self, value: u16) {
@@ -158,7 +178,7 @@ impl<'a> TcpHeaderMut<'a> {
         }
 
         let n = u8::try_from(n).unwrap();
-        self.0[12] = (self.0[12] & 0xf0) | (n << 4);
+        self.0[12] = (self.0[12] & 0xf) | (n << 4);
     }
 
     pub fn ns(&mut self, value: bool) {
@@ -234,15 +254,15 @@ impl<'a> TcpHeaderMut<'a> {
     }
 
     pub fn window_sz(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0[14..16], value)
+        NetworkEndian::write_u16(&mut self.0[14..16], value);
     }
 
     pub fn checksum(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0[16..18], value)
+        NetworkEndian::write_u16(&mut self.0[16..18], value);
     }
 
     pub fn urg_ptr(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0[18..20], value)
+        NetworkEndian::write_u16(&mut self.0[18..20], value);
     }
 
     pub fn options(&mut self, options: TcpOptions) {

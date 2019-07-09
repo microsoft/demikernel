@@ -7,7 +7,7 @@ fn serialization() {
     // ensures that a ICMPv4 Echo datagram serializes correctly.
     trace!("serialization()");
     let mut bytes = Icmpv4EchoMut::new_bytes();
-    let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes).unwrap();
+    let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
     echo.r#type(Icmpv4EchoOp::Reply);
     echo.id(0xab);
     echo.seq_num(0xcd);

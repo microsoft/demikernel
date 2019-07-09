@@ -64,9 +64,10 @@ impl<'a> Ethernet2FrameMut<'a> {
         vec![0u8; text_sz + ETHERNET2_HEADER_SIZE]
     }
 
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Result<Self> {
-        Ethernet2Frame::validate_buffer_length(bytes.len())?;
-        Ok(Ethernet2FrameMut(bytes))
+    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+        Ethernet2Frame::validate_buffer_length(bytes.len())
+            .expect("not enough bytes for a complete frame");
+        Ethernet2FrameMut(bytes)
     }
 
     #[allow(dead_code)]
