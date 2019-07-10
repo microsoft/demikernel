@@ -7,8 +7,8 @@ fn no_options() {
     let mut header = TcpHeaderMut::new(bytes.as_mut());
     header.dest_port(0x1234);
     header.src_port(0x5678);
-    header.seq_num(0x9abc_def0);
-    header.ack_num(0x1234_5678);
+    header.seq_num(Wrapping(0x9abc_def0));
+    header.ack_num(Wrapping(0x1234_5678));
     header.ns(true);
     header.cwr(true);
     header.ece(true);
@@ -26,8 +26,8 @@ fn no_options() {
     let header = TcpHeader::new(&bytes).unwrap();
     assert_eq!(0x1234, header.dest_port());
     assert_eq!(0x5678, header.src_port());
-    assert_eq!(0x9abc_def0, header.seq_num());
-    assert_eq!(0x1234_5678, header.ack_num());
+    assert_eq!(0x9abc_def0, header.seq_num().0);
+    assert_eq!(0x1234_5678, header.ack_num().0);
     assert_eq!(no_options.header_length(), header.header_len());
     assert!(header.ns());
     assert!(header.cwr());

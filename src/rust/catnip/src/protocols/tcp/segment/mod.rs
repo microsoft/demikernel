@@ -68,10 +68,10 @@ impl<'a> TcpSegment<'a> {
             .write_u16::<NetworkEndian>(tcp_header.dest_port())
             .unwrap();
         checksum
-            .write_u32::<NetworkEndian>(tcp_header.seq_num())
+            .write_u32::<NetworkEndian>(tcp_header.seq_num().0)
             .unwrap();
         checksum
-            .write_u32::<NetworkEndian>(tcp_header.ack_num())
+            .write_u32::<NetworkEndian>(tcp_header.ack_num().0)
             .unwrap();
         // write TCP header length & flags
         checksum.write_all(&tcp_header.as_bytes()[12..14]).unwrap();

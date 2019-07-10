@@ -10,6 +10,7 @@ use byteorder::{ByteOrder, NetworkEndian};
 use std::{
     cmp::{max, min},
     convert::TryFrom,
+    num::Wrapping,
 };
 
 pub use options::TcpOptions;
@@ -60,12 +61,12 @@ impl<'a> TcpHeader<'a> {
         NetworkEndian::read_u16(&self.0[2..4])
     }
 
-    pub fn seq_num(&self) -> u32 {
-        NetworkEndian::read_u32(&self.0[4..8])
+    pub fn seq_num(&self) -> Wrapping<u32> {
+        Wrapping(NetworkEndian::read_u32(&self.0[4..8]))
     }
 
-    pub fn ack_num(&self) -> u32 {
-        NetworkEndian::read_u32(&self.0[8..12])
+    pub fn ack_num(&self) -> Wrapping<u32> {
+        Wrapping(NetworkEndian::read_u32(&self.0[8..12]))
     }
 
     pub fn header_len(&self) -> usize {
@@ -155,12 +156,12 @@ impl<'a> TcpHeaderMut<'a> {
         NetworkEndian::write_u16(&mut self.0[2..4], value)
     }
 
-    pub fn seq_num(&mut self, value: u32) {
-        NetworkEndian::write_u32(&mut self.0[4..8], value)
+    pub fn seq_num(&mut self, value: Wrapping<u32>) {
+        NetworkEndian::write_u32(&mut self.0[4..8], value.0)
     }
 
-    pub fn ack_num(&mut self, value: u32) {
-        NetworkEndian::write_u32(&mut self.0[8..12], value)
+    pub fn ack_num(&mut self, value: Wrapping<u32>) {
+        NetworkEndian::write_u32(&mut self.0[8..12], value.0)
     }
 
     fn header_len(&mut self, value: usize) {
