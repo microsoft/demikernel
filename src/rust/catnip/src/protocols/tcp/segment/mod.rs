@@ -21,6 +21,16 @@ enum ChecksumOp {
 pub struct TcpSegment<'a>(ipv4::Datagram<'a>);
 
 impl<'a> TcpSegment<'a> {
+    pub fn new(text_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new(text_sz + MAX_TCP_HEADER_SIZE);
+        let mut segment = TcpSegmentMut::attach(bytes.as_mut());
+        let mut tcp_header = segment.header();
+        tcp_header.options(TcpOptions::new());
+        let mut ipv4_header = segment.ipv4().header();
+        ipv4_header.protocol(ipv4::Protocol::Tcp);
+        bytes
+    }
+
     pub fn header(&self) -> TcpHeader<'_> {
         // the header contents were validated when `try_from()` was called.
         TcpHeader::new(&self.0.text()).unwrap()
@@ -118,19 +128,8 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
 pub struct TcpSegmentMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> TcpSegmentMut<'a> {
-    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        let mut bytes =
-            ipv4::DatagramMut::new_bytes(text_sz + MAX_TCP_HEADER_SIZE);
-        let mut segment = TcpSegmentMut::from_bytes(bytes.as_mut());
-        let mut tcp_header = segment.header();
-        tcp_header.options(TcpOptions::new());
-        let mut ipv4_header = segment.ipv4().header();
-        ipv4_header.protocol(ipv4::Protocol::Tcp);
-        bytes
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        TcpSegmentMut(ipv4::DatagramMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        TcpSegmentMut(ipv4::DatagramMut::attach(bytes))
     }
 
     pub fn header(&mut self) -> TcpHeaderMut<'_> {

@@ -1,4 +1,4 @@
-use super::{TcpOptions, TcpSegmentMut};
+use super::{TcpOptions, TcpSegment, TcpSegmentMut};
 use crate::test;
 use byteorder::{NetworkEndian, WriteBytesExt};
 
@@ -6,8 +6,8 @@ use byteorder::{NetworkEndian, WriteBytesExt};
 fn checksum() {
     // ensures that a IPv4 segment checksum works correctly.
     trace!("checksum()");
-    let mut bytes = TcpSegmentMut::new_bytes(4);
-    let mut segment = TcpSegmentMut::from_bytes(&mut bytes);
+    let mut bytes = TcpSegment::new(4);
+    let mut segment = TcpSegmentMut::attach(&mut bytes);
     segment.text().write_u32::<NetworkEndian>(0x1234).unwrap();
     let mut tcp_header = segment.header();
     tcp_header.dest_port(0x1234);

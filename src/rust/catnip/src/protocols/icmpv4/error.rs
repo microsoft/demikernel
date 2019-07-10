@@ -115,8 +115,23 @@ impl Icmpv4ErrorId {
 pub struct Icmpv4Error<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Error<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Icmpv4Error::try_from(Icmpv4Datagram::from_bytes(bytes)?)?)
+    pub fn new(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
+        let frame = ipv4.frame();
+        // note that the 4 bytes included in the text size is additional
+        // data that error datagrams include (e.g. NEXT_HOP_MTU).
+        let mut bytes = Icmpv4Datagram::new(4 + frame.text().len());
+        let mut icmpv4 = Icmpv4ErrorMut::attach(bytes.as_mut());
+        let bytes_written = icmpv4.context().write(frame.text()).unwrap();
+        // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
+        // > ICMP error messages contain a data section that includes a copy
+        // > of the entire IPv4 header, plus at least the first eight bytes of
+        // > data from the IPv4 packet that caused the error message.
+        assert!(bytes_written >= ipv4::HEADER_SIZE + 4 + 8);
+        bytes
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Icmpv4Error::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
     pub fn icmpv4(&self) -> &Icmpv4Datagram<'a> {
@@ -160,23 +175,8 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Error<'a> {
 pub struct Icmpv4ErrorMut<'a>(Icmpv4DatagramMut<'a>);
 
 impl<'a> Icmpv4ErrorMut<'a> {
-    pub fn new_bytes(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
-        let frame = ipv4.frame();
-        // note that the 4 bytes included in the text size is additional
-        // data that error datagrams include (e.g. NEXT_HOP_MTU).
-        let mut bytes = Icmpv4DatagramMut::new_bytes(4 + frame.text().len());
-        let mut icmpv4 = Icmpv4ErrorMut::from_bytes(bytes.as_mut());
-        let bytes_written = icmpv4.context().write(frame.text()).unwrap();
-        // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):
-        // > ICMP error messages contain a data section that includes a copy
-        // > of the entire IPv4 header, plus at least the first eight bytes of
-        // > data from the IPv4 packet that caused the error message.
-        assert!(bytes_written >= ipv4::HEADER_SIZE + 4 + 8);
-        bytes
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        Icmpv4ErrorMut(Icmpv4DatagramMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        Icmpv4ErrorMut(Icmpv4DatagramMut::attach(bytes))
     }
 
     pub fn icmpv4(&mut self) -> &mut Icmpv4DatagramMut<'a> {

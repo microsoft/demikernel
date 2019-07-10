@@ -1,4 +1,4 @@
-use super::{Ipv4DatagramMut, Ipv4Protocol};
+use super::{Ipv4Datagram, Ipv4DatagramMut, Ipv4Protocol};
 use crate::test;
 
 #[test]
@@ -6,8 +6,8 @@ fn checksum() {
     // ensures that a IPv4 datagram checksum works correctly.
     trace!("checksum()");
     // the IPv4 checksum does not include text.
-    let mut bytes = Ipv4DatagramMut::new_bytes(0);
-    let mut datagram = Ipv4DatagramMut::from_bytes(&mut bytes);
+    let mut bytes = Ipv4Datagram::new(0);
+    let mut datagram = Ipv4DatagramMut::attach(&mut bytes);
     let mut ipv4_header = datagram.header();
     ipv4_header.src_addr(*test::bob_ipv4_addr());
     ipv4_header.dest_addr(*test::alice_ipv4_addr());

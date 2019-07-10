@@ -1,4 +1,4 @@
-use super::{Icmpv4DatagramMut, Icmpv4Type};
+use super::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
 use crate::test;
 use byteorder::{NetworkEndian, WriteBytesExt};
 
@@ -6,8 +6,8 @@ use byteorder::{NetworkEndian, WriteBytesExt};
 fn checksum() {
     // ensures that a IPv4 datagram checksum works correctly.
     trace!("checksum()");
-    let mut bytes = Icmpv4DatagramMut::new_bytes(4);
-    let mut datagram = Icmpv4DatagramMut::from_bytes(&mut bytes);
+    let mut bytes = Icmpv4Datagram::new(4);
+    let mut datagram = Icmpv4DatagramMut::attach(&mut bytes);
     datagram.text().write_u32::<NetworkEndian>(0x1234).unwrap();
     let mut icmpv4_header = datagram.header();
     icmpv4_header.r#type(Icmpv4Type::DestinationUnreachable);

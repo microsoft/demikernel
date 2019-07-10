@@ -113,8 +113,8 @@ impl<'a> Icmpv4Peer<'a> {
                 dest_ipv4_addr, dest_link_addr
             );
 
-            let mut bytes = Icmpv4EchoMut::new_bytes();
-            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
+            let mut bytes = Icmpv4Echo::new();
+            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
             echo.r#type(Icmpv4EchoOp::Request);
             echo.id(id);
             echo.seq_num(seq_num);
@@ -168,8 +168,8 @@ impl<'a> Icmpv4Peer<'a> {
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
             );
-            let mut bytes = Icmpv4EchoMut::new_bytes();
-            let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
+            let mut bytes = Icmpv4Echo::new();
+            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
             echo.r#type(Icmpv4EchoOp::Reply);
             echo.id(id);
             echo.seq_num(seq_num);

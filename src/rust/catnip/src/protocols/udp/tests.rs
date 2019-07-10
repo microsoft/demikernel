@@ -43,7 +43,7 @@ fn unicast() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let _ = UdpDatagram::from_bytes(&bytes).unwrap();
+        let _ = UdpDatagram::attach(&bytes).unwrap();
         bytes
     };
 
@@ -107,7 +107,7 @@ fn destination_port_unreachable() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let _ = UdpDatagram::from_bytes(&bytes).unwrap();
+        let _ = UdpDatagram::attach(&bytes).unwrap();
         bytes
     };
 
@@ -120,7 +120,7 @@ fn destination_port_unreachable() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let _ = icmpv4::Error::from_bytes(&bytes).unwrap();
+        let _ = icmpv4::Error::attach(&bytes).unwrap();
         bytes
     };
 

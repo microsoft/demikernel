@@ -15,8 +15,12 @@ pub enum Icmpv4EchoOp {
 pub struct Icmpv4Echo<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Echo<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Icmpv4Echo::try_from(Icmpv4Datagram::from_bytes(bytes)?)?)
+    pub fn new() -> Vec<u8> {
+        Icmpv4Datagram::new(4)
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Icmpv4Echo::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
     pub fn icmpv4(&self) -> &Icmpv4Datagram<'a> {
@@ -60,12 +64,8 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Echo<'a> {
 pub struct Icmpv4EchoMut<'a>(Icmpv4DatagramMut<'a>);
 
 impl<'a> Icmpv4EchoMut<'a> {
-    pub fn new_bytes() -> Vec<u8> {
-        Icmpv4DatagramMut::new_bytes(4)
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        Icmpv4EchoMut(Icmpv4DatagramMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        Icmpv4EchoMut(Icmpv4DatagramMut::attach(bytes))
     }
 
     pub fn icmpv4(&mut self) -> &mut Icmpv4DatagramMut<'a> {

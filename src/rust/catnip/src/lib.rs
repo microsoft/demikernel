@@ -1,5 +1,6 @@
 #![feature(generators, generator_trait)]
 #![warn(clippy::all)]
+#![allow(clippy::new_ret_no_self)]
 
 #[macro_use]
 extern crate num_derive;

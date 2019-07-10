@@ -13,7 +13,12 @@ pub static MIN_PAYLOAD_SIZE: usize = 46;
 pub struct Ethernet2Frame<'a>(&'a [u8]);
 
 impl<'a> Ethernet2Frame<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
+    pub fn new(text_sz: usize) -> Vec<u8> {
+        let text_sz = max(text_sz, MIN_PAYLOAD_SIZE);
+        vec![0u8; text_sz + ETHERNET2_HEADER_SIZE]
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
         Ethernet2Frame::validate_buffer_length(bytes.len())?;
 
         let frame = Ethernet2Frame(bytes);
@@ -59,12 +64,7 @@ impl<'a> Ethernet2Frame<'a> {
 pub struct Ethernet2FrameMut<'a>(&'a mut [u8]);
 
 impl<'a> Ethernet2FrameMut<'a> {
-    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        let text_sz = max(text_sz, MIN_PAYLOAD_SIZE);
-        vec![0u8; text_sz + ETHERNET2_HEADER_SIZE]
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
         Ethernet2Frame::validate_buffer_length(bytes.len())
             .expect("not enough bytes for a complete frame");
         Ethernet2FrameMut(bytes)
@@ -89,6 +89,6 @@ impl<'a> Ethernet2FrameMut<'a> {
 
     pub fn seal(self) -> Result<Ethernet2Frame<'a>> {
         trace!("Ethernet2FrameMut::seal()");
-        Ok(Ethernet2Frame::from_bytes(self.0)?)
+        Ok(Ethernet2Frame::attach(self.0)?)
     }
 }

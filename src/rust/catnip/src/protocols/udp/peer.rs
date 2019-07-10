@@ -92,8 +92,8 @@ impl<'a> UdpPeer<'a> {
                 dest_ipv4_addr, dest_link_addr
             );
 
-            let mut bytes = UdpDatagramMut::new_bytes(text.len());
-            let mut datagram = UdpDatagramMut::from_bytes(&mut bytes);
+            let mut bytes = UdpDatagram::new(text.len());
+            let mut datagram = UdpDatagramMut::attach(&mut bytes);
             // the text slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
             // to trim what we get from `datagram.text_mut()` to make it the
@@ -140,9 +140,9 @@ impl<'a> UdpPeer<'a> {
 
             // this datagram should have already been validated by the caller.
             let datagram =
-                ipv4::Datagram::from_bytes(datagram.as_slice()).unwrap();
-            let mut bytes = icmpv4::ErrorMut::new_bytes(datagram);
-            let mut error = icmpv4::ErrorMut::from_bytes(&mut bytes);
+                ipv4::Datagram::attach(datagram.as_slice()).unwrap();
+            let mut bytes = icmpv4::Error::new(datagram);
+            let mut error = icmpv4::ErrorMut::attach(&mut bytes);
             error.id(icmpv4::ErrorId::DestinationUnreachable(
                 icmpv4::DestinationUnreachable::DestinationPortUnreachable,
             ));

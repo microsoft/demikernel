@@ -8,8 +8,15 @@ use std::convert::TryFrom;
 pub struct UdpDatagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> UdpDatagram<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(UdpDatagram::try_from(ipv4::Datagram::from_bytes(bytes)?)?)
+    pub fn new(text_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new(text_sz + UDP_HEADER_SIZE);
+        let mut datagram = UdpDatagramMut::attach(bytes.as_mut());
+        datagram.ipv4().header().protocol(ipv4::Protocol::Udp);
+        bytes
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(UdpDatagram::try_from(ipv4::Datagram::attach(bytes)?)?)
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -54,16 +61,8 @@ impl<'a> Into<ipv4::Datagram<'a>> for UdpDatagram<'a> {
 pub struct UdpDatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> UdpDatagramMut<'a> {
-    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        let mut bytes =
-            ipv4::DatagramMut::new_bytes(text_sz + UDP_HEADER_SIZE);
-        let mut datagram = UdpDatagramMut::from_bytes(bytes.as_mut());
-        datagram.ipv4().header().protocol(ipv4::Protocol::Udp);
-        bytes
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        UdpDatagramMut(ipv4::DatagramMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        UdpDatagramMut(ipv4::DatagramMut::attach(bytes))
     }
 
     pub fn header(&mut self) -> UdpHeaderMut<'_> {

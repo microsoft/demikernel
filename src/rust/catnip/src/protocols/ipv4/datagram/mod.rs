@@ -14,10 +14,26 @@ pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Ipv4Datagram::try_from(ethernet2::Frame::from_bytes(
-            bytes,
-        )?)?)
+    pub fn new(text_sz: usize) -> Vec<u8> {
+        trace!("Ipv4DatagramMut::new_bytes");
+        let requested_len = IPV4_HEADER_SIZE + text_sz;
+        let mut bytes = ethernet2::Frame::new(requested_len);
+        let mut datagram = Ipv4DatagramMut::attach(bytes.as_mut());
+        // the length of the datagram may not match what was requested due to
+        // minimum frame size requirements.
+        let total_len = IPV4_HEADER_SIZE + datagram.text().len();
+        let mut ipv4_header = datagram.header();
+        ipv4_header.version(IPV4_VERSION);
+        ipv4_header.ihl(IPV4_IHL_NO_OPTIONS);
+        ipv4_header.ttl(DEFAULT_IPV4_TTL);
+        ipv4_header.total_len(u16::try_from(total_len).unwrap());
+        let mut frame_header = datagram.frame().header();
+        frame_header.ether_type(ethernet2::EtherType::Ipv4);
+        bytes
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Ipv4Datagram::try_from(ethernet2::Frame::attach(bytes)?)?)
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -117,26 +133,8 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
 pub struct Ipv4DatagramMut<'a>(ethernet2::FrameMut<'a>);
 
 impl<'a> Ipv4DatagramMut<'a> {
-    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        trace!("Ipv4DatagramMut::new_bytes");
-        let requested_len = IPV4_HEADER_SIZE + text_sz;
-        let mut bytes = ethernet2::FrameMut::new_bytes(requested_len);
-        let mut datagram = Ipv4DatagramMut::from_bytes(bytes.as_mut());
-        // the length of the datagram may not match what was requested due to
-        // minimum frame size requirements.
-        let total_len = IPV4_HEADER_SIZE + datagram.text().len();
-        let mut ipv4_header = datagram.header();
-        ipv4_header.version(IPV4_VERSION);
-        ipv4_header.ihl(IPV4_IHL_NO_OPTIONS);
-        ipv4_header.ttl(DEFAULT_IPV4_TTL);
-        ipv4_header.total_len(u16::try_from(total_len).unwrap());
-        let mut frame_header = datagram.frame().header();
-        frame_header.ether_type(ethernet2::EtherType::Ipv4);
-        bytes
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        Ipv4DatagramMut(ethernet2::FrameMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        Ipv4DatagramMut(ethernet2::FrameMut::attach(bytes))
     }
 
     pub fn header(&mut self) -> Ipv4HeaderMut<'_> {

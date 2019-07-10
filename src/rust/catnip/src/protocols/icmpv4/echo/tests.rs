@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 fn serialization() {
     // ensures that a ICMPv4 Echo datagram serializes correctly.
     trace!("serialization()");
-    let mut bytes = Icmpv4EchoMut::new_bytes();
-    let mut echo = Icmpv4EchoMut::from_bytes(&mut bytes);
+    let mut bytes = Icmpv4Echo::new();
+    let mut echo = Icmpv4EchoMut::attach(&mut bytes);
     echo.r#type(Icmpv4EchoOp::Reply);
     echo.id(0xab);
     echo.seq_num(0xcd);
@@ -44,7 +44,7 @@ fn ping() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let echo = Icmpv4Echo::from_bytes(&bytes).unwrap();
+        let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Request);
         bytes
     };
@@ -59,7 +59,7 @@ fn ping() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let echo = Icmpv4Echo::from_bytes(&bytes).unwrap();
+        let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Reply);
         bytes
     };

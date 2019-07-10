@@ -16,10 +16,16 @@ const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> Icmpv4Datagram<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self> {
-        Ok(Icmpv4Datagram::try_from(ipv4::Datagram::from_bytes(
-            bytes,
-        )?)?)
+    pub fn new(text_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new(ICMPV4_HEADER_SIZE + text_sz);
+        assert!(bytes.len() <= MAX_ICMPV4_DATAGRAM_SIZE);
+        let mut datagram = Icmpv4DatagramMut::attach(bytes.as_mut());
+        datagram.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
+        bytes
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(Icmpv4Datagram::try_from(ipv4::Datagram::attach(bytes)?)?)
     }
 
     pub fn header(&self) -> Icmpv4Header<'_> {
@@ -65,17 +71,8 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
 pub struct Icmpv4DatagramMut<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> Icmpv4DatagramMut<'a> {
-    pub fn new_bytes(text_sz: usize) -> Vec<u8> {
-        let mut bytes =
-            ipv4::DatagramMut::new_bytes(ICMPV4_HEADER_SIZE + text_sz);
-        assert!(bytes.len() <= MAX_ICMPV4_DATAGRAM_SIZE);
-        let mut datagram = Icmpv4DatagramMut::from_bytes(bytes.as_mut());
-        datagram.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
-        bytes
-    }
-
-    pub fn from_bytes(bytes: &'a mut [u8]) -> Self {
-        Icmpv4DatagramMut(ipv4::DatagramMut::from_bytes(bytes))
+    pub fn attach(bytes: &'a mut [u8]) -> Self {
+        Icmpv4DatagramMut(ipv4::DatagramMut::attach(bytes))
     }
 
     pub fn header(&mut self) -> Icmpv4HeaderMut<'_> {

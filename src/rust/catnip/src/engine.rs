@@ -34,7 +34,7 @@ impl<'a> Engine<'a> {
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
         trace!("Engine::receive({:?})", bytes);
-        let frame = ethernet2::Frame::from_bytes(&bytes)?;
+        let frame = ethernet2::Frame::attach(&bytes)?;
         let header = frame.header();
         if self.rt.options().my_link_addr != header.dest_addr()
             && !header.dest_addr().is_broadcast()
