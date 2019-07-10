@@ -10,9 +10,10 @@ use byteorder::{NetworkEndian, WriteBytesExt};
 use num_traits::FromPrimitive;
 use std::{collections::HashMap, convert::TryFrom};
 
+const MIN_MSS: usize = 536;
 // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch13.html):
 // > if no MSS option is provided, a default value of 536 bytes is used.
-const MIN_MSS: usize = 536;
+const DEFAULT_MSS: usize = MIN_MSS;
 const MAX_MSS: usize = u16::max_value() as usize;
 
 #[repr(u8)]
