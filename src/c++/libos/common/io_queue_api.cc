@@ -48,6 +48,7 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
 }
 
 int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_queue_factory::ctor_type ctor) {
+    std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
     DMTR_OK(my_queue_factory.register_ctor(cid, ctor));
     return 0;
 }
@@ -78,6 +79,7 @@ int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
 }
 
 int dmtr::io_queue_api::new_qd() {
+    std::lock_guard<std::mutex> lock(my_qd_counter_mutex);
     int qd = ++my_qd_counter;
     if (0 > qd) {
         DMTR_PANIC("Queue descriptor overflow");
@@ -91,11 +93,17 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
 
     int qd = new_qd();
     std::unique_ptr<io_queue> qq;
-    DMTR_OK(my_queue_factory.construct(qq, cid, qd));
-    io_queue * const q = qq.get();
-    DMTR_OK(insert_queue(qq));
+    {
+        std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
+        DMTR_OK(my_queue_factory.construct(qq, cid, qd));
+    }
+    // Queue has not been stored anywhere yet so no need to lock
+    q_out = qq.get();
+    {
+        std::lock_guard<std::mutex> lock(qq->my_mutex);
+        DMTR_OK(insert_queue(qq));
+    }
 
-    q_out = q;
     return 0;
 }
 
@@ -140,14 +148,16 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
 
     io_queue *q = NULL;
     DMTR_OK(new_queue(q, io_queue::NETWORK_Q));
+    {
+        std::lock_guard<std::mutex> lock(q->my_mutex);
+        int ret = q->socket(domain, type, protocol);
+        if (ret != 0) {
+            DMTR_OK(remove_queue(q->qd()));
+            DMTR_FAIL(ret);
+        }
 
-    int ret = q->socket(domain, type, protocol);
-    if (ret != 0) {
-        DMTR_OK(remove_queue(q->qd()));
-        DMTR_FAIL(ret);
+        qd_out = q->qd();
     }
-
-    qd_out = q->qd();
     return 0;
 }
 
@@ -274,8 +284,11 @@ int dmtr::io_queue_api::close(int qd) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
-    int ret = q->close();
+    int ret;
+    {
+        std::lock_guard<std::mutex> lock(q->my_mutex);
+        ret = q->close();
+    }
     DMTR_OK(remove_queue(qd));
 
     DMTR_OK(ret);

@@ -131,8 +131,7 @@ int dmtr::io_queue::close() {
     return 0;
 }
 
-int dmtr::io_queue::drop(dmtr_qtoken_t qt)
-{
+int dmtr::io_queue::drop(dmtr_qtoken_t qt) {
     DMTR_OK(drop_task(qt));
     return 0;
 }
