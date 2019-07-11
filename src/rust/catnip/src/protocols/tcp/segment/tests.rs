@@ -1,5 +1,5 @@
 use super::{TcpOptions, TcpSegment, TcpSegmentMut};
-use crate::test;
+use crate::{prelude::*, protocols::ip, test};
 use byteorder::{NetworkEndian, WriteBytesExt};
 use std::num::Wrapping;
 
@@ -11,8 +11,8 @@ fn checksum() {
     let mut segment = TcpSegmentMut::attach(&mut bytes);
     segment.text().write_u32::<NetworkEndian>(0x1234).unwrap();
     let mut tcp_header = segment.header();
-    tcp_header.dest_port(0x1234);
-    tcp_header.src_port(0x5678);
+    tcp_header.dest_port(ip::Port::try_from(0x1234).unwrap());
+    tcp_header.src_port(ip::Port::try_from(0x5678).unwrap());
     tcp_header.seq_num(Wrapping(0x9abc_def0));
     tcp_header.ack_num(Wrapping(0x1234_5678));
     let mut options = TcpOptions::new();

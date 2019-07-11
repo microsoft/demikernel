@@ -15,7 +15,7 @@ custom_error! {#[derive(Clone)] pub Fail
     Unsupported{details: Str} = "unsupported ({details})",
     Ignored{} = "operation has no effect",
     Timeout{} = "an asynchronous operation timed out",
-    OutOfRange{} = "a value is out of range",
+    OutOfRange{details: Str} = "a value is out of range ({details})",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",
     TypeMismatch{} = "type mismatch",
     Unimplemented{} = "not yet implemented",
@@ -35,12 +35,16 @@ impl From<BorrowMutError> for Fail {
 
 impl From<float_duration::error::OutOfRangeError> for Fail {
     fn from(_: float_duration::error::OutOfRangeError) -> Self {
-        Fail::OutOfRange {}
+        Fail::OutOfRange {
+            details: "float_duration::error::OutOfRangeError",
+        }
     }
 }
 
 impl From<TryFromIntError> for Fail {
     fn from(_: TryFromIntError) -> Self {
-        Fail::OutOfRange {}
+        Fail::OutOfRange {
+            details: "std::num::TryFromIntError",
+        }
     }
 }

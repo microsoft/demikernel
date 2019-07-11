@@ -3,7 +3,7 @@ use crate::{
     protocols::{
         arp,
         ethernet2::{self, MacAddress},
-        ipv4,
+        ip, ipv4,
     },
     r#async::{self, Async},
 };
@@ -60,8 +60,8 @@ impl<'a> Engine<'a> {
     pub fn udp_cast(
         &self,
         dest_ipv4_addr: Ipv4Addr,
-        dest_port: u16,
-        src_port: u16,
+        dest_port: ip::Port,
+        src_port: ip::Port,
         text: Vec<u8>,
     ) -> r#async::Future<'a, ()> {
         self.ipv4
@@ -84,16 +84,16 @@ impl<'a> Engine<'a> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn is_udp_port_open(&self, port_num: u16) -> bool {
-        self.ipv4.is_udp_port_open(port_num)
+    pub fn is_udp_port_open(&self, port: ip::Port) -> bool {
+        self.ipv4.is_udp_port_open(port)
     }
 
-    pub fn open_udp_port(&mut self, port_num: u16) {
-        self.ipv4.open_udp_port(port_num);
+    pub fn open_udp_port(&mut self, port: ip::Port) {
+        self.ipv4.open_udp_port(port);
     }
 
-    pub fn close_udp_port(&mut self, port_num: u16) {
-        self.ipv4.close_udp_port(port_num);
+    pub fn close_udp_port(&mut self, port: ip::Port) {
+        self.ipv4.close_udp_port(port);
     }
 }
 

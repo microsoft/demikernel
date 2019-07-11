@@ -1,7 +1,7 @@
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, icmpv4, udp},
+    protocols::{arp, ethernet2, icmpv4, ip, udp},
     r#async::{Async, Future},
 };
 use std::{
@@ -50,23 +50,23 @@ impl<'a> Ipv4Peer<'a> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn is_udp_port_open(&self, port_num: u16) -> bool {
-        self.udp.is_port_open(port_num)
+    pub fn is_udp_port_open(&self, port: ip::Port) -> bool {
+        self.udp.is_port_open(port)
     }
 
-    pub fn open_udp_port(&mut self, port_num: u16) {
-        self.udp.open_port(port_num);
+    pub fn open_udp_port(&mut self, port: ip::Port) {
+        self.udp.open_port(port);
     }
 
-    pub fn close_udp_port(&mut self, port_num: u16) {
-        self.udp.close_port(port_num);
+    pub fn close_udp_port(&mut self, port: ip::Port) {
+        self.udp.close_port(port);
     }
 
     pub fn udp_cast(
         &self,
         dest_ipv4_addr: Ipv4Addr,
-        dest_port: u16,
-        src_port: u16,
+        dest_port: ip::Port,
+        src_port: ip::Port,
         text: Vec<u8>,
     ) -> Future<'a, ()> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)

@@ -6,7 +6,6 @@ mod tests;
 use crate::{prelude::*, protocols::ethernet2::MacAddress};
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
-use std::convert::TryFrom;
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 

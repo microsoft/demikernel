@@ -1,12 +1,15 @@
 use super::*;
+use crate::protocols::ip;
 
 #[test]
 fn no_options() {
     trace!("no_options()");
     let mut bytes = [0u8; MAX_TCP_HEADER_SIZE];
     let mut header = TcpHeaderMut::new(bytes.as_mut());
-    header.dest_port(0x1234);
-    header.src_port(0x5678);
+    let dest_port = ip::Port::try_from(0x1234).unwrap();
+    let src_port = ip::Port::try_from(0x5678).unwrap();
+    header.dest_port(dest_port);
+    header.src_port(src_port);
     header.seq_num(Wrapping(0x9abc_def0));
     header.ack_num(Wrapping(0x1234_5678));
     header.ns(true);
@@ -24,8 +27,8 @@ fn no_options() {
     let no_options = TcpOptions::new();
     header.options(no_options.clone());
     let header = TcpHeader::new(&bytes).unwrap();
-    assert_eq!(0x1234, header.dest_port());
-    assert_eq!(0x5678, header.src_port());
+    assert_eq!(Some(dest_port), header.dest_port());
+    assert_eq!(Some(src_port), header.src_port());
     assert_eq!(0x9abc_def0, header.seq_num().0);
     assert_eq!(0x1234_5678, header.ack_num().0);
     assert_eq!(no_options.header_length(), header.header_len());

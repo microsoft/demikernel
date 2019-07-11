@@ -22,9 +22,9 @@ impl IsnGenerator {
     pub fn next(&mut self, cxn_id: TcpConnectionId) -> Wrapping<u32> {
         let mut hash = crc32::Digest::new(crc32::IEEE);
         hash.write_u32(cxn_id.remote.address.into());
-        hash.write_u16(cxn_id.remote.port);
+        hash.write_u16(cxn_id.remote.port.into());
         hash.write_u32(cxn_id.local.address.into());
-        hash.write_u16(cxn_id.local.port);
+        hash.write_u16(cxn_id.local.port.into());
         hash.write_u32(self.nonce);
         let hash = hash.sum32();
         let isn = Wrapping(hash) + Wrapping(u32::from(self.counter.0));

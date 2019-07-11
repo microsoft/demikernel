@@ -61,12 +61,19 @@ impl<'a> TcpSegment<'a> {
         tcp_len += header_len;
         let tcp_len = u16::try_from(tcp_len)?;
         checksum.write_u16::<NetworkEndian>(tcp_len).unwrap();
-        checksum
-            .write_u16::<NetworkEndian>(tcp_header.src_port())
-            .unwrap();
-        checksum
-            .write_u16::<NetworkEndian>(tcp_header.dest_port())
-            .unwrap();
+        let src_port = match tcp_header.src_port() {
+            Some(p) => p.into(),
+            None => 0,
+        };
+
+        checksum.write_u16::<NetworkEndian>(src_port).unwrap();
+
+        let dest_port = match tcp_header.dest_port() {
+            Some(p) => p.into(),
+            None => 0,
+        };
+
+        checksum.write_u16::<NetworkEndian>(dest_port).unwrap();
         checksum
             .write_u32::<NetworkEndian>(tcp_header.seq_num().0)
             .unwrap();

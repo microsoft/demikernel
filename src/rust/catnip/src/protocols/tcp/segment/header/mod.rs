@@ -5,7 +5,7 @@ mod tests;
 
 mod options;
 
-use crate::prelude::*;
+use crate::{prelude::*, protocols::ip};
 use byteorder::{ByteOrder, NetworkEndian};
 use std::{
     cmp::{max, min},
@@ -53,12 +53,18 @@ impl<'a> TcpHeader<'a> {
         &self.0[..self.header_len()]
     }
 
-    pub fn src_port(&self) -> u16 {
-        NetworkEndian::read_u16(&self.0[..2])
+    pub fn src_port(&self) -> Option<ip::Port> {
+        match ip::Port::try_from(NetworkEndian::read_u16(&self.0[..2])) {
+            Ok(p) => Some(p),
+            _ => None,
+        }
     }
 
-    pub fn dest_port(&self) -> u16 {
-        NetworkEndian::read_u16(&self.0[2..4])
+    pub fn dest_port(&self) -> Option<ip::Port> {
+        match ip::Port::try_from(NetworkEndian::read_u16(&self.0[2..4])) {
+            Ok(p) => Some(p),
+            _ => None,
+        }
     }
 
     pub fn seq_num(&self) -> Wrapping<u32> {
@@ -148,12 +154,12 @@ impl<'a> TcpHeaderMut<'a> {
         &mut self.0[..header_len]
     }
 
-    pub fn src_port(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0[..2], value)
+    pub fn src_port(&mut self, port: ip::Port) {
+        NetworkEndian::write_u16(&mut self.0[..2], port.into())
     }
 
-    pub fn dest_port(&mut self, value: u16) {
-        NetworkEndian::write_u16(&mut self.0[2..4], value)
+    pub fn dest_port(&mut self, port: ip::Port) {
+        NetworkEndian::write_u16(&mut self.0[2..4], port.into())
     }
 
     pub fn seq_num(&mut self, value: Wrapping<u32>) {

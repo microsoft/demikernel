@@ -1,7 +1,7 @@
 use super::datagram::{UdpDatagram, UdpDatagramMut};
 use crate::{
     prelude::*,
-    protocols::{arp, icmpv4, ipv4},
+    protocols::{arp, icmpv4, ip, ipv4},
     r#async::{Async, Future, WhenAny},
 };
 use std::{
@@ -11,7 +11,7 @@ use std::{
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
-    open_ports: HashSet<u16>,
+    open_ports: HashSet<ip::Port>,
     unfinished_work: WhenAny<'a, ()>,
 }
 
@@ -30,12 +30,30 @@ impl<'a> UdpPeer<'a> {
         let datagram = UdpDatagram::try_from(datagram)?;
         let ipv4_header = datagram.ipv4().header();
         let udp_header = datagram.header();
-        if self.is_port_open(udp_header.dest_port()) {
+        let dest_port = match udp_header.dest_port() {
+            Some(p) => p,
+            None => {
+                return Err(Fail::Malformed {
+                    details: "destination port is zero",
+                })
+            }
+        };
+
+        if self.is_port_open(dest_port) {
+            let src_port = match udp_header.src_port() {
+                Some(p) => p,
+                None => {
+                    return Err(Fail::Malformed {
+                        details: "source port is zero",
+                    })
+                }
+            };
+
             self.rt.emit_effect(Effect::BytesReceived {
                 protocol: ipv4::Protocol::Udp,
                 src_addr: ipv4_header.src_addr(),
-                src_port: udp_header.src_port(),
-                dest_port: udp_header.dest_port(),
+                src_port,
+                dest_port,
                 text: IoVec::from(datagram.text().to_vec()),
             });
 
@@ -61,23 +79,23 @@ impl<'a> UdpPeer<'a> {
         }
     }
 
-    pub fn is_port_open(&self, port_num: u16) -> bool {
-        self.open_ports.contains(&port_num)
+    pub fn is_port_open(&self, port: ip::Port) -> bool {
+        self.open_ports.contains(&port)
     }
 
-    pub fn open_port(&mut self, port_num: u16) {
-        assert!(self.open_ports.replace(port_num).is_none());
+    pub fn open_port(&mut self, port: ip::Port) {
+        assert!(self.open_ports.replace(port).is_none());
     }
 
-    pub fn close_port(&mut self, port_num: u16) {
-        assert!(self.open_ports.remove(&port_num));
+    pub fn close_port(&mut self, port: ip::Port) {
+        assert!(self.open_ports.remove(&port));
     }
 
     pub fn cast(
         &self,
         dest_ipv4_addr: Ipv4Addr,
-        dest_port: u16,
-        src_port: u16,
+        dest_port: ip::Port,
+        src_port: ip::Port,
         text: Vec<u8>,
     ) -> Future<'a, ()> {
         let rt = self.rt.clone();

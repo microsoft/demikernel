@@ -6,7 +6,6 @@ mod tests;
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
-use std::convert::TryFrom;
 
 pub const ICMPV4_HEADER_SIZE: usize = 4;
 

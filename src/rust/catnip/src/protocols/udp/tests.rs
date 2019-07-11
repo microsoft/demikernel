@@ -1,7 +1,7 @@
 use super::datagram::UdpDatagram;
 use crate::{
     prelude::*,
-    protocols::{icmpv4, ipv4},
+    protocols::{icmpv4, ip, ipv4},
     r#async::Async,
     test,
 };
@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 fn unicast() {
     // ensures that a UDP cast succeeds.
 
-    const ALICE_PORT: u16 = 54321;
-    const BOB_PORT: u16 = 12345;
+    let alice_port = ip::Port::try_from(54321).unwrap();
+    let bob_port = ip::Port::try_from(12345).unwrap();
 
     let now = Instant::now();
     let text = vec![0xffu8; 10];
@@ -25,12 +25,12 @@ fn unicast() {
     bob.import_arp_cache(hashmap! {
         *test::alice_ipv4_addr() => *test::alice_link_addr(),
     });
-    bob.open_udp_port(BOB_PORT);
+    bob.open_udp_port(bob_port);
 
     let fut = alice.udp_cast(
         *test::bob_ipv4_addr(),
-        BOB_PORT,
-        ALICE_PORT,
+        bob_port,
+        alice_port,
         text.clone(),
     );
     let now = now + Duration::from_millis(1);
@@ -60,8 +60,8 @@ fn unicast() {
         } => {
             assert_eq!(protocol, &ipv4::Protocol::Udp);
             assert_eq!(src_addr, test::alice_ipv4_addr());
-            assert_eq!(src_port, &ALICE_PORT);
-            assert_eq!(dest_port, &BOB_PORT);
+            assert_eq!(src_port, &alice_port);
+            assert_eq!(dest_port, &bob_port);
             assert_eq!(p.len(), 1);
             assert_eq!(text.as_slice(), &p[0][..text.len()]);
             for i in &p[0][text.len()..] {
@@ -76,8 +76,8 @@ fn unicast() {
 fn destination_port_unreachable() {
     // ensures that a UDP cast succeeds.
 
-    const ALICE_PORT: u16 = 54321;
-    const BOB_PORT: u16 = 12345;
+    let alice_port = ip::Port::try_from(54321).unwrap();
+    let bob_port = ip::Port::try_from(12345).unwrap();
 
     let now = Instant::now();
     let text = vec![0xffu8; 10];
@@ -93,8 +93,8 @@ fn destination_port_unreachable() {
 
     let fut = alice.udp_cast(
         *test::bob_ipv4_addr(),
-        BOB_PORT,
-        ALICE_PORT,
+        bob_port,
+        alice_port,
         text.clone(),
     );
     let now = now + Duration::from_millis(1);

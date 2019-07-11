@@ -3,7 +3,6 @@ mod header;
 pub use header::{UdpHeader, UdpHeaderMut, UDP_HEADER_SIZE};
 
 use crate::{prelude::*, protocols::ipv4};
-use std::convert::TryFrom;
 
 pub struct UdpDatagram<'a>(ipv4::Datagram<'a>);
 

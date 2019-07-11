@@ -4,7 +4,6 @@ mod tests;
 use super::datagram::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
 use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
-use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Icmpv4EchoOp {
