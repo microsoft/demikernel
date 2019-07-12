@@ -18,7 +18,7 @@ custom_error! {#[derive(Clone)] pub Fail
     OutOfRange{details: Str} = "a value is out of range ({details})",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",
     TypeMismatch{} = "type mismatch",
-    Unimplemented{} = "not yet implemented",
+    ResourceExhausted{details: Str} = "resource exhausted ({details})",
 }
 
 impl From<IoError> for Fail {

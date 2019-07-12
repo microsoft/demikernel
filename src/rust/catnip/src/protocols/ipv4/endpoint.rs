@@ -3,6 +3,20 @@ use std::net::Ipv4Addr;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ipv4Endpoint {
-    pub address: Ipv4Addr,
-    pub port: ip::Port,
+    address: Ipv4Addr,
+    port: ip::Port,
+}
+
+impl Ipv4Endpoint {
+    pub fn new(address: Ipv4Addr, port: ip::Port) -> Ipv4Endpoint {
+        Ipv4Endpoint { address, port }
+    }
+
+    pub fn address(&self) -> Ipv4Addr {
+        self.address
+    }
+
+    pub fn port(&self) -> ip::Port {
+        self.port
+    }
 }

@@ -6,6 +6,7 @@ use crate::{
 };
 use std::{
     any::Any, collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+    time::Instant,
 };
 
 pub struct UdpPeer<'a> {
@@ -180,5 +181,11 @@ impl<'a> UdpPeer<'a> {
         });
 
         self.unfinished_work.monitor(fut);
+    }
+}
+
+impl<'a> Async<()> for UdpPeer<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<()>> {
+        self.unfinished_work.poll(now).map(|r| r.map(|_| ()))
     }
 }

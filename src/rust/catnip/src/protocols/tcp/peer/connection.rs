@@ -1,7 +1,4 @@
-mod isn_generator;
-
 use crate::protocols::ipv4;
-use isn_generator::IsnGenerator;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TcpConnectionId {
@@ -11,5 +8,10 @@ pub struct TcpConnectionId {
 
 pub struct TcpConnection {
     cxn_id: TcpConnectionId,
-    isn_gen: IsnGenerator,
+}
+
+impl TcpConnection {
+    pub fn new(cxn_id: TcpConnectionId) -> TcpConnection {
+        TcpConnection { cxn_id }
+    }
 }

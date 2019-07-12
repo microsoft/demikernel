@@ -1,7 +1,7 @@
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, icmpv4, ip, udp},
+    protocols::{arp, ethernet2, icmpv4, ip, tcp, udp},
     r#async::{Async, Future},
 };
 use std::{
@@ -12,15 +12,22 @@ use std::{
 
 pub struct Ipv4Peer<'a> {
     rt: Runtime<'a>,
-    udp: udp::Peer<'a>,
     icmpv4: icmpv4::Peer<'a>,
+    tcp: tcp::Peer<'a>,
+    udp: udp::Peer<'a>,
 }
 
 impl<'a> Ipv4Peer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Ipv4Peer<'a> {
         let udp = udp::Peer::new(rt.clone(), arp.clone());
-        let icmpv4 = icmpv4::Peer::new(rt.clone(), arp);
-        Ipv4Peer { rt, udp, icmpv4 }
+        let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
+        let tcp = tcp::Peer::new(rt.clone(), arp);
+        Ipv4Peer {
+            rt,
+            udp,
+            icmpv4,
+            tcp,
+        }
     }
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
@@ -34,11 +41,10 @@ impl<'a> Ipv4Peer<'a> {
             return Err(Fail::Misdelivered {});
         }
 
-        #[allow(unreachable_patterns)]
         match header.protocol()? {
-            Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
+            Ipv4Protocol::Tcp => self.tcp.receive(datagram),
             Ipv4Protocol::Udp => self.udp.receive(datagram),
-            _ => Err(Fail::Unimplemented {}),
+            Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
         }
     }
 
@@ -71,10 +77,20 @@ impl<'a> Ipv4Peer<'a> {
     ) -> Future<'a, ()> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
+
+    pub fn tcp_connect(
+        &mut self,
+        dest_ipv4_addr: Ipv4Addr,
+        dest_port: ip::Port,
+    ) -> Result<()> {
+        self.tcp.connect(dest_ipv4_addr, dest_port)
+    }
 }
 
 impl<'a> Async<()> for Ipv4Peer<'a> {
     fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.icmpv4.poll(now)
+        try_poll!(self.icmpv4, now);
+        try_poll!(self.udp, now);
+        self.tcp.poll(now)
     }
 }

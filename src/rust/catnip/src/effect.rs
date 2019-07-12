@@ -1,6 +1,6 @@
 use crate::{
     io::IoVec,
-    protocols::{icmpv4, ip, ipv4},
+    protocols::{icmpv4, ip, ipv4, tcp},
 };
 use std::{net::Ipv4Addr, rc::Rc};
 
@@ -12,6 +12,7 @@ pub enum Effect {
         next_hop_mtu: u16,
         context: Vec<u8>,
     },
+    TcpError(tcp::Error),
     BytesReceived {
         protocol: ipv4::Protocol,
         src_addr: Ipv4Addr,

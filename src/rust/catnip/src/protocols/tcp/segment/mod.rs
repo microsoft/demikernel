@@ -1,15 +1,18 @@
+mod builder;
 mod header;
 
 #[cfg(test)]
 mod tests;
 
+pub use builder::TcpSegmentBuilder;
 pub use header::{
-    TcpHeader, TcpHeaderMut, TcpOptions, MAX_TCP_HEADER_SIZE,
+    TcpHeader, TcpHeaderMut, TcpOptions, DEFAULT_MSS, MAX_TCP_HEADER_SIZE,
     MIN_TCP_HEADER_SIZE,
 };
 
 use crate::{prelude::*, protocols::ipv4};
 use byteorder::{NetworkEndian, WriteBytesExt};
+use header::{MAX_MSS, MIN_MSS};
 use std::{convert::TryFrom, io::Write};
 
 #[derive(Debug)]
@@ -29,6 +32,10 @@ impl<'a> TcpSegment<'a> {
         let mut ipv4_header = segment.ipv4().header();
         ipv4_header.protocol(ipv4::Protocol::Tcp);
         bytes
+    }
+
+    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+        Ok(TcpSegment::try_from(ipv4::Datagram::attach(bytes)?)?)
     }
 
     pub fn header(&self) -> TcpHeader<'_> {

@@ -13,7 +13,7 @@ use std::{
     num::Wrapping,
 };
 
-pub use options::TcpOptions;
+pub use options::{TcpOptions, DEFAULT_MSS, FALLBACK_MSS, MAX_MSS, MIN_MSS};
 
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
 pub const MAX_TCP_HEADER_SIZE: usize = 60;

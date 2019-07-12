@@ -15,7 +15,7 @@ pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
     pub fn new(text_sz: usize) -> Vec<u8> {
-        trace!("Ipv4DatagramMut::new_bytes");
+        trace!("Ipv4DatagramMut::new({})", text_sz);
         let requested_len = IPV4_HEADER_SIZE + text_sz;
         let mut bytes = ethernet2::Frame::new(requested_len);
         let mut datagram = Ipv4DatagramMut::attach(bytes.as_mut());

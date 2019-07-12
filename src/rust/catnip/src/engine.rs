@@ -42,11 +42,9 @@ impl<'a> Engine<'a> {
             return Err(Fail::Misdelivered {});
         }
 
-        #[allow(unreachable_patterns)]
         match header.ether_type()? {
             ethernet2::EtherType::Arp => self.arp.receive(frame),
             ethernet2::EtherType::Ipv4 => self.ipv4.receive(frame),
-            _ => Err(Fail::Unimplemented {}),
         }
     }
 
@@ -94,6 +92,14 @@ impl<'a> Engine<'a> {
 
     pub fn close_udp_port(&mut self, port: ip::Port) {
         self.ipv4.close_udp_port(port);
+    }
+
+    pub fn tcp_connect(
+        &mut self,
+        dest_ipv4_addr: Ipv4Addr,
+        dest_port: ip::Port,
+    ) -> Result<()> {
+        self.ipv4.tcp_connect(dest_ipv4_addr, dest_port)
     }
 }
 
