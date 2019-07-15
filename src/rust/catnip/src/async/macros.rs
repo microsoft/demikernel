@@ -40,7 +40,7 @@ macro_rules! yield_until {
 }
 
 #[macro_export]
-macro_rules! await_yield {
+macro_rules! r#await {
     ($async:expr, $now:expr) => {{
         assert!(yield_until!($async.poll($now).is_some(), $now));
         $async.poll($now).unwrap()

@@ -179,7 +179,7 @@ impl<'a> TcpPeer<'a> {
                 segment.unmut().ipv4().header().dest_addr()
             };
             let dest_link_addr =
-                await_yield!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
+                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
             let mut segment = TcpSegmentMut::attach(bytes.as_mut());
             segment.ipv4().frame().header().dest_addr(dest_link_addr);
             let _ = segment.seal()?;
