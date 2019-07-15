@@ -32,6 +32,7 @@ pub struct TcpPeer<'a> {
     open_ports: HashMap<ip::Port, TcpConnectionId>,
     unfinished_work: WhenAny<'a, ()>,
     connections: HashMap<TcpConnectionId, TcpConnection>,
+    // todo: this should be shared state.
     available_private_ports: VecDeque<ip::Port>,
     isn_generator: IsnGenerator,
 }

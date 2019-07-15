@@ -16,6 +16,7 @@ use std::{
 #[derive(Clone)]
 pub struct ArpPeer<'a> {
     rt: Runtime<'a>,
+    // todo: this should be shared state.
     cache: Rc<RefCell<ArpCache>>,
 }
 
