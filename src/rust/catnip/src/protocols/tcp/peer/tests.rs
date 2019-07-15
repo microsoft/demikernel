@@ -1,4 +1,4 @@
-use super::TcpSegment;
+use super::TcpSegmentDecoder;
 use crate::{
     prelude::*,
     protocols::{ip, tcp},
@@ -32,7 +32,7 @@ fn closed_port() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let segment = TcpSegment::attach(&bytes).unwrap();
+        let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
         assert!(segment.header().syn());
         let src_port = segment.header().src_port().unwrap();
         debug!("private_port => {:?}", src_port);
@@ -48,7 +48,7 @@ fn closed_port() {
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
-        let segment = TcpSegment::attach(&bytes).unwrap();
+        let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
         assert!(segment.header().rst());
         assert_eq!(Some(private_port), segment.header().dest_port());
         bytes

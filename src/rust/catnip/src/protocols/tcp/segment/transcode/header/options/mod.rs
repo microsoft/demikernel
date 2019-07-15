@@ -82,17 +82,17 @@ impl TcpOption {
 }
 
 #[derive(Clone, Debug)]
-pub struct TcpOptions(HashMap<TcpOptionKind, TcpOption>);
+pub struct TcpSegmentOptions(HashMap<TcpOptionKind, TcpOption>);
 
-impl TcpOptions {
-    pub fn new() -> TcpOptions {
-        TcpOptions(HashMap::new())
+impl TcpSegmentOptions {
+    pub fn new() -> TcpSegmentOptions {
+        TcpSegmentOptions(HashMap::new())
     }
 
-    pub fn parse(bytes: &[u8]) -> Result<TcpOptions> {
+    pub fn parse(bytes: &[u8]) -> Result<TcpSegmentOptions> {
         match parsers::start(bytes) {
             Ok((_, list)) => {
-                let mut options = TcpOptions::new();
+                let mut options = TcpSegmentOptions::new();
                 for o in list {
                     match o.kind()? {
                         TcpOptionKind::Eol => (),
@@ -126,7 +126,7 @@ impl TcpOptions {
             }
             _ => panic!(
                 "unexpected attempt to insert TCP option `{:?}` into \
-                 `TcpOptions` struct",
+                 `TcpSegmentOptions` struct",
                 kind
             ),
         }
@@ -151,7 +151,7 @@ impl TcpOptions {
 
         // the TCP header’s length is always required to be a multiple of 32
         // bits because the TCP Header Length field uses that unit.
-        let padding = TcpOptions::padding(length);
+        let padding = TcpSegmentOptions::padding(length);
         length + padding
     }
 
@@ -159,14 +159,11 @@ impl TcpOptions {
         self.0.len()
     }
 
-    pub fn get_mss(&self) -> usize {
-        self.0
-            .get(&TcpOptionKind::Mss)
-            .map(|o| match o {
-                TcpOption::Mss(n) => (*n).into(),
-                _ => unreachable!(),
-            })
-            .unwrap_or(MIN_MSS)
+    pub fn get_mss(&self) -> Option<usize> {
+        self.0.get(&TcpOptionKind::Mss).map(|o| match o {
+            TcpOption::Mss(n) => (*n).into(),
+            _ => unreachable!(),
+        })
     }
 
     pub fn set_mss(&mut self, mss: usize) {

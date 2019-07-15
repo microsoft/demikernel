@@ -5,7 +5,7 @@ use crate::protocols::ip;
 fn no_options() {
     trace!("no_options()");
     let mut bytes = [0u8; MAX_TCP_HEADER_SIZE];
-    let mut header = TcpHeaderMut::new(bytes.as_mut());
+    let mut header = TcpHeaderEncoder::attach(bytes.as_mut());
     let dest_port = ip::Port::try_from(0x1234).unwrap();
     let src_port = ip::Port::try_from(0x5678).unwrap();
     header.dest_port(dest_port);
@@ -24,9 +24,9 @@ fn no_options() {
     header.window_sz(0xbcde);
     header.checksum(0xf0ed);
     header.urg_ptr(0xcba9);
-    let no_options = TcpOptions::new();
+    let no_options = TcpSegmentOptions::new();
     header.options(no_options.clone());
-    let header = TcpHeader::new(&bytes).unwrap();
+    let header = TcpHeaderDecoder::attach(&bytes).unwrap();
     assert_eq!(Some(dest_port), header.dest_port());
     assert_eq!(Some(src_port), header.src_port());
     assert_eq!(0x9abc_def0, header.seq_num().0);
@@ -50,11 +50,11 @@ fn no_options() {
 fn mss() {
     trace!("mss()");
     let mut bytes = [0; MAX_TCP_HEADER_SIZE];
-    let mut header = TcpHeaderMut::new(&mut bytes);
-    let mut options = TcpOptions::new();
+    let mut header = TcpHeaderEncoder::attach(&mut bytes);
+    let mut options = TcpSegmentOptions::new();
     options.set_mss(0x1234);
     header.options(options);
-    let header = TcpHeader::new(&bytes).unwrap();
+    let header = TcpHeaderDecoder::attach(&bytes).unwrap();
     let options = header.options();
-    assert_eq!(0x1234, options.get_mss());
+    assert_eq!(Some(0x1234), options.get_mss());
 }

@@ -6,7 +6,7 @@ mod tests;
 
 use super::{
     error::TcpError,
-    segment::{TcpSegment, TcpSegmentBuilder, TcpSegmentMut, DEFAULT_MSS},
+    segment::{TcpSegment, TcpSegmentDecoder, DEFAULT_MSS},
 };
 use crate::{
     prelude::*,
@@ -64,7 +64,7 @@ impl<'a> TcpPeer<'a> {
 
     pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
         trace!("TcpPeer::receive(...)");
-        let segment = TcpSegment::try_from(datagram)?;
+        let segment = TcpSegmentDecoder::try_from(datagram)?;
         let ipv4_header = segment.ipv4().header();
         let tcp_header = segment.header();
         // i haven't yet seen anything that explicitly disallows categories of
@@ -123,7 +123,7 @@ impl<'a> TcpPeer<'a> {
             }
 
             self.cast_segment(
-                TcpSegmentBuilder::new()
+                TcpSegment::default()
                     .dest_ipv4_addr(src_ipv4_addr)
                     .dest_port(src_port)
                     .src_port(dest_port)
@@ -152,7 +152,7 @@ impl<'a> TcpPeer<'a> {
         assert!(self.open_ports.insert(src_port, cxn_id).is_none());
 
         self.cast_segment(
-            TcpSegmentBuilder::new()
+            TcpSegment::default()
                 .src_ipv4_addr(src_ipv4_addr)
                 .src_port(src_port)
                 .dest_ipv4_addr(dest_ipv4_addr)
@@ -164,26 +164,19 @@ impl<'a> TcpPeer<'a> {
         Ok(())
     }
 
-    fn cast_segment(&mut self, segment: TcpSegmentBuilder) {
+    fn cast_segment(&mut self, mut segment: TcpSegment) {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         let fut = self.rt.start_coroutine(move || {
             trace!("TcpPeer::cast_segment({:?})", segment,);
             let options = rt.options();
-            let mut bytes = segment
-                .src_ipv4_addr(options.my_ipv4_addr)
-                .src_link_addr(options.my_link_addr)
-                .build();
-            let dest_ipv4_addr = {
-                let segment = TcpSegmentMut::attach(bytes.as_mut());
-                segment.unmut().ipv4().header().dest_addr()
-            };
+            segment.src_ipv4_addr = Some(options.my_ipv4_addr);
+            segment.src_link_addr = Some(options.my_link_addr);
             let dest_link_addr =
-                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
-            let mut segment = TcpSegmentMut::attach(bytes.as_mut());
-            segment.ipv4().frame().header().dest_addr(dest_link_addr);
-            let _ = segment.seal()?;
-            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+                r#await!(arp.query(segment.dest_ipv4_addr.unwrap()), rt.now())
+                    .unwrap();
+            segment.dest_link_addr = Some(dest_link_addr);
+            rt.emit_effect(Effect::Transmit(Rc::new(segment.encode())));
 
             let x: Rc<Any> = Rc::new(());
             Ok(x)

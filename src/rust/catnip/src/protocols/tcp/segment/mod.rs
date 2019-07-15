@@ -1,179 +1,172 @@
-mod builder;
-mod header;
+mod transcode;
 
-#[cfg(test)]
-mod tests;
+use crate::{
+    prelude::*,
+    protocols::{ethernet2::MacAddress, ip, ipv4},
+};
+use std::{net::Ipv4Addr, num::Wrapping};
 
-pub use builder::TcpSegmentBuilder;
-pub use header::{
-    TcpHeader, TcpHeaderMut, TcpOptions, DEFAULT_MSS, MAX_TCP_HEADER_SIZE,
-    MIN_TCP_HEADER_SIZE,
+pub use transcode::{
+    TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
 };
 
-use crate::{prelude::*, protocols::ipv4};
-use byteorder::{NetworkEndian, WriteBytesExt};
-use header::{MAX_MSS, MIN_MSS};
-use std::{convert::TryFrom, io::Write};
-
-#[derive(Debug)]
-enum ChecksumOp {
-    Generate,
-    Validate,
+#[derive(Default, Clone, Debug)]
+pub struct TcpSegment {
+    pub dest_ipv4_addr: Option<Ipv4Addr>,
+    pub dest_port: Option<ip::Port>,
+    pub dest_link_addr: Option<MacAddress>,
+    pub src_ipv4_addr: Option<Ipv4Addr>,
+    pub src_port: Option<ip::Port>,
+    pub src_link_addr: Option<MacAddress>,
+    pub seq_num: Wrapping<u32>,
+    pub ack_num: Wrapping<u32>,
+    pub syn: bool,
+    pub ack: bool,
+    pub rst: bool,
+    pub mss: Option<usize>,
+    pub payload: Vec<u8>,
 }
 
-pub struct TcpSegment<'a>(ipv4::Datagram<'a>);
+impl TcpSegment {
+    pub fn dest_ipv4_addr(mut self, addr: Ipv4Addr) -> TcpSegment {
+        self.dest_ipv4_addr = Some(addr);
+        self
+    }
 
-impl<'a> TcpSegment<'a> {
-    pub fn new(text_sz: usize) -> Vec<u8> {
-        let mut bytes = ipv4::Datagram::new(text_sz + MAX_TCP_HEADER_SIZE);
-        let mut segment = TcpSegmentMut::attach(bytes.as_mut());
-        let mut tcp_header = segment.header();
-        tcp_header.options(TcpOptions::new());
-        let mut ipv4_header = segment.ipv4().header();
+    pub fn dest_port(mut self, port: ip::Port) -> TcpSegment {
+        self.dest_port = Some(port);
+        self
+    }
+
+    pub fn dest_link_addr(mut self, addr: MacAddress) -> TcpSegment {
+        self.dest_link_addr = Some(addr);
+        self
+    }
+
+    pub fn src_ipv4_addr(mut self, addr: Ipv4Addr) -> TcpSegment {
+        self.src_ipv4_addr = Some(addr);
+        self
+    }
+
+    pub fn src_port(mut self, port: ip::Port) -> TcpSegment {
+        self.src_port = Some(port);
+        self
+    }
+
+    pub fn src_link_addr(mut self, addr: MacAddress) -> TcpSegment {
+        self.src_link_addr = Some(addr);
+        self
+    }
+
+    pub fn seq_num(mut self, value: Wrapping<u32>) -> TcpSegment {
+        self.seq_num = value;
+        self
+    }
+
+    pub fn ack_num(mut self, value: Wrapping<u32>) -> TcpSegment {
+        self.ack_num = value;
+        self
+    }
+
+    pub fn syn(mut self) -> TcpSegment {
+        self.syn = true;
+        self
+    }
+
+    pub fn ack(mut self) -> TcpSegment {
+        self.ack = true;
+        self
+    }
+
+    pub fn rst(mut self) -> TcpSegment {
+        self.rst = true;
+        self
+    }
+
+    pub fn mss(mut self, value: usize) -> TcpSegment {
+        self.mss = Some(value);
+        self
+    }
+
+    pub fn payload(mut self, bytes: Vec<u8>) -> TcpSegment {
+        self.payload = bytes;
+        self
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {
+        let decoder = TcpSegmentDecoder::attach(bytes)?;
+
+        let tcp_header = decoder.header();
+        let dest_port = tcp_header.dest_port();
+        let src_port = tcp_header.src_port();
+        let seq_num = tcp_header.seq_num();
+        let ack_num = tcp_header.ack_num();
+        let syn = tcp_header.syn();
+        let ack = tcp_header.ack();
+        let rst = tcp_header.rst();
+        let options = tcp_header.options();
+        let mss = options.get_mss();
+
+        let ipv4_header = decoder.ipv4().header();
+        let dest_ipv4_addr = ipv4_header.dest_addr();
+        let src_ipv4_addr = ipv4_header.src_addr();
+
+        let frame_header = decoder.ipv4().frame().header();
+        let src_link_addr = frame_header.src_addr();
+        let dest_link_addr = frame_header.dest_addr();
+        let payload = decoder.text().to_vec();
+
+        Ok(TcpSegment {
+            dest_ipv4_addr: Some(dest_ipv4_addr),
+            dest_port,
+            dest_link_addr: Some(dest_link_addr),
+            src_ipv4_addr: Some(src_ipv4_addr),
+            src_port,
+            src_link_addr: Some(src_link_addr),
+            seq_num,
+            ack_num,
+            syn,
+            ack,
+            rst,
+            mss,
+            payload,
+        })
+    }
+
+    pub fn encode(self) -> Vec<u8> {
+        let mut options = TcpSegmentOptions::new();
+        if let Some(mss) = self.mss {
+            options.set_mss(mss);
+        }
+
+        let mut bytes =
+            ipv4::Datagram::new(self.payload.len() + options.header_length());
+        let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
+
+        encoder.text()[..self.payload.len()]
+            .copy_from_slice(self.payload.as_ref());
+
+        let mut tcp_header = encoder.header();
+        tcp_header.dest_port(self.dest_port.unwrap());
+        tcp_header.src_port(self.src_port.unwrap());
+        tcp_header.seq_num(self.seq_num);
+        tcp_header.ack_num(self.ack_num);
+        tcp_header.syn(self.syn);
+        tcp_header.ack(self.ack);
+        tcp_header.rst(self.rst);
+        tcp_header.options(options);
+
+        let ipv4 = encoder.ipv4();
+        let mut ipv4_header = ipv4.header();
         ipv4_header.protocol(ipv4::Protocol::Tcp);
+        ipv4_header.dest_addr(self.dest_ipv4_addr.unwrap());
+        ipv4_header.src_addr(self.src_ipv4_addr.unwrap());
+
+        let mut frame_header = ipv4.frame().header();
+        frame_header.dest_addr(self.dest_link_addr.unwrap());
+        frame_header.src_addr(self.src_link_addr.unwrap());
+
+        let _ = encoder.seal().expect("failed to seal TCP segment");
         bytes
-    }
-
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
-        Ok(TcpSegment::try_from(ipv4::Datagram::attach(bytes)?)?)
-    }
-
-    pub fn header(&self) -> TcpHeader<'_> {
-        // the header contents were validated when `try_from()` was called.
-        TcpHeader::new(&self.0.text()).unwrap()
-    }
-
-    pub fn ipv4(&self) -> &ipv4::Datagram<'a> {
-        &self.0
-    }
-
-    pub fn text(&self) -> &[u8] {
-        &self.0.text()[self.header().header_len()..]
-    }
-
-    fn checksum(&self, op: ChecksumOp) -> Result<u16> {
-        let mut checksum = ipv4::Checksum::new();
-        let ipv4_header = self.0.header();
-        checksum
-            .write_u32::<NetworkEndian>(ipv4_header.src_addr().into())
-            .unwrap();
-        checksum
-            .write_u32::<NetworkEndian>(ipv4_header.dest_addr().into())
-            .unwrap();
-        checksum.write_u8(0u8).unwrap();
-        checksum.write_u8(ipv4_header.protocol()?.into()).unwrap();
-        let mut tcp_len = self.text().len();
-        let tcp_header = self.header();
-        let header_len = tcp_header.header_len();
-        tcp_len += header_len;
-        let tcp_len = u16::try_from(tcp_len)?;
-        checksum.write_u16::<NetworkEndian>(tcp_len).unwrap();
-        let src_port = match tcp_header.src_port() {
-            Some(p) => p.into(),
-            None => 0,
-        };
-
-        checksum.write_u16::<NetworkEndian>(src_port).unwrap();
-
-        let dest_port = match tcp_header.dest_port() {
-            Some(p) => p.into(),
-            None => 0,
-        };
-
-        checksum.write_u16::<NetworkEndian>(dest_port).unwrap();
-        checksum
-            .write_u32::<NetworkEndian>(tcp_header.seq_num().0)
-            .unwrap();
-        checksum
-            .write_u32::<NetworkEndian>(tcp_header.ack_num().0)
-            .unwrap();
-        // write TCP header length & flags
-        checksum.write_all(&tcp_header.as_bytes()[12..14]).unwrap();
-        checksum
-            .write_u16::<NetworkEndian>(tcp_header.window_sz())
-            .unwrap();
-
-        match op {
-            ChecksumOp::Generate => {
-                checksum.write_u16::<NetworkEndian>(0u16).unwrap();
-            }
-            ChecksumOp::Validate => {
-                checksum
-                    .write_u16::<NetworkEndian>(tcp_header.checksum())
-                    .unwrap();
-            }
-        }
-
-        checksum
-            .write_u16::<NetworkEndian>(tcp_header.urg_ptr())
-            .unwrap();
-        checksum
-            .write_all(&tcp_header.as_bytes()[MIN_TCP_HEADER_SIZE..])
-            .unwrap();
-        checksum.write_all(self.text()).unwrap();
-
-        match op {
-            ChecksumOp::Validate => {
-                if checksum.finish() == 0 {
-                    Ok(0)
-                } else {
-                    Err(Fail::Malformed {
-                        details: "TCP checksum mismatch",
-                    })
-                }
-            }
-            ChecksumOp::Generate => Ok(checksum.finish()),
-        }
-    }
-}
-
-impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegment<'a> {
-    type Error = Fail;
-
-    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
-        assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Tcp);
-        let _ = TcpHeader::new(ipv4_datagram.text())?;
-        let segment = TcpSegment(ipv4_datagram);
-        let _ = segment.checksum(ChecksumOp::Validate)?;
-        Ok(segment)
-    }
-}
-
-pub struct TcpSegmentMut<'a>(ipv4::DatagramMut<'a>);
-
-impl<'a> TcpSegmentMut<'a> {
-    pub fn attach(bytes: &'a mut [u8]) -> Self {
-        TcpSegmentMut(ipv4::DatagramMut::attach(bytes))
-    }
-
-    pub fn header(&mut self) -> TcpHeaderMut<'_> {
-        TcpHeaderMut::new(self.0.text())
-    }
-
-    pub fn ipv4(&mut self) -> &mut ipv4::DatagramMut<'a> {
-        &mut self.0
-    }
-
-    pub fn text(&mut self) -> &mut [u8] {
-        let header_len = TcpHeader::new(&self.0.text()).unwrap().header_len();
-        &mut self.0.text()[header_len..]
-    }
-
-    pub fn unmut(&self) -> TcpSegment<'_> {
-        TcpSegment(self.0.unmut())
-    }
-
-    pub fn seal(mut self) -> Result<TcpSegment<'a>> {
-        trace!("TcpSegmentMut::seal()");
-        let checksum = self.unmut().checksum(ChecksumOp::Generate).unwrap();
-        let mut tcp_header = self.header();
-        tcp_header.checksum(checksum);
-        Ok(TcpSegment::try_from(self.0.seal()?)?)
-    }
-}
-
-impl<'a> From<ipv4::DatagramMut<'a>> for TcpSegmentMut<'a> {
-    fn from(ipv4_datagram: ipv4::DatagramMut<'a>) -> Self {
-        TcpSegmentMut(ipv4_datagram)
     }
 }

@@ -13,22 +13,24 @@ use std::{
     num::Wrapping,
 };
 
-pub use options::{TcpOptions, DEFAULT_MSS, FALLBACK_MSS, MAX_MSS, MIN_MSS};
+pub use options::{
+    TcpSegmentOptions, DEFAULT_MSS, FALLBACK_MSS, MAX_MSS, MIN_MSS,
+};
 
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
 pub const MAX_TCP_HEADER_SIZE: usize = 60;
 
-pub struct TcpHeader<'a>(&'a [u8]);
+pub struct TcpHeaderDecoder<'a>(&'a [u8]);
 
-impl<'a> TcpHeader<'a> {
-    pub fn new(bytes: &'a [u8]) -> Result<TcpHeader<'a>> {
+impl<'a> TcpHeaderDecoder<'a> {
+    pub fn attach(bytes: &'a [u8]) -> Result<TcpHeaderDecoder<'a>> {
         if bytes.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "buffer is too small for minimum TCP header",
             });
         }
 
-        let header = TcpHeader(bytes);
+        let header = TcpHeaderDecoder(bytes);
         let header_len = header.header_len();
         if header_len > MAX_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
@@ -37,13 +39,14 @@ impl<'a> TcpHeader<'a> {
         }
 
         if header_len > MIN_TCP_HEADER_SIZE {
-            let options = TcpOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
+            let options =
+                TcpSegmentOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
             if header_len != options.header_length() {
                 return Err(Fail::Malformed {
                     details: "TCP header length mismatch",
                 });
             }
-            Ok(TcpHeader(&bytes[..header_len]))
+            Ok(TcpHeaderDecoder(&bytes[..header_len]))
         } else {
             Ok(header)
         }
@@ -128,25 +131,25 @@ impl<'a> TcpHeader<'a> {
         NetworkEndian::read_u16(&self.0[18..20])
     }
 
-    pub fn options(&self) -> TcpOptions {
+    pub fn options(&self) -> TcpSegmentOptions {
         if self.header_len() == MIN_TCP_HEADER_SIZE {
-            TcpOptions::new()
+            TcpSegmentOptions::new()
         } else {
-            TcpOptions::parse(&self.0[MIN_TCP_HEADER_SIZE..]).unwrap()
+            TcpSegmentOptions::parse(&self.0[MIN_TCP_HEADER_SIZE..]).unwrap()
         }
     }
 }
 
-pub struct TcpHeaderMut<'a>(&'a mut [u8]);
+pub struct TcpHeaderEncoder<'a>(&'a mut [u8]);
 
-impl<'a> TcpHeaderMut<'a> {
-    pub fn new(bytes: &'a mut [u8]) -> TcpHeaderMut<'a> {
+impl<'a> TcpHeaderEncoder<'a> {
+    pub fn attach(bytes: &'a mut [u8]) -> TcpHeaderEncoder<'a> {
         let len = min(bytes.len(), MAX_TCP_HEADER_SIZE + 1);
-        TcpHeaderMut(&mut bytes[..len])
+        TcpHeaderEncoder(&mut bytes[..len])
     }
 
-    pub fn unmut(&self) -> TcpHeader<'_> {
-        TcpHeader(self.0)
+    pub fn unmut(&self) -> TcpHeaderDecoder<'_> {
+        TcpHeaderDecoder(self.0)
     }
 
     pub fn as_bytes(&mut self) -> &mut [u8] {
@@ -272,7 +275,7 @@ impl<'a> TcpHeaderMut<'a> {
         NetworkEndian::write_u16(&mut self.0[18..20], value);
     }
 
-    pub fn options(&mut self, options: TcpOptions) {
+    pub fn options(&mut self, options: TcpSegmentOptions) {
         let header_len = options.header_length();
         assert!(self.0.len() >= header_len);
         options.encode(&mut self.0[MIN_TCP_HEADER_SIZE..]);
