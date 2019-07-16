@@ -157,7 +157,7 @@ impl<'a> ArpPeer<'a> {
                         .copied()
                         .unwrap();
                     debug!("ARP result available ({})", link_addr);
-                    let x: Rc<Any> = Rc::new(link_addr);
+                    let x: Rc<dyn Any> = Rc::new(link_addr);
                     return Ok(x);
                 }
 

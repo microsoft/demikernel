@@ -9,7 +9,7 @@ use flexi_logger::Logger;
 use float_duration::FloatDuration;
 use std::{
     net::Ipv4Addr,
-    sync::{Once, ONCE_INIT},
+    sync::Once,
     time::Instant,
 };
 
@@ -27,7 +27,7 @@ lazy_static! {
     static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 
-static INIT_LOG: Once = ONCE_INIT;
+static INIT_LOG: Once = Once::new();
 
 fn initialize_logger() {
     INIT_LOG.call_once(|| {

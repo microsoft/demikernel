@@ -130,7 +130,7 @@ impl<'a> UdpPeer<'a> {
             let _ = datagram.seal()?;
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
 
-            let x: Rc<Any> = Rc::new(());
+            let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         })
     }
@@ -176,7 +176,7 @@ impl<'a> UdpPeer<'a> {
             let _ = error.seal()?;
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
 
-            let x: Rc<Any> = Rc::new(());
+            let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         });
 

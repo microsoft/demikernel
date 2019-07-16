@@ -178,7 +178,7 @@ impl<'a> TcpPeer<'a> {
             segment.dest_link_addr = Some(dest_link_addr);
             rt.emit_effect(Effect::Transmit(Rc::new(segment.encode())));
 
-            let x: Rc<Any> = Rc::new(());
+            let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         });
 

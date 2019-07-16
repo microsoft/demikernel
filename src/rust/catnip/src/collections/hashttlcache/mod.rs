@@ -85,7 +85,7 @@ where
     clock: Instant,
 }
 
-pub type Iter<'a, K, V> = Iterator<Item = (&'a K, &'a V)>;
+pub type Iter<'a, K, V> = dyn Iterator<Item = (&'a K, &'a V)>;
 
 impl<K, V> HashTtlCache<K, V>
 where

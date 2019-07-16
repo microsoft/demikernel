@@ -44,7 +44,7 @@ pub struct ArpPdu {
 }
 
 impl ArpPdu {
-    pub fn read(reader: &mut Read) -> Result<ArpPdu> {
+    pub fn read(reader: &mut dyn Read) -> Result<ArpPdu> {
         trace!("ArpPdu::read(...)");
         let hard_type = reader.read_u16::<NetworkEndian>()?;
         if hard_type != HARD_TYPE_ETHER2 {
@@ -94,7 +94,7 @@ impl ArpPdu {
         })
     }
 
-    pub fn write(&self, writer: &mut Write) -> Result<()> {
+    pub fn write(&self, writer: &mut dyn Write) -> Result<()> {
         writer.write_u16::<NetworkEndian>(HARD_TYPE_ETHER2)?;
         writer.write_u16::<NetworkEndian>(PROT_TYPE_IPV4)?;
         let byte = [HARD_SIZE_ETHER2; 1];

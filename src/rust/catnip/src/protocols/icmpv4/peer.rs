@@ -143,7 +143,7 @@ impl<'a> Icmpv4Peer<'a> {
                 timeout
             ) {
                 let dt = rt.now() - t0;
-                let x: Rc<Any> = Rc::new(dt);
+                let x: Rc<dyn Any> = Rc::new(dt);
                 Ok(x)
             } else {
                 Err(Fail::Timeout {})
@@ -184,7 +184,7 @@ impl<'a> Icmpv4Peer<'a> {
             let _ = echo.seal()?;
             rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
 
-            let x: Rc<Any> = Rc::new(());
+            let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         });
 

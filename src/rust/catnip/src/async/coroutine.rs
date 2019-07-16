@@ -11,7 +11,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum CoroutineStatus {
-    Completed(Result<Rc<Any>>),
+    Completed(Result<Rc<dyn Any>>),
     AsleepUntil(Instant),
 }
 
@@ -54,7 +54,7 @@ pub struct Coroutine<'a> {
     id: CoroutineId,
     status: CoroutineStatus,
     gen: Box<
-        Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
+        dyn Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
             + 'a
             + Unpin,
     >,
@@ -63,7 +63,7 @@ pub struct Coroutine<'a> {
 impl<'a> Coroutine<'a> {
     pub fn new<G>(id: CoroutineId, gen: G, now: Instant) -> Coroutine<'a>
     where
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
             + 'a
             + Unpin,
     {

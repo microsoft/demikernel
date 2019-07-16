@@ -44,7 +44,7 @@ impl<'a> Runtime<'a> {
     pub fn start_coroutine<G, T>(&self, gen: G) -> r#async::Future<'a, T>
     where
         T: Any + Clone + Debug + 'static,
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<Any>>>
+        G: Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
             + 'a
             + Unpin,
     {
