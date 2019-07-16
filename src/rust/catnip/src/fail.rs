@@ -9,16 +9,17 @@ use std::{
 type Str = &'static str;
 
 custom_error! {#[derive(Clone)] pub Fail
-    IoError{source: Rc<IoError>} = "{source}",
     BorrowMutError{source: Rc<BorrowMutError>} = "{source}",
-    Misdelivered{} = "misdelivered datagram",
-    Unsupported{details: Str} = "unsupported ({details})",
     Ignored{} = "operation has no effect",
-    Timeout{} = "an asynchronous operation timed out",
-    OutOfRange{details: Str} = "a value is out of range ({details})",
+    IoError{source: Rc<IoError>} = "{source}",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",
-    TypeMismatch{} = "type mismatch",
+    Misdelivered{} = "misdelivered datagram",
+    OutOfRange{details: Str} = "a value is out of range ({details})",
     ResourceExhausted{details: Str} = "resource exhausted ({details})",
+    ResourceBusy{details: Str} = "resource is busy ({details})",
+    Timeout{} = "an asynchronous operation timed out",
+    TypeMismatch{} = "type mismatch",
+    Unsupported{details: Str} = "unsupported ({details})",
 }
 
 impl From<IoError> for Fail {
