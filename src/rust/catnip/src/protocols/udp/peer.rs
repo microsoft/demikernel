@@ -13,7 +13,7 @@ pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
     open_ports: HashSet<ip::Port>,
-    unfinished_work: WhenAny<'a, ()>,
+    async_work: WhenAny<'a, ()>,
 }
 
 impl<'a> UdpPeer<'a> {
@@ -22,7 +22,7 @@ impl<'a> UdpPeer<'a> {
             rt,
             arp,
             open_ports: HashSet::new(),
-            unfinished_work: WhenAny::new(),
+            async_work: WhenAny::new(),
         }
     }
 
@@ -180,12 +180,12 @@ impl<'a> UdpPeer<'a> {
             Ok(x)
         });
 
-        self.unfinished_work.monitor(fut);
+        self.async_work.add(fut);
     }
 }
 
 impl<'a> Async<()> for UdpPeer<'a> {
     fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.unfinished_work.poll(now).map(|r| r.map(|_| ()))
+        self.async_work.poll(now).map(|r| r.map(|_| ()))
     }
 }

@@ -30,7 +30,7 @@ pub struct TcpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
     open_ports: HashMap<ip::Port, TcpConnectionId>,
-    unfinished_work: WhenAny<'a, ()>,
+    async_work: WhenAny<'a, ()>,
     connections: HashMap<TcpConnectionId, TcpConnection>,
     // todo: this should be shared state.
     available_private_ports: VecDeque<ip::Port>,
@@ -55,7 +55,7 @@ impl<'a> TcpPeer<'a> {
             rt,
             arp,
             open_ports: HashMap::new(),
-            unfinished_work: WhenAny::new(),
+            async_work: WhenAny::new(),
             connections: HashMap::new(),
             available_private_ports,
             isn_generator,
@@ -182,7 +182,7 @@ impl<'a> TcpPeer<'a> {
             Ok(x)
         });
 
-        self.unfinished_work.monitor(fut);
+        self.async_work.add(fut);
     }
 
     fn acquire_private_port(&mut self) -> Result<ip::Port> {
@@ -203,6 +203,6 @@ impl<'a> TcpPeer<'a> {
 
 impl<'a> Async<()> for TcpPeer<'a> {
     fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.unfinished_work.poll(now).map(|r| r.map(|_| ()))
+        self.async_work.poll(now).map(|r| r.map(|_| ()))
     }
 }

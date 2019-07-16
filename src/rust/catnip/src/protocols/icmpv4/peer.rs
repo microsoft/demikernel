@@ -26,7 +26,7 @@ use std::{
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
-    unfinished_work: WhenAny<'a, ()>,
+    async_work: WhenAny<'a, ()>,
     outstanding_requests: Rc<RefCell<HashSet<(u16, u16)>>>,
     ping_seq_num_counter: Rc<Cell<Wrapping<u16>>>,
 }
@@ -41,7 +41,7 @@ impl<'a> Icmpv4Peer<'a> {
         Icmpv4Peer {
             rt,
             arp,
-            unfinished_work: WhenAny::new(),
+            async_work: WhenAny::new(),
             outstanding_requests: Rc::new(RefCell::new(HashSet::new())),
             ping_seq_num_counter: Rc::new(Cell::new(ping_seq_num_counter)),
         }
@@ -188,7 +188,7 @@ impl<'a> Icmpv4Peer<'a> {
             Ok(x)
         });
 
-        self.unfinished_work.monitor(fut);
+        self.async_work.add(fut);
     }
 
     fn generate_ping_id(&self) -> u16 {
@@ -214,6 +214,6 @@ impl<'a> Icmpv4Peer<'a> {
 
 impl<'a> Async<()> for Icmpv4Peer<'a> {
     fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.unfinished_work.poll(now).map(|r| r.map(|_| ()))
+        self.async_work.poll(now).map(|r| r.map(|_| ()))
     }
 }

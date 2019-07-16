@@ -21,7 +21,7 @@ where
         }
     }
 
-    pub fn monitor(&mut self, fut: Future<'a, T>) {
+    pub fn add(&mut self, fut: Future<'a, T>) {
         let mut queue = self.queue.borrow_mut();
         queue.push_back(fut);
     }
