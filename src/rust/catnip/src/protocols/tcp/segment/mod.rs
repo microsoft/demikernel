@@ -140,7 +140,7 @@ impl TcpSegment {
         }
 
         let mut bytes =
-            ipv4::Datagram::new(self.payload.len() + options.header_length());
+            ipv4::Datagram::new_vec(self.payload.len() + options.header_length());
         let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
 
         encoder.text()[..self.payload.len()]

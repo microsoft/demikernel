@@ -14,10 +14,10 @@ pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
-    pub fn new(text_sz: usize) -> Vec<u8> {
+    pub fn new_vec(text_sz: usize) -> Vec<u8> {
         trace!("Ipv4DatagramMut::new({})", text_sz);
         let requested_len = IPV4_HEADER_SIZE + text_sz;
-        let mut bytes = ethernet2::Frame::new(requested_len);
+        let mut bytes = ethernet2::Frame::new_vec(requested_len);
         let mut datagram = Ipv4DatagramMut::attach(bytes.as_mut());
         // the length of the datagram may not match what was requested due to
         // minimum frame size requirements.

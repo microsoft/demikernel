@@ -6,7 +6,7 @@ use byteorder::{NetworkEndian, WriteBytesExt};
 fn checksum() {
     // ensures that a IPv4 datagram checksum works correctly.
     trace!("checksum()");
-    let mut bytes = Icmpv4Datagram::new(4);
+    let mut bytes = Icmpv4Datagram::new_vec(4);
     let mut datagram = Icmpv4DatagramMut::attach(&mut bytes);
     datagram.text().write_u32::<NetworkEndian>(0x1234).unwrap();
     let mut icmpv4_header = datagram.header();

@@ -7,8 +7,8 @@ use crate::{prelude::*, protocols::ipv4};
 pub struct UdpDatagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> UdpDatagram<'a> {
-    pub fn new(text_sz: usize) -> Vec<u8> {
-        let mut bytes = ipv4::Datagram::new(text_sz + UDP_HEADER_SIZE);
+    pub fn new_vec(text_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new_vec(text_sz + UDP_HEADER_SIZE);
         let mut datagram = UdpDatagramMut::attach(bytes.as_mut());
         datagram.ipv4().header().protocol(ipv4::Protocol::Udp);
         bytes

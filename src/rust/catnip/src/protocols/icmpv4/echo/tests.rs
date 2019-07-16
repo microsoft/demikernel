@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 fn serialization() {
     // ensures that a ICMPv4 Echo datagram serializes correctly.
     trace!("serialization()");
-    let mut bytes = Icmpv4Echo::new();
+    let mut bytes = Icmpv4Echo::new_vec();
     let mut echo = Icmpv4EchoMut::attach(&mut bytes);
     echo.r#type(Icmpv4EchoOp::Reply);
     echo.id(0xab);

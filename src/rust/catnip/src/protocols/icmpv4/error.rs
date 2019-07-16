@@ -115,11 +115,11 @@ impl Icmpv4ErrorId {
 pub struct Icmpv4Error<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Error<'a> {
-    pub fn new(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
+    pub fn new_vec(ipv4: ipv4::Datagram<'_>) -> Vec<u8> {
         let frame = ipv4.frame();
         // note that the 4 bytes included in the text size is additional
         // data that error datagrams include (e.g. NEXT_HOP_MTU).
-        let mut bytes = Icmpv4Datagram::new(4 + frame.text().len());
+        let mut bytes = Icmpv4Datagram::new_vec(4 + frame.text().len());
         let mut icmpv4 = Icmpv4ErrorMut::attach(bytes.as_mut());
         let bytes_written = icmpv4.context().write(frame.text()).unwrap();
         // from [Wikipedia](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#Control_messages):

@@ -14,8 +14,8 @@ pub enum Icmpv4EchoOp {
 pub struct Icmpv4Echo<'a>(Icmpv4Datagram<'a>);
 
 impl<'a> Icmpv4Echo<'a> {
-    pub fn new() -> Vec<u8> {
-        Icmpv4Datagram::new(4)
+    pub fn new_vec() -> Vec<u8> {
+        Icmpv4Datagram::new_vec(4)
     }
 
     pub fn attach(bytes: &'a [u8]) -> Result<Self> {

@@ -11,7 +11,7 @@ use std::num::Wrapping;
 fn checksum() {
     // ensures that a TCP segment checksum works correctly.
     trace!("checksum()");
-    let mut bytes = ipv4::Datagram::new(4 + MAX_TCP_HEADER_SIZE);
+    let mut bytes = ipv4::Datagram::new_vec(4 + MAX_TCP_HEADER_SIZE);
     let mut segment = TcpSegmentEncoder::attach(&mut bytes);
     segment.text().write_u32::<NetworkEndian>(0x1234).unwrap();
     let mut tcp_header = segment.header();

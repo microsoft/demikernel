@@ -145,7 +145,7 @@ impl ArpPdu {
             }
         };
 
-        let mut bytes = ethernet2::Frame::new(ArpPdu::size());
+        let mut bytes = ethernet2::Frame::new_vec(ArpPdu::size());
         let mut frame = ethernet2::FrameMut::attach(&mut bytes);
         self.write(&mut frame.text())?;
         let mut header = frame.header();

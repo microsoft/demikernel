@@ -6,7 +6,7 @@ fn checksum() {
     // ensures that a IPv4 datagram checksum works correctly.
     trace!("checksum()");
     // the IPv4 checksum does not include text.
-    let mut bytes = Ipv4Datagram::new(0);
+    let mut bytes = Ipv4Datagram::new_vec(0);
     let mut datagram = Ipv4DatagramMut::attach(&mut bytes);
     let mut ipv4_header = datagram.header();
     ipv4_header.src_addr(*test::bob_ipv4_addr());

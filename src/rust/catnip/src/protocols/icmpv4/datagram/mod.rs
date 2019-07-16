@@ -16,8 +16,8 @@ const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> Icmpv4Datagram<'a> {
-    pub fn new(text_sz: usize) -> Vec<u8> {
-        let mut bytes = ipv4::Datagram::new(ICMPV4_HEADER_SIZE + text_sz);
+    pub fn new_vec(text_sz: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new_vec(ICMPV4_HEADER_SIZE + text_sz);
         assert!(bytes.len() <= MAX_ICMPV4_DATAGRAM_SIZE);
         let mut datagram = Icmpv4DatagramMut::attach(bytes.as_mut());
         datagram.ipv4().header().protocol(ipv4::Protocol::Icmpv4);
