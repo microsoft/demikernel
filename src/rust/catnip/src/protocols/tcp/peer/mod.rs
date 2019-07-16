@@ -91,7 +91,7 @@ impl<'a> TcpPeer<'a> {
 
         debug!("dest_port => {:?}", dest_port);
         debug!("open_ports => {:?}", self.open_ports);
-        if let Some(cxn) = self.open_ports.get(&dest_port) {
+        if let Some(_cxn) = self.open_ports.get(&dest_port) {
             if tcp_header.rst() {
                 self.rt.emit_effect(Effect::TcpError(
                     TcpError::ConnectionRefused {},

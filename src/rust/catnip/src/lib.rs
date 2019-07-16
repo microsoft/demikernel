@@ -1,5 +1,7 @@
 #![feature(generators, generator_trait)]
 #![warn(clippy::all)]
+// todo: remove once project is more mature.
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate num_derive;
