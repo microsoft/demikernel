@@ -5,7 +5,7 @@ mod tests;
 
 pub use header::{
     TcpHeaderDecoder, TcpHeaderEncoder, TcpSegmentOptions, DEFAULT_MSS,
-    MAX_TCP_HEADER_SIZE, MIN_TCP_HEADER_SIZE,
+    MAX_TCP_HEADER_SIZE, MIN_MSS, MIN_TCP_HEADER_SIZE,
 };
 
 use crate::{prelude::*, protocols::ipv4};

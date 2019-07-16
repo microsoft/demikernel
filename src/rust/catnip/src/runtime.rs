@@ -16,8 +16,8 @@ use std::{
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
-    options: Rc<Options>,
     effects: Rc<RefCell<VecDeque<Effect>>>,
+    options: Rc<Options>,
     r#async: r#async::Runtime<'a>,
     rng: Rc<RefCell<Rng>>,
 }
@@ -53,7 +53,12 @@ impl<'a> Runtime<'a> {
 
     pub fn emit_effect(&self, effect: Effect) {
         let mut effects = self.effects.borrow_mut();
-        debug!("effect emitted (len: {}) => {:?}", effects.len(), effect);
+        debug!(
+            "effect emitted for {} (len is now {}) => {:?}",
+            self.options.my_ipv4_addr,
+            effects.len() + 1,
+            effect
+        );
         effects.push_back(effect);
     }
 
@@ -67,7 +72,12 @@ impl<'a> Async<Effect> for Runtime<'a> {
         try_poll!(self.r#async, now);
         let mut effects = self.effects.borrow_mut();
         let effect = effects.pop_front();
-        debug!("effect popped; {} remain(s) => {:?}", effects.len(), effect);
+        debug!(
+            "effect popped from {}; {} remain(s) => {:?}",
+            self.options.my_ipv4_addr,
+            effects.len(),
+            effect
+        );
         effect.map(Ok)
     }
 }

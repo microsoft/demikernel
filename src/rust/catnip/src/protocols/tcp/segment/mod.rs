@@ -8,6 +8,7 @@ use std::{net::Ipv4Addr, num::Wrapping};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
+    MIN_MSS,
 };
 
 #[derive(Default, Clone, Debug)]
@@ -139,8 +140,9 @@ impl TcpSegment {
             options.set_mss(mss);
         }
 
-        let mut bytes =
-            ipv4::Datagram::new_vec(self.payload.len() + options.header_length());
+        let mut bytes = ipv4::Datagram::new_vec(
+            self.payload.len() + options.header_length(),
+        );
         let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
 
         encoder.text()[..self.payload.len()]
