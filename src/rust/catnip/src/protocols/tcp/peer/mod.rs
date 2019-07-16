@@ -20,7 +20,6 @@ use std::{
     any::Any,
     collections::{HashMap, VecDeque},
     convert::TryFrom,
-    net::Ipv4Addr,
     num::Wrapping,
     rc::Rc,
     time::Instant,
@@ -136,15 +135,14 @@ impl<'a> TcpPeer<'a> {
 
     pub fn connect(
         &mut self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
+        remote_endpoint: ipv4::Endpoint,
     ) -> Result<()> {
         let options = self.rt.options();
         let src_port = self.acquire_private_port()?;
         let src_ipv4_addr = options.my_ipv4_addr;
         let cxn_id = TcpConnectionId {
             local: ipv4::Endpoint::new(options.my_ipv4_addr, src_port),
-            remote: ipv4::Endpoint::new(dest_ipv4_addr, dest_port),
+            remote: remote_endpoint.clone(),
         };
         let isn = self.isn_generator.next(&cxn_id);
         let cxn = TcpConnection::new(cxn_id.clone());
@@ -155,8 +153,8 @@ impl<'a> TcpPeer<'a> {
             TcpSegment::default()
                 .src_ipv4_addr(src_ipv4_addr)
                 .src_port(src_port)
-                .dest_ipv4_addr(dest_ipv4_addr)
-                .dest_port(dest_port)
+                .dest_ipv4_addr(remote_endpoint.address())
+                .dest_port(remote_endpoint.port())
                 .seq_num(isn)
                 .mss(DEFAULT_MSS)
                 .syn(),

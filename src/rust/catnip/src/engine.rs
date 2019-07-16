@@ -96,10 +96,9 @@ impl<'a> Engine<'a> {
 
     pub fn tcp_connect(
         &mut self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
+        remote_endpoint: ipv4::Endpoint,
     ) -> Result<()> {
-        self.ipv4.tcp_connect(dest_ipv4_addr, dest_port)
+        self.ipv4.tcp_connect(remote_endpoint)
     }
 }
 

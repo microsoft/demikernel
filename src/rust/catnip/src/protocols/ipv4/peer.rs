@@ -1,7 +1,7 @@
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, icmpv4, ip, tcp, udp},
+    protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp, udp},
     r#async::{Async, Future},
 };
 use std::{
@@ -80,10 +80,9 @@ impl<'a> Ipv4Peer<'a> {
 
     pub fn tcp_connect(
         &mut self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
+        remote_endpoint: ipv4::Endpoint,
     ) -> Result<()> {
-        self.tcp.connect(dest_ipv4_addr, dest_port)
+        self.tcp.connect(remote_endpoint)
     }
 }
 

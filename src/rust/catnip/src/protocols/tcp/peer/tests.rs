@@ -1,7 +1,7 @@
 use super::TcpSegmentDecoder;
 use crate::{
     prelude::*,
-    protocols::{ip, tcp},
+    protocols::{ip, ipv4, tcp},
     r#async::Async,
     test,
 };
@@ -22,7 +22,9 @@ fn closed_port() {
         *test::alice_ipv4_addr() => *test::alice_link_addr(),
     });
 
-    alice.tcp_connect(*test::bob_ipv4_addr(), bob_port).unwrap();
+    alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
+        .unwrap();
     let now = now + Duration::from_millis(1);
 
     let (tcp_syn, private_port) = {
