@@ -76,7 +76,7 @@ static inline bool validate_response(dmtr_sgarray_t response) {
     assert(response.sga_numsegs == 1);
     std::string resp_str =
         std::string(reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf));
-    log_debug("Received response:\n%s", resp_str.c_str());
+    //log_debug("Received response:\n%s", resp_str.c_str());
     if (resp_str == VALID_RESP) {
         return true;
     }
@@ -382,6 +382,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         int qd = 0;
         DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
 
+        /* Connect */
         req.status = CONNECTING;
         req.connecting = hr_clock::now();
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
@@ -421,10 +422,6 @@ void print_result(const char *label, int result, bool print_if_zero=true) {
         printf("%-28s%d\n",label, result);
 }
 
-/* TODO
- * - Handle maximum concurrency?
- */
-
 void pin_thread(pthread_t thread, u_int16_t cpu) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -436,6 +433,16 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
+
+/* TODO
+ * - Handle maximum concurrency?
+ * - Add TID to logs
+ */
+
+/**
+ * FIXME:
+ * - Split IP/address and URI from the url argument
+ */
 int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
@@ -545,7 +552,7 @@ int main(int argc, char **argv) {
             i, req_per_thread, &time_end_process,
             std::ref(req_qfds[i]), std::ref(log_qfds[i])
         );
-        pin_thread(threads[i].resp->native_handle(), i);
+        pin_thread(threads[i].resp->native_handle(), i+1);
         threads[i].log = new std::thread(
             log_responses,
             req_per_thread, std::ref(log_qfds[i]), &time_end_log,
@@ -556,7 +563,7 @@ int main(int argc, char **argv) {
             interval_ns_per_thread, req_per_thread,
             host, port, std::ref(req_qfds[i]), &time_end_init, i
         );
-        pin_thread(threads[i].init->native_handle(), i);
+        pin_thread(threads[i].init->native_handle(), i+1);
     }
 
     // Wait on all of the initialization threads
