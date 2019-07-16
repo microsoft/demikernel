@@ -26,16 +26,10 @@
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
 
-
-/**
- * Notes:
- *  - We could have used a dmtr memory queue between main thread and tcp thread
- *
- */
-
 class Worker {
     public: int in_qfd;
     public: int out_qfd;
+    public: pthread_t me;
 };
 std::vector<Worker *> http_workers;
 std::vector<pthread_t *> worker_threads;
@@ -47,6 +41,9 @@ struct tcp_worker_args {
     tcp_filters filter;
     std::function<int(dmtr_sgarray_t *)> filter_f;
     struct sockaddr_in saddr;
+    uint8_t whoami;
+    pthread_t me;
+    bool split;
 };
 
 dmtr_latency_t *pop_latency = NULL;
@@ -63,7 +60,6 @@ void sig_handler(int signo) {
     }
     exit(0);
 }
-
 
 int match_filter(std::string message) {
     if (message.find("\r\n") != std::string::npos) {
@@ -259,6 +255,9 @@ static int filter_http_req(dmtr_sgarray_t *sga) {
 static void *tcp_work(void *args) {
     printf("Hello I am a TCP worker\n");
     struct tcp_worker_args *worker_args = (struct tcp_worker_args *) args;
+    /* In case we need to do the HTTP work */
+    struct parser_state *state =
+        (struct parser_state *) malloc(sizeof(*state));
 
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0; //temporary token
@@ -306,33 +305,108 @@ static void *tcp_work(void *args) {
                 token = tokens[idx];
                 tokens.erase(tokens.begin()+idx);
 
-                /* Load balance incoming requests among HTTP workers */
-                int worker_idx;
-                if (worker_args->filter == RR) {
-                    worker_idx = num_rcvd % http_workers.size();
-                } else if (worker_args->filter == HTTP_REQ_TYPE) {
-                    worker_idx = worker_args->filter_f(&wait_out.qr_value.sga) % http_workers.size();
-                } else {
-                    log_error("Non implemented TCP filter, falling back to RR");
-                    worker_idx = num_rcvd % http_workers.size();
-                }
+                //TODO:
+                // - Is it a new request?
+                // - IF yes push to HTTP worker
+                // - Else it has to come from the HTTP worker
+                // - In which case answer the client
 
                 int client_qfd = wait_out.qr_qd;
-                log_debug("passing to http worker #%d\n", worker_idx);
-                dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
-                dmtr_wait(NULL, token);
-                /*  Wait for HTTP worker to give us an answer */
-                dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
-                do {
-                    status = dmtr_wait(&wait_out, token);
-                } while (status != 0); // XXX ?
-                log_debug("TCP worker popped %s stored at %p\n",
-                        reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
-                        &wait_out.qr_value.sga.sga_buf);
-                /* Answer the client */
-                dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
-                dmtr_wait(NULL, token);
-                free(wait_out.qr_value.sga.sga_buf);
+
+                if (worker_args->split) {
+                    /* Load balance incoming requests among HTTP workers */
+                    int worker_idx;
+                    if (worker_args->filter == RR) {
+                        worker_idx = num_rcvd % http_workers.size();
+                    } else if (worker_args->filter == HTTP_REQ_TYPE) {
+                        worker_idx = worker_args->filter_f(&wait_out.qr_value.sga) % http_workers.size();
+                    } else if (worker_args->filter == ONE_TO_ONE) {
+                        worker_idx = worker_args->whoami;
+                    } else {
+                        log_error("Non implemented TCP filter, falling back to RR");
+                        worker_idx = num_rcvd % http_workers.size();
+                    }
+                    log_debug("TCP workers %d sending requets to HTTP worker %d",
+                              worker_args->whoami, worder_idx);
+
+                    log_debug("passing to http worker #%d\n", worker_idx);
+                    dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
+                    dmtr_wait(NULL, token);
+                    /* Wait for HTTP worker to give us an answer */
+                    dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
+                    do {
+                        status = dmtr_wait(&wait_out, token);
+                    } while (status != 0); // XXX ?
+                    log_debug("TCP worker popped %s stored at %p\n",
+                            reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
+                            &wait_out.qr_value.sga.sga_buf);
+                    /* Answer the client */
+                    dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
+                    dmtr_wait(NULL, token);
+                    free(wait_out.qr_value.sga.sga_buf);
+                } else {
+                    /* Do the HTTP work */
+
+                    /*
+                    fprintf(stdout, "HTTP worker popped %s stored at %p\n",
+                            reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
+                            &wait_out.qr_value.sga.sga_buf);
+                    */
+                    init_parser_state(state);
+                    size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
+                    char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                    enum parser_status pstatus = parse_http(state, req, req_size);
+                    switch (pstatus) {
+                        case REQ_COMPLETE:
+                            //fprintf(stdout, "HTTP worker got complete request\n");
+                            break;
+                        case REQ_ERROR:
+                            //FIXME: maybe we should also free and re-create a buffer?
+                            fprintf(stdout, "HTTP worker got malformed request\n");
+                            wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
+                            strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
+                            dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
+                            dmtr_wait(NULL, token);
+                            clean_state(state);
+                            continue;
+                        case REQ_INCOMPLETE:
+                            fprintf(stdout, "HTTP worker got incomplete request: %.*s\n",
+                                (int) req_size, req);
+                            fprintf(stdout, "Partial requests not implemented\n");
+                            clean_state(state);
+                            continue;
+                    }
+
+                    char *response = NULL;
+                    int response_size;
+                    switch(get_request_type(state->url)) {
+                        case REGEX_REQ:
+                            regex_work(state->url, &response, &response_size);
+                            break;
+                        case FILE_REQ:
+                            file_work(state->url, &response, &response_size);
+                            break;
+                    }
+
+                    if (response == NULL) {
+                        fprintf(stderr, "Error formatting HTTP response\n");
+                        clean_state(state);
+                        continue;
+                    }
+
+                    /* Free the sga, prepare a new one
+                     * we should not reuse it because it was not sized for this response */
+                    free(wait_out.qr_value.sga.sga_buf);
+                    dmtr_sgarray_t resp_sga;
+                    resp_sga.sga_numsegs = 1;
+                    resp_sga.sga_segs[0].sgaseg_len = response_size;
+                    resp_sga.sga_segs[0].sgaseg_buf = response;
+                    dmtr_push(&token, client_qfd, &resp_sga);
+                    dmtr_wait(NULL, token);
+                    free(resp_sga.sga_buf);
+                    clean_state(state);
+                }
+
                 // Re-enable TCP queue for reading
                 dmtr_pop(&token, client_qfd);
 
@@ -357,6 +431,80 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     if (rtn != 0) {
         fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
     }
+}
+
+int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
+    if (split) {
+        log_info("Setting up work in split mode");
+    } else {
+        log_info("Setting up work in joined mode");
+    }
+
+    /* Create TCP worker threads */
+    for (int i = 0; i < n_tcp_workers; ++i) {
+        struct tcp_worker_args *tcp_args = new tcp_worker_args();
+        tcp_args->whoami = i;
+
+        tcp_args->filter = ONE_TO_ONE;
+        //tcp_args->filter = RR;
+        //tcp_args->filter = HTTP_REQ_TYPE;
+        tcp_args->filter_f = filter_http_req;
+
+        if (tcp_args->filter == ONE_TO_ONE && n_tcp_workers < n_http_workers) {
+            log_error("Cannot set 1:1 workers mapping with %d tcp workers and %d http workers",
+                      n_tcp_workers, n_http_workers);
+            exit(1);
+        }
+
+        /* Define which NIC this thread will be using */
+        struct sockaddr_in saddr = {};
+        saddr.sin_family = AF_INET;
+        if (boost::none == server_ip_addr) {
+            std::cerr << "Listening on `*:" << port << "`..." << std::endl;
+            saddr.sin_addr.s_addr = INADDR_ANY;
+        } else {
+            /* We increment the base IP (given for worker #1) */
+            const char *s = boost::get(server_ip_addr).c_str();
+            in_addr_t address = inet_addr(s);
+            address = ntohl(address);
+            address += i*2;
+            address = htonl(address);
+            saddr.sin_addr.s_addr = address;
+            log_info("TCP worker %d set to listen on %s:%d", i, inet_ntoa(saddr.sin_addr), port);
+        }
+        saddr.sin_port = htons(port);
+
+        tcp_args->saddr = saddr; // Pass by copy
+        tcp_args->split = split;
+
+        if (pthread_create(&tcp_args->me, NULL, &tcp_work, (void *) tcp_args)) {
+            log_error("pthread_create error: %s", strerror(errno));
+        }
+        worker_threads.push_back(&tcp_args->me);
+        pin_thread(tcp_args->me, i+1);
+    }
+
+    if (!split) {
+        return 1;
+    }
+
+    /* Create http worker threads */
+    for (int i = 0; i < n_http_workers; ++i) {
+        Worker *worker = new Worker();
+        worker->in_qfd = -1;
+        worker->out_qfd = -1;
+        DMTR_OK(dmtr_queue(&worker->in_qfd));
+        DMTR_OK(dmtr_queue(&worker->out_qfd));
+        http_workers.push_back(worker);
+
+        if (pthread_create(&worker->me, NULL, &http_work, (void *) worker)) {
+            log_error("pthread_create error: %s", strerror(errno));
+        }
+        worker_threads.push_back(&worker->me);
+        pin_thread(worker->me, n_tcp_workers + i + 1);
+    }
+
+    return 1;
 }
 
 int main(int argc, char *argv[]) {
@@ -385,59 +533,8 @@ int main(int argc, char *argv[]) {
     /* Pin main thread */
     pin_thread(pthread_self(), 0);
 
-    /* Create TCP worker threads */
-    for (int i = 0; i < n_tcp_workers; ++i) {
-        struct tcp_worker_args *tcp_args = new tcp_worker_args();
-
-        //tcp_args->filter = HTTP_REQ_TYPE;
-        //tcp_args->filter = ONE_TO_ONE;
-        tcp_args->filter = RR;
-        tcp_args->filter_f = filter_http_req;
-
-        /* Define which NIC this thread will be using */
-        struct sockaddr_in saddr = {};
-        saddr.sin_family = AF_INET;
-        if (boost::none == server_ip_addr) {
-            std::cerr << "Listening on `*:" << port << "`..." << std::endl;
-            saddr.sin_addr.s_addr = INADDR_ANY;
-        } else {
-            /* We increment the base IP (given for worker #1) */
-            const char *s = boost::get(server_ip_addr).c_str();
-            in_addr_t address = inet_addr(s);
-            address = ntohl(address);
-            address += i*2;
-            address = htonl(address);
-            saddr.sin_addr.s_addr = address;
-            log_info("TCP worker %d set to listen on %s:%d", i, inet_ntoa(saddr.sin_addr), port);
-        }
-        saddr.sin_port = htons(port);
-
-        tcp_args->saddr = saddr; // Pass by copy
-
-        pthread_t tcp_worker;
-        worker_threads.push_back(&tcp_worker);
-        if (pthread_create(&tcp_worker, NULL, &tcp_work, (void *) tcp_args)) {
-            log_error("pthread_create error: %s", strerror(errno));
-        }
-        pin_thread(tcp_worker, i+1);
-    }
-
-    /* Create http worker threads */
-    for (int i = 0; i < n_http_workers; ++i) {
-        Worker *worker = new Worker();
-        worker->in_qfd = -1;
-        worker->out_qfd = -1;
-        DMTR_OK(dmtr_queue(&worker->in_qfd));
-        DMTR_OK(dmtr_queue(&worker->out_qfd));
-        http_workers.push_back(worker);
-
-        pthread_t http_worker;
-        worker_threads.push_back(&http_worker);
-        if (pthread_create(&http_worker, NULL, &http_work, (void *) worker)) {
-            log_error("pthread_create error: %s", strerror(errno));
-        }
-        pin_thread(http_worker, n_tcp_workers + i+1);
-    }
+    /* Create worker threads */
+    work_setup(n_tcp_workers, n_http_workers, false);
 
     /* Re-enable SIGINT and SIGQUIT */
     ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
