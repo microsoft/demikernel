@@ -4,3 +4,4 @@ mod segment;
 
 pub use error::TcpError as Error;
 pub use peer::TcpPeer as Peer;
+pub use segment::TcpSegment as Segment;

@@ -7,11 +7,7 @@ use crate::{
 use base64::{encode_config, STANDARD_NO_PAD};
 use flexi_logger::Logger;
 use float_duration::FloatDuration;
-use std::{
-    net::Ipv4Addr,
-    sync::Once,
-    time::Instant,
-};
+use std::{net::Ipv4Addr, sync::Once, time::Instant};
 
 lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);

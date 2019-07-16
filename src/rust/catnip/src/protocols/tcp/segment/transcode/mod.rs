@@ -118,7 +118,12 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegmentDecoder<'a> {
     type Error = Fail;
 
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
-        assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Tcp);
+        if ipv4_datagram.header().protocol()? != ipv4::Protocol::Tcp {
+            return Err(Fail::TypeMismatch {
+                details: "expected a TCP segment",
+            });
+        }
+
         let _ = TcpHeaderDecoder::attach(ipv4_datagram.text())?;
         let segment = TcpSegmentDecoder(ipv4_datagram);
         let _ = segment.checksum(ChecksumOp::Validate)?;

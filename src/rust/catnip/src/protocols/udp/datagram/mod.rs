@@ -39,7 +39,12 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagram<'a> {
     type Error = Fail;
 
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
-        assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Udp);
+        if ipv4_datagram.header().protocol()? != ipv4::Protocol::Udp {
+            return Err(Fail::TypeMismatch {
+                details: "expected a UDP datagram",
+            });
+        }
+
         if ipv4_datagram.text().len() < UDP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "UDP datagram is too small to contain a complete \

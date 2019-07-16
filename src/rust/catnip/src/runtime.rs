@@ -52,7 +52,9 @@ impl<'a> Runtime<'a> {
     }
 
     pub fn emit_effect(&self, effect: Effect) {
-        self.effects.borrow_mut().push_back(effect)
+        let mut effects = self.effects.borrow_mut();
+        debug!("effect emitted (len: {}) => {:?}", effects.len(), effect);
+        effects.push_back(effect);
     }
 
     pub fn borrow_rng(&self) -> RefMut<Rng> {
@@ -63,6 +65,9 @@ impl<'a> Runtime<'a> {
 impl<'a> Async<Effect> for Runtime<'a> {
     fn poll(&self, now: Instant) -> Option<Result<Effect>> {
         try_poll!(self.r#async, now);
-        self.effects.borrow_mut().pop_front().map(Ok)
+        let mut effects = self.effects.borrow_mut();
+        let effect = effects.pop_front();
+        debug!("effect popped; {} remain(s) => {:?}", effects.len(), effect);
+        effect.map(Ok)
     }
 }

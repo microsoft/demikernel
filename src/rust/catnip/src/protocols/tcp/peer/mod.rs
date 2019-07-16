@@ -133,10 +133,7 @@ impl<'a> TcpPeer<'a> {
         }
     }
 
-    pub fn connect(
-        &mut self,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> Result<()> {
+    pub fn connect(&mut self, remote_endpoint: ipv4::Endpoint) -> Result<()> {
         let options = self.rt.options();
         let src_port = self.acquire_private_port()?;
         let src_ipv4_addr = options.my_ipv4_addr;

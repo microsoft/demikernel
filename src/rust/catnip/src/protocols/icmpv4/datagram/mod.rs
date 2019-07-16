@@ -45,7 +45,12 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
     type Error = Fail;
 
     fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
-        assert_eq!(ipv4_datagram.header().protocol()?, ipv4::Protocol::Icmpv4);
+        if ipv4_datagram.header().protocol()? != ipv4::Protocol::Icmpv4 {
+            return Err(Fail::TypeMismatch {
+                details: "expected a ICMPv4 datagram",
+            });
+        }
+
         if ipv4_datagram.text().len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "ICMPv4 datagram isn't large enough to contain a \

@@ -59,7 +59,12 @@ impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
 
     fn try_from(frame: ethernet2::Frame<'a>) -> Result<Self> {
         trace!("Ipv4Datagram::try_from(...)");
-        assert_eq!(frame.header().ether_type()?, ethernet2::EtherType::Ipv4);
+        if frame.header().ether_type()? != ethernet2::EtherType::Ipv4 {
+            return Err(Fail::TypeMismatch {
+                details: "expected an IPv4 datagram",
+            });
+        }
+
         if frame.text().len() <= IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "IPv4 datagram is too small to contain a complete \

@@ -18,7 +18,7 @@ custom_error! {#[derive(Clone)] pub Fail
     ResourceExhausted{details: Str} = "resource exhausted ({details})",
     ResourceBusy{details: Str} = "resource is busy ({details})",
     Timeout{} = "an asynchronous operation timed out",
-    TypeMismatch{} = "type mismatch",
+    TypeMismatch{details: Str} = "type mismatch ({details})",
     Unsupported{details: Str} = "unsupported ({details})",
 }
 
