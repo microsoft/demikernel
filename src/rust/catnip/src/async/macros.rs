@@ -42,10 +42,12 @@ macro_rules! yield_until {
 #[macro_export]
 macro_rules! r#await {
     ($async:expr, $now:expr) => {{
+        use $crate::r#async::Async;
         assert!(yield_until!($async.poll($now).is_some(), $now));
         $async.poll($now).unwrap()
     }};
     ($async:expr, $now:expr, $timeout:expr) => {{
+        use $crate::r#async::Async;
         if yield_until!($async.poll($now), $now, $timeout) {
             $async.poll($now).unwrap()
         } else {
