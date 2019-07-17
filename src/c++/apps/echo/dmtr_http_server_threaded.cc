@@ -170,6 +170,10 @@ static void clean_state(struct parser_state *state) {
     }
 }
 
+/**
+ *FIXME: this function purposefully format wrongly dmtr_sgarray_t.
+ *       It is ok because it is a memory queue, and we are both sending and reading.
+ */
 static void *http_work(void *args) {
     printf("Hello I am an HTTP worker\n");
     struct parser_state *state =
@@ -183,7 +187,7 @@ static void *http_work(void *args) {
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             assert(DMTR_OPC_POP == wait_out.qr_opcode);
-            assert(wait_out.qr_value.sga.sga_numsegs == 1);
+            assert(wait_out.qr_value.sga.sga_numsegs == 2);
             /*
             fprintf(stdout, "HTTP worker popped %s stored at %p\n",
                     reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
@@ -198,11 +202,18 @@ static void *http_work(void *args) {
                     //fprintf(stdout, "HTTP worker got complete request\n");
                     break;
                 case REQ_ERROR:
-                    //FIXME: maybe we should also free and re-create a buffer?
                     fprintf(stdout, "HTTP worker got malformed request\n");
-                    wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
-                    strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
-                    dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
+                    free(wait_out.qr_value.sga.sga_buf);
+                    wait_out.qr_value.sga.sga_buf = NULL;
+
+                    dmtr_sgarray_t resp_sga;
+                    resp_sga.sga_numsegs = 2;
+                    resp_sga.sga_segs[0].sgaseg_buf = malloc(strlen(BAD_REQUEST_HEADER) + 1);
+                    resp_sga.sga_segs[0].sgaseg_len =
+                        snprintf(reinterpret_cast<char *>(resp_sga.sga_segs[0].sgaseg_buf),
+                                 strlen(BAD_REQUEST_HEADER) + 1, "%s", BAD_REQUEST_HEADER);
+                    resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
+                    dmtr_push(&token, me->out_qfd, &resp_sga);
                     dmtr_wait(NULL, token);
                     clean_state(state);
                     continue;
@@ -238,6 +249,7 @@ static void *http_work(void *args) {
             resp_sga.sga_numsegs = 1;
             resp_sga.sga_segs[0].sgaseg_len = response_size;
             resp_sga.sga_segs[0].sgaseg_buf = response;
+            resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
             dmtr_push(&token, me->out_qfd, &resp_sga);
             dmtr_wait(NULL, token);
             clean_state(state);
@@ -274,6 +286,7 @@ static void *tcp_work(void *args) {
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
 
+    std::vector<int> http_q_pending;
     int num_rcvd = 0;
     while (1) {
         dmtr_qresult_t wait_out;
@@ -293,124 +306,151 @@ static void *tcp_work(void *args) {
                 log_debug("Accepted a new connection on %d", lqd);
             } else {
                 assert(DMTR_OPC_POP == wait_out.qr_opcode);
-                assert(wait_out.qr_value.sga.sga_numsegs == 1);
-                log_debug("received %s on queue %d\n",
-                         reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
-                         wait_out.qr_qd);
-                num_rcvd++;
-                if (num_rcvd % 100 == 0) {
-                    log_info("received: %d requests\n", num_rcvd);
-                }
+                assert(wait_out.qr_value.sga.sga_numsegs <= 2);
 
                 token = tokens[idx];
                 tokens.erase(tokens.begin()+idx);
 
-                //TODO:
-                // - Is it a new request?
-                // - IF yes push to HTTP worker
-                // - Else it has to come from the HTTP worker
-                // - In which case answer the client
-
-                int client_qfd = wait_out.qr_qd;
-
-                if (worker_args->split) {
-                    /* Load balance incoming requests among HTTP workers */
-                    int worker_idx;
-                    if (worker_args->filter == RR) {
-                        worker_idx = num_rcvd % http_workers.size();
-                    } else if (worker_args->filter == HTTP_REQ_TYPE) {
-                        worker_idx = worker_args->filter_f(&wait_out.qr_value.sga) % http_workers.size();
-                    } else if (worker_args->filter == ONE_TO_ONE) {
-                        worker_idx = worker_args->whoami;
-                    } else {
-                        log_error("Non implemented TCP filter, falling back to RR");
-                        worker_idx = num_rcvd % http_workers.size();
+                auto it = std::find(
+                    http_q_pending.begin(),
+                    http_q_pending.end(),
+                    wait_out.qr_qd
+                );
+                if (it == http_q_pending.end()) {
+                    log_debug(
+                        "received new request on queue %d: %s\n",
+                        wait_out.qr_qd,
+                        reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                    );
+                    /* This is a new request */
+                    num_rcvd++;
+                    if (num_rcvd % 100 == 0) {
+                        log_info("received: %d requests\n", num_rcvd);
                     }
-                    log_debug("TCP workers %d sending requets to HTTP worker %d",
-                              worker_args->whoami, worder_idx);
+                    if (worker_args->split) {
+                        /* Load balance incoming requests among HTTP workers */
+                        int worker_idx;
+                        if (worker_args->filter == RR) {
+                            worker_idx = num_rcvd % http_workers.size();
+                        } else if (worker_args->filter == HTTP_REQ_TYPE) {
+                            worker_idx = worker_args->filter_f(&wait_out.qr_value.sga) % http_workers.size();
+                        } else if (worker_args->filter == ONE_TO_ONE) {
+                            worker_idx = worker_args->whoami;
+                        } else {
+                            log_error("Non implemented TCP filter, falling back to RR");
+                            worker_idx = num_rcvd % http_workers.size();
+                        }
+                        log_debug("TCP worker %d sending request to HTTP worker %d",
+                                  worker_args->whoami, worker_idx);
 
-                    log_debug("passing to http worker #%d\n", worker_idx);
-                    dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
-                    dmtr_wait(NULL, token);
-                    /* Wait for HTTP worker to give us an answer */
-                    dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
-                    do {
-                        status = dmtr_wait(&wait_out, token);
-                    } while (status != 0); // XXX ?
-                    log_debug("TCP worker popped %s stored at %p\n",
-                            reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
-                            &wait_out.qr_value.sga.sga_buf);
+                        /* =D */
+                        wait_out.qr_value.sga.sga_numsegs = 2;
+                        wait_out.qr_value.sga.sga_segs[1].sgaseg_len = wait_out.qr_qd;
+
+                        dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga);
+                        dmtr_wait(NULL, token); //XXX do we need to wait for push to happen?
+                        /* Enable reading from HTTP result queue */
+                        dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
+                        tokens.push_back(token);
+                        http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
+                        /* Re-enable TCP queue for reading */
+                        //FIXME: this does not work but would allow multiple request
+                        //from the same connection to be in-flight
+                        //dmtr_pop(&token, wait_out.qr_qd);
+                        //tokens.push_back(token);
+                    } else {
+                        /* Do the HTTP work */
+
+                        /*
+                        fprintf(stdout, "HTTP worker popped %s stored at %p\n",
+                                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
+                                &wait_out.qr_value.sga.sga_buf);
+                        */
+                        init_parser_state(state);
+                        size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
+                        char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                        enum parser_status pstatus = parse_http(state, req, req_size);
+                        switch (pstatus) {
+                            case REQ_COMPLETE:
+                                //fprintf(stdout, "HTTP worker got complete request\n");
+                                break;
+                            case REQ_ERROR:
+                                fprintf(stdout, "HTTP worker got malformed request\n");
+                                free(wait_out.qr_value.sga.sga_buf);
+                                dmtr_sgarray_t resp_sga;
+                                resp_sga.sga_numsegs = 1;
+                                resp_sga.sga_segs[0].sgaseg_buf = malloc(strlen(BAD_REQUEST_HEADER) + 1);
+                                resp_sga.sga_segs[0].sgaseg_len =
+                                    snprintf(reinterpret_cast<char *>(resp_sga.sga_segs[0].sgaseg_buf),
+                                             strlen(BAD_REQUEST_HEADER) + 1, "%s", BAD_REQUEST_HEADER);
+                                dmtr_push(&token, wait_out.qr_qd, &resp_sga);
+                                dmtr_wait(NULL, token);
+                                clean_state(state);
+                                continue;
+                            case REQ_INCOMPLETE:
+                                log_warn("HTTP worker got incomplete request: %.*s\n",
+                                    (int) req_size, req);
+                                log_warn("Partial requests not implemented\n");
+                                clean_state(state);
+                                continue;
+                        }
+
+                        char *response = NULL;
+                        int response_size;
+                        switch(get_request_type(state->url)) {
+                            case REGEX_REQ:
+                                regex_work(state->url, &response, &response_size);
+                                break;
+                            case FILE_REQ:
+                                file_work(state->url, &response, &response_size);
+                                break;
+                        }
+
+                        if (response == NULL) {
+                            log_error("Error formatting HTTP response\n");
+                            clean_state(state);
+                            continue;
+                        }
+
+                        /* Free the sga, prepare a new one:
+                         * we should not reuse it because it was not sized for this response
+                         */
+                        free(wait_out.qr_value.sga.sga_buf);
+                        wait_out.qr_value.sga.sga_buf = NULL;
+                        dmtr_sgarray_t resp_sga;
+                        resp_sga.sga_numsegs = 1;
+                        resp_sga.sga_segs[0].sgaseg_len = response_size;
+                        resp_sga.sga_segs[0].sgaseg_buf = response;
+                        dmtr_push(&token, wait_out.qr_qd, &resp_sga);
+                        /* we have to wait because we can't free before sga is sent */
+                        dmtr_wait(NULL, token);
+                        free(response);
+                        clean_state(state);
+
+                        /* Re-enable TCP queue for reading */
+                        dmtr_pop(&token, wait_out.qr_qd);
+                        tokens.push_back(token);
+                    }
+                } else {
+                    log_debug(
+                        "received response on queue %d: %s\n",
+                        wait_out.qr_qd,
+                        reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                    );
+                    /* This comes from an HTTP worker and we need to forward to the client */
+                    int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
+                    http_q_pending.erase(it);
                     /* Answer the client */
                     dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
+                    /* we have to wait because we can't free before sga is sent */
                     dmtr_wait(NULL, token);
-                    free(wait_out.qr_value.sga.sga_buf);
-                } else {
-                    /* Do the HTTP work */
+                    free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
 
-                    /*
-                    fprintf(stdout, "HTTP worker popped %s stored at %p\n",
-                            reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf),
-                            &wait_out.qr_value.sga.sga_buf);
-                    */
-                    init_parser_state(state);
-                    size_t req_size = (size_t) wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
-                    char *req = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-                    enum parser_status pstatus = parse_http(state, req, req_size);
-                    switch (pstatus) {
-                        case REQ_COMPLETE:
-                            //fprintf(stdout, "HTTP worker got complete request\n");
-                            break;
-                        case REQ_ERROR:
-                            //FIXME: maybe we should also free and re-create a buffer?
-                            fprintf(stdout, "HTTP worker got malformed request\n");
-                            wait_out.qr_value.sga.sga_segs[0].sgaseg_len = strlen(BAD_REQUEST_HEADER);
-                            strncpy(req, BAD_REQUEST_HEADER, strlen(BAD_REQUEST_HEADER));
-                            dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga);
-                            dmtr_wait(NULL, token);
-                            clean_state(state);
-                            continue;
-                        case REQ_INCOMPLETE:
-                            fprintf(stdout, "HTTP worker got incomplete request: %.*s\n",
-                                (int) req_size, req);
-                            fprintf(stdout, "Partial requests not implemented\n");
-                            clean_state(state);
-                            continue;
-                    }
-
-                    char *response = NULL;
-                    int response_size;
-                    switch(get_request_type(state->url)) {
-                        case REGEX_REQ:
-                            regex_work(state->url, &response, &response_size);
-                            break;
-                        case FILE_REQ:
-                            file_work(state->url, &response, &response_size);
-                            break;
-                    }
-
-                    if (response == NULL) {
-                        fprintf(stderr, "Error formatting HTTP response\n");
-                        clean_state(state);
-                        continue;
-                    }
-
-                    /* Free the sga, prepare a new one
-                     * we should not reuse it because it was not sized for this response */
-                    free(wait_out.qr_value.sga.sga_buf);
-                    dmtr_sgarray_t resp_sga;
-                    resp_sga.sga_numsegs = 1;
-                    resp_sga.sga_segs[0].sgaseg_len = response_size;
-                    resp_sga.sga_segs[0].sgaseg_buf = response;
-                    dmtr_push(&token, client_qfd, &resp_sga);
-                    dmtr_wait(NULL, token);
-                    free(resp_sga.sga_buf);
-                    clean_state(state);
+                    /* Re-enable TCP queue for reading */
+                    dmtr_pop(&token, client_qfd);
+                    tokens.push_back(token);
                 }
-
-                // Re-enable TCP queue for reading
-                dmtr_pop(&token, client_qfd);
-
-                tokens.push_back(token);
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
