@@ -341,6 +341,10 @@ int dmtr::posix_queue::close()
 
     int fd = my_fd;
     my_fd = -1;
+    if (my_peer_saddr) {
+        free(my_peer_saddr);
+        my_peer_saddr = NULL;
+    }
 
     int ret = ::close(fd);
     switch (ret) {
