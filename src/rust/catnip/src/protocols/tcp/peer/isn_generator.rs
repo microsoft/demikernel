@@ -1,4 +1,4 @@
-use super::connection::TcpConnectionId;
+use super::super::connection::TcpConnectionId;
 use crate::prelude::*;
 use crc::{crc32, Hasher32};
 use rand::Rng;

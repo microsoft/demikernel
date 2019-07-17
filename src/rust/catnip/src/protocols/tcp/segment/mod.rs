@@ -1,10 +1,11 @@
 mod transcode;
 
+use super::connection::TcpConnectionId;
 use crate::{
     prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
-use std::{net::Ipv4Addr, num::Wrapping};
+use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
@@ -94,44 +95,15 @@ impl TcpSegment {
         self
     }
 
+    pub fn connection(self, cxnid: &TcpConnectionId) -> TcpSegment {
+        self.src_ipv4_addr(cxnid.local.address())
+            .src_port(cxnid.local.port())
+            .dest_ipv4_addr(cxnid.remote.address())
+            .dest_port(cxnid.remote.port())
+    }
+
     pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {
-        let decoder = TcpSegmentDecoder::attach(bytes)?;
-
-        let tcp_header = decoder.header();
-        let dest_port = tcp_header.dest_port();
-        let src_port = tcp_header.src_port();
-        let seq_num = tcp_header.seq_num();
-        let ack_num = tcp_header.ack_num();
-        let syn = tcp_header.syn();
-        let ack = tcp_header.ack();
-        let rst = tcp_header.rst();
-        let options = tcp_header.options();
-        let mss = options.get_mss();
-
-        let ipv4_header = decoder.ipv4().header();
-        let dest_ipv4_addr = ipv4_header.dest_addr();
-        let src_ipv4_addr = ipv4_header.src_addr();
-
-        let frame_header = decoder.ipv4().frame().header();
-        let src_link_addr = frame_header.src_addr();
-        let dest_link_addr = frame_header.dest_addr();
-        let payload = decoder.text().to_vec();
-
-        Ok(TcpSegment {
-            dest_ipv4_addr: Some(dest_ipv4_addr),
-            dest_port,
-            dest_link_addr: Some(dest_link_addr),
-            src_ipv4_addr: Some(src_ipv4_addr),
-            src_port,
-            src_link_addr: Some(src_link_addr),
-            seq_num,
-            ack_num,
-            syn,
-            ack,
-            rst,
-            mss,
-            payload,
-        })
+        TcpSegment::try_from(TcpSegmentDecoder::attach(bytes)?)
     }
 
     pub fn encode(self) -> Vec<u8> {
@@ -170,5 +142,47 @@ impl TcpSegment {
 
         let _ = encoder.seal().expect("failed to seal TCP segment");
         bytes
+    }
+}
+
+impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
+    type Error = Fail;
+
+    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<TcpSegment> {
+        let tcp_header = decoder.header();
+        let dest_port = tcp_header.dest_port();
+        let src_port = tcp_header.src_port();
+        let seq_num = tcp_header.seq_num();
+        let ack_num = tcp_header.ack_num();
+        let syn = tcp_header.syn();
+        let ack = tcp_header.ack();
+        let rst = tcp_header.rst();
+        let options = tcp_header.options();
+        let mss = options.get_mss();
+
+        let ipv4_header = decoder.ipv4().header();
+        let dest_ipv4_addr = ipv4_header.dest_addr();
+        let src_ipv4_addr = ipv4_header.src_addr();
+
+        let frame_header = decoder.ipv4().frame().header();
+        let src_link_addr = frame_header.src_addr();
+        let dest_link_addr = frame_header.dest_addr();
+        let payload = decoder.text().to_vec();
+
+        Ok(TcpSegment {
+            dest_ipv4_addr: Some(dest_ipv4_addr),
+            dest_port,
+            dest_link_addr: Some(dest_link_addr),
+            src_ipv4_addr: Some(src_ipv4_addr),
+            src_port,
+            src_link_addr: Some(src_link_addr),
+            seq_num,
+            ack_num,
+            syn,
+            ack,
+            rst,
+            mss,
+            payload,
+        })
     }
 }

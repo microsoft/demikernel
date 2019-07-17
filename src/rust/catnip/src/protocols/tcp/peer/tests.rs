@@ -1,4 +1,4 @@
-use super::TcpSegmentDecoder;
+use super::super::segment::TcpSegmentDecoder;
 use crate::{
     prelude::*,
     protocols::{ip, ipv4, tcp},

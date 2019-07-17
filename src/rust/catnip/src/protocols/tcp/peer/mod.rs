@@ -1,4 +1,3 @@
-mod connection;
 mod isn_generator;
 mod runtime;
 
@@ -6,29 +5,28 @@ mod runtime;
 mod tests;
 
 use super::{
+    connection::{TcpConnection, TcpConnectionHandle, TcpConnectionId},
     error::TcpError,
-    segment::{TcpSegment, TcpSegmentDecoder, DEFAULT_MSS},
+    segment::{TcpSegment, TcpSegmentDecoder, DEFAULT_MSS, MIN_MSS},
 };
 use crate::{
     prelude::*,
     protocols::{arp, ip, ipv4},
     r#async::{Async, WhenAny},
 };
-use connection::{TcpConnection, TcpConnectionId};
 use isn_generator::IsnGenerator;
 use rand::seq::SliceRandom;
 use runtime::TcpRuntime;
 use std::{
     any::Any,
+    cell::RefCell,
+    cmp::min,
     collections::{HashMap, HashSet, VecDeque},
     convert::TryFrom,
     num::Wrapping,
     rc::Rc,
     time::Instant,
 };
-use std::cell::RefCell;
-
-pub use connection::TcpConnectionHandle;
 
 pub struct TcpPeer<'a> {
     assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
@@ -36,6 +34,7 @@ pub struct TcpPeer<'a> {
     connections: Rc<RefCell<HashMap<TcpConnectionId, TcpConnection>>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
+    passive_connections: HashMap<ipv4::Endpoint, TcpConnection>,
     rt: TcpRuntime<'a>,
     unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
     unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
@@ -74,6 +73,7 @@ impl<'a> TcpPeer<'a> {
             connections: Rc::new(RefCell::new(HashMap::new())),
             isn_generator,
             open_ports: HashSet::new(),
+            passive_connections: HashMap::new(),
             rt,
             unassigned_connection_handles,
             unassigned_private_ports,
@@ -82,13 +82,15 @@ impl<'a> TcpPeer<'a> {
 
     pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
         trace!("TcpPeer::receive(...)");
-        let segment = TcpSegmentDecoder::try_from(datagram)?;
-        let ipv4_header = segment.ipv4().header();
-        let tcp_header = segment.header();
+        let decoder = TcpSegmentDecoder::try_from(datagram)?;
+        let segment = TcpSegment::try_from(decoder)?;
         // i haven't yet seen anything that explicitly disallows categories of
         // IP addresses but it seems sensible to drop datagrams where the
         // source address does not really support a connection.
-        let remote_ipv4_addr = ipv4_header.src_addr();
+        let remote_ipv4_addr =
+            segment.src_ipv4_addr.ok_or(Fail::Malformed {
+                details: "source IPv4 address is missing",
+            })?;
         if remote_ipv4_addr.is_broadcast()
             || remote_ipv4_addr.is_multicast()
             || remote_ipv4_addr.is_unspecified()
@@ -98,19 +100,14 @@ impl<'a> TcpPeer<'a> {
             });
         }
 
-        let local_port = match tcp_header.dest_port() {
-            Some(p) => p,
-            None => {
-                return Err(Fail::Malformed {
-                    details: "destination port is zero",
-                })
-            }
-        };
+        let local_port = segment.dest_port.ok_or(Fail::Malformed {
+            details: "destination port is zero",
+        })?;
 
         debug!("local_port => {:?}", local_port);
         debug!("open_ports => {:?}", self.open_ports);
         if self.open_ports.contains(&local_port) {
-            if tcp_header.rst() {
+            if segment.rst {
                 self.rt.rt().emit_effect(Effect::TcpError(
                     TcpError::ConnectionRefused {},
                 ));
@@ -119,24 +116,19 @@ impl<'a> TcpPeer<'a> {
                 unimplemented!();
             }
         } else {
-            let remote_port = match tcp_header.src_port() {
-                Some(p) => p,
-                None => {
-                    return Err(Fail::Malformed {
-                        details: "source port is zero",
-                    })
-                }
-            };
+            let remote_port = segment.src_port.ok_or(Fail::Malformed {
+                details: "source port is zero",
+            })?;
 
-            let mut ack_num = tcp_header.seq_num()
-                + Wrapping(u32::try_from(segment.text().len())?);
+            let mut ack_num = segment.seq_num
+                + Wrapping(u32::try_from(segment.payload.len())?);
             // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/TCP_IP+Illustrated,+Volume+1:+The+Protocols/9780132808200/ch13.html#ch13):
             // > Although there is no data in the arriving segment, the SYN
             // > bit logically occupies 1 byte of sequence number space;
             // > therefore, in this example the ACK number in the reset
             // > segment is set to the ISN, plus the data length (0), plus 1
             // > for the SYN bit.
-            if tcp_header.syn() {
+            if segment.syn {
                 ack_num += Wrapping(1);
             }
 
@@ -154,8 +146,22 @@ impl<'a> TcpPeer<'a> {
         }
     }
 
-    pub fn connect(&mut self, remote_endpoint: ipv4::Endpoint) -> Result<TcpConnectionHandle> {
+    pub fn connect(
+        &mut self,
+        remote_endpoint: ipv4::Endpoint,
+    ) -> Result<TcpConnectionHandle> {
         self.start_active_connection(remote_endpoint)
+    }
+
+    pub fn listen(&mut self, port: ip::Port) -> Result<()> {
+        if self.open_ports.contains(&port) {
+            return Err(Fail::ResourceBusy {
+                details: "port already in use",
+            });
+        }
+
+        assert!(self.open_ports.insert(port));
+        Ok(())
     }
 
     pub fn start_active_connection(
@@ -163,10 +169,11 @@ impl<'a> TcpPeer<'a> {
         remote_endpoint: ipv4::Endpoint,
     ) -> Result<TcpConnectionHandle> {
         let options = self.rt.rt().options();
-        let local_port = self.acquire_private_port()?;
-        let local_ipv4_addr = options.my_ipv4_addr;
         let cxnid = TcpConnectionId {
-            local: ipv4::Endpoint::new(options.my_ipv4_addr, local_port),
+            local: ipv4::Endpoint::new(
+                options.my_ipv4_addr,
+                self.acquire_private_port()?,
+            ),
             remote: remote_endpoint,
         };
         let handle = self.new_connection(cxnid.clone())?;
@@ -183,10 +190,7 @@ impl<'a> TcpPeer<'a> {
             r#await!(
                 rt.cast(
                     TcpSegment::default()
-                        .src_ipv4_addr(local_ipv4_addr)
-                        .src_port(local_port)
-                        .dest_ipv4_addr(cxnid.remote.address())
-                        .dest_port(cxnid.remote.port())
+                        .connection(&cxnid)
                         .seq_num(isn)
                         .mss(DEFAULT_MSS)
                         .syn()
@@ -199,6 +203,54 @@ impl<'a> TcpPeer<'a> {
         }));
 
         Ok(handle)
+    }
+
+    pub fn start_passive_connection(
+        &mut self,
+        local_port: ip::Port,
+        syn_segment: TcpSegment,
+    ) -> Result<()> {
+        assert!(self.open_ports.contains(&local_port));
+        assert!(syn_segment.syn);
+
+        let options = self.rt.rt().options();
+        let remote_ipv4_addr = syn_segment.src_ipv4_addr.unwrap();
+        let remote_port = syn_segment.src_port.unwrap();
+        let cxnid = TcpConnectionId {
+            local: ipv4::Endpoint::new(options.my_ipv4_addr, local_port),
+            remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
+        };
+        let _ = self.new_connection(cxnid.clone())?;
+        let ack_num = syn_segment.seq_num + Wrapping(1);
+        let mss = min(DEFAULT_MSS, syn_segment.mss.unwrap_or(MIN_MSS));
+
+        let rt = self.rt.clone();
+        let connections = self.connections.clone();
+        self.async_work.add(self.rt.rt().start_coroutine(move || {
+            let isn = {
+                let connections = connections.borrow_mut();
+                let cxn = connections.get(&cxnid).unwrap();
+                cxn.seq_num()
+            };
+
+            r#await!(
+                rt.cast(
+                    TcpSegment::default()
+                        .connection(&cxnid)
+                        .seq_num(isn)
+                        .ack_num(ack_num)
+                        .mss(mss)
+                        .syn()
+                        .ack()
+                ),
+                rt.rt().now()
+            )?;
+
+            let x: Rc<dyn Any> = Rc::new(());
+            Ok(x)
+        }));
+
+        Ok(())
     }
 
     fn acquire_private_port(&mut self) -> Result<ip::Port> {
@@ -239,11 +291,9 @@ impl<'a> TcpPeer<'a> {
         let isn = self.isn_generator.next(&cxnid);
         let cxn = TcpConnection::new(cxnid.clone(), handle, isn);
         let local_port = cxnid.local.port();
-        assert!(connections
-            .insert(cxnid.clone(), cxn)
-            .is_none());
+        assert!(connections.insert(cxnid.clone(), cxn).is_none());
         assert!(self.assigned_handles.insert(handle, cxnid).is_none());
-        assert!(self.open_ports.replace(local_port).is_none());
+        self.open_ports.insert(local_port);
         Ok(handle)
     }
 }

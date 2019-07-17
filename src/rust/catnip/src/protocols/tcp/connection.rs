@@ -1,6 +1,5 @@
 use crate::protocols::ipv4;
-use std::num::NonZeroU16;
-use std::num::Wrapping;
+use std::num::{NonZeroU16, Wrapping};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TcpConnectionId {
@@ -31,8 +30,16 @@ pub struct TcpConnection {
 }
 
 impl TcpConnection {
-    pub fn new(id: TcpConnectionId, handle: TcpConnectionHandle, isn: Wrapping<u32>) -> TcpConnection {
-        TcpConnection { id, handle, seq_num: isn }
+    pub fn new(
+        id: TcpConnectionId,
+        handle: TcpConnectionHandle,
+        isn: Wrapping<u32>,
+    ) -> TcpConnection {
+        TcpConnection {
+            id,
+            handle,
+            seq_num: isn,
+        }
     }
 
     pub fn seq_num(&self) -> Wrapping<u32> {

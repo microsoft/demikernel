@@ -84,6 +84,10 @@ impl<'a> Ipv4Peer<'a> {
     ) -> Result<tcp::ConnectionHandle> {
         self.tcp.connect(remote_endpoint)
     }
+
+    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
+        self.tcp.listen(port)
+    }
 }
 
 impl<'a> Async<()> for Ipv4Peer<'a> {

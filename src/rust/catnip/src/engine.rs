@@ -3,7 +3,7 @@ use crate::{
     protocols::{
         arp,
         ethernet2::{self, MacAddress},
-        ip, ipv4,
+        ip, ipv4, tcp,
     },
     r#async::{self, Async},
 };
@@ -13,7 +13,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use crate::protocols::tcp;
 
 pub struct Engine<'a> {
     rt: Runtime<'a>,
@@ -100,6 +99,10 @@ impl<'a> Engine<'a> {
         remote_endpoint: ipv4::Endpoint,
     ) -> Result<tcp::ConnectionHandle> {
         self.ipv4.tcp_connect(remote_endpoint)
+    }
+
+    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
+        self.ipv4.tcp_listen(port)
     }
 }
 
