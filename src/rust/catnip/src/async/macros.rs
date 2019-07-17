@@ -53,7 +53,8 @@ macro_rules! r#await {
         if yield_until!(r#async.poll($now), $now, $timeout) {
             r#async.poll($now).unwrap()
         } else {
-            None
+            use $crate::fail::Fail;
+            Err(Fail::Timeout {})
         }
     }};
 }
