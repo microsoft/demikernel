@@ -81,7 +81,7 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Result<()> {
+    ) -> Result<tcp::ConnectionHandle> {
         self.tcp.connect(remote_endpoint)
     }
 }

@@ -13,6 +13,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use crate::protocols::tcp;
 
 pub struct Engine<'a> {
     rt: Runtime<'a>,
@@ -97,7 +98,7 @@ impl<'a> Engine<'a> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Result<()> {
+    ) -> Result<tcp::ConnectionHandle> {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 }

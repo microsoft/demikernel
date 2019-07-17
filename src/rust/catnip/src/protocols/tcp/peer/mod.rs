@@ -26,22 +26,25 @@ use std::{
     rc::Rc,
     time::Instant,
 };
+use std::cell::RefCell;
+
+pub use connection::TcpConnectionHandle;
 
 pub struct TcpPeer<'a> {
-    active_connections: HashMap<ipv4::Endpoint, TcpConnection>,
-    available_private_ports: VecDeque<ip::Port>, // todo: shared state.
-    connections: HashMap<TcpConnectionId, TcpConnection>,
+    assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
+    async_work: WhenAny<'a, ()>,
+    connections: Rc<RefCell<HashMap<TcpConnectionId, TcpConnection>>>,
     isn_generator: IsnGenerator,
-    listening_on_ports: HashSet<ip::Port>,
     open_ports: HashSet<ip::Port>,
     rt: TcpRuntime<'a>,
-    async_work: WhenAny<'a, ()>,
+    unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
+    unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
 }
 
 impl<'a> TcpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> TcpPeer<'a> {
         // initialize the pool of available private ports.
-        let available_private_ports = {
+        let unassigned_private_ports = {
             let mut ports = Vec::new();
             for i in ip::Port::first_private_port().into()..65535 {
                 ports.push(ip::Port::try_from(i).unwrap());
@@ -50,18 +53,30 @@ impl<'a> TcpPeer<'a> {
             ports.shuffle(&mut *rng);
             VecDeque::from(ports)
         };
+
+        // initialize the pool of available connection handles.
+        let unassigned_connection_handles = {
+            let mut handles = Vec::new();
+            for i in 1..u16::max_value() {
+                handles.push(TcpConnectionHandle::new(i));
+            }
+            let mut rng = rt.borrow_rng();
+            handles.shuffle(&mut *rng);
+            VecDeque::from(handles)
+        };
+
         let isn_generator = IsnGenerator::new(&rt);
         let rt = TcpRuntime::new(rt, arp);
 
         TcpPeer {
-            active_connections: HashMap::new(),
-            available_private_ports,
-            connections: HashMap::new(),
+            assigned_handles: HashMap::new(),
+            async_work: WhenAny::new(),
+            connections: Rc::new(RefCell::new(HashMap::new())),
             isn_generator,
-            listening_on_ports: HashSet::new(),
             open_ports: HashSet::new(),
             rt,
-            async_work: WhenAny::new(),
+            unassigned_connection_handles,
+            unassigned_private_ports,
         }
     }
 
@@ -139,38 +154,39 @@ impl<'a> TcpPeer<'a> {
         }
     }
 
-    pub fn connect(&mut self, remote_endpoint: ipv4::Endpoint) -> Result<()> {
+    pub fn connect(&mut self, remote_endpoint: ipv4::Endpoint) -> Result<TcpConnectionHandle> {
         self.start_active_connection(remote_endpoint)
     }
 
     pub fn start_active_connection(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Result<()> {
+    ) -> Result<TcpConnectionHandle> {
         let options = self.rt.rt().options();
         let local_port = self.acquire_private_port()?;
         let local_ipv4_addr = options.my_ipv4_addr;
-        let cxn_id = TcpConnectionId {
+        let cxnid = TcpConnectionId {
             local: ipv4::Endpoint::new(options.my_ipv4_addr, local_port),
             remote: remote_endpoint,
         };
-        let isn = self.isn_generator.next(&cxn_id);
-        let cxn = TcpConnection::new(cxn_id.clone());
-        assert!(self
-            .active_connections
-            .insert(cxn_id.remote.clone(), cxn)
-            .is_none());
-        assert!(self.open_ports.replace(local_port).is_none());
+        let handle = self.new_connection(cxnid.clone())?;
 
         let rt = self.rt.clone();
+        let connections = self.connections.clone();
         self.async_work.add(self.rt.rt().start_coroutine(move || {
+            let isn = {
+                let connections = connections.borrow_mut();
+                let cxn = connections.get(&cxnid).unwrap();
+                cxn.seq_num()
+            };
+
             r#await!(
                 rt.cast(
                     TcpSegment::default()
                         .src_ipv4_addr(local_ipv4_addr)
                         .src_port(local_port)
-                        .dest_ipv4_addr(cxn_id.remote.address())
-                        .dest_port(cxn_id.remote.port())
+                        .dest_ipv4_addr(cxnid.remote.address())
+                        .dest_port(cxnid.remote.port())
                         .seq_num(isn)
                         .mss(DEFAULT_MSS)
                         .syn()
@@ -181,11 +197,12 @@ impl<'a> TcpPeer<'a> {
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         }));
-        Ok(())
+
+        Ok(handle)
     }
 
     fn acquire_private_port(&mut self) -> Result<ip::Port> {
-        if let Some(p) = self.available_private_ports.pop_front() {
+        if let Some(p) = self.unassigned_private_ports.pop_front() {
             Ok(p)
         } else {
             Err(Fail::ResourceExhausted {
@@ -196,7 +213,38 @@ impl<'a> TcpPeer<'a> {
 
     fn release_private_port(&mut self, port: ip::Port) {
         assert!(port.is_private());
-        self.available_private_ports.push_back(port);
+        self.unassigned_private_ports.push_back(port);
+    }
+
+    fn acquire_connection_handle(&mut self) -> Result<TcpConnectionHandle> {
+        if let Some(h) = self.unassigned_connection_handles.pop_front() {
+            Ok(h)
+        } else {
+            Err(Fail::ResourceExhausted {
+                details: "no more connection handles",
+            })
+        }
+    }
+
+    fn release_connection_handle(&mut self, handle: TcpConnectionHandle) {
+        self.unassigned_connection_handles.push_back(handle);
+    }
+
+    fn new_connection(
+        &mut self,
+        cxnid: TcpConnectionId,
+    ) -> Result<TcpConnectionHandle> {
+        let handle = self.acquire_connection_handle()?;
+        let mut connections = self.connections.borrow_mut();
+        let isn = self.isn_generator.next(&cxnid);
+        let cxn = TcpConnection::new(cxnid.clone(), handle, isn);
+        let local_port = cxnid.local.port();
+        assert!(connections
+            .insert(cxnid.clone(), cxn)
+            .is_none());
+        assert!(self.assigned_handles.insert(handle, cxnid).is_none());
+        assert!(self.open_ports.replace(local_port).is_none());
+        Ok(handle)
     }
 }
 
