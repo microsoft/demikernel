@@ -49,8 +49,10 @@ class posix_queue : public io_queue {
     // todo: may not be needed for production code.
     private: struct sockaddr *my_peer_saddr;
 
-    private: posix_queue(int qd);
-    public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
+    private: posix_queue(int qd, io_queue::category_id cid);
+    private: static int alloc_latency();
+    public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
+    public: static int new_file_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     // network functions
     public: int socket(int domain, int type, int protocol);
@@ -59,6 +61,9 @@ class posix_queue : public io_queue {
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
     public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: int open(const char *pathname, int flags);
+    public: int open(const char *pathname, int flags, mode_t mode);
+    public: int creat(const char *pathname, mode_t mode);
     public: int close();
 
     // data path functions
@@ -79,6 +84,10 @@ class posix_queue : public io_queue {
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int net_push(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int file_push(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
 };
 
 } // namespace dmtr

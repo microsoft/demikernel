@@ -75,6 +75,9 @@ class io_queue_api
     public: int accept(dmtr_qtoken_t &qtok_out, int sockqd);
     public: int listen(int qd, int backlog);
     public: int connect(int qd, const struct sockaddr * const saddr, socklen_t size);
+    public: int open(int &qd_out, const char *pathname, int flags);
+    public: int open(int &qd_out, const char *pathname, int flags, mode_t mode);
+    public: int creat(int &qd_out, const char *pathname, mode_t mode);
     public: int close(int qd);
     public: int push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t &qtok_out, int qd);

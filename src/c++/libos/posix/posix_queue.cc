@@ -56,16 +56,16 @@ static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
 
-dmtr::posix_queue::posix_queue(int qd) :
-    io_queue(NETWORK_Q, qd),
+dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
+    io_queue(cid, qd),
     my_fd(-1),
     my_listening_flag(false),
     my_tcp_flag(false),
     my_peer_saddr(NULL)
 {}
 
-int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
-#if DMTR_PROFILE
+int dmtr::posix_queue::alloc_latency()
+{
     if (NULL == read_latency) {
         dmtr_latency_t *l;
         DMTR_OK(dmtr_new_latency(&l, "read"));
@@ -83,9 +83,25 @@ int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
             dmtr_delete_latency(&latency);
         });
     }
+    return 0;
+}
+
+int dmtr::posix_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
+#if DMTR_PROFILE
+    DMTR_OK(alloc_latency());        
 #endif
 
-    q_out = std::unique_ptr<io_queue>(new posix_queue(qd));
+    q_out = std::unique_ptr<io_queue>(new posix_queue(qd, NETWORK_Q));
+    DMTR_NOTNULL(ENOMEM, q_out);
+    return 0;
+}
+
+int dmtr::posix_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int qd) {
+#if DMTR_PROFILE
+    alloc_latency();
+#endif
+
+    q_out = std::unique_ptr<io_queue>(new posix_queue(qd, FILE_Q));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
@@ -170,7 +186,7 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_TRUE(EINVAL, my_tcp_flag);
     DMTR_NOTNULL(EINVAL, my_accept_thread);
 
-    auto * const q = new posix_queue(new_qd);
+    auto * const q = new posix_queue(new_qd, NETWORK_Q);
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
@@ -294,6 +310,19 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
     }
 }
 
+int dmtr::posix_queue::open(const char *pathname, int flags)
+{
+    int fd = ::open(pathname, flags);
+    if (fd == -1) {
+        return errno;
+    }
+    
+    my_fd = fd;
+    return 0;
+}
+
+
+
 int dmtr::posix_queue::close()
 {
     if (-1 == my_fd) {
@@ -312,6 +341,85 @@ int dmtr::posix_queue::close()
         case 0:
             return ret;
     }
+}
+
+int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, dmtr::posix_queue::task::thread_type::yield_type &yield)
+{
+    size_t iov_len = 2 * sga->sga_numsegs + 1;
+    struct iovec iov[iov_len];
+    size_t data_size = 0;
+    size_t message_bytes = 0;
+    uint32_t seg_lens[sga->sga_numsegs];
+
+    // calculate size and fill in iov
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {
+        static_assert(sizeof(*seg_lens) == sizeof(sga->sga_segs[i].sgaseg_len), "type mismatch");
+        const auto j = 2 * i + 1;
+        seg_lens[i] = htonl(sga->sga_segs[i].sgaseg_len);
+        iov[j].iov_base = &seg_lens[i];
+        iov[j].iov_len = sizeof(sga->sga_segs[i].sgaseg_len);
+
+        const auto k = j + 1;
+        iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
+        iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
+        
+        // add up actual data size
+        data_size += sga->sga_segs[i].sgaseg_len;
+        
+        // add up expected packet size (not yet including header)
+        message_bytes += sga->sga_segs[i].sgaseg_len;
+        message_bytes += sizeof(sga->sga_segs[i].sgaseg_len);
+    }
+
+    // fill in header
+    dmtr_header_t header = {};
+    header.h_magic = htonl(DMTR_HEADER_MAGIC);
+    header.h_bytes = htonl(message_bytes);
+    header.h_sgasegs = htonl(sga->sga_numsegs);
+
+    // set up header at beginning of packet
+    iov[0].iov_base = &header;
+    iov[0].iov_len = sizeof(header);
+    message_bytes += sizeof(header);
+
+#if DMTR_DEBUG
+    std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
+#endif
+
+    size_t bytes_written = 0;
+#if DMTR_PROFILE
+    auto t0 = boost::chrono::steady_clock::now();
+    boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
+    int ret = writev(bytes_written, my_fd, iov, iov_len);
+    while (EAGAIN == ret) {
+#if DMTR_PROFILE
+        dt += boost::chrono::steady_clock::now() - t0;
+#endif
+        yield();
+#if DMTR_PROFILE
+        t0 = boost::chrono::steady_clock::now();
+#endif
+        ret = writev(bytes_written, my_fd, iov, iov_len);
+    }
+            
+#if DMTR_PROFILE
+    dt += (boost::chrono::steady_clock::now() - t0);
+    DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+#endif
+
+#if DMTR_DEBUG
+    std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
+#endif
+    
+    DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
+
+    return ret;
+}
+
+int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+{
+    return 0;
 }
 
 int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
@@ -352,83 +460,154 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
             continue;
         }
 
-        size_t iov_len = 2 * sga->sga_numsegs + 1;
-        struct iovec iov[iov_len];
-        size_t data_size = 0;
-        size_t message_bytes = 0;
-        uint32_t seg_lens[sga->sga_numsegs];
-
-        // calculate size and fill in iov
-        for (size_t i = 0; i < sga->sga_numsegs; i++) {
-            static_assert(sizeof(*seg_lens) == sizeof(sga->sga_segs[i].sgaseg_len), "type mismatch");
-            const auto j = 2 * i + 1;
-            seg_lens[i] = htonl(sga->sga_segs[i].sgaseg_len);
-            iov[j].iov_base = &seg_lens[i];
-            iov[j].iov_len = sizeof(sga->sga_segs[i].sgaseg_len);
-
-            const auto k = j + 1;
-            iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
-            iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
-
-            // add up actual data size
-            data_size += sga->sga_segs[i].sgaseg_len;
-
-            // add up expected packet size (not yet including header)
-            message_bytes += sga->sga_segs[i].sgaseg_len;
-            message_bytes += sizeof(sga->sga_segs[i].sgaseg_len);
+        int ret = 0;
+        switch (my_cid) {
+        case NETWORK_Q:
+            ret = net_push(sga, yield);
+            break;
+        case FILE_Q:
+            ret = file_push(sga, yield);
+            break;
+        default:
+            ret = ENOTSUP;
+            break;
         }
-
-        // fill in header
-        dmtr_header_t header = {};
-        header.h_magic = htonl(DMTR_HEADER_MAGIC);
-        header.h_bytes = htonl(message_bytes);
-        header.h_sgasegs = htonl(sga->sga_numsegs);
-
-        // set up header at beginning of packet
-        iov[0].iov_base = &header;
-        iov[0].iov_len = sizeof(header);
-        message_bytes += sizeof(header);
-
-#if DMTR_DEBUG
-        std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
-#endif
-
-        size_t bytes_written = 0;
-#if DMTR_PROFILE
-        auto t0 = boost::chrono::steady_clock::now();
-        boost::chrono::duration<uint64_t, boost::nano> dt(0);
-#endif
-        int ret = writev(bytes_written, my_fd, iov, iov_len);
-        while (EAGAIN == ret) {
-#if DMTR_PROFILE
-            dt += boost::chrono::steady_clock::now() - t0;
-#endif
-            yield();
-#if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
-#endif
-            ret = writev(bytes_written, my_fd, iov, iov_len);
-        }
-
-#if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
-        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
-#endif
-
+        
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.
             continue;
         }
-
-#if DMTR_DEBUG
-        std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
-#endif
-
-        DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
         DMTR_OK(t->complete(0, *sga));
     }
 
+    return 0;
+}
+
+int dmtr::posix_queue::network_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+{
+    
+    // if we don't have a full header yet, get one.
+    size_t header_bytes = 0;
+    dmtr_header_t header;
+    int ret = -1;
+#if DMTR_PROFILE
+    boost::chrono::steady_clock::time_point t0;
+    boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
+    while (header_bytes < sizeof(header)) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
+        size_t remaining_bytes = sizeof(header) - header_bytes;
+        size_t bytes_read = 0;
+#if DMTR_DEBUG
+        std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+#endif
+#if DMTR_PROFILE
+        t0 = boost::chrono::steady_clock::now();
+#endif
+        ret = read(bytes_read, my_fd, p, remaining_bytes);
+        if (EAGAIN == ret) {
+#if DMTR_PROFILE
+            dt += (boost::chrono::steady_clock::now() - t0);
+#endif
+            yield();
+            continue;
+
+        }
+
+        if (0 == bytes_read) {
+            return ECONNABORTED;
+        }
+
+        header_bytes += bytes_read;
+
+#if DMTR_PROFILE
+	    dt += (boost::chrono::steady_clock::now() - t0);
+#endif
+	}
+
+    
+#if DMTR_DEBUG
+    std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
+#endif
+
+    header.h_magic = ntohl(header.h_magic);
+    header.h_bytes = ntohl(header.h_bytes);
+    header.h_sgasegs = ntohl(header.h_sgasegs);
+
+    if (DMTR_HEADER_MAGIC != header.h_magic) {
+        return EILSEQ;
+    }
+
+#if DMTR_DEBUG
+    std::cerr << "pop(" << qt << "): header magic number is correct." << std::endl;
+#endif
+
+    // grab the rest of the message
+    dmtr_sgarray_t sga = {};
+    DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
+    std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
+    size_t data_bytes = 0;
+    ret = -1;
+    while (data_bytes < header.h_bytes) {
+        uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
+        size_t remaining_bytes = header.h_bytes - data_bytes;
+        size_t bytes_read = 0;
+#if DMTR_DEBUG
+        std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+#endif
+#if DMTR_PROFILE
+        t0 = boost::chrono::steady_clock::now();
+#endif
+        ret = read(bytes_read, my_fd, p, remaining_bytes);
+        if (EAGAIN == ret) {
+#if DMTR_PROFILE
+            dt += (boost::chrono::steady_clock::now() - t0);
+#endif
+            yield();
+            continue;
+        }
+
+        if (0 == bytes_read) {
+            return ECONNABORTED;
+        }
+
+        data_bytes += bytes_read;
+
+#if DMTR_PROFILE
+        dt += (boost::chrono::steady_clock::now() - t0);
+#endif
+        
+    }
+#if DMTR_PROFILE
+    DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
+#endif
+
+    if (0 != ret) return ret;
+    
+#if DMTR_DEBUG
+    std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
+    std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
+#endif
+
+    // now we have the whole buffer, start filling sga
+    uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
+    sga.sga_numsegs = header.h_sgasegs;
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
+        sga.sga_segs[i].sgaseg_len = seglen;
+        //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
+        p += sizeof(uint32_t);
+        sga.sga_segs[i].sgaseg_buf = p;
+        p += seglen;
+    }
+
+    buf.release();
+    return 0;
+}
+
+int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+{
     return 0;
 }
 
@@ -458,136 +637,33 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
         task *t;
         DMTR_OK(get_task(t, qt));
 
-        // if we don't have a full header yet, get one.
-        size_t header_bytes = 0;
-        dmtr_header_t header;
-        int ret = -1;
-#if DMTR_PROFILE
-        boost::chrono::steady_clock::time_point t0;
-        boost::chrono::duration<uint64_t, boost::nano> dt(0);
-#endif
-        while (header_bytes < sizeof(header)) {
-            uint8_t *p = reinterpret_cast<uint8_t *>(&header) + header_bytes;
-            size_t remaining_bytes = sizeof(header) - header_bytes;
-            size_t bytes_read = 0;
-#if DMTR_DEBUG
-            std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
-#endif
-#if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
-#endif
-            ret = read(bytes_read, my_fd, p, remaining_bytes);
-            if (EAGAIN == ret) {
-#if DMTR_PROFILE
-                dt += (boost::chrono::steady_clock::now() - t0);
-#endif
-                yield();
-                continue;
-            }
-
-            if (0 == bytes_read) {
-                ret = ECONNABORTED;
-                break;
-            }
-
-            header_bytes += bytes_read;
-
-#if DMTR_PROFILE
-	    dt += (boost::chrono::steady_clock::now() - t0);
-#endif
-	}
-
-        if (0 != ret) {
-            DMTR_OK(t->complete(ret));
-            // move onto the next task.
-            continue;
-        }
-
-#if DMTR_DEBUG
-        std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
-#endif
-
-        header.h_magic = ntohl(header.h_magic);
-        header.h_bytes = ntohl(header.h_bytes);
-        header.h_sgasegs = ntohl(header.h_sgasegs);
-
-        if (DMTR_HEADER_MAGIC != header.h_magic) {
-            DMTR_OK(t->complete(EILSEQ));
-            // move onto the next task.
-            continue;
-        }
-
-#if DMTR_DEBUG
-        std::cerr << "pop(" << qt << "): header magic number is correct." << std::endl;
-#endif
-
-        // grab the rest of the message
         dmtr_sgarray_t sga = {};
-        DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
-        std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
-        size_t data_bytes = 0;
-        ret = -1;
-        while (data_bytes < header.h_bytes) {
-            uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
-            size_t remaining_bytes = header.h_bytes - data_bytes;
-            size_t bytes_read = 0;
-#if DMTR_DEBUG
-            std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
-#endif
-#if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
-#endif
-            ret = read(bytes_read, my_fd, p, remaining_bytes);
-            if (EAGAIN == ret) {
-#if DMTR_PROFILE
-                dt += (boost::chrono::steady_clock::now() - t0);
-#endif
-                yield();
-                continue;
-            }
-
-            if (0 == bytes_read) {
-                ret = ECONNABORTED;
-                break;
-            }
-
-            data_bytes += bytes_read;
-
-#if DMTR_PROFILE
-	    dt += (boost::chrono::steady_clock::now() - t0);
-#endif
-
+        int ret = 0;
+        switch(my_cid) {
+        case NETWORK_Q:
+            ret = network_pop(&sga, yield);
+            break;
+        case FILE_Q:
+            ret = file_pop(&sga, yield);
+            break;
+        default:
+            ret = ENOTSUP;
+            break;
         }
-#if DMTR_PROFILE
-        DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
-#endif
 
+        if (EAGAIN == ret) {
+            yield();
+            continue;
+        }
+        
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.
             continue;
-        }
-
-#if DMTR_DEBUG
-        std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
-        std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
-#endif
-
-        // now we have the whole buffer, start filling sga
-        uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
-        sga.sga_numsegs = header.h_sgasegs;
-        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
-            sga.sga_segs[i].sgaseg_len = seglen;
-            //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
-            p += sizeof(uint32_t);
-            sga.sga_segs[i].sgaseg_buf = p;
-            p += seglen;
         }
 
         //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         DMTR_OK(t->complete(0, sga));
-        buf.release();
     }
 
     return 0;

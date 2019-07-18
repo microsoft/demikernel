@@ -16,6 +16,7 @@ uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
+boost::optional<std::string> file;
 
 using namespace boost::program_options;
 
@@ -90,6 +91,10 @@ void parse_args(int argc, char **argv, bool server)
     if (vm.count("size")) {
         packet_size = vm["size"].as<uint32_t>();
         //std::cout << "Setting packet size to: " << packet_size << " bytes." << std::endl;
+    }
+
+    if (vm.count("file")) {
+        file = vm["file"].as<std::string>();
     }
 };
 

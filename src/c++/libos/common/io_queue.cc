@@ -112,6 +112,18 @@ int dmtr::io_queue::connect(const struct sockaddr * const saddr, socklen_t size)
     return ENOTSUP;
 }
 
+int dmtr::io_queue::open(const char *pathname, int flags) {
+    return ENOTSUP;
+}
+
+int dmtr::io_queue::open(const char *pathname, int flags, mode_t mode) {
+    return ENOTSUP;
+}
+
+int dmtr::io_queue::creat(const char *pathname, mode_t mode) {
+    return ENOTSUP;
+}
+
 int dmtr::io_queue::close() {
     return 0;
 }
