@@ -84,9 +84,9 @@ class posix_queue : public io_queue {
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: int net_push(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int net_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
     private: int net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
-    private: int file_push(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
     private: int file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
 };
 

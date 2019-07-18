@@ -321,6 +321,28 @@ int dmtr::posix_queue::open(const char *pathname, int flags)
     return 0;
 }
 
+int dmtr::posix_queue::open(const char *pathname, int flags, mode_t mode)
+{
+    int fd = ::open(pathname, flags, mode);
+    if (fd == -1) {
+        return errno;
+    }
+    
+    my_fd = fd;
+    return 0;
+}
+
+int dmtr::posix_queue::creat(const char *pathname, mode_t mode)
+{
+    int fd = ::creat(pathname, mode);
+    if (fd == -1) {
+        return errno;
+    }
+    
+    my_fd = fd;
+    return 0;
+}
+
 
 
 int dmtr::posix_queue::close()
@@ -343,7 +365,7 @@ int dmtr::posix_queue::close()
     }
 }
 
-int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, dmtr::posix_queue::task::thread_type::yield_type &yield)
+int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
     size_t iov_len = 2 * sga->sga_numsegs + 1;
     struct iovec iov[iov_len];
@@ -417,7 +439,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, dmtr::posix_queue::ta
     return ret;
 }
 
-int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+int dmtr::posix_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
     return 0;
 }
@@ -484,7 +506,7 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
     return 0;
 }
 
-int dmtr::posix_queue::network_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
     
     // if we don't have a full header yet, get one.
@@ -544,13 +566,12 @@ int dmtr::posix_queue::network_pop(dmtr_sgarray_t *sga, task::thread_type::yield
 #endif
 
     // grab the rest of the message
-    dmtr_sgarray_t sga = {};
-    DMTR_OK(dmtr_malloc(&sga.sga_buf, header.h_bytes));
-    std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga.sga_buf));
+    DMTR_OK(dmtr_malloc(&sga->sga_buf, header.h_bytes));
+   std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga->sga_buf));
     size_t data_bytes = 0;
     ret = -1;
     while (data_bytes < header.h_bytes) {
-        uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf) + data_bytes;
+        uint8_t *p = reinterpret_cast<uint8_t *>(sga->sga_buf) + data_bytes;
         size_t remaining_bytes = header.h_bytes - data_bytes;
         size_t bytes_read = 0;
 #if DMTR_DEBUG
@@ -591,14 +612,14 @@ int dmtr::posix_queue::network_pop(dmtr_sgarray_t *sga, task::thread_type::yield
 #endif
 
     // now we have the whole buffer, start filling sga
-    uint8_t *p = reinterpret_cast<uint8_t *>(sga.sga_buf);
-    sga.sga_numsegs = header.h_sgasegs;
-    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+    uint8_t *p = reinterpret_cast<uint8_t *>(sga->sga_buf);
+    sga->sga_numsegs = header.h_sgasegs;
+    for (size_t i = 0; i < sga->sga_numsegs; ++i) {
         size_t seglen = ntohl(*reinterpret_cast<uint32_t *>(p));
-        sga.sga_segs[i].sgaseg_len = seglen;
+        sga->sga_segs[i].sgaseg_len = seglen;
         //printf("[%x] sga len= %ld\n", qd, t.sga.bufs[i].len);
         p += sizeof(uint32_t);
-        sga.sga_segs[i].sgaseg_buf = p;
+        sga->sga_segs[i].sgaseg_buf = p;
         p += seglen;
     }
 
@@ -641,7 +662,7 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
         int ret = 0;
         switch(my_cid) {
         case NETWORK_Q:
-            ret = network_pop(&sga, yield);
+            ret = net_pop(&sga, yield);
             break;
         case FILE_Q:
             ret = file_pop(&sga, yield);
