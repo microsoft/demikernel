@@ -645,6 +645,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
 int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
+    
     return 0;
 }
 

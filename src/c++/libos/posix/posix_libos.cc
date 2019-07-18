@@ -169,6 +169,14 @@ int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd)
     return ioq_api->pop(*qtok_out, qd);
 }
 
+int dmtr_pop2(dmtr_qtoken_t *qtok_out, int qd, size_t count)
+{
+    DMTR_NOTNULL(EINVAL, qtok_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->pop(*qtok_out, qd, count);
+}
+
 int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EPERM, ioq_api.get());

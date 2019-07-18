@@ -69,6 +69,7 @@ class posix_queue : public io_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
+    public: int pop(dmtr_qtoken_t qt, size_t count);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     private: static int set_tcp_nodelay(int fd);
