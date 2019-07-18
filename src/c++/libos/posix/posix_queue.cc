@@ -441,7 +441,23 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 
 int dmtr::posix_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    return 0;
+    size_t iov_len = sga->sga_numsegs;
+    struct iovec iov[iov_len];
+    size_t data_size = 0;
+
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {
+        iov[i].iov_base = sga->sga_segs[i].sgaseg_buf;
+        iov[i].iov_len = sga->sga_segs[i].sgaseg_len;
+        data_size += sga->sga_segs[i].sgaseg_len;
+    }
+
+    size_t bytes_written = 0;
+    int ret = writev(bytes_written, my_fd, iov, iov_len);
+    while (EAGAIN == ret) {
+        yield();
+        ret = writev(bytes_written, my_fd, iov, iov_len);
+    }
+    return ret;
 }
 
 int dmtr::posix_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
