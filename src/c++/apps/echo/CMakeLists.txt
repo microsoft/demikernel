@@ -21,7 +21,7 @@ set(HTTP_THREADED_SERVER_SOURCES
     ${ECHO_APPS_DIR}/dmtr_http_server_threaded.cc ${HTTP_PARSER_SOURCES})
 set(HTTP_SERVER_SOURCES
     ${ECHO_APPS_DIR}/dmtr_http_server.cc ${HTTP_PARSER_SOURCES})
-set(HTTP_RATE_CLIENT_SOURCES ${ECHO_APPS_DIR}/rate_client.cc)
+set(HTTP_RATE_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_rate_client.cc)
 set(TCP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_server.cc)
 set(TCP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_tcp_client.cc)
 set(UDP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_server.cc)
