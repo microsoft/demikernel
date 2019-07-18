@@ -25,8 +25,6 @@ fn syn_to_closed_port() {
     alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
         .unwrap();
-    let now = now + Duration::from_millis(1);
-
     let (tcp_syn, private_port) = {
         let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
@@ -42,6 +40,7 @@ fn syn_to_closed_port() {
     };
 
     info!("passing TCP SYN to bob...");
+    let now = now + Duration::from_millis(1);
     bob.receive(&tcp_syn).unwrap();
     let effect = bob.poll(now).unwrap().unwrap();
     let tcp_rst = {
@@ -57,6 +56,7 @@ fn syn_to_closed_port() {
     };
 
     info!("passing TCP RST segment to alice...");
+    let now = now + Duration::from_millis(1);
     alice.receive(&tcp_rst).unwrap();
     let effect = alice.poll(now).unwrap().unwrap();
     match effect {
@@ -83,11 +83,10 @@ fn handshake() {
     });
 
     bob.tcp_listen(bob_port).unwrap();
+
     let alice_handle = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
         .unwrap();
-    let now = now + Duration::from_millis(1);
-
     let (tcp_syn, private_port) = {
         let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
@@ -104,6 +103,7 @@ fn handshake() {
     };
 
     info!("passing TCP SYN to bob...");
+    let now = now + Duration::from_millis(1);
     bob.receive(&tcp_syn).unwrap();
     let effect = bob.poll(now).unwrap().unwrap();
     let tcp_syn_ack = {
@@ -120,6 +120,7 @@ fn handshake() {
     };
 
     info!("passing TCP SYN+ACK segment to alice...");
+    let now = now + Duration::from_millis(1);
     alice.receive(&tcp_syn_ack).unwrap();
     let effect = alice.poll(now).unwrap().unwrap();
     match effect {
@@ -142,6 +143,7 @@ fn handshake() {
     };
 
     info!("passing TCP ACK segment to bob...");
+    let now = now + Duration::from_millis(1);
     bob.receive(&tcp_ack).unwrap();
     let effect = bob.poll(now).unwrap().unwrap();
     match effect {

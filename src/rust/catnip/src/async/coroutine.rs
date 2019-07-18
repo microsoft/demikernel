@@ -97,9 +97,11 @@ impl<'a> Coroutine<'a> {
                         GeneratorState::Yielded(duration) => {
                             // if `yield None` is used, then we schedule
                             // something for the next tick.
-                            // todo: ensure that a zero duration is not used.
-                            let duration = duration
-                                .unwrap_or_else(|| Duration::new(0, 0));
+                            let zero = Duration::new(0, 0);
+                            let mut duration = duration.unwrap_or(zero);
+                            if duration == zero {
+                                duration = Duration::new(0, 1);
+                            }
                             self.status =
                                 CoroutineStatus::AsleepUntil(now + duration);
                             false
