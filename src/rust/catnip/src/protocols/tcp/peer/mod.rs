@@ -31,7 +31,7 @@ use std::{
 pub struct TcpPeer<'a> {
     assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
     async_work: WhenAny<'a, ()>,
-    connections: Rc<RefCell<HashMap<TcpConnectionId, TcpConnection>>>,
+    connections: HashMap<TcpConnectionId, Rc<RefCell<TcpConnection>>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
     passive_connections: HashMap<ipv4::Endpoint, TcpConnection>,
@@ -70,7 +70,7 @@ impl<'a> TcpPeer<'a> {
         TcpPeer {
             assigned_handles: HashMap::new(),
             async_work: WhenAny::new(),
-            connections: Rc::new(RefCell::new(HashMap::new())),
+            connections: HashMap::new(),
             isn_generator,
             open_ports: HashSet::new(),
             passive_connections: HashMap::new(),
@@ -84,6 +84,7 @@ impl<'a> TcpPeer<'a> {
         trace!("TcpPeer::receive(...)");
         let decoder = TcpSegmentDecoder::try_from(datagram)?;
         let segment = TcpSegment::try_from(decoder)?;
+        let local_ipv4_addr = segment.dest_ipv4_addr.unwrap();
         // i haven't yet seen anything that explicitly disallows categories of
         // IP addresses but it seems sensible to drop datagrams where the
         // source address does not really support a connection.
@@ -104,6 +105,10 @@ impl<'a> TcpPeer<'a> {
             details: "destination port is zero",
         })?;
 
+        let remote_port = segment.src_port.ok_or(Fail::Malformed {
+            details: "source port is zero",
+        })?;
+
         debug!("local_port => {:?}", local_port);
         debug!("open_ports => {:?}", self.open_ports);
         if self.open_ports.contains(&local_port) {
@@ -111,39 +116,49 @@ impl<'a> TcpPeer<'a> {
                 self.rt.rt().emit_effect(Effect::TcpError(
                     TcpError::ConnectionRefused {},
                 ));
-                Ok(())
-            } else {
-                unimplemented!();
-            }
-        } else {
-            let remote_port = segment.src_port.ok_or(Fail::Malformed {
-                details: "source port is zero",
-            })?;
-
-            let mut ack_num = segment.seq_num
-                + Wrapping(u32::try_from(segment.payload.len())?);
-            // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/TCP_IP+Illustrated,+Volume+1:+The+Protocols/9780132808200/ch13.html#ch13):
-            // > Although there is no data in the arriving segment, the SYN
-            // > bit logically occupies 1 byte of sequence number space;
-            // > therefore, in this example the ACK number in the reset
-            // > segment is set to the ISN, plus the data length (0), plus 1
-            // > for the SYN bit.
-            if segment.syn {
-                ack_num += Wrapping(1);
+                return Ok(());
             }
 
-            self.async_work.add(
-                self.rt.cast(
-                    TcpSegment::default()
-                        .dest_ipv4_addr(remote_ipv4_addr)
-                        .dest_port(remote_port)
-                        .src_port(local_port)
-                        .ack_num(ack_num)
-                        .rst(),
-                ),
-            );
-            Ok(())
+            if segment.syn && !segment.ack {
+                self.start_passive_connection(segment)?;
+                return Ok(());
+            }
+
+            let cxnid = TcpConnectionId {
+                local: ipv4::Endpoint::new(local_ipv4_addr, local_port),
+                remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
+            };
+
+            let cxn = self.connections.get(&cxnid).unwrap();
+            let mut cxn = cxn.borrow_mut();
+            cxn.incoming_segments().push_front(segment);
+            return Ok(());
         }
+
+        // `local_port` is not open; send the appropriate RST segment.
+        let mut ack_num =
+            segment.seq_num + Wrapping(u32::try_from(segment.payload.len())?);
+        // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/TCP_IP+Illustrated,+Volume+1:+The+Protocols/9780132808200/ch13.html#ch13):
+        // > Although there is no data in the arriving segment, the SYN
+        // > bit logically occupies 1 byte of sequence number space;
+        // > therefore, in this example the ACK number in the reset
+        // > segment is set to the ISN, plus the data length (0), plus 1
+        // > for the SYN bit.
+        if segment.syn {
+            ack_num += Wrapping(1);
+        }
+
+        self.async_work.add(
+            self.rt.cast(
+                TcpSegment::default()
+                    .dest_ipv4_addr(remote_ipv4_addr)
+                    .dest_port(remote_port)
+                    .src_port(local_port)
+                    .ack_num(ack_num)
+                    .rst(),
+            ),
+        );
+        Ok(())
     }
 
     pub fn connect(
@@ -176,16 +191,13 @@ impl<'a> TcpPeer<'a> {
             ),
             remote: remote_endpoint,
         };
-        let handle = self.new_connection(cxnid.clone())?;
+        let cxn = self.new_connection(cxnid.clone())?;
+        let handle = cxn.borrow().handle();
 
         let rt = self.rt.clone();
-        let connections = self.connections.clone();
         self.async_work.add(self.rt.rt().start_coroutine(move || {
-            let isn = {
-                let connections = connections.borrow_mut();
-                let cxn = connections.get(&cxnid).unwrap();
-                cxn.seq_num()
-            };
+            let unit: Rc<dyn Any> = Rc::new(());
+            let isn = cxn.borrow().seq_num();
 
             r#await!(
                 rt.cast(
@@ -198,8 +210,39 @@ impl<'a> TcpPeer<'a> {
                 rt.rt().now()
             )?;
 
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            yield_until!(
+                !cxn.borrow_mut().incoming_segments().is_empty(),
+                rt.rt().now()
+            );
+
+            let segment =
+                cxn.borrow_mut().incoming_segments().pop_front().unwrap();
+
+            if !segment.syn || !segment.ack {
+                r#await!(
+                    rt.cast(TcpSegment::default().connection(&cxnid).rst()),
+                    rt.rt().now()
+                )?;
+
+                return Ok(unit);
+            }
+
+            rt.rt().emit_effect(Effect::TcpConnectionEstablished(
+                cxn.borrow().handle(),
+            ));
+
+            r#await!(
+                rt.cast(
+                    TcpSegment::default()
+                        .connection(&cxnid)
+                        .seq_num(cxn.borrow_mut().incr_seq_num(1))
+                        .ack_num(segment.ack_num + Wrapping(1))
+                        .ack()
+                ),
+                rt.rt().now()
+            )?;
+
+            Ok(unit)
         }));
 
         Ok(handle)
@@ -207,11 +250,11 @@ impl<'a> TcpPeer<'a> {
 
     pub fn start_passive_connection(
         &mut self,
-        local_port: ip::Port,
         syn_segment: TcpSegment,
     ) -> Result<()> {
+        assert!(syn_segment.syn && !syn_segment.ack);
+        let local_port = syn_segment.dest_port.unwrap();
         assert!(self.open_ports.contains(&local_port));
-        assert!(syn_segment.syn);
 
         let options = self.rt.rt().options();
         let remote_ipv4_addr = syn_segment.src_ipv4_addr.unwrap();
@@ -220,18 +263,14 @@ impl<'a> TcpPeer<'a> {
             local: ipv4::Endpoint::new(options.my_ipv4_addr, local_port),
             remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
         };
-        let _ = self.new_connection(cxnid.clone())?;
+        let cxn = self.new_connection(cxnid.clone())?;
         let ack_num = syn_segment.seq_num + Wrapping(1);
         let mss = min(DEFAULT_MSS, syn_segment.mss.unwrap_or(MIN_MSS));
 
         let rt = self.rt.clone();
-        let connections = self.connections.clone();
         self.async_work.add(self.rt.rt().start_coroutine(move || {
-            let isn = {
-                let connections = connections.borrow_mut();
-                let cxn = connections.get(&cxnid).unwrap();
-                cxn.seq_num()
-            };
+            let unit: Rc<dyn Any> = Rc::new(());
+            let isn = cxn.borrow().seq_num();
 
             r#await!(
                 rt.cast(
@@ -246,8 +285,28 @@ impl<'a> TcpPeer<'a> {
                 rt.rt().now()
             )?;
 
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            yield_until!(
+                !cxn.borrow_mut().incoming_segments().is_empty(),
+                rt.rt().now()
+            );
+
+            let segment =
+                cxn.borrow_mut().incoming_segments().pop_front().unwrap();
+            // todo: how to validate `segment.ack_num`?
+            if !segment.ack {
+                r#await!(
+                    rt.cast(TcpSegment::default().connection(&cxnid).rst()),
+                    rt.rt().now()
+                )?;
+
+                return Ok(unit);
+            }
+
+            rt.rt().emit_effect(Effect::TcpConnectionEstablished(
+                cxn.borrow().handle(),
+            ));
+
+            Ok(unit)
         }));
 
         Ok(())
@@ -285,16 +344,22 @@ impl<'a> TcpPeer<'a> {
     fn new_connection(
         &mut self,
         cxnid: TcpConnectionId,
-    ) -> Result<TcpConnectionHandle> {
+    ) -> Result<Rc<RefCell<TcpConnection>>> {
         let handle = self.acquire_connection_handle()?;
-        let mut connections = self.connections.borrow_mut();
         let isn = self.isn_generator.next(&cxnid);
-        let cxn = TcpConnection::new(cxnid.clone(), handle, isn);
+        let cxn = Rc::new(RefCell::new(TcpConnection::new(
+            cxnid.clone(),
+            handle,
+            isn,
+        )));
         let local_port = cxnid.local.port();
-        assert!(connections.insert(cxnid.clone(), cxn).is_none());
+        assert!(self
+            .connections
+            .insert(cxnid.clone(), cxn.clone())
+            .is_none());
         assert!(self.assigned_handles.insert(handle, cxnid).is_none());
         self.open_ports.insert(local_port);
-        Ok(handle)
+        Ok(cxn)
     }
 }
 

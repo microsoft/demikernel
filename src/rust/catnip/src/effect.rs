@@ -24,6 +24,7 @@ pub enum Effect {
         dest_port: ip::Port,
         text: IoVec,
     },
+    TcpConnectionEstablished(tcp::ConnectionHandle),
 }
 
 impl Debug for Effect {
@@ -36,6 +37,7 @@ impl Debug for Effect {
                     Ok(s) => write!(f, "{:?}", s)?,
                     _ => write!(f, "{:?}", bytes)?,
                 }
+                write!(f, " }}")?;
             }
             Effect::Icmpv4Error {
                 id,
@@ -43,10 +45,11 @@ impl Debug for Effect {
                 context,
             } => write!(
                 f,
-                "Icmpv4Error {{ id: {:?}, next_hop_mtu: {:?}, context: {:?}",
+                "Icmpv4Error {{ id: {:?}, next_hop_mtu: {:?}, context: {:?} \
+                 }}",
                 id, next_hop_mtu, context
             )?,
-            Effect::TcpError(e) => write!(f, "TcpError {{ {}", e)?,
+            Effect::TcpError(e) => write!(f, "TcpError({})", e)?,
             Effect::BytesReceived {
                 protocol,
                 src_addr,
@@ -56,11 +59,14 @@ impl Debug for Effect {
             } => write!(
                 f,
                 "BytesReceived {{ protocol: {:?}, src_addr: {:?}, src_port: \
-                 {:?}, dest_port: {:?}, text: {:?}",
+                 {:?}, dest_port: {:?}, text: {:?} }}",
                 protocol, src_addr, src_port, dest_port, text
             )?,
+            Effect::TcpConnectionEstablished(handle) => {
+                write!(f, "TcpConnectionEstablished({})", handle)?
+            }
         }
 
-        write!(f, " }}")
+        Ok(())
     }
 }

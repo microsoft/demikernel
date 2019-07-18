@@ -1,5 +1,9 @@
+use super::segment::TcpSegment;
 use crate::protocols::ipv4;
-use std::num::{NonZeroU16, Wrapping};
+use std::{
+    collections::VecDeque,
+    num::{NonZeroU16, Wrapping},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TcpConnectionId {
@@ -7,7 +11,7 @@ pub struct TcpConnectionId {
     pub remote: ipv4::Endpoint,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Display)]
 pub struct TcpConnectionHandle(NonZeroU16);
 
 impl TcpConnectionHandle {
@@ -24,8 +28,9 @@ impl Into<u16> for TcpConnectionHandle {
 }
 
 pub struct TcpConnection {
-    id: TcpConnectionId,
     handle: TcpConnectionHandle,
+    id: TcpConnectionId,
+    incoming_segments: VecDeque<TcpSegment>,
     seq_num: Wrapping<u32>,
 }
 
@@ -36,13 +41,31 @@ impl TcpConnection {
         isn: Wrapping<u32>,
     ) -> TcpConnection {
         TcpConnection {
-            id,
             handle,
+            id,
+            incoming_segments: VecDeque::new(),
             seq_num: isn,
         }
     }
 
+    pub fn id(&self) -> &TcpConnectionId {
+        &self.id
+    }
+
+    pub fn handle(&self) -> TcpConnectionHandle {
+        self.handle
+    }
+
     pub fn seq_num(&self) -> Wrapping<u32> {
         self.seq_num
+    }
+
+    pub fn incr_seq_num(&mut self, n: u32) -> Wrapping<u32> {
+        self.seq_num += Wrapping(n);
+        self.seq_num
+    }
+
+    pub fn incoming_segments(&mut self) -> &mut VecDeque<TcpSegment> {
+        &mut self.incoming_segments
     }
 }
