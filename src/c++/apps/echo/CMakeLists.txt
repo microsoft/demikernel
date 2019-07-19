@@ -39,6 +39,14 @@ target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml
 add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
 target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 
+# LWIP HTTP server threaded
+add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-lwip-http-server-threaded dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
+
+# LWIP HTTP rate client
+add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
+
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-http-server dmtr-libos-posix pcre yaml-cpp boost_program_options)

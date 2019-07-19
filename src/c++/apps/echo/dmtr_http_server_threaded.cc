@@ -568,7 +568,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Init Demeter */
-    DMTR_OK(dmtr_init(0, NULL));
+    DMTR_OK(dmtr_init(dmtr_argc, NULL));
 
     /* Pin main thread */
     pin_thread(pthread_self(), 0);

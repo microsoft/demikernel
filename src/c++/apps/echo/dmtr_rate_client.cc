@@ -441,7 +441,7 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
 
 /**
  * FIXME:
- * - Split IP/address and URI from the url argument
+ * - Split IP/address and URI from the url argument (use server_ip_address from yaml config)
  */
 int main(int argc, char **argv) {
     int rate, duration, n_threads;
