@@ -5,7 +5,10 @@ use crate::{
     r#async::Async,
     test,
 };
-use std::time::{Duration, Instant};
+use std::{
+    num::Wrapping,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn syn_to_closed_port() {
@@ -87,7 +90,7 @@ fn handshake() {
     let alice_handle = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
         .unwrap();
-    let (tcp_syn, private_port) = {
+    let (tcp_syn, private_port, syn_seq_num) = {
         let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
             Effect::Transmit(segment) => segment.to_vec(),
@@ -99,24 +102,27 @@ fn handshake() {
         assert!(!segment.header().ack());
         let src_port = segment.header().src_port().unwrap();
         debug!("private_port => {:?}", src_port);
-        (bytes, src_port)
+        let syn_seq_num = segment.header().seq_num();
+        (bytes, src_port, syn_seq_num)
     };
 
     info!("passing TCP SYN to bob...");
     let now = now + Duration::from_millis(1);
     bob.receive(&tcp_syn).unwrap();
     let effect = bob.poll(now).unwrap().unwrap();
-    let tcp_syn_ack = {
+    let (tcp_syn_ack, syn_ack_seq_num) = {
         let bytes = match effect {
             Effect::Transmit(bytes) => bytes,
             e => panic!("got unanticipated effect `{:?}`", e),
         };
 
         let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+        let syn_ack_seq_num = segment.header().seq_num();
         assert!(segment.header().syn());
         assert!(segment.header().ack());
         assert_eq!(Some(private_port), segment.header().dest_port());
-        bytes
+        assert_eq!(segment.header().ack_num(), syn_seq_num + Wrapping(1));
+        (bytes, syn_ack_seq_num)
     };
 
     info!("passing TCP SYN+ACK segment to alice...");
@@ -139,6 +145,8 @@ fn handshake() {
         assert!(!segment.header().syn());
         assert!(segment.header().ack());
         assert_eq!(Some(private_port), segment.header().src_port());
+        assert_eq!(segment.header().seq_num(), syn_seq_num + Wrapping(1));
+        assert_eq!(segment.header().ack_num(), syn_ack_seq_num + Wrapping(1));
         bytes
     };
 

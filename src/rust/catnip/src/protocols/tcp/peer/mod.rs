@@ -35,7 +35,7 @@ pub struct TcpPeer<'a> {
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
     passive_connections: HashMap<ipv4::Endpoint, TcpConnection>,
-    rt: TcpRuntime<'a>,
+    tcp_rt: TcpRuntime<'a>,
     unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
     unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
 }
@@ -65,7 +65,7 @@ impl<'a> TcpPeer<'a> {
         };
 
         let isn_generator = IsnGenerator::new(&rt);
-        let rt = TcpRuntime::new(rt, arp);
+        let tcp_rt = TcpRuntime::new(rt, arp);
 
         TcpPeer {
             assigned_handles: HashMap::new(),
@@ -74,7 +74,7 @@ impl<'a> TcpPeer<'a> {
             isn_generator,
             open_ports: HashSet::new(),
             passive_connections: HashMap::new(),
-            rt,
+            tcp_rt,
             unassigned_connection_handles,
             unassigned_private_ports,
         }
@@ -113,7 +113,7 @@ impl<'a> TcpPeer<'a> {
         debug!("open_ports => {:?}", self.open_ports);
         if self.open_ports.contains(&local_port) {
             if segment.rst {
-                self.rt.rt().emit_effect(Effect::TcpError(
+                self.tcp_rt.rt().emit_effect(Effect::TcpError(
                     TcpError::ConnectionRefused {},
                 ));
                 return Ok(());
@@ -149,7 +149,7 @@ impl<'a> TcpPeer<'a> {
         }
 
         self.async_work.add(
-            self.rt.cast(
+            self.tcp_rt.cast(
                 TcpSegment::default()
                     .dest_ipv4_addr(remote_ipv4_addr)
                     .dest_port(remote_port)
@@ -183,7 +183,7 @@ impl<'a> TcpPeer<'a> {
         &mut self,
         remote_endpoint: ipv4::Endpoint,
     ) -> Result<TcpConnectionHandle> {
-        let options = self.rt.rt().options();
+        let options = self.tcp_rt.rt().options();
         let cxnid = TcpConnectionId {
             local: ipv4::Endpoint::new(
                 options.my_ipv4_addr,
@@ -194,56 +194,63 @@ impl<'a> TcpPeer<'a> {
         let cxn = self.new_connection(cxnid.clone())?;
         let handle = cxn.borrow().handle();
 
-        let rt = self.rt.clone();
-        self.async_work.add(self.rt.rt().start_coroutine(move || {
-            let unit: Rc<dyn Any> = Rc::new(());
-            let isn = cxn.borrow().seq_num();
+        let tcp_rt = self.tcp_rt.clone();
+        self.async_work
+            .add(self.tcp_rt.rt().start_coroutine(move || {
+                let unit: Rc<dyn Any> = Rc::new(());
+                let isn = cxn.borrow().seq_num();
 
-            r#await!(
-                rt.cast(
-                    TcpSegment::default()
-                        .connection(&cxnid)
-                        .seq_num(isn)
-                        .mss(DEFAULT_MSS)
-                        .syn()
-                ),
-                rt.rt().now()
-            )?;
-
-            yield_until!(
-                !cxn.borrow_mut().incoming_segments().is_empty(),
-                rt.rt().now()
-            );
-
-            let segment =
-                cxn.borrow_mut().incoming_segments().pop_front().unwrap();
-
-            if !segment.syn || !segment.ack {
                 r#await!(
-                    rt.cast(TcpSegment::default().connection(&cxnid).rst()),
-                    rt.rt().now()
+                    tcp_rt.cast(
+                        TcpSegment::default()
+                            .connection(&cxnid)
+                            .seq_num(isn)
+                            .mss(DEFAULT_MSS)
+                            .syn()
+                    ),
+                    tcp_rt.rt().now()
                 )?;
 
-                return Ok(unit);
-            }
+                yield_until!(
+                    !cxn.borrow_mut().incoming_segments().is_empty(),
+                    tcp_rt.rt().now()
+                );
 
-            rt.rt().emit_effect(Effect::TcpConnectionEstablished(
-                cxn.borrow().handle(),
-            ));
+                let segment =
+                    cxn.borrow_mut().incoming_segments().pop_front().unwrap();
+                let ack_num = segment.seq_num + Wrapping(1);
 
-            r#await!(
-                rt.cast(
-                    TcpSegment::default()
-                        .connection(&cxnid)
-                        .seq_num(cxn.borrow_mut().incr_seq_num(1))
-                        .ack_num(segment.ack_num + Wrapping(1))
-                        .ack()
-                ),
-                rt.rt().now()
-            )?;
+                if !segment.syn || !segment.ack {
+                    r#await!(
+                        tcp_rt.cast(
+                            TcpSegment::default()
+                                .connection(&cxnid)
+                                .ack_num(ack_num)
+                                .rst()
+                        ),
+                        tcp_rt.rt().now()
+                    )?;
 
-            Ok(unit)
-        }));
+                    return Ok(unit);
+                }
+
+                tcp_rt
+                    .rt()
+                    .emit_effect(Effect::TcpConnectionEstablished(handle));
+
+                r#await!(
+                    tcp_rt.cast(
+                        TcpSegment::default()
+                            .connection(&cxnid)
+                            .seq_num(cxn.borrow_mut().incr_seq_num(1))
+                            .ack_num(ack_num)
+                            .ack()
+                    ),
+                    tcp_rt.rt().now()
+                )?;
+
+                Ok(unit)
+            }));
 
         Ok(handle)
     }
@@ -256,7 +263,7 @@ impl<'a> TcpPeer<'a> {
         let local_port = syn_segment.dest_port.unwrap();
         assert!(self.open_ports.contains(&local_port));
 
-        let options = self.rt.rt().options();
+        let options = self.tcp_rt.rt().options();
         let remote_ipv4_addr = syn_segment.src_ipv4_addr.unwrap();
         let remote_port = syn_segment.src_port.unwrap();
         let cxnid = TcpConnectionId {
@@ -267,47 +274,50 @@ impl<'a> TcpPeer<'a> {
         let ack_num = syn_segment.seq_num + Wrapping(1);
         let mss = min(DEFAULT_MSS, syn_segment.mss.unwrap_or(MIN_MSS));
 
-        let rt = self.rt.clone();
-        self.async_work.add(self.rt.rt().start_coroutine(move || {
-            let unit: Rc<dyn Any> = Rc::new(());
-            let isn = cxn.borrow().seq_num();
+        let tcp_rt = self.tcp_rt.clone();
+        self.async_work
+            .add(self.tcp_rt.rt().start_coroutine(move || {
+                let unit: Rc<dyn Any> = Rc::new(());
+                let isn = cxn.borrow().seq_num();
 
-            r#await!(
-                rt.cast(
-                    TcpSegment::default()
-                        .connection(&cxnid)
-                        .seq_num(isn)
-                        .ack_num(ack_num)
-                        .mss(mss)
-                        .syn()
-                        .ack()
-                ),
-                rt.rt().now()
-            )?;
-
-            yield_until!(
-                !cxn.borrow_mut().incoming_segments().is_empty(),
-                rt.rt().now()
-            );
-
-            let segment =
-                cxn.borrow_mut().incoming_segments().pop_front().unwrap();
-            // todo: how to validate `segment.ack_num`?
-            if !segment.ack {
                 r#await!(
-                    rt.cast(TcpSegment::default().connection(&cxnid).rst()),
-                    rt.rt().now()
+                    tcp_rt.cast(
+                        TcpSegment::default()
+                            .connection(&cxnid)
+                            .seq_num(isn)
+                            .ack_num(ack_num)
+                            .mss(mss)
+                            .syn()
+                            .ack()
+                    ),
+                    tcp_rt.rt().now()
                 )?;
 
-                return Ok(unit);
-            }
+                yield_until!(
+                    !cxn.borrow_mut().incoming_segments().is_empty(),
+                    tcp_rt.rt().now()
+                );
 
-            rt.rt().emit_effect(Effect::TcpConnectionEstablished(
-                cxn.borrow().handle(),
-            ));
+                let segment =
+                    cxn.borrow_mut().incoming_segments().pop_front().unwrap();
+                // todo: how to validate `segment.ack_num`?
+                if !segment.ack {
+                    r#await!(
+                        tcp_rt.cast(
+                            TcpSegment::default().connection(&cxnid).rst()
+                        ),
+                        tcp_rt.rt().now()
+                    )?;
 
-            Ok(unit)
-        }));
+                    return Ok(unit);
+                }
+
+                tcp_rt.rt().emit_effect(Effect::TcpConnectionEstablished(
+                    cxn.borrow().handle(),
+                ));
+
+                Ok(unit)
+            }));
 
         Ok(())
     }
