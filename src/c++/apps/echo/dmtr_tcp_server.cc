@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
     if (boost::none != file) {
         // open a log file
-        DMTR_OK(dmtr_open(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT));
+        DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
     }
     
     while (1) {

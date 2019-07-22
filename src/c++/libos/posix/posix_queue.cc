@@ -318,6 +318,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags)
     }
     
     my_fd = fd;
+    start_threads();
     return 0;
 }
 
@@ -329,6 +330,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags, mode_t mode)
     }
     
     my_fd = fd;
+    start_threads();
     return 0;
 }
 
@@ -340,6 +342,7 @@ int dmtr::posix_queue::creat(const char *pathname, mode_t mode)
     }
     
     my_fd = fd;
+    start_threads();
     return 0;
 }
 

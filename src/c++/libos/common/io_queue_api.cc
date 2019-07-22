@@ -296,21 +296,6 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     return 0;
 }
 
-int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd, size_t count) {
-    qtok_out = 0;
-    DMTR_TRUE(EINVAL, qd != 0);
-
-    io_queue *q = NULL;
-    DMTR_OK(get_queue(q, qd));
-    dmtr_qtoken_t qt;
-    DMTR_OK(new_qtoken(qt, qd, count));
-    DMTR_OK(q->pop(qt));
-
-    qtok_out = qt;
-    return 0;
-}
-
-
 int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, qt != 0);
 
