@@ -33,8 +33,6 @@ class Worker {
 };
 std::vector<Worker *> http_workers;
 std::vector<pthread_t *> worker_threads;
-std::vector<int> lqds; //TCP workers listening descriptors
-pthread_mutex_t lqds_mutex;
 
 enum tcp_filters { RR, HTTP_REQ_TYPE, ONE_TO_ONE };
 struct tcp_worker_args {
@@ -54,9 +52,6 @@ void sig_handler(int signo) {
     http_workers.clear();
     for (pthread_t *w: worker_threads) {
         pthread_kill(*w, SIGKILL);
-    }
-    for (int &lqd: lqds) {
-        dmtr_close(lqd);
     }
     exit(0);
 }
@@ -277,12 +272,9 @@ static void *tcp_work(void *args) {
     /* Create and bind the worker's accept socket */
     int lqd = 0;
     dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0);
-    pthread_mutex_lock(&lqds_mutex);
-    lqds.push_back(lqd);
-    pthread_mutex_unlock(&lqds_mutex);
     struct sockaddr_in saddr = worker_args->saddr;
     dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
-    dmtr_listen(lqd, 10); //XXX what is a good backlog size here?
+    dmtr_listen(lqd, 100); //XXX what is a good backlog size here?
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
 
@@ -459,6 +451,7 @@ static void *tcp_work(void *args) {
         }
     }
 
+    dmtr_close(lqd);
     pthread_exit(NULL);
 }
 
