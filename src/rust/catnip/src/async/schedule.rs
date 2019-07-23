@@ -47,15 +47,18 @@ impl Schedule {
 
     pub fn schedule<'a>(&mut self, t: &Coroutine<'a>) {
         match t.status() {
-            CoroutineStatus::Completed(_) => {
-                panic!("attempt to schedule a completed coroutine")
-            }
             CoroutineStatus::AsleepUntil(when) => {
                 self.ids.insert(t.id());
                 self.heap.push(Record {
                     when: *when,
                     cid: t.id(),
                 });
+            }
+            CoroutineStatus::Active => {
+                panic!("attempt to schedule an active coroutine")
+            }
+            CoroutineStatus::Completed(_) => {
+                panic!("attempt to schedule a completed coroutine")
             }
         }
     }
@@ -77,20 +80,21 @@ impl Schedule {
             if rec.when > now {
                 // next coroutine isn't due yet.
                 debug!(
-                    "next coroutine is #{}, due at {:?}",
-                    rec.cid, rec.when
+                    "no coroutines due (next is #{}, due in {:?})",
+                    rec.cid,
+                    rec.when - now,
                 );
                 None
             } else {
                 // next coroutine is due.
                 let rec = self.heap.pop().unwrap();
                 if self.ids.contains(&rec.cid) {
-                    debug!("next coroutine is #{}, due now", rec.cid);
+                    debug!("coroutine is #{} due", rec.cid);
                     self.cancel(rec.cid);
                     Some(rec.cid)
                 } else {
                     debug!(
-                        "next coroutine was #{} but was cancelled",
+                        "coroutine #{} would have been due but was cancelled",
                         rec.cid
                     );
                     // coroutine is due but was cancelled; discard and try

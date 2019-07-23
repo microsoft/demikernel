@@ -11,6 +11,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum CoroutineStatus {
+    Active,
     Completed(Result<Rc<dyn Any>>),
     AsleepUntil(Instant),
 }
@@ -88,15 +89,20 @@ impl<'a> Coroutine<'a> {
         match &self.status {
             // if the coroutine has already completed, do nothing with the
             // generator (we would panic).
+            CoroutineStatus::Active => {
+                panic!("attempt to resume an active coroutine")
+            }
             CoroutineStatus::Completed(_) => true,
             CoroutineStatus::AsleepUntil(when) => {
                 if now < *when {
-                    panic!("attempt to resume a sleeping coroutine");
+                    panic!("attempt to resume a coroutine that isn't ready");
                 } else {
+                    self.status = CoroutineStatus::Active;
                     match Pin::new(self.gen.as_mut()).resume() {
                         GeneratorState::Yielded(duration) => {
                             // if `yield None` is used, then we schedule
-                            // something for the next tick.
+                            // something for the next tick to prevent
+                            // starvation.
                             let zero = Duration::new(0, 0);
                             let mut duration = duration.unwrap_or(zero);
                             if duration == zero {
@@ -107,10 +113,6 @@ impl<'a> Coroutine<'a> {
                             false
                         }
                         GeneratorState::Complete(result) => {
-                            debug!(
-                                "coroutine {} status is now completed.",
-                                self.id
-                            );
                             self.status = CoroutineStatus::Completed(result);
                             true
                         }

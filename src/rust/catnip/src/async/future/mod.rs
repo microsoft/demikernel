@@ -44,6 +44,7 @@ where
                 match rt.coroutine_status(*cid) {
                     CoroutineStatus::Completed(_) => true,
                     CoroutineStatus::AsleepUntil(_) => false,
+                    CoroutineStatus::Active => false,
                 }
             }
         }
@@ -80,9 +81,9 @@ where
                 // in the relevant future. if coroutine `cid` completes, we'll
                 // pick that up when we check the status of the coroutine.
                 let _ = rt.poll(now);
-                let status = rt.coroutine_status(*cid);
-                debug!("status of coroutine {} is `{:?}`.", cid, status);
-                status.into()
+                // if a coroutine is active, its status is unavailable. we'll
+                // simply say that progress cannot be made on that coroutine.
+                rt.coroutine_status(*cid).into()
             }
         }
     }

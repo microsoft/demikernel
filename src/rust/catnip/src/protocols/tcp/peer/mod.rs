@@ -14,7 +14,8 @@ use crate::{
     r#async::{Async, Future, WhenAny},
 };
 use std::{
-    cell::RefCell, convert::TryFrom, num::Wrapping, rc::Rc, time::Instant,
+    any::Any, cell::RefCell, convert::TryFrom, num::Wrapping, rc::Rc,
+    time::Instant,
 };
 
 pub use runtime::TcpRuntime;
@@ -109,7 +110,48 @@ impl<'a> TcpPeer<'a> {
         &self,
         remote_endpoint: ipv4::Endpoint,
     ) -> Future<'a, TcpConnectionHandle> {
-        TcpRuntime::connect(&self.tcp_rt, remote_endpoint)
+        trace!("TcpPeer::connect({:?})", remote_endpoint);
+        let rt = self.tcp_rt.borrow().rt().clone();
+        let tcp_rt = self.tcp_rt.clone();
+        rt.start_coroutine(move || {
+            trace!("TcpPeer::connect({:?})::coroutine", remote_endpoint);
+            let rt = tcp_rt.borrow().rt().clone();
+            let options = rt.options();
+            let cxnid = TcpConnectionId {
+                local: ipv4::Endpoint::new(
+                    options.my_ipv4_addr,
+                    tcp_rt.borrow_mut().acquire_private_port()?,
+                ),
+                remote: remote_endpoint,
+            };
+
+            let error = match r#await!(
+                TcpRuntime::new_active_connection(&tcp_rt, cxnid.clone()),
+                rt.now()
+            ) {
+                Ok(cxnid) => {
+                    let tcp_rt = tcp_rt.borrow();
+                    let cxn = tcp_rt.get_connection(&cxnid).unwrap();
+                    let x: Rc<dyn Any> = Rc::new(cxn.handle);
+                    return Ok(x);
+                }
+                Err(e) => e,
+            };
+
+            let rst = match error {
+                Fail::ConnectionRefused {} => false,
+                _ => true,
+            };
+
+            let _ = r#await!(
+                TcpRuntime::close_connection(&tcp_rt, cxnid.clone(), rst),
+                rt.now()
+            );
+
+            let mut tcp_rt = tcp_rt.borrow_mut();
+            tcp_rt.release_private_port(cxnid.local.port());
+            Err(error)
+        })
     }
 
     pub fn listen(&mut self, port: ip::Port) -> Result<()> {

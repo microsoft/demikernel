@@ -96,25 +96,28 @@ impl<'a> TcpRuntime<'a> {
         self.open_ports.contains(&port)
     }
 
-    pub fn connect(
+    pub fn get_connection(
+        &self,
+        cxnid: &TcpConnectionId,
+    ) -> Option<&TcpConnection> {
+        self.connections.get(cxnid)
+    }
+
+    pub fn new_active_connection(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, TcpConnectionHandle> {
+        cxnid: TcpConnectionId,
+    ) -> Future<'a, TcpConnectionId> {
+        trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
+            trace!(
+                "TcpRuntime::new_active_connection(.., {:?})::coroutine",
+                cxnid
+            );
             let (cxnid, rt) = {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
-                let options = rt.options();
-                let cxnid = TcpConnectionId {
-                    local: ipv4::Endpoint::new(
-                        options.my_ipv4_addr,
-                        state.acquire_private_port()?,
-                    ),
-                    remote: remote_endpoint,
-                };
-
                 let _ = state.new_connection(cxnid.clone(), None)?;
                 (cxnid, rt)
             };
@@ -127,21 +130,49 @@ impl<'a> TcpRuntime<'a> {
 
             let ack_num = remote_isn + Wrapping(1);
 
-            let (handle, segment) = {
+            let segment = {
                 let mut state = state.borrow_mut();
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
                 cxn.seq_num += Wrapping(1);
-                let segment = TcpSegment::default()
+                TcpSegment::default()
                     .connection(&cxn)
                     .ack_num(ack_num)
-                    .ack();
-
-                (cxn.handle, segment)
+                    .ack()
             };
 
             r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
 
-            let x: Rc<dyn Any> = Rc::new(handle);
+            let x: Rc<dyn Any> = Rc::new(cxnid);
+            Ok(x)
+        })
+    }
+
+    pub fn close_connection(
+        state: &Rc<RefCell<TcpRuntime<'a>>>,
+        cxnid: TcpConnectionId,
+        rst: bool,
+    ) -> Future<'a, ()> {
+        let rt = state.borrow().rt.clone();
+        let state = state.clone();
+        rt.start_coroutine(move || {
+            let (segment, rt) = {
+                let mut state = state.borrow_mut();
+                let rt = state.rt.clone();
+                let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
+                    cxn
+                } else {
+                    return Err(Fail::Ignored {});
+                };
+
+                let segment = TcpSegment::default().connection(&cxn).rst();
+                (segment, rt)
+            };
+
+            if rst {
+                r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
+            }
+
+            let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
         })
     }
@@ -270,7 +301,7 @@ impl<'a> TcpRuntime<'a> {
         })
     }
 
-    fn acquire_private_port(&mut self) -> Result<ip::Port> {
+    pub fn acquire_private_port(&mut self) -> Result<ip::Port> {
         if let Some(p) = self.unassigned_private_ports.pop_front() {
             Ok(p)
         } else {
@@ -280,7 +311,7 @@ impl<'a> TcpRuntime<'a> {
         }
     }
 
-    fn release_private_port(&mut self, port: ip::Port) {
+    pub fn release_private_port(&mut self, port: ip::Port) {
         assert!(port.is_private());
         self.unassigned_private_ports.push_back(port);
     }
