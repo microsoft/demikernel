@@ -540,39 +540,55 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
     return 1;
 }
 
+int no_pthread_work_setup() {
+    struct tcp_worker_args *tcp_args = new tcp_worker_args();
+    tcp_args->whoami = 0;
+    tcp_args->split = false;
+
+    /* Define which NIC this thread will be using */
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    if (boost::none == server_ip_addr) {
+        std::cerr << "Listening on `*:" << port << "`..." << std::endl;
+        saddr.sin_addr.s_addr = INADDR_ANY;
+    } else {
+        /* We increment the base IP (given for worker #1) */
+        const char *s = boost::get(server_ip_addr).c_str();
+        saddr.sin_addr.s_addr = inet_addr(s);
+        log_info("TCP worker set to listen on %s:%d", inet_ntoa(saddr.sin_addr), port);
+    }
+    saddr.sin_port = htons(port);
+    tcp_args->saddr = saddr;
+
+    tcp_work((void *) tcp_args);
+
+    return 1;
+}
+
 int main(int argc, char *argv[]) {
+    bool use_pthread;
     u_int16_t n_http_workers, n_tcp_workers;
     options_description desc{"HTTP server options"};
     desc.add_options()
-        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers");
-    desc.add_options()
-        ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers");
+        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers")
+        ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers")
+        ("use-pthread", value<bool>(&use_pthread)->default_value(true), "use pthread or not");
     parse_args(argc, argv, true, desc);
 
-    /* Block SIGINT to ensure handler will only be run in main thread */
-    sigset_t mask, oldmask;
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGINT);
-    sigaddset(&mask, SIGQUIT);
-    int ret;
-    ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
-    if (ret != 0) {
-        fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
-    }
-
     /* Init Demeter */
-    DMTR_OK(dmtr_init(dmtr_argc, NULL));
+    DMTR_OK(dmtr_init(argc, argv));
 
-    /* Pin main thread */
-    pin_thread(pthread_self(), 0);
+    sigset_t mask, oldmask;
+    if (use_pthread) {
+        /* Block SIGINT to ensure handler will only be run in main thread */
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGINT);
+        sigaddset(&mask, SIGQUIT);
 
-    /* Create worker threads */
-    work_setup(n_tcp_workers, n_http_workers, false);
-
-    /* Re-enable SIGINT and SIGQUIT */
-    ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
-    if (ret != 0) {
-        fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+        int ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
+        if (ret != 0) {
+            fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+        }
     }
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
@@ -580,8 +596,24 @@ int main(int argc, char *argv[]) {
     if (signal(SIGTERM, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGTERM\n";
 
-    for (pthread_t *w: worker_threads) {
-        pthread_join(*w, NULL);
+    if (use_pthread) {
+        /* Pin main thread */
+        pin_thread(pthread_self(), 0);
+
+        /* Create worker threads */
+        work_setup(n_tcp_workers, n_http_workers, false);
+
+        /* Re-enable SIGINT and SIGQUIT */
+        int ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
+        if (ret != 0) {
+            fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+        }
+
+        for (pthread_t *w: worker_threads) {
+            pthread_join(*w, NULL);
+        }
+    } else {
+        no_pthread_work_setup();
     }
 
     return 0;
