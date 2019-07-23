@@ -150,16 +150,15 @@ fn no_reply() {
     );
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
-
-    // move time forward enough to trigger a timeout.
-    let now = now + Duration::from_secs(1);
-    assert!(fut.poll(now).is_none());
-
     // retry #1
     let now = now + Duration::from_secs(1);
     assert!(fut.poll(now).is_none());
 
     // retry #2
+    let now = now + Duration::from_secs(1);
+    assert!(fut.poll(now).is_none());
+
+    // timeout
     let now = now + Duration::from_secs(1);
     match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),

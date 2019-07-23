@@ -69,26 +69,37 @@ impl Schedule {
     }
 
     pub fn poll(&mut self, now: Instant) -> Option<CoroutineId> {
+        trace!("Schedule::poll({:?})", now);
         assert!(self.clock <= now);
         self.clock = now;
 
         if let Some(rec) = self.heap.peek() {
             if rec.when > now {
                 // next coroutine isn't due yet.
+                debug!(
+                    "next coroutine is #{}, due at {:?}",
+                    rec.cid, rec.when
+                );
                 None
             } else {
                 // next coroutine is due.
                 let rec = self.heap.pop().unwrap();
                 if self.ids.contains(&rec.cid) {
+                    debug!("next coroutine is #{}, due now", rec.cid);
                     self.cancel(rec.cid);
                     Some(rec.cid)
                 } else {
+                    debug!(
+                        "next coroutine was #{} but was cancelled",
+                        rec.cid
+                    );
                     // coroutine is due but was cancelled; discard and try
                     // again.
                     self.poll(now)
                 }
             }
         } else {
+            debug!("no coroutines scheduled");
             // nothing in the heap.
             None
         }

@@ -198,7 +198,7 @@ impl<'a> Icmpv4Peer<'a> {
             .write_u32::<NativeEndian>(options.my_ipv4_addr.into())
             .unwrap();
         checksum.write_u32::<NativeEndian>(process::id()).unwrap();
-        let mut rng = self.rt.borrow_rng();
+        let mut rng = self.rt.rng_mut();
         let mut nonce = [0; 2];
         rng.fill(&mut nonce);
         checksum.write_all(&nonce).unwrap();

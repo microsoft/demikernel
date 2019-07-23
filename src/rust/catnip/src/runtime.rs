@@ -62,7 +62,7 @@ impl<'a> Runtime<'a> {
         effects.push_back(effect);
     }
 
-    pub fn borrow_rng(&self) -> RefMut<Rng> {
+    pub fn rng_mut(&self) -> RefMut<Rng> {
         self.rng.borrow_mut()
     }
 }

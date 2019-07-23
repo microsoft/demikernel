@@ -99,6 +99,7 @@ impl<'a> AsyncRuntime<'a> {
     }
 
     pub fn drop_coroutine(&self, cid: CoroutineId) -> Result<()> {
+        trace!("AsyncRuntime::drop_coroutine({:?})", cid);
         // this function should not panic as it's called from `drop()`.
         self.schedule.try_borrow_mut()?.cancel(cid);
         self.coroutines.try_borrow_mut()?.remove(&cid);

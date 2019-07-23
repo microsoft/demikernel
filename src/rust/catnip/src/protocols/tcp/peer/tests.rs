@@ -1,7 +1,7 @@
 use super::super::segment::TcpSegmentDecoder;
 use crate::{
     prelude::*,
-    protocols::{ip, ipv4, tcp},
+    protocols::{ip, ipv4},
     r#async::Async,
     test,
 };
@@ -25,9 +25,8 @@ fn syn_to_closed_port() {
         *test::alice_ipv4_addr() => *test::alice_link_addr(),
     });
 
-    alice
-        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
-        .unwrap();
+    let fut = alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let (tcp_syn, private_port) = {
         let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
@@ -61,12 +60,10 @@ fn syn_to_closed_port() {
     info!("passing TCP RST segment to alice...");
     let now = now + Duration::from_millis(1);
     alice.receive(&tcp_rst).unwrap();
-    let effect = alice.poll(now).unwrap().unwrap();
-    match effect {
-        Effect::TcpError(e) => {
-            assert_eq!(e, tcp::Error::ConnectionRefused {},)
-        }
-        e => panic!("got unanticipated effect `{:?}`", e),
+    assert!(fut.poll(now).is_none());
+    match fut.poll(now).unwrap() {
+        Err(Fail::ConnectionRefused {}) => (),
+        _ => panic!("expected `Fail::ConnectionRefused {{}}`"),
     }
 }
 
@@ -87,9 +84,8 @@ fn handshake() {
 
     bob.tcp_listen(bob_port).unwrap();
 
-    let alice_handle = alice
-        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
-        .unwrap();
+    let fut = alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let (tcp_syn, private_port, syn_seq_num) = {
         let effect = alice.poll(now).unwrap().unwrap();
         let bytes = match effect {
@@ -128,12 +124,7 @@ fn handshake() {
     info!("passing TCP SYN+ACK segment to alice...");
     let now = now + Duration::from_millis(1);
     alice.receive(&tcp_syn_ack).unwrap();
-    let effect = alice.poll(now).unwrap().unwrap();
-    match effect {
-        Effect::TcpConnectionEstablished(h) => assert_eq!(alice_handle, h),
-        e => panic!("got unanticipated effect `{:?}`", e),
-    }
-
+    assert!(alice.poll(now).is_none());
     let effect = alice.poll(now).unwrap().unwrap();
     let tcp_ack = {
         let bytes = match effect {
@@ -157,5 +148,86 @@ fn handshake() {
     match effect {
         Effect::TcpConnectionEstablished(_) => (),
         e => panic!("got unanticipated effect `{:?}`", e),
+    }
+
+    assert!(fut.poll(now).unwrap().is_ok());
+}
+
+#[test]
+fn syn_retry() {
+    let bob_port = ip::Port::try_from(12345).unwrap();
+
+    let now = Instant::now();
+    let mut alice = test::new_alice(now);
+    alice.import_arp_cache(hashmap! {
+        *test::bob_ipv4_addr() => *test::bob_link_addr(),
+    });
+
+    let fut = alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
+    let effect = alice.poll(now).unwrap().unwrap();
+    let bytes = match effect {
+        Effect::Transmit(segment) => segment.to_vec(),
+        e => panic!("got unanticipated effect `{:?}`", e),
+    };
+
+    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+    assert!(segment.header().syn());
+
+    debug!("looking for the second SYN from alice...");
+    let now = now + Duration::from_secs(3);
+    assert!(alice.poll(now).is_none());
+    let effect = alice.poll(now).unwrap().unwrap();
+    let bytes = match effect {
+        Effect::Transmit(segment) => segment.to_vec(),
+        e => panic!("got unanticipated effect `{:?}`", e),
+    };
+
+    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+    assert!(segment.header().syn());
+
+    debug!("looking for the third SYN from alice...");
+    let now = now + Duration::from_secs(6);
+    assert!(alice.poll(now).is_none());
+    let effect = alice.poll(now).unwrap().unwrap();
+    let bytes = match effect {
+        Effect::Transmit(segment) => segment.to_vec(),
+        e => panic!("got unanticipated effect `{:?}`", e),
+    };
+
+    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+    assert!(segment.header().syn());
+
+    debug!("looking for the forth SYN from alice...");
+    let now = now + Duration::from_secs(12);
+    assert!(alice.poll(now).is_none());
+    let effect = alice.poll(now).unwrap().unwrap();
+    let bytes = match effect {
+        Effect::Transmit(segment) => segment.to_vec(),
+        e => panic!("got unanticipated effect `{:?}`", e),
+    };
+
+    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+    assert!(segment.header().syn());
+
+    debug!("looking for the fifth SYN from alice...");
+    let now = now + Duration::from_secs(24);
+    assert!(alice.poll(now).is_none());
+    let effect = alice.poll(now).unwrap().unwrap();
+    let bytes = match effect {
+        Effect::Transmit(segment) => segment.to_vec(),
+        e => panic!("got unanticipated effect `{:?}`", e),
+    };
+
+    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
+    assert!(segment.header().syn());
+
+    debug!("looking for the final SYN from alice...");
+    let now = now + Duration::from_secs(48);
+    assert!(alice.poll(now).is_none());
+
+    match fut.poll(now).unwrap() {
+        Err(Fail::Timeout {}) => (),
+        _ => panic!("expected timeout"),
     }
 }

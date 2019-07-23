@@ -10,13 +10,14 @@ type Str = &'static str;
 
 custom_error! {#[derive(Clone)] pub Fail
     BorrowMutError{source: Rc<BorrowMutError>} = "{source}",
-    Ignored{} = "operation has no effect",
+    ConnectionRefused{} = "connection refused",
+    Ignored{} = "operation had no effect",
     IoError{source: Rc<IoError>} = "{source}",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",
     Misdelivered{} = "misdelivered datagram",
     OutOfRange{details: Str} = "a value is out of range ({details})",
-    ResourceExhausted{details: Str} = "resource exhausted ({details})",
     ResourceBusy{details: Str} = "resource is busy ({details})",
+    ResourceExhausted{details: Str} = "resource exhausted ({details})",
     Timeout{} = "an asynchronous operation timed out",
     TypeMismatch{details: Str} = "type mismatch ({details})",
     Unsupported{details: Str} = "unsupported ({details})",

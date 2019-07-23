@@ -1,8 +1,10 @@
-use super::segment::TcpSegment;
+use super::segment::{TcpSegment, DEFAULT_MSS, MAX_MSS, MIN_MSS};
 use crate::protocols::ipv4;
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     num::{NonZeroU16, Wrapping},
+    rc::Rc,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -28,10 +30,11 @@ impl Into<u16> for TcpConnectionHandle {
 }
 
 pub struct TcpConnection {
-    handle: TcpConnectionHandle,
-    id: TcpConnectionId,
-    incoming_segments: VecDeque<TcpSegment>,
-    seq_num: Wrapping<u32>,
+    pub handle: TcpConnectionHandle,
+    pub id: TcpConnectionId,
+    pub incoming_segments: Rc<RefCell<VecDeque<TcpSegment>>>,
+    pub seq_num: Wrapping<u32>,
+    pub mss: usize,
 }
 
 impl TcpConnection {
@@ -39,33 +42,18 @@ impl TcpConnection {
         id: TcpConnectionId,
         handle: TcpConnectionHandle,
         isn: Wrapping<u32>,
+        mss: Option<usize>,
     ) -> TcpConnection {
+        let mss = mss.unwrap_or(DEFAULT_MSS);
+        assert!(mss >= MIN_MSS);
+        assert!(mss <= MAX_MSS);
+
         TcpConnection {
             handle,
             id,
-            incoming_segments: VecDeque::new(),
+            incoming_segments: Rc::new(RefCell::new(VecDeque::new())),
+            mss,
             seq_num: isn,
         }
-    }
-
-    pub fn id(&self) -> &TcpConnectionId {
-        &self.id
-    }
-
-    pub fn handle(&self) -> TcpConnectionHandle {
-        self.handle
-    }
-
-    pub fn seq_num(&self) -> Wrapping<u32> {
-        self.seq_num
-    }
-
-    pub fn incr_seq_num(&mut self, n: u32) -> Wrapping<u32> {
-        self.seq_num += Wrapping(n);
-        self.seq_num
-    }
-
-    pub fn incoming_segments(&mut self) -> &mut VecDeque<TcpSegment> {
-        &mut self.incoming_segments
     }
 }

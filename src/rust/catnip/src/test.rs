@@ -11,7 +11,8 @@ use std::{net::Ipv4Addr, sync::Once, time::Instant};
 
 lazy_static! {
     static ref DEFAULT_TIMEOUT: FloatDuration = FloatDuration::seconds(1.0);
-    static ref DEFAULT_TTL: FloatDuration = FloatDuration::seconds(10.0);
+    static ref DEFAULT_ARP_CACHE_TTL: FloatDuration =
+        FloatDuration::minutes(5.0);
     static ref ALICE_MAC: MacAddress =
         MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
     static ref ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 1);
@@ -48,7 +49,7 @@ pub fn new_engine<'a>(
             arp: arp::Options {
                 request_timeout: Some(*DEFAULT_TIMEOUT),
                 retry_count: Some(2),
-                cache_ttl: Some(*DEFAULT_TTL),
+                cache_ttl: Some(*DEFAULT_ARP_CACHE_TTL),
             },
             rng_seed: Some(seed),
         },

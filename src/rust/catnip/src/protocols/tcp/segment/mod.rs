@@ -1,6 +1,6 @@
 mod transcode;
 
-use super::connection::TcpConnectionId;
+use super::connection::TcpConnection;
 use crate::{
     prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
@@ -9,7 +9,7 @@ use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
-    MIN_MSS,
+    MAX_MSS, MIN_MSS,
 };
 
 #[derive(Default, Clone, Debug)]
@@ -95,11 +95,12 @@ impl TcpSegment {
         self
     }
 
-    pub fn connection(self, cxnid: &TcpConnectionId) -> TcpSegment {
-        self.src_ipv4_addr(cxnid.local.address())
-            .src_port(cxnid.local.port())
-            .dest_ipv4_addr(cxnid.remote.address())
-            .dest_port(cxnid.remote.port())
+    pub fn connection(self, cxn: &TcpConnection) -> TcpSegment {
+        self.src_ipv4_addr(cxn.id.local.address())
+            .src_port(cxn.id.local.port())
+            .dest_ipv4_addr(cxn.id.remote.address())
+            .dest_port(cxn.id.remote.port())
+            .seq_num(cxn.seq_num)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {

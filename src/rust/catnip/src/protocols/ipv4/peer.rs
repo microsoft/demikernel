@@ -81,8 +81,8 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Result<tcp::ConnectionHandle> {
-        self.tcp.connect(remote_endpoint)
+    ) -> Future<'a, tcp::ConnectionHandle> {
+        tcp::Peer::connect(&self.tcp, remote_endpoint)
     }
 
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {

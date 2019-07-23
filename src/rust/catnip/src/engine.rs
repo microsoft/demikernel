@@ -5,7 +5,7 @@ use crate::{
         ethernet2::{self, MacAddress},
         ip, ipv4, tcp,
     },
-    r#async::{self, Async},
+    r#async::{self, Async, Future},
 };
 use std::{
     collections::HashMap,
@@ -97,7 +97,7 @@ impl<'a> Engine<'a> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Result<tcp::ConnectionHandle> {
+    ) -> Future<'a, tcp::ConnectionHandle> {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 

@@ -16,7 +16,6 @@ pub enum Effect {
         next_hop_mtu: u16,
         context: Vec<u8>,
     },
-    TcpError(tcp::Error),
     BytesReceived {
         protocol: ipv4::Protocol,
         src_addr: Ipv4Addr,
@@ -49,7 +48,6 @@ impl Debug for Effect {
                  }}",
                 id, next_hop_mtu, context
             )?,
-            Effect::TcpError(e) => write!(f, "TcpError({})", e)?,
             Effect::BytesReceived {
                 protocol,
                 src_addr,

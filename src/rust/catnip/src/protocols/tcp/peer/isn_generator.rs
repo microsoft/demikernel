@@ -12,7 +12,7 @@ pub struct IsnGenerator {
 impl IsnGenerator {
     pub fn new<'a>(rt: &Runtime<'a>) -> IsnGenerator {
         IsnGenerator {
-            nonce: rt.borrow_rng().gen(),
+            nonce: rt.rng_mut().gen(),
             counter: Wrapping(0),
         }
     }

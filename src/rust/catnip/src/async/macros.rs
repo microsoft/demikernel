@@ -19,8 +19,11 @@ macro_rules! yield_until {
         true
     }};
     ($cond:expr, $now:expr, $timeout:expr) => {{
+        let timeout = $timeout;
+        trace!("yield_until!(..., {:?})", timeout);
         let mut success = false;
         let t0 = $now;
+        debug!("yield_until!(): will timeout at {:?}", t0 + timeout);
         loop {
             if $cond {
                 success = true;
@@ -30,8 +33,12 @@ macro_rules! yield_until {
             yield None;
 
             let dt = $now - t0;
-            if dt >= $timeout {
+            let timeout = $timeout;
+            if dt >= timeout {
+                debug!("yield_until!(): *timeout*");
                 break;
+            } else {
+                debug!("yield_until!(): dt = {:?}", dt);
             }
         }
 
@@ -47,14 +54,20 @@ macro_rules! r#await {
         assert!(yield_until!(r#async.poll($now).is_some(), $now));
         r#async.poll($now).unwrap()
     }};
-    ($async:expr, $now:expr, $timeout:expr) => {{
-        use $crate::r#async::Async;
-        let r#async = $async;
-        if yield_until!(r#async.poll($now), $now, $timeout) {
-            r#async.poll($now).unwrap()
-        } else {
-            use $crate::fail::Fail;
-            Err(Fail::Timeout {})
+    ($async:expr, $now:expr, $retry:expr) => {{
+        trace!("r#await!()");
+        use $crate::{fail::Fail, r#async::Async};
+        let retry = $retry;
+        let mut result = None;
+        for timeout in retry {
+            let r#async = $async;
+            if yield_until!(r#async.poll($now).is_some(), $now, timeout) {
+                result = r#async.poll($now);
+                assert!(result.is_some());
+                break;
+            }
         }
+
+        result.unwrap_or(Err(Fail::Timeout {}))
     }};
 }
