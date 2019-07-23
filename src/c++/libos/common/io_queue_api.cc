@@ -33,14 +33,10 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
         desc.add_options()
             ("log-dir,L", po::value<std::string>(&log_directory)->default_value("./"), "Log directory");
         po::variables_map vm;
-        try {
-            po::store(po::parse_command_line(argc, argv, desc), vm);
-            po::notify(vm);
-        } catch (const po::error &e) {
-            std::cerr << e.what() << std::endl;
-            std::cerr << desc << std::endl;
-            exit(0);
-        }
+        po::parsed_options parsed =
+            po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+        po::store(parsed, vm);
+        po::notify(vm);
         dmtr_log_directory = log_directory;
     }
 

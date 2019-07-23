@@ -305,6 +305,8 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
+uint16_t dmtr::lwip_queue::my_app_port;
+
 int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -317,10 +319,13 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"),
+         "Specify configuration file");
 
     bpo::variables_map vm;
-    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+    bpo::parsed_options parsed =
+        bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+    bpo::store(parsed, vm);
     bpo::notify(vm);
 
     if (vm.count("help")) {
@@ -390,6 +395,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     our_dpdk_init_flag = true;
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
+
     return 0;
 }
 
@@ -961,10 +967,18 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     uint16_t udp_src_port = ntohs(udp_hdr->src_port);
     uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
 
+    if (udp_hdr->dst_port != my_app_port) {
+#if DMTR_DEBUG
+        printf("recv: dropped (dst port: %d)\n", udp_hdr->dst_port);
+#endif
+        return false;
+    }
+
 #if DMTR_DEBUG
     printf("recv: udp src port: %d\n", udp_src_port);
     printf("recv: udp dst port: %d\n", udp_dst_port);
 #endif
+
     src.sin_port = udp_src_port;
     dst.sin_port = udp_dst_port;
     src.sin_family = AF_INET;

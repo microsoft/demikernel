@@ -43,6 +43,8 @@ class lwip_queue : public io_queue {
     private: static std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct ether_addr> our_ip_to_mac_table;
+    private: static uint16_t my_app_port; //FIXME this could/should be a list
+    public: static void set_app_port(uint16_t port) { my_app_port = port; }
 
     private: bool my_listening_flag;
     protected: boost::optional<struct sockaddr_in> my_bound_src;
