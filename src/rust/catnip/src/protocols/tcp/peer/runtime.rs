@@ -236,13 +236,17 @@ impl<'a> TcpRuntime<'a> {
                 (cxnid, handle, rt)
             };
 
+            let options = rt.options();
+            let retries = options.tcp.handshake_retries();
+            let timeout = options.tcp.handshake_timeout();
             let _remote_isn = r#await!(
                 TcpRuntime::handshake(
                     &state,
                     &cxnid,
                     Some(syn_segment.seq_num),
                 ),
-                rt.now()
+                rt.now(),
+                Retry::exponential(timeout, 2, retries)
             )?;
 
             rt.emit_effect(Effect::TcpConnectionEstablished(handle));
