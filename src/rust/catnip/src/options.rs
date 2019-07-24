@@ -1,5 +1,5 @@
 use crate::{
-    protocols::{arp, ethernet2::MacAddress},
+    protocols::{arp, ethernet2::MacAddress, tcp},
     rand::Seed,
 };
 use base64::{decode_config_slice, STANDARD_NO_PAD};
@@ -8,10 +8,11 @@ use std::net::Ipv4Addr;
 
 #[derive(Clone)]
 pub struct Options {
-    pub my_link_addr: MacAddress,
-    pub my_ipv4_addr: Ipv4Addr,
     pub arp: arp::Options,
+    pub my_ipv4_addr: Ipv4Addr,
+    pub my_link_addr: MacAddress,
     pub rng_seed: Option<String>,
+    pub tcp: tcp::Options,
 }
 
 impl Options {

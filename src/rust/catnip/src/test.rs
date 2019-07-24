@@ -1,6 +1,6 @@
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2::MacAddress},
+    protocols::{arp, ethernet2::MacAddress, tcp},
     rand::Seed,
     Options,
 };
@@ -52,6 +52,10 @@ pub fn new_engine<'a>(
                 cache_ttl: Some(*DEFAULT_ARP_CACHE_TTL),
             },
             rng_seed: Some(seed),
+            tcp: tcp::Options {
+                handshake_retries: None,
+                handshake_timeout: None,
+            },
         },
     )
     .unwrap()

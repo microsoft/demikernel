@@ -18,7 +18,6 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     rc::Rc,
-    time::Duration,
 };
 
 pub struct TcpRuntime<'a> {
@@ -122,10 +121,13 @@ impl<'a> TcpRuntime<'a> {
                 (cxnid, rt)
             };
 
+            let options = rt.options();
+            let retries = options.tcp.handshake_retries();
+            let timeout = options.tcp.handshake_timeout();
             let remote_isn = r#await!(
                 TcpRuntime::handshake(&state, &cxnid, None),
                 rt.now(),
-                Retry::exponential(Duration::from_secs(3), 2, 5)
+                Retry::exponential(timeout, 2, retries)
             )?;
 
             let ack_num = remote_isn + Wrapping(1);
