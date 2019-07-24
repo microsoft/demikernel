@@ -62,8 +62,6 @@ fn syn_to_closed_port() {
     alice.receive(&tcp_rst).unwrap();
     assert!(fut.poll(now).is_none());
     let now = now + Duration::from_millis(1);
-    assert!(fut.poll(now).is_none());
-    let now = now + Duration::from_millis(1);
     match fut.poll(now).unwrap() {
         Err(Fail::ConnectionRefused {}) => (),
         _ => panic!("expected `Fail::ConnectionRefused {{}}`"),
@@ -127,7 +125,6 @@ fn handshake() {
     info!("passing TCP SYN+ACK segment to alice...");
     let now = now + Duration::from_millis(1);
     alice.receive(&tcp_syn_ack).unwrap();
-    assert!(alice.poll(now).is_none());
     let effect = alice.poll(now).unwrap().unwrap();
     let tcp_ack = {
         let bytes = match effect {
@@ -179,7 +176,6 @@ fn syn_retry() {
 
     debug!("looking for the second SYN from alice...");
     let now = now + Duration::from_secs(3);
-    assert!(alice.poll(now).is_none());
     let effect = alice.poll(now).unwrap().unwrap();
     let bytes = match effect {
         Effect::Transmit(segment) => segment.to_vec(),
@@ -191,7 +187,6 @@ fn syn_retry() {
 
     debug!("looking for the third SYN from alice...");
     let now = now + Duration::from_secs(6);
-    assert!(alice.poll(now).is_none());
     let effect = alice.poll(now).unwrap().unwrap();
     let bytes = match effect {
         Effect::Transmit(segment) => segment.to_vec(),
@@ -203,7 +198,6 @@ fn syn_retry() {
 
     debug!("looking for the forth SYN from alice...");
     let now = now + Duration::from_secs(12);
-    assert!(alice.poll(now).is_none());
     let effect = alice.poll(now).unwrap().unwrap();
     let bytes = match effect {
         Effect::Transmit(segment) => segment.to_vec(),
@@ -225,7 +219,6 @@ fn syn_retry() {
     assert!(segment.header().syn());
 
     let now = now + Duration::from_secs(48);
-    assert!(alice.poll(now).is_none());
     match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         _ => panic!("expected timeout"),

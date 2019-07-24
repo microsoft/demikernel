@@ -69,7 +69,7 @@ impl<'a> Runtime<'a> {
 
 impl<'a> Async<Effect> for Runtime<'a> {
     fn poll(&self, now: Instant) -> Option<Result<Effect>> {
-        try_poll!(self.r#async, now);
+        while self.r#async.poll(now).is_some() {}
         let mut effects = self.effects.borrow_mut();
         let effect = effects.pop_front();
         debug!(

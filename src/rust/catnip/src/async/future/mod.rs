@@ -76,13 +76,7 @@ where
         match self {
             Future::Const(v) => Some(v.clone()),
             Future::CoroutineResult { rt, cid } => {
-                // we don't care about the result of calling `poll()`. if an
-                // unrelated coroutine completes, the result will be reported
-                // in the relevant future. if coroutine `cid` completes, we'll
-                // pick that up when we check the status of the coroutine.
-                let _ = rt.poll(now);
-                // if a coroutine is active, its status is unavailable. we'll
-                // simply say that progress cannot be made on that coroutine.
+                while rt.poll(now).is_some() {}
                 rt.coroutine_status(*cid).into()
             }
         }
