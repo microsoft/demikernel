@@ -1,4 +1,5 @@
-# Zeus libOS code
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
 
 cmake_minimum_required (VERSION 3.5.1)
 project (EchoServer C CXX)

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #ifndef ECHO_COMMON_H_
 #define ECHO_COMMON_H_
 

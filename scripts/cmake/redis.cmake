@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 if(NOT REDIS_DOT_CMAKE_INCLUDED)
 set(REDIS_DOT_CMAKE_INCLUDED YES)
 

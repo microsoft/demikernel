@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 # Python 3 script for logging into and running the echo server on multiple clients
 # Written by Anna Kornfeld Simpson 2019
 # To get a Python virtual environment with the correct packages, run "python3 -m venv venv",
