@@ -1,4 +1,4 @@
-use super::datagram::{UdpDatagram, UdpDatagramMut};
+use super::datagram::{UdpDatagramDecoder, UdpDatagramEncoder};
 use crate::{
     prelude::*,
     protocols::{arp, icmpv4, ip, ipv4},
@@ -26,11 +26,14 @@ impl<'a> UdpPeer<'a> {
         }
     }
 
-    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
+    pub fn receive(
+        &mut self,
+        ipv4_datagram: ipv4::Datagram<'_>,
+    ) -> Result<()> {
         trace!("UdpPeer::receive(...)");
-        let datagram = UdpDatagram::try_from(datagram)?;
-        let ipv4_header = datagram.ipv4().header();
-        let udp_header = datagram.header();
+        let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
+        let ipv4_header = decoder.ipv4().header();
+        let udp_header = decoder.header();
         let dest_port = match udp_header.dest_port() {
             Some(p) => p,
             None => {
@@ -55,7 +58,7 @@ impl<'a> UdpPeer<'a> {
                 src_addr: ipv4_header.src_addr(),
                 src_port,
                 dest_port,
-                text: IoVec::from(datagram.text().to_vec()),
+                text: IoVec::from(decoder.text().to_vec()),
             });
 
             Ok(())
@@ -72,10 +75,7 @@ impl<'a> UdpPeer<'a> {
                 return Err(Fail::Ignored {});
             }
 
-            self.send_icmpv4_error(
-                src_ipv4_addr,
-                datagram.as_bytes().to_vec(),
-            );
+            self.send_icmpv4_error(src_ipv4_addr, decoder.as_bytes().to_vec());
             Ok(())
         }
     }
@@ -111,23 +111,23 @@ impl<'a> UdpPeer<'a> {
                 dest_ipv4_addr, dest_link_addr
             );
 
-            let mut bytes = UdpDatagram::new_vec(text.len());
-            let mut datagram = UdpDatagramMut::attach(&mut bytes);
+            let mut bytes = UdpDatagramEncoder::new_vec(text.len());
+            let mut encoder = UdpDatagramEncoder::attach(&mut bytes);
             // the text slice could end up being larger than what's
             // requested because of the minimum ethernet frame size, so we need
-            // to trim what we get from `datagram.text_mut()` to make it the
-            // same size as `text`.
-            datagram.text()[..text.len()].copy_from_slice(&text);
-            let mut udp_header = datagram.header();
+            // to trim what we get from `encoder.text()` to make it the same
+            // size as `text`.
+            encoder.text()[..text.len()].copy_from_slice(&text);
+            let mut udp_header = encoder.header();
             udp_header.dest_port(dest_port);
             udp_header.src_port(src_port);
-            let mut ipv4_header = datagram.ipv4().header();
+            let mut ipv4_header = encoder.ipv4().header();
             ipv4_header.src_addr(options.my_ipv4_addr);
             ipv4_header.dest_addr(dest_ipv4_addr);
-            let mut frame_header = datagram.ipv4().frame().header();
+            let mut frame_header = encoder.ipv4().frame().header();
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
-            let _ = datagram.seal()?;
+            let _ = encoder.seal()?;
             rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
             let x: Rc<dyn Any> = Rc::new(());

@@ -1,4 +1,4 @@
-use super::datagram::UdpDatagram;
+use super::datagram::UdpDatagramDecoder;
 use crate::{
     prelude::*,
     protocols::{icmpv4, ip, ipv4},
@@ -43,7 +43,7 @@ fn unicast() {
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
-        let _ = UdpDatagram::attach(&bytes).unwrap();
+        let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
     };
 
@@ -107,7 +107,7 @@ fn destination_port_unreachable() {
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
-        let _ = UdpDatagram::attach(&bytes).unwrap();
+        let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
     };
 

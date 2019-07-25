@@ -42,8 +42,8 @@ pub mod runtime;
 #[cfg(test)]
 pub mod test;
 
-pub use event::Event;
 pub use engine::Engine;
+pub use event::Event;
 pub use io::IoVec;
 pub use options::Options;
 pub use runtime::Runtime;
