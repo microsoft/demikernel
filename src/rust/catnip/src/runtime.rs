@@ -16,7 +16,7 @@ use std::{
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
-    effects: Rc<RefCell<VecDeque<Effect>>>,
+    events: Rc<RefCell<VecDeque<Event>>>,
     options: Rc<Options>,
     r#async: r#async::Runtime<'a>,
     rng: Rc<RefCell<Rng>>,
@@ -27,7 +27,7 @@ impl<'a> Runtime<'a> {
         let rng = Rng::from_seed(options.decode_rng_seed());
         Runtime {
             options: Rc::new(options),
-            effects: Rc::new(RefCell::new(VecDeque::new())),
+            events: Rc::new(RefCell::new(VecDeque::new())),
             r#async: r#async::Runtime::new(now),
             rng: Rc::new(RefCell::new(rng)),
         }
@@ -51,15 +51,15 @@ impl<'a> Runtime<'a> {
         self.r#async.start_coroutine(gen)
     }
 
-    pub fn emit_effect(&self, effect: Effect) {
-        let mut effects = self.effects.borrow_mut();
+    pub fn emit_event(&self, event: Event) {
+        let mut events = self.events.borrow_mut();
         debug!(
-            "effect emitted for {} (len is now {}) => {:?}",
+            "event emitted for {} (len is now {}) => {:?}",
             self.options.my_ipv4_addr,
-            effects.len() + 1,
-            effect
+            events.len() + 1,
+            event
         );
-        effects.push_back(effect);
+        events.push_back(event);
     }
 
     pub fn rng_mut(&self) -> RefMut<Rng> {
@@ -67,17 +67,17 @@ impl<'a> Runtime<'a> {
     }
 }
 
-impl<'a> Async<Effect> for Runtime<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Effect>> {
+impl<'a> Async<Event> for Runtime<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Event>> {
         while self.r#async.poll(now).is_some() {}
-        let mut effects = self.effects.borrow_mut();
-        let effect = effects.pop_front();
+        let mut events = self.events.borrow_mut();
+        let event = events.pop_front();
         debug!(
-            "effect popped from {}; {} remain(s) => {:?}",
+            "event popped from {}; {} remain(s) => {:?}",
             self.options.my_ipv4_addr,
-            effects.len(),
-            effect
+            events.len(),
+            event
         );
-        effect.map(Ok)
+        event.map(Ok)
     }
 }

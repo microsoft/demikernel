@@ -1,5 +1,5 @@
 pub use crate::{
-    effect::Effect, engine::Engine, fail::*, io::IoVec, options::Options,
+    event::Event, engine::Engine, fail::*, io::IoVec, options::Options,
     result::*, runtime::Runtime,
 };
 

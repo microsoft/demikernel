@@ -37,10 +37,10 @@ fn unicast() {
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let effect = alice.poll(now).unwrap().unwrap();
-        let bytes = match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = alice.poll(now).unwrap().unwrap();
+        let bytes = match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let _ = UdpDatagram::attach(&bytes).unwrap();
@@ -49,9 +49,9 @@ fn unicast() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let effect = bob.poll(now).unwrap().unwrap();
-    match effect {
-        Effect::BytesReceived {
+    let event = bob.poll(now).unwrap().unwrap();
+    match event {
+        Event::BytesReceived {
             ref protocol,
             ref src_addr,
             ref src_port,
@@ -68,7 +68,7 @@ fn unicast() {
                 assert_eq!(&0u8, i);
             }
         }
-        e => panic!("got unanticipated effect `{:?}`", e),
+        e => panic!("got unanticipated event `{:?}`", e),
     }
 }
 
@@ -101,10 +101,10 @@ fn destination_port_unreachable() {
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let effect = alice.poll(now).unwrap().unwrap();
-        let bytes = match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = alice.poll(now).unwrap().unwrap();
+        let bytes = match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let _ = UdpDatagram::attach(&bytes).unwrap();
@@ -113,11 +113,11 @@ fn destination_port_unreachable() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let effect = bob.poll(now).unwrap().unwrap();
+    let event = bob.poll(now).unwrap().unwrap();
     let icmpv4_datagram = {
-        let bytes = match effect {
-            Effect::Transmit(bytes) => bytes,
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let bytes = match event {
+            Event::Transmit(bytes) => bytes,
+            e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let _ = icmpv4::Error::attach(&bytes).unwrap();
@@ -126,9 +126,9 @@ fn destination_port_unreachable() {
 
     info!("passing ICMPv4 datagram to alice...");
     alice.receive(&icmpv4_datagram).unwrap();
-    let effect = alice.poll(now).unwrap().unwrap();
-    match effect {
-        Effect::Icmpv4Error {
+    let event = alice.poll(now).unwrap().unwrap();
+    match event {
+        Event::Icmpv4Error {
             ref id,
             ref next_hop_mtu,
             ..
@@ -142,6 +142,6 @@ fn destination_port_unreachable() {
             assert_eq!(next_hop_mtu, &0u16);
             // todo: validate `context`
         }
-        e => panic!("got unanticipated effect `{:?}`", e),
+        e => panic!("got unanticipated event `{:?}`", e),
     }
 }

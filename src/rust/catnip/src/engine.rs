@@ -106,8 +106,8 @@ impl<'a> Engine<'a> {
     }
 }
 
-impl<'a> Async<Effect> for Engine<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Effect>> {
+impl<'a> Async<Event> for Engine<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Event>> {
         try_poll!(&self.arp, now);
         try_poll!(&self.ipv4, now);
         self.rt.poll(now)

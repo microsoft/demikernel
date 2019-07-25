@@ -25,7 +25,7 @@ pub enum Icmpv4DestinationUnreachable {
     HostUnreachableForTos = 12,
     CommunicationAdministrativelyProhibited = 13,
     HostPrecedenceViolation = 14,
-    PrecedenceCutoffInEffect = 15,
+    PrecedenceCutoffInEvent = 15,
 }
 
 impl Icmpv4DestinationUnreachable {
@@ -46,7 +46,7 @@ impl Icmpv4DestinationUnreachable {
             Icmpv4DestinationUnreachable::HostUnreachableForTos => "host unreachable for ToS",
             Icmpv4DestinationUnreachable::CommunicationAdministrativelyProhibited => "communication administratively prohibited",
             Icmpv4DestinationUnreachable::HostPrecedenceViolation => "host precedence violation",
-            Icmpv4DestinationUnreachable::PrecedenceCutoffInEffect => "precedence cutoff in effect",
+            Icmpv4DestinationUnreachable::PrecedenceCutoffInEvent => "precedence cutoff in event",
         }
     }
 }

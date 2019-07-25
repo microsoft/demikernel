@@ -79,7 +79,7 @@ impl<'a> Icmpv4Peer<'a> {
             }
             _ => match Icmpv4Error::try_from(datagram) {
                 Ok(e) => {
-                    self.rt.emit_effect(Effect::Icmpv4Error {
+                    self.rt.emit_event(Event::Icmpv4Error {
                         id: e.id(),
                         next_hop_mtu: e.next_hop_mtu(),
                         context: e.context().to_vec(),
@@ -125,7 +125,7 @@ impl<'a> Icmpv4Peer<'a> {
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
             let _ = echo.seal()?;
-            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
             let key = (id, seq_num);
             {
@@ -182,7 +182,7 @@ impl<'a> Icmpv4Peer<'a> {
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
             let _ = echo.seal()?;
-            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)

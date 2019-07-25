@@ -50,7 +50,7 @@ impl<'a> UdpPeer<'a> {
                 }
             };
 
-            self.rt.emit_effect(Effect::BytesReceived {
+            self.rt.emit_event(Event::BytesReceived {
                 protocol: ipv4::Protocol::Udp,
                 src_addr: ipv4_header.src_addr(),
                 src_port,
@@ -128,7 +128,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
             let _ = datagram.seal()?;
-            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
@@ -174,7 +174,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
             let _ = error.seal()?;
-            rt.emit_effect(Effect::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)

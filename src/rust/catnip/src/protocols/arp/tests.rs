@@ -23,10 +23,10 @@ fn immediate_reply() {
     assert!(fut.poll(now).is_none());
 
     let request = {
-        let effect = alice.poll(now).unwrap().unwrap();
-        match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = alice.poll(now).unwrap().unwrap();
+        match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         }
     };
 
@@ -49,10 +49,10 @@ fn immediate_reply() {
         Some(test::alice_link_addr())
     );
     let reply = {
-        let effect = carrie.poll(now).unwrap().unwrap();
-        match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = carrie.poll(now).unwrap().unwrap();
+        match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         }
     };
 
@@ -90,10 +90,10 @@ fn slow_reply() {
 
     debug!("!!!");
     let request = {
-        let effect = alice.poll(now).unwrap().unwrap();
-        match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = alice.poll(now).unwrap().unwrap();
+        match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         }
     };
 
@@ -117,10 +117,10 @@ fn slow_reply() {
         Some(test::alice_link_addr())
     );
     let reply = {
-        let effect = carrie.poll(now).unwrap().unwrap();
-        match effect {
-            Effect::Transmit(datagram) => datagram.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = carrie.poll(now).unwrap().unwrap();
+        match event {
+            Event::Transmit(datagram) => datagram.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         }
     };
 

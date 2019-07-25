@@ -9,7 +9,7 @@ use std::{
 };
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum Effect {
+pub enum Event {
     Transmit(Rc<Vec<u8>>),
     Icmpv4Error {
         id: icmpv4::ErrorId,
@@ -26,11 +26,11 @@ pub enum Effect {
     TcpConnectionEstablished(tcp::ConnectionHandle),
 }
 
-impl Debug for Effect {
+impl Debug for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "Effect::")?;
+        write!(f, "Event::")?;
         match self {
-            Effect::Transmit(bytes) => {
+            Event::Transmit(bytes) => {
                 write!(f, "Transmit {{ ")?;
                 match tcp::Segment::decode(&bytes) {
                     Ok(s) => write!(f, "{:?}", s)?,
@@ -38,7 +38,7 @@ impl Debug for Effect {
                 }
                 write!(f, " }}")?;
             }
-            Effect::Icmpv4Error {
+            Event::Icmpv4Error {
                 id,
                 next_hop_mtu,
                 context,
@@ -48,7 +48,7 @@ impl Debug for Effect {
                  }}",
                 id, next_hop_mtu, context
             )?,
-            Effect::BytesReceived {
+            Event::BytesReceived {
                 protocol,
                 src_addr,
                 src_port,
@@ -60,7 +60,7 @@ impl Debug for Effect {
                  {:?}, dest_port: {:?}, text: {:?} }}",
                 protocol, src_addr, src_port, dest_port, text
             )?,
-            Effect::TcpConnectionEstablished(handle) => {
+            Event::TcpConnectionEstablished(handle) => {
                 write!(f, "TcpConnectionEstablished({})", handle)?
             }
         }

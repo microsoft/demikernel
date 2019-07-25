@@ -95,7 +95,7 @@ impl<'a> ArpPeer<'a> {
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
                 let datagram = Rc::new(arp.to_datagram()?);
-                self.rt.emit_effect(Effect::Transmit(datagram));
+                self.rt.emit_event(Event::Transmit(datagram));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -144,7 +144,7 @@ impl<'a> ArpPeer<'a> {
             let mut retries_remaining =
                 options.arp.retry_count.unwrap_or(20) + 1;
             while retries_remaining > 0 {
-                rt.emit_effect(Effect::Transmit(datagram.clone()));
+                rt.emit_event(Event::Transmit(datagram.clone()));
                 retries_remaining -= 1;
                 if yield_until!(
                     cache.borrow().get_link_addr(ipv4_addr).is_some(),

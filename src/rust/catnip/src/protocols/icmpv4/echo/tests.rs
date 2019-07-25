@@ -38,10 +38,10 @@ fn ping() {
     assert!(fut.poll(now).is_none());
 
     let ping_request = {
-        let effect = alice.poll(now).unwrap().unwrap();
-        let bytes = match effect {
-            Effect::Transmit(bytes) => bytes.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = alice.poll(now).unwrap().unwrap();
+        let bytes = match event {
+            Event::Transmit(bytes) => bytes.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
@@ -53,10 +53,10 @@ fn ping() {
     let now = now + Duration::from_millis(1);
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
-        let effect = bob.poll(now).unwrap().unwrap();
-        let bytes = match effect {
-            Effect::Transmit(bytes) => bytes.to_vec(),
-            e => panic!("got unanticipated effect `{:?}`", e),
+        let event = bob.poll(now).unwrap().unwrap();
+        let bytes = match event {
+            Event::Transmit(bytes) => bytes.to_vec(),
+            e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let echo = Icmpv4Echo::attach(&bytes).unwrap();

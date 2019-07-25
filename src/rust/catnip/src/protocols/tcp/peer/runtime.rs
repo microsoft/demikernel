@@ -199,7 +199,7 @@ impl<'a> TcpRuntime<'a> {
             segment.src_ipv4_addr = Some(options.my_ipv4_addr);
             segment.src_link_addr = Some(options.my_link_addr);
             segment.dest_link_addr = Some(remote_link_addr);
-            rt.emit_effect(Effect::Transmit(Rc::new(segment.encode())));
+            rt.emit_event(Event::Transmit(Rc::new(segment.encode())));
 
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)
@@ -249,7 +249,7 @@ impl<'a> TcpRuntime<'a> {
                 Retry::exponential(timeout, 2, retries)
             )?;
 
-            rt.emit_effect(Effect::TcpConnectionEstablished(handle));
+            rt.emit_event(Event::TcpConnectionEstablished(handle));
 
             let x: Rc<dyn Any> = Rc::new(());
             Ok(x)

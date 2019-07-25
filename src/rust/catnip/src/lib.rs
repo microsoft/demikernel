@@ -26,7 +26,7 @@ extern crate maplit;
 #[macro_use]
 pub mod r#async;
 
-mod effect;
+mod event;
 mod options;
 mod prelude;
 mod protocols;
@@ -42,7 +42,7 @@ pub mod runtime;
 #[cfg(test)]
 pub mod test;
 
-pub use effect::Effect;
+pub use event::Event;
 pub use engine::Engine;
 pub use io::IoVec;
 pub use options::Options;
