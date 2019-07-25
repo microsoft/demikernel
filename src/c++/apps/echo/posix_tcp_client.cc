@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #include "common.hh"
 #include <arpa/inet.h>
 #include <boost/chrono.hpp>
@@ -40,7 +43,7 @@ int main(int argc, char *argv[])
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     printf("client fd:\t%d\n", fd);
-   
+
     // Set TCP_NODELAY
     int n = 1;
     if (setsockopt(fd, IPPROTO_TCP,

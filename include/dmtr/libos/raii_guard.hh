@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #ifndef DMTR_RAII_GUARD_HH_IS_INCLUDED
 #define DMTR_RAII_GUARD_HH_IS_INCLUDED
 
@@ -12,10 +15,10 @@ class raii_guard {
     public: ~raii_guard() {
         my_dtor();
     }
-             
-    public: 
+
+    public:
         template <class Fun>
-        raii_guard(Fun const &dtor) : 
+        raii_guard(Fun const &dtor) :
             my_dtor(dtor)
         {}
 
@@ -23,7 +26,7 @@ class raii_guard {
     public: raii_guard(raii_guard &&other);
 
     public: void cancel();
-}; 
+};
 
 } //namespace dmtr
 

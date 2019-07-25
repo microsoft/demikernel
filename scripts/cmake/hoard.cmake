@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 if(NOT HOARD_DOT_CMAKE_INCLUDED)
 set(HOARD_DOT_CMAKE_INCLUDED YES)
 

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #include <stdio.h>
 #include <assert.h>
 #include <stdint.h>
@@ -32,7 +35,7 @@ int main(int argc, char **argv) {
     msg[0] = 'h';
     msg[1] = 'i';
     msg[2] = 0;
-    
+
     sga.num_bufs = 1;
     sga.bufs[0].buf = (ioptr)msg;
     sga.bufs[0].len = BUFSIZE;

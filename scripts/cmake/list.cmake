@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 if(NOT LIST_DOT_CMAKE_INCLUDED)
 set(LIST_DOT_CMAKE_INCLUDED YES)
 
