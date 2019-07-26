@@ -90,12 +90,12 @@ int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
 boost::optional<std::string> file;
+std::string config_path;
 
 using namespace boost::program_options;
 
 void parse_args(int argc, char **argv, bool server, const options_description &d = {})
 {
-    std::string config_path;
     options_description desc{"echo experiment options"};
     if (d.get_option_column_width() > 0) {
         const options_description &add_desc = d;
