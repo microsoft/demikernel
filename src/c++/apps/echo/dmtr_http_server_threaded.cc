@@ -279,6 +279,8 @@ static void *tcp_work(void *args) {
     tokens.push_back(token);
 
     std::vector<int> http_q_pending;
+    //Used to remove tokens associated with closed TCP connections
+    std::unordered_map<int, dmtr_qtoken_t> tcp_http_dep;
     int num_rcvd = 0;
     while (1) {
         dmtr_qresult_t wait_out;
@@ -295,7 +297,7 @@ static void *tcp_work(void *args) {
                 /* Re-enable accepting on the listening socket */
                 dmtr_accept(&token, lqd);
                 tokens.push_back(token);
-                log_debug("Accepted a new connection on %d", lqd);
+                log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
             } else {
                 assert(DMTR_OPC_POP == wait_out.qr_opcode);
                 assert(wait_out.qr_value.sga.sga_numsegs <= 2);
@@ -316,9 +318,10 @@ static void *tcp_work(void *args) {
                     );
                     /* This is a new request */
                     num_rcvd++;
-                    if (num_rcvd % 100 == 0) {
+                    /*
+                    if (num_rcvd % 500 == 0) {
                         log_info("received: %d requests\n", num_rcvd);
-                    }
+                    }*/
                     if (worker_args->split) {
                         /* Load balance incoming requests among HTTP workers */
                         int worker_idx;
@@ -345,6 +348,7 @@ static void *tcp_work(void *args) {
                         dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
                         tokens.push_back(token);
                         http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
+                        tcp_http_dep.insert(std::pair<int, dmtr_qtoken_t>(wait_out.qr_qd, token));
                         /* Re-enable TCP queue for reading */
                         //FIXME: this does not work but would allow multiple request
                         //from the same connection to be in-flight
@@ -404,7 +408,8 @@ static void *tcp_work(void *args) {
                             continue;
                         }
 
-                        /* Free the sga, prepare a new one:
+                        /**
+                         * Free the sga, prepare a new one:
                          * we should not reuse it because it was not sized for this response
                          */
                         free(wait_out.qr_value.sga.sga_buf);
@@ -431,11 +436,26 @@ static void *tcp_work(void *args) {
                     );
                     /* This comes from an HTTP worker and we need to forward to the client */
                     int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
+
+                    /* The token should match with the pop() that was done after reception from the client */
+                    auto it2 = tcp_http_dep.find(client_qfd);
+                    /* Nothing coming from an HTTP worker should be un-registered */
+                    assert(it2 != tcp_http_dep.end());
+                    if (token != it2->second) {
+                        /* Ignore this message and fetch the next one */
+                        dmtr_pop(&token, wait_out.qr_qd);
+                        tokens.push_back(token);
+                        log_debug("Dropping obsolete message\n");
+                        tcp_http_dep.erase(it); //XXX likely not needed
+                        continue;
+                    }
+
                     http_q_pending.erase(it);
                     /* Answer the client */
                     dmtr_push(&token, client_qfd, &wait_out.qr_value.sga);
                     /* we have to wait because we can't free before sga is sent */
                     dmtr_wait(NULL, token);
+                    log_debug("Answered the client on queue %d", client_qfd);
                     free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
 
@@ -446,6 +466,14 @@ static void *tcp_work(void *args) {
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
+            if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
+                log_debug("An accept task failed with connreset or aborted??\n");
+            }
+            auto it = tcp_http_dep.find(wait_out.qr_qd);
+            if (it != tcp_http_dep.end()) {
+                tokens.erase(std::remove(tokens.begin(), tokens.end(), it->second), tokens.end());
+                log_debug("Dropping token due to (timed out?) severed TCP connection\n");
+            }
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
         }
