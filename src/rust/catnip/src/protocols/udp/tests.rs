@@ -1,7 +1,7 @@
 use super::datagram::UdpDatagramDecoder;
 use crate::{
     prelude::*,
-    protocols::{icmpv4, ip, ipv4},
+    protocols::{icmpv4, ip},
     r#async::Async,
     test,
 };
@@ -51,22 +51,14 @@ fn unicast() {
     bob.receive(&udp_datagram).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     match event {
-        Event::BytesReceived {
-            ref protocol,
-            ref src_addr,
-            ref src_port,
-            ref dest_port,
-            text: ref p,
-        } => {
-            assert_eq!(protocol, &ipv4::Protocol::Udp);
-            assert_eq!(src_addr, test::alice_ipv4_addr());
-            assert_eq!(src_port, &alice_port);
-            assert_eq!(dest_port, &bob_port);
-            assert_eq!(p.len(), 1);
-            assert_eq!(text.as_slice(), &p[0][..text.len()]);
-            for i in &p[0][text.len()..] {
-                assert_eq!(&0u8, i);
-            }
+        Event::UdpDatagramReceived(datagram) => {
+            assert_eq!(
+                datagram.src_ipv4_addr.unwrap(),
+                *test::alice_ipv4_addr()
+            );
+            assert_eq!(datagram.src_port.unwrap(), alice_port);
+            assert_eq!(datagram.dest_port.unwrap(), bob_port);
+            assert_eq!(text.as_slice(), &datagram.payload[..text.len()]);
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }

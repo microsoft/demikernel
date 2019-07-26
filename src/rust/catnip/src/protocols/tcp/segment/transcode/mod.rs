@@ -18,6 +18,7 @@ enum ChecksumOp {
     Validate,
 }
 
+#[derive(Clone, Copy)]
 pub struct TcpSegmentDecoder<'a>(ipv4::Datagram<'a>);
 
 impl<'a> TcpSegmentDecoder<'a> {

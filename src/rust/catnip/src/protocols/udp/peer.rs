@@ -1,4 +1,4 @@
-use super::datagram::{UdpDatagramDecoder, UdpDatagramEncoder};
+use super::datagram::{UdpDatagram, UdpDatagramDecoder, UdpDatagramEncoder};
 use crate::{
     prelude::*,
     protocols::{arp, icmpv4, ip, ipv4},
@@ -32,9 +32,8 @@ impl<'a> UdpPeer<'a> {
     ) -> Result<()> {
         trace!("UdpPeer::receive(...)");
         let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
-        let ipv4_header = decoder.ipv4().header();
-        let udp_header = decoder.header();
-        let dest_port = match udp_header.dest_port() {
+        let udp_datagram = UdpDatagram::try_from(decoder)?;
+        let dest_port = match udp_datagram.dest_port {
             Some(p) => p,
             None => {
                 return Err(Fail::Malformed {
@@ -44,29 +43,19 @@ impl<'a> UdpPeer<'a> {
         };
 
         if self.is_port_open(dest_port) {
-            let src_port = match udp_header.src_port() {
-                Some(p) => p,
-                None => {
-                    return Err(Fail::Malformed {
-                        details: "source port is zero",
-                    })
-                }
-            };
+            if udp_datagram.src_port.is_none() {
+                return Err(Fail::Malformed {
+                    details: "source port is zero",
+                });
+            }
 
-            self.rt.emit_event(Event::BytesReceived {
-                protocol: ipv4::Protocol::Udp,
-                src_addr: ipv4_header.src_addr(),
-                src_port,
-                dest_port,
-                text: IoVec::from(decoder.text().to_vec()),
-            });
-
+            self.rt.emit_event(Event::UdpDatagramReceived(udp_datagram));
             Ok(())
         } else {
             // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch08.html):
             // > the source address cannot be a zero address, a loopback
             // > address, a broadcast address, or a multicast address
-            let src_ipv4_addr = ipv4_header.src_addr();
+            let src_ipv4_addr = udp_datagram.src_ipv4_addr.unwrap();
             if src_ipv4_addr.is_broadcast()
                 || src_ipv4_addr.is_loopback()
                 || src_ipv4_addr.is_multicast()

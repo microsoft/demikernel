@@ -11,6 +11,7 @@ use std::{convert::TryFrom, io::Write};
 
 pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 
+#[derive(Clone, Copy)]
 pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {

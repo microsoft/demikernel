@@ -12,7 +12,7 @@ pub use transcode::{
     MAX_MSS, MIN_MSS,
 };
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Debug)]
 pub struct TcpSegment {
     pub dest_ipv4_addr: Option<Ipv4Addr>,
     pub dest_port: Option<ip::Port>,
@@ -149,7 +149,7 @@ impl TcpSegment {
 impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
     type Error = Fail;
 
-    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<TcpSegment> {
+    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<Self> {
         let tcp_header = decoder.header();
         let dest_port = tcp_header.dest_port();
         let src_port = tcp_header.src_port();

@@ -10,6 +10,7 @@ pub use header::{
 // minimum paylod size is 46 bytes as described at [this wikipedia article](https://en.wikipedia.org/wiki/Ethernet_frame).
 pub static MIN_PAYLOAD_SIZE: usize = 46;
 
+#[derive(Clone, Copy)]
 pub struct Ethernet2Frame<'a>(&'a [u8]);
 
 impl<'a> Ethernet2Frame<'a> {

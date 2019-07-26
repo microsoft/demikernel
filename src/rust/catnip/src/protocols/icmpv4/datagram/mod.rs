@@ -13,6 +13,7 @@ use std::{convert::TryFrom, io::Write};
 
 const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
+#[derive(Clone, Copy)]
 pub struct Icmpv4Datagram<'a>(ipv4::Datagram<'a>);
 
 impl<'a> Icmpv4Datagram<'a> {

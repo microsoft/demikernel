@@ -1,14 +1,10 @@
-use crate::{
-    io::IoVec,
-    protocols::{icmpv4, ip, ipv4, tcp},
-};
+use crate::protocols::{icmpv4, tcp, udp};
 use std::{
     fmt::{Debug, Formatter, Result as FmtResult},
-    net::Ipv4Addr,
     rc::Rc,
 };
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum Event {
     Transmit(Rc<Vec<u8>>),
     Icmpv4Error {
@@ -16,13 +12,7 @@ pub enum Event {
         next_hop_mtu: u16,
         context: Vec<u8>,
     },
-    BytesReceived {
-        protocol: ipv4::Protocol,
-        src_addr: Ipv4Addr,
-        src_port: ip::Port,
-        dest_port: ip::Port,
-        text: IoVec,
-    },
+    UdpDatagramReceived(udp::Datagram),
     TcpConnectionEstablished(tcp::ConnectionHandle),
 }
 
@@ -48,18 +38,9 @@ impl Debug for Event {
                  }}",
                 id, next_hop_mtu, context
             )?,
-            Event::BytesReceived {
-                protocol,
-                src_addr,
-                src_port,
-                dest_port,
-                text,
-            } => write!(
-                f,
-                "BytesReceived {{ protocol: {:?}, src_addr: {:?}, src_port: \
-                 {:?}, dest_port: {:?}, text: {:?} }}",
-                protocol, src_addr, src_port, dest_port, text
-            )?,
+            Event::UdpDatagramReceived(datagram) => {
+                write!(f, "UdpDatagramReceived({:?})", datagram)?
+            }
             Event::TcpConnectionEstablished(handle) => {
                 write!(f, "TcpConnectionEstablished({})", handle)?
             }
