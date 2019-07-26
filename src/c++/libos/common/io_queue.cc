@@ -197,6 +197,7 @@ int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
 
 int dmtr::io_queue::task::complete(int error) {
     DMTR_TRUE(EINVAL, error != EAGAIN);
+
     my_error = error;
     return 0;
 }

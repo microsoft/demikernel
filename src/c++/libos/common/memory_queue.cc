@@ -90,6 +90,8 @@ int dmtr::memory_queue::pop_thread(task::thread_type::yield_type &yield, task::t
 
 int dmtr::memory_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     std::lock_guard<std::recursive_mutex> lock(my_lock);
+
+    DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EINVAL, good());
 
     task *t;
