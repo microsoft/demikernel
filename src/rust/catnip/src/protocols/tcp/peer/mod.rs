@@ -11,11 +11,10 @@ use super::{
 use crate::{
     prelude::*,
     protocols::{arp, ip, ipv4},
-    r#async::{Async, Future, WhenAny},
+    r#async::WhenAny,
 };
 use std::{
-    any::Any, cell::RefCell, convert::TryFrom, num::Wrapping, rc::Rc,
-    time::Instant,
+    cell::RefCell, convert::TryFrom, num::Wrapping, rc::Rc, time::Instant,
 };
 
 pub use runtime::TcpRuntime;
@@ -132,8 +131,7 @@ impl<'a> TcpPeer<'a> {
                 Ok(cxnid) => {
                     let tcp_rt = tcp_rt.borrow();
                     let cxn = tcp_rt.get_connection(&cxnid).unwrap();
-                    let x: Rc<dyn Any> = Rc::new(cxn.handle);
-                    return Ok(x);
+                    return CoroutineOk(cxn.handle);
                 }
                 Err(e) => e,
             };

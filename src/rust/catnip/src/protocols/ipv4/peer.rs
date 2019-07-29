@@ -2,7 +2,6 @@ use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::{
     prelude::*,
     protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp, udp},
-    r#async::{Async, Future},
 };
 use std::{
     convert::TryFrom,

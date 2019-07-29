@@ -2,7 +2,6 @@ use super::super::segment::TcpSegmentDecoder;
 use crate::{
     prelude::*,
     protocols::{ip, ipv4},
-    r#async::Async,
     test,
 };
 use std::{

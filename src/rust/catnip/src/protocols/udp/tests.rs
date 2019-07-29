@@ -2,7 +2,6 @@ use super::datagram::UdpDatagramDecoder;
 use crate::{
     prelude::*,
     protocols::{icmpv4, ip},
-    r#async::Async,
     test,
 };
 use std::time::{Duration, Instant};

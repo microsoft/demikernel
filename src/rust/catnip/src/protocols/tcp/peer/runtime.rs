@@ -8,11 +8,10 @@ use super::{
 use crate::{
     prelude::*,
     protocols::{arp, ip, ipv4},
-    r#async::{Future, Retry},
+    r#async::Retry,
 };
 use rand::seq::SliceRandom;
 use std::{
-    any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
@@ -144,9 +143,7 @@ impl<'a> TcpRuntime<'a> {
             };
 
             r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
-
-            let x: Rc<dyn Any> = Rc::new(cxnid);
-            Ok(x)
+            CoroutineOk(cxnid)
         })
     }
 
@@ -175,8 +172,7 @@ impl<'a> TcpRuntime<'a> {
                 r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
             }
 
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         })
     }
 
@@ -201,9 +197,7 @@ impl<'a> TcpRuntime<'a> {
             segment.src_link_addr = Some(options.my_link_addr);
             segment.dest_link_addr = Some(remote_link_addr);
             rt.emit_event(Event::Transmit(Rc::new(segment.encode())));
-
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         })
     }
 
@@ -249,9 +243,7 @@ impl<'a> TcpRuntime<'a> {
             )?;
 
             rt.emit_event(Event::TcpConnectionEstablished(handle));
-
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         })
     }
 
@@ -296,8 +288,7 @@ impl<'a> TcpRuntime<'a> {
                         && ack != segment.syn
                         && segment.ack_num == expected_ack_num
                     {
-                        let x: Rc<dyn Any> = Rc::new(Rc::new(segment));
-                        return Ok(x);
+                        return CoroutineOk(Rc::new(segment));
                     }
                 }
             }

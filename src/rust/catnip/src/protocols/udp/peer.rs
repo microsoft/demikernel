@@ -2,10 +2,10 @@ use super::datagram::{UdpDatagram, UdpDatagramDecoder, UdpDatagramEncoder};
 use crate::{
     prelude::*,
     protocols::{arp, icmpv4, ip, ipv4},
-    r#async::{Async, Future, WhenAny},
+    r#async::WhenAny,
 };
 use std::{
-    any::Any, collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+    collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
     time::Instant,
 };
 
@@ -118,9 +118,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.src_addr(options.my_link_addr);
             let _ = encoder.seal()?;
             rt.emit_event(Event::Transmit(Rc::new(bytes)));
-
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         })
     }
 
@@ -164,9 +162,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.dest_addr(dest_link_addr);
             let _ = error.seal()?;
             rt.emit_event(Event::Transmit(Rc::new(bytes)));
-
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         });
 
         self.async_work.add(fut);

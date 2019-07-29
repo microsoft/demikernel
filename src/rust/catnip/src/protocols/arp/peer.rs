@@ -5,12 +5,11 @@ use super::{
 use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
-    r#async::{Async, Future},
 };
 use float_duration::FloatDuration;
 use std::{
-    any::Any, cell::RefCell, collections::HashMap, convert::TryFrom,
-    mem::swap, net::Ipv4Addr, rc::Rc, time::Instant,
+    cell::RefCell, collections::HashMap, convert::TryFrom, mem::swap,
+    net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
 #[derive(Clone)]
@@ -157,8 +156,7 @@ impl<'a> ArpPeer<'a> {
                         .copied()
                         .unwrap();
                     debug!("ARP result available ({})", link_addr);
-                    let x: Rc<dyn Any> = Rc::new(link_addr);
-                    return Ok(x);
+                    return CoroutineOk(link_addr);
                 }
 
                 warn!(

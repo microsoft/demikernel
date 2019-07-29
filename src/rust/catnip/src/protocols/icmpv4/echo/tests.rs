@@ -1,5 +1,5 @@
 use super::*;
-use crate::{r#async::Async, test};
+use crate::test;
 use std::time::{Duration, Instant};
 
 #[test]

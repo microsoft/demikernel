@@ -6,12 +6,11 @@ use super::{
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
-    r#async::{Async, Future, WhenAny},
+    r#async::WhenAny,
 };
 use byteorder::{NativeEndian, WriteBytesExt};
 use rand::Rng;
 use std::{
-    any::Any,
     cell::{Cell, RefCell},
     collections::HashSet,
     convert::TryFrom,
@@ -142,9 +141,7 @@ impl<'a> Icmpv4Peer<'a> {
                 rt.now(),
                 timeout
             ) {
-                let dt = rt.now() - t0;
-                let x: Rc<dyn Any> = Rc::new(dt);
-                Ok(x)
+                CoroutineOk(rt.now() - t0)
             } else {
                 Err(Fail::Timeout {})
             }
@@ -184,8 +181,7 @@ impl<'a> Icmpv4Peer<'a> {
             let _ = echo.seal()?;
             rt.emit_event(Event::Transmit(Rc::new(bytes)));
 
-            let x: Rc<dyn Any> = Rc::new(());
-            Ok(x)
+            CoroutineOk(())
         });
 
         self.async_work.add(fut);

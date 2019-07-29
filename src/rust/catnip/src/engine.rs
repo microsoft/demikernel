@@ -5,7 +5,7 @@ use crate::{
         ethernet2::{self, MacAddress},
         ip, ipv4, tcp,
     },
-    r#async::{self, Async, Future},
+    r#async,
 };
 use std::{
     collections::HashMap,

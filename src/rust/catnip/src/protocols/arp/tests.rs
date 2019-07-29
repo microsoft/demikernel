@@ -1,4 +1,4 @@
-use crate::{prelude::*, protocols::ethernet2, r#async::Async, test};
+use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
 use std::time::{Duration, Instant};

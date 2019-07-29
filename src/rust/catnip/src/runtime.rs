@@ -1,8 +1,4 @@
-use crate::{
-    prelude::*,
-    r#async::{self, Async},
-    rand::Rng,
-};
+use crate::{prelude::*, r#async, rand::Rng};
 use rand_core::SeedableRng;
 use std::{
     any::Any,
