@@ -1,7 +1,7 @@
 use super::{
     super::{
         connection::{TcpConnection, TcpConnectionHandle, TcpConnectionId},
-        segment::{TcpSegment, DEFAULT_MSS, MIN_MSS},
+        segment::TcpSegment,
     },
     isn_generator::IsnGenerator,
 };
@@ -14,7 +14,6 @@ use rand::seq::SliceRandom;
 use std::{
     any::Any,
     cell::RefCell,
-    cmp::min,
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     rc::Rc,
@@ -117,28 +116,30 @@ impl<'a> TcpRuntime<'a> {
             let (cxnid, rt) = {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
-                let _ = state.new_connection(cxnid.clone(), None)?;
+                let _ = state.new_connection(cxnid.clone())?;
                 (cxnid, rt)
             };
 
             let options = rt.options();
             let retries = options.tcp.handshake_retries();
             let timeout = options.tcp.handshake_timeout();
-            let remote_isn = r#await!(
-                TcpRuntime::handshake(&state, &cxnid, None),
+            let ack_segment = r#await!(
+                TcpRuntime::handshake(&state, &cxnid, false),
                 rt.now(),
                 Retry::exponential(timeout, 2, retries)
             )?;
 
-            let ack_num = remote_isn + Wrapping(1);
+            let remote_isn = ack_segment.seq_num;
 
             let segment = {
                 let mut state = state.borrow_mut();
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
+                cxn.set_remote_isn(remote_isn);
+                cxn.negotiate_mss(ack_segment.mss)?;
                 cxn.seq_num += Wrapping(1);
                 TcpSegment::default()
                     .connection(&cxn)
-                    .ack_num(ack_num)
+                    .ack_num(cxn.ack_num())
                     .ack()
             };
 
@@ -216,6 +217,7 @@ impl<'a> TcpRuntime<'a> {
             let (cxnid, handle, rt) = {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
+                let options = rt.options();
 
                 assert!(syn_segment.syn && !syn_segment.ack);
                 let local_port = syn_segment.dest_port.unwrap();
@@ -225,26 +227,23 @@ impl<'a> TcpRuntime<'a> {
                 let remote_port = syn_segment.src_port.unwrap();
                 let cxnid = TcpConnectionId {
                     local: ipv4::Endpoint::new(
-                        rt.options().my_ipv4_addr,
+                        options.my_ipv4_addr,
                         local_port,
                     ),
                     remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
                 };
-                let mss = min(DEFAULT_MSS, syn_segment.mss.unwrap_or(MIN_MSS));
-                let handle = state.new_connection(cxnid.clone(), Some(mss))?;
 
-                (cxnid, handle, rt)
+                let cxn = state.new_connection(cxnid.clone())?;
+                cxn.negotiate_mss(syn_segment.mss)?;
+                cxn.set_remote_isn(syn_segment.seq_num);
+                (cxnid, cxn.handle, rt)
             };
 
             let options = rt.options();
             let retries = options.tcp.handshake_retries();
             let timeout = options.tcp.handshake_timeout();
-            let _remote_isn = r#await!(
-                TcpRuntime::handshake(
-                    &state,
-                    &cxnid,
-                    Some(syn_segment.seq_num),
-                ),
+            let _ = r#await!(
+                TcpRuntime::handshake(&state, &cxnid, true,),
                 rt.now(),
                 Retry::exponential(timeout, 2, retries)
             )?;
@@ -259,23 +258,21 @@ impl<'a> TcpRuntime<'a> {
     fn handshake(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: &TcpConnectionId,
-        syn_seq_num: Option<Wrapping<u32>>,
-    ) -> Future<'a, Wrapping<u32>> {
+        ack: bool,
+    ) -> Future<'a, Rc<TcpSegment>> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         let cxnid = cxnid.clone();
         rt.start_coroutine(move || {
-            trace!("TcpRuntime::handshake({:?})", syn_seq_num);
-            let mut ack = false;
+            trace!("TcpRuntime::handshake({:?})", ack);
             let (segment, rt, incoming_segments) = {
                 let state = state.borrow();
                 let cxn = state.connections.get(&cxnid).unwrap();
                 let mut segment =
-                    TcpSegment::default().connection(cxn).mss(cxn.mss).syn();
-                if let Some(syn_seq_num) = syn_seq_num {
-                    ack = true;
+                    TcpSegment::default().connection(cxn).mss(cxn.mss()).syn();
+                if ack {
                     segment.ack = true;
-                    segment.ack_num = syn_seq_num + Wrapping(1);
+                    segment.ack_num = cxn.ack_num();
                 }
                 (segment, state.rt.clone(), cxn.incoming_segments.clone())
             };
@@ -299,7 +296,7 @@ impl<'a> TcpRuntime<'a> {
                         && ack != segment.syn
                         && segment.ack_num == expected_ack_num
                     {
-                        let x: Rc<dyn Any> = Rc::new(segment.seq_num);
+                        let x: Rc<dyn Any> = Rc::new(Rc::new(segment));
                         return Ok(x);
                     }
                 }
@@ -339,15 +336,23 @@ impl<'a> TcpRuntime<'a> {
     fn new_connection(
         &mut self,
         cxnid: TcpConnectionId,
-        mss: Option<usize>,
-    ) -> Result<TcpConnectionHandle> {
+    ) -> Result<&mut TcpConnection> {
+        let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
-        let isn = self.isn_generator.next(&cxnid);
-        let cxn = TcpConnection::new(cxnid.clone(), handle, isn, mss);
+        let local_isn = self.isn_generator.next(&cxnid);
+        let cxn = TcpConnection::new(
+            cxnid.clone(),
+            handle,
+            local_isn,
+            options.tcp.receive_window_size(),
+        );
         let local_port = cxnid.local.port();
         assert!(self.connections.insert(cxnid.clone(), cxn).is_none());
-        assert!(self.assigned_handles.insert(handle, cxnid).is_none());
+        assert!(self
+            .assigned_handles
+            .insert(handle, cxnid.clone())
+            .is_none());
         self.open_ports.insert(local_port);
-        Ok(handle)
+        Ok(self.connections.get_mut(&cxnid).unwrap())
     }
 }

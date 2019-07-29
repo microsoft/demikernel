@@ -1,11 +1,11 @@
 use std::ops::Index;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IoVec(Vec<Vec<u8>>);
 
 impl IoVec {
-    pub fn new(bytes: Vec<Vec<u8>>) -> IoVec {
-        IoVec(bytes)
+    pub fn new() -> IoVec {
+        IoVec::default()
     }
 
     pub fn len(&self) -> usize {
@@ -15,17 +15,21 @@ impl IoVec {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    pub fn push(&mut self, segment: Vec<u8>) {
+        self.0.push(segment);
+    }
 }
 
 impl From<Vec<Vec<u8>>> for IoVec {
     fn from(bytes: Vec<Vec<u8>>) -> IoVec {
-        IoVec::new(bytes)
+        IoVec(bytes)
     }
 }
 
 impl From<Vec<u8>> for IoVec {
     fn from(bytes: Vec<u8>) -> IoVec {
-        IoVec::new(vec![bytes])
+        IoVec::from(vec![bytes])
     }
 }
 

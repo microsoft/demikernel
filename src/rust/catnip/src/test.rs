@@ -55,6 +55,7 @@ pub fn new_engine<'a>(
             tcp: tcp::Options {
                 handshake_retries: None,
                 handshake_timeout: None,
+                receive_window_size: None,
             },
         },
     )
