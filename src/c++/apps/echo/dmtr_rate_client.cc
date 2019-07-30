@@ -277,6 +277,10 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 tokens.push_back(token);
                 requests.insert(std::pair<int, RequestState *>(request->conn_qd, request));
 
+                /* Re-enable memory queue for reading */
+                DMTR_OK(dmtr_pop(&token, process_conn_memq));
+                tokens.push_back(token);
+
                 continue;
             }
 
@@ -319,11 +323,13 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
             tokens.erase(tokens.begin()+idx);
         }
 
+        /*
         if (hr_clock::now() > *time_end) {
             log_warn("process time has passed. %d requests were processed.", completed);
             expired = true;
             break;
         }
+        */
     }
 
     if (!expired) {
