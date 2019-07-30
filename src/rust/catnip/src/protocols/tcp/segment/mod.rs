@@ -102,7 +102,7 @@ impl TcpSegment {
             .src_port(cxn.id.local.port())
             .dest_ipv4_addr(cxn.id.remote.address())
             .dest_port(cxn.id.remote.port())
-            .seq_num(cxn.seq_num)
+            .seq_num(cxn.get_seq_num())
     }
 
     pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {

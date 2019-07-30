@@ -66,7 +66,9 @@ impl<'a> ArpPeer<'a> {
                 return Ok(());
             } else {
                 // we didn't do anything.
-                return Err(Fail::Ignored {});
+                return Err(Fail::Ignored {
+                    details: "unrecognized IP address",
+                });
             }
         }
 

@@ -35,7 +35,7 @@ fn immediate_reply() {
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
     match bob.receive(&request) {
-        Err(Fail::Ignored {}) => (),
+        Err(Fail::Ignored { .. }) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();
@@ -103,7 +103,7 @@ fn slow_reply() {
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
     match bob.receive(&request) {
-        Err(Fail::Ignored {}) => (),
+        Err(Fail::Ignored { .. }) => (),
         x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
     }
     let cache = bob.export_arp_cache();

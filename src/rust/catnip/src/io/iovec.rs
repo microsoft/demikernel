@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::{ops::Index, vec::IntoIter};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IoVec(Vec<Vec<u8>>);
@@ -10,6 +10,10 @@ impl IoVec {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn byte_count(&self) -> usize {
+        self.0.iter().map(|v| v.len()).sum()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -38,5 +42,14 @@ impl Index<usize> for IoVec {
 
     fn index(&self, n: usize) -> &Self::Output {
         self.0.index(n)
+    }
+}
+
+impl IntoIterator for IoVec {
+    type IntoIter = IntoIter<Vec<u8>>;
+    type Item = Vec<u8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }

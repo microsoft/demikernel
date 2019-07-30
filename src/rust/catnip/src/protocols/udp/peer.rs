@@ -61,7 +61,9 @@ impl<'a> UdpPeer<'a> {
                 || src_ipv4_addr.is_multicast()
                 || src_ipv4_addr.is_unspecified()
             {
-                return Err(Fail::Ignored {});
+                return Err(Fail::Ignored {
+                    details: "invalid IPv4 address type",
+                });
             }
 
             self.send_icmpv4_error(src_ipv4_addr, decoder.as_bytes().to_vec());

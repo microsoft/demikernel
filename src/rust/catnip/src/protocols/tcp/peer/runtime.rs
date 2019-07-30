@@ -24,7 +24,6 @@ pub struct TcpRuntime<'a> {
     connections: HashMap<TcpConnectionId, TcpConnection>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
-    passive_connections: HashMap<ipv4::Endpoint, TcpConnection>,
     rt: Runtime<'a>,
     unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
     unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
@@ -62,7 +61,6 @@ impl<'a> TcpRuntime<'a> {
             connections: HashMap::new(),
             isn_generator,
             open_ports: HashSet::new(),
-            passive_connections: HashMap::new(),
             rt,
             unassigned_connection_handles,
             unassigned_private_ports,
@@ -135,11 +133,13 @@ impl<'a> TcpRuntime<'a> {
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
                 cxn.set_remote_isn(remote_isn);
                 cxn.negotiate_mss(ack_segment.mss)?;
-                cxn.seq_num += Wrapping(1);
+                // SYN packet has been acknowledged; increment the sequence
+                // number.
+                cxn.incr_seq_num();
                 TcpSegment::default()
                     .connection(&cxn)
-                    .ack_num(cxn.ack_num())
-                    .ack(cxn.receive_window_size())
+                    .ack_num(cxn.get_ack_num())
+                    .ack(cxn.get_local_receive_window_size())
             };
 
             r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
@@ -161,7 +161,7 @@ impl<'a> TcpRuntime<'a> {
                 let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
                     cxn
                 } else {
-                    return Err(Fail::Ignored {});
+                    return Err(Fail::ResourceNotFound {});
                 };
 
                 let segment = TcpSegment::default().connection(&cxn).rst();
@@ -242,6 +242,12 @@ impl<'a> TcpRuntime<'a> {
                 Retry::exponential(timeout, 2, retries)
             )?;
 
+            // SYN+ACK packet has been acknowledged; increment the sequence
+            // number.
+            let mut state = state.borrow_mut();
+            let cxn = state.connections.get_mut(&cxnid).unwrap();
+            cxn.incr_seq_num();
+
             rt.emit_event(Event::TcpConnectionEstablished(handle));
             CoroutineOk(())
         })
@@ -260,12 +266,14 @@ impl<'a> TcpRuntime<'a> {
             let (segment, rt, incoming_segments) = {
                 let state = state.borrow();
                 let cxn = state.connections.get(&cxnid).unwrap();
-                let mut segment =
-                    TcpSegment::default().connection(cxn).mss(cxn.mss()).syn();
+                let mut segment = TcpSegment::default()
+                    .connection(cxn)
+                    .mss(cxn.get_mss())
+                    .syn();
                 if ack {
                     segment.ack = true;
-                    segment.ack_num = cxn.ack_num();
-                    segment.window_size = cxn.receive_window_size();
+                    segment.ack_num = cxn.get_ack_num();
+                    segment.window_size = cxn.get_local_receive_window_size();
                 }
                 (segment, state.rt.clone(), cxn.incoming_segments.clone())
             };
