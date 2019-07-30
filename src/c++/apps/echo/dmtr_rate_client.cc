@@ -26,6 +26,11 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 
+//FIXME:
+// Multiple create/process/log thread sets are now disfunctionnal
+// due to http_requests not being thread safe (TODO: create a
+// vector of http_request, one per thread set
+
 /*****************************************************************
  *********************** TIME VARIABLES **************************
  *****************************************************************/
@@ -116,16 +121,15 @@ struct RequestState {
     hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
     hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
     bool valid; /** Whether the response was valid */
+    std::string req; /** The actual request */
+    int conn_qd; /** The connection's queue descriptor */
+
+    public:
+        RequestState(char *req): req(req) {}
 };
 
 /* Pre-formatted HTTP GET requests */
-std::vector<std::unique_ptr<std::string> > http_requests;
-
-/* Mutex for queue shared between init and process threads */
-std::mutex connected_qfds_mutex;
-
-/* Mutex for queue of request state shared between init and process threads */
-std::mutex completed_qfds_mutex;
+std::vector<RequestState *> http_requests;
 
 /*****************************************************************
  *********************** LOGGING *********************************
@@ -147,8 +151,7 @@ struct log_data {
     char const *name;
 };
 
-int log_responses(uint32_t total_requests,
-                  std::queue<std::pair<int, RequestState> > &qfds,
+int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
                   std::string log_dir, std::string label, int my_idx) {
 
@@ -170,45 +173,39 @@ int log_responses(uint32_t total_requests,
     bool expired = false;
     uint32_t logged = 0;
     while (logged < total_requests) {
-        bool has_pair = false;
-        std::pair<int, RequestState> request;
-        {
-            std::lock_guard<std::mutex> lock(completed_qfds_mutex);
-            if (!qfds.empty()) {
-                request = qfds.front();
-                qfds.pop();
-                has_pair = true;
-            }
-        }
-        if (!has_pair) {
-            if (hr_clock::now() > *time_end) {
-                log_warn("logging time has passed. %d requests were logged.", logged);
-                break;
-            }
-            continue;
+        dmtr_qresult_t wait_out;
+        dmtr_qtoken_t token;
+        dmtr_pop(&token, log_memq);
+        int status = dmtr_wait(&wait_out, token);
+        if (status == 0) {
+            RequestState *req = reinterpret_cast<RequestState *>(
+                wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+            );
+
+            DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->connecting),
+                                              ns_diff(req->connecting, req->completed)));
+            /*
+            fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
+                    ns_diff(req.connecting, req.connected),
+                    since_epoch(req.connected), since_epoch(req.connecting));
+            fprintf(stderr, "Send: %ld (%ld-%ld)\n",
+                    ns_diff(req.sending, req.reading),
+                    since_epoch(req.reading), since_epoch(req.sending));
+            fprintf(stderr, "Receive: %ld (%ld-%ld)\n",
+                    ns_diff(req.reading, req.completed),
+                    since_epoch(req.completed), since_epoch(req.reading));
+            */
+            DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req->connecting),
+                                              ns_diff(req->connecting, req->connected)));
+            DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req->sending),
+                                              ns_diff(req->sending, req->reading)));
+            DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req->reading),
+                                              ns_diff(req->reading, req->completed)));
+            logged++;
+        } else {
+            log_warn("dmtr_wait on log memq got status != 0");
         }
 
-        RequestState req = request.second;
-        DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req.connecting),
-                                          ns_diff(req.connecting, req.completed)));
-        /*
-        fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
-                ns_diff(req.connecting, req.connected),
-                since_epoch(req.connected), since_epoch(req.connecting));
-        fprintf(stderr, "Send: %ld (%ld-%ld)\n",
-                ns_diff(req.sending, req.reading),
-                since_epoch(req.reading), since_epoch(req.sending));
-        fprintf(stderr, "Receive: %ld (%ld-%ld)\n",
-                ns_diff(req.reading, req.completed),
-                since_epoch(req.completed), since_epoch(req.reading));
-        */
-        DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req.connecting),
-                                          ns_diff(req.connecting, req.connected)));
-        DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req.sending),
-                                          ns_diff(req.sending, req.reading)));
-        DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req.reading),
-                                          ns_diff(req.reading, req.completed)));
-        logged++;
         if (hr_clock::now() > *time_end) {
             log_warn("logging time has passed. %d requests were logged.", logged);
             expired = true;
@@ -236,48 +233,23 @@ int log_responses(uint32_t total_requests,
  *****************************************************************/
 
 int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_point *time_end,
-                        std::queue<std::pair<int, RequestState> > &qfds,
-                        std::queue<std::pair<int, RequestState> > &c_qfds) {
+                        int process_conn_memq, int log_memq) {
     bool expired = false;
     uint32_t completed = 0;
     uint32_t dequeued = 0;
-    uint32_t http_request_idx;
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0;
-    std::unordered_map<int, RequestState> requests;
+    std::unordered_map<int, RequestState *> requests;
+    dmtr_pop(&token, process_conn_memq);
+    tokens.push_back(token);
     while (completed < total_requests) {
-        /* First check if we have a new qd to use */
-        {
-            std::lock_guard<std::mutex> lock(connected_qfds_mutex);
-            if (!qfds.empty()) {
-                assert(dequeued < total_requests);
-                std::pair<int, RequestState> request = qfds.front();
-                qfds.pop();
-                int qd = request.first;
-                http_request_idx = dequeued + total_requests * my_idx;
-                dmtr_sgarray_t sga;
-                sga.sga_numsegs = 1;
-                std::unique_ptr<std::string> http_req =
-                    std::move(http_requests.at(http_request_idx));
-                assert(http_req.get() != NULL); //This should not happen
-                sga.sga_segs[0].sgaseg_len = http_req.get()->size();
-                sga.sga_segs[0].sgaseg_buf = const_cast<char *>(http_req.release()->c_str());
-                dequeued++;
-
-                RequestState req_state = request.second;
-                req_state.status = SENDING;
-                req_state.sending = hr_clock::now();
-                DMTR_OK(dmtr_push(&token, qd, &sga));
-                tokens.push_back(token);
-                requests.insert(std::pair<int, RequestState>(qd, req_state));
-            }
-        }
-
         if (tokens.empty()) {
+            /*
             if (hr_clock::now() > *time_end) {
                 log_warn("process time has passed. %d requests were processed.", completed);
                 break;
             }
+            */
             continue;
         }
 
@@ -287,28 +259,52 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         if (status == 0) {
             tokens.erase(tokens.begin() + idx);
+
+            /* Is this a new connection is ready to be processed ? */
+            if (wait_out.qr_qd == process_conn_memq) {
+                RequestState *request = reinterpret_cast<RequestState *>(
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+                );
+                dmtr_sgarray_t sga;
+                sga.sga_numsegs = 1;
+                sga.sga_segs[0].sgaseg_len = request->req.size();
+                sga.sga_segs[0].sgaseg_buf = const_cast<char *>(request->req.c_str());
+                dequeued++;
+
+                request->status = SENDING;
+                request->sending = hr_clock::now();
+                DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
+                tokens.push_back(token);
+                requests.insert(std::pair<int, RequestState *>(request->conn_qd, request));
+
+                continue;
+            }
+
             auto req = requests.find(wait_out.qr_qd);
             if (req == requests.end()) {
                 log_error("OP'ed on an unknown request qd?");
                 exit(1);
             }
-            RequestState &request = req->second;
+            RequestState *request = req->second;
             if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
                 /* Create pop task now that data was sent */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-                request.reading = hr_clock::now();
-                request.status = READING;
+                request->reading = hr_clock::now();
+                request->status = READING;
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 /* Log and complete request now that we have the answer */
-                request.completed = hr_clock::now();
-                request.status = COMPLETED;
-                request.valid = validate_response(wait_out.qr_value.sga);
-                {
-                    std::lock_guard<std::mutex> lock(completed_qfds_mutex);
-                    const int qd = wait_out.qr_qd;
-                    c_qfds.push(std::pair<int, RequestState>(qd, request));
-                }
+                request->completed = hr_clock::now();
+                request->status = COMPLETED;
+                request->valid = validate_response(wait_out.qr_value.sga);
+
+                dmtr_sgarray_t sga;
+                sga.sga_numsegs = 1;
+                sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
+                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request);
+                dmtr_push(&token, log_memq, &sga);
+                dmtr_wait(NULL, token);
+
                 free(wait_out.qr_value.sga.sga_buf);
                 dmtr_close(wait_out.qr_qd);
                 completed++;
@@ -341,8 +337,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
  *****************************************************************/
 
 int create_queues(double interval_ns, int n_requests, std::string host, int port,
-                  std::queue<std::pair<int, RequestState>> &qfds,
-                  hr_clock::time_point *time_end, int my_idx) {
+                  int process_conn_memq, hr_clock::time_point *time_end, int my_idx) {
     /* Configure target */
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -376,25 +371,30 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
 
-        struct RequestState req = {};
+        RequestState *req = http_requests[interval];
 
         /* Create Demeter queue */
         int qd = 0;
         DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
+        req->conn_qd = qd;
 
         /* Connect */
-        req.status = CONNECTING;
-        req.connecting = hr_clock::now();
+        req->status = CONNECTING;
+        req->connecting = hr_clock::now();
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
-        req.status = CONNECTED;
-        req.connected = hr_clock::now();
+        req->status = CONNECTED;
+        req->connected = hr_clock::now();
 
-        /* Make this qd available to the request handler thread */
-        {
-            std::lock_guard<std::mutex> lock(connected_qfds_mutex);
-            qfds.push(std::pair<int, RequestState>(qd, std::ref(req)));
-        }
+        /* Make this request available to the request handler thread */
+        dmtr_sgarray_t sga;
+        sga.sga_numsegs = 1;
+        sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(req);
+        sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
+
+        dmtr_qtoken_t token;
+        dmtr_push(&token, process_conn_memq, &sga);
+        dmtr_wait(NULL, token);
 
         if (hr_clock::now() > *time_end) {
             log_warn("create time has passed. %d connection were established.", connected);
@@ -507,8 +507,8 @@ int main(int argc, char **argv) {
             while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
                 memset(req, '\0', MAX_REQUEST_SIZE);
                 snprintf(req, MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str());
-                std::unique_ptr<std::string> request(new std::string(req));
-                http_requests.push_back(std::move(request));
+                RequestState *req_obj = new RequestState(req);
+                http_requests.push_back(req_obj);
             }
             urifile.clear(); //Is this needed in c++11?
             urifile.seekg(0, std::ios::beg);
@@ -519,8 +519,8 @@ int main(int argc, char **argv) {
             char req[MAX_REQUEST_SIZE];
             memset(req, '\0', MAX_REQUEST_SIZE);
             snprintf(req, MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str());
-            std::unique_ptr<std::string> request(new std::string(req));
-            http_requests.push_back(std::move(request));
+            RequestState *req_obj = new RequestState(req);
+            http_requests.push_back(req_obj);
         }
     }
 
@@ -539,25 +539,26 @@ int main(int argc, char **argv) {
 
     /* Initialize responses first, then logging, then request initialization */
     //FIXME: do not collocate connections creation and processing?
-    std::vector<std::queue<std::pair<int, RequestState> > > req_qfds(n_threads);
-    std::vector<std::queue<std::pair<int, RequestState> > > log_qfds(n_threads);
     state_threads threads[n_threads];
     for (int i = 0; i < n_threads; ++i) {
+        int process_conn_memq, log_memq;
+        DMTR_OK(dmtr_queue(&process_conn_memq));
+        DMTR_OK(dmtr_queue(&log_memq));
         threads[i].resp = new std::thread(
             process_connections,
             i, req_per_thread, &time_end_process,
-            std::ref(req_qfds[i]), std::ref(log_qfds[i])
+            process_conn_memq, log_memq
         );
         pin_thread(threads[i].resp->native_handle(), i+1);
         threads[i].log = new std::thread(
             log_responses,
-            req_per_thread, std::ref(log_qfds[i]), &time_end_log,
+            req_per_thread, log_memq, &time_end_log,
             log_dir, label, i
         );
         threads[i].init = new std::thread(
             create_queues,
             interval_ns_per_thread, req_per_thread,
-            host, port, std::ref(req_qfds[i]), &time_end_init, i
+            host, port, process_conn_memq, &time_end_init, i
         );
         pin_thread(threads[i].init->native_handle(), i+1);
     }
@@ -579,7 +580,7 @@ int main(int argc, char **argv) {
 
     // This quiets Valgrind, but seems unecessary
     for (auto &req: http_requests) {
-        delete req.release();
+        delete req;
     }
 
     // Wait on the logging threads
