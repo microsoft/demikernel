@@ -312,9 +312,10 @@ static void *tcp_work(void *args) {
                 );
                 if (it == http_q_pending.end()) {
                     log_debug(
-                        "received new request on queue %d: %s\n",
-                        wait_out.qr_qd,
-                        reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                        //"received new request on queue %d: %s\n",
+                        "received new request on queue %d\n",
+                        wait_out.qr_qd
+                        //reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
                     );
                     /* This is a new request */
                     num_rcvd++;
@@ -430,9 +431,10 @@ static void *tcp_work(void *args) {
                     }
                 } else {
                     log_debug(
-                        "received response on queue %d: %s\n",
-                        wait_out.qr_qd,
-                        reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                        //"received response on queue %d: %s\n",
+                        "received response on queue %d\n",
+                        wait_out.qr_qd
+                        //reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
                     );
                     /* This comes from an HTTP worker and we need to forward to the client */
                     int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
@@ -446,7 +448,7 @@ static void *tcp_work(void *args) {
                         dmtr_pop(&token, wait_out.qr_qd);
                         tokens.push_back(token);
                         log_debug("Dropping obsolete message\n");
-                        tcp_http_dep.erase(it); //XXX likely not needed
+                        tcp_http_dep.erase(it2); //XXX likely not needed
                         continue;
                     }
 
