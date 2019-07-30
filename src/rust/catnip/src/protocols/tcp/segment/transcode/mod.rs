@@ -78,7 +78,7 @@ impl<'a> TcpSegmentDecoder<'a> {
         // write TCP header length & flags
         checksum.write_all(&tcp_header.as_bytes()[12..14]).unwrap();
         checksum
-            .write_u16::<NetworkEndian>(tcp_header.window_sz())
+            .write_u16::<NetworkEndian>(tcp_header.window_size())
             .unwrap();
 
         match op {

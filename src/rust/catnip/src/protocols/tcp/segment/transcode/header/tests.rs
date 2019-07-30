@@ -21,7 +21,7 @@ fn no_options() {
     header.rst(true);
     header.syn(true);
     header.fin(true);
-    header.window_sz(0xbcde);
+    header.window_size(0xbcde);
     header.checksum(0xf0ed);
     header.urg_ptr(0xcba9);
     let no_options = TcpSegmentOptions::new();
@@ -41,7 +41,7 @@ fn no_options() {
     assert!(header.rst());
     assert!(header.syn());
     assert!(header.fin());
-    assert_eq!(0xbcde, header.window_sz());
+    assert_eq!(0xbcde, header.window_size());
     assert_eq!(0xf0ed, header.checksum());
     assert_eq!(0xcba9, header.urg_ptr());
 }

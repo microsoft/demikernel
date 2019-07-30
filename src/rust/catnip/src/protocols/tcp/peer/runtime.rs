@@ -139,7 +139,7 @@ impl<'a> TcpRuntime<'a> {
                 TcpSegment::default()
                     .connection(&cxn)
                     .ack_num(cxn.ack_num())
-                    .ack()
+                    .ack(cxn.receive_window_size())
             };
 
             r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
@@ -265,6 +265,7 @@ impl<'a> TcpRuntime<'a> {
                 if ack {
                     segment.ack = true;
                     segment.ack_num = cxn.ack_num();
+                    segment.window_size = cxn.receive_window_size();
                 }
                 (segment, state.rt.clone(), cxn.incoming_segments.clone())
             };

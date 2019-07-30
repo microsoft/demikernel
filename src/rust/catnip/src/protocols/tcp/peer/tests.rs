@@ -118,6 +118,7 @@ fn handshake() {
         assert!(segment.header().ack());
         assert_eq!(Some(private_port), segment.header().dest_port());
         assert_eq!(segment.header().ack_num(), syn_seq_num + Wrapping(1));
+        assert_eq!(segment.header().window_size(), 0xffff);
         (bytes, syn_ack_seq_num)
     };
 
@@ -137,6 +138,7 @@ fn handshake() {
         assert_eq!(Some(private_port), segment.header().src_port());
         assert_eq!(segment.header().seq_num(), syn_seq_num + Wrapping(1));
         assert_eq!(segment.header().ack_num(), syn_ack_seq_num + Wrapping(1));
+        assert_eq!(segment.header().window_size(), 0xffff);
         bytes
     };
 

@@ -93,4 +93,8 @@ impl TcpConnection {
     pub fn ack_num(&self) -> Wrapping<u32> {
         self.receive_window.ack_num()
     }
+
+    pub fn receive_window_size(&self) -> usize {
+        self.receive_window.window_size()
+    }
 }

@@ -119,7 +119,7 @@ impl<'a> TcpHeaderDecoder<'a> {
         (self.0[13] & 1) != 0u8
     }
 
-    pub fn window_sz(&self) -> u16 {
+    pub fn window_size(&self) -> u16 {
         NetworkEndian::read_u16(&self.0[14..16])
     }
 
@@ -263,7 +263,7 @@ impl<'a> TcpHeaderEncoder<'a> {
         }
     }
 
-    pub fn window_sz(&mut self, value: u16) {
+    pub fn window_size(&mut self, value: u16) {
         NetworkEndian::write_u16(&mut self.0[14..16], value);
     }
 

@@ -21,24 +21,24 @@ impl TcpSendWindow {
 }
 
 pub struct TcpReceiveWindow {
-    window_size: usize,
+    max_window_size: usize,
     ack_num: Option<Wrapping<u32>>,
     bytes_unread: usize,
     unread_segments: VecDeque<TcpSegment>,
 }
 
 impl TcpReceiveWindow {
-    pub fn new(window_size: usize) -> TcpReceiveWindow {
+    pub fn new(max_window_size: usize) -> TcpReceiveWindow {
         TcpReceiveWindow {
-            window_size,
+            max_window_size,
             ack_num: None,
             bytes_unread: 0,
             unread_segments: VecDeque::new(),
         }
     }
 
-    pub fn available_space(&self) -> usize {
-        self.window_size - self.bytes_unread
+    pub fn window_size(&self) -> usize {
+        self.max_window_size - self.bytes_unread
     }
 
     pub fn ack_num(&self) -> Wrapping<u32> {
@@ -67,7 +67,7 @@ impl TcpReceiveWindow {
 
     pub fn push(&mut self, segment: TcpSegment) -> Result<()> {
         let bytes_unread = self.bytes_unread + segment.payload.len();
-        if bytes_unread > self.window_size {
+        if bytes_unread > self.max_window_size {
             return Err(Fail::ResourceExhausted {
                 details: "receive window is full",
             });

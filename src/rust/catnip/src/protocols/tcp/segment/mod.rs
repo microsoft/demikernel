@@ -22,6 +22,7 @@ pub struct TcpSegment {
     pub src_link_addr: Option<MacAddress>,
     pub seq_num: Wrapping<u32>,
     pub ack_num: Wrapping<u32>,
+    pub window_size: usize,
     pub syn: bool,
     pub ack: bool,
     pub rst: bool,
@@ -75,8 +76,9 @@ impl TcpSegment {
         self
     }
 
-    pub fn ack(mut self) -> TcpSegment {
+    pub fn ack(mut self, window_size: usize) -> TcpSegment {
         self.ack = true;
+        self.window_size = window_size;
         self
     }
 
@@ -126,6 +128,7 @@ impl TcpSegment {
         tcp_header.src_port(self.src_port.unwrap());
         tcp_header.seq_num(self.seq_num);
         tcp_header.ack_num(self.ack_num);
+        tcp_header.window_size(u16::try_from(self.window_size).unwrap());
         tcp_header.syn(self.syn);
         tcp_header.ack(self.ack);
         tcp_header.rst(self.rst);
@@ -160,6 +163,7 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
         let rst = tcp_header.rst();
         let options = tcp_header.options();
         let mss = options.get_mss();
+        let window_size = usize::from(tcp_header.window_size());
 
         let ipv4_header = decoder.ipv4().header();
         let dest_ipv4_addr = ipv4_header.dest_addr();
@@ -179,6 +183,7 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
             src_link_addr: Some(src_link_addr),
             seq_num,
             ack_num,
+            window_size,
             syn,
             ack,
             rst,
