@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 add_subdirectory(echo)
 
 add_redis(redis-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/redis-posix)

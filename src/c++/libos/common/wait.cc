@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #include <dmtr/wait.h>
 
 #include <boost/chrono.hpp>

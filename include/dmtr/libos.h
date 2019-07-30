@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #ifndef DMTR_LIBOS_H_IS_INCLUDED
 #define DMTR_LIBOS_H_IS_INCLUDED
 

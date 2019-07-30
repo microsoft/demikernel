@@ -1,4 +1,6 @@
-# LWIP libos target
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 file(GLOB ZEUS_LIBLWIP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 # note: the libos library has to be a shared object in order to
 # support the fact that we develop in C++ but need to also support
