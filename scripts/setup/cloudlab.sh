@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 servers=8
 
 for ((i=0; i<$servers; i++))

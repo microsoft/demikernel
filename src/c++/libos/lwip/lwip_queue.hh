@@ -1,9 +1,5 @@
-/*
- * lwip-queue.h
- *
- *  Created on: Jun 11, 2018
- *      Author: amanda
- */
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
 
 #ifndef DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED

@@ -1,4 +1,5 @@
-# Zeus libOS code
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
 
 cmake_minimum_required (VERSION 3.5.1)
 project (Zeus C CXX)
@@ -8,6 +9,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/scripts/cmake")
 include(dpdk)
 include(hoard)
 include(redis)
+include(tapir)
 #include(spdk)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -28,8 +30,3 @@ include_directories(
 )
 
 add_subdirectory(src)
-
-# Add tapir makefiles because they are hard to configure
-add_subdirectory(submodules/tapir-posix)
-add_subdirectory(submodules/tapir-lwip)
-add_subdirectory(submodules/tapir-rdma)

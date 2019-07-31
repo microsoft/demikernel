@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 repo_root=$(git rev-parse --show-toplevel)
 
 pushd $repo_root >> /dev/null

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #ifndef DMTR_TYPES_H_IS_INCLUDED
 #define DMTR_TYPES_H_IS_INCLUDED
 
