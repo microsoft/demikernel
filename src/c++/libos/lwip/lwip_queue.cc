@@ -35,6 +35,15 @@
 
 namespace bpo = boost::program_options;
 
+#define MTU_LEN                 1500
+#define GSO_MBUFS_PER_CORE      127
+#define GSO_MBUF_SEG_SIZE       128
+#define GSO_MBUF_CACHE_SIZE     32
+#define GSO_MBUFS_NUM \
+    (GSO_MBUFS_PER_CORE * GSO_MBUF_CACHE_SIZE)
+
+#define MAX_TX_MBUFS           64
+
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
 #define RX_RING_SIZE            128
@@ -306,7 +315,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
 }
 
 uint16_t dmtr::lwip_queue::my_app_port;
-
+struct rte_gso_ctx dmtr::lwip_queue::our_gso_ctx;
 int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -378,7 +387,8 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         MBUF_CACHE_SIZE,
         0,
         RTE_MBUF_DEFAULT_BUF_SIZE,
-        rte_socket_id()));
+        rte_socket_id()
+    ));
 
     // initialize all ports.
     uint16_t i = 0;
@@ -395,6 +405,25 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     our_dpdk_init_flag = true;
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
+
+    /* Initialize GSO memory pool */
+    struct rte_mempool *gso_mbuf_pool = NULL;
+    DMTR_OK(rte_pktmbuf_pool_create(
+        gso_mbuf_pool,
+        "gso_indirect_mbuf_pool",
+        GSO_MBUFS_NUM * nb_ports,
+        GSO_MBUF_CACHE_SIZE,
+        0,
+        0,
+        rte_socket_id()
+    ));
+
+    /* Initialize GSO context */
+    our_gso_ctx.direct_pool = gso_mbuf_pool;
+    our_gso_ctx.indirect_pool = gso_mbuf_pool;
+    our_gso_ctx.gso_size = MTU_LEN;
+    our_gso_ctx.gso_types = DEV_TX_OFFLOAD_UDP_TSO;
+    our_gso_ctx.flag = 0;
 
     return 0;
 }
@@ -585,7 +614,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
-    src.sin_port = htons(12345);
+    src.sin_port = htons(my_app_port);
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
     my_bound_src = src;
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
@@ -742,6 +771,8 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             ip_hdr->hdr_checksum = checksum;
 
             total_len += sizeof(*ip_hdr);
+            //pkt->l3_len = 4 * (ip_hdr->version_ihl & 0xf);
+            pkt->l3_len = sizeof(*ip_hdr);
         }
 
         // Fill in  Ethernet header
@@ -753,6 +784,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
 
             total_len += sizeof(*eth_hdr);
+            pkt->l2_len = sizeof(*eth_hdr);
         }
 
         pkt->data_len = total_len;
@@ -760,6 +792,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         pkt->nb_segs = 1;
 
 #if DMTR_DEBUG
+        printf("====================\n");
         printf("send: eth src addr: ");
         DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
         printf("\n");
@@ -778,7 +811,24 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
         printf("send: pkt len: %d\n", total_len);
         //rte_pktmbuf_dump(stderr, pkt, total_len);
+        printf("====================\n");
 #endif
+
+        uint16_t nb_pkts;
+        struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
+        if (pkt->pkt_len > MTU_LEN) {
+            pkt->ol_flags |= PKT_TX_UDP_CKSUM;
+            pkt->ol_flags |= PKT_TX_IP_CKSUM;
+            pkt->ol_flags |= PKT_TX_IPV4;
+            pkt->ol_flags |= PKT_TX_UDP_SEG;
+            pkt->tso_segsz = MTU_LEN;
+            int ret = rte_gso_segment(pkt, &our_gso_ctx, (struct rte_mbuf **)&tx_pkts, RTE_DIM(tx_pkts));
+            DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
+            nb_pkts = ret;
+        } else {
+            tx_pkts[0] = pkt;
+            nb_pkts = 1;
+        }
 
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
@@ -786,12 +836,12 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
         while (pkts_sent < 1) {
-            int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, &pkt, 1);
+            int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, tx_pkts, nb_pkts);
             switch (ret) {
                 default:
                     DMTR_FAIL(ret);
                 case 0:
-                    DMTR_TRUE(ENOTSUP, 1 == pkts_sent);
+                    DMTR_TRUE(ENOTSUP, nb_pkts == pkts_sent);
                     continue;
                 case EAGAIN:
 #if DMTR_PROFILE
@@ -872,6 +922,11 @@ dmtr::lwip_queue::service_incoming_packets() {
     auto t0 = boost::chrono::steady_clock::now();
 #endif
     int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
+#if DMTR_DEBUG
+    if (ret != EAGAIN) {
+        printf("Return code was %d, received %ld packets\n", ret, count);
+    }
+#endif
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -993,9 +1048,11 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     in_port_t udp_src_port = udp_hdr->src_port;
     in_port_t udp_dst_port = udp_hdr->dst_port;
 
-    if (udp_hdr->dst_port != my_app_port) {
+    if (udp_hdr->dst_port != htons(my_app_port)) {
 #if DMTR_DEBUG
-        printf("recv: dropped (dst port: %d)\n", udp_hdr->dst_port);
+        printf("recv: dropped (dst port: %d, expecting %d)\n",
+                htons(udp_hdr->dst_port),
+                htons(my_app_port));
 #endif
         return false;
     }

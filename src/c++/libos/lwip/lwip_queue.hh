@@ -12,6 +12,7 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <rte_gso.h>
 #include <unordered_map>
 #include <map>
 
@@ -36,6 +37,7 @@ namespace dmtr {
 class lwip_queue : public io_queue {
     private: static const struct ether_addr ether_broadcast;
     private: static const size_t our_max_queue_depth;
+    private: static struct rte_gso_ctx our_gso_ctx;
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
