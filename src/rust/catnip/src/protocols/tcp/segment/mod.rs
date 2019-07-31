@@ -5,7 +5,7 @@ use crate::{
     prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
-use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
+use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping, rc::Rc};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
@@ -27,7 +27,7 @@ pub struct TcpSegment {
     pub ack: bool,
     pub rst: bool,
     pub mss: Option<usize>,
-    pub payload: Vec<u8>,
+    pub payload: Rc<Vec<u8>>,
 }
 
 impl TcpSegment {
@@ -66,19 +66,14 @@ impl TcpSegment {
         self
     }
 
-    pub fn ack_num(mut self, value: Wrapping<u32>) -> TcpSegment {
-        self.ack_num = value;
+    pub fn ack_num(mut self, ack_num: Wrapping<u32>) -> TcpSegment {
+        self.ack_num = ack_num;
+        self.ack = true;
         self
     }
 
     pub fn syn(mut self) -> TcpSegment {
         self.syn = true;
-        self
-    }
-
-    pub fn ack(mut self, window_size: usize) -> TcpSegment {
-        self.ack = true;
-        self.window_size = window_size;
         self
     }
 
@@ -92,17 +87,26 @@ impl TcpSegment {
         self
     }
 
-    pub fn payload(mut self, bytes: Vec<u8>) -> TcpSegment {
+    pub fn payload(mut self, bytes: Rc<Vec<u8>>) -> TcpSegment {
         self.payload = bytes;
         self
     }
 
     pub fn connection(self, cxn: &TcpConnection) -> TcpSegment {
-        self.src_ipv4_addr(cxn.id.local.address())
-            .src_port(cxn.id.local.port())
-            .dest_ipv4_addr(cxn.id.remote.address())
-            .dest_port(cxn.id.remote.port())
-            .seq_num(cxn.get_seq_num())
+        let cxnid = cxn.get_cxnid();
+        let mut segment = self
+            .src_ipv4_addr(cxnid.local.address())
+            .src_port(cxnid.local.port())
+            .dest_ipv4_addr(cxnid.remote.address())
+            .dest_port(cxnid.remote.port())
+            .seq_num(cxn.get_seq_num());
+        if let Some(ack_num) = cxn.try_get_ack_num() {
+            segment.ack = true;
+            segment.ack_num = ack_num;
+            segment.window_size = cxn.get_local_receive_window_size();
+        }
+
+        segment
     }
 
     pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {
@@ -172,7 +176,7 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
         let frame_header = decoder.ipv4().frame().header();
         let src_link_addr = frame_header.src_addr();
         let dest_link_addr = frame_header.dest_addr();
-        let payload = decoder.text().to_vec();
+        let payload = Rc::new(decoder.text().to_vec());
 
         Ok(TcpSegment {
             dest_ipv4_addr: Some(dest_ipv4_addr),

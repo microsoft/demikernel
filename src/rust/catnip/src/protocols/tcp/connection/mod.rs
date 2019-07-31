@@ -33,27 +33,37 @@ impl Into<u16> for TcpConnectionHandle {
 }
 
 pub struct TcpConnection {
-    pub handle: TcpConnectionHandle,
-    pub id: TcpConnectionId,
-    pub incoming_segments: Rc<RefCell<VecDeque<TcpSegment>>>,
+    control_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
+    cxnid: TcpConnectionId,
+    handle: TcpConnectionHandle,
+    local_isn: Wrapping<u32>,
     receive_window: TcpReceiveWindow,
     send_window: TcpSendWindow,
 }
 
 impl TcpConnection {
     pub fn new(
-        id: TcpConnectionId,
+        cxnid: TcpConnectionId,
         handle: TcpConnectionHandle,
         local_isn: Wrapping<u32>,
         receive_window_size: usize,
     ) -> TcpConnection {
         TcpConnection {
+            control_queue: Rc::new(RefCell::new(VecDeque::new())),
+            cxnid,
             handle,
-            id,
-            incoming_segments: Rc::new(RefCell::new(VecDeque::new())),
+            local_isn,
             receive_window: TcpReceiveWindow::new(receive_window_size),
             send_window: TcpSendWindow::new(local_isn),
         }
+    }
+
+    pub fn get_handle(&self) -> TcpConnectionHandle {
+        self.handle
+    }
+
+    pub fn get_cxnid(&self) -> &TcpConnectionId {
+        &self.cxnid
     }
 
     pub fn get_mss(&self) -> usize {
@@ -76,11 +86,33 @@ impl TcpConnection {
         self.send_window.incr_seq_num()
     }
 
-    pub fn get_ack_num(&self) -> Wrapping<u32> {
+    pub fn try_get_ack_num(&self) -> Option<Wrapping<u32>> {
         self.receive_window.ack_num()
     }
 
     pub fn get_local_receive_window_size(&self) -> usize {
         self.receive_window.window_size()
+    }
+
+    pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
+        self.send_window.get_transmittable_segments()
+    }
+
+    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
+        trace!("TcpConnection::receive({:?})", segment);
+        if segment.syn
+            || segment.rst
+            || (segment.ack && segment.ack_num == self.local_isn + Wrapping(1))
+        {
+            debug!("segment placed on control queue");
+            self.control_queue.borrow_mut().push_back(segment);
+            Ok(())
+        } else {
+            self.receive_window.receive(segment)
+        }
+    }
+
+    pub fn get_control_queue(&self) -> &Rc<RefCell<VecDeque<TcpSegment>>> {
+        &self.control_queue
     }
 }

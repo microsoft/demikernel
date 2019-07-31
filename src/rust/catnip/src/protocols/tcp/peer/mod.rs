@@ -20,14 +20,14 @@ use std::{
 pub use runtime::TcpRuntime;
 
 pub struct TcpPeer<'a> {
-    async_work: WhenAny<'a, ()>,
+    async_work: Rc<RefCell<WhenAny<'a, ()>>>,
     tcp_rt: Rc<RefCell<TcpRuntime<'a>>>,
 }
 
 impl<'a> TcpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> TcpPeer<'a> {
         TcpPeer {
-            async_work: WhenAny::new(),
+            async_work: Rc::new(RefCell::new(WhenAny::new())),
             tcp_rt: Rc::new(RefCell::new(TcpRuntime::new(rt, arp))),
         }
     }
@@ -64,10 +64,9 @@ impl<'a> TcpPeer<'a> {
         debug!("local_port => {:?}", local_port);
         if self.tcp_rt.borrow().is_port_open(local_port) {
             if segment.syn && !segment.ack && !segment.rst {
-                self.async_work.add(TcpRuntime::new_passive_connection(
-                    &self.tcp_rt,
-                    segment,
-                ));
+                self.async_work.borrow_mut().add(
+                    TcpRuntime::new_passive_connection(&self.tcp_rt, segment),
+                );
                 return Ok(());
             }
 
@@ -76,7 +75,7 @@ impl<'a> TcpPeer<'a> {
                 remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
             };
 
-            self.tcp_rt.borrow().receive(cxnid, segment);
+            self.tcp_rt.borrow_mut().receive(cxnid, segment)?;
             return Ok(());
         }
 
@@ -93,7 +92,7 @@ impl<'a> TcpPeer<'a> {
             ack_num += Wrapping(1);
         }
 
-        self.async_work.add(TcpRuntime::cast(
+        self.async_work.borrow_mut().add(TcpRuntime::cast(
             &self.tcp_rt,
             TcpSegment::default()
                 .dest_ipv4_addr(remote_ipv4_addr)
@@ -112,6 +111,7 @@ impl<'a> TcpPeer<'a> {
         trace!("TcpPeer::connect({:?})", remote_endpoint);
         let rt = self.tcp_rt.borrow().rt().clone();
         let tcp_rt = self.tcp_rt.clone();
+        let async_work = self.async_work.clone();
         rt.start_coroutine(move || {
             trace!("TcpPeer::connect({:?})::coroutine", remote_endpoint);
             let rt = tcp_rt.borrow().rt().clone();
@@ -129,9 +129,19 @@ impl<'a> TcpPeer<'a> {
                 rt.now()
             ) {
                 Ok(cxnid) => {
-                    let tcp_rt = tcp_rt.borrow();
-                    let cxn = tcp_rt.get_connection(&cxnid).unwrap();
-                    return CoroutineOk(cxn.handle);
+                    let handle = {
+                        let tcp_rt = tcp_rt.borrow();
+                        let cxn = tcp_rt.get_connection(&cxnid).unwrap();
+                        cxn.get_handle()
+                    };
+
+                    async_work.borrow_mut().add(
+                        TcpRuntime::maintain_established_connection(
+                            &tcp_rt, cxnid,
+                        ),
+                    );
+
+                    return CoroutineOk(handle);
                 }
                 Err(e) => e,
             };
@@ -159,6 +169,6 @@ impl<'a> TcpPeer<'a> {
 
 impl<'a> Async<()> for TcpPeer<'a> {
     fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.async_work.poll(now).map(|r| r.map(|_| ()))
+        self.async_work.borrow().poll(now).map(|r| r.map(|_| ()))
     }
 }

@@ -1,6 +1,8 @@
 use super::super::segment::{TcpSegment, DEFAULT_MSS, MAX_MSS, MIN_MSS};
 use crate::{io::IoVec, prelude::*};
-use std::{cmp::min, collections::VecDeque, convert::TryFrom, num::Wrapping};
+use std::{
+    cmp::min, collections::VecDeque, convert::TryFrom, num::Wrapping, rc::Rc,
+};
 
 const HALF_U32: usize = 0xffff_ffff / 2;
 
@@ -9,7 +11,7 @@ pub struct TcpSendWindow {
     mss: usize,
     remote_receive_window_size: usize,
     segments_unacknowledged: usize,
-    segments: VecDeque<Vec<u8>>,
+    segments: VecDeque<Rc<Vec<u8>>>,
     seq_num: Wrapping<u32>,
 }
 
@@ -74,11 +76,11 @@ impl TcpSendWindow {
                 let mut segment = segment.as_slice();
                 while segment.len() > self.mss {
                     let (h, t) = segment.split_at(self.mss);
-                    self.segments.push_back(h.to_vec());
+                    self.segments.push_back(Rc::new(h.to_vec()));
                     segment = t;
                 }
             } else {
-                self.segments.push_back(segment);
+                self.segments.push_back(Rc::new(segment));
             }
         }
     }
@@ -128,6 +130,25 @@ impl TcpSendWindow {
         self.bytes_unacknowledged -= byte_count;
         Ok(())
     }
+
+    pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
+        let mut transmittable_segments = VecDeque::new();
+        let mut expected_remote_receive_window_size =
+            self.remote_receive_window_size - self.bytes_unacknowledged;
+        for i in 0..self.segments.len() {
+            let segment = &self.segments[i];
+            let segment_len = segment.len();
+            if segment_len <= expected_remote_receive_window_size {
+                transmittable_segments.push_back(segment.clone());
+                self.bytes_unacknowledged += segment_len;
+                expected_remote_receive_window_size -= segment_len;
+            } else {
+                break;
+            }
+        }
+
+        transmittable_segments
+    }
 }
 
 pub struct TcpReceiveWindow {
@@ -151,8 +172,8 @@ impl TcpReceiveWindow {
         self.max_window_size - self.bytes_unread
     }
 
-    pub fn ack_num(&self) -> Wrapping<u32> {
-        self.ack_num.unwrap()
+    pub fn ack_num(&self) -> Option<Wrapping<u32>> {
+        self.ack_num
     }
 
     pub fn remote_isn(&mut self, value: Wrapping<u32>) {
@@ -163,12 +184,13 @@ impl TcpReceiveWindow {
     pub fn read(&mut self) -> IoVec {
         let mut iovec = IoVec::new();
         while let Some(segment) = self.unread_segments.pop_front() {
-            let ack_num = self.ack_num();
+            let ack_num = self.ack_num().unwrap();
             self.ack_num = Some(
                 ack_num
                     + Wrapping(u32::try_from(segment.payload.len()).unwrap()),
             );
-            iovec.push(segment.payload);
+            let payload = Rc::try_unwrap(segment.payload).unwrap();
+            iovec.push(payload);
         }
 
         self.bytes_unread = 0;
@@ -176,6 +198,7 @@ impl TcpReceiveWindow {
     }
 
     pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
+        trace!("TcpReceiveWindow::receive({:?})", segment);
         let bytes_unread = self.bytes_unread + segment.payload.len();
         if bytes_unread > self.max_window_size {
             return Err(Fail::ResourceExhausted {
