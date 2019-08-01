@@ -98,11 +98,15 @@ I/O.
 
 * `int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);`
 
-> Wait for completion of I/O operation associated with queue token.
-> Returns result of I/O operation in `qr_out`.
-
+> Wait for completion of I/O operation associated with queue token and
+> destroys the queue token.  Returns result of I/O operation in
+> `qr_out`.  The application does not need to drop the token
+> afterwards.
 
 * `int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[], int num_qts);`
 
 > Wait for completion of at first I/O operation associated with set of
-> queue tokens.  Returns result of first completed I/O operation in `qr_out`.
+> queue tokens.  Returns result of first completed I/O operation in
+> `qr_out`. Destroys queue token so application does not need to call
+> `dmtr_drop`. 
+
