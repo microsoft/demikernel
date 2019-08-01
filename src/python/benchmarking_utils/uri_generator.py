@@ -148,12 +148,30 @@ if __name__ == '__main__':
         log_fatal('Zipf alpha must be greater than 1 (html zalpha: {})'.format(args.html_zalpha))
 
     # Generate regex requests
-    n_regex_requests = int(args.n_requests * args.regex_ratio)
-    regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha)
+    if args.regex_ratio > 0:
+        n_regex_requests = int(args.n_requests * args.regex_ratio)
+        regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha)
+    else:
+        regex_requests = np.array([])
 
     # Generate file requests
-    n_file_requests = int(args.n_requests * args.html_ratio)
-    file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+    if args.html_ratio > 0:
+        n_file_requests = int(args.n_requests * args.html_ratio)
+        file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+    else:
+        file_requests = np.array([])
+
+    # Generate file requests
+    if args.html_ratio > 0:
+        n_file_requests = int(args.n_requests * args.html_ratio)
+        file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+
+    all_requests = np.concatenate([regex_requests, file_requests])
+    random.shuffle(all_requests)
+
+    # interleave requests (of each type) in the output file
+    with open(args.output_file, 'w+') as f:
+        f.writelines(['{}\n'.format(request) for request in all_requests])
 
     all_requests = np.concatenate([regex_requests, file_requests])
     random.shuffle(all_requests)
