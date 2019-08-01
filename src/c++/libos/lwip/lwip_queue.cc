@@ -421,7 +421,12 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     /* Initialize GSO context */
     our_gso_ctx.direct_pool = gso_mbuf_pool;
     our_gso_ctx.indirect_pool = gso_mbuf_pool;
-    our_gso_ctx.gso_size = MTU_LEN;
+    // gso_size needs to be a multiple of 8
+    uint16_t gso_size = MTU_LEN;
+    while ((gso_size - sizeof(struct ::ipv4_hdr) - sizeof(struct ::ether_hdr)) % 8 > 0) {
+        gso_size--;
+    }
+    our_gso_ctx.gso_size = gso_size;
     our_gso_ctx.gso_types = DEV_TX_OFFLOAD_UDP_TSO;
     our_gso_ctx.flag = 0;
 
@@ -739,6 +744,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             udp_hdr->dgram_cksum = 0;
 
             total_len += sizeof(*udp_hdr);
+            pkt->l4_len = sizeof(*udp_hdr);
         }
 
         // Fill in IP header.
