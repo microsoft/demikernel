@@ -1,7 +1,8 @@
 use custom_error::custom_error;
 use float_duration;
 use std::{
-    cell::BorrowMutError, io::Error as IoError, num::TryFromIntError, rc::Rc,
+    cell::BorrowMutError, error::Error, io::Error as IoError,
+    num::TryFromIntError, rc::Rc,
 };
 
 // the following type alias is needed because the `custom_error!` macro doesn't
@@ -9,10 +10,9 @@ use std::{
 type Str = &'static str;
 
 custom_error! {#[derive(Clone)] pub Fail
-    BorrowMutError{source: Rc<BorrowMutError>} = "{source}",
     ConnectionRefused{} = "connection refused",
+    ForeignError{source: Rc<dyn Error>} = "{source}",
     Ignored{details: Str} = "operation had no effect ({details})",
-    IoError{source: Rc<IoError>} = "{source}",
     Malformed{details: Str} = "encountered a malformed datagram ({details})",
     Misdelivered{} = "misdelivered datagram",
     OutOfRange{details: Str} = "a value is out of range ({details})",
@@ -27,13 +27,13 @@ custom_error! {#[derive(Clone)] pub Fail
 
 impl From<IoError> for Fail {
     fn from(e: IoError) -> Self {
-        Fail::IoError { source: Rc::new(e) }
+        Fail::ForeignError { source: Rc::new(e) }
     }
 }
 
 impl From<BorrowMutError> for Fail {
     fn from(e: BorrowMutError) -> Self {
-        Fail::BorrowMutError { source: Rc::new(e) }
+        Fail::ForeignError { source: Rc::new(e) }
     }
 }
 
