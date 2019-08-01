@@ -15,7 +15,7 @@ target_link_libraries(dmtr-libos-lwip Threads::Threads yaml-cpp boost_program_op
 # the `--whole-archive` option is needed to ensure that symbols such as
 # `zeus_queue` get exported from the resulting shared object. object
 # files are normally culled if none of their symbols are referenced.
-target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
+target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive,-lrte_pdump" dmtr-libos-common "-Wl,--no-whole-archive")
 
 # todo: these options should not be passed directly to
 # `target_link_libraries()`. we should use `find_library()` instead.

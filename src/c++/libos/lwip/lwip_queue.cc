@@ -33,6 +33,12 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
+#define RTE_LIBRTE_PDUMP 1
+
+#ifdef RTE_LIBRTE_PDUMP
+#include <rte_pdump.h>
+#endif
+
 namespace bpo = boost::program_options;
 
 #define MTU_LEN                 1500
@@ -323,6 +329,11 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         DMTR_NOTNULL(EINVAL, argv);
     }
     DMTR_TRUE(EPERM, !our_dpdk_init_flag);
+
+#ifdef RTE_LIBRTE_PDUMP
+    /* initialize packet capture framework */
+    rte_pdump_init(NULL);
+#endif
 
     std::string config_path;
     bpo::options_description desc("Allowed options");

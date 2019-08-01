@@ -12,6 +12,8 @@ find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS
   program_options chrono context system coroutine)
 include_directories(${Boost_INCLUDE_DIR})
+# FIXME: what's the relative path of this directory? Why isn't it properly parsed already for other dpdk libraries?
+link_directories(/u/maxdml/datacenter-OS/submodules/dpdk/build/lib/)
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
