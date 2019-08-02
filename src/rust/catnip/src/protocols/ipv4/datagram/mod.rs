@@ -15,18 +15,20 @@ pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 pub struct Ipv4Datagram<'a>(ethernet2::Frame<'a>);
 
 impl<'a> Ipv4Datagram<'a> {
-    pub fn new_vec(text_sz: usize) -> Vec<u8> {
-        trace!("Ipv4DatagramMut::new({})", text_sz);
-        let requested_len = IPV4_HEADER_SIZE + text_sz;
+    pub fn new_vec(text_len: usize) -> Vec<u8> {
+        trace!("Ipv4DatagramMut::new({})", text_len);
+        let requested_len = IPV4_HEADER_SIZE + text_len;
         let mut bytes = ethernet2::Frame::new_vec(requested_len);
         let mut datagram = Ipv4DatagramMut::attach(bytes.as_mut());
-        // the length of the datagram may not match what was requested due to
-        // minimum frame size requirements.
-        let total_len = IPV4_HEADER_SIZE + datagram.text().len();
         let mut ipv4_header = datagram.header();
         ipv4_header.version(IPV4_VERSION);
         ipv4_header.ihl(IPV4_IHL_NO_OPTIONS);
         ipv4_header.ttl(DEFAULT_IPV4_TTL);
+        // the length of the datagram may not match what was requested due to
+        // minimum frame size requirements; we set the `total_len` to be
+        // smaller than the number of available bytes to distinguish padding
+        // from actual payload (RFC 0894).
+        let total_len = IPV4_HEADER_SIZE + text_len;
         ipv4_header.total_len(u16::try_from(total_len).unwrap());
         let mut frame_header = datagram.frame().header();
         frame_header.ether_type(ethernet2::EtherType::Ipv4);
@@ -51,7 +53,8 @@ impl<'a> Ipv4Datagram<'a> {
     }
 
     pub fn text(&self) -> &[u8] {
-        &self.0.text()[IPV4_HEADER_SIZE..]
+        let total_len = self.header().total_len();
+        &self.0.text()[IPV4_HEADER_SIZE..total_len]
     }
 }
 

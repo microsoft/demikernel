@@ -61,8 +61,8 @@ impl<'a> Into<ipv4::Datagram<'a>> for UdpDatagramDecoder<'a> {
 pub struct UdpDatagramEncoder<'a>(ipv4::DatagramMut<'a>);
 
 impl<'a> UdpDatagramEncoder<'a> {
-    pub fn new_vec(text_sz: usize) -> Vec<u8> {
-        let mut bytes = ipv4::Datagram::new_vec(text_sz + UDP_HEADER_SIZE);
+    pub fn new_vec(text_len: usize) -> Vec<u8> {
+        let mut bytes = ipv4::Datagram::new_vec(text_len + UDP_HEADER_SIZE);
         let mut datagram = UdpDatagramEncoder::attach(bytes.as_mut());
         datagram.ipv4().header().protocol(ipv4::Protocol::Udp);
         bytes

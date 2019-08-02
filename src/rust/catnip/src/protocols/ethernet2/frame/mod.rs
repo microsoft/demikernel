@@ -14,10 +14,10 @@ pub static MIN_PAYLOAD_SIZE: usize = 46;
 pub struct Ethernet2Frame<'a>(&'a [u8]);
 
 impl<'a> Ethernet2Frame<'a> {
-    pub fn new_vec(text_sz: usize) -> Vec<u8> {
-        trace!("Ethernet2Frame::new_vec({})", text_sz);
-        let text_sz = max(text_sz, MIN_PAYLOAD_SIZE);
-        vec![0u8; text_sz + ETHERNET2_HEADER_SIZE]
+    pub fn new_vec(text_len: usize) -> Vec<u8> {
+        trace!("Ethernet2Frame::new_vec({})", text_len);
+        let text_len = max(text_len, MIN_PAYLOAD_SIZE);
+        vec![0u8; text_len + ETHERNET2_HEADER_SIZE]
     }
 
     pub fn attach(bytes: &'a [u8]) -> Result<Self> {

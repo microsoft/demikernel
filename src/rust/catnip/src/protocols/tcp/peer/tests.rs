@@ -207,7 +207,7 @@ fn unfragmented_data_transfer() {
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert!(data_in.structural_eq(data_out));
 
-    cxn.now += Duration::from_micros(100);
+    cxn.now += cxn.bob.options().tcp.trailing_ack_delay();
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -215,6 +215,7 @@ fn unfragmented_data_transfer() {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert!(segment.ack);
+            assert_eq!(0, segment.payload.len());
             bytes
         }
         e => panic!("got unanticipated event `{:?}`", e),
