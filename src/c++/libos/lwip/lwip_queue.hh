@@ -13,6 +13,7 @@
 #include <rte_ether.h>
 #include <rte_mbuf.h>
 #include <rte_gso.h>
+#include <rte_ip_frag.h>
 #include <unordered_map>
 #include <map>
 
@@ -37,7 +38,11 @@ namespace dmtr {
 class lwip_queue : public io_queue {
     private: static const struct ether_addr ether_broadcast;
     private: static const size_t our_max_queue_depth;
-    private: static struct rte_gso_ctx our_gso_ctx;
+    private: static struct rte_gso_ctx our_gso_ctx; /** << used for egress segmentation */
+    private: static struct rte_ip_frag_tbl *our_ip_frag_tbl; /** used for IP reassembly */
+    private: static struct rte_ip_frag_death_row our_death_row; /** used for IP reassembly */
+    private: static struct rte_mempool *our_ip_frag_mbuf_pool; /** used for IP reassembly */
+
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
@@ -125,6 +130,7 @@ class lwip_queue : public io_queue {
     private: static int rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
+    private: static int setup_rx_queue_ip_frag_tbl(uint32_t queue);
 };
 
 } // namespace dmtr

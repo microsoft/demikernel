@@ -41,6 +41,7 @@
 
 namespace bpo = boost::program_options;
 
+/** Fragmentation and reassembly related variables */
 #define MTU_LEN                 1500
 #define GSO_MBUFS_PER_CORE      127
 #define GSO_MBUF_SEG_SIZE       128
@@ -48,12 +49,23 @@ namespace bpo = boost::program_options;
 #define GSO_MBUFS_NUM \
     (GSO_MBUFS_PER_CORE * GSO_MBUF_CACHE_SIZE)
 
+#define IP_FRAG_TBL_BUCKET_ENTRIES  2 /** Should be power of two. */
+#define MAX_FLOW_NUM    UINT16_MAX /** FIXME could probably be lowered */
+#define MAX_FRAG_NUM RTE_LIBRTE_IP_FRAG_MAX_FRAG
+
+/** Memory pool and rings related variables */
 #define MAX_TX_MBUFS           64
+#define MAX_PKT_BURST          64
 
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
+#define RTE_RX_DESC_DEFAULT     1024
+#define MBUF_DATA_SIZE          RTE_MBUF_DEFAULT_BUF_SIZE
+#define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
+
+/** Protocol related varialbes */
 #define IP_DEFTTL  64   /* from RFC 1340. */
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
@@ -322,6 +334,9 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
 
 uint16_t dmtr::lwip_queue::my_app_port;
 struct rte_gso_ctx dmtr::lwip_queue::our_gso_ctx;
+struct rte_ip_frag_tbl *dmtr::lwip_queue::our_ip_frag_tbl;
+struct rte_ip_frag_death_row dmtr::lwip_queue::our_death_row;
+struct rte_mempool *dmtr::lwip_queue::our_ip_frag_mbuf_pool;
 int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -440,6 +455,9 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     our_gso_ctx.gso_size = gso_size;
     our_gso_ctx.gso_types = DEV_TX_OFFLOAD_UDP_TSO;
     our_gso_ctx.flag = 0;
+
+    /* Initialize IP (de)fragmentation table */
+    setup_rx_queue_ip_frag_tbl(0);
 
     return 0;
 }
@@ -834,14 +852,14 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         uint16_t nb_pkts;
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
-            pkt->ol_flags |= PKT_TX_UDP_CKSUM;
-            pkt->ol_flags |= PKT_TX_IP_CKSUM;
-            pkt->ol_flags |= PKT_TX_IPV4;
-            pkt->ol_flags |= PKT_TX_UDP_SEG;
-            pkt->tso_segsz = MTU_LEN;
+            pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 | PKT_TX_UDP_SEG);
             int ret = rte_gso_segment(pkt, &our_gso_ctx, (struct rte_mbuf **)&tx_pkts, RTE_DIM(tx_pkts));
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
+//#if DMTR_DEBUG
+            printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
+                    tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
+//#endif
         } else {
             tx_pkts[0] = pkt;
             nb_pkts = 1;
@@ -953,12 +971,49 @@ dmtr::lwip_queue::service_incoming_packets() {
             return ret;
     }
 
+    for (size_t i = 0; i < count; ++i) {
+        struct ether_hdr *eth_hdr;
+        eth_hdr = rte_pktmbuf_mtod(pkts[i], struct ether_hdr *);
+
+        if (RTE_ETH_IS_IPV4_HDR(pkts[i]->packet_type)) {
+            struct ipv4_hdr *ip_hdr = (struct ::ipv4_hdr *) (eth_hdr + 1);
+#if DMTR_DEBUG
+            uint16_t offset_full_flag = ip_hdr->fragment_offset;
+            uint16_t offset = rte_be_to_cpu_16(offset_full_flag) & IPV4_HDR_OFFSET_MASK;
+            printf("packet #%zu's payload is offset by %d bytes\n", i, offset * 8);
+#endif
+            if (rte_ipv4_frag_pkt_is_fragmented(ip_hdr)) {
+                pkts[i]->l2_len = sizeof(*eth_hdr);
+                pkts[i]->l3_len = sizeof(*ip_hdr);
+
+                struct rte_mbuf *out = rte_ipv4_frag_reassemble_packet(
+                    our_ip_frag_tbl, &our_death_row,
+                    pkts[i], rte_rdtsc(), ip_hdr
+                );
+
+                if (out == NULL) {
+                    pkts[i] = NULL;
+                    count--;
+                    continue;
+                }
+
+                if (out != pkts[i]) {
+                    pkts[i] = out;
+                }
+            }
+        }
+    }
+
 #if DMTR_PROFILE
     auto dt = boost::chrono::steady_clock::now() - t0;
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
     for (size_t i = 0; i < count; ++i) {
+        if (pkts[i] == NULL) {
+            continue; /** Packet was a fragment */
+        }
+
         struct sockaddr_in src, dst;
         dmtr_sgarray_t sga;
         // check the packet header
@@ -980,6 +1035,9 @@ dmtr::lwip_queue::service_incoming_packets() {
             insert_recv_queue(lwip_addr(dst), sga);
         }
     }
+
+    rte_ip_frag_free_death_row(&our_death_row, 0);
+
     return 0;
 }
 
@@ -1410,6 +1468,39 @@ int dmtr::lwip_queue::parse_ether_addr(struct ether_addr &mac_out, const char *s
     for (size_t i = 0; i < ETHER_ADDR_LEN; ++i) {
         DMTR_OK(dmtr_utou8(&mac_out.addr_bytes[i], values[i]));
     }
+
+    return 0;
+}
+
+int dmtr::lwip_queue::setup_rx_queue_ip_frag_tbl(uint32_t queue) {
+    uint32_t nb_mbuf;
+    uint64_t frag_cycles;
+    char buf[RTE_MEMPOOL_NAMESIZE];
+    uint32_t max_flow_num = MAX_FLOW_NUM;
+    const uint16_t socket = boost::get(our_dpdk_port_id);
+
+    frag_cycles = (rte_get_tsc_hz() + MS_PER_S - 1) / MS_PER_S * (3600 * MS_PER_S);
+
+    our_ip_frag_tbl = rte_ip_frag_table_create(
+        max_flow_num, IP_FRAG_TBL_BUCKET_ENTRIES, MAX_FRAG_NUM,
+        frag_cycles, socket
+    );
+    DMTR_NOTNULL(EINVAL, our_ip_frag_tbl);
+
+    //FIXME: replace by
+    //2 *bucket_entries * RTE_LIBRTE_IP_FRAG_MAX * <maximum number of mbufs per packet>
+    nb_mbuf = (uint32_t)NUM_MBUFS;
+
+    snprintf(buf, sizeof(buf), "ip_frag_mbuf_pool_%u", queue);
+
+    DMTR_OK(rte_pktmbuf_pool_create(
+        our_ip_frag_mbuf_pool,
+        buf, nb_mbuf,
+        MBUF_CACHE_SIZE,
+        0,
+        RTE_MBUF_DEFAULT_BUF_SIZE,
+        rte_socket_id()
+    ));
 
     return 0;
 }
