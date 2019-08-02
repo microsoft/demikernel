@@ -427,8 +427,13 @@ int dmtr::posix_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::y
         iov[i].iov_base = sga->sga_segs[i].sgaseg_buf;
         iov[i].iov_len = sga->sga_segs[i].sgaseg_len;
         data_size += sga->sga_segs[i].sgaseg_len;
+#if DMTR_DEBUG
+        std::cerr << "push: segs[" << i << "] addr=" << iov[i].iov_base << std::endl;
+#endif
     }
-
+#if DMTR_DEBUG
+    std::cerr << "push: segs=" << iov_len << " totallen=" << data_size << std::endl;
+#endif
     size_t bytes_written = 0;
     int ret = writev(bytes_written, my_fd, iov, iov_len);
     while (EAGAIN == ret) {
