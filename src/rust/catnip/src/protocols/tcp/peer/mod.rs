@@ -75,7 +75,7 @@ impl<'a> TcpPeer<'a> {
                 remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
             };
 
-            self.tcp_rt.borrow_mut().receive(cxnid, segment)?;
+            self.tcp_rt.borrow_mut().enqueue_segment(cxnid, segment)?;
             return Ok(());
         }
 
@@ -135,11 +135,9 @@ impl<'a> TcpPeer<'a> {
                         cxn.get_handle()
                     };
 
-                    async_work.borrow_mut().add(
-                        TcpRuntime::maintain_established_connection(
-                            &tcp_rt, cxnid,
-                        ),
-                    );
+                    async_work
+                        .borrow_mut()
+                        .add(TcpRuntime::exchange_data(&tcp_rt, cxnid));
 
                     return CoroutineOk(handle);
                 }
@@ -164,6 +162,18 @@ impl<'a> TcpPeer<'a> {
 
     pub fn listen(&mut self, port: ip::Port) -> Result<()> {
         self.tcp_rt.borrow_mut().listen(port)
+    }
+
+    pub fn write(
+        &mut self,
+        handle: TcpConnectionHandle,
+        bytes: IoVec,
+    ) -> Result<()> {
+        self.tcp_rt.borrow_mut().write(handle, bytes)
+    }
+
+    pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
+        self.tcp_rt.borrow_mut().read(handle)
     }
 }
 

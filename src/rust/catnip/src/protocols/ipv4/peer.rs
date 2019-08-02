@@ -87,6 +87,21 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
         self.tcp.listen(port)
     }
+
+    pub fn tcp_write(
+        &mut self,
+        handle: tcp::ConnectionHandle,
+        bytes: IoVec,
+    ) -> Result<()> {
+        self.tcp.write(handle, bytes)
+    }
+
+    pub fn tcp_read(
+        &mut self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<IoVec> {
+        self.tcp.read(handle)
+    }
 }
 
 impl<'a> Async<()> for Ipv4Peer<'a> {

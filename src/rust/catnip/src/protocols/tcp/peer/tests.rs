@@ -1,4 +1,7 @@
-use super::super::segment::TcpSegmentDecoder;
+use super::super::{
+    connection::TcpConnectionHandle,
+    segment::{TcpSegment, TcpSegmentDecoder},
+};
 use crate::{
     prelude::*,
     protocols::{ip, ipv4},
@@ -8,6 +11,14 @@ use std::{
     num::Wrapping,
     time::{Duration, Instant},
 };
+
+struct EstablishedConnection<'a> {
+    alice: Engine<'a>,
+    alice_cxn_handle: TcpConnectionHandle,
+    bob: Engine<'a>,
+    bob_cxn_handle: TcpConnectionHandle,
+    now: Instant,
+}
 
 #[test]
 fn syn_to_closed_port() {
@@ -67,8 +78,7 @@ fn syn_to_closed_port() {
     }
 }
 
-#[test]
-fn handshake() {
+fn establish_connection() -> EstablishedConnection<'static> {
     let bob_port = ip::Port::try_from(12345).unwrap();
 
     let now = Instant::now();
@@ -146,12 +156,56 @@ fn handshake() {
     let now = now + Duration::from_millis(1);
     bob.receive(&tcp_ack).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
-    match event {
-        Event::TcpConnectionEstablished(_) => (),
+    let bob_cxn_handle = match event {
+        Event::TcpConnectionEstablished(h) => h,
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    let alice_cxn_handle = fut.poll(now).unwrap().unwrap();
+
+    EstablishedConnection {
+        alice,
+        alice_cxn_handle,
+        bob,
+        bob_cxn_handle,
+        now,
+    }
+}
+
+#[test]
+fn unfragmented_data_transfer() {
+    let mut cxn = establish_connection();
+
+    // transmitting 10 bytes of data should produce an identical `IoVec` upon
+    // reading.
+    let data_in = IoVec::from(vec![0xab; 10]);
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_millis(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let bytes = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    debug!("passing data segment to Bob...");
+    cxn.now += Duration::from_millis(1);
+    cxn.bob.receive(bytes.as_slice()).unwrap();
+    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::TcpBytesAvailable(handle) => {
+            assert_eq!(cxn.bob_cxn_handle, handle)
+        }
         e => panic!("got unanticipated event `{:?}`", e),
     }
 
-    assert!(fut.poll(now).unwrap().is_ok());
+    let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
+    assert!(data_in.structural_eq(data_out));
 }
 
 #[test]

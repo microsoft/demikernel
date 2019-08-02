@@ -18,7 +18,7 @@ custom_error! {#[derive(Clone)] pub Fail
     OutOfRange{details: Str} = "a value is out of range ({details})",
     ResourceBusy{details: Str} = "resource is busy ({details})",
     ResourceExhausted{details: Str} = "resource exhausted ({details})",
-    ResourceNotFound{} = "resource not found",
+    ResourceNotFound{details: Str} = "resource not found ({details})",
     Timeout{} = "an asynchronous operation timed out",
     TypeMismatch{details: Str} = "type mismatch ({details})",
     Underflow{details: Str} = "underflow ({details})",

@@ -12,7 +12,7 @@ pub struct TcpSendWindow {
     remote_receive_window_size: usize,
     segments_unacknowledged: usize,
     segments: VecDeque<Rc<Vec<u8>>>,
-    seq_num: Wrapping<u32>,
+    smallest_unacknowledged_seq_num: Wrapping<u32>,
 }
 
 impl TcpSendWindow {
@@ -23,7 +23,7 @@ impl TcpSendWindow {
             remote_receive_window_size: 0,
             segments_unacknowledged: 0,
             segments: VecDeque::new(),
-            seq_num: local_isn,
+            smallest_unacknowledged_seq_num: local_isn,
         }
     }
 
@@ -35,14 +35,14 @@ impl TcpSendWindow {
         self.remote_receive_window_size = size;
     }
 
-    pub fn get_seq_num(&self) -> Wrapping<u32> {
+    pub fn next_seq_num(&self) -> Wrapping<u32> {
         let bytes_unacknowledged =
             u32::try_from(self.bytes_unacknowledged).unwrap();
-        self.seq_num + Wrapping(bytes_unacknowledged)
+        self.smallest_unacknowledged_seq_num + Wrapping(bytes_unacknowledged)
     }
 
     pub fn incr_seq_num(&mut self) {
-        self.seq_num += Wrapping(1);
+        self.smallest_unacknowledged_seq_num += Wrapping(1);
     }
 
     pub fn get_mss(&self) -> usize {
@@ -70,7 +70,7 @@ impl TcpSendWindow {
         Ok(())
     }
 
-    pub fn packetize_and_enqueue(&mut self, iovec: IoVec) {
+    pub fn push(&mut self, iovec: IoVec) {
         for segment in iovec {
             if segment.len() > self.mss {
                 let mut segment = segment.as_slice();
@@ -86,38 +86,38 @@ impl TcpSendWindow {
     }
 
     pub fn acknowledge(&mut self, ack_num: Wrapping<u32>) -> Result<()> {
-        // if the distance between the acknowledgement number and the sequence
-        // number is greater than half the number space, we say that the
-        // acknowledgment is smaller than the sequence number.
-        let distance = (ack_num - self.seq_num).0 as usize;
-        if distance > HALF_U32 {
+        trace!("TcpSendWindow::acknowledge({:?})", ack_num);
+        debug!(
+            "smallest_unacknowledged_seq_num = {:?}",
+            self.smallest_unacknowledged_seq_num
+        );
+
+        let bytes_acknowledged =
+            (ack_num - self.smallest_unacknowledged_seq_num).0 as usize;
+
+        if 0 == bytes_acknowledged {
+            return Ok(());
+        }
+
+        if bytes_acknowledged > self.bytes_unacknowledged {
             return Err(Fail::Ignored {
-                details: "acknowledgement preceeds send window scope",
+                details: "acknowledgement is outside of send window scope",
             });
         }
 
-        if ack_num
-            > self.seq_num
-                + Wrapping(u32::try_from(self.bytes_unacknowledged).unwrap())
-        {
-            return Err(Fail::Ignored {
-                details: "acknowledgement of segment not yet sent",
-            });
-        }
-
-        let mut byte_count = 0;
+        let mut n = 0;
         let mut acked_segments = Vec::new();
         for i in 0..self.segments.len() {
             let segment = &self.segments[i];
-            byte_count += segment.len();
+            n += segment.len();
             acked_segments.push(segment);
 
-            if byte_count >= distance {
+            if n >= bytes_acknowledged {
                 break;
             }
         }
 
-        if byte_count != distance {
+        if n != bytes_acknowledged {
             return Err(Fail::Ignored {
                 details: "acknowledgement did not fall on a segment boundary",
             });
@@ -127,14 +127,29 @@ impl TcpSendWindow {
             let _ = self.segments.pop_front().unwrap();
         }
 
-        self.bytes_unacknowledged -= byte_count;
+        let old_next_seq_num = self.next_seq_num();
+        self.bytes_unacknowledged -= bytes_acknowledged;
+        self.smallest_unacknowledged_seq_num +=
+            Wrapping(u32::try_from(bytes_acknowledged).unwrap());
+        debug!(
+            "{} bytes acknowledged; next_seq_num {} -> {}",
+            bytes_acknowledged,
+            old_next_seq_num,
+            self.next_seq_num()
+        );
         Ok(())
     }
 
     pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
+        trace!("TcpSendWindow::get_transmittable_segments()");
         let mut transmittable_segments = VecDeque::new();
         let mut expected_remote_receive_window_size =
             self.remote_receive_window_size - self.bytes_unacknowledged;
+        debug!(
+            "expected_remote_receive_window_size = {}",
+            expected_remote_receive_window_size
+        );
+        debug!("self.segments.len() = {}", self.segments.len());
         for i in 0..self.segments.len() {
             let segment = &self.segments[i];
             let segment_len = segment.len();
@@ -181,7 +196,7 @@ impl TcpReceiveWindow {
         self.ack_num = Some(value + Wrapping(1));
     }
 
-    pub fn read(&mut self) -> IoVec {
+    pub fn pop(&mut self) -> IoVec {
         let mut iovec = IoVec::new();
         while let Some(segment) = self.unread_segments.pop_front() {
             let ack_num = self.ack_num().unwrap();
@@ -197,7 +212,7 @@ impl TcpReceiveWindow {
         iovec
     }
 
-    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
+    pub fn push(&mut self, segment: TcpSegment) -> Result<bool> {
         trace!("TcpReceiveWindow::receive({:?})", segment);
         let bytes_unread = self.bytes_unread + segment.payload.len();
         if bytes_unread > self.max_window_size {
@@ -206,8 +221,9 @@ impl TcpReceiveWindow {
             });
         }
 
+        let was_empty = self.unread_segments.is_empty();
         self.unread_segments.push_back(segment);
         self.bytes_unread = bytes_unread;
-        Ok(())
+        Ok(was_empty)
     }
 }

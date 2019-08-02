@@ -14,6 +14,7 @@ pub enum Event {
     },
     UdpDatagramReceived(udp::Datagram),
     TcpConnectionEstablished(tcp::ConnectionHandle),
+    TcpBytesAvailable(tcp::ConnectionHandle),
 }
 
 impl Debug for Event {
@@ -43,6 +44,9 @@ impl Debug for Event {
             }
             Event::TcpConnectionEstablished(handle) => {
                 write!(f, "TcpConnectionEstablished({})", handle)?
+            }
+            Event::TcpBytesAvailable(handle) => {
+                write!(f, "TcpBytesAvailable({})", handle)?
             }
         }
 

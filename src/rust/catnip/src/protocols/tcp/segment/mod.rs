@@ -99,7 +99,7 @@ impl TcpSegment {
             .src_port(cxnid.local.port())
             .dest_ipv4_addr(cxnid.remote.address())
             .dest_port(cxnid.remote.port())
-            .seq_num(cxn.get_seq_num());
+            .seq_num(cxn.next_seq_num());
         if let Some(ack_num) = cxn.try_get_ack_num() {
             segment.ack = true;
             segment.ack_num = ack_num;
@@ -114,6 +114,7 @@ impl TcpSegment {
     }
 
     pub fn encode(self) -> Vec<u8> {
+        trace!("TcpSegment::encode()");
         let mut options = TcpSegmentOptions::new();
         if let Some(mss) = self.mss {
             options.set_mss(mss);
@@ -123,9 +124,6 @@ impl TcpSegment {
             self.payload.len() + options.header_length(),
         );
         let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
-
-        encoder.text()[..self.payload.len()]
-            .copy_from_slice(self.payload.as_ref());
 
         let mut tcp_header = encoder.header();
         tcp_header.dest_port(self.dest_port.unwrap());
@@ -137,6 +135,11 @@ impl TcpSegment {
         tcp_header.ack(self.ack);
         tcp_header.rst(self.rst);
         tcp_header.options(options);
+
+        // setting the TCP options shifts where `encoder.text()` begins, so we
+        // need to ensure that we copy the payload after the options are set.
+        encoder.text()[..self.payload.len()]
+            .copy_from_slice(self.payload.as_ref());
 
         let ipv4 = encoder.ipv4();
         let mut ipv4_header = ipv4.header();

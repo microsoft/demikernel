@@ -104,6 +104,21 @@ impl<'a> Engine<'a> {
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
         self.ipv4.tcp_listen(port)
     }
+
+    pub fn tcp_write(
+        &mut self,
+        handle: tcp::ConnectionHandle,
+        bytes: IoVec,
+    ) -> Result<()> {
+        self.ipv4.tcp_write(handle, bytes)
+    }
+
+    pub fn tcp_read(
+        &mut self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<IoVec> {
+        self.ipv4.tcp_read(handle)
+    }
 }
 
 impl<'a> Async<Event> for Engine<'a> {

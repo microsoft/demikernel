@@ -82,13 +82,19 @@ impl<'a> TcpRuntime<'a> {
         Ok(())
     }
 
-    pub fn receive(
+    pub fn enqueue_segment(
         &mut self,
         cxnid: TcpConnectionId,
         segment: TcpSegment,
     ) -> Result<()> {
-        let cxn = self.connections.get_mut(&cxnid).unwrap();
-        cxn.receive(segment)
+        if let Some(cxn) = self.connections.get_mut(&cxnid) {
+            cxn.get_input_queue().borrow_mut().push_back(segment);
+            Ok(())
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection ID",
+            })
+        }
     }
 
     pub fn is_port_open(&self, port: ip::Port) -> bool {
@@ -137,8 +143,7 @@ impl<'a> TcpRuntime<'a> {
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
                 cxn.set_remote_isn(remote_isn);
                 cxn.negotiate_mss(ack_segment.mss)?;
-                // SYN packet has been acknowledged; increment the sequence
-                // number.
+                cxn.set_remote_receive_window_size(ack_segment.window_size);
                 cxn.incr_seq_num();
                 TcpSegment::default().connection(&cxn)
             };
@@ -162,7 +167,9 @@ impl<'a> TcpRuntime<'a> {
                 let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
                     cxn
                 } else {
-                    return Err(Fail::ResourceNotFound {});
+                    return Err(Fail::ResourceNotFound {
+                        details: "unrecognized connection ID",
+                    });
                 };
 
                 let segment = TcpSegment::default().connection(&cxn).rst();
@@ -237,7 +244,7 @@ impl<'a> TcpRuntime<'a> {
             let options = rt.options();
             let retries = options.tcp.handshake_retries();
             let timeout = options.tcp.handshake_timeout();
-            let _ = r#await!(
+            let ack_segment = r#await!(
                 TcpRuntime::handshake(&state, &cxnid),
                 rt.now(),
                 Retry::exponential(timeout, 2, retries)
@@ -248,34 +255,62 @@ impl<'a> TcpRuntime<'a> {
                 // number and notify the caller.
                 let mut state = state.borrow_mut();
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
+                cxn.set_remote_receive_window_size(ack_segment.window_size);
                 cxn.incr_seq_num();
                 rt.emit_event(Event::TcpConnectionEstablished(
                     cxn.get_handle(),
                 ));
             }
 
-            r#await!(
-                TcpRuntime::maintain_established_connection(&state, cxnid),
-                rt.now()
-            )?;
+            r#await!(TcpRuntime::exchange_data(&state, cxnid), rt.now())?;
 
             CoroutineOk(())
         })
     }
 
-    pub fn maintain_established_connection(
+    pub fn exchange_data(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: TcpConnectionId,
     ) -> Future<'a, ()> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
+            trace!("TcpRuntime::exchange_data(..., {:?})::coroutine", cxnid);
+
             let rt = state.borrow().rt().clone();
 
             loop {
                 let mut transmittable_segments: VecDeque<TcpSegment> = {
                     let mut state = state.borrow_mut();
                     let cxn = state.connections.get_mut(&cxnid).unwrap();
+                    let input_queue = cxn.get_input_queue();
+                    let mut input_queue = input_queue.borrow_mut();
+                    while let Some(segment) = input_queue.pop_front() {
+                        debug!("dequeued segment {:?}", segment);
+
+                        // todo: should we inform the caller about dropped
+                        // packets?
+                        if segment.syn {
+                            warn!("packet dropped (syn)");
+                            continue;
+                        }
+
+                        if segment.ack {
+                            match cxn.acknowledge(segment.ack_num) {
+                                Ok(()) => (),
+                                Err(e) => {
+                                    warn!("packet dropped ({:?})", e);
+                                    continue;
+                                }
+                            }
+                        }
+
+                        match cxn.receive(segment, &rt) {
+                            Ok(()) => (),
+                            Err(e) => warn!("packet dropped ({:?})", e),
+                        }
+                    }
+
                     cxn.get_transmittable_segments()
                         .iter()
                         .map(|s| {
@@ -285,6 +320,11 @@ impl<'a> TcpRuntime<'a> {
                         })
                         .collect()
                 };
+
+                debug!(
+                    "{} segments can be transmitted",
+                    transmittable_segments.len()
+                );
 
                 while let Some(segment) = transmittable_segments.pop_front() {
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
@@ -297,6 +337,37 @@ impl<'a> TcpRuntime<'a> {
         })
     }
 
+    pub fn write(
+        &mut self,
+        handle: TcpConnectionHandle,
+        bytes: IoVec,
+    ) -> Result<()> {
+        trace!("TcpRuntime::write({:?}, {:?})", handle, bytes);
+        if let Some(cxnid) = self.assigned_handles.get(&handle) {
+            let cxn = self.connections.get_mut(&cxnid).unwrap();
+            cxn.write(bytes);
+            Ok(())
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection handle",
+            })
+        }
+    }
+
+    pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
+        trace!("TcpRuntime::read({:?})", handle);
+        if let Some(cxnid) = self.assigned_handles.get(&handle) {
+            let cxn = self.connections.get_mut(&cxnid).unwrap();
+            let bytes = cxn.read();
+            debug!("read {:?}", bytes);
+            Ok(bytes)
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection handle",
+            })
+        }
+    }
+
     fn handshake(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: &TcpConnectionId,
@@ -306,7 +377,7 @@ impl<'a> TcpRuntime<'a> {
         let cxnid = cxnid.clone();
         rt.start_coroutine(move || {
             trace!("TcpRuntime::handshake()");
-            let (segment, rt, control_queue, ack_sent) = {
+            let (segment, rt, input_queue, ack_sent) = {
                 let state = state.borrow();
                 let cxn = state.connections.get(&cxnid).unwrap();
                 let segment = TcpSegment::default()
@@ -317,7 +388,7 @@ impl<'a> TcpRuntime<'a> {
                 (
                     segment,
                     state.rt.clone(),
-                    cxn.get_control_queue().clone(),
+                    cxn.get_input_queue().clone(),
                     ack_sent,
                 )
             };
@@ -328,11 +399,11 @@ impl<'a> TcpRuntime<'a> {
 
             loop {
                 if yield_until!(
-                    !control_queue.borrow().is_empty(),
+                    !input_queue.borrow().is_empty(),
                     state.rt.now()
                 ) {
                     let segment =
-                        control_queue.borrow_mut().pop_front().unwrap();
+                        input_queue.borrow_mut().pop_front().unwrap();
                     debug!(
                         "popped a segment from the control queue: {:?}",
                         segment

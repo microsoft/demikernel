@@ -33,9 +33,9 @@ impl Into<u16> for TcpConnectionHandle {
 }
 
 pub struct TcpConnection {
-    control_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
     cxnid: TcpConnectionId,
     handle: TcpConnectionHandle,
+    input_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
     local_isn: Wrapping<u32>,
     receive_window: TcpReceiveWindow,
     send_window: TcpSendWindow,
@@ -49,9 +49,9 @@ impl TcpConnection {
         receive_window_size: usize,
     ) -> TcpConnection {
         TcpConnection {
-            control_queue: Rc::new(RefCell::new(VecDeque::new())),
             cxnid,
             handle,
+            input_queue: Rc::new(RefCell::new(VecDeque::new())),
             local_isn,
             receive_window: TcpReceiveWindow::new(receive_window_size),
             send_window: TcpSendWindow::new(local_isn),
@@ -78,8 +78,8 @@ impl TcpConnection {
         self.receive_window.remote_isn(value)
     }
 
-    pub fn get_seq_num(&self) -> Wrapping<u32> {
-        self.send_window.get_seq_num()
+    pub fn next_seq_num(&self) -> Wrapping<u32> {
+        self.send_window.next_seq_num()
     }
 
     pub fn incr_seq_num(&mut self) {
@@ -94,25 +94,40 @@ impl TcpConnection {
         self.receive_window.window_size()
     }
 
+    pub fn set_remote_receive_window_size(&mut self, size: usize) {
+        self.send_window.set_remote_receive_window_size(size)
+    }
+
     pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
         self.send_window.get_transmittable_segments()
     }
 
-    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
-        trace!("TcpConnection::receive({:?})", segment);
-        if segment.syn
-            || segment.rst
-            || (segment.ack && segment.ack_num == self.local_isn + Wrapping(1))
-        {
-            debug!("segment placed on control queue");
-            self.control_queue.borrow_mut().push_back(segment);
-            Ok(())
-        } else {
-            self.receive_window.receive(segment)
-        }
+    pub fn write(&mut self, bytes: IoVec) {
+        self.send_window.push(bytes)
     }
 
-    pub fn get_control_queue(&self) -> &Rc<RefCell<VecDeque<TcpSegment>>> {
-        &self.control_queue
+    pub fn read(&mut self) -> IoVec {
+        self.receive_window.pop()
+    }
+
+    pub fn get_input_queue(&self) -> Rc<RefCell<VecDeque<TcpSegment>>> {
+        self.input_queue.clone()
+    }
+
+    pub fn acknowledge(&mut self, ack_num: Wrapping<u32>) -> Result<()> {
+        self.send_window.acknowledge(ack_num)
+    }
+
+    pub fn receive(
+        &mut self,
+        segment: TcpSegment,
+        rt: &Runtime<'_>,
+    ) -> Result<()> {
+        let was_empty = self.receive_window.push(segment)?;
+        if was_empty {
+            rt.emit_event(Event::TcpBytesAvailable(self.handle));
+        }
+
+        Ok(())
     }
 }
