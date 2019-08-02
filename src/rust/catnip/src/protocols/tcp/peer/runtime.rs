@@ -262,23 +262,31 @@ impl<'a> TcpRuntime<'a> {
                 ));
             }
 
-            r#await!(TcpRuntime::exchange_data(&state, cxnid), rt.now())?;
+            r#await!(
+                TcpRuntime::on_connection_established(&state, cxnid),
+                rt.now()
+            )?;
 
             CoroutineOk(())
         })
     }
 
-    pub fn exchange_data(
+    #[allow(clippy::cognitive_complexity)]
+    pub fn on_connection_established(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: TcpConnectionId,
     ) -> Future<'a, ()> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            trace!("TcpRuntime::exchange_data(..., {:?})::coroutine", cxnid);
+            trace!(
+                "TcpRuntime::on_connection_established(..., {:?})::coroutine",
+                cxnid
+            );
 
             let rt = state.borrow().rt().clone();
-
+            let options = rt.options();
+            let mut ack_needed_since = None;
             loop {
                 let mut transmittable_segments: VecDeque<TcpSegment> = {
                     let mut state = state.borrow_mut();
@@ -287,6 +295,13 @@ impl<'a> TcpRuntime<'a> {
                     let mut input_queue = input_queue.borrow_mut();
                     while let Some(segment) = input_queue.pop_front() {
                         debug!("dequeued segment {:?}", segment);
+                        if ack_needed_since.is_none() {
+                            ack_needed_since = Some(rt.now());
+                            debug!(
+                                "ack_needed_since = {:?}",
+                                ack_needed_since
+                            );
+                        }
 
                         // todo: should we inform the caller about dropped
                         // packets?
@@ -327,7 +342,43 @@ impl<'a> TcpRuntime<'a> {
                 );
 
                 while let Some(segment) = transmittable_segments.pop_front() {
+                    assert!(segment.ack);
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
+                    ack_needed_since = None;
+                }
+
+                if let Some(timestamp) = ack_needed_since {
+                    debug!(
+                        "ack_needed_since = {:?} ({:?})",
+                        ack_needed_since,
+                        rt.now() - timestamp
+                    );
+                    debug!(
+                        "options.tcp.trailing_ack_delay() = {:?}",
+                        options.tcp.trailing_ack_delay()
+                    );
+                    if rt.now() - timestamp > options.tcp.trailing_ack_delay()
+                    {
+                        debug!(
+                            "delayed ACK timer has expired; sending pure \
+                             ACK..."
+                        );
+                        let pure_ack = {
+                            let mut state = state.borrow_mut();
+                            let cxn =
+                                state.connections.get_mut(&cxnid).unwrap();
+                            TcpSegment::default().connection(cxn)
+                        };
+
+                        r#await!(
+                            TcpRuntime::cast(&state, pure_ack),
+                            rt.now()
+                        )?;
+
+                        ack_needed_since = None;
+                    }
+                } else {
+                    debug!("ack_needed_since = None")
                 }
 
                 yield None;

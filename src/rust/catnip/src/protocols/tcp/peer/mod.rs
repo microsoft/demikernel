@@ -135,9 +135,9 @@ impl<'a> TcpPeer<'a> {
                         cxn.get_handle()
                     };
 
-                    async_work
-                        .borrow_mut()
-                        .add(TcpRuntime::exchange_data(&tcp_rt, cxnid));
+                    async_work.borrow_mut().add(
+                        TcpRuntime::on_connection_established(&tcp_rt, cxnid),
+                    );
 
                     return CoroutineOk(handle);
                 }

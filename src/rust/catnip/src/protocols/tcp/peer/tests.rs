@@ -206,6 +206,19 @@ fn unfragmented_data_transfer() {
 
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert!(data_in.structural_eq(data_out));
+
+    cxn.now += Duration::from_micros(100);
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    cxn.now += Duration::from_micros(1);
+    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert!(segment.ack);
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
 }
 
 #[test]

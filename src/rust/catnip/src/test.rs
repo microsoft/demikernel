@@ -56,6 +56,7 @@ pub fn new_engine<'a>(
                 handshake_retries: None,
                 handshake_timeout: None,
                 receive_window_size: None,
+                trailing_ack_delay: None,
             },
         },
     )
