@@ -66,7 +66,7 @@ impl TcpSegment {
         self
     }
 
-    pub fn ack_num(mut self, ack_num: Wrapping<u32>) -> TcpSegment {
+    pub fn ack(mut self, ack_num: Wrapping<u32>) -> TcpSegment {
         self.ack_num = ack_num;
         self.ack = true;
         self
@@ -99,7 +99,7 @@ impl TcpSegment {
             .src_port(cxnid.local.port())
             .dest_ipv4_addr(cxnid.remote.address())
             .dest_port(cxnid.remote.port())
-            .seq_num(cxn.next_seq_num());
+            .seq_num(cxn.next_untransmitted_seq_num());
         if let Some(ack_num) = cxn.try_get_ack_num() {
             segment.ack = true;
             segment.ack_num = ack_num;

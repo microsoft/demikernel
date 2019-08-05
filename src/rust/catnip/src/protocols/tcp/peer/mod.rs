@@ -98,7 +98,7 @@ impl<'a> TcpPeer<'a> {
                 .dest_ipv4_addr(remote_ipv4_addr)
                 .dest_port(remote_port)
                 .src_port(local_port)
-                .ack_num(ack_num)
+                .ack(ack_num)
                 .rst(),
         ));
         Ok(())

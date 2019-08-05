@@ -102,7 +102,7 @@ impl ArpPdu {
         writer.write_all(&byte)?;
         let byte = [PROT_SIZE_IPV4; 1];
         writer.write_all(&byte)?;
-        writer.write_u16::<NetworkEndian>(self.op.clone() as u16)?;
+        writer.write_u16::<NetworkEndian>(self.op as u16)?;
         writer.write_all(self.sender_link_addr.as_bytes())?;
         writer.write_u32::<NetworkEndian>(self.sender_ip_addr.into())?;
         writer.write_all(self.target_link_addr.as_bytes())?;

@@ -78,8 +78,8 @@ impl TcpConnection {
         self.receive_window.remote_isn(value)
     }
 
-    pub fn next_seq_num(&self) -> Wrapping<u32> {
-        self.send_window.next_seq_num()
+    pub fn next_untransmitted_seq_num(&self) -> Wrapping<u32> {
+        self.send_window.next_untransmitted_seq_num()
     }
 
     pub fn incr_seq_num(&mut self) {
@@ -98,8 +98,22 @@ impl TcpConnection {
         self.send_window.set_remote_receive_window_size(size)
     }
 
-    pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
-        self.send_window.get_transmittable_segments()
+    pub fn get_transmittable_segments(&mut self) -> VecDeque<TcpSegment> {
+        let segments = self.send_window.get_transmittable_segments();
+        let mut tcp_segments = VecDeque::new();
+        let mut seq_num = self.next_untransmitted_seq_num();
+        for bytes in segments {
+            let bytes_len = bytes.len();
+            tcp_segments.push_back(
+                TcpSegment::default()
+                    .connection(self)
+                    .ack(self.try_get_ack_num().unwrap())
+                    .payload(bytes),
+            );
+            seq_num += Wrapping(u32::try_from(bytes_len).unwrap())
+        }
+
+        tcp_segments
     }
 
     pub fn write(&mut self, bytes: IoVec) {

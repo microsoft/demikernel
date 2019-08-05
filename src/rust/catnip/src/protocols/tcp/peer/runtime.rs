@@ -327,13 +327,6 @@ impl<'a> TcpRuntime<'a> {
                     }
 
                     cxn.get_transmittable_segments()
-                        .iter()
-                        .map(|s| {
-                            TcpSegment::default()
-                                .connection(cxn)
-                                .payload(s.clone())
-                        })
-                        .collect()
                 };
 
                 debug!(

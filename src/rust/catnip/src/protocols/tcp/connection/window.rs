@@ -35,7 +35,7 @@ impl TcpSendWindow {
         self.remote_receive_window_size = size;
     }
 
-    pub fn next_seq_num(&self) -> Wrapping<u32> {
+    pub fn next_untransmitted_seq_num(&self) -> Wrapping<u32> {
         let bytes_unacknowledged =
             u32::try_from(self.bytes_unacknowledged).unwrap();
         self.smallest_unacknowledged_seq_num + Wrapping(bytes_unacknowledged)
@@ -127,15 +127,15 @@ impl TcpSendWindow {
             let _ = self.segments.pop_front().unwrap();
         }
 
-        let old_next_seq_num = self.next_seq_num();
+        let prev_seq_num = self.next_untransmitted_seq_num();
         self.bytes_unacknowledged -= bytes_acknowledged;
         self.smallest_unacknowledged_seq_num +=
             Wrapping(u32::try_from(bytes_acknowledged).unwrap());
         debug!(
-            "{} bytes acknowledged; next_seq_num {} -> {}",
+            "{} bytes acknowledged; next_untransmitted_seq_num {} -> {}",
             bytes_acknowledged,
-            old_next_seq_num,
-            self.next_seq_num()
+            prev_seq_num,
+            self.next_untransmitted_seq_num()
         );
         Ok(())
     }
@@ -150,12 +150,11 @@ impl TcpSendWindow {
             expected_remote_receive_window_size
         );
         debug!("self.segments.len() = {}", self.segments.len());
-        for i in 0..self.segments.len() {
+        for i in self.segments_unacknowledged..self.segments.len() {
             let segment = &self.segments[i];
             let segment_len = segment.len();
             if segment_len <= expected_remote_receive_window_size {
                 transmittable_segments.push_back(segment.clone());
-                self.bytes_unacknowledged += segment_len;
                 expected_remote_receive_window_size -= segment_len;
             } else {
                 break;
@@ -199,11 +198,12 @@ impl TcpReceiveWindow {
     pub fn pop(&mut self) -> IoVec {
         let mut iovec = IoVec::new();
         while let Some(segment) = self.unread_segments.pop_front() {
-            let ack_num = self.ack_num().unwrap();
-            self.ack_num = Some(
-                ack_num
+            let ack_num = Some(
+                self.ack_num.unwrap()
                     + Wrapping(u32::try_from(segment.payload.len()).unwrap()),
             );
+            debug!("ack_num: {:?} -> {:?}", self.ack_num, ack_num);
+            self.ack_num = ack_num;
             let payload = Rc::try_unwrap(segment.payload).unwrap();
             iovec.push(payload);
         }

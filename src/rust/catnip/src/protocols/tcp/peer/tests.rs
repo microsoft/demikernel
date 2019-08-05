@@ -186,16 +186,16 @@ fn unfragmented_data_transfer() {
 
     cxn.now += Duration::from_millis(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let bytes = match event {
+    let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
-            bytes
+            (bytes, segment.seq_num)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    debug!("passing data segment to Bob...");
+    info!("passing data segment to Bob...");
     cxn.now += Duration::from_millis(1);
     cxn.bob.receive(bytes.as_slice()).unwrap();
     match cxn.bob.poll(cxn.now).unwrap().unwrap() {
@@ -208,6 +208,7 @@ fn unfragmented_data_transfer() {
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert!(data_in.structural_eq(data_out));
 
+    info!("waiting for trailing ACK timeout to pass...");
     cxn.now += cxn.bob.options().tcp.trailing_ack_delay();
     assert!(cxn.bob.poll(cxn.now).is_none());
 
@@ -215,12 +216,20 @@ fn unfragmented_data_transfer() {
     let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
-            assert!(segment.ack);
             assert_eq!(0, segment.payload.len());
+            assert!(segment.ack);
+            assert_eq!(
+                seq_num
+                    + Wrapping(u32::try_from(data_in.byte_count()).unwrap()),
+                segment.ack_num
+            );
             bytes
         }
         e => panic!("got unanticipated event `{:?}`", e),
     };
+
+    info!("passing pure ACK segment to Bob...");
+    cxn.alice.receive(pure_ack.as_slice()).unwrap();
 }
 
 #[test]
