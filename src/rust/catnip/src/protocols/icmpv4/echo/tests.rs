@@ -74,8 +74,7 @@ fn ping() {
 fn timeout() {
     // ensures that a ICMPv4 ping exchange succeeds.
 
-    let t0 = Instant::now();
-    let now = t0;
+    let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
     let alice = test::new_alice(now);
     alice.import_arp_cache(hashmap! {
@@ -83,9 +82,18 @@ fn timeout() {
     });
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
+    match alice.poll(now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let echo = Icmpv4Echo::attach(bytes.as_slice()).unwrap();
+            assert_eq!(echo.op(), Icmpv4EchoOp::Request);
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    }
+
+    now += timeout;
     assert!(fut.poll(now).is_none());
 
-    let now = now + timeout;
+    now += Duration::from_micros(1);
     match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         x => panic!("expected `Fail::Timeout`, got `{:?}`", x),

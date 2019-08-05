@@ -34,7 +34,7 @@ macro_rules! yield_until {
 
             let dt = $now - t0;
             let timeout = $timeout;
-            if dt >= timeout {
+            if dt > timeout {
                 debug!("yield_until!(): *timeout*");
                 break;
             } else {

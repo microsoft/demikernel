@@ -1,7 +1,11 @@
+use super::pdu::{ArpOp, ArpPdu};
 use crate::{prelude::*, protocols::ethernet2, test};
 use float_duration::FloatDuration;
 use serde_yaml;
-use std::time::{Duration, Instant};
+use std::{
+    io::Cursor,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn immediate_reply() {
@@ -138,11 +142,10 @@ fn slow_reply() {
 #[test]
 fn no_reply() {
     // tests to ensure that an are request results in a reply.
-    let now = Instant::now();
+    let mut now = Instant::now();
     let alice = test::new_alice(now);
-
-    // this test is written based on certain assumptions.
     let options = alice.options();
+
     assert_eq!(options.arp.retry_count.unwrap(), 2);
     assert_eq!(
         options.arp.request_timeout.unwrap(),
@@ -150,16 +153,36 @@ fn no_reply() {
     );
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
-    // retry #1
-    let now = now + Duration::from_secs(1);
-    assert!(fut.poll(now).is_none());
+    match alice.poll(now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
+            let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
+            assert_eq!(arp.op, ArpOp::ArpRequest);
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    }
 
-    // retry #2
-    let now = now + Duration::from_secs(1);
-    assert!(fut.poll(now).is_none());
+    for i in 0..options.arp.retry_count() {
+        now += options.arp.request_timeout();
+        assert!(fut.poll(now).is_none());
+        info!("no_reply(): retry #{}", i + 1);
+        now += Duration::from_micros(1);
+        match alice.poll(now).unwrap().unwrap() {
+            Event::Transmit(bytes) => {
+                let frame =
+                    ethernet2::Frame::attach(bytes.as_slice()).unwrap();
+                let arp =
+                    ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
+                assert_eq!(arp.op, ArpOp::ArpRequest);
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        }
+    }
 
     // timeout
-    let now = now + Duration::from_secs(1);
+    now += options.arp.request_timeout();
+    assert!(fut.poll(now).is_none());
+    now += Duration::from_micros(1);
     match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),

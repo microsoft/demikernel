@@ -22,12 +22,7 @@ pub struct ArpPeer<'a> {
 impl<'a> ArpPeer<'a> {
     pub fn new(now: Instant, rt: Runtime<'a>) -> Result<ArpPeer<'a>> {
         let options = rt.options();
-        let cache_ttl = options
-            .arp
-            .cache_ttl
-            .unwrap_or_else(|| FloatDuration::seconds(20.0))
-            .to_std()?;
-        let cache = ArpCache::new(now, Some(cache_ttl));
+        let cache = ArpCache::new(now, Some(options.arp.cache_ttl()));
         Ok(ArpPeer {
             rt,
             cache: Rc::new(RefCell::new(cache)),

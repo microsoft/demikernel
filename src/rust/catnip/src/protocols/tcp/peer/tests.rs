@@ -5,6 +5,7 @@ use super::super::{
 use crate::{
     prelude::*,
     protocols::{ip, ipv4},
+    r#async::Retry,
     test,
 };
 use std::{
@@ -226,68 +227,48 @@ fn unfragmented_data_transfer() {
 fn syn_retry() {
     let bob_port = ip::Port::try_from(12345).unwrap();
 
-    let now = Instant::now();
+    let mut now = Instant::now();
     let mut alice = test::new_alice(now);
     alice.import_arp_cache(hashmap! {
         *test::bob_ipv4_addr() => *test::bob_link_addr(),
     });
 
+    let options = alice.options();
+    let retries = options.tcp.handshake_retries();
+    let timeout = options.tcp.handshake_timeout();
+    let mut retry = Retry::exponential(timeout, 2, retries);
+
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let event = alice.poll(now).unwrap().unwrap();
-    let bytes = match event {
-        Event::Transmit(segment) => segment.to_vec(),
+    match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert!(segment.syn);
+        }
         e => panic!("got unanticipated event `{:?}`", e),
-    };
+    }
 
-    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-    assert!(segment.header().syn());
+    for i in 0..(retries - 1) {
+        let timeout = retry.next().unwrap();
+        now += timeout;
+        assert!(fut.poll(now).is_none());
+        info!("syn_retry(): retry #{}", i + 1);
+        now += Duration::from_micros(1);
+        let event = alice.poll(now).unwrap().unwrap();
+        match event {
+            Event::Transmit(bytes) => {
+                let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+                assert!(segment.syn);
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        }
+    }
 
-    debug!("looking for the second SYN from alice...");
-    let now = now + Duration::from_secs(3);
-    let event = alice.poll(now).unwrap().unwrap();
-    let bytes = match event {
-        Event::Transmit(segment) => segment.to_vec(),
-        e => panic!("got unanticipated event `{:?}`", e),
-    };
-
-    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-    assert!(segment.header().syn());
-
-    debug!("looking for the third SYN from alice...");
-    let now = now + Duration::from_secs(6);
-    let event = alice.poll(now).unwrap().unwrap();
-    let bytes = match event {
-        Event::Transmit(segment) => segment.to_vec(),
-        e => panic!("got unanticipated event `{:?}`", e),
-    };
-
-    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-    assert!(segment.header().syn());
-
-    debug!("looking for the forth SYN from alice...");
-    let now = now + Duration::from_secs(12);
-    let event = alice.poll(now).unwrap().unwrap();
-    let bytes = match event {
-        Event::Transmit(segment) => segment.to_vec(),
-        e => panic!("got unanticipated event `{:?}`", e),
-    };
-
-    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-    assert!(segment.header().syn());
-
-    debug!("looking for the fifth SYN from alice...");
-    let now = now + Duration::from_secs(24);
-    let event = alice.poll(now).unwrap().unwrap();
-    let bytes = match event {
-        Event::Transmit(segment) => segment.to_vec(),
-        e => panic!("got unanticipated event `{:?}`", e),
-    };
-
-    let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-    assert!(segment.header().syn());
-
-    let now = now + Duration::from_secs(48);
+    now += retry.next().unwrap();
+    assert!(retry.next().is_none());
+    assert!(fut.poll(now).is_none());
+    now += Duration::from_micros(1);
     match fut.poll(now).unwrap() {
         Err(Fail::Timeout {}) => (),
         _ => panic!("expected timeout"),

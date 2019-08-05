@@ -16,7 +16,7 @@ const PROT_TYPE_IPV4: u16 = 0x800;
 const PROT_SIZE_IPV4: u8 = 4;
 
 #[repr(u16)]
-#[derive(FromPrimitive, Clone)]
+#[derive(FromPrimitive, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArpOp {
     ArpRequest = 1,
     ArpReply = 2,
@@ -35,6 +35,7 @@ impl TryFrom<u16> for ArpOp {
     }
 }
 
+#[derive(Debug)]
 pub struct ArpPdu {
     pub op: ArpOp,
     pub sender_link_addr: MacAddress,
