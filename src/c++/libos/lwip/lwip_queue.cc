@@ -617,6 +617,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
         new_lq->my_bound_src = my_bound_src;
         new_lq->my_default_dst = src;
+        new_lq->my_tuple = tup;
         our_recv_queues[tup] = &new_lq->my_recv_queue;
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
@@ -673,7 +674,8 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
     our_recv_queues[tup] = &my_recv_queue;
 #if DMTR_DEBUG
-    std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
+    std::cout << "Binding to addr: " << ntohs(saddr_copy.sin_addr.s_addr);
+    std::cout << ":" << ntohs(saddr_copy.sin_port) << std::endl;
 #endif
     return 0;
 }
@@ -702,7 +704,8 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
     my_bound_src = src;
 
-    our_recv_queues[lwip_4tuple(lwip_addr(saddr_copy), lwip_addr(src))] = &my_recv_queue;
+    my_tuple = lwip_4tuple(lwip_addr(saddr_copy), lwip_addr(src));
+    our_recv_queues[my_tuple] = &my_recv_queue;
 #if DMTR_DEBUG
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
 #endif
@@ -710,10 +713,38 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     return 0;
 }
 
+/**
+ * Manually call the push sub-routine with a special message
+ */
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    my_default_dst = boost::none;
-    my_bound_src = boost::none;
+    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    DMTR_NOTNULL(EINVAL, my_push_thread);
+
+    /** If we are at the "initiating side" of the close */
+    if (is_connected()) {
+        dmtr_sgarray_t sga;
+        sga.sga_numsegs = 0xdeadbeef;
+        dmtr_qtoken_t token;
+        DMTR_OK(new_task(token, DMTR_OPC_PUSH, sga));
+        my_push_thread->enqueue(token);
+
+        my_push_thread->service();
+        /* The thread will return EAGAIN. How do we termine the threads?
+        if (ret != 0) {
+            DMTR_FAIL(ret);
+        }
+        */
+
+        my_default_dst = boost::none;
+        my_bound_src = boost::none;
+        our_recv_queues.erase(my_tuple);
+#if DMTR_DEBUG
+        printf("size of our_recv_queues: %lu\n", our_recv_queues.size());
+#endif
+        return 0;
+    }
+
     return 0;
 }
 
@@ -746,12 +777,14 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         const dmtr_sgarray_t *sga = NULL;
         DMTR_TRUE(EINVAL, t->arg(sga));
 
-        size_t sgalen = 0;
-        DMTR_OK(dmtr_sgalen(&sgalen, sga));
-        if (0 == sgalen) {
-            DMTR_OK(t->complete(ENOMSG));
-            // move onto the next task.
-            continue;
+        if (sga->sga_numsegs != 0xdeadbeef) {
+            size_t sgalen = 0;
+            DMTR_OK(dmtr_sgalen(&sgalen, sga));
+            if (0 == sgalen) {
+                DMTR_OK(t->complete(ENOMSG));
+                // move onto the next task.
+                continue;
+            }
         }
 
         const struct sockaddr_in *saddr = NULL;
@@ -793,17 +826,19 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             p += sizeof(*u32);
         }
 
-        for (size_t i = 0; i < sga->sga_numsegs; i++) {
-            auto * const u32 = reinterpret_cast<uint32_t *>(p);
-            const auto len = sga->sga_segs[i].sgaseg_len;
-            *u32 = htonl(len);
-            total_len += sizeof(*u32);
-            p += sizeof(*u32);
-            // todo: remove copy by associating foreign memory with
-            // pktmbuf object.
-            rte_memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
-            total_len += len;
-            p += len;
+        if (sga->sga_numsegs != 0xdeadbeef) {
+            for (size_t i = 0; i < sga->sga_numsegs; i++) {
+                auto * const u32 = reinterpret_cast<uint32_t *>(p);
+                const auto len = sga->sga_segs[i].sgaseg_len;
+                *u32 = htonl(len);
+                total_len += sizeof(*u32);
+                p += sizeof(*u32);
+                // todo: remove copy by associating foreign memory with
+                // pktmbuf object.
+                rte_memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
+                total_len += len;
+                p += len;
+            }
         }
 
         // Fill in UDP header.
@@ -892,11 +927,15 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         printf("send: ip dst addr: %x\n", ntohl(ip_hdr->dst_addr));
         printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
         printf("send: udp dst port: %d\n", ntohs(udp_hdr->dst_port));
-        printf("send: sga_numsegs: %d\n", sga->sga_numsegs);
-        // for (size_t i = 0; i < sga->sga_numsegs; ++i) {
-        //     printf("send: buf [%lu] len: %u\n", i, sga->sga_segs[i].sgaseg_len);
-        //     printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
-        // }
+        if (sga->sga_numsegs == 0xdeadbeef) {
+            printf("Sending close connection magic\n");
+        } else {
+            printf("send: sga_numsegs: %d\n", sga->sga_numsegs);
+            for (size_t i = 0; i < sga->sga_numsegs; ++i) {
+                printf("send: buf [%lu] len: %u\n", i, sga->sga_segs[i].sgaseg_len);
+                //printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
+            }
+        }
         printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
         printf("send: pkt len: %d\n", total_len);
         //rte_pktmbuf_dump(stderr, pkt, total_len);
@@ -988,8 +1027,21 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         dmtr_sgarray_t &sga = my_recv_queue.front();
-        // todo: pop from queue in `raii_guard`.
-        DMTR_OK(t->complete(0, sga));
+        // Closing our fac-simile connection
+        if (sga.sga_numsegs == 0xdeadbeef) {
+            DMTR_TRUE(EPERM, our_dpdk_init_flag);
+            my_default_dst = boost::none;
+            my_bound_src = boost::none;
+            our_recv_queues.erase(my_tuple);
+#if DMTR_DEBUG
+            printf("Received connection closing magic\n");
+            printf("size of our_recv_queues: %lu\n", our_recv_queues.size());
+#endif
+            DMTR_OK(t->complete(ECONNABORTED));
+        } else {
+            // todo: pop from queue in `raii_guard`.
+            DMTR_OK(t->complete(0, sga));
+        }
         my_recv_queue.pop();
     }
 
@@ -1136,7 +1188,6 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
     printf("\n");
     printf("recv: eth type: %x\n", eth_type);
-    printf("====================\n");
 #endif
 
     struct ether_addr mac_addr = {};
@@ -1215,27 +1266,30 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
 #endif
 
-    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        // segment length
-        auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
-        sga.sga_segs[i].sgaseg_len = seg_len;
-        p += sizeof(seg_len);
+    if (sga.sga_numsegs != 0xdeadbeef) {
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            // segment length
+            auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
+            sga.sga_segs[i].sgaseg_len = seg_len;
+            p += sizeof(seg_len);
 
 #if DMTR_DEBUG
-        printf("recv: buf [%lu] len: %u\n", i, seg_len);
+            printf("recv: buf [%lu] len: %u\n", i, seg_len);
 #endif
 
-        void *buf = NULL;
-        DMTR_OK(dmtr_malloc(&buf, seg_len));
-        sga.sga_buf = buf;
-        sga.sga_segs[i].sgaseg_buf = buf;
-        // todo: remove copy if possible.
-        rte_memcpy(buf, p, seg_len);
-        p += seg_len;
+            void *buf = NULL;
+            DMTR_OK(dmtr_malloc(&buf, seg_len));
+            sga.sga_buf = buf;
+            sga.sga_segs[i].sgaseg_buf = buf;
+            // todo: remove copy if possible.
+            rte_memcpy(buf, p, seg_len);
+            p += seg_len;
 
 #if DMTR_DEBUG
         //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+        printf("====================\n");
 #endif
+        }
     }
     sga.sga_addr.sin_family = AF_INET;
     sga.sga_addr.sin_port = udp_src_port;
@@ -1271,11 +1325,9 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         default:
             DMTR_FAIL(ret);
         case EAGAIN:
-            break;
+        case ECONNABORTED: //FIXME: how are the co-routines stopped?
         case 0:
-            // the threads should only exit if the queue has been closed
-            // (`good()` => `false`).
-            DMTR_UNREACHABLE();
+            break;
     }
 
     return t->poll(qr_out);

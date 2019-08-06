@@ -59,8 +59,9 @@ LatencyAddStat(dmtr_latency_t *l, char type, uint64_t val, uint64_t record_time)
 {
     //if (l->latencies.size() == 0)
 
-    if (l->latencies.size() < MAX_ITERATIONS)
-	l->latencies.push_back(val);
+    if (l->latencies.size() < MAX_ITERATIONS) {
+        l->latencies.push_back(val);
+    }
     if (record_time) {
         l->record_times.push_back(record_time);
     }

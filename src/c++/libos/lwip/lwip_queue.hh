@@ -71,6 +71,7 @@ class lwip_queue : public io_queue {
     private: static uint16_t my_port_range_lo;
     private: static uint16_t my_port_range_hi;
     private: static uint16_t my_port_counter;
+    private: lwip_4tuple my_tuple;
     private: uint16_t gen_src_port();
 
     private: bool my_listening_flag;
@@ -127,8 +128,8 @@ class lwip_queue : public io_queue {
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: static bool insert_recv_queue(const lwip_4tuple &tup, const dmtr_sgarray_t &sga);
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
-    private: static int service_incoming_packets();
-    private: static bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
+    private: int service_incoming_packets();
+    private: bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
     private: static int learn_addrs(const struct ether_addr &mac, const struct in_addr &ip);
     private: static int learn_addrs(const char *mac_s, const char *ip_s);
     private: static int ip_to_mac(struct ether_addr &mac_out, const struct in_addr &ip);
