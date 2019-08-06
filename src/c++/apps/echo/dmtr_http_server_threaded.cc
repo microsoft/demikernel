@@ -149,6 +149,7 @@ static void regex_work(char *url, char **response, int *response_len) {
         body_len = strlen(html);
         body = reinterpret_cast<char *>(malloc(body_len+1));
         snprintf(body, body_len+1, "%s", html);
+        strncpy(mime_type, "text/html", MAX_MIME_TYPE);
     }
 
     char *header = NULL;
