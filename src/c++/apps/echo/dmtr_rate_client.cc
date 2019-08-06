@@ -35,7 +35,7 @@
  *********************** TIME VARIABLES **************************
  *****************************************************************/
 
-using hr_clock = std::chrono::high_resolution_clock;
+using hr_clock = std::chrono::steady_clock;
 
 /* Returns the number of nanoseconds since the epoch for a given high-res time point */
 static inline long int since_epoch(hr_clock::time_point &time){
@@ -209,6 +209,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         if (hr_clock::now() > *time_end) {
             log_warn("logging time has passed. %d requests were logged.", logged);
             expired = true;
+            break;
         }
     }
 
@@ -301,6 +302,8 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 request->completed = hr_clock::now();
                 request->status = COMPLETED;
                 request->valid = validate_response(wait_out.qr_value.sga);
+                free(wait_out.qr_value.sga.sga_buf);
+                dmtr_close(wait_out.qr_qd);
 
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
@@ -309,8 +312,6 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 dmtr_push(&token, log_memq, &sga);
                 dmtr_wait(NULL, token);
 
-                free(wait_out.qr_value.sga.sga_buf);
-                dmtr_close(wait_out.qr_qd);
                 completed++;
             } else {
                 log_warn("Non supported OP code");
