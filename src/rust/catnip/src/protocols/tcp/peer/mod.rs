@@ -36,6 +36,11 @@ impl<'a> TcpPeer<'a> {
         trace!("TcpPeer::receive(...)");
         let decoder = TcpSegmentDecoder::try_from(datagram)?;
         let segment = TcpSegment::try_from(decoder)?;
+        info!(
+            "{} received segment: {:?}",
+            self.tcp_rt.borrow().rt().options().my_ipv4_addr,
+            segment
+        );
         let local_ipv4_addr = segment.dest_ipv4_addr.unwrap();
         // i haven't yet seen anything that explicitly disallows categories of
         // IP addresses but it seems sensible to drop datagrams where the

@@ -97,7 +97,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
 
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
-    let (tcp_syn, private_port, syn_seq_num) = {
+    let (tcp_syn, private_port, alice_isn) = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
             Event::Transmit(segment) => segment.to_vec(),
@@ -109,28 +109,28 @@ fn establish_connection() -> EstablishedConnection<'static> {
         assert!(!segment.header().ack());
         let src_port = segment.header().src_port().unwrap();
         debug!("private_port => {:?}", src_port);
-        let syn_seq_num = segment.header().seq_num();
-        (bytes, src_port, syn_seq_num)
+        let alice_isn = segment.header().seq_num();
+        (bytes, src_port, alice_isn)
     };
 
     info!("passing TCP SYN to bob...");
     let now = now + Duration::from_millis(1);
     bob.receive(&tcp_syn).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
-    let (tcp_syn_ack, syn_ack_seq_num) = {
+    let (tcp_syn_ack, bob_isn) = {
         let bytes = match event {
             Event::Transmit(bytes) => bytes,
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
         let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
-        let syn_ack_seq_num = segment.header().seq_num();
+        let bob_isn = segment.header().seq_num();
         assert!(segment.header().syn());
         assert!(segment.header().ack());
         assert_eq!(Some(private_port), segment.header().dest_port());
-        assert_eq!(segment.header().ack_num(), syn_seq_num + Wrapping(1));
+        assert_eq!(segment.header().ack_num(), alice_isn + Wrapping(1));
         assert_eq!(segment.header().window_size(), 0xffff);
-        (bytes, syn_ack_seq_num)
+        (bytes, bob_isn)
     };
 
     info!("passing TCP SYN+ACK segment to alice...");
@@ -147,8 +147,8 @@ fn establish_connection() -> EstablishedConnection<'static> {
         assert!(!segment.header().syn());
         assert!(segment.header().ack());
         assert_eq!(Some(private_port), segment.header().src_port());
-        assert_eq!(segment.header().seq_num(), syn_seq_num + Wrapping(1));
-        assert_eq!(segment.header().ack_num(), syn_ack_seq_num + Wrapping(1));
+        assert_eq!(segment.header().seq_num(), alice_isn + Wrapping(1));
+        assert_eq!(segment.header().ack_num(), bob_isn + Wrapping(1));
         assert_eq!(segment.header().window_size(), 0xffff);
         bytes
     };
@@ -164,6 +164,10 @@ fn establish_connection() -> EstablishedConnection<'static> {
 
     let alice_cxn_handle = fut.poll(now).unwrap().unwrap();
 
+    info!(
+        "connection established; alice isn = {:?}, bob isn = {:?}",
+        alice_isn, bob_isn
+    );
     EstablishedConnection {
         alice,
         alice_cxn_handle,
@@ -174,11 +178,12 @@ fn establish_connection() -> EstablishedConnection<'static> {
 }
 
 #[test]
-fn unfragmented_data_transfer() {
+fn unfragmented_data_exchange() {
     let mut cxn = establish_connection();
 
     // transmitting 10 bytes of data should produce an identical `IoVec` upon
     // reading.
+    info!("Alice writes data to the TCP connection...");
     let data_in = IoVec::from(vec![0xab; 10]);
     cxn.alice
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
@@ -208,12 +213,46 @@ fn unfragmented_data_transfer() {
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert!(data_in.structural_eq(data_out));
 
+    info!("Bob writes data to the TCP connection...");
+    cxn.bob
+        .tcp_write(cxn.bob_cxn_handle, data_in.clone())
+        .unwrap();
+    cxn.now += Duration::from_millis(1);
+    let event = cxn.bob.poll(cxn.now).unwrap().unwrap();
+    let (bytes, seq_num) = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            assert!(segment.ack);
+            assert_eq!(
+                seq_num
+                    + Wrapping(u32::try_from(data_in.byte_count()).unwrap()),
+                segment.ack_num
+            );
+            (bytes, segment.seq_num)
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("passing data segment to Alice...");
+    cxn.now += Duration::from_millis(1);
+    cxn.alice.receive(bytes.as_slice()).unwrap();
+    match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        Event::TcpBytesAvailable(handle) => {
+            assert_eq!(cxn.alice_cxn_handle, handle)
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    }
+
+    let data_out = cxn.alice.tcp_read(cxn.alice_cxn_handle).unwrap();
+    assert!(data_in.structural_eq(data_out));
+
     info!("waiting for trailing ACK timeout to pass...");
-    cxn.now += cxn.bob.options().tcp.trailing_ack_delay();
-    assert!(cxn.bob.poll(cxn.now).is_none());
+    cxn.now += cxn.alice.options().tcp.trailing_ack_delay();
+    assert!(cxn.alice.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let pure_ack = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.payload.len());
@@ -229,7 +268,7 @@ fn unfragmented_data_transfer() {
     };
 
     info!("passing pure ACK segment to Bob...");
-    cxn.alice.receive(pure_ack.as_slice()).unwrap();
+    cxn.bob.receive(pure_ack.as_slice()).unwrap();
 }
 
 #[test]

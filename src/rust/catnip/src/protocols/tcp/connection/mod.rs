@@ -70,16 +70,16 @@ impl TcpConnection {
         self.send_window.get_mss()
     }
 
+    pub fn get_last_seq_num(&self) -> Wrapping<u32> {
+        self.send_window.get_last_seq_num()
+    }
+
     pub fn negotiate_mss(&mut self, remote_mss: Option<usize>) -> Result<()> {
         self.send_window.negotiate_mss(remote_mss)
     }
 
     pub fn set_remote_isn(&mut self, value: Wrapping<u32>) {
         self.receive_window.remote_isn(value)
-    }
-
-    pub fn next_untransmitted_seq_num(&self) -> Wrapping<u32> {
-        self.send_window.next_untransmitted_seq_num()
     }
 
     pub fn incr_seq_num(&mut self) {
@@ -101,7 +101,7 @@ impl TcpConnection {
     pub fn get_transmittable_segments(&mut self) -> VecDeque<TcpSegment> {
         let segments = self.send_window.get_transmittable_segments();
         let mut tcp_segments = VecDeque::new();
-        let mut seq_num = self.next_untransmitted_seq_num();
+        let mut seq_num = self.get_last_seq_num();
         for bytes in segments {
             let bytes_len = bytes.len();
             tcp_segments.push_back(

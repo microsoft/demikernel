@@ -49,7 +49,7 @@ impl<'a> Runtime<'a> {
 
     pub fn emit_event(&self, event: Event) {
         let mut events = self.events.borrow_mut();
-        debug!(
+        info!(
             "event emitted for {} (len is now {}) => {:?}",
             self.options.my_ipv4_addr,
             events.len() + 1,
@@ -66,14 +66,6 @@ impl<'a> Runtime<'a> {
 impl<'a> Async<Event> for Runtime<'a> {
     fn poll(&self, now: Instant) -> Option<Result<Event>> {
         while self.r#async.poll(now).is_some() {}
-        let mut events = self.events.borrow_mut();
-        let event = events.pop_front();
-        debug!(
-            "event popped from {}; {} remain(s) => {:?}",
-            self.options.my_ipv4_addr,
-            events.len(),
-            event
-        );
-        event.map(Ok)
+        self.events.borrow_mut().pop_front().map(Ok)
     }
 }

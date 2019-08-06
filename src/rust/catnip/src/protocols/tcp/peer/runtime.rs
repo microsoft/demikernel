@@ -341,7 +341,6 @@ impl<'a> TcpRuntime<'a> {
                     let input_queue = cxn.get_input_queue();
                     let mut input_queue = input_queue.borrow_mut();
                     while let Some(segment) = input_queue.pop_front() {
-                        debug!("dequeued segment {:?}", segment);
                         if ack_needed_since.is_none() {
                             ack_needed_since = Some(rt.now());
                             debug!(
@@ -423,8 +422,6 @@ impl<'a> TcpRuntime<'a> {
 
                 yield None;
             }
-
-            CoroutineOk(())
         })
     }
 
@@ -495,10 +492,7 @@ impl<'a> TcpRuntime<'a> {
                 ) {
                     let segment =
                         input_queue.borrow_mut().pop_front().unwrap();
-                    debug!(
-                        "popped a segment from the control queue: {:?}",
-                        segment
-                    );
+                    debug!("popped a segment for handshake: {:?}", segment);
                     if segment.rst {
                         return Err(Fail::ConnectionRefused {});
                     }
