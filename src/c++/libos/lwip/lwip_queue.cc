@@ -148,10 +148,41 @@ operator<(const lwip_addr &a,
     return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) < 0);
 }
 
+lwip_4tuple::lwip_4tuple(const lwip_addr &src_addr,
+                         const lwip_addr &dst_addr)
+    : src_addr(src_addr), dst_addr(dst_addr) {}
+
+lwip_4tuple::lwip_4tuple()
+{
+    memset((void *)&src_addr, 0, sizeof(src_addr));
+    memset((void *)&dst_addr, 0, sizeof(dst_addr));
+}
+
+bool
+operator==(const lwip_4tuple &a,
+           const lwip_4tuple &b)
+{
+    return (a.src_addr == b.src_addr && a.dst_addr == b.dst_addr);
+}
+
+bool
+operator!=(const lwip_4tuple &a,
+           const lwip_4tuple &b)
+{
+    return !(a == b);
+}
+
+bool
+operator<(const lwip_4tuple &a,
+          const lwip_4tuple &b)
+{
+    return (a.src_addr < b.src_addr || a.dst_addr < b.dst_addr);
+}
+
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
-std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
+std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
 std::unordered_map<std::string, struct in_addr> dmtr::lwip_queue::our_mac_to_ip_table;
 std::unordered_map<in_addr_t, struct ether_addr> dmtr::lwip_queue::our_ip_to_mac_table;
 
@@ -173,10 +204,10 @@ int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct ether_addr 
 }
 
 bool
-dmtr::lwip_queue::insert_recv_queue(const lwip_addr &saddr,
+dmtr::lwip_queue::insert_recv_queue(const lwip_4tuple &tup,
                                     const dmtr_sgarray_t &sga)
 {
-    auto it = our_recv_queues.find(lwip_addr(saddr));
+    auto it = our_recv_queues.find(tup);
     if (it == our_recv_queues.end()) {
         return false;
     }
@@ -332,6 +363,9 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
+uint16_t dmtr::lwip_queue::my_port_range_lo;
+uint16_t dmtr::lwip_queue::my_port_range_hi;
+uint16_t dmtr::lwip_queue::my_port_counter;
 uint16_t dmtr::lwip_queue::my_app_port;
 struct rte_gso_ctx dmtr::lwip_queue::our_gso_ctx;
 struct rte_ip_frag_tbl *dmtr::lwip_queue::our_ip_frag_tbl;
@@ -444,6 +478,11 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         rte_socket_id()
     ));
 
+    /* Setup local port range */
+    my_port_range_lo = 32768;
+    my_port_range_hi = 60999;
+    my_port_counter = 0;
+
     /* Initialize GSO context */
     our_gso_ctx.direct_pool = gso_mbuf_pool;
     our_gso_ctx.indirect_pool = gso_mbuf_pool;
@@ -501,6 +540,11 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 
 dmtr::lwip_queue::~lwip_queue()
 {}
+
+//FIXME: this assumes that ports are freed faster than they are consumed
+uint16_t dmtr::lwip_queue::gen_src_port() {
+    return my_port_range_lo + (my_port_counter++ % (my_port_range_hi - my_port_range_lo));
+}
 
 int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
@@ -569,11 +613,11 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         dmtr_sgarray_t &sga = my_recv_queue.front();
         // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
         sockaddr_in &src = sga.sga_addr;
-        lwip_addr addr = lwip_addr(src);
-        DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
+        lwip_4tuple tup = lwip_4tuple(lwip_addr(src), lwip_addr(boost::get(my_bound_src)));
+        DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
         new_lq->my_bound_src = my_bound_src;
         new_lq->my_default_dst = src;
-        our_recv_queues[addr] = &new_lq->my_recv_queue;
+        our_recv_queues[tup] = &new_lq->my_recv_queue;
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
         new_lq->start_threads();
@@ -618,9 +662,16 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
         // we cannot deviate from associations found in `config.yaml`.
         DMTR_TRUE(EPERM, 0 == memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
     }
-    DMTR_TRUE(EINVAL, our_recv_queues.find(lwip_addr(saddr_copy)) == our_recv_queues.end());
+
     my_bound_src = saddr_copy;
-    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
+
+    struct sockaddr_in generic_src = {};
+    generic_src.sin_family = AF_INET;
+    generic_src.sin_port = saddr_copy.sin_port;
+    generic_src.sin_addr.s_addr = INADDR_ANY;
+    lwip_4tuple tup = lwip_4tuple(lwip_addr(generic_src), lwip_addr(saddr_copy));
+    DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
+    our_recv_queues[tup] = &my_recv_queue;
 #if DMTR_DEBUG
     std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
 #endif
@@ -641,17 +692,20 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
-    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 
     // give the connection the local ip;
     struct ether_addr mac;
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
-    src.sin_port = htons(my_app_port);
+    src.sin_port = htons(gen_src_port());
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
     my_bound_src = src;
+
+    our_recv_queues[lwip_4tuple(lwip_addr(saddr_copy), lwip_addr(src))] = &my_recv_queue;
+#if DMTR_DEBUG
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
+#endif
     start_threads();
     return 0;
 }
@@ -856,10 +910,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             int ret = rte_gso_segment(pkt, &our_gso_ctx, (struct rte_mbuf **)&tx_pkts, RTE_DIM(tx_pkts));
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
-//#if DMTR_DEBUG
+#if DMTR_DEBUG
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
                     tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
-//#endif
+#endif
         } else {
             tx_pkts[0] = pkt;
             nb_pkts = 1;
@@ -1022,17 +1076,25 @@ dmtr::lwip_queue::service_incoming_packets() {
         rte_pktmbuf_free(pkts[i]);
 
         if (valid_packet) {
+            lwip_4tuple packet_tuple = lwip_4tuple(lwip_addr(src), lwip_addr(dst));
             // found valid packet, try to place in queue based on src
-            if (insert_recv_queue(lwip_addr(src), sga)) {
+            if (insert_recv_queue(packet_tuple, sga)) {
                 // placed in appropriate queue, work is done
 #if DMTR_DEBUG
                 std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
 #endif
                 continue;
             }
-            std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
             // otherwise place in queue based on dst
-            insert_recv_queue(lwip_addr(dst), sga);
+#if DMTR_DEBUG
+            std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
+#endif
+            struct sockaddr_in generic_src = {};
+            generic_src.sin_family = AF_INET;
+            generic_src.sin_addr.s_addr = INADDR_ANY;
+            generic_src.sin_port = dst.sin_port;
+            packet_tuple = lwip_4tuple(lwip_addr(generic_src), lwip_addr(dst));
+            insert_recv_queue(packet_tuple, sga);
         }
     }
 
@@ -1065,7 +1127,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     auto eth_type = ntohs(eth_hdr->ether_type);
 
 #if DMTR_DEBUG
-    printf("=====\n");
+    printf("====================\n");
     printf("recv: pkt len: %d\n", pkt->pkt_len);
     printf("recv: eth src addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
@@ -1074,6 +1136,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
     printf("\n");
     printf("recv: eth type: %x\n", eth_type);
+    printf("====================\n");
 #endif
 
     struct ether_addr mac_addr = {};
@@ -1123,10 +1186,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     in_port_t udp_src_port = udp_hdr->src_port;
     in_port_t udp_dst_port = udp_hdr->dst_port;
 
-    if (udp_hdr->dst_port != htons(my_app_port)) {
+    if (udp_hdr->dst_port != htons(my_app_port) &&
+        udp_hdr->src_port != htons(my_app_port)) {
 #if DMTR_DEBUG
-        printf("recv: dropped (dst port: %d, expecting %d)\n",
+        printf("recv: dropped (dst port: %d, src port: %d, expecting %d)\n",
                 htons(udp_hdr->dst_port),
+                htons(udp_hdr->src_port),
                 htons(my_app_port));
 #endif
         return false;

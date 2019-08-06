@@ -33,6 +33,22 @@ private:
                           const lwip_addr &b);
 };
 
+class lwip_4tuple {
+public:
+    lwip_4tuple();
+    lwip_4tuple(const lwip_addr &src_addr, const lwip_addr &dst_addr);
+private:
+    lwip_addr src_addr;
+    lwip_addr dst_addr;
+    friend class lwip_queue;
+    friend bool operator==(const lwip_4tuple &a,
+                           const lwip_4tuple &b);
+    friend bool operator!=(const lwip_4tuple &a,
+                           const lwip_4tuple &b);
+    friend bool operator<(const lwip_4tuple &a,
+                          const lwip_4tuple &b);
+};
+
 namespace dmtr {
 
 class lwip_queue : public io_queue {
@@ -47,11 +63,15 @@ class lwip_queue : public io_queue {
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
-    private: static std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
+    private: static std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct ether_addr> our_ip_to_mac_table;
     private: static uint16_t my_app_port; //FIXME this could/should be a list
     public: static void set_app_port(uint16_t port) { my_app_port = port; }
+    private: static uint16_t my_port_range_lo;
+    private: static uint16_t my_port_range_hi;
+    private: static uint16_t my_port_counter;
+    private: uint16_t gen_src_port();
 
     private: bool my_listening_flag;
     protected: boost::optional<struct sockaddr_in> my_bound_src;
@@ -105,7 +125,7 @@ class lwip_queue : public io_queue {
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
+    private: static bool insert_recv_queue(const lwip_4tuple &tup, const dmtr_sgarray_t &sga);
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: static int service_incoming_packets();
     private: static bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, const struct rte_mbuf *pkt);
