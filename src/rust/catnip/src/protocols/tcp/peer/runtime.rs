@@ -156,14 +156,14 @@ impl<'a> TcpRuntime<'a> {
     pub fn close_connection(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: TcpConnectionId,
-        rst: bool,
+        error: Option<Fail>,
+        notify: bool,
     ) -> Future<'a, ()> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            let (segment, rt) = {
+            let (segment, handle, rt) = {
                 let mut state = state.borrow_mut();
-                let rt = state.rt.clone();
                 let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
                     cxn
                 } else {
@@ -173,11 +173,28 @@ impl<'a> TcpRuntime<'a> {
                 };
 
                 let segment = TcpSegment::default().connection(&cxn).rst();
-                (segment, rt)
+                let local_port = cxnid.local.port();
+                if local_port.is_private() {
+                    state.release_private_port(local_port)
+                }
+
+                (segment, cxn.get_handle(), state.rt.clone())
             };
 
-            if rst {
-                r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
+            if let Some(e) = error {
+                if notify {
+                    rt.emit_event(Event::TcpConnectionClosed {
+                        handle,
+                        error: Some(e),
+                    });
+                }
+
+                let _ = r#await!(TcpRuntime::cast(&state, segment), rt.now());
+            } else if notify {
+                rt.emit_event(Event::TcpConnectionClosed {
+                    handle,
+                    error: None,
+                });
             }
 
             CoroutineOk(())
@@ -271,7 +288,6 @@ impl<'a> TcpRuntime<'a> {
         })
     }
 
-    #[allow(clippy::cognitive_complexity)]
     pub fn on_connection_established(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: TcpConnectionId,
@@ -281,6 +297,37 @@ impl<'a> TcpRuntime<'a> {
         rt.start_coroutine(move || {
             trace!(
                 "TcpRuntime::on_connection_established(..., {:?})::coroutine",
+                cxnid
+            );
+
+            let rt = state.borrow().rt().clone();
+            let error = match r#await!(
+                TcpRuntime::main_connection_loop(&state, cxnid.clone()),
+                rt.now()
+            ) {
+                Ok(()) => None,
+                Err(e) => Some(e),
+            };
+
+            r#await!(
+                TcpRuntime::close_connection(&state, cxnid, error, true),
+                rt.now()
+            )?;
+
+            CoroutineOk(())
+        })
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    pub fn main_connection_loop(
+        state: &Rc<RefCell<TcpRuntime<'a>>>,
+        cxnid: TcpConnectionId,
+    ) -> Future<'a, ()> {
+        let rt = state.borrow().rt.clone();
+        let state = state.clone();
+        rt.start_coroutine(move || {
+            trace!(
+                "TcpRuntime::main_connection_loop(..., {:?})::coroutine",
                 cxnid
             );
 

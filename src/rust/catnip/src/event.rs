@@ -1,10 +1,12 @@
-use crate::protocols::{icmpv4, tcp, udp};
+use crate::{
+    prelude::*,
+    protocols::{icmpv4, tcp, udp},
+};
 use std::{
     fmt::{Debug, Formatter, Result as FmtResult},
     rc::Rc,
 };
 
-#[derive(PartialEq, Eq)]
 pub enum Event {
     Transmit(Rc<Vec<u8>>),
     Icmpv4Error {
@@ -15,6 +17,10 @@ pub enum Event {
     UdpDatagramReceived(udp::Datagram),
     TcpConnectionEstablished(tcp::ConnectionHandle),
     TcpBytesAvailable(tcp::ConnectionHandle),
+    TcpConnectionClosed {
+        handle: tcp::ConnectionHandle,
+        error: Option<Fail>,
+    },
 }
 
 impl Debug for Event {
@@ -48,6 +54,11 @@ impl Debug for Event {
             Event::TcpBytesAvailable(handle) => {
                 write!(f, "TcpBytesAvailable({})", handle)?
             }
+            Event::TcpConnectionClosed { handle, error } => write!(
+                f,
+                "TcpConnectionClosed {{ handle: {:?}, error: {:?} }}",
+                handle, error
+            )?,
         }
 
         Ok(())

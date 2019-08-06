@@ -144,18 +144,16 @@ impl<'a> TcpPeer<'a> {
                 Err(e) => e,
             };
 
-            let rst = match error {
-                Fail::ConnectionRefused {} => false,
-                _ => true,
-            };
-
             let _ = r#await!(
-                TcpRuntime::close_connection(&tcp_rt, cxnid.clone(), rst),
+                TcpRuntime::close_connection(
+                    &tcp_rt,
+                    cxnid.clone(),
+                    Some(error.clone()),
+                    false
+                ),
                 rt.now()
             );
 
-            let mut tcp_rt = tcp_rt.borrow_mut();
-            tcp_rt.release_private_port(cxnid.local.port());
             Err(error)
         })
     }
