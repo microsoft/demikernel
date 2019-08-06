@@ -68,6 +68,7 @@ impl TcpSendWindow {
         }
 
         self.mss = min(self.mss, remote_mss);
+        info!("mss = {}", self.mss);
         Ok(())
     }
 
@@ -79,6 +80,10 @@ impl TcpSendWindow {
                     let (h, t) = segment.split_at(self.mss);
                     self.segments.push_back(Rc::new(h.to_vec()));
                     segment = t;
+                }
+
+                if !segment.is_empty() {
+                    self.segments.push_back(Rc::new(segment.to_vec()));
                 }
             } else {
                 self.segments.push_back(Rc::new(segment));
@@ -138,10 +143,13 @@ impl TcpSendWindow {
         Ok(())
     }
 
-    pub fn get_transmittable_segments(&mut self) -> VecDeque<Rc<Vec<u8>>> {
+    pub fn get_transmittable_segments(
+        &mut self,
+    ) -> (Wrapping<u32>, VecDeque<Rc<Vec<u8>>>) {
         trace!("TcpSendWindow::get_transmittable_segments()");
-        let seq_num = self.smallest_unacknowledged_seq_num
+        let first_seq_num = self.smallest_unacknowledged_seq_num
             + Wrapping(u32::try_from(self.bytes_unacknowledged).unwrap());
+        let mut seq_num = first_seq_num;
         let mut transmittable_segments = VecDeque::new();
         let mut expected_remote_receive_window_size =
             self.remote_receive_window_size - self.bytes_unacknowledged;
@@ -156,14 +164,16 @@ impl TcpSendWindow {
             if segment_len <= expected_remote_receive_window_size {
                 transmittable_segments.push_back(segment.clone());
                 self.bytes_unacknowledged += segment_len;
+                self.segments_unacknowledged += 1;
                 expected_remote_receive_window_size -= segment_len;
+                seq_num += Wrapping(u32::try_from(segment_len).unwrap());
             } else {
                 break;
             }
         }
 
         self.last_seq_num = seq_num;
-        transmittable_segments
+        (first_seq_num, transmittable_segments)
     }
 }
 

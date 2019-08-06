@@ -99,14 +99,15 @@ impl TcpConnection {
     }
 
     pub fn get_transmittable_segments(&mut self) -> VecDeque<TcpSegment> {
-        let segments = self.send_window.get_transmittable_segments();
+        let (mut seq_num, segments) =
+            self.send_window.get_transmittable_segments();
         let mut tcp_segments = VecDeque::new();
-        let mut seq_num = self.get_last_seq_num();
         for bytes in segments {
             let bytes_len = bytes.len();
             tcp_segments.push_back(
                 TcpSegment::default()
                     .connection(self)
+                    .seq_num(seq_num)
                     .ack(self.try_get_ack_num().unwrap())
                     .payload(bytes),
             );

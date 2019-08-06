@@ -166,7 +166,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
 
     info!(
         "connection established; alice isn = {:?}, bob isn = {:?}",
-        alice_isn, bob_isn
+        alice_isn, bob_isn,
     );
     EstablishedConnection {
         alice,
@@ -269,6 +269,78 @@ fn unfragmented_data_exchange() {
 
     info!("passing pure ACK segment to Bob...");
     cxn.bob.receive(pure_ack.as_slice()).unwrap();
+}
+
+#[test]
+fn packetization() {
+    let mut cxn = establish_connection();
+
+    // transmitting 2k bytes of data should produce an equivalent `IoVec` upon
+    // reading.
+    info!("Alice writes data to the TCP connection...");
+    let data_in = IoVec::from(vec![0xab; 2048]);
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let (bytes0, seq_num) = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            (bytes, segment.seq_num)
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let bytes1 = match event {
+        Event::Transmit(bytes) => bytes,
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("passing data segments to Bob...");
+    cxn.now += Duration::from_micros(1);
+    // ACK timeout starts from here.
+    cxn.bob.receive(bytes0.as_slice()).unwrap();
+    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::TcpBytesAvailable(handle) => {
+            assert_eq!(cxn.bob_cxn_handle, handle)
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    }
+
+    cxn.now += Duration::from_micros(1);
+    cxn.bob.receive(bytes1.as_slice()).unwrap();
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
+    assert_eq!(data_in, data_out);
+
+    info!("waiting for trailing ACK timeout to pass...");
+    cxn.now +=
+        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(1);
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    cxn.now += Duration::from_micros(1);
+    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(0, segment.payload.len());
+            assert!(segment.ack);
+            assert_eq!(
+                seq_num
+                    + Wrapping(u32::try_from(data_in.byte_count()).unwrap()),
+                segment.ack_num
+            );
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("passing pure ACK segment to Alice...");
+    cxn.alice.receive(pure_ack.as_slice()).unwrap();
 }
 
 #[test]
