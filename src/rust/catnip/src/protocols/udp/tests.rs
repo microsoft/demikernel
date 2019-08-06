@@ -32,7 +32,7 @@ fn unicast() {
         alice_port,
         text.clone(),
     );
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
@@ -88,7 +88,7 @@ fn destination_port_unreachable() {
         alice_port,
         text.clone(),
     );
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {

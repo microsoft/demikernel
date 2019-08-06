@@ -53,7 +53,7 @@ fn syn_to_closed_port() {
     };
 
     info!("passing TCP SYN to bob...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     bob.receive(&tcp_syn).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     let tcp_rst = {
@@ -69,10 +69,10 @@ fn syn_to_closed_port() {
     };
 
     info!("passing TCP RST segment to alice...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     alice.receive(&tcp_rst).unwrap();
     assert!(fut.poll(now).is_none());
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     match fut.poll(now).unwrap() {
         Err(Fail::ConnectionRefused {}) => (),
         _ => panic!("expected `Fail::ConnectionRefused {{}}`"),
@@ -114,7 +114,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     };
 
     info!("passing TCP SYN to bob...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     bob.receive(&tcp_syn).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     let (tcp_syn_ack, bob_isn) = {
@@ -134,7 +134,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     };
 
     info!("passing TCP SYN+ACK segment to alice...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     alice.receive(&tcp_syn_ack).unwrap();
     let event = alice.poll(now).unwrap().unwrap();
     let tcp_ack = {
@@ -154,7 +154,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     };
 
     info!("passing TCP ACK segment to bob...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     bob.receive(&tcp_ack).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     let bob_cxn_handle = match event {
@@ -189,7 +189,7 @@ fn unfragmented_data_exchange() {
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
         .unwrap();
 
-    cxn.now += Duration::from_millis(1);
+    cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
@@ -201,7 +201,7 @@ fn unfragmented_data_exchange() {
     };
 
     info!("passing data segment to Bob...");
-    cxn.now += Duration::from_millis(1);
+    cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes.as_slice()).unwrap();
     match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
@@ -217,7 +217,7 @@ fn unfragmented_data_exchange() {
     cxn.bob
         .tcp_write(cxn.bob_cxn_handle, data_in.clone())
         .unwrap();
-    cxn.now += Duration::from_millis(1);
+    cxn.now += Duration::from_micros(1);
     let event = cxn.bob.poll(cxn.now).unwrap().unwrap();
     let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
@@ -235,7 +235,7 @@ fn unfragmented_data_exchange() {
     };
 
     info!("passing data segment to Alice...");
-    cxn.now += Duration::from_millis(1);
+    cxn.now += Duration::from_micros(1);
     cxn.alice.receive(bytes.as_slice()).unwrap();
     match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {

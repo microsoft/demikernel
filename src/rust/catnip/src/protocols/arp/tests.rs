@@ -23,7 +23,7 @@ fn immediate_reply() {
     );
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     assert!(fut.poll(now).is_none());
 
     let request = {
@@ -66,7 +66,7 @@ fn immediate_reply() {
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     let link_addr = fut.poll(now).unwrap().unwrap();
     assert_eq!(*test::carrie_link_addr(), link_addr);
 }
@@ -134,7 +134,7 @@ fn slow_reply() {
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     let link_addr = fut.poll(now).unwrap().unwrap();
     assert_eq!(*test::carrie_link_addr(), link_addr);
 }

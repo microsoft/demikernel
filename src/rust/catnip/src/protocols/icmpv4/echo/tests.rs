@@ -50,7 +50,7 @@ fn ping() {
     };
 
     info!("passing ICMPv4 ping request to bob...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
         let event = bob.poll(now).unwrap().unwrap();
@@ -65,7 +65,7 @@ fn ping() {
     };
 
     info!("passing ICMPv4 ping reply back to alice...");
-    let now = now + Duration::from_millis(1);
+    let now = now + Duration::from_micros(1);
     alice.receive(&ping_reply).unwrap();
     let _ = fut.poll(now).unwrap().unwrap();
 }
