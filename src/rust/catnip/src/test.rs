@@ -36,7 +36,8 @@ pub fn new_engine<'a>(
 ) -> Engine<'a> {
     initialize_logger();
     // we always want to use the same seed for our unit tests.
-    let seed = Seed::default();
+    let mut seed = Seed::default();
+    seed[0..6].copy_from_slice(&link_addr.to_array());
     let seed = encode_config(seed.as_ref(), STANDARD_NO_PAD);
     Engine::from_options(
         now,
