@@ -405,10 +405,14 @@ fn multiple_writes() {
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
-    assert_eq!(data_out, IoVec::from(vec![data_in[0].to_vec(), data_in[0].to_vec()]));
+    assert_eq!(
+        data_out,
+        IoVec::from(vec![data_in[0].to_vec(), data_in[0].to_vec()])
+    );
 
     info!("waiting for trailing ACK timeout to pass...");
-    cxn.now += cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(2);
+    cxn.now +=
+        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(2);
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -419,7 +423,9 @@ fn multiple_writes() {
             assert!(segment.ack);
             assert_eq!(
                 seq_num
-                    + Wrapping(u32::try_from(data_in.byte_count()).unwrap() * 2),
+                    + Wrapping(
+                        u32::try_from(data_in.byte_count()).unwrap() * 2
+                    ),
                 segment.ack_num
             );
             bytes
@@ -430,7 +436,6 @@ fn multiple_writes() {
     info!("passing pure ACK segment to Alice...");
     cxn.alice.receive(pure_ack.as_slice()).unwrap();
 }
-
 
 #[test]
 fn syn_retry() {

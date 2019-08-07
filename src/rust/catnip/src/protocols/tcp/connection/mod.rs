@@ -98,23 +98,23 @@ impl TcpConnection {
         self.send_window.set_remote_receive_window_size(size)
     }
 
-    pub fn get_transmittable_segments(&mut self) -> VecDeque<TcpSegment> {
-        let (mut seq_num, segments) =
-            self.send_window.get_transmittable_segments();
-        let mut tcp_segments = VecDeque::new();
-        for bytes in segments {
-            let bytes_len = bytes.len();
-            tcp_segments.push_back(
+    pub fn pop_transmittable_segment(
+        &mut self,
+        optional_byte_count: Option<usize>,
+    ) -> Option<TcpSegment> {
+        match self
+            .send_window
+            .pop_transmittable_payload(optional_byte_count)
+        {
+            None => None,
+            Some((seq_num, payload)) => Some(
                 TcpSegment::default()
                     .connection(self)
                     .seq_num(seq_num)
                     .ack(self.try_get_ack_num().unwrap())
-                    .payload(bytes),
-            );
-            seq_num += Wrapping(u32::try_from(bytes_len).unwrap())
+                    .payload(payload),
+            ),
         }
-
-        tcp_segments
     }
 
     pub fn write(&mut self, bytes: IoVec) {

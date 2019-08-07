@@ -372,7 +372,14 @@ impl<'a> TcpRuntime<'a> {
                         }
                     }
 
-                    cxn.get_transmittable_segments()
+                    let mut transmittable_segments = VecDeque::new();
+                    while let Some(segment) =
+                        cxn.pop_transmittable_segment(None)
+                    {
+                        transmittable_segments.push_back(segment);
+                    }
+
+                    transmittable_segments
                 };
 
                 debug!(
