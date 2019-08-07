@@ -27,6 +27,8 @@
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
 
+#define MAX_CLIENTS 64
+
 bool no_op;
 int16_t no_op_time;
 
@@ -360,9 +362,10 @@ static void *tcp_work(void *args) {
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
 
-    std::vector<int> http_q_pending;
+    std::vector<int> http_q_pending; //FIXME reserve memory
     //Used handle spuriously closed connections
-    std::vector<int> clients_in_waiting;
+    std::vector<bool> clients_in_waiting;
+    clients_in_waiting.reserve(MAX_CLIENTS);
     int num_rcvd = 0;
     while (1) {
         dmtr_qresult_t wait_out;
@@ -433,7 +436,7 @@ static void *tcp_work(void *args) {
                         dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
                         tokens.push_back(token);
                         http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
-                        clients_in_waiting.push_back(wait_out.qr_qd);
+                        clients_in_waiting[wait_out.qr_qd] = true;
 #ifdef DMTR_PROFILE
                         /* Record TCP receive time ('TCP' libOS + app) */
                         hr_clock::time_point receive = hr_clock::now();
@@ -554,10 +557,7 @@ static void *tcp_work(void *args) {
                     int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
 
                     /* The client should still be "in the wait" */
-                    auto it2 = std::find(
-                        clients_in_waiting.begin(), clients_in_waiting.end(), client_qfd
-                    );
-                    if (it2 == clients_in_waiting.end()) {
+                    if (clients_in_waiting[client_qfd] == false) {
                         /* Ignore this message and fetch the next one */
                         dmtr_pop(&token, wait_out.qr_qd);
                         tokens.push_back(token);
@@ -589,10 +589,9 @@ static void *tcp_work(void *args) {
             if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
                 log_debug("An accept task failed with connreset or aborted??");
             }
-            auto it = std::find(clients_in_waiting.begin(), clients_in_waiting.end(), wait_out.qr_qd);
-            if (it != clients_in_waiting.end()) {
+            if (clients_in_waiting[wait_out.qr_qd]) {
                 log_debug("Removing closed client connection from answerable list");
-                clients_in_waiting.erase(it);
+                clients_in_waiting[wait_out.qr_qd] = false;
             }
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);

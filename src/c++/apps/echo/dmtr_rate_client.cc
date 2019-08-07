@@ -180,14 +180,14 @@ int log_responses(uint32_t total_requests, int log_memq,
             }
             /*
             fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
-                    ns_diff(req.connecting, req.connected),
-                    since_epoch(req.connected), since_epoch(req.connecting));
+                    ns_diff(req->connecting, req->connected),
+                    since_epoch(req->connected), since_epoch(req->connecting));
             fprintf(stderr, "Send: %ld (%ld-%ld)\n",
-                    ns_diff(req.sending, req.reading),
-                    since_epoch(req.reading), since_epoch(req.sending));
+                    ns_diff(req->sending, req->reading),
+                    since_epoch(req->reading), since_epoch(req->sending));
             fprintf(stderr, "Receive: %ld (%ld-%ld)\n",
-                    ns_diff(req.reading, req.completed),
-                    since_epoch(req.completed), since_epoch(req.reading));
+                    ns_diff(req->reading, req->completed),
+                    since_epoch(req->completed), since_epoch(req->reading));
             */
             if (!long_lived) {
                 DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req->connecting),
