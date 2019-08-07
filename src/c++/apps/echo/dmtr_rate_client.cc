@@ -32,6 +32,11 @@
 // vector of http_request, one per thread set
 
 /*****************************************************************
+ *********************** GENERAL VARIABLES ***********************
+ *****************************************************************/
+bool long_lived = true;
+
+/*****************************************************************
  *********************** RATE VARIABLES **************************
  *****************************************************************/
 
@@ -103,6 +108,7 @@ struct RequestState {
     bool valid; /** Whether the response was valid */
     std::string req; /** The actual request */
     int conn_qd; /** The connection's queue descriptor */
+    uint32_t id; /** Request id */
 
     public:
         RequestState(char *req): req(req) {}
@@ -140,9 +146,12 @@ int log_responses(uint32_t total_requests, int log_memq,
     struct log_data e2e = {.l = NULL, .name = "end-to-end"};
     DMTR_OK(dmtr_new_latency(&e2e.l, "end-to-end"));
     logs.push_back(e2e);
-    struct log_data connect = {.l = NULL, .name = "connect"};
-    DMTR_OK(dmtr_new_latency(&connect.l, "connect"));
-    logs.push_back(connect);
+    struct log_data connect;
+    if (!long_lived) {
+        connect = {.l = NULL, .name = "connect"};
+        DMTR_OK(dmtr_new_latency(&connect.l, "connect"));
+        logs.push_back(connect);
+    }
     struct log_data send = {.l = NULL, .name = "send"};
     DMTR_OK(dmtr_new_latency(&send.l, "send"));
     logs.push_back(send);
@@ -156,14 +165,19 @@ int log_responses(uint32_t total_requests, int log_memq,
         dmtr_qresult_t wait_out;
         dmtr_qtoken_t token;
         dmtr_pop(&token, log_memq);
-        int status = dmtr_wait(&wait_out, token);
+        int status = dmtr_wait(&wait_out, token); //FIXME this is blocking
         if (status == 0) {
             RequestState *req = reinterpret_cast<RequestState *>(
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
             );
 
-            DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->connecting),
-                                              ns_diff(req->connecting, req->completed)));
+            if (long_lived) {
+                DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->sending),
+                                                  ns_diff(req->sending, req->completed)));
+            } else {
+                DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->connecting),
+                                                  ns_diff(req->connecting, req->completed)));
+            }
             /*
             fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
                     ns_diff(req.connecting, req.connected),
@@ -175,8 +189,10 @@ int log_responses(uint32_t total_requests, int log_memq,
                     ns_diff(req.reading, req.completed),
                     since_epoch(req.completed), since_epoch(req.reading));
             */
-            DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req->connecting),
-                                              ns_diff(req->connecting, req->connected)));
+            if (!long_lived) {
+                DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req->connecting),
+                                                  ns_diff(req->connecting, req->connected)));
+            }
             DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req->sending),
                                               ns_diff(req->sending, req->reading)));
             DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req->reading),
@@ -283,7 +299,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 request->status = COMPLETED;
                 request->valid = validate_response(wait_out.qr_value.sga);
                 free(wait_out.qr_value.sga.sga_buf);
-                dmtr_close(wait_out.qr_qd);
+                DMTR_OK(dmtr_close(wait_out.qr_qd));
 
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
@@ -396,6 +412,133 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
     return 0;
 }
 
+/**********************************************************************
+ ********************** LONG LIVED CONNECTION MODE ********************
+ **********************************************************************/
+int long_lived_processing(double interval_ns, uint32_t n_requests, std::string host, int port,
+                          int log_memq, hr_clock::time_point *time_end, int my_idx) {
+    /* Configure target */
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    if (inet_pton(AF_INET, host.c_str(), &saddr.sin_addr) != 1) {
+        log_error("Unable to parse IP address!: %s", strerror(errno));
+        return -1;
+    }
+    saddr.sin_addr.s_addr = htonl(ntohl(saddr.sin_addr.s_addr) + my_idx * 2);
+    saddr.sin_port = htons(port);
+    log_info("Thread %d sending requests to %s", my_idx, inet_ntoa(saddr.sin_addr));
+
+    hr_clock::time_point create_start_time = hr_clock::now();
+
+    /* Times at which the connections should be initiated */
+    hr_clock::time_point send_times[n_requests];
+
+    for (uint32_t i = 0; i < n_requests; ++i) {
+        std::chrono::nanoseconds elapsed_time((long int)(interval_ns * i));
+        send_times[i] = create_start_time + elapsed_time;
+    }
+
+    /* Create Demeter queue */
+    int qd = 0;
+    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
+    /* Connect */
+    DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+
+    bool expired = false;
+    uint32_t completed = 0;
+    uint32_t send_index = 0;
+    dmtr_qtoken_t token;
+    std::vector<dmtr_qtoken_t> tokens;
+    std::unordered_map<int, RequestState *> requests;
+    while (completed < n_requests) {
+        hr_clock::time_point maintenant = hr_clock::now();
+        /*
+        if (maintenant > *time_end) {
+            log_warn("Process time has passed. %d requests were processed.", completed);
+            expired = true;
+            break;
+        }
+        */
+        /** First check if it is time to emmit a new request over the connection */
+        if (maintenant > send_times[send_index] && send_index < n_requests) {
+            RequestState *request = http_requests[send_index];
+            request->id = send_index;
+            dmtr_sgarray_t sga;
+            sga.sga_numsegs = 1;
+            sga.sga_segs[0].sgaseg_len = request->req.size();
+            sga.sga_segs[0].sgaseg_buf = const_cast<char *>(request->req.c_str());
+            request->sending = hr_clock::now();
+            DMTR_OK(dmtr_push(&token, qd, &sga));
+            tokens.push_back(token);
+            log_debug("Scheduling new request %d for send", request->id);
+            requests.insert(std::pair<int, RequestState *>(token, request));
+            send_index++;
+        }
+
+        if (tokens.empty()) {
+            continue;
+        }
+
+        dmtr_qresult_t wait_out;
+        int idx;
+        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        token = tokens[idx];
+        tokens.erase(tokens.begin()+idx);
+        if (status == 0) {
+            auto req = requests.find(token);
+            if (req == requests.end()) {
+                log_error("Operated unregistered request");
+                exit(1);
+            }
+            RequestState *request = req->second;
+            requests.erase(req);
+
+            if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
+                request->reading = hr_clock::now();
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                tokens.push_back(token);
+                log_debug("Scheduling request %d for read", request->id);
+                requests.insert(std::pair<int, RequestState *>(token, request));
+            } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
+                request->completed = hr_clock::now();
+                request->valid = validate_response(wait_out.qr_value.sga);
+                free(wait_out.qr_value.sga.sga_buf);
+                log_debug("Request %d completed", request->id);
+
+                dmtr_sgarray_t sga;
+                sga.sga_numsegs = 1;
+                sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
+                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request);
+                dmtr_push(&token, log_memq, &sga);
+                dmtr_wait(NULL, token);
+
+                completed++;
+            }
+        } else {
+            log_warn("Got status %d out of dmtr_wait_any", status);
+            assert(status == ECONNRESET || status == ECONNABORTED);
+            DMTR_OK(dmtr_close(wait_out.qr_qd));
+        }
+
+            /*
+        if (hr_clock::now() > *time_end) {
+            log_warn("Process time has passed. %d requests were processed.", completed);
+            expired = true;
+            break;
+        }
+        */
+    }
+
+    if (!expired) {
+        log_info(
+            "Long lived process thread %d exiting after having created %d and processed %d requests",
+            my_idx, send_index, completed
+        );
+    }
+
+    return 0;
+}
+
 /* Each thread-group consists of a connect thread, a send/rcv thread, and a logging thread */
 struct state_threads {
     std::thread *init;
@@ -434,8 +577,10 @@ int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
+    bool short_lived;
     po::options_description desc{"Rate client options"};
     desc.add_options()
+        ("short-lived", po::bool_switch(&short_lived), "Re-use connection for each request")
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
         ("url,u", po::value<std::string>(&url)->required(), "Target URL")
@@ -444,6 +589,11 @@ int main(int argc, char **argv) {
         ("client-threads,T", po::value<int>(&n_threads)->default_value(1), "Number of client threads")
         ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request");
     parse_args(argc, argv, false, desc);
+
+    if (short_lived) {
+        log_info("Starting client in short lived mode");
+        long_lived = false;
+    }
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
@@ -525,37 +675,49 @@ int main(int argc, char **argv) {
     hr_clock::time_point time_end_log = hr_clock::now() + duration_log;
 
     /* Initialize responses first, then logging, then request initialization */
-    //FIXME: do not collocate connections creation and processing?
     state_threads threads[n_threads];
     for (int i = 0; i < n_threads; ++i) {
-        int process_conn_memq, log_memq;
-        DMTR_OK(dmtr_queue(&process_conn_memq));
+        int log_memq;
         DMTR_OK(dmtr_queue(&log_memq));
-        threads[i].resp = new std::thread(
-            process_connections,
-            i, req_per_thread, &time_end_process,
-            process_conn_memq, log_memq
-        );
-        pin_thread(threads[i].resp->native_handle(), i+1);
         threads[i].log = new std::thread(
             log_responses,
             req_per_thread, log_memq, &time_end_log,
             log_dir, label, i
         );
-        threads[i].init = new std::thread(
-            create_queues,
-            interval_ns_per_thread, req_per_thread,
-            host, port, process_conn_memq, &time_end_init, i
-        );
-        pin_thread(threads[i].init->native_handle(), i+1);
+        if (long_lived) {
+            threads[i].resp = new std::thread(
+                long_lived_processing,
+                interval_ns_per_thread, req_per_thread,
+                host, port, log_memq, &time_end_process, i
+            );
+            pin_thread(threads[i].resp->native_handle(), i+1);
+        } else {
+            //FIXME: do not collocate connections creation and processing?
+            int process_conn_memq;
+            DMTR_OK(dmtr_queue(&process_conn_memq));
+            threads[i].resp = new std::thread(
+                process_connections,
+                i, req_per_thread, &time_end_process,
+                process_conn_memq, log_memq
+            );
+            pin_thread(threads[i].resp->native_handle(), i+1);
+            threads[i].init = new std::thread(
+                create_queues,
+                interval_ns_per_thread, req_per_thread,
+                host, port, process_conn_memq, &time_end_init, i
+            );
+            pin_thread(threads[i].init->native_handle(), i+1);
+        }
     }
 
     // Wait on all of the initialization threads
-    for (int i=0; i<n_threads; i++) {
-        threads[i].init->join();
-        delete threads[i].init;
+    if (short_lived) {
+        for (int i=0; i<n_threads; i++) {
+            threads[i].init->join();
+            delete threads[i].init;
+        }
+        log_info("Requests creation finished");
     }
-    log_info("Requests finished");
 
     // Wait on the response threads
     // TODO: If init threads stop early, signal this to stop
