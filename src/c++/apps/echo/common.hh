@@ -13,10 +13,34 @@
 #include <string.h>
 #include <yaml-cpp/yaml.h>
 
+
+/*****************************************************************
+ *********************** TIME VARIABLES **************************
+ *****************************************************************/
+
+using hr_clock = std::chrono::steady_clock;
+
+/* Returns the number of nanoseconds since the epoch for a given high-res time point */
+static inline long int since_epoch(hr_clock::time_point &time){
+    return std::chrono::time_point_cast<std::chrono::nanoseconds>(time).time_since_epoch().count();
+}
+
+/* Returns the number of nanoseconds between a start and end point */
+static inline long int ns_diff(hr_clock::time_point &start, hr_clock::time_point &end) {
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
+    if (ns < 0) {
+        ns = -1;
+    }
+    return ns;
+}
+
 /*****************************************************************
  *********************** LOGGING MACROS   ************************
  *****************************************************************/
-static const auto start_time = std::chrono::system_clock::now();
+static const auto start_time = std::chrono::steady_clock::now();
+
+/* Enable profiling */
+#define DMTR_PROFILE
 
 /* Enable debug statements  */
 //#define LOG_DEBUG
@@ -34,7 +58,7 @@ static const auto start_time = std::chrono::system_clock::now();
 /* General logging function which can be filled in with arguments, color, etc. */
 #define log_at_level(lvl_label, color, fd, fmt, ...)\
         fprintf(fd, "" color "%07.03f:%s:%d:%s(): " lvl_label ": " fmt ANSI_COLOR_RESET "\n", \
-                ((std::chrono::duration<double>)(std::chrono::system_clock::now() - start_time)).count(), \
+                ((std::chrono::duration<double>)(hr_clock::now() - start_time)).count(), \
                 __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
 /* Debug statements are replaced with nothing if LOG_DEBUG is false  */
