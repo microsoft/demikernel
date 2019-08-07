@@ -87,7 +87,7 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
         snprintf(filename, MAX_FILENAME_LEN, "%s/%s_http-work-%d",
                  log_dir.c_str(), label.c_str(), worker.whoami);
         f = fopen(filename, "w");
-        fprintf(f, "TIME\tVALUE\n");
+        fprintf(f, "VALUE\n");
         for (auto &l: worker.https) {
             fprintf(f, "%ld\n", l);
         }
@@ -361,17 +361,17 @@ static void *tcp_work(void *args) {
     tokens.push_back(token);
 
     std::vector<int> http_q_pending;
-    //Used to remove tokens associated with closed TCP connections
-    std::unordered_map<int, dmtr_qtoken_t> tcp_http_dep;
+    //Used handle spuriously closed connections
+    std::vector<int> clients_in_waiting;
     int num_rcvd = 0;
     while (1) {
-#ifdef DMTR_PROFILE
-        hr_clock::time_point iteration_start = hr_clock::now();
-#endif
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         if (status == 0) {
+#ifdef DMTR_PROFILE
+            hr_clock::time_point iteration_start = hr_clock::now();
+#endif
             if (wait_out.qr_qd == lqd) {
                 assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
                 token = tokens[idx];
@@ -433,17 +433,15 @@ static void *tcp_work(void *args) {
                         dmtr_pop(&token, http_workers[worker_idx]->out_qfd);
                         tokens.push_back(token);
                         http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
-                        tcp_http_dep.insert(std::pair<int, dmtr_qtoken_t>(wait_out.qr_qd, token));
+                        clients_in_waiting.push_back(wait_out.qr_qd);
 #ifdef DMTR_PROFILE
                         /* Record TCP receive time ('TCP' libOS + app) */
                         hr_clock::time_point receive = hr_clock::now();
                         me->receives.push_back(ns_diff(iteration_start, receive));
 #endif
                         /* Re-enable TCP queue for reading */
-                        //FIXME: this does not work but would allow multiple request
-                        //from the same connection to be in-flight
-                        //dmtr_pop(&token, wait_out.qr_qd);
-                        //tokens.push_back(token);
+                        dmtr_pop(&token, wait_out.qr_qd);
+                        tokens.push_back(token);
                     } else {
 #ifdef DMTR_PROFILE
                         /* Record TCP receive time ('TCP' libOS) */
@@ -547,7 +545,7 @@ static void *tcp_work(void *args) {
                     }
                 } else {
                     log_debug(
-                        "received response on queue %d: %s\n",
+                        "received response from HTTP queue %d: %s\n",
                         //"received response on queue %d\n",
                         wait_out.qr_qd,
                         reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
@@ -555,16 +553,15 @@ static void *tcp_work(void *args) {
                     /* This comes from an HTTP worker and we need to forward to the client */
                     int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
 
-                    /* The token should match with the pop() that was done after reception from the client */
-                    auto it2 = tcp_http_dep.find(client_qfd);
-                    /* Nothing coming from an HTTP worker should be un-registered */
-                    assert(it2 != tcp_http_dep.end());
-                    if (token != it2->second) {
+                    /* The client should still be "in the wait" */
+                    auto it2 = std::find(
+                        clients_in_waiting.begin(), clients_in_waiting.end(), client_qfd
+                    );
+                    if (it2 == clients_in_waiting.end()) {
                         /* Ignore this message and fetch the next one */
                         dmtr_pop(&token, wait_out.qr_qd);
                         tokens.push_back(token);
-                        log_debug("Dropping obsolete message\n");
-                        tcp_http_dep.erase(it2);
+                        log_debug("Dropping obsolete message aimed towards closed connection");
                         continue;
                     }
 
@@ -590,12 +587,12 @@ static void *tcp_work(void *args) {
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
             if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
-                log_debug("An accept task failed with connreset or aborted??\n");
+                log_debug("An accept task failed with connreset or aborted??");
             }
-            auto it = tcp_http_dep.find(wait_out.qr_qd);
-            if (it != tcp_http_dep.end()) {
-                tokens.erase(std::remove(tokens.begin(), tokens.end(), it->second), tokens.end());
-                log_debug("Dropping token due to (timed out?) severed TCP connection\n");
+            auto it = std::find(clients_in_waiting.begin(), clients_in_waiting.end(), wait_out.qr_qd);
+            if (it != clients_in_waiting.end()) {
+                log_debug("Removing closed client connection from answerable list");
+                clients_in_waiting.erase(it);
             }
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
@@ -722,7 +719,8 @@ int no_pthread_work_setup() {
 }
 
 int main(int argc, char *argv[]) {
-    bool use_pthread;
+    bool no_pthread, no_split;
+    bool split = true;
     u_int16_t n_http_workers, n_tcp_workers;
     options_description desc{"HTTP server options"};
     desc.add_options()
@@ -732,18 +730,24 @@ int main(int argc, char *argv[]) {
         ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
         ("no-op-time", value<int16_t>(&no_op_time)->default_value(-1), "tune no-op sleep time")
-        ("use-pthread", bool_switch(&use_pthread), "use pthread or not");
+        ("no-split", bool_switch(&no_split), "do all work in a single component")
+        ("no-pthread", bool_switch(&no_pthread), "use pthread or not");
     parse_args(argc, argv, true, desc);
 
     if (no_op) {
-        fprintf(stderr, "Starting HTTP server in no-op mode\n");
+        log_info("Starting HTTP server in no-op mode");
+    }
+
+    if (no_split) {
+        log_info("Starting in single component mode");
+        split = false;
     }
 
     /* Init Demeter */
     DMTR_OK(dmtr_init(argc, argv));
 
     sigset_t mask, oldmask;
-    if (use_pthread) {
+    if (!no_pthread) {
         /* Block SIGINT to ensure handler will only be run in main thread */
         sigemptyset(&mask);
         sigaddset(&mask, SIGINT);
@@ -762,9 +766,9 @@ int main(int argc, char *argv[]) {
 
     /* Pin main thread */
     //pin_thread(pthread_self(), 4);
-    if (use_pthread) {
+    if (!no_pthread) {
         /* Create worker threads */
-        work_setup(n_tcp_workers, n_http_workers, true);
+        work_setup(n_tcp_workers, n_http_workers, split);
 
         /* Re-enable SIGINT and SIGQUIT */
         int ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
