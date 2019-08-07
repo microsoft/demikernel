@@ -20,7 +20,7 @@ impl IoVec {
         self.0.is_empty()
     }
 
-    pub fn push(&mut self, segment: Vec<u8>) {
+    pub fn push_segment(&mut self, segment: Vec<u8>) {
         self.0.push(segment);
     }
 

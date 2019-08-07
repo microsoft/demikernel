@@ -217,7 +217,7 @@ impl TcpReceiveWindow {
             debug!("ack_num: {:?} -> {:?}", self.ack_num, ack_num);
             self.ack_num = ack_num;
             let payload = Rc::try_unwrap(segment.payload).unwrap();
-            iovec.push(payload);
+            iovec.push_segment(payload);
         }
 
         self.bytes_unread = 0;
