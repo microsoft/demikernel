@@ -10,11 +10,11 @@ the first arguments passed, denoted by `_out`.
 > Initialize libOS state. Set up devices, allocate data structures and
 > general initialization tasks.
 
-* int dmtr_queue(int *qd_out); 
+* int dmtr_queue(int *qd_out);
 
 > Allocate an in-memory demeter queue. Returns a queue descriptor that
-> references a LIFO queue (i.e., a call to pop on the queue descriptor
-> will return the last scatter-gather array that was popped).
+> references a FIFO queue (i.e., popping an element from the queue
+> will return the first scatter-gather array that was pushed).
 
 * `int dmtr_socket(int *qd_out, int domain, int type, int protocol);`
 
@@ -47,7 +47,7 @@ the first arguments passed, denoted by `_out`.
 * int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);
 
 > Connect Demeter queue to remote host.  Future pushes will be set
-> to remote host and pops will retrieve message from remote host. 
+> to remote host and pops will retrieve message from remote host.
 
 * int dmtr_close(int qd);
 
@@ -63,7 +63,7 @@ the first arguments passed, denoted by `_out`.
 > Asynchronously push scatter-gather array `sga` to queue and perform
 > associated I/O.  If network queue, send data over the socket.  If
 > file queue, write to file at file cursor.  If device is busy, buffer
-> request until able to send.  Operation is zero copy, so the
+> request until able to send.  Operation avoids copying, so the
 > application must not modify or free memory referenced in the
 > scatter-gather array until asynchronous operation completes. Returns
 > a queue token to check or wait for completion.  Some libOSes offer
@@ -83,7 +83,7 @@ the first arguments passed, denoted by `_out`.
 > If token is from an accept operation, returns new queue descriptor
 > for new connection in `qr_out`.  If push operation, returns error
 > code for success or failure.  If pop operations, returns incoming
-> data on the queue. 
+> data on the queue.
 
 int dmtr_drop(dmtr_qtoken_t qt);
 
@@ -108,5 +108,4 @@ I/O.
 > Wait for completion of at first I/O operation associated with set of
 > queue tokens.  Returns result of first completed I/O operation in
 > `qr_out`. Destroys queue token so application does not need to call
-> `dmtr_drop`. 
-
+> `dmtr_drop`.
