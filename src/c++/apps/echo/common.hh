@@ -85,7 +85,7 @@ static const auto start_time = std::chrono::steady_clock::now();
 
 #ifdef PRINT_REQUEST_ERRORS
 #define print_request_error(fmt, ...)\
-    log_error(fmt, ##__VA_ARGS__);
+    log_warn(fmt, ##__VA_ARGS__);
 #else
 #define print_request_error(...)
 #endif

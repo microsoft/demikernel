@@ -54,3 +54,6 @@
 [submodule "src/c++/tools/ethq"]
 	path = src/c++/tools/ethq
 	url = git@github.com:maxdml/ethq.git
+[submodule "src/python/benchmarking_utils/Finelame"]
+	path = src/python/benchmarking_utils/Finelame
+	url = git@github.com:maxdml/Finelame.git
