@@ -32,28 +32,31 @@ impl Into<u16> for TcpConnectionHandle {
     }
 }
 
-pub struct TcpConnection {
+pub struct TcpConnection<'a> {
     cxnid: TcpConnectionId,
     handle: TcpConnectionHandle,
     input_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
     local_isn: Wrapping<u32>,
     receive_window: TcpReceiveWindow,
+    rt: Runtime<'a>,
     send_window: TcpSendWindow,
 }
 
-impl TcpConnection {
+impl<'a> TcpConnection<'a> {
     pub fn new(
         cxnid: TcpConnectionId,
         handle: TcpConnectionHandle,
         local_isn: Wrapping<u32>,
         receive_window_size: usize,
-    ) -> TcpConnection {
+        rt: Runtime<'a>,
+    ) -> Self {
         TcpConnection {
             cxnid,
             handle,
             input_queue: Rc::new(RefCell::new(VecDeque::new())),
             local_isn,
             receive_window: TcpReceiveWindow::new(receive_window_size),
+            rt: rt.clone(),
             send_window: TcpSendWindow::new(local_isn),
         }
     }
@@ -104,15 +107,13 @@ impl TcpConnection {
     ) -> Option<TcpSegment> {
         match self
             .send_window
-            .pop_transmittable_payload(optional_byte_count)
+            .pop_transmittable_payload(optional_byte_count, self.rt.now())
         {
             None => None,
-            Some((seq_num, payload)) => Some(
+            Some(segment) => Some(
                 TcpSegment::default()
-                    .connection(self)
-                    .seq_num(seq_num)
-                    .ack(self.try_get_ack_num().unwrap())
-                    .payload(payload),
+                    .payload(segment.payload().clone())
+                    .connection(self),
             ),
         }
     }

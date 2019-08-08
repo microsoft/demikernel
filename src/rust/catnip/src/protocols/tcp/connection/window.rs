@@ -2,7 +2,34 @@ use super::super::segment::{TcpSegment, DEFAULT_MSS, MAX_MSS, MIN_MSS};
 use crate::{io::IoVec, prelude::*};
 use std::{
     cmp::min, collections::VecDeque, convert::TryFrom, num::Wrapping, rc::Rc,
+    time::Instant,
 };
+
+pub struct UnacknowledgedTcpSegment {
+    first_transmitted_at: Instant,
+    payload: Rc<Vec<u8>>,
+    retries: usize,
+    seq_num: Wrapping<u32>,
+}
+
+impl UnacknowledgedTcpSegment {
+    pub fn new(
+        payload: Vec<u8>,
+        seq_num: Wrapping<u32>,
+        now: Instant,
+    ) -> UnacknowledgedTcpSegment {
+        UnacknowledgedTcpSegment {
+            first_transmitted_at: now,
+            payload: Rc::new(payload),
+            seq_num,
+            retries: 0,
+        }
+    }
+
+    pub fn payload(&self) -> &Rc<Vec<u8>> {
+        &self.payload
+    }
+}
 
 pub struct TcpSendWindow {
     bytes_unacknowledged: usize,
@@ -10,7 +37,7 @@ pub struct TcpSendWindow {
     mss: usize,
     remote_receive_window_size: usize,
     smallest_unacknowledged_seq_num: Wrapping<u32>,
-    unacknowledged_segments: VecDeque<Rc<Vec<u8>>>,
+    unacknowledged_segments: VecDeque<UnacknowledgedTcpSegment>,
     unsent_segment_offset: usize,
     unsent_segments: VecDeque<Vec<u8>>,
 }
@@ -101,10 +128,10 @@ impl TcpSendWindow {
         }
 
         let mut n = 0;
-        let mut acked_segments = Vec::new();
+        let mut acked_segments = 0;
         for segment in &self.unacknowledged_segments {
-            n += segment.len();
-            acked_segments.push(segment);
+            n += segment.payload.len();
+            acked_segments += 1;
 
             if n >= bytes_acknowledged {
                 break;
@@ -117,7 +144,7 @@ impl TcpSendWindow {
             });
         }
 
-        for _ in 0..acked_segments.len() {
+        for _ in 0..acked_segments {
             let _ = self.unacknowledged_segments.pop_front().unwrap();
         }
 
@@ -130,7 +157,8 @@ impl TcpSendWindow {
     pub fn pop_transmittable_payload(
         &mut self,
         optional_byte_count: Option<usize>,
-    ) -> Option<(Wrapping<u32>, Rc<Vec<u8>>)> {
+        now: Instant,
+    ) -> Option<&UnacknowledgedTcpSegment> {
         trace!("TcpSendWindow::pop_transmittable_payload()");
         if self.unsent_segments.is_empty() {
             None
@@ -172,9 +200,13 @@ impl TcpSendWindow {
                 .smallest_unacknowledged_seq_num
                 + Wrapping(u32::try_from(self.bytes_unacknowledged).unwrap());
             self.bytes_unacknowledged += payload.len();
-            let payload = Rc::new(payload);
-            self.unacknowledged_segments.push_back(payload.clone());
-            Some((self.last_seq_num_transmitted, payload))
+            let segment = UnacknowledgedTcpSegment::new(
+                payload,
+                self.last_seq_num_transmitted,
+                now,
+            );
+            self.unacknowledged_segments.push_back(segment);
+            self.unacknowledged_segments.back()
         }
     }
 }

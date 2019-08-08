@@ -21,7 +21,7 @@ use std::{
 pub struct TcpRuntime<'a> {
     arp: arp::Peer<'a>,
     assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
-    connections: HashMap<TcpConnectionId, TcpConnection>,
+    connections: HashMap<TcpConnectionId, TcpConnection<'a>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
     rt: Runtime<'a>,
@@ -104,7 +104,7 @@ impl<'a> TcpRuntime<'a> {
     pub fn get_connection(
         &self,
         cxnid: &TcpConnectionId,
-    ) -> Option<&TcpConnection> {
+    ) -> Option<&TcpConnection<'a>> {
         self.connections.get(cxnid)
     }
 
@@ -123,7 +123,7 @@ impl<'a> TcpRuntime<'a> {
             let (cxnid, rt) = {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
-                let _ = state.new_connection(cxnid.clone())?;
+                let _ = state.new_connection(cxnid.clone(), rt.clone())?;
                 (cxnid, rt)
             };
 
@@ -252,7 +252,7 @@ impl<'a> TcpRuntime<'a> {
                     remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
                 };
 
-                let cxn = state.new_connection(cxnid.clone())?;
+                let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
                 cxn.negotiate_mss(syn_segment.mss)?;
                 cxn.set_remote_isn(syn_segment.seq_num);
                 (cxnid, rt)
@@ -547,7 +547,8 @@ impl<'a> TcpRuntime<'a> {
     fn new_connection(
         &mut self,
         cxnid: TcpConnectionId,
-    ) -> Result<&mut TcpConnection> {
+        rt: Runtime<'a>,
+    ) -> Result<&mut TcpConnection<'a>> {
         let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
         let local_isn = self.isn_generator.next(&cxnid);
@@ -556,6 +557,7 @@ impl<'a> TcpRuntime<'a> {
             handle,
             local_isn,
             options.tcp.receive_window_size(),
+            rt.clone(),
         );
         let local_port = cxnid.local.port();
         assert!(self.connections.insert(cxnid.clone(), cxn).is_none());
