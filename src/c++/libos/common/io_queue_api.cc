@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#include <boost/optional.hpp>
+#include <boost/program_options.hpp>
 #include <dmtr/libos/io_queue_api.hh>
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
