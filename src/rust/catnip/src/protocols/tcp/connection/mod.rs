@@ -56,6 +56,7 @@ impl<'a> TcpConnection<'a> {
         receive_window_size: usize,
         rt: Runtime<'a>,
     ) -> Self {
+        let advertised_mss = rt.options().tcp.advertised_mss();
         TcpConnection {
             cxnid,
             handle,
@@ -64,9 +65,9 @@ impl<'a> TcpConnection<'a> {
             receive_window: TcpReceiveWindow::new(receive_window_size),
             retry_generator: None,
             retry_timeout: None,
-            rt: rt.clone(),
+            rt,
             rto_calculator: RtoCalculator::new(),
-            send_window: TcpSendWindow::new(local_isn),
+            send_window: TcpSendWindow::new(local_isn, advertised_mss),
         }
     }
 
@@ -197,10 +198,7 @@ impl<'a> TcpConnection<'a> {
         Ok(())
     }
 
-    pub fn receive(
-        &mut self,
-        segment: TcpSegment,
-    ) -> Result<()> {
+    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
         let was_empty = self.receive_window.push(segment)?;
         if was_empty {
             self.rt.emit_event(Event::TcpBytesAvailable(self.handle));

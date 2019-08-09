@@ -280,7 +280,11 @@ fn packetization() {
     // transmitting 2k bytes of data should produce an equivalent `IoVec` upon
     // reading.
     info!("Alice writes data to the TCP connection...");
-    let data_in = IoVec::from(vec![0xab; 2048]);
+    let data_in =
+        IoVec::from(vec![
+            0xab;
+            cxn.alice.tcp_mss(cxn.alice_cxn_handle).unwrap() + 1
+        ]);
     cxn.alice
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
         .unwrap();

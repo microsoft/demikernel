@@ -1,3 +1,4 @@
+use super::segment::DEFAULT_MSS;
 use float_duration::FloatDuration;
 use std::time::Duration;
 
@@ -9,11 +10,12 @@ const DEFAULT_RETRIES2: usize = 5;
 
 #[derive(Clone, Default)]
 pub struct TcpOptions {
+    pub advertised_mss: Option<usize>,
     pub handshake_retries: Option<usize>,
     pub handshake_timeout: Option<FloatDuration>,
     pub receive_window_size: Option<usize>,
-    pub trailing_ack_delay: Option<FloatDuration>,
     pub retries2: Option<usize>,
+    pub trailing_ack_delay: Option<FloatDuration>,
 }
 
 impl TcpOptions {
@@ -46,5 +48,9 @@ impl TcpOptions {
 
     pub fn retries2(&self) -> usize {
         self.retries2.unwrap_or(DEFAULT_RETRIES2)
+    }
+
+    pub fn advertised_mss(&self) -> usize {
+        self.advertised_mss.unwrap_or(DEFAULT_MSS)
     }
 }

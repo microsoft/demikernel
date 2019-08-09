@@ -1,4 +1,4 @@
-use super::super::segment::{TcpSegment, DEFAULT_MSS, MAX_MSS, MIN_MSS};
+use super::super::segment::{TcpSegment, MAX_MSS, MIN_MSS};
 use crate::{io::IoVec, prelude::*};
 use std::{
     cmp::min,
@@ -63,11 +63,14 @@ pub struct TcpSendWindow {
 }
 
 impl TcpSendWindow {
-    pub fn new(local_isn: Wrapping<u32>) -> TcpSendWindow {
+    pub fn new(
+        local_isn: Wrapping<u32>,
+        advertised_mss: usize,
+    ) -> TcpSendWindow {
         TcpSendWindow {
             bytes_unacknowledged: 0,
             last_seq_num_transmitted: local_isn,
-            mss: DEFAULT_MSS,
+            mss: advertised_mss,
             remote_receive_window_size: 0,
             smallest_unacknowledged_seq_num: local_isn,
             unacknowledged_segments: VecDeque::new(),

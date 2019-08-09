@@ -50,7 +50,14 @@ pub fn new_engine<'a>(
                 cache_ttl: Some(FloatDuration::minutes(5.0)),
             },
             rng_seed: Some(seed),
-            tcp: tcp::Options::default(),
+            tcp: tcp::Options {
+                advertised_mss: Some(tcp::MIN_MSS),
+                handshake_retries: None,
+                handshake_timeout: None,
+                receive_window_size: None,
+                retries2: None,
+                trailing_ack_delay: None,
+            },
         },
     )
     .unwrap()
