@@ -14,7 +14,11 @@ use crate::{
     r#async::WhenAny,
 };
 use std::{
-    cell::RefCell, convert::TryFrom, num::Wrapping, rc::Rc, time::Instant,
+    cell::RefCell,
+    convert::TryFrom,
+    num::Wrapping,
+    rc::Rc,
+    time::{Duration, Instant},
 };
 
 pub use runtime::TcpRuntime;
@@ -177,6 +181,14 @@ impl<'a> TcpPeer<'a> {
 
     pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
         self.tcp_rt.borrow_mut().read(handle)
+    }
+
+    pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
+        self.tcp_rt.borrow_mut().get_mss(handle)
+    }
+
+    pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
+        self.tcp_rt.borrow_mut().get_rto(handle)
     }
 }
 

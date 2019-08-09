@@ -12,7 +12,7 @@ pub use transcode::{
     MAX_MSS, MIN_MSS,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct TcpSegment {
     pub dest_ipv4_addr: Option<Ipv4Addr>,
     pub dest_port: Option<ip::Port>,

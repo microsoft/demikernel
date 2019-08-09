@@ -47,6 +47,10 @@ impl<'a> Retry<'a> {
             }
         })
     }
+
+    pub fn binary_exponential(start: Duration, count: usize) -> Retry<'a> {
+        Retry::exponential(start, 2, count)
+    }
 }
 
 impl<'a> Iterator for Retry<'a> {

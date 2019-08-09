@@ -450,7 +450,7 @@ fn syn_retry() {
     let options = alice.options();
     let retries = options.tcp.handshake_retries();
     let timeout = options.tcp.handshake_timeout();
-    let mut retry = Retry::exponential(timeout, 2, retries);
+    let mut retry = Retry::binary_exponential(timeout, retries);
 
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
@@ -487,4 +487,175 @@ fn syn_retry() {
         Err(Fail::Timeout {}) => (),
         _ => panic!("expected timeout"),
     }
+}
+
+#[test]
+fn retransmission_fail() {
+    let mut cxn = establish_connection();
+
+    // transmitting 10 bytes of data should produce an identical `IoVec` upon
+    // reading.
+    info!("Alice writes data to the TCP connection...");
+    let data_in = IoVec::from(vec![0xab; 10]);
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let dropped_segment = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            segment
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
+    let retries = cxn.alice.options().tcp.retries2();
+    let mut retry = Retry::binary_exponential(rto, retries);
+    for i in 0..(retries - 1) {
+        let timeout = retry.next().unwrap();
+        cxn.now += timeout;
+        assert!(cxn.alice.poll(cxn.now).is_none());
+        info!("retransmission(): retry #{}", i + 1);
+        cxn.now += Duration::from_micros(1);
+        let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+        match event {
+            Event::Transmit(bytes) => {
+                assert_eq!(
+                    dropped_segment,
+                    TcpSegment::decode(bytes.as_slice()).unwrap()
+                );
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        }
+    }
+
+    cxn.now += retry.next().unwrap();
+    assert!(retry.next().is_none());
+    assert!(cxn.alice.poll(cxn.now).is_none());
+    cxn.now += Duration::from_micros(1);
+    match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        Event::TcpConnectionClosed { handle, error } => {
+            assert_eq!(handle, cxn.alice_cxn_handle);
+            match error {
+                Some(Fail::Timeout {}) => (),
+                _ => panic!("expected a timeout error"),
+            }
+        }
+        _ => panic!("unexpected event"),
+    }
+}
+
+#[test]
+fn retransmission_recovery() {
+    let mut cxn = establish_connection();
+
+    // transmitting 10 bytes of data should produce an identical `IoVec` upon
+    // reading.
+    info!("Alice writes data to the TCP connection...");
+    let data_in = IoVec::from(vec![0xab; 10]);
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let dropped_segment = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            segment
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("dropping data segment and attempting retry...");
+    let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
+    let retries = cxn.alice.options().tcp.retries2();
+    let mut retry = Retry::binary_exponential(rto, retries);
+    let timeout = retry.next().unwrap();
+    cxn.now += timeout;
+    assert!(cxn.alice.poll(cxn.now).is_none());
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let (bytes, seq_num) = {
+        match event {
+            Event::Transmit(bytes) => {
+                let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+                assert_eq!(dropped_segment, segment);
+
+                (bytes, segment.seq_num)
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        }
+    };
+
+    info!("passing data segment to Bob...");
+    cxn.now += Duration::from_micros(1);
+    // ACK timeout starts from here.
+    cxn.bob.receive(bytes.as_slice()).unwrap();
+    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::TcpBytesAvailable(handle) => {
+            assert_eq!(cxn.bob_cxn_handle, handle)
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    }
+
+    info!("Alice writes more data to the TCP connection...");
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let bytes = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("passing second data segment to Bob...");
+    cxn.now += Duration::from_micros(1);
+    cxn.bob.receive(bytes.as_slice()).unwrap();
+    // Event::TcpBytesAvailable won't be emitted unless the read buffer starts
+    // out empty.
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
+    assert_eq!(
+        data_out,
+        IoVec::from(vec![data_in[0].to_vec(), data_in[0].to_vec()])
+    );
+
+    info!("waiting for trailing ACK timeout to pass...");
+    cxn.now +=
+        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(2);
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    cxn.now += Duration::from_micros(1);
+    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(0, segment.payload.len());
+            assert!(segment.ack);
+            assert_eq!(
+                seq_num
+                    + Wrapping(
+                        u32::try_from(data_in.byte_count()).unwrap() * 2
+                    ),
+                segment.ack_num
+            );
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("passing pure ACK segment to Alice...");
+    cxn.alice.receive(pure_ack.as_slice()).unwrap();
 }

@@ -102,6 +102,14 @@ impl<'a> Ipv4Peer<'a> {
     ) -> Result<IoVec> {
         self.tcp.read(handle)
     }
+
+    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
+        self.tcp.get_mss(handle)
+    }
+
+    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
+        self.tcp.get_rto(handle)
+    }
 }
 
 impl<'a> Async<()> for Ipv4Peer<'a> {

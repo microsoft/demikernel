@@ -16,6 +16,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     rc::Rc,
+    time::Duration,
 };
 
 pub struct TcpRuntime<'a> {
@@ -133,7 +134,7 @@ impl<'a> TcpRuntime<'a> {
             let ack_segment = r#await!(
                 TcpRuntime::handshake(&state, &cxnid),
                 rt.now(),
-                Retry::exponential(timeout, 2, retries)
+                Retry::binary_exponential(timeout, retries)
             )?;
 
             let remote_isn = ack_segment.seq_num;
@@ -264,7 +265,7 @@ impl<'a> TcpRuntime<'a> {
             let ack_segment = r#await!(
                 TcpRuntime::handshake(&state, &cxnid),
                 rt.now(),
-                Retry::exponential(timeout, 2, retries)
+                Retry::binary_exponential(timeout, retries)
             )?;
 
             {
@@ -333,7 +334,7 @@ impl<'a> TcpRuntime<'a> {
 
             let rt = state.borrow().rt().clone();
             let options = rt.options();
-            let mut ack_needed_since = None;
+            let mut ack_owed_since = None;
             loop {
                 let mut transmittable_segments: VecDeque<TcpSegment> = {
                     let mut state = state.borrow_mut();
@@ -341,12 +342,9 @@ impl<'a> TcpRuntime<'a> {
                     let input_queue = cxn.get_input_queue();
                     let mut input_queue = input_queue.borrow_mut();
                     while let Some(segment) = input_queue.pop_front() {
-                        if ack_needed_since.is_none() {
-                            ack_needed_since = Some(rt.now());
-                            debug!(
-                                "ack_needed_since = {:?}",
-                                ack_needed_since
-                            );
+                        if ack_owed_since.is_none() {
+                            ack_owed_since = Some(rt.now());
+                            debug!("ack_owed_since = {:?}", ack_owed_since);
                         }
 
                         // todo: should we inform the caller about dropped
@@ -374,7 +372,7 @@ impl<'a> TcpRuntime<'a> {
 
                     let mut transmittable_segments = VecDeque::new();
                     while let Some(segment) =
-                        cxn.pop_transmittable_segment(None)
+                        cxn.get_next_transmittable_segment(None)
                     {
                         transmittable_segments.push_back(segment);
                     }
@@ -390,13 +388,13 @@ impl<'a> TcpRuntime<'a> {
                 while let Some(segment) = transmittable_segments.pop_front() {
                     assert!(segment.ack);
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
-                    ack_needed_since = None;
+                    ack_owed_since = None;
                 }
 
-                if let Some(timestamp) = ack_needed_since {
+                if let Some(timestamp) = ack_owed_since {
                     debug!(
-                        "ack_needed_since = {:?} ({:?})",
-                        ack_needed_since,
+                        "ack_owed_since = {:?} ({:?})",
+                        ack_owed_since,
                         rt.now() - timestamp
                     );
                     debug!(
@@ -421,10 +419,20 @@ impl<'a> TcpRuntime<'a> {
                             rt.now()
                         )?;
 
-                        ack_needed_since = None;
+                        ack_owed_since = None;
                     }
                 } else {
-                    debug!("ack_needed_since = None")
+                    debug!("ack_owed_since = None")
+                }
+
+                let mut retransmissions = {
+                    let mut state = state.borrow_mut();
+                    let cxn = state.connections.get_mut(&cxnid).unwrap();
+                    cxn.try_get_retransmissions()?
+                };
+
+                while let Some(segment) = retransmissions.pop_front() {
+                    r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
                 }
 
                 yield None;
@@ -528,6 +536,28 @@ impl<'a> TcpRuntime<'a> {
     pub fn release_private_port(&mut self, port: ip::Port) {
         assert!(port.is_private());
         self.unassigned_private_ports.push_back(port);
+    }
+
+    pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
+        if let Some(cxnid) = self.assigned_handles.get(&handle) {
+            let cxn = self.connections.get(&cxnid).unwrap();
+            Ok(cxn.get_mss())
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection handle",
+            })
+        }
+    }
+
+    pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
+        if let Some(cxnid) = self.assigned_handles.get(&handle) {
+            let cxn = self.connections.get(&cxnid).unwrap();
+            Ok(cxn.get_rto())
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection handle",
+            })
+        }
     }
 
     fn acquire_connection_handle(&mut self) -> Result<TcpConnectionHandle> {

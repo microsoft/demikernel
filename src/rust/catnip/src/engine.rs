@@ -119,6 +119,14 @@ impl<'a> Engine<'a> {
     ) -> Result<IoVec> {
         self.ipv4.tcp_read(handle)
     }
+
+    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
+        self.ipv4.tcp_mss(handle)
+    }
+
+    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
+        self.ipv4.tcp_rto(handle)
+    }
 }
 
 impl<'a> Async<Event> for Engine<'a> {
