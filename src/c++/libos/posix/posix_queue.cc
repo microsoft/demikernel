@@ -41,51 +41,14 @@ dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
     my_peer_saddr(NULL)
 {}
 
-int dmtr::posix_queue::alloc_latency()
-{
-    if (NULL == read_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "read"));
-        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-
-    if (NULL == write_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "write"));
-        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-    return 0;
-}
-
 int dmtr::posix_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
-#if DMTR_PROFILE
-    DMTR_OK(alloc_latency());
-#endif
-
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd, NETWORK_Q));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
 
 int dmtr::posix_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int qd) {
-#if DMTR_PROFILE
-    alloc_latency();
-#endif
-
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd, FILE_Q));
-    DMTR_NOTNULL(ENOMEM, q_out);
-
-    return 0;
-}
-
-int dmtr::posix_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
-    q_out = std::unique_ptr<io_queue>(new posix_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
 
     return 0;
@@ -175,10 +138,10 @@ int dmtr::posix_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
-    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q.get()));
+    DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q));
     my_accept_thread->enqueue(qt);
 
-    q_out = std::move(q);
+    q_out = std::move(qq);
     return 0;
 }
 
@@ -400,11 +363,11 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
 #endif
 
-    size_t bytes_written = 0;
 #if DMTR_PROFILE
     auto t0 = boost::chrono::steady_clock::now();
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
+    int written_iov = 0;
     size_t latest_bytes_written = 0;
     int ret = writev(latest_bytes_written, my_fd, iov, iov_len);
     size_t total_bytes_written = latest_bytes_written;
@@ -426,19 +389,28 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
             while (nr >= iov->iov_len) {
                 nr -= iov->iov_len;
                 --iov_len;
-                ++iov;
+                ++written_iov;
             }
             assert(nr > 0); //Otherwise we would not be handling a partial write
             iov->iov_len -= nr;
             iov->iov_base = (char *) iov->iov_base + nr;
         }
-        ret = writev(latest_bytes_written, my_fd, iov, iov_len);
+        ret = writev(latest_bytes_written, my_fd, iov + written_iov, iov_len);
         total_bytes_written += latest_bytes_written;
     }
 
 #if DMTR_PROFILE
     dt += (boost::chrono::steady_clock::now() - t0);
-    DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+    std::lock_guard<std::mutex> lock(w_latencies_mutex);
+    pthread_t me = pthread_self();
+    auto it = write_latencies.find(me);
+    if (it != write_latencies.end()) {
+        DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+    } else {
+        DMTR_OK(dmtr_register_latencies("write", write_latencies));
+        it = write_latencies.find(me);
+        DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+    }
 #endif
 
 #if DMTR_DEBUG
@@ -571,7 +543,6 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         if (0 == bytes_read) {
             return ECONNABORTED;
         }
-        free(iovbase);
 
         header_bytes += bytes_read;
 
@@ -599,7 +570,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
     // grab the rest of the message
     DMTR_OK(dmtr_malloc(&sga->sga_buf, header.h_bytes));
-   std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga->sga_buf));
+    std::unique_ptr<uint8_t> buf(reinterpret_cast<uint8_t *>(sga->sga_buf));
     size_t data_bytes = 0;
     ret = -1;
     while (data_bytes < header.h_bytes) {
@@ -632,12 +603,12 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         {
             std::lock_guard<std::mutex> lock(w_latencies_mutex);
             pthread_t me = pthread_self();
-            auto it = write_latencies.find(me);
-            if (it != write_latencies.end()) {
+            auto it = read_latencies.find(me);
+            if (it != read_latencies.end()) {
                 DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
             } else {
-                DMTR_OK(dmtr_register_latencies("write", write_latencies));
-                it = write_latencies.find(me);
+                DMTR_OK(dmtr_register_latencies("read", read_latencies));
+                it = read_latencies.find(me);
                 DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
             }
         }
