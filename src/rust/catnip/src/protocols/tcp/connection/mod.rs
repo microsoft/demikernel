@@ -200,11 +200,10 @@ impl<'a> TcpConnection<'a> {
     pub fn receive(
         &mut self,
         segment: TcpSegment,
-        rt: &Runtime<'_>,
     ) -> Result<()> {
         let was_empty = self.receive_window.push(segment)?;
         if was_empty {
-            rt.emit_event(Event::TcpBytesAvailable(self.handle));
+            self.rt.emit_event(Event::TcpBytesAvailable(self.handle));
         }
 
         Ok(())

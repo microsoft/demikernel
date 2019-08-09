@@ -364,7 +364,7 @@ impl<'a> TcpRuntime<'a> {
                             }
                         }
 
-                        match cxn.receive(segment, &rt) {
+                        match cxn.receive(segment) {
                             Ok(()) => (),
                             Err(e) => warn!("packet dropped ({:?})", e),
                         }
