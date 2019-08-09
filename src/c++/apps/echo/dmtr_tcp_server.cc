@@ -12,6 +12,9 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <dmtr/libos/mem.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -19,16 +22,20 @@
 #include <unordered_map>
 
 int lqd = 0;
+int fqd = 0;
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
 dmtr_latency_t *push_wait_latency = NULL;
+dmtr_latency_t *file_log_latency = NULL;
 
 void sig_handler(int signo)
 {
   dmtr_dump_latency(stderr, pop_latency);
   dmtr_dump_latency(stderr, push_latency);
   dmtr_dump_latency(stderr, push_wait_latency);
+  dmtr_dump_latency(stderr, file_log_latency);
   dmtr_close(lqd);
+  if (0 != fqd) dmtr_close(fqd);
   exit(0);
 }
 
@@ -55,6 +62,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_new_latency(&pop_latency, "pop server"));
     DMTR_OK(dmtr_new_latency(&push_latency, "push server"));
     DMTR_OK(dmtr_new_latency(&push_wait_latency, "push wait server"));
+    DMTR_OK(dmtr_new_latency(&file_log_latency, "file log server"));
 
     std::vector<dmtr_qtoken_t> tokens;
     std::unordered_map<dmtr_qtoken_t, boost::chrono::time_point<boost::chrono::steady_clock>> start_times;
@@ -71,6 +79,11 @@ int main(int argc, char *argv[])
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
+    if (boost::none != file) {
+        // open a log file
+        DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
+    }
+    
     while (1) {
         dmtr_qresult wait_out;
         int idx;
@@ -92,19 +105,30 @@ int main(int argc, char *argv[])
                 assert(DMTR_OPC_POP == wait_out.qr_opcode);
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
                 //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+
                 token = tokens[idx];
                 auto pop_dt = boost::chrono::steady_clock::now() - start_times[token];
                 start_times.erase(token);
                 DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
+
+                if (0 != fqd) {
+                    // log to file
+                    auto t0 = boost::chrono::steady_clock::now();
+                    DMTR_OK(dmtr_push(&token, fqd, &wait_out.qr_value.sga));
+                    DMTR_OK(dmtr_wait(NULL, token));
+                    auto log_dt = boost::chrono::steady_clock::now() - t0;
+                    DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
+                }
+                
                 auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
-		auto push_dt = boost::chrono::steady_clock::now() - t0;
-		DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
-		t0 = boost::chrono::steady_clock::now();
-		DMTR_OK(dmtr_wait(NULL, token));
+                auto push_dt = boost::chrono::steady_clock::now() - t0;
+                DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
+                t0 = boost::chrono::steady_clock::now();
+                DMTR_OK(dmtr_wait(NULL, token));
                 auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
-		t0 = boost::chrono::steady_clock::now();
+                t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 start_times[token] = t0;
                 tokens[idx] = token;

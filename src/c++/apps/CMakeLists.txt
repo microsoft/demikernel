@@ -16,3 +16,7 @@ ExternalProject_Add(redis-vanilla
     BUILD_COMMAND make -C ${REDIS_SOURCE_DIR} PREFIX=${REDIS_BINARY_DIR} V=1
     INSTALL_COMMAND make -C ${REDIS_SOURCE_DIR} install PREFIX=${REDIS_BINARY_DIR} V=1
 )
+
+add_tapir(tapir-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-posix)
+add_tapir(tapir-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/HoardRdma/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-rdma)
+add_tapir(tapir-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-lwip)

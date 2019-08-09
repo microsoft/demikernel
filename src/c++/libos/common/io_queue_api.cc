@@ -193,6 +193,55 @@ int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, soc
     return 0;
 }
 
+int dmtr::io_queue_api::open(int &qd_out, const char *pathname, int flags) {
+    qd_out = 0;
+
+    io_queue *q = NULL;
+    DMTR_OK(new_queue(q, io_queue::FILE_Q));
+
+    int ret = q->open(pathname, flags);
+    if (ret != 0) {
+        DMTR_OK(remove_queue(q->qd()));
+        DMTR_FAIL(ret);
+    }
+
+    qd_out = q->qd();
+    return 0;
+}
+
+int dmtr::io_queue_api::open(int &qd_out, const char *pathname, int flags, mode_t mode) {
+    qd_out = 0;
+
+    io_queue *q = NULL;
+    DMTR_OK(new_queue(q, io_queue::FILE_Q));
+
+    int ret = q->open(pathname, flags, mode);
+    if (ret != 0) {
+        DMTR_OK(remove_queue(q->qd()));
+        DMTR_FAIL(ret);
+    }
+
+    qd_out = q->qd();
+    return 0;
+}
+
+int dmtr::io_queue_api::creat(int &qd_out, const char *pathname, mode_t mode) {
+    qd_out = 0;
+
+    io_queue *q = NULL;
+    DMTR_OK(new_queue(q, io_queue::FILE_Q));
+
+    int ret = q->creat(pathname, mode);
+    if (ret != 0) {
+        DMTR_OK(remove_queue(q->qd()));
+        DMTR_FAIL(ret);
+    }
+
+    qd_out = q->qd();
+    return 0;
+}
+
+
 int dmtr::io_queue_api::close(int qd) {
     DMTR_TRUE(EINVAL, qd != 0);
 

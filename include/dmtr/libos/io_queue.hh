@@ -79,6 +79,11 @@ class io_queue
     public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
 
+    // file control plane functions
+    public: virtual int open(const char *pathname, int flags);
+    public: virtual int open(const char *pathname, int flags, mode_t mode);
+    public: virtual int creat(const char *pathname, mode_t mode);
+        
     // general control plane functions.
     public: virtual int close();
 

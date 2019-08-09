@@ -22,7 +22,8 @@ int dmtr_init(int argc, char *argv[])
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
     ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);
     ioq_api->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
-    ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::posix_queue::new_object);
+    ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::posix_queue::new_net_object);
+    ioq_api->register_queue_ctor(dmtr::io_queue::FILE_Q, dmtr::posix_queue::new_file_object);
     return 0;
 }
 
@@ -78,6 +79,30 @@ int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
     return ioq_api->connect(qd, saddr, size);
+}
+
+int dmtr_open(int *qd_out, const char *pathname, int flags)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->open(*qd_out, pathname, flags);
+}
+
+int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->open(*qd_out, pathname, flags, mode);
+}
+
+int dmtr_creat(int *qd_out, const char *pathname, mode_t mode)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->creat(*qd_out, pathname, mode);
 }
 
 int dmtr_close(int qd)

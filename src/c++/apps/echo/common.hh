@@ -19,6 +19,7 @@ uint32_t iterations = 10;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
+boost::optional<std::string> file;
 
 using namespace boost::program_options;
 
@@ -32,7 +33,8 @@ void parse_args(int argc, char **argv, bool server)
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
-        ("config-path,c", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+        ("config-path,c", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
+        ("file", value<std::string>(), "log file");
 
     variables_map vm;
     store(parse_command_line(argc, argv, desc), vm);
@@ -93,6 +95,10 @@ void parse_args(int argc, char **argv, bool server)
     if (vm.count("size")) {
         packet_size = vm["size"].as<uint32_t>();
         //std::cout << "Setting packet size to: " << packet_size << " bytes." << std::endl;
+    }
+
+    if (vm.count("file")) {
+        file = vm["file"].as<std::string>();
     }
 };
 
