@@ -115,6 +115,7 @@ impl<'a> TcpConnection<'a> {
         &mut self,
         optional_byte_count: Option<usize>,
     ) -> Option<TcpSegment> {
+        trace!("TcpConnection::get_next_transmittable_segment()");
         match self
             .send_window
             .get_next_transmittable_payload(optional_byte_count, self.rt.now())
@@ -127,6 +128,7 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn try_get_retransmissions(&mut self) -> Result<VecDeque<TcpSegment>> {
+        trace!("TcpConnection::try_get_retransmissions()");
         let now = self.rt.now();
 
         let age = self.send_window.get_unacknowledged_segment_age(now);
@@ -198,13 +200,22 @@ impl<'a> TcpConnection<'a> {
         Ok(())
     }
 
-    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
-        let was_empty = self.receive_window.push(segment)?;
-        if was_empty {
+    pub fn receive(
+        &mut self,
+        segment: TcpSegment,
+    ) -> Result<Option<TcpSegment>> {
+        let was_empty = self.receive_window.is_empty();
+        self.receive_window.push(segment)?;
+        if was_empty && !self.receive_window.is_empty() {
             self.rt.emit_event(Event::TcpBytesAvailable(self.handle));
         }
 
-        Ok(())
+        if self.receive_window.window_size() == 0 {
+            let zero_window = TcpSegment::default().connection(self);
+            Ok(Some(zero_window))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn get_rto(&self) -> Duration {

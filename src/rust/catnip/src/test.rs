@@ -9,6 +9,8 @@ use flexi_logger::Logger;
 use float_duration::FloatDuration;
 use std::{net::Ipv4Addr, sync::Once, time::Instant};
 
+const RECEIVE_WINDOW_SIZE: usize = 1024;
+
 lazy_static! {
     static ref ALICE_MAC: MacAddress =
         MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
@@ -54,7 +56,7 @@ pub fn new_engine<'a>(
                 advertised_mss: Some(tcp::MIN_MSS),
                 handshake_retries: None,
                 handshake_timeout: None,
-                receive_window_size: None,
+                receive_window_size: Some(RECEIVE_WINDOW_SIZE),
                 retries2: None,
                 trailing_ack_delay: None,
             },

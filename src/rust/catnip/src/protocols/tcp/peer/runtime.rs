@@ -341,6 +341,7 @@ impl<'a> TcpRuntime<'a> {
                     let cxn = state.connections.get_mut(&cxnid).unwrap();
                     let input_queue = cxn.get_input_queue();
                     let mut input_queue = input_queue.borrow_mut();
+                    let mut transmittable_segments = VecDeque::new();
                     while let Some(segment) = input_queue.pop_front() {
                         if ack_owed_since.is_none() {
                             ack_owed_since = Some(rt.now());
@@ -365,12 +366,14 @@ impl<'a> TcpRuntime<'a> {
                         }
 
                         match cxn.receive(segment) {
-                            Ok(()) => (),
+                            Ok(Some(zero_window)) => {
+                                transmittable_segments.push_back(zero_window)
+                            }
+                            Ok(None) => (),
                             Err(e) => warn!("packet dropped ({:?})", e),
                         }
                     }
 
-                    let mut transmittable_segments = VecDeque::new();
                     while let Some(segment) =
                         cxn.get_next_transmittable_segment(None)
                     {
@@ -387,8 +390,13 @@ impl<'a> TcpRuntime<'a> {
 
                 while let Some(segment) = transmittable_segments.pop_front() {
                     assert!(segment.ack);
+                    // we don't want to reset the delayed ACK timer for zero
+                    // window advertisements.
+                    if segment.payload.len() > 0 && segment.window_size > 0 {
+                        ack_owed_since = None;
+                    }
+
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
-                    ack_owed_since = None;
                 }
 
                 if let Some(timestamp) = ack_owed_since {

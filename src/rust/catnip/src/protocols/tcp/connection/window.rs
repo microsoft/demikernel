@@ -193,6 +193,10 @@ impl TcpSendWindow {
         } else {
             let expected_remote_receive_window_size =
                 self.get_expected_remote_receive_window_size();
+            if self.get_expected_remote_receive_window_size() == 0 {
+                return None;
+            }
+
             let next_unsent_segment =
                 self.unsent_segments.front_mut().unwrap();
             let bytes_remaining =
@@ -290,6 +294,10 @@ impl TcpReceiveWindow {
         self.ack_num
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.bytes_unread == 0
+    }
+
     pub fn remote_isn(&mut self, value: Wrapping<u32>) {
         assert!(self.ack_num.is_none());
         self.ack_num = Some(value + Wrapping(1));
@@ -312,7 +320,7 @@ impl TcpReceiveWindow {
         iovec
     }
 
-    pub fn push(&mut self, segment: TcpSegment) -> Result<bool> {
+    pub fn push(&mut self, segment: TcpSegment) -> Result<()> {
         trace!("TcpReceiveWindow::receive({:?})", segment);
         let bytes_unread = self.bytes_unread + segment.payload.len();
         if bytes_unread > self.max_window_size {
@@ -321,9 +329,8 @@ impl TcpReceiveWindow {
             });
         }
 
-        let was_empty = self.unread_segments.is_empty();
         self.unread_segments.push_back(segment);
         self.bytes_unread = bytes_unread;
-        Ok(was_empty)
+        Ok(())
     }
 }
