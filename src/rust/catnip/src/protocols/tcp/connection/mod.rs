@@ -41,11 +41,13 @@ pub struct TcpConnection<'a> {
     input_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
     local_isn: Wrapping<u32>,
     receive_window: TcpReceiveWindow,
-    retry_generator: Option<Retry<'a>>,
-    retry_timeout: Option<Duration>,
+    retransmit_retry: Option<Retry<'a>>,
+    retransmit_timeout: Option<Duration>,
     rt: Runtime<'a>,
     rto_calculator: RtoCalculator,
     send_window: TcpSendWindow,
+    zero_window_retry: Option<Retry<'a>>,
+    zero_window_timeout: Option<Duration>,
 }
 
 impl<'a> TcpConnection<'a> {
@@ -63,11 +65,13 @@ impl<'a> TcpConnection<'a> {
             input_queue: Rc::new(RefCell::new(VecDeque::new())),
             local_isn,
             receive_window: TcpReceiveWindow::new(receive_window_size),
-            retry_generator: None,
-            retry_timeout: None,
+            retransmit_retry: None,
+            retransmit_timeout: None,
             rt,
             rto_calculator: RtoCalculator::new(),
             send_window: TcpSendWindow::new(local_isn, advertised_mss),
+            zero_window_retry: None,
+            zero_window_timeout: None,
         }
     }
 
@@ -137,7 +141,7 @@ impl<'a> TcpConnection<'a> {
         }
 
         let timeout = {
-            if let Some(timeout) = self.retry_timeout {
+            if let Some(timeout) = self.retransmit_timeout {
                 timeout
             } else {
                 let options = self.rt.options();
@@ -146,7 +150,8 @@ impl<'a> TcpConnection<'a> {
                 let mut retry =
                     Retry::binary_exponential(rto, options.tcp.retries2());
                 let timeout = retry.next().unwrap();
-                self.retry_generator = Some(retry);
+                self.retransmit_retry = Some(retry);
+                self.retransmit_timeout = Some(timeout);
                 timeout
             }
         };
@@ -157,9 +162,9 @@ impl<'a> TcpConnection<'a> {
         }
 
         if let Some(next_timeout) =
-            self.retry_generator.as_mut().unwrap().next()
+            self.retransmit_retry.as_mut().unwrap().next()
         {
-            self.retry_timeout = Some(next_timeout);
+            self.retransmit_timeout = Some(next_timeout);
         } else {
             return Err(Fail::Timeout {});
         }
