@@ -216,8 +216,8 @@ static inline void no_op_loop(uint32_t iter) {
 //    std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(a-b).count() << std::endl;
 }
 
-static int http_work(struct parser_state *state, dmtr_qresult_t &wait_out, dmtr_qtoken_t &token,
-                     int out_qfd, Worker *me) {
+int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
+                     dmtr_qtoken_t &token, int out_qfd, Worker *me) {
 #ifdef DMTR_PROFILE
     hr_clock::time_point start;
     hr_clock::time_point end;
@@ -332,12 +332,14 @@ static void *http_worker(void *args) {
 
     Worker *me = (Worker *) args;
     dmtr_qtoken_t token = 0;
+    uint64_t iteration = 0;
     while (1) {
         dmtr_qresult_t wait_out;
         dmtr_pop(&token, me->in_qfd);
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
-            http_work(state, wait_out, token, me->out_qfd, me);
+            http_work(iteration, state, wait_out, token, me->out_qfd, me);
+            iteration++;
         } else {
             log_debug("dmtr_wait returned status %d", status);
         }
@@ -351,9 +353,10 @@ static int filter_http_req(dmtr_sgarray_t *sga) {
     return get_request_type((char*) sga->sga_buf);
 }
 
-static int tcp_loop(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
-                    int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
-                    struct parser_state *state, Worker *me, int &lqd) {
+int tcp_work(uint64_t i,
+             std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+             int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
+             struct parser_state *state, Worker *me, int &lqd) {
     dmtr_qresult_t wait_out;
     int idx;
     int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
@@ -429,7 +432,7 @@ static int tcp_loop(std::vector<int> &http_q_pending, std::vector<bool> &clients
                     DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                     tokens.push_back(token);
                 } else {
-                    http_work(state, wait_out, token, wait_out.qr_qd, me);
+                    http_work(i, state, wait_out, token, wait_out.qr_qd, me);
 #ifdef DMTR_PROFILE
                     hr_clock::time_point end = hr_clock::now();
                     me->runtimes.push_back(ns_diff(start, end));
@@ -517,8 +520,12 @@ static void *tcp_worker(void *args) {
     std::vector<bool> clients_in_waiting;
     clients_in_waiting.reserve(MAX_CLIENTS);
     int num_rcvd = 0;
+    uint64_t iteration = INT_MAX;
     while (1) {
-        tcp_loop(http_q_pending, clients_in_waiting, num_rcvd, tokens, token, state, me, lqd);
+        tcp_work(
+            iteration, http_q_pending, clients_in_waiting, num_rcvd, tokens, token, state, me, lqd
+        );
+        iteration++;
     }
 
     clean_state(state);
