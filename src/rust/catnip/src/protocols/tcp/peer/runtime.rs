@@ -350,13 +350,13 @@ impl<'a> TcpRuntime<'a> {
                             && segment.payload.len() > 0
                         {
                             ack_owed_since = Some(rt.now());
-                            debug!("ack_owed_since = {:?}", ack_owed_since);
+                            debug!("{}: ack_owed_since = {:?}", options.my_ipv4_addr, ack_owed_since);
                         }
 
                         // todo: should we inform the caller about dropped
                         // packets?
                         if segment.syn {
-                            warn!("packet dropped (syn)");
+                            warn!("{}: packet dropped (syn)", options.my_ipv4_addr);
                             continue;
                         }
 
@@ -375,7 +375,7 @@ impl<'a> TcpRuntime<'a> {
                                 transmittable_segments.push_back(zero_window)
                             }
                             Ok(None) => (),
-                            Err(e) => warn!("packet dropped ({:?})", e),
+                            Err(e) => warn!("{}: packet dropped ({:?})", options.my_ipv4_addr, e),
                         }
                     }
 
@@ -389,7 +389,8 @@ impl<'a> TcpRuntime<'a> {
                 };
 
                 debug!(
-                    "{} segments can be transmitted",
+                    "{}: {} segments can be transmitted",
+                    options.my_ipv4_addr,
                     transmittable_segments.len()
                 );
 
@@ -406,19 +407,22 @@ impl<'a> TcpRuntime<'a> {
 
                 if let Some(timestamp) = ack_owed_since {
                     debug!(
-                        "ack_owed_since = {:?} ({:?})",
+                        "{}: ack_owed_since = {:?} ({:?})",
+                        options.my_ipv4_addr,
                         ack_owed_since,
                         rt.now() - timestamp
                     );
                     debug!(
-                        "options.tcp.trailing_ack_delay() = {:?}",
+                        "{}: options.tcp.trailing_ack_delay() = {:?}",
+                        options.my_ipv4_addr,
                         options.tcp.trailing_ack_delay()
                     );
                     if rt.now() - timestamp > options.tcp.trailing_ack_delay()
                     {
                         debug!(
-                            "delayed ACK timer has expired; sending pure \
-                             ACK..."
+                            "{}: delayed ACK timer has expired; sending pure \
+                             ACK...",
+                             options.my_ipv4_addr,
                         );
                         let pure_ack = {
                             let mut state = state.borrow_mut();
@@ -435,7 +439,7 @@ impl<'a> TcpRuntime<'a> {
                         ack_owed_since = None;
                     }
                 } else {
-                    debug!("ack_owed_since = None")
+                    debug!("{}: ack_owed_since = None", options.my_ipv4_addr)
                 }
 
                 let mut retransmissions = {
@@ -443,6 +447,12 @@ impl<'a> TcpRuntime<'a> {
                     let cxn = state.connections.get_mut(&cxnid).unwrap();
                     cxn.try_get_retransmissions()?
                 };
+
+                debug!(
+                    "{}: {} segments will be retransmitted",
+                    options.my_ipv4_addr,
+                    retransmissions.len()
+                );
 
                 while let Some(segment) = retransmissions.pop_front() {
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
