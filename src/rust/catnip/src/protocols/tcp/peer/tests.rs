@@ -731,6 +731,8 @@ fn zero_window() {
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
         .unwrap();
     cxn.now += Duration::from_micros(1);
+    // !!! this is where we fail-- alice doesn't see the right remote window
+    // size.
     assert!(cxn.alice.poll(cxn.now).is_none());
 
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
@@ -773,7 +775,7 @@ fn zero_window() {
 
     info!("passing data segments to Bob...");
     cxn.now += Duration::from_micros(1);
-    // ACK timeout starts from here.
+    // ACK timeout starts from here.\
     cxn.bob.receive(bytes0.as_slice()).unwrap();
     match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {

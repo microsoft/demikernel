@@ -343,7 +343,12 @@ impl<'a> TcpRuntime<'a> {
                     let mut input_queue = input_queue.borrow_mut();
                     let mut transmittable_segments = VecDeque::new();
                     while let Some(segment) = input_queue.pop_front() {
-                        if ack_owed_since.is_none() {
+                        // if there's a payload, we need to acknowledge it at
+                        // some point. we set a timer if it hasn't already been
+                        // set.
+                        if ack_owed_since.is_none()
+                            && segment.payload.len() > 0
+                        {
                             ack_owed_since = Some(rt.now());
                             debug!("ack_owed_since = {:?}", ack_owed_since);
                         }

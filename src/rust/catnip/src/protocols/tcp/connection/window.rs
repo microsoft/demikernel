@@ -193,6 +193,10 @@ impl TcpSendWindow {
         } else {
             let expected_remote_receive_window_size =
                 self.get_expected_remote_receive_window_size();
+            debug!(
+                "expected_remote_receive_window_size = {}",
+                expected_remote_receive_window_size
+            );
             if self.get_expected_remote_receive_window_size() == 0 {
                 return None;
             }
@@ -306,12 +310,6 @@ impl TcpReceiveWindow {
     pub fn pop(&mut self) -> IoVec {
         let mut iovec = IoVec::new();
         while let Some(segment) = self.unread_segments.pop_front() {
-            let ack_num = Some(
-                self.ack_num.unwrap()
-                    + Wrapping(u32::try_from(segment.payload.len()).unwrap()),
-            );
-            debug!("ack_num: {:?} -> {:?}", self.ack_num, ack_num);
-            self.ack_num = ack_num;
             let payload = Rc::try_unwrap(segment.payload).unwrap();
             iovec.push_segment(payload);
         }
@@ -329,6 +327,12 @@ impl TcpReceiveWindow {
             });
         }
 
+        let ack_num = Some(
+            self.ack_num.unwrap()
+                + Wrapping(u32::try_from(segment.payload.len()).unwrap()),
+        );
+        debug!("ack_num: {:?} -> {:?}", self.ack_num, ack_num);
+        self.ack_num = ack_num;
         self.unread_segments.push_back(segment);
         self.bytes_unread = bytes_unread;
         Ok(())

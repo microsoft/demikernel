@@ -204,6 +204,9 @@ impl<'a> TcpConnection<'a> {
         &mut self,
         segment: TcpSegment,
     ) -> Result<Option<TcpSegment>> {
+        let remote_window_size = segment.window_size;
+        self.set_remote_receive_window_size(remote_window_size);
+
         let was_empty = self.receive_window.is_empty();
         self.receive_window.push(segment)?;
         if was_empty && !self.receive_window.is_empty() {
