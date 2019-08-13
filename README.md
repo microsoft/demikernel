@@ -9,8 +9,6 @@ functionality (e.g., a user-level networking stack for DPDK).
 
 System Call API
 ---------
-# The Demeter Demikernel Syscall API
-
 All syscalls return an error code. Additional return values are
 the first arguments passed, denoted by `_out`.
 
