@@ -79,17 +79,20 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
     fclose(f);
 }
 
+//FIXME: using POSIX libOS, this now segfaults
 void sig_handler(int signo) {
     printf("entering signal handler\n");
-    for (auto &w: http_workers) {
-        pthread_cancel(w->me);
-        dump_latencies(*w, log_dir, label);
-    }
     for (auto &w: tcp_workers) {
         if (w->me > 0) {
             pthread_cancel(w->me);
         }
         dump_latencies(*w, log_dir, label);
+    }
+    for (auto &w: http_workers) {
+        if (w->me > 0) {
+            pthread_cancel(w->me);
+            dump_latencies(*w, log_dir, label);
+        }
     }
     printf("exiting signal handler\n");
     exit(1);
@@ -219,10 +222,19 @@ static inline void no_op_loop(uint32_t iter) {
 int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                      dmtr_qtoken_t &token, int out_qfd, Worker *me) {
 #ifdef DMTR_PROFILE
+    uint32_t regs[4];
     hr_clock::time_point start;
     hr_clock::time_point end;
     if (me->type == HTTP) {
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+        );
         start = hr_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+        );
     }
 #endif
     /* If we are in no_op mode, just send back the request, as an echo server */
@@ -232,14 +244,26 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
         }
 #ifdef DMTR_PROFILE
         if (me->type == HTTP) {
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+            );
             /* Record http work */
             end = hr_clock::now();
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+            );
             me->runtimes.push_back(ns_diff(start, end));
         }
 #endif
         wait_out.qr_value.sga.sga_numsegs = 1;
         DMTR_OK(dmtr_push(&token, out_qfd, &wait_out.qr_value.sga));
         DMTR_OK(dmtr_wait(NULL, token));
+
+        if (me->type == TCP) {
+            free(wait_out.qr_value.sga.sga_buf);
+        }
         return 0;
     }
     /* Do the HTTP work */
@@ -264,6 +288,7 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
             resp_sga.sga_segs[0].sgaseg_len =
                 snprintf(reinterpret_cast<char *>(resp_sga.sga_segs[0].sgaseg_buf),
                          strlen(BAD_REQUEST_HEADER) + 1, "%s", BAD_REQUEST_HEADER);
+            resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
             DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &resp_sga));
             DMTR_OK(dmtr_wait(NULL, token));
             clean_state(state);
@@ -303,19 +328,28 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
     resp_sga.sga_numsegs = 1;
     resp_sga.sga_segs[0].sgaseg_len = response_size;
     resp_sga.sga_segs[0].sgaseg_buf = response;
+    resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
     clean_state(state);
 
 #ifdef DMTR_PROFILE
     if (me->type == HTTP) {
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+        );
         /* Record http work */
         hr_clock::time_point end = hr_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+        );
         me->runtimes.push_back(ns_diff(start, end));
     }
 #endif
-
     DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
     /* we have to wait because we can't free response before sga is sent */
     DMTR_OK(dmtr_wait(NULL, token));
+
     free(response);
 
     return 0;
@@ -355,144 +389,162 @@ static int filter_http_req(dmtr_sgarray_t *sga) {
 
 int tcp_work(uint64_t i,
              std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+             dmtr_qresult_t &wait_out,
              int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
-             struct parser_state *state, Worker *me, int &lqd) {
-    dmtr_qresult_t wait_out;
-    int idx;
-    int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
-    if (status == 0) {
+             struct parser_state *state, Worker *me, int lqd) {
 #ifdef DMTR_PROFILE
-        hr_clock::time_point start = hr_clock::now();
+    uint32_t regs[4];
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+    );
+    hr_clock::time_point start = hr_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+    );
 #endif
-        if (wait_out.qr_qd == lqd) {
-            assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
-            token = tokens[idx];
-            tokens.erase(tokens.begin()+idx);
-            /* Enable reading on the accepted socket */
-            DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
-            tokens.push_back(token);
-            /* Re-enable accepting on the listening socket */
-            DMTR_OK(dmtr_accept(&token, lqd));
-            tokens.push_back(token);
-            log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
-        } else {
-            assert(DMTR_OPC_POP == wait_out.qr_opcode);
-            assert(wait_out.qr_value.sga.sga_numsegs <= 2);
+    if (wait_out.qr_qd == lqd) {
+        assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
+        /* Enable reading on the accepted socket */
+        DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
+        tokens.push_back(token);
+        /* Re-enable accepting on the listening socket */
+        DMTR_OK(dmtr_accept(&token, lqd));
+        tokens.push_back(token);
+        log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
+    } else {
+        assert(DMTR_OPC_POP == wait_out.qr_opcode);
+        assert(wait_out.qr_value.sga.sga_numsegs <= 2);
 
-            token = tokens[idx];
-            tokens.erase(tokens.begin()+idx);
-
-            auto it = std::find(
-                http_q_pending.begin(),
-                http_q_pending.end(),
-                wait_out.qr_qd
+        auto it = std::find(
+            http_q_pending.begin(),
+            http_q_pending.end(),
+            wait_out.qr_qd
+        );
+        if (it == http_q_pending.end()) {
+            log_debug(
+                "received new request on queue %d: %s\n",
+                //"received new request on queue %d\n",
+                wait_out.qr_qd,
+                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
             );
-            if (it == http_q_pending.end()) {
-                log_debug(
-                    "received new request on queue %d: %s\n",
-                    //"received new request on queue %d\n",
-                    wait_out.qr_qd,
-                    reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
-                );
-                /* This is a new request */
-                num_rcvd++;
-                /*
-                if (num_rcvd % 500 == 0) {
-                    log_info("received: %d requests\n", num_rcvd);
-                }
-                */
-                if (me->args.split) {
-                    /* Load balance incoming requests among HTTP workers */
-                    int worker_idx;
-                    if (me->args.filter == RR) {
-                        worker_idx = num_rcvd % http_workers.size();
-                    } else if (me->args.filter == HTTP_REQ_TYPE) {
-                        worker_idx = me->args.filter_f(&wait_out.qr_value.sga) % http_workers.size();
-                    } else if (me->args.filter == ONE_TO_ONE) {
-                        worker_idx = me->whoami;
-                    } else {
-                        log_error("Non implemented TCP filter, falling back to RR");
-                        worker_idx = num_rcvd % http_workers.size();
-                    }
-                    log_debug("TCP worker %d sending request to HTTP worker %d",
-                              me->whoami, worker_idx);
-
-                    /* =D */
-                    wait_out.qr_value.sga.sga_numsegs = 2;
-                    wait_out.qr_value.sga.sga_segs[1].sgaseg_len = wait_out.qr_qd;
-
-                    DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga));
-                    DMTR_OK(dmtr_wait(NULL, token)); //XXX do we need to wait for push to happen?
-                    /* Enable reading from HTTP result queue */
-                    DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
-                    tokens.push_back(token);
-                    http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
-                    clients_in_waiting[wait_out.qr_qd] = true;
-                    /* Re-enable TCP queue for reading */
-                    DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
-                    tokens.push_back(token);
+            /* This is a new request */
+            num_rcvd++;
+            /*
+            if (num_rcvd % 500 == 0) {
+                log_info("received: %d requests\n", num_rcvd);
+            }
+            */
+            if (me->args.split) {
+                /* Load balance incoming requests among HTTP workers */
+                int worker_idx;
+                if (me->args.filter == RR) {
+                    worker_idx = num_rcvd % http_workers.size();
+                } else if (me->args.filter == HTTP_REQ_TYPE) {
+                    worker_idx = me->args.filter_f(&wait_out.qr_value.sga) % http_workers.size();
+                } else if (me->args.filter == ONE_TO_ONE) {
+                    worker_idx = me->whoami;
                 } else {
-                    http_work(i, state, wait_out, token, wait_out.qr_qd, me);
-#ifdef DMTR_PROFILE
-                    hr_clock::time_point end = hr_clock::now();
-                    me->runtimes.push_back(ns_diff(start, end));
-#endif
-                    /* Re-enable TCP queue for reading */
-                    DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
-                    tokens.push_back(token);
+                    log_error("Non implemented TCP filter, falling back to RR");
+                    worker_idx = num_rcvd % http_workers.size();
                 }
-            } else {
-                log_debug(
-                    "received response from HTTP queue %d: %s\n",
-                    //"received response on queue %d\n",
-                    wait_out.qr_qd,
-                    reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                log_debug("TCP worker %d sending request to HTTP worker %d",
+                          me->whoami, worker_idx);
+
+                /* =D */
+                wait_out.qr_value.sga.sga_numsegs = 2;
+                wait_out.qr_value.sga.sga_segs[1].sgaseg_len = wait_out.qr_qd;
+
+                http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
+                clients_in_waiting[wait_out.qr_qd] = true;
+
+#ifdef DMTR_PROFILE
+                asm volatile(
+                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
                 );
-                /* This comes from an HTTP worker and we need to forward to the client */
-                int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
-
-                /* The client should still be "in the wait" */
-                if (clients_in_waiting[client_qfd] == false) {
-                    /* Ignore this message and fetch the next one */
-                    DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
-                    tokens.push_back(token);
-                    log_debug("Dropping obsolete message aimed towards closed connection");
-                    return 0;
-                }
-                http_q_pending.erase(it);
-
-                if (no_op) {
-                    if (no_op_time > 0) {
-                        no_op_loop(no_op_time);
-                    }
-                }
-
-#ifdef DMTR_PROFILE
                 hr_clock::time_point end = hr_clock::now();
                 me->runtimes.push_back(ns_diff(start, end));
+                asm volatile(
+                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                );
 #endif
-                /* Answer the client */
-                DMTR_OK(dmtr_push(&token, client_qfd, &wait_out.qr_value.sga));
-                /* we have to wait because we can't free before sga is sent */
-                DMTR_OK(dmtr_wait(NULL, token));
-                log_debug("Answered the client on queue %d", client_qfd);
-                free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
-                wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+                DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga));
+                DMTR_OK(dmtr_wait(NULL, token)); //XXX do we need to wait for push to happen?
+                /* Enable reading from HTTP result queue */
+                DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
+                tokens.push_back(token);
+                /* Re-enable TCP queue for reading */
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                tokens.push_back(token);
+            } else {
+                http_work(i, state, wait_out, token, wait_out.qr_qd, me);
+#ifdef DMTR_PROFILE
+                asm volatile(
+                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                );
+                hr_clock::time_point end = hr_clock::now();
+                me->runtimes.push_back(ns_diff(start, end));
+                asm volatile(
+                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                );
+#endif
+                /* Re-enable TCP queue for reading */
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                tokens.push_back(token);
             }
-        }
-    } else {
-        assert(status == ECONNRESET || status == ECONNABORTED);
-        if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
-            log_debug("An accept task failed with connreset or aborted??");
-        }
-        if (clients_in_waiting[wait_out.qr_qd]) {
-            log_debug("Removing closed client connection from answerable list");
-            clients_in_waiting[wait_out.qr_qd] = false;
-        }
-        DMTR_OK(dmtr_close(wait_out.qr_qd));
-        tokens.erase(tokens.begin()+idx);
-    }
+        } else {
+            log_debug(
+                "received response from HTTP queue %d: %s\n",
+                //"received response on queue %d\n",
+                wait_out.qr_qd,
+                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+            );
+            /* This comes from an HTTP worker and we need to forward to the client */
+            int client_qfd = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
 
+            /* The client should still be "in the wait" */
+            if (clients_in_waiting[client_qfd] == false) {
+                /* Ignore this message and fetch the next one */
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                tokens.push_back(token);
+                log_debug("Dropping obsolete message aimed towards closed connection");
+                return 0;
+            }
+            http_q_pending.erase(it);
+
+            if (no_op) {
+                if (no_op_time > 0) {
+                    no_op_loop(no_op_time);
+                }
+            }
+
+            /* Answer the client */
+            DMTR_OK(dmtr_push(&token, client_qfd, &wait_out.qr_value.sga));
+#ifdef DMTR_PROFILE
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+            );
+            hr_clock::time_point end = hr_clock::now();
+            me->runtimes.push_back(ns_diff(start, end));
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+            );
+#endif
+            /* we have to wait because we can't free before sga is sent */
+            DMTR_OK(dmtr_wait(NULL, token));
+            log_debug("Answered the client on queue %d", client_qfd);
+            //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
+            free(wait_out.qr_value.sga.sga_buf);
+            wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+        }
+    }
     return 0;
 }
 
@@ -522,9 +574,28 @@ static void *tcp_worker(void *args) {
     int num_rcvd = 0;
     uint64_t iteration = INT_MAX;
     while (1) {
-        tcp_work(
-            iteration, http_q_pending, clients_in_waiting, num_rcvd, tokens, token, state, me, lqd
-        );
+        dmtr_qresult_t wait_out;
+        int idx;
+        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        if (status == 0) {
+            token = tokens[idx];
+            tokens.erase(tokens.begin()+idx);
+            tcp_work(
+                iteration, http_q_pending, clients_in_waiting, wait_out,
+                num_rcvd, tokens, token, state, me, lqd
+            );
+        } else {
+            assert(status == ECONNRESET || status == ECONNABORTED);
+            if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
+                log_debug("An accept task failed with connreset or aborted??");
+            }
+            if (clients_in_waiting[wait_out.qr_qd]) {
+                log_debug("Removing closed client connection from answerable list");
+                clients_in_waiting[wait_out.qr_qd] = false;
+            }
+            dmtr_close(wait_out.qr_qd);
+            tokens.erase(tokens.begin()+idx);
+        }
         iteration++;
     }
 
