@@ -14,7 +14,7 @@ System Call API
 All syscalls return an error code. Additional return values are
 the first arguments passed, denoted by `_out`.
 
-### `include/dmtr/libos.h`
+#### `include/dmtr/libos.h`
 
 * `int dmtr_init(int argc, char *argv[]);`
 
@@ -99,7 +99,7 @@ the first arguments passed, denoted by `_out`.
 
 > Signal that the application is no longer waiting on the queue token.
 
-* `include/dmtr/wait.h`
+#### `include/dmtr/wait.h`
 
 > This file includes blocking operations on queue tokens for block on
 > I/O. 
