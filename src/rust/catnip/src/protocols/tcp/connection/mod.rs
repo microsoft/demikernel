@@ -101,18 +101,19 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn set_remote_receive_window_size(&mut self, size: usize) {
-        self.send_window.set_remote_receive_window_size(size)
+        self.send_window
+            .set_remote_receive_window_size(size, self.rt.now())
     }
 
-    pub fn get_next_transmittable_segment(
+    pub fn try_get_next_transmittable_segment(
         &mut self,
         optional_byte_count: Option<usize>,
     ) -> Option<TcpSegment> {
-        trace!("TcpConnection::get_next_transmittable_segment()");
-        match self
-            .send_window
-            .get_next_transmittable_payload(optional_byte_count, self.rt.now())
-        {
+        trace!("TcpConnection::try_get_next_transmittable_segment()");
+        match self.send_window.try_get_next_transmittable_payload(
+            optional_byte_count,
+            self.rt.now(),
+        ) {
             None => None,
             Some(payload) => {
                 Some(TcpSegment::default().payload(payload).connection(self))

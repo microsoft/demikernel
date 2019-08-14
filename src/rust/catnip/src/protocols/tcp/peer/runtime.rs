@@ -389,7 +389,7 @@ impl<'a> TcpRuntime<'a> {
                     }
 
                     while let Some(segment) =
-                        cxn.get_next_transmittable_segment(None)
+                        cxn.try_get_next_transmittable_segment(None)
                     {
                         transmittable_segments.push_back(segment);
                     }

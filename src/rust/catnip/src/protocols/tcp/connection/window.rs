@@ -66,6 +66,7 @@ pub struct TcpSendWindow<'a> {
     unacknowledged_segments: VecDeque<UnacknowledgedTcpSegment>,
     unsent_segment_offset: usize,
     unsent_segments: VecDeque<Vec<u8>>,
+    zero_window_probe_owed_since: Option<Instant>,
 }
 
 impl<'a> TcpSendWindow<'a> {
@@ -82,6 +83,7 @@ impl<'a> TcpSendWindow<'a> {
             unacknowledged_segments: VecDeque::new(),
             unsent_segment_offset: 0,
             unsent_segments: VecDeque::new(),
+            zero_window_probe_owed_since: None,
         }
     }
 
@@ -89,8 +91,17 @@ impl<'a> TcpSendWindow<'a> {
         self.remote_receive_window_size - self.bytes_unacknowledged
     }
 
-    pub fn set_remote_receive_window_size(&mut self, size: usize) {
+    pub fn set_remote_receive_window_size(
+        &mut self,
+        size: usize,
+        now: Instant,
+    ) {
         self.remote_receive_window_size = size;
+        if 0 == size {
+            self.zero_window_probe_owed_since = Some(now);
+        } else {
+            self.zero_window_probe_owed_since = None;
+        }
     }
 
     pub fn get_last_seq_num(&self) -> Wrapping<u32> {
@@ -201,12 +212,12 @@ impl<'a> TcpSendWindow<'a> {
         Ok(())
     }
 
-    pub fn get_next_transmittable_payload(
+    pub fn try_get_next_transmittable_payload(
         &mut self,
         optional_byte_count: Option<usize>,
         now: Instant,
     ) -> Option<Rc<Vec<u8>>> {
-        trace!("TcpSendWindow::get_next_transmittable_payload()");
+        trace!("TcpSendWindow::try_get_next_transmittable_segment()");
         if self.unsent_segments.is_empty() {
             None
         } else {
@@ -273,11 +284,13 @@ impl<'a> TcpSendWindow<'a> {
         retries: usize,
     ) -> Result<VecDeque<Rc<Vec<u8>>>> {
         trace!("TcpSendWindow::get_retransmissions()");
-        let age = self
+        let unacknowledged_segment_age = self
             .unacknowledged_segments
             .front()
             .map(|s| now - s.get_last_transmission_timestamp());
-        if age.is_none() {
+        if unacknowledged_segment_age.is_none()
+            && self.zero_window_probe_owed_since.is_none()
+        {
             return Ok(VecDeque::new());
         }
 
@@ -295,7 +308,14 @@ impl<'a> TcpSendWindow<'a> {
             }
         };
 
-        let age = age.unwrap();
+        let age = match self.zero_window_probe_owed_since {
+            None => unacknowledged_segment_age.unwrap(),
+            Some(timestamp) => {
+                assert!(self.unacknowledged_segments.is_empty());
+                now - timestamp
+            }
+        };
+
         if age <= timeout {
             return Ok(VecDeque::new());
         }
@@ -308,16 +328,32 @@ impl<'a> TcpSendWindow<'a> {
             return Err(Fail::Timeout {});
         }
 
-        for segment in &mut self.unacknowledged_segments {
-            segment.set_last_transmission_timestamp(now);
-            segment.add_retry();
-        }
+        match self.zero_window_probe_owed_since {
+            None => {
+                for segment in &mut self.unacknowledged_segments {
+                    segment.set_last_transmission_timestamp(now);
+                    segment.add_retry();
+                }
 
-        Ok(self
-            .unacknowledged_segments
-            .iter()
-            .map(|s| s.get_payload().clone())
-            .collect())
+                Ok(self
+                    .unacknowledged_segments
+                    .iter()
+                    .map(|s| s.get_payload().clone())
+                    .collect())
+            }
+            Some(_) => {
+                if let Some(payload) =
+                    self.try_get_next_transmittable_payload(Some(1), now)
+                {
+                    self.zero_window_probe_owed_since = None;
+                    let mut payloads = VecDeque::with_capacity(1);
+                    payloads.push_back(payload);
+                    Ok(payloads)
+                } else {
+                    Ok(VecDeque::new())
+                }
+            }
+        }
     }
 }
 
