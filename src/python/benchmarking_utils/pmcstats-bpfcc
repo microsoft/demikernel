@@ -168,7 +168,7 @@ for (k, v) in b.get_table('ref_count').items():
               (float(hit) / float(v.value)) * 100.0, cycles, v_insns)
         )
 
-    f.write('{:8d}\t{:16s}\t{:4d}\t{:12d}\t{:12d}\t{:6.2f}%\t{}\t{}\n'.format(
+    f.write('{:8d}\t{:16s}\t{:4d}\t{:12d}\t{:12d}\t{:6.2f}\t{}\t{}\n'.format(
         k.pid, k.name.decode(), k.cpu, v.value, miss,
         (float(hit) / float(v.value)) * 100.0, cycles, v_insns)
     )
