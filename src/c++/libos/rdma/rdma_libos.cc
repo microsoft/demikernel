@@ -132,3 +132,10 @@ int dmtr_drop(dmtr_qtoken_t qt)
 
     return ioq_api->drop(qt);
 }
+
+int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode) {
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return 0;
+}

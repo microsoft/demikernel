@@ -488,7 +488,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 
     hr_clock::time_point create_start_time = hr_clock::now();
 
-    /* Times at which the connections should be initiated */
+    /* Times at which the requests should be initiated */
     hr_clock::time_point send_times[n_requests];
 
     for (uint32_t i = 0; i < n_requests; ++i) {
