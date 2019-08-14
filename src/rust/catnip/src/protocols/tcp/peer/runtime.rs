@@ -350,13 +350,19 @@ impl<'a> TcpRuntime<'a> {
                             && segment.payload.len() > 0
                         {
                             ack_owed_since = Some(rt.now());
-                            debug!("{}: ack_owed_since = {:?}", options.my_ipv4_addr, ack_owed_since);
+                            debug!(
+                                "{}: ack_owed_since = {:?}",
+                                options.my_ipv4_addr, ack_owed_since
+                            );
                         }
 
                         // todo: should we inform the caller about dropped
                         // packets?
                         if segment.syn {
-                            warn!("{}: packet dropped (syn)", options.my_ipv4_addr);
+                            warn!(
+                                "{}: packet dropped (syn)",
+                                options.my_ipv4_addr
+                            );
                             continue;
                         }
 
@@ -375,7 +381,10 @@ impl<'a> TcpRuntime<'a> {
                                 transmittable_segments.push_back(zero_window)
                             }
                             Ok(None) => (),
-                            Err(e) => warn!("{}: packet dropped ({:?})", options.my_ipv4_addr, e),
+                            Err(e) => warn!(
+                                "{}: packet dropped ({:?})",
+                                options.my_ipv4_addr, e
+                            ),
                         }
                     }
 
@@ -422,7 +431,7 @@ impl<'a> TcpRuntime<'a> {
                         debug!(
                             "{}: delayed ACK timer has expired; sending pure \
                              ACK...",
-                             options.my_ipv4_addr,
+                            options.my_ipv4_addr,
                         );
                         let pure_ack = {
                             let mut state = state.borrow_mut();
@@ -445,7 +454,7 @@ impl<'a> TcpRuntime<'a> {
                 let mut retransmissions = {
                     let mut state = state.borrow_mut();
                     let cxn = state.connections.get_mut(&cxnid).unwrap();
-                    cxn.try_get_retransmissions()?
+                    cxn.get_retransmissions()?
                 };
 
                 debug!(

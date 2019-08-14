@@ -1,5 +1,8 @@
-use super::super::segment::{TcpSegment, MAX_MSS, MIN_MSS};
-use crate::{io::IoVec, prelude::*};
+use super::{
+    super::segment::{TcpSegment, MAX_MSS, MIN_MSS},
+    rto::RtoCalculator,
+};
+use crate::{io::IoVec, prelude::*, r#async::Retry};
 use std::{
     cmp::min,
     collections::VecDeque,
@@ -51,27 +54,30 @@ impl UnacknowledgedTcpSegment {
     }
 }
 
-pub struct TcpSendWindow {
+pub struct TcpSendWindow<'a> {
     bytes_unacknowledged: usize,
     last_seq_num_transmitted: Wrapping<u32>,
     mss: usize,
     remote_receive_window_size: usize,
+    retransmit_retry: Option<Retry<'a>>,
+    retransmit_timeout: Option<Duration>,
+    rto_calculator: RtoCalculator,
     smallest_unacknowledged_seq_num: Wrapping<u32>,
     unacknowledged_segments: VecDeque<UnacknowledgedTcpSegment>,
     unsent_segment_offset: usize,
     unsent_segments: VecDeque<Vec<u8>>,
 }
 
-impl TcpSendWindow {
-    pub fn new(
-        local_isn: Wrapping<u32>,
-        advertised_mss: usize,
-    ) -> TcpSendWindow {
+impl<'a> TcpSendWindow<'a> {
+    pub fn new(local_isn: Wrapping<u32>, advertised_mss: usize) -> Self {
         TcpSendWindow {
             bytes_unacknowledged: 0,
             last_seq_num_transmitted: local_isn,
             mss: advertised_mss,
             remote_receive_window_size: 0,
+            retransmit_retry: None,
+            retransmit_timeout: None,
+            rto_calculator: RtoCalculator::new(),
             smallest_unacknowledged_seq_num: local_isn,
             unacknowledged_segments: VecDeque::new(),
             unsent_segment_offset: 0,
@@ -98,6 +104,10 @@ impl TcpSendWindow {
 
     pub fn get_mss(&self) -> usize {
         self.mss
+    }
+
+    pub fn get_rto(&self) -> Duration {
+        self.rto_calculator.rto()
     }
 
     pub fn negotiate_mss(&mut self, remote_mss: Option<usize>) -> Result<()> {
@@ -129,7 +139,8 @@ impl TcpSendWindow {
     pub fn acknowledge(
         &mut self,
         ack_num: Wrapping<u32>,
-    ) -> Result<Vec<UnacknowledgedTcpSegment>> {
+        now: Instant,
+    ) -> Result<()> {
         trace!("TcpSendWindow::acknowledge({:?})", ack_num);
         debug!(
             "smallest_unacknowledged_seq_num = {:?}",
@@ -140,7 +151,7 @@ impl TcpSendWindow {
             (ack_num - self.smallest_unacknowledged_seq_num).0 as usize;
 
         if 0 == bytes_acknowledged {
-            return Ok(vec![]);
+            return Ok(());
         }
 
         if bytes_acknowledged > self.bytes_unacknowledged {
@@ -179,7 +190,15 @@ impl TcpSendWindow {
         self.bytes_unacknowledged -= bytes_acknowledged;
         self.smallest_unacknowledged_seq_num +=
             Wrapping(u32::try_from(bytes_acknowledged).unwrap());
-        Ok(acked_segments)
+
+        for segment in acked_segments {
+            if segment.get_retries() == 0 {
+                let rtt = now - segment.get_last_transmission_timestamp();
+                self.rto_calculator.add_sample(rtt);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_next_transmittable_payload(
@@ -248,28 +267,57 @@ impl TcpSendWindow {
         }
     }
 
-    pub fn get_unacknowledged_segment_age(
-        &self,
-        now: Instant,
-    ) -> Option<Duration> {
-        self.unacknowledged_segments
-            .front()
-            .map(|s| now - s.get_last_transmission_timestamp())
-    }
-
     pub fn get_retransmissions(
         &mut self,
         now: Instant,
-    ) -> VecDeque<Rc<Vec<u8>>> {
+        retries: usize,
+    ) -> Result<VecDeque<Rc<Vec<u8>>>> {
+        trace!("TcpSendWindow::get_retransmissions()");
+        let age = self
+            .unacknowledged_segments
+            .front()
+            .map(|s| now - s.get_last_transmission_timestamp());
+        if age.is_none() {
+            return Ok(VecDeque::new());
+        }
+
+        let timeout = {
+            if let Some(timeout) = self.retransmit_timeout {
+                timeout
+            } else {
+                let rto = self.rto_calculator.rto();
+                debug!("rto = {:?}", rto);
+                let mut retry = Retry::binary_exponential(rto, retries);
+                let timeout = retry.next().unwrap();
+                self.retransmit_retry = Some(retry);
+                self.retransmit_timeout = Some(timeout);
+                timeout
+            }
+        };
+
+        let age = age.unwrap();
+        if age <= timeout {
+            return Ok(VecDeque::new());
+        }
+
+        if let Some(next_timeout) =
+            self.retransmit_retry.as_mut().unwrap().next()
+        {
+            self.retransmit_timeout = Some(next_timeout);
+        } else {
+            return Err(Fail::Timeout {});
+        }
+
         for segment in &mut self.unacknowledged_segments {
             segment.set_last_transmission_timestamp(now);
             segment.add_retry();
         }
 
-        self.unacknowledged_segments
+        Ok(self
+            .unacknowledged_segments
             .iter()
             .map(|s| s.get_payload().clone())
-            .collect()
+            .collect())
     }
 }
 

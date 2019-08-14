@@ -2,8 +2,7 @@ mod rto;
 mod window;
 
 use super::segment::TcpSegment;
-use crate::{prelude::*, protocols::ipv4, r#async::Retry};
-use rto::RtoCalculator;
+use crate::{prelude::*, protocols::ipv4};
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -41,13 +40,8 @@ pub struct TcpConnection<'a> {
     input_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
     local_isn: Wrapping<u32>,
     receive_window: TcpReceiveWindow,
-    retransmit_retry: Option<Retry<'a>>,
-    retransmit_timeout: Option<Duration>,
     rt: Runtime<'a>,
-    rto_calculator: RtoCalculator,
-    send_window: TcpSendWindow,
-    zero_window_retry: Option<Retry<'a>>,
-    zero_window_timeout: Option<Duration>,
+    send_window: TcpSendWindow<'a>,
 }
 
 impl<'a> TcpConnection<'a> {
@@ -65,13 +59,8 @@ impl<'a> TcpConnection<'a> {
             input_queue: Rc::new(RefCell::new(VecDeque::new())),
             local_isn,
             receive_window: TcpReceiveWindow::new(receive_window_size),
-            retransmit_retry: None,
-            retransmit_timeout: None,
             rt,
-            rto_calculator: RtoCalculator::new(),
             send_window: TcpSendWindow::new(local_isn, advertised_mss),
-            zero_window_retry: None,
-            zero_window_timeout: None,
         }
     }
 
@@ -131,45 +120,11 @@ impl<'a> TcpConnection<'a> {
         }
     }
 
-    pub fn try_get_retransmissions(&mut self) -> Result<VecDeque<TcpSegment>> {
-        trace!("TcpConnection::try_get_retransmissions()");
-        let now = self.rt.now();
-
-        let age = self.send_window.get_unacknowledged_segment_age(now);
-        if age.is_none() {
-            return Ok(VecDeque::new());
-        }
-
-        let timeout = {
-            if let Some(timeout) = self.retransmit_timeout {
-                timeout
-            } else {
-                let options = self.rt.options();
-                let rto = self.rto_calculator.rto();
-                debug!("rto = {:?}", rto);
-                let mut retry =
-                    Retry::binary_exponential(rto, options.tcp.retries2());
-                let timeout = retry.next().unwrap();
-                self.retransmit_retry = Some(retry);
-                self.retransmit_timeout = Some(timeout);
-                timeout
-            }
-        };
-
-        let age = age.unwrap();
-        if age <= timeout {
-            return Ok(VecDeque::new());
-        }
-
-        if let Some(next_timeout) =
-            self.retransmit_retry.as_mut().unwrap().next()
-        {
-            self.retransmit_timeout = Some(next_timeout);
-        } else {
-            return Err(Fail::Timeout {});
-        }
-
-        let mut payloads = self.send_window.get_retransmissions(now);
+    pub fn get_retransmissions(&mut self) -> Result<VecDeque<TcpSegment>> {
+        let options = self.rt.options();
+        let mut payloads = self
+            .send_window
+            .get_retransmissions(self.rt.now(), options.tcp.retries2())?;
         let mut segments = VecDeque::with_capacity(payloads.len());
         while let Some(payload) = payloads.pop_front() {
             segments.push_back(
@@ -193,16 +148,7 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn acknowledge(&mut self, ack_num: Wrapping<u32>) -> Result<()> {
-        let segments = self.send_window.acknowledge(ack_num)?;
-        let now = self.rt.now();
-        for segment in segments {
-            if segment.get_retries() == 0 {
-                let rtt = now - segment.get_last_transmission_timestamp();
-                self.rto_calculator.add_sample(rtt);
-            }
-        }
-
-        Ok(())
+        self.send_window.acknowledge(ack_num, self.rt.now())
     }
 
     pub fn receive(
@@ -227,6 +173,6 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn get_rto(&self) -> Duration {
-        self.rto_calculator.rto()
+        self.send_window.get_rto()
     }
 }
