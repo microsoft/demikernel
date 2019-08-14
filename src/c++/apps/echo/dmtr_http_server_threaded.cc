@@ -91,8 +91,8 @@ void sig_handler(int signo) {
     for (auto &w: http_workers) {
         if (w->me > 0) {
             pthread_cancel(w->me);
-            dump_latencies(*w, log_dir, label);
         }
+        dump_latencies(*w, log_dir, label);
     }
     printf("exiting signal handler\n");
     exit(1);
@@ -223,17 +223,18 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                      dmtr_qtoken_t &token, int out_qfd, Worker *me) {
 #ifdef DMTR_PROFILE
     uint32_t regs[4];
+    uint32_t p;
     hr_clock::time_point start;
     hr_clock::time_point end;
     if (me->type == HTTP) {
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
         start = hr_clock::now();
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
     }
 #endif
@@ -246,13 +247,13 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
         if (me->type == HTTP) {
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
             /* Record http work */
             end = hr_clock::now();
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
             me->runtimes.push_back(ns_diff(start, end));
         }
@@ -335,13 +336,13 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
     if (me->type == HTTP) {
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
         /* Record http work */
         hr_clock::time_point end = hr_clock::now();
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
         me->runtimes.push_back(ns_diff(start, end));
     }
@@ -350,7 +351,12 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
     /* we have to wait because we can't free response before sga is sent */
     DMTR_OK(dmtr_wait(NULL, token));
 
-    free(response);
+    /* If we are called as part of a HTTP worker, the next component (TCP) will need
+     * the buffer for sending on the network. Otherwise -- if called as part of TCP
+     * work -- we need to free now.*/
+    if (!(me->type == HTTP)) {
+        free(response);
+    }
 
     return 0;
 }
@@ -394,14 +400,15 @@ int tcp_work(uint64_t i,
              struct parser_state *state, Worker *me, int lqd) {
 #ifdef DMTR_PROFILE
     uint32_t regs[4];
+    uint32_t p;
     asm volatile(
         "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
     );
     hr_clock::time_point start = hr_clock::now();
     asm volatile(
         "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
     );
 #endif
     if (wait_out.qr_qd == lqd) {
@@ -462,13 +469,13 @@ int tcp_work(uint64_t i,
 #ifdef DMTR_PROFILE
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
                 hr_clock::time_point end = hr_clock::now();
                 me->runtimes.push_back(ns_diff(start, end));
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
 #endif
                 DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga));
@@ -484,13 +491,13 @@ int tcp_work(uint64_t i,
 #ifdef DMTR_PROFILE
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
                 hr_clock::time_point end = hr_clock::now();
                 me->runtimes.push_back(ns_diff(start, end));
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
 #endif
                 /* Re-enable TCP queue for reading */
@@ -523,20 +530,20 @@ int tcp_work(uint64_t i,
                 }
             }
 
-            /* Answer the client */
-            DMTR_OK(dmtr_push(&token, client_qfd, &wait_out.qr_value.sga));
 #ifdef DMTR_PROFILE
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
             hr_clock::time_point end = hr_clock::now();
             me->runtimes.push_back(ns_diff(start, end));
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (i), "c" (0)
+                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
 #endif
+            /* Answer the client */
+            DMTR_OK(dmtr_push(&token, client_qfd, &wait_out.qr_value.sga));
             /* we have to wait because we can't free before sga is sent */
             DMTR_OK(dmtr_wait(NULL, token));
             log_debug("Answered the client on queue %d", client_qfd);
