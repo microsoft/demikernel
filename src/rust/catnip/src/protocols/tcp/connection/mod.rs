@@ -100,20 +100,22 @@ impl<'a> TcpConnection<'a> {
         self.receive_window.window_size()
     }
 
-    pub fn set_remote_receive_window_size(&mut self, size: usize) {
+    pub fn set_remote_receive_window_size(
+        &mut self,
+        size: usize,
+    ) -> Result<bool> {
         self.send_window
             .set_remote_receive_window_size(size, self.rt.now())
     }
 
     pub fn try_get_next_transmittable_segment(
         &mut self,
-        optional_byte_count: Option<usize>,
     ) -> Option<TcpSegment> {
         trace!("TcpConnection::try_get_next_transmittable_segment()");
-        match self.send_window.try_get_next_transmittable_payload(
-            optional_byte_count,
-            self.rt.now(),
-        ) {
+        match self
+            .send_window
+            .try_get_next_transmittable_payload(self.rt.now(), false)
+        {
             None => None,
             Some(payload) => {
                 Some(TcpSegment::default().payload(payload).connection(self))
@@ -141,36 +143,66 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn read(&mut self) -> IoVec {
-        self.receive_window.pop()
+        let iovec = self.receive_window.pop();
+        debug!("read {:?}", iovec);
+        iovec
     }
 
     pub fn get_input_queue(&self) -> Rc<RefCell<VecDeque<TcpSegment>>> {
         self.input_queue.clone()
     }
 
-    pub fn acknowledge(&mut self, ack_num: Wrapping<u32>) -> Result<()> {
-        self.send_window.acknowledge(ack_num, self.rt.now())
-    }
-
     pub fn receive(
         &mut self,
         segment: TcpSegment,
-    ) -> Result<Option<TcpSegment>> {
-        let remote_window_size = segment.window_size;
-        self.set_remote_receive_window_size(remote_window_size);
+    ) -> Result<VecDeque<TcpSegment>> {
+        if segment.syn {
+            return Err(Fail::Malformed {
+                details: "unexpected SYN packet after handshake",
+            });
+        }
 
-        let was_empty = self.receive_window.is_empty();
-        self.receive_window.push(segment)?;
-        if was_empty && !self.receive_window.is_empty() {
-            self.rt.emit_event(Event::TcpBytesAvailable(self.handle));
+        if segment.ack {
+            self.send_window
+                .acknowledge(segment.ack_num, self.rt.now())?;
+        }
+
+        let mut segments = VecDeque::new();
+        let remote_window_size = segment.window_size;
+        if self.set_remote_receive_window_size(remote_window_size)? {
+            let mut payloads =
+                self.send_window.get_unacknowledged_payloads(self.rt.now());
+            assert!(payloads.len() < 2);
+            if payloads.len() == 1 {
+                let payload = payloads.pop_front().unwrap();
+                segments.push_back(
+                    TcpSegment::default().payload(payload).connection(self),
+                );
+            }
+        }
+
+        let payload_len = segment.payload.len();
+        if payload_len == 0 {
+            return Ok(segments);
+        }
+
+        if self.receive_window.window_size() > 0 {
+            let was_empty = self.receive_window.is_empty();
+            self.receive_window.push(segment)?;
+            if was_empty && !self.receive_window.is_empty() {
+                self.rt.emit_event(Event::TcpBytesAvailable(self.handle));
+            }
         }
 
         if self.receive_window.window_size() == 0 {
-            let zero_window = TcpSegment::default().connection(self);
-            Ok(Some(zero_window))
-        } else {
-            Ok(None)
+            segments.push_back(self.window_advertisement());
         }
+
+        Ok(segments)
+    }
+
+    pub fn window_advertisement(&self) -> TcpSegment {
+        TcpSegment::default().connection(self)
     }
 
     pub fn get_rto(&self) -> Duration {

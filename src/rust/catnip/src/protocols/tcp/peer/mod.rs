@@ -180,7 +180,30 @@ impl<'a> TcpPeer<'a> {
     }
 
     pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
-        self.tcp_rt.borrow_mut().read(handle)
+        let (iovec, window_advertisement) = {
+            let mut tcp_rt = self.tcp_rt.borrow_mut();
+            let cxnid = tcp_rt.get_connection_id(handle)?.clone();
+            let cxn = tcp_rt.get_connection_mut(&cxnid).unwrap();
+            let old_window_size = cxn.get_local_receive_window_size();
+            let iovec = cxn.read();
+            let window_advertisement = if old_window_size == 0
+                && cxn.get_local_receive_window_size() > 0
+            {
+                Some(cxn.window_advertisement())
+            } else {
+                None
+            };
+
+            (iovec, window_advertisement)
+        };
+
+        if let Some(window_advertisement) = window_advertisement {
+            self.async_work
+                .borrow_mut()
+                .add(TcpRuntime::cast(&self.tcp_rt, window_advertisement));
+        }
+
+        Ok(iovec)
     }
 
     pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {

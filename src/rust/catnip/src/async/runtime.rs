@@ -70,7 +70,7 @@ impl<'a> AsyncRuntime<'a> {
     pub fn poll(&self, now: Instant) -> Option<Result<CoroutineId>> {
         trace!("AsyncRuntime::poll({:?})", now);
         if let Some(cid) = self.poll_schedule(now) {
-            debug!("coroutine (cid = {}) is now active", cid);
+            trace!("coroutine (cid = {}) is now active", cid);
             let mut coroutine = {
                 let mut inactive_coroutines =
                     self.inactive_coroutines.borrow_mut();
@@ -90,7 +90,7 @@ impl<'a> AsyncRuntime<'a> {
             }
 
             let cid = coroutine.id();
-            debug!("coroutine {} yielded (`{:?}`)", cid, coroutine.status());
+            trace!("coroutine {} yielded (`{:?}`)", cid, coroutine.status());
             assert!(self
                 .inactive_coroutines
                 .borrow_mut()

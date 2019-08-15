@@ -109,6 +109,13 @@ impl<'a> TcpRuntime<'a> {
         self.connections.get(cxnid)
     }
 
+    pub fn get_connection_mut(
+        &mut self,
+        cxnid: &TcpConnectionId,
+    ) -> Option<&mut TcpConnection<'a>> {
+        self.connections.get_mut(cxnid)
+    }
+
     pub fn new_active_connection(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
         cxnid: TcpConnectionId,
@@ -144,7 +151,7 @@ impl<'a> TcpRuntime<'a> {
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
                 cxn.set_remote_isn(remote_isn);
                 cxn.negotiate_mss(ack_segment.mss)?;
-                cxn.set_remote_receive_window_size(ack_segment.window_size);
+                cxn.set_remote_receive_window_size(ack_segment.window_size)?;
                 cxn.incr_seq_num();
                 TcpSegment::default().connection(&cxn)
             };
@@ -273,7 +280,7 @@ impl<'a> TcpRuntime<'a> {
                 // number and notify the caller.
                 let mut state = state.borrow_mut();
                 let cxn = state.connections.get_mut(&cxnid).unwrap();
-                cxn.set_remote_receive_window_size(ack_segment.window_size);
+                cxn.set_remote_receive_window_size(ack_segment.window_size)?;
                 cxn.incr_seq_num();
                 rt.emit_event(Event::TcpConnectionEstablished(
                     cxn.get_handle(),
@@ -356,31 +363,10 @@ impl<'a> TcpRuntime<'a> {
                             );
                         }
 
-                        // todo: should we inform the caller about dropped
-                        // packets?
-                        if segment.syn {
-                            warn!(
-                                "{}: packet dropped (syn)",
-                                options.my_ipv4_addr
-                            );
-                            continue;
-                        }
-
-                        if segment.ack {
-                            match cxn.acknowledge(segment.ack_num) {
-                                Ok(()) => (),
-                                Err(e) => {
-                                    warn!("packet dropped ({:?})", e);
-                                    continue;
-                                }
-                            }
-                        }
-
                         match cxn.receive(segment) {
-                            Ok(Some(zero_window)) => {
-                                transmittable_segments.push_back(zero_window)
+                            Ok(segments) => {
+                                transmittable_segments.extend(segments)
                             }
-                            Ok(None) => (),
                             Err(e) => warn!(
                                 "{}: packet dropped ({:?})",
                                 options.my_ipv4_addr, e
@@ -389,13 +375,29 @@ impl<'a> TcpRuntime<'a> {
                     }
 
                     while let Some(segment) =
-                        cxn.try_get_next_transmittable_segment(None)
+                        cxn.try_get_next_transmittable_segment()
                     {
                         transmittable_segments.push_back(segment);
                     }
 
                     transmittable_segments
                 };
+
+                let mut retransmissions = {
+                    let mut state = state.borrow_mut();
+                    let cxn = state.connections.get_mut(&cxnid).unwrap();
+                    cxn.get_retransmissions()?
+                };
+
+                debug!(
+                    "{}: {} segments will be retransmitted",
+                    options.my_ipv4_addr,
+                    retransmissions.len()
+                );
+
+                while let Some(segment) = retransmissions.pop_front() {
+                    r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
+                }
 
                 debug!(
                     "{}: {} segments can be transmitted",
@@ -405,12 +407,7 @@ impl<'a> TcpRuntime<'a> {
 
                 while let Some(segment) = transmittable_segments.pop_front() {
                     assert!(segment.ack);
-                    // we don't want to reset the delayed ACK timer for zero
-                    // window advertisements.
-                    if segment.payload.len() > 0 && segment.window_size > 0 {
-                        ack_owed_since = None;
-                    }
-
+                    ack_owed_since = None;
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
                 }
 
@@ -451,22 +448,6 @@ impl<'a> TcpRuntime<'a> {
                     debug!("{}: ack_owed_since = None", options.my_ipv4_addr)
                 }
 
-                let mut retransmissions = {
-                    let mut state = state.borrow_mut();
-                    let cxn = state.connections.get_mut(&cxnid).unwrap();
-                    cxn.get_retransmissions()?
-                };
-
-                debug!(
-                    "{}: {} segments will be retransmitted",
-                    options.my_ipv4_addr,
-                    retransmissions.len()
-                );
-
-                while let Some(segment) = retransmissions.pop_front() {
-                    r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
-                }
-
                 yield None;
             }
         })
@@ -482,20 +463,6 @@ impl<'a> TcpRuntime<'a> {
             let cxn = self.connections.get_mut(&cxnid).unwrap();
             cxn.write(bytes);
             Ok(())
-        } else {
-            Err(Fail::ResourceNotFound {
-                details: "unrecognized connection handle",
-            })
-        }
-    }
-
-    pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
-        trace!("TcpRuntime::read({:?})", handle);
-        if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            let cxn = self.connections.get_mut(&cxnid).unwrap();
-            let bytes = cxn.read();
-            debug!("read {:?}", bytes);
-            Ok(bytes)
         } else {
             Err(Fail::ResourceNotFound {
                 details: "unrecognized connection handle",
@@ -585,6 +552,20 @@ impl<'a> TcpRuntime<'a> {
         if let Some(cxnid) = self.assigned_handles.get(&handle) {
             let cxn = self.connections.get(&cxnid).unwrap();
             Ok(cxn.get_rto())
+        } else {
+            Err(Fail::ResourceNotFound {
+                details: "unrecognized connection handle",
+            })
+        }
+    }
+
+    pub fn get_connection_id(
+        &self,
+        handle: TcpConnectionHandle,
+    ) -> Result<&TcpConnectionId> {
+        if let Some(cxnid) = self.assigned_handles.get(&handle) {
+            let cxn = self.connections.get(&cxnid).unwrap();
+            Ok(cxn.get_cxnid())
         } else {
             Err(Fail::ResourceNotFound {
                 details: "unrecognized connection handle",

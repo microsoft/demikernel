@@ -5,6 +5,6 @@ pub use crate::{
 
 pub use crate::r#async::{Async, CoroutineOk, Future};
 
-// `try_from()` is used so commonly, it should be brought into scope by
-// default.
-pub use std::convert::TryFrom;
+// `try_from()` and `try_into()` used so commonly, they seem like they should
+// be brought into scope by default.
+pub use std::convert::{TryFrom, TryInto};

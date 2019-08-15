@@ -79,7 +79,7 @@ impl Schedule {
         if let Some(rec) = self.heap.peek() {
             if rec.when > now {
                 // next coroutine isn't due yet.
-                debug!(
+                trace!(
                     "no coroutines due (next is #{}, due in {:?})",
                     rec.cid,
                     rec.when - now,
@@ -89,11 +89,11 @@ impl Schedule {
                 // next coroutine is due.
                 let rec = self.heap.pop().unwrap();
                 if self.ids.contains(&rec.cid) {
-                    debug!("coroutine is #{} due", rec.cid);
+                    trace!("coroutine is #{} due", rec.cid);
                     self.cancel(rec.cid);
                     Some(rec.cid)
                 } else {
-                    debug!(
+                    trace!(
                         "coroutine #{} would have been due but was cancelled",
                         rec.cid
                     );
@@ -103,7 +103,7 @@ impl Schedule {
                 }
             }
         } else {
-            debug!("no coroutines scheduled");
+            trace!("no coroutines scheduled");
             // nothing in the heap.
             None
         }

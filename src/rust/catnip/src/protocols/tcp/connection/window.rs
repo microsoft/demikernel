@@ -55,10 +55,10 @@ impl UnacknowledgedTcpSegment {
 }
 
 pub struct TcpSendWindow<'a> {
-    bytes_unacknowledged: usize,
+    bytes_unacknowledged: i64,
     last_seq_num_transmitted: Wrapping<u32>,
     mss: usize,
-    remote_receive_window_size: usize,
+    remote_receive_window_size: i64,
     retransmit_retry: Option<Retry<'a>>,
     retransmit_timeout: Option<Duration>,
     rto_calculator: RtoCalculator,
@@ -66,7 +66,7 @@ pub struct TcpSendWindow<'a> {
     unacknowledged_segments: VecDeque<UnacknowledgedTcpSegment>,
     unsent_segment_offset: usize,
     unsent_segments: VecDeque<Vec<u8>>,
-    zero_window_probe_owed_since: Option<Instant>,
+    window_probe_needed_since: Option<Instant>,
 }
 
 impl<'a> TcpSendWindow<'a> {
@@ -83,11 +83,11 @@ impl<'a> TcpSendWindow<'a> {
             unacknowledged_segments: VecDeque::new(),
             unsent_segment_offset: 0,
             unsent_segments: VecDeque::new(),
-            zero_window_probe_owed_since: None,
+            window_probe_needed_since: None,
         }
     }
 
-    pub fn get_expected_remote_receive_window_size(&self) -> usize {
+    pub fn get_expected_remote_receive_window_size(&self) -> i64 {
         self.remote_receive_window_size - self.bytes_unacknowledged
     }
 
@@ -95,13 +95,26 @@ impl<'a> TcpSendWindow<'a> {
         &mut self,
         size: usize,
         now: Instant,
-    ) {
-        self.remote_receive_window_size = size;
-        if 0 == size {
-            self.zero_window_probe_owed_since = Some(now);
-        } else {
-            self.zero_window_probe_owed_since = None;
+    ) -> Result<bool> {
+        let remote_receive_window_size = i64::try_from(size)?;
+        if self.remote_receive_window_size != remote_receive_window_size {
+            debug!(
+                "remote_receive_window_size = {:?} -> {:?}",
+                self.remote_receive_window_size, remote_receive_window_size
+            );
+            self.remote_receive_window_size = remote_receive_window_size;
+            if 0 == size {
+                self.window_probe_needed_since = Some(now);
+                return Ok(false);
+            } else {
+                self.window_probe_needed_since = None;
+                self.retransmit_retry = None;
+                self.retransmit_timeout = None;
+                return Ok(true);
+            }
         }
+
+        Ok(false)
     }
 
     pub fn get_last_seq_num(&self) -> Wrapping<u32> {
@@ -159,7 +172,14 @@ impl<'a> TcpSendWindow<'a> {
         );
 
         let bytes_acknowledged =
-            (ack_num - self.smallest_unacknowledged_seq_num).0 as usize;
+            i64::from((ack_num - self.smallest_unacknowledged_seq_num).0);
+
+        debug!(
+            "{}/{} bytes acknowledged; {} segments unacknowledged.",
+            bytes_acknowledged,
+            self.bytes_unacknowledged,
+            self.unacknowledged_segments.len()
+        );
 
         if 0 == bytes_acknowledged {
             return Ok(());
@@ -178,7 +198,7 @@ impl<'a> TcpSendWindow<'a> {
         let mut n = 0;
         let mut acked_segment_count = 0;
         for segment in &self.unacknowledged_segments {
-            n += segment.payload.len();
+            n += i64::try_from(segment.payload.len()).unwrap();
             acked_segment_count += 1;
 
             if n >= bytes_acknowledged {
@@ -209,15 +229,23 @@ impl<'a> TcpSendWindow<'a> {
             }
         }
 
+        debug!("resetting retransmission timer");
+        self.retransmit_retry = None;
+        self.retransmit_timeout = None;
+
         Ok(())
     }
 
     pub fn try_get_next_transmittable_payload(
         &mut self,
-        optional_byte_count: Option<usize>,
         now: Instant,
+        expecting_probe: bool,
     ) -> Option<Rc<Vec<u8>>> {
-        trace!("TcpSendWindow::try_get_next_transmittable_segment()");
+        trace!(
+            "TcpSendWindow::try_get_next_transmittable_segment({:?}, {:?})",
+            now,
+            expecting_probe
+        );
         if self.unsent_segments.is_empty() {
             None
         } else {
@@ -227,21 +255,26 @@ impl<'a> TcpSendWindow<'a> {
                 "expected_remote_receive_window_size = {}",
                 expected_remote_receive_window_size
             );
-            if self.get_expected_remote_receive_window_size() == 0 {
-                return None;
-            }
 
             let next_unsent_segment =
                 self.unsent_segments.front_mut().unwrap();
             let bytes_remaining =
                 next_unsent_segment.len() - self.unsent_segment_offset;
             let mss = self.mss;
-            let byte_count = optional_byte_count.unwrap_or_else(|| {
-                min(
-                    min(mss, bytes_remaining),
-                    expected_remote_receive_window_size,
-                )
-            });
+            let byte_count = match expected_remote_receive_window_size {
+                -1 => {
+                    assert!(!expecting_probe);
+                    return None;
+                }
+                0 => {
+                    if expecting_probe {
+                        1
+                    } else {
+                        return None;
+                    }
+                }
+                n => min(min(mss, bytes_remaining), n.try_into().unwrap()),
+            };
 
             let payload = if self.unsent_segment_offset == 0
                 && byte_count == next_unsent_segment.len()
@@ -265,7 +298,7 @@ impl<'a> TcpSendWindow<'a> {
             self.last_seq_num_transmitted = self
                 .smallest_unacknowledged_seq_num
                 + Wrapping(u32::try_from(self.bytes_unacknowledged).unwrap());
-            self.bytes_unacknowledged += payload.len();
+            self.bytes_unacknowledged += i64::try_from(payload.len()).unwrap();
             let segment = UnacknowledgedTcpSegment::new(
                 payload,
                 self.last_seq_num_transmitted,
@@ -289,7 +322,7 @@ impl<'a> TcpSendWindow<'a> {
             .front()
             .map(|s| now - s.get_last_transmission_timestamp());
         if unacknowledged_segment_age.is_none()
-            && self.zero_window_probe_owed_since.is_none()
+            && self.window_probe_needed_since.is_none()
         {
             return Ok(VecDeque::new());
         }
@@ -308,14 +341,20 @@ impl<'a> TcpSendWindow<'a> {
             }
         };
 
-        let age = match self.zero_window_probe_owed_since {
+        let age = match self.window_probe_needed_since {
             None => unacknowledged_segment_age.unwrap(),
             Some(timestamp) => {
                 assert!(self.unacknowledged_segments.is_empty());
-                now - timestamp
+                let age = now - timestamp;
+                debug!(
+                    "window_probe_needed_since = Some({:?}) / {:?}",
+                    timestamp, age
+                );
+                age
             }
         };
 
+        debug!("age = {:?}; timeout = {:?}", age, timeout);
         if age <= timeout {
             return Ok(VecDeque::new());
         }
@@ -328,32 +367,36 @@ impl<'a> TcpSendWindow<'a> {
             return Err(Fail::Timeout {});
         }
 
-        match self.zero_window_probe_owed_since {
-            None => {
-                for segment in &mut self.unacknowledged_segments {
-                    segment.set_last_transmission_timestamp(now);
-                    segment.add_retry();
-                }
-
-                Ok(self
-                    .unacknowledged_segments
-                    .iter()
-                    .map(|s| s.get_payload().clone())
-                    .collect())
-            }
+        match self.window_probe_needed_since {
+            None => Ok(self.get_unacknowledged_payloads(now)),
             Some(_) => {
-                if let Some(payload) =
-                    self.try_get_next_transmittable_payload(Some(1), now)
-                {
-                    self.zero_window_probe_owed_since = None;
-                    let mut payloads = VecDeque::with_capacity(1);
-                    payloads.push_back(payload);
-                    Ok(payloads)
-                } else {
-                    Ok(VecDeque::new())
-                }
+                let payload = self
+                    .try_get_next_transmittable_payload(now, true)
+                    .unwrap();
+                assert_eq!(payload.len(), 1);
+                self.window_probe_needed_since = None;
+                let mut payloads = VecDeque::with_capacity(1);
+                payloads.push_back(payload);
+                Ok(payloads)
             }
         }
+    }
+
+    pub fn get_unacknowledged_payloads(
+        &mut self,
+        now: Instant,
+    ) -> VecDeque<Rc<Vec<u8>>> {
+        trace!("TcpSendWindow::get_unacknowledged_payloads({:?})", now);
+
+        for segment in &mut self.unacknowledged_segments {
+            segment.set_last_transmission_timestamp(now);
+            segment.add_retry();
+        }
+
+        self.unacknowledged_segments
+            .iter()
+            .map(|s| s.get_payload().clone())
+            .collect()
     }
 }
 
@@ -403,7 +446,7 @@ impl TcpReceiveWindow {
     }
 
     pub fn push(&mut self, segment: TcpSegment) -> Result<()> {
-        trace!("TcpReceiveWindow::receive({:?})", segment);
+        trace!("TcpReceiveWindow::push({:?})", segment);
         let bytes_unread = self.bytes_unread + segment.payload.len();
         if bytes_unread > self.max_window_size {
             return Err(Fail::ResourceExhausted {

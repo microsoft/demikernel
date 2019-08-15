@@ -671,12 +671,12 @@ fn retransmission_recovery() {
 }
 
 #[test]
-fn zero_window() {
+fn flow_control() {
     let mut cxn = establish_connection();
 
     // transmitting 10 bytes of data should produce an identical `IoVec` upon
     // reading.
-    info!("Alice writes data to the TCP connection...");
+    info!("flow_control(): Alice writes data to the TCP connection...");
     let data_in =
         IoVec::from(vec![0xab; cxn.bob.options().tcp.receive_window_size()]);
     cxn.alice
@@ -694,11 +694,15 @@ fn zero_window() {
 
     cxn.now += Duration::from_micros(1);
     let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
-        Event::Transmit(bytes) => bytes,
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_ne!(segment.payload.len(), 0);
+            bytes
+        }
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    info!("passing data segments to Bob...");
+    info!("flow_control(): passing data segments to Bob...");
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
     cxn.bob.receive(bytes0.as_slice()).unwrap();
@@ -713,69 +717,122 @@ fn zero_window() {
     cxn.bob.receive(bytes1.as_slice()).unwrap();
     // Event::TcpBytesAvailable won't be emitted unless the read buffer starts
     // out empty.
-    let bytes = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
-        Event::Transmit(bytes) => {
-            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
-            assert_eq!(0, segment.window_size);
-            bytes
-        }
-        e => panic!("got unanticipated event `{:?}`", e),
-    };
+    let zero_window_advertisement =
+        match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+            Event::Transmit(bytes) => {
+                let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+                assert_eq!(0, segment.window_size);
+                bytes
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        };
 
-    info!("passing zero window advertisement to Alice...");
+    info!("flow_control(): passing zero window advertisement to Alice...");
     cxn.now += Duration::from_micros(1);
-    cxn.alice.receive(bytes.as_slice()).unwrap();
+    cxn.alice
+        .receive(zero_window_advertisement.as_slice())
+        .unwrap();
     assert!(cxn.alice.poll(cxn.now).is_none());
 
     cxn.alice
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
         .unwrap();
-    cxn.now += Duration::from_micros(1);
-    // !!! this is where we fail-- alice doesn't see the right remote window
-    // size.
     assert!(cxn.alice.poll(cxn.now).is_none());
 
+    info!(
+        "flow_control(): waiting for Alice to start sending window probes..."
+    );
+    let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
+    let retries = cxn.alice.options().tcp.retries2();
+    let mut retry = Retry::binary_exponential(rto, retries);
+    for i in 0..(retries - 1) {
+        let timeout = retry.next().unwrap();
+        cxn.now += timeout;
+        assert!(cxn.alice.poll(cxn.now).is_none());
+        info!("flow_control(): try #{}", i + 1);
+        cxn.now += Duration::from_micros(1);
+        let window_probe = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+            Event::Transmit(bytes) => {
+                let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+                assert_eq!(segment.payload.len(), 1);
+                bytes
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        };
+
+        debug!("flow_control(): passing window probe to Bob...");
+        cxn.bob.receive(window_probe.as_slice()).unwrap();
+        let zero_window_advertisement =
+            match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+                Event::Transmit(bytes) => {
+                    let segment =
+                        TcpSegment::decode(bytes.as_slice()).unwrap();
+                    assert_eq!(0, segment.window_size);
+                    bytes
+                }
+                e => panic!("got unanticipated event `{:?}`", e),
+            };
+
+        info!("flow_control(): passing zero window advertisement to Alice...");
+        cxn.now += Duration::from_micros(1);
+        cxn.alice
+            .receive(zero_window_advertisement.as_slice())
+            .unwrap();
+        assert!(cxn.alice.poll(cxn.now).is_none());
+
+        // this is acceptable, since we increment the time by `timeout` when we
+        // start a new loop iteration.
+        cxn.now -= Duration::from_micros(1);
+    }
+
+    info!("flow_control(): reading available bytes from Bob's TCP window...");
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert_eq!(data_in, data_out);
 
-    info!("waiting for trailing ACK timeout to pass...");
-    cxn.now +=
-        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(3);
-    assert!(cxn.bob.poll(cxn.now).is_none());
-
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let window_advertisement = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
-            assert_eq!(0, segment.payload.len());
-            assert!(segment.ack);
-            assert_eq!(
-                seq_num
-                    + Wrapping(u32::try_from(data_in.byte_count()).unwrap()),
-                segment.ack_num
-            );
+            assert_ne!(0, segment.window_size);
             bytes
         }
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    info!("passing pure ACK segment to Alice...");
+    info!("flow_control(): passing window advertisement to Alice...");
     cxn.now += Duration::from_micros(1);
-    cxn.alice.receive(pure_ack.as_slice()).unwrap();
+    cxn.alice.receive(window_advertisement.as_slice()).unwrap();
     let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
-        Event::Transmit(bytes) => bytes,
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.len(), 1);
+            bytes
+        }
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
     cxn.now += Duration::from_micros(1);
     let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
-        Event::Transmit(bytes) => bytes,
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_ne!(segment.payload.len(), 0);
+            bytes
+        }
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    info!("passing data segments to Bob...");
     cxn.now += Duration::from_micros(1);
-    // ACK timeout starts from here.\
+    let bytes2 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_ne!(segment.payload.len(), 0);
+            bytes
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("flow_control(): passing data segments to Bob...");
+    cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes0.as_slice()).unwrap();
     match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
@@ -786,9 +843,11 @@ fn zero_window() {
 
     cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes1.as_slice()).unwrap();
-    // Event::TcpBytesAvailable won't be emitted unless the read buffer starts
-    // out empty.
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    assert!(cxn.bob.poll(cxn.now).is_none());
+
+    cxn.now += Duration::from_micros(1);
+    cxn.bob.receive(bytes2.as_slice()).unwrap();
+    let _ = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.window_size);
@@ -796,4 +855,8 @@ fn zero_window() {
         }
         e => panic!("got unanticipated event `{:?}`", e),
     };
+
+    info!("flow_control(): reading available bytes from Bob's TCP window...");
+    let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
+    assert_eq!(data_in, data_out);
 }
