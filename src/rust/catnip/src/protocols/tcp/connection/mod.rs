@@ -103,7 +103,7 @@ impl<'a> TcpConnection<'a> {
     pub fn set_remote_receive_window_size(
         &mut self,
         size: usize,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         self.send_window
             .set_remote_receive_window_size(size, self.rt.now())
     }
@@ -155,7 +155,7 @@ impl<'a> TcpConnection<'a> {
     pub fn receive(
         &mut self,
         segment: TcpSegment,
-    ) -> Result<VecDeque<TcpSegment>> {
+    ) -> Result<Option<TcpSegment>> {
         if segment.syn {
             return Err(Fail::Malformed {
                 details: "unexpected SYN packet after handshake",
@@ -167,23 +167,12 @@ impl<'a> TcpConnection<'a> {
                 .acknowledge(segment.ack_num, self.rt.now())?;
         }
 
-        let mut segments = VecDeque::new();
         let remote_window_size = segment.window_size;
-        if self.set_remote_receive_window_size(remote_window_size)? {
-            let mut payloads =
-                self.send_window.get_unacknowledged_payloads(self.rt.now());
-            assert!(payloads.len() < 2);
-            if payloads.len() == 1 {
-                let payload = payloads.pop_front().unwrap();
-                segments.push_back(
-                    TcpSegment::default().payload(payload).connection(self),
-                );
-            }
-        }
+        self.set_remote_receive_window_size(remote_window_size)?;
 
         let payload_len = segment.payload.len();
         if payload_len == 0 {
-            return Ok(segments);
+            return Ok(None);
         }
 
         if self.receive_window.window_size() > 0 {
@@ -195,10 +184,10 @@ impl<'a> TcpConnection<'a> {
         }
 
         if self.receive_window.window_size() == 0 {
-            segments.push_back(self.window_advertisement());
+            Ok(Some(self.window_advertisement()))
+        } else {
+            Ok(None)
         }
-
-        Ok(segments)
     }
 
     pub fn window_advertisement(&self) -> TcpSegment {

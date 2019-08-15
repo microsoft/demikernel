@@ -59,6 +59,7 @@ pub struct TcpSendWindow<'a> {
     last_seq_num_transmitted: Wrapping<u32>,
     mss: usize,
     remote_receive_window_size: i64,
+    remote_window_unlocked: bool,
     retransmit_retry: Option<Retry<'a>>,
     retransmit_timeout: Option<Duration>,
     rto_calculator: RtoCalculator,
@@ -76,6 +77,7 @@ impl<'a> TcpSendWindow<'a> {
             last_seq_num_transmitted: local_isn,
             mss: advertised_mss,
             remote_receive_window_size: 0,
+            remote_window_unlocked: false,
             retransmit_retry: None,
             retransmit_timeout: None,
             rto_calculator: RtoCalculator::new(),
@@ -95,7 +97,7 @@ impl<'a> TcpSendWindow<'a> {
         &mut self,
         size: usize,
         now: Instant,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         let remote_receive_window_size = i64::try_from(size)?;
         if self.remote_receive_window_size != remote_receive_window_size {
             debug!(
@@ -105,16 +107,13 @@ impl<'a> TcpSendWindow<'a> {
             self.remote_receive_window_size = remote_receive_window_size;
             if 0 == size {
                 self.window_probe_needed_since = Some(now);
-                return Ok(false);
             } else {
                 self.window_probe_needed_since = None;
-                self.retransmit_retry = None;
-                self.retransmit_timeout = None;
-                return Ok(true);
+                self.remote_window_unlocked = true;
             }
         }
 
-        Ok(false)
+        Ok(())
     }
 
     pub fn get_last_seq_num(&self) -> Wrapping<u32> {
@@ -317,6 +316,13 @@ impl<'a> TcpSendWindow<'a> {
         retries: usize,
     ) -> Result<VecDeque<Rc<Vec<u8>>>> {
         trace!("TcpSendWindow::get_retransmissions()");
+        if self.remote_window_unlocked {
+            self.remote_window_unlocked = false;
+            self.retransmit_retry = None;
+            self.retransmit_timeout = None;
+            return Ok(self.get_unacknowledged_payloads(now));
+        }
+
         let unacknowledged_segment_age = self
             .unacknowledged_segments
             .front()
