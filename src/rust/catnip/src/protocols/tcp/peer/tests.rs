@@ -684,10 +684,10 @@ fn flow_control() {
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
-    let (bytes0, seq_num) = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
-            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
-            (bytes, segment.seq_num)
+            let _ = TcpSegment::decode(bytes.as_slice()).unwrap();
+            bytes
         }
         e => panic!("got unanticipated event `{:?}`", e),
     };
