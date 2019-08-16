@@ -112,10 +112,11 @@ impl<'a> TcpConnection<'a> {
         trace!("TcpConnection::try_get_next_transmittable_segment()");
         match self
             .send_window
-            .try_get_next_transmittable_payload(self.rt.now(), false)
+            .try_get_next_transmittable_segment(self.rt.now(), false)
         {
             None => None,
-            Some(payload) => {
+            Some(segment) => {
+                let payload = segment.borrow().get_payload().clone();
                 Some(TcpSegment::default().payload(payload).connection(self))
             }
         }
@@ -123,13 +124,18 @@ impl<'a> TcpConnection<'a> {
 
     pub fn get_retransmissions(&mut self) -> Result<VecDeque<TcpSegment>> {
         let options = self.rt.options();
-        let mut payloads = self
+        let mut retransmissions = self
             .send_window
             .get_retransmissions(self.rt.now(), options.tcp.retries2())?;
-        let mut segments = VecDeque::with_capacity(payloads.len());
-        while let Some(payload) = payloads.pop_front() {
+        let mut segments = VecDeque::with_capacity(retransmissions.len());
+        while let Some(retransmission) = retransmissions.pop_front() {
+            let retransmission = retransmission.borrow();
+            let payload = retransmission.get_payload();
             segments.push_back(
-                TcpSegment::default().payload(payload).connection(self),
+                TcpSegment::default()
+                    .payload(payload.clone())
+                    .connection(self)
+                    .seq_num(retransmission.get_seq_num()),
             );
         }
 

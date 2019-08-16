@@ -560,7 +560,7 @@ fn retransmission_fail() {
 }
 
 #[test]
-fn retransmission_recovery() {
+fn retransmission_ok() {
     let mut cxn = establish_connection();
 
     // transmitting 10 bytes of data should produce an identical `IoVec` upon
@@ -572,8 +572,9 @@ fn retransmission_recovery() {
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
+    // retransmission timer starts here.
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let dropped_segment = match event {
+    let first_dropped_segment = match event {
         Event::Transmit(bytes) => {
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
@@ -582,37 +583,64 @@ fn retransmission_recovery() {
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    info!("dropping data segment and attempting retry...");
+    cxn.alice
+        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .unwrap();
+
+    cxn.now += Duration::from_micros(1);
+    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
+    let second_dropped_segment = match event {
+        Event::Transmit(bytes) => {
+            let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+            assert_eq!(segment.payload.as_slice(), &data_in[0]);
+            segment
+        }
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
+
+    info!("dropping data segments and attempting retransmission...");
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
     let retries = cxn.alice.options().tcp.retries2();
     let mut retry = Retry::binary_exponential(rto, retries);
     let timeout = retry.next().unwrap();
-    cxn.now += timeout;
+    cxn.now += timeout - Duration::from_micros(1);
     assert!(cxn.alice.poll(cxn.now).is_none());
     cxn.now += Duration::from_micros(1);
-    let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let (bytes, seq_num) = {
-        match event {
+    let bytes0 = {
+        match cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
-                assert_eq!(dropped_segment, segment);
-
-                (bytes, segment.seq_num)
+                assert_eq!(first_dropped_segment, segment);
+                bytes
             }
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
 
-    info!("passing data segment to Bob...");
+    let bytes1 = {
+        match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+            Event::Transmit(bytes) => {
+                let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
+                assert_eq!(second_dropped_segment, segment);
+                bytes
+            }
+            e => panic!("got unanticipated event `{:?}`", e),
+        }
+    };
+
+    info!("passing data segments to Bob...");
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
-    cxn.bob.receive(bytes.as_slice()).unwrap();
+    cxn.bob.receive(bytes0.as_slice()).unwrap();
     match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
             assert_eq!(cxn.bob_cxn_handle, handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
+
+    cxn.bob.receive(bytes1.as_slice()).unwrap();
+    assert!(cxn.bob.poll(cxn.now).is_none());
 
     info!("Alice writes more data to the TCP connection...");
     cxn.alice
@@ -630,17 +658,22 @@ fn retransmission_recovery() {
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    info!("passing second data segment to Bob...");
+    info!("passing third data segment to Bob...");
     cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes.as_slice()).unwrap();
     // Event::TcpBytesAvailable won't be emitted unless the read buffer starts
     // out empty.
     assert!(cxn.bob.poll(cxn.now).is_none());
 
+    info!("Reading from Bob's TCP buffer...");
     let data_out = cxn.bob.tcp_read(cxn.bob_cxn_handle).unwrap();
     assert_eq!(
         data_out,
-        IoVec::from(vec![data_in[0].to_vec(), data_in[0].to_vec()])
+        IoVec::from(vec![
+            data_in[0].to_vec(),
+            data_in[0].to_vec(),
+            data_in[0].to_vec()
+        ])
     );
 
     info!("waiting for trailing ACK timeout to pass...");
@@ -655,7 +688,7 @@ fn retransmission_recovery() {
             assert_eq!(0, segment.payload.len());
             assert!(segment.ack);
             assert_eq!(
-                seq_num
+                second_dropped_segment.seq_num
                     + Wrapping(
                         u32::try_from(data_in.byte_count()).unwrap() * 2
                     ),

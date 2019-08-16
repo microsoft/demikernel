@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{io::IoVec, prelude::*, r#async::Retry};
 use std::{
+    cell::RefCell,
     cmp::min,
     collections::VecDeque,
     convert::TryFrom,
@@ -49,6 +50,10 @@ impl UnacknowledgedTcpSegment {
         self.retries
     }
 
+    pub fn get_seq_num(&self) -> Wrapping<u32> {
+        self.seq_num
+    }
+
     pub fn add_retry(&mut self) {
         self.retries += 1;
     }
@@ -64,7 +69,7 @@ pub struct TcpSendWindow<'a> {
     retransmit_timeout: Option<Duration>,
     rto_calculator: RtoCalculator,
     smallest_unacknowledged_seq_num: Wrapping<u32>,
-    unacknowledged_segments: VecDeque<UnacknowledgedTcpSegment>,
+    unacknowledged_segments: VecDeque<Rc<RefCell<UnacknowledgedTcpSegment>>>,
     unsent_segment_offset: usize,
     unsent_segments: VecDeque<Vec<u8>>,
     window_probe_needed_since: Option<Instant>,
@@ -197,6 +202,7 @@ impl<'a> TcpSendWindow<'a> {
         let mut n = 0;
         let mut acked_segment_count = 0;
         for segment in &self.unacknowledged_segments {
+            let segment = segment.borrow();
             n += i64::try_from(segment.payload.len()).unwrap();
             acked_segment_count += 1;
 
@@ -222,6 +228,7 @@ impl<'a> TcpSendWindow<'a> {
             Wrapping(u32::try_from(bytes_acknowledged).unwrap());
 
         for segment in acked_segments {
+            let segment = segment.borrow();
             if segment.get_retries() == 0 {
                 let rtt = now - segment.get_last_transmission_timestamp();
                 self.rto_calculator.add_sample(rtt);
@@ -235,11 +242,11 @@ impl<'a> TcpSendWindow<'a> {
         Ok(())
     }
 
-    pub fn try_get_next_transmittable_payload(
+    pub fn try_get_next_transmittable_segment(
         &mut self,
         now: Instant,
         expecting_probe: bool,
-    ) -> Option<Rc<Vec<u8>>> {
+    ) -> Option<Rc<RefCell<UnacknowledgedTcpSegment>>> {
         trace!(
             "TcpSendWindow::try_get_next_transmittable_segment({:?}, {:?})",
             now,
@@ -303,10 +310,9 @@ impl<'a> TcpSendWindow<'a> {
                 self.last_seq_num_transmitted,
                 now,
             );
-            self.unacknowledged_segments.push_back(segment);
             self.unacknowledged_segments
-                .back()
-                .map(|s| s.get_payload().clone())
+                .push_back(Rc::new(RefCell::new(segment)));
+            self.unacknowledged_segments.back().cloned()
         }
     }
 
@@ -314,19 +320,19 @@ impl<'a> TcpSendWindow<'a> {
         &mut self,
         now: Instant,
         retries: usize,
-    ) -> Result<VecDeque<Rc<Vec<u8>>>> {
+    ) -> Result<VecDeque<Rc<RefCell<UnacknowledgedTcpSegment>>>> {
         trace!("TcpSendWindow::get_retransmissions()");
         if self.remote_window_unlocked {
             self.remote_window_unlocked = false;
             self.retransmit_retry = None;
             self.retransmit_timeout = None;
-            return Ok(self.get_unacknowledged_payloads(now));
+            return Ok(self.get_unacknowledged_segments(now));
         }
 
         let unacknowledged_segment_age = self
             .unacknowledged_segments
             .front()
-            .map(|s| now - s.get_last_transmission_timestamp());
+            .map(|s| now - s.borrow().get_last_transmission_timestamp());
         if unacknowledged_segment_age.is_none()
             && self.window_probe_needed_since.is_none()
         {
@@ -374,35 +380,33 @@ impl<'a> TcpSendWindow<'a> {
         }
 
         match self.window_probe_needed_since {
-            None => Ok(self.get_unacknowledged_payloads(now)),
+            None => Ok(self.get_unacknowledged_segments(now)),
             Some(_) => {
-                let payload = self
-                    .try_get_next_transmittable_payload(now, true)
+                let segment = self
+                    .try_get_next_transmittable_segment(now, true)
                     .unwrap();
-                assert_eq!(payload.len(), 1);
+                assert_eq!(segment.borrow().get_payload().len(), 1);
                 self.window_probe_needed_since = None;
                 let mut payloads = VecDeque::with_capacity(1);
-                payloads.push_back(payload);
+                payloads.push_back(segment.clone());
                 Ok(payloads)
             }
         }
     }
 
-    pub fn get_unacknowledged_payloads(
-        &mut self,
+    pub fn get_unacknowledged_segments(
+        &self,
         now: Instant,
-    ) -> VecDeque<Rc<Vec<u8>>> {
+    ) -> VecDeque<Rc<RefCell<UnacknowledgedTcpSegment>>> {
         trace!("TcpSendWindow::get_unacknowledged_payloads({:?})", now);
 
-        for segment in &mut self.unacknowledged_segments {
+        for segment in &self.unacknowledged_segments {
+            let mut segment = segment.borrow_mut();
             segment.set_last_transmission_timestamp(now);
             segment.add_retry();
         }
 
-        self.unacknowledged_segments
-            .iter()
-            .map(|s| s.get_payload().clone())
-            .collect()
+        self.unacknowledged_segments.iter().cloned().collect()
     }
 }
 
