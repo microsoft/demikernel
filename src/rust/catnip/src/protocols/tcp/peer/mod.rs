@@ -138,14 +138,14 @@ impl<'a> TcpPeer<'a> {
                 rt.now()
             ) {
                 Ok(cxnid) => {
-                    let handle = {
-                        let tcp_rt = tcp_rt.borrow();
-                        let cxn = tcp_rt.get_connection(&cxnid).unwrap();
-                        cxn.get_handle()
-                    };
-
+                    let cxn = tcp_rt
+                        .borrow()
+                        .get_connection_given_id(&cxnid)
+                        .unwrap()
+                        .clone();
+                    let handle = cxn.borrow().get_handle();
                     async_work.borrow_mut().add(
-                        TcpRuntime::on_connection_established(&tcp_rt, cxnid),
+                        TcpRuntime::on_connection_established(&tcp_rt, cxn),
                     );
 
                     return CoroutineOk(handle);
@@ -156,7 +156,7 @@ impl<'a> TcpPeer<'a> {
             let _ = r#await!(
                 TcpRuntime::close_connection(
                     &tcp_rt,
-                    cxnid.clone(),
+                    cxnid,
                     Some(error.clone()),
                     false
                 ),
@@ -172,18 +172,21 @@ impl<'a> TcpPeer<'a> {
     }
 
     pub fn write(
-        &mut self,
+        &self,
         handle: TcpConnectionHandle,
         bytes: IoVec,
     ) -> Result<()> {
-        self.tcp_rt.borrow_mut().write(handle, bytes)
+        let tcp_rt = self.tcp_rt.borrow_mut();
+        let mut cxn = tcp_rt.get_connection_given_handle(handle)?.borrow_mut();
+        cxn.write(bytes);
+        Ok(())
     }
 
     pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
         let (iovec, window_advertisement) = {
-            let mut tcp_rt = self.tcp_rt.borrow_mut();
-            let cxnid = tcp_rt.get_connection_id(handle)?.clone();
-            let cxn = tcp_rt.get_connection_mut(&cxnid).unwrap();
+            let tcp_rt = self.tcp_rt.borrow();
+            let mut cxn =
+                tcp_rt.get_connection_given_handle(handle)?.borrow_mut();
             let old_window_size = cxn.get_local_receive_window_size();
             let iovec = cxn.read();
             let window_advertisement = if old_window_size == 0
@@ -207,11 +210,15 @@ impl<'a> TcpPeer<'a> {
     }
 
     pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
-        self.tcp_rt.borrow_mut().get_mss(handle)
+        let tcp_rt = self.tcp_rt.borrow_mut();
+        let cxn = tcp_rt.get_connection_given_handle(handle)?.borrow();
+        Ok(cxn.get_mss())
     }
 
     pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
-        self.tcp_rt.borrow_mut().get_rto(handle)
+        let tcp_rt = self.tcp_rt.borrow_mut();
+        let cxn = tcp_rt.get_connection_given_handle(handle)?.borrow();
+        Ok(cxn.get_rto())
     }
 }
 

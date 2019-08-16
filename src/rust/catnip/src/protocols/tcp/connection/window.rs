@@ -13,6 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug)]
 pub struct UnacknowledgedTcpSegment {
     last_transmission_timestamp: Instant,
     payload: Rc<Vec<u8>>,
@@ -410,6 +411,7 @@ impl<'a> TcpSendWindow<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct TcpReceiveWindow {
     ack_num: Option<Wrapping<u32>>,
     bytes_unread: usize,

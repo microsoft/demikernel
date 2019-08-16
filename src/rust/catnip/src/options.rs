@@ -6,7 +6,7 @@ use base64::{decode_config_slice, STANDARD_NO_PAD};
 use rand::{thread_rng, Rng};
 use std::net::Ipv4Addr;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Options {
     pub arp: arp::Options,
     pub my_ipv4_addr: Ipv4Addr,

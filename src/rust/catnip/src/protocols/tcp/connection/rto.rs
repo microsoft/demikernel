@@ -11,6 +11,7 @@ const UBOUND_SEC: f64 = 60.0f64;
 const LBOUND_SEC: f64 = 0.0001f64;
 const SRTT_SEED: f64 = 1.0f64;
 
+#[derive(Debug)]
 pub struct RtoCalculator {
     srtt: f64,
 }

@@ -16,13 +16,12 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     rc::Rc,
-    time::Duration,
 };
 
 pub struct TcpRuntime<'a> {
     arp: arp::Peer<'a>,
     assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
-    connections: HashMap<TcpConnectionId, TcpConnection<'a>>,
+    connections: HashMap<TcpConnectionId, Rc<RefCell<TcpConnection<'a>>>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
     rt: Runtime<'a>,
@@ -89,7 +88,8 @@ impl<'a> TcpRuntime<'a> {
         segment: TcpSegment,
     ) -> Result<()> {
         if let Some(cxn) = self.connections.get_mut(&cxnid) {
-            cxn.get_input_queue().borrow_mut().push_back(segment);
+            let mut cxn = cxn.borrow_mut();
+            cxn.input_queue_mut().push_back(segment);
             Ok(())
         } else {
             Err(Fail::ResourceNotFound {
@@ -102,18 +102,11 @@ impl<'a> TcpRuntime<'a> {
         self.open_ports.contains(&port)
     }
 
-    pub fn get_connection(
+    pub fn get_connection_given_id(
         &self,
         cxnid: &TcpConnectionId,
-    ) -> Option<&TcpConnection<'a>> {
+    ) -> Option<&Rc<RefCell<TcpConnection<'a>>>> {
         self.connections.get(cxnid)
-    }
-
-    pub fn get_connection_mut(
-        &mut self,
-        cxnid: &TcpConnectionId,
-    ) -> Option<&mut TcpConnection<'a>> {
-        self.connections.get_mut(cxnid)
     }
 
     pub fn new_active_connection(
@@ -128,18 +121,21 @@ impl<'a> TcpRuntime<'a> {
                 "TcpRuntime::new_active_connection(.., {:?})::coroutine",
                 cxnid
             );
-            let (cxnid, rt) = {
+
+            let (cxn, rt) = {
                 let mut state = state.borrow_mut();
-                let rt = state.rt.clone();
-                let _ = state.new_connection(cxnid.clone(), rt.clone())?;
-                (cxnid, rt)
+                let rt = state.rt().clone();
+                (
+                    state.new_connection(cxnid.clone(), rt.clone())?,
+                    state.rt.clone(),
+                )
             };
 
             let options = rt.options();
             let retries = options.tcp.handshake_retries();
             let timeout = options.tcp.handshake_timeout();
             let ack_segment = r#await!(
-                TcpRuntime::handshake(&state, &cxnid),
+                TcpRuntime::handshake(&state, cxn.clone()),
                 rt.now(),
                 Retry::binary_exponential(timeout, retries)
             )?;
@@ -147,8 +143,7 @@ impl<'a> TcpRuntime<'a> {
             let remote_isn = ack_segment.seq_num;
 
             let segment = {
-                let mut state = state.borrow_mut();
-                let cxn = state.connections.get_mut(&cxnid).unwrap();
+                let mut cxn = cxn.borrow_mut();
                 cxn.set_remote_isn(remote_isn);
                 cxn.negotiate_mss(ack_segment.mss)?;
                 cxn.set_remote_receive_window_size(ack_segment.window_size)?;
@@ -170,7 +165,7 @@ impl<'a> TcpRuntime<'a> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            let (segment, handle, rt) = {
+            let (rst_segment, cxn_handle, rt) = {
                 let mut state = state.borrow_mut();
                 let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
                     cxn
@@ -180,27 +175,29 @@ impl<'a> TcpRuntime<'a> {
                     });
                 };
 
-                let segment = TcpSegment::default().connection(&cxn).rst();
+                let cxn = cxn.borrow();
+                let rst_segment = TcpSegment::default().connection(&cxn).rst();
                 let local_port = cxnid.local.port();
                 if local_port.is_private() {
                     state.release_private_port(local_port)
                 }
 
-                (segment, cxn.get_handle(), state.rt.clone())
+                (rst_segment, cxn.get_handle(), state.rt.clone())
             };
 
             if let Some(e) = error {
                 if notify {
                     rt.emit_event(Event::TcpConnectionClosed {
-                        handle,
+                        handle: cxn_handle,
                         error: Some(e),
                     });
                 }
 
-                let _ = r#await!(TcpRuntime::cast(&state, segment), rt.now());
+                let _ =
+                    r#await!(TcpRuntime::cast(&state, rst_segment), rt.now());
             } else if notify {
                 rt.emit_event(Event::TcpConnectionClosed {
-                    handle,
+                    handle: cxn_handle,
                     error: None,
                 });
             }
@@ -241,7 +238,7 @@ impl<'a> TcpRuntime<'a> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            let (cxnid, rt) = {
+            let (cxn, rt) = {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
                 let options = rt.options();
@@ -261,16 +258,20 @@ impl<'a> TcpRuntime<'a> {
                 };
 
                 let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
-                cxn.negotiate_mss(syn_segment.mss)?;
-                cxn.set_remote_isn(syn_segment.seq_num);
-                (cxnid, rt)
+                {
+                    let mut cxn = cxn.borrow_mut();
+                    cxn.negotiate_mss(syn_segment.mss)?;
+                    cxn.set_remote_isn(syn_segment.seq_num);
+                }
+
+                (cxn, rt)
             };
 
             let options = rt.options();
             let retries = options.tcp.handshake_retries();
             let timeout = options.tcp.handshake_timeout();
             let ack_segment = r#await!(
-                TcpRuntime::handshake(&state, &cxnid),
+                TcpRuntime::handshake(&state, cxn.clone()),
                 rt.now(),
                 Retry::binary_exponential(timeout, retries)
             )?;
@@ -278,8 +279,7 @@ impl<'a> TcpRuntime<'a> {
             {
                 // SYN+ACK packet has been acknowledged; increment the sequence
                 // number and notify the caller.
-                let mut state = state.borrow_mut();
-                let cxn = state.connections.get_mut(&cxnid).unwrap();
+                let mut cxn = cxn.borrow_mut();
                 cxn.set_remote_receive_window_size(ack_segment.window_size)?;
                 cxn.incr_seq_num();
                 rt.emit_event(Event::TcpConnectionEstablished(
@@ -288,7 +288,7 @@ impl<'a> TcpRuntime<'a> {
             }
 
             r#await!(
-                TcpRuntime::on_connection_established(&state, cxnid),
+                TcpRuntime::on_connection_established(&state, cxn),
                 rt.now()
             )?;
 
@@ -298,19 +298,22 @@ impl<'a> TcpRuntime<'a> {
 
     pub fn on_connection_established(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
-        cxnid: TcpConnectionId,
+        cxn: Rc<RefCell<TcpConnection<'a>>>,
     ) -> Future<'a, ()> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            trace!(
-                "TcpRuntime::on_connection_established(..., {:?})::coroutine",
-                cxnid
-            );
+            trace!("TcpRuntime::on_connection_established(...)::coroutine",);
 
-            let rt = state.borrow().rt().clone();
+            let (cxnid, rt) = {
+                let state = state.borrow();
+                let rt = state.rt().clone();
+                let cxn = cxn.borrow();
+                (cxn.get_cxnid().clone(), rt)
+            };
+
             let error = match r#await!(
-                TcpRuntime::main_connection_loop(&state, cxnid.clone()),
+                TcpRuntime::main_connection_loop(&state, cxn.clone()),
                 rt.now()
             ) {
                 Ok(()) => None,
@@ -329,27 +332,22 @@ impl<'a> TcpRuntime<'a> {
     #[allow(clippy::cognitive_complexity)]
     pub fn main_connection_loop(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
-        cxnid: TcpConnectionId,
+        cxn: Rc<RefCell<TcpConnection<'a>>>,
     ) -> Future<'a, ()> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
         rt.start_coroutine(move || {
-            trace!(
-                "TcpRuntime::main_connection_loop(..., {:?})::coroutine",
-                cxnid
-            );
+            trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
             let rt = state.borrow().rt().clone();
             let options = rt.options();
             let mut ack_owed_since = None;
             loop {
                 let mut transmittable_segments: VecDeque<TcpSegment> = {
-                    let mut state = state.borrow_mut();
-                    let cxn = state.connections.get_mut(&cxnid).unwrap();
-                    let input_queue = cxn.get_input_queue();
-                    let mut input_queue = input_queue.borrow_mut();
+                    let mut cxn = cxn.borrow_mut();
                     let mut transmittable_segments = VecDeque::new();
-                    while let Some(segment) = input_queue.pop_front() {
+                    while let Some(segment) = cxn.input_queue_mut().pop_front()
+                    {
                         // if there's a payload, we need to acknowledge it at
                         // some point. we set a timer if it hasn't already been
                         // set.
@@ -383,18 +381,13 @@ impl<'a> TcpRuntime<'a> {
                     transmittable_segments
                 };
 
-                let mut retransmissions = {
-                    let mut state = state.borrow_mut();
-                    let cxn = state.connections.get_mut(&cxnid).unwrap();
-                    cxn.get_retransmissions()?
-                };
-
+                let mut retransmissions =
+                    cxn.borrow_mut().get_retransmissions()?;
                 debug!(
                     "{}: {} segments will be retransmitted",
                     options.my_ipv4_addr,
                     retransmissions.len()
                 );
-
                 while let Some(segment) = retransmissions.pop_front() {
                     r#await!(TcpRuntime::cast(&state, segment), rt.now())?;
                 }
@@ -430,12 +423,8 @@ impl<'a> TcpRuntime<'a> {
                              ACK...",
                             options.my_ipv4_addr,
                         );
-                        let pure_ack = {
-                            let mut state = state.borrow_mut();
-                            let cxn =
-                                state.connections.get_mut(&cxnid).unwrap();
-                            TcpSegment::default().connection(cxn)
-                        };
+                        let pure_ack =
+                            TcpSegment::default().connection(&cxn.borrow());
 
                         r#await!(
                             TcpRuntime::cast(&state, pure_ack),
@@ -453,46 +442,23 @@ impl<'a> TcpRuntime<'a> {
         })
     }
 
-    pub fn write(
-        &mut self,
-        handle: TcpConnectionHandle,
-        bytes: IoVec,
-    ) -> Result<()> {
-        trace!("TcpRuntime::write({:?}, {:?})", handle, bytes);
-        if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            let cxn = self.connections.get_mut(&cxnid).unwrap();
-            cxn.write(bytes);
-            Ok(())
-        } else {
-            Err(Fail::ResourceNotFound {
-                details: "unrecognized connection handle",
-            })
-        }
-    }
-
     fn handshake(
         state: &Rc<RefCell<TcpRuntime<'a>>>,
-        cxnid: &TcpConnectionId,
+        cxn: Rc<RefCell<TcpConnection<'a>>>,
     ) -> Future<'a, Rc<TcpSegment>> {
         let rt = state.borrow().rt.clone();
         let state = state.clone();
-        let cxnid = cxnid.clone();
         rt.start_coroutine(move || {
             trace!("TcpRuntime::handshake()");
-            let (segment, rt, input_queue, ack_sent) = {
+            let (segment, rt, ack_sent) = {
                 let state = state.borrow();
-                let cxn = state.connections.get(&cxnid).unwrap();
+                let cxn = cxn.borrow();
                 let segment = TcpSegment::default()
-                    .connection(cxn)
+                    .connection(&cxn)
                     .mss(cxn.get_mss())
                     .syn();
                 let ack_sent = segment.ack;
-                (
-                    segment,
-                    state.rt.clone(),
-                    cxn.get_input_queue().clone(),
-                    ack_sent,
-                )
+                (segment, state.rt.clone(), ack_sent)
             };
 
             let expected_ack_num = segment.seq_num + Wrapping(1);
@@ -501,11 +467,14 @@ impl<'a> TcpRuntime<'a> {
 
             loop {
                 if yield_until!(
-                    !input_queue.borrow().is_empty(),
+                    !cxn.borrow().input_queue().is_empty(),
                     state.rt.now()
                 ) {
-                    let segment =
-                        input_queue.borrow_mut().pop_front().unwrap();
+                    let segment = cxn
+                        .borrow_mut()
+                        .input_queue_mut()
+                        .pop_front()
+                        .unwrap();
                     debug!("popped a segment for handshake: {:?}", segment);
                     if segment.rst {
                         return Err(Fail::ConnectionRefused {});
@@ -537,35 +506,12 @@ impl<'a> TcpRuntime<'a> {
         self.unassigned_private_ports.push_back(port);
     }
 
-    pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
-        if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            let cxn = self.connections.get(&cxnid).unwrap();
-            Ok(cxn.get_mss())
-        } else {
-            Err(Fail::ResourceNotFound {
-                details: "unrecognized connection handle",
-            })
-        }
-    }
-
-    pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
-        if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            let cxn = self.connections.get(&cxnid).unwrap();
-            Ok(cxn.get_rto())
-        } else {
-            Err(Fail::ResourceNotFound {
-                details: "unrecognized connection handle",
-            })
-        }
-    }
-
-    pub fn get_connection_id(
+    pub fn get_connection_given_handle(
         &self,
         handle: TcpConnectionHandle,
-    ) -> Result<&TcpConnectionId> {
+    ) -> Result<&Rc<RefCell<TcpConnection<'a>>>> {
         if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            let cxn = self.connections.get(&cxnid).unwrap();
-            Ok(cxn.get_cxnid())
+            Ok(self.connections.get(&cxnid).unwrap())
         } else {
             Err(Fail::ResourceNotFound {
                 details: "unrecognized connection handle",
@@ -592,7 +538,7 @@ impl<'a> TcpRuntime<'a> {
         &mut self,
         cxnid: TcpConnectionId,
         rt: Runtime<'a>,
-    ) -> Result<&mut TcpConnection<'a>> {
+    ) -> Result<Rc<RefCell<TcpConnection<'a>>>> {
         let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
         let local_isn = self.isn_generator.next(&cxnid);
@@ -604,12 +550,13 @@ impl<'a> TcpRuntime<'a> {
             rt.clone(),
         );
         let local_port = cxnid.local.port();
-        assert!(self.connections.insert(cxnid.clone(), cxn).is_none());
+        let cxn = Rc::new(RefCell::new(cxn));
         assert!(self
-            .assigned_handles
-            .insert(handle, cxnid.clone())
+            .connections
+            .insert(cxnid.clone(), cxn.clone())
             .is_none());
+        assert!(self.assigned_handles.insert(handle, cxnid).is_none());
         self.open_ports.insert(local_port);
-        Ok(self.connections.get_mut(&cxnid).unwrap())
+        Ok(cxn)
     }
 }

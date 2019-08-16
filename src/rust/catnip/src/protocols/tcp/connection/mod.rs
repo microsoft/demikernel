@@ -4,10 +4,8 @@ mod window;
 use super::segment::TcpSegment;
 use crate::{prelude::*, protocols::ipv4};
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     num::{NonZeroU16, Wrapping},
-    rc::Rc,
     time::Duration,
 };
 use window::{TcpReceiveWindow, TcpSendWindow};
@@ -37,7 +35,7 @@ impl Into<u16> for TcpConnectionHandle {
 pub struct TcpConnection<'a> {
     cxnid: TcpConnectionId,
     handle: TcpConnectionHandle,
-    input_queue: Rc<RefCell<VecDeque<TcpSegment>>>,
+    input_queue: VecDeque<TcpSegment>,
     receive_window: TcpReceiveWindow,
     rt: Runtime<'a>,
     send_window: TcpSendWindow<'a>,
@@ -55,7 +53,7 @@ impl<'a> TcpConnection<'a> {
         TcpConnection {
             cxnid,
             handle,
-            input_queue: Rc::new(RefCell::new(VecDeque::new())),
+            input_queue: VecDeque::new(),
             receive_window: TcpReceiveWindow::new(receive_window_size),
             rt,
             send_window: TcpSendWindow::new(local_isn, advertised_mss),
@@ -152,8 +150,12 @@ impl<'a> TcpConnection<'a> {
         iovec
     }
 
-    pub fn get_input_queue(&self) -> Rc<RefCell<VecDeque<TcpSegment>>> {
-        self.input_queue.clone()
+    pub fn input_queue(&self) -> &VecDeque<TcpSegment> {
+        &self.input_queue
+    }
+
+    pub fn input_queue_mut(&mut self) -> &mut VecDeque<TcpSegment> {
+        &mut self.input_queue
     }
 
     pub fn receive(

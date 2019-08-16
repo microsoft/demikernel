@@ -8,7 +8,7 @@ const DEFAULT_RECEIVE_WINDOW_SIZE: usize = 0xffff;
 const DEFAULT_TRAILING_ACK_DELAY_SECS: f64 = 0.000_1;
 const DEFAULT_RETRIES2: usize = 5;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TcpOptions {
     pub advertised_mss: Option<usize>,
     pub handshake_retries: Option<usize>,

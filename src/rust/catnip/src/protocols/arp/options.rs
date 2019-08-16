@@ -5,7 +5,7 @@ const DEFAULT_CACHE_TTL_SECS: f64 = 15.0;
 const DEFAULT_REQUEST_TIMEOUT_SECS: f64 = 20.0;
 const DEFAULT_RETRY_COUNT: usize = 5;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArpOptions {
     pub cache_ttl: Option<FloatDuration>,
     pub request_timeout: Option<FloatDuration>,
