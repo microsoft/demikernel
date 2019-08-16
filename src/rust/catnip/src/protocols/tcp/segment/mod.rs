@@ -41,6 +41,7 @@ impl TcpSegment {
         self
     }
 
+    #[allow(dead_code)]
     pub fn dest_link_addr(mut self, addr: MacAddress) -> TcpSegment {
         self.dest_link_addr = Some(addr);
         self
@@ -56,6 +57,7 @@ impl TcpSegment {
         self
     }
 
+    #[allow(dead_code)]
     pub fn src_link_addr(mut self, addr: MacAddress) -> TcpSegment {
         self.src_link_addr = Some(addr);
         self

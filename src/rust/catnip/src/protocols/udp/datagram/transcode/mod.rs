@@ -84,6 +84,7 @@ impl<'a> UdpDatagramEncoder<'a> {
         &mut self.0.text()[UDP_HEADER_SIZE..]
     }
 
+    #[allow(dead_code)]
     pub fn unmut(&self) -> UdpDatagramDecoder<'_> {
         UdpDatagramDecoder(self.0.unmut())
     }

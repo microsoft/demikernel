@@ -25,6 +25,7 @@ impl<'a> Icmpv4Datagram<'a> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub fn attach(bytes: &'a [u8]) -> Result<Self> {
         Ok(Icmpv4Datagram::try_from(ipv4::Datagram::attach(bytes)?)?)
     }

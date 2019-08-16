@@ -130,10 +130,12 @@ impl<'a> Icmpv4Error<'a> {
         bytes
     }
 
+    #[allow(dead_code)]
     pub fn attach(bytes: &'a [u8]) -> Result<Self> {
         Ok(Icmpv4Error::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
+    #[allow(dead_code)]
     pub fn icmpv4(&self) -> &Icmpv4Datagram<'a> {
         &self.0
     }
@@ -190,6 +192,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
         header.code(code);
     }
 
+    #[allow(dead_code)]
     pub fn next_hop_mtu(&mut self, value: u16) {
         NetworkEndian::write_u16(&mut self.0.text()[2..4], value)
     }

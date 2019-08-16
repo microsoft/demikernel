@@ -583,6 +583,7 @@ impl<'a> TcpRuntime<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn release_connection_handle(&mut self, handle: TcpConnectionHandle) {
         self.unassigned_connection_handles.push_back(handle);
     }

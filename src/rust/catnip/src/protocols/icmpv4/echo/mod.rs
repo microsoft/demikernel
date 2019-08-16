@@ -18,14 +18,17 @@ impl<'a> Icmpv4Echo<'a> {
         Icmpv4Datagram::new_vec(4)
     }
 
+    #[allow(dead_code)]
     pub fn attach(bytes: &'a [u8]) -> Result<Self> {
         Ok(Icmpv4Echo::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
+    #[allow(dead_code)]
     pub fn icmpv4(&self) -> &Icmpv4Datagram<'a> {
         &self.0
     }
 
+    #[allow(dead_code)]
     pub fn op(&self) -> Icmpv4EchoOp {
         // precondition: we've ensured the call to `r#type()` will succeed in
         // the implementation of `try_from()`.
@@ -90,6 +93,7 @@ impl<'a> Icmpv4EchoMut<'a> {
         NetworkEndian::write_u16(&mut self.0.text()[2..], value)
     }
 
+    #[allow(dead_code)]
     pub fn unmut(&self) -> Icmpv4Echo<'_> {
         Icmpv4Echo(self.0.unmut())
     }
