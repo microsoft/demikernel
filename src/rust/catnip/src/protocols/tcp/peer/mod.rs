@@ -383,7 +383,7 @@ impl<'a> TcpPeerState<'a> {
 
             let (cxnid, rt) = {
                 let state = state.borrow();
-                (cxn.borrow().get_cxnid().clone(), state.rt.clone())
+                (cxn.borrow().get_id().clone(), state.rt.clone())
             };
 
             let error = match r#await!(
@@ -403,7 +403,6 @@ impl<'a> TcpPeerState<'a> {
         })
     }
 
-    #[allow(clippy::cognitive_complexity)]
     pub fn main_connection_loop(
         state: Rc<RefCell<TcpPeerState<'a>>>,
         cxn: Rc<RefCell<TcpConnection<'a>>>,
@@ -416,9 +415,8 @@ impl<'a> TcpPeerState<'a> {
             let options = rt.options();
             let mut ack_owed_since = None;
             loop {
-                let mut transmittable_segments: VecDeque<TcpSegment> = {
+                {
                     let mut cxn = cxn.borrow_mut();
-                    let mut transmittable_segments = VecDeque::new();
                     while let Some(segment) = cxn.input_queue_mut().pop_front()
                     {
                         // if there's a payload, we need to acknowledge it at
@@ -434,53 +432,25 @@ impl<'a> TcpPeerState<'a> {
                             );
                         }
 
-                        match cxn.receive(segment) {
-                            Ok(segments) => {
-                                transmittable_segments.extend(segments)
-                            }
-                            Err(e) => warn!(
-                                "{}: packet dropped ({:?})",
-                                options.my_ipv4_addr, e
-                            ),
-                        }
+                        cxn.receive(segment)?;
                     }
 
-                    while let Some(segment) =
-                        cxn.try_get_next_transmittable_segment()
-                    {
-                        transmittable_segments.push_back(segment);
-                    }
-
-                    transmittable_segments
-                };
-
-                let mut retransmissions =
-                    cxn.borrow_mut().get_retransmissions()?;
-                debug!(
-                    "{}: {} segments will be retransmitted",
-                    options.my_ipv4_addr,
-                    retransmissions.len()
-                );
-                while let Some(segment) = retransmissions.pop_front() {
-                    r#await!(
-                        TcpPeerState::cast(state.clone(), segment),
-                        rt.now()
-                    )?;
+                    cxn.enqueue_retransmissions()?;
                 }
 
-                debug!(
-                    "{}: {} segments can be transmitted",
-                    options.my_ipv4_addr,
-                    transmittable_segments.len()
-                );
-
-                while let Some(segment) = transmittable_segments.pop_front() {
-                    assert!(segment.ack);
-                    ack_owed_since = None;
-                    r#await!(
-                        TcpPeerState::cast(state.clone(), segment),
-                        rt.now()
-                    )?;
+                loop {
+                    let segment =
+                        cxn.borrow_mut().try_get_next_transmittable_segment();
+                    if let Some(segment) = segment {
+                        assert!(segment.ack);
+                        ack_owed_since = None;
+                        r#await!(
+                            TcpPeerState::cast(state.clone(), segment),
+                            rt.now()
+                        )?;
+                    } else {
+                        break;
+                    }
                 }
 
                 if let Some(timestamp) = ack_owed_since {

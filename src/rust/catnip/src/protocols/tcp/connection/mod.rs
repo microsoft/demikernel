@@ -2,11 +2,11 @@ mod rto;
 mod window;
 
 use super::segment::TcpSegment;
-use crate::{prelude::*, protocols::ipv4};
+use crate::{prelude::*, protocols::ipv4, r#async::Retry};
 use std::{
     collections::VecDeque,
     num::{NonZeroU16, Wrapping},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use window::{TcpReceiveWindow, TcpSendWindow};
 
@@ -33,17 +33,21 @@ impl Into<u16> for TcpConnectionHandle {
 }
 
 pub struct TcpConnection<'a> {
-    cxnid: TcpConnectionId,
     handle: TcpConnectionHandle,
+    id: TcpConnectionId,
     input_queue: VecDeque<TcpSegment>,
+    output_queue: VecDeque<TcpSegment>,
     receive_window: TcpReceiveWindow,
+    retransmit_retry: Option<Retry<'a>>,
+    retransmit_timeout: Option<Duration>,
     rt: Runtime<'a>,
-    send_window: TcpSendWindow<'a>,
+    send_window: TcpSendWindow,
+    window_probe_needed_since: Option<Instant>,
 }
 
 impl<'a> TcpConnection<'a> {
     pub fn new(
-        cxnid: TcpConnectionId,
+        id: TcpConnectionId,
         handle: TcpConnectionHandle,
         local_isn: Wrapping<u32>,
         receive_window_size: usize,
@@ -51,12 +55,16 @@ impl<'a> TcpConnection<'a> {
     ) -> Self {
         let advertised_mss = rt.options().tcp.advertised_mss();
         TcpConnection {
-            cxnid,
             handle,
+            id,
             input_queue: VecDeque::new(),
+            output_queue: VecDeque::new(),
             receive_window: TcpReceiveWindow::new(receive_window_size),
+            retransmit_retry: None,
+            retransmit_timeout: None,
             rt,
             send_window: TcpSendWindow::new(local_isn, advertised_mss),
+            window_probe_needed_since: None,
         }
     }
 
@@ -64,8 +72,8 @@ impl<'a> TcpConnection<'a> {
         self.handle
     }
 
-    pub fn get_cxnid(&self) -> &TcpConnectionId {
-        &self.cxnid
+    pub fn get_id(&self) -> &TcpConnectionId {
+        &self.id
     }
 
     pub fn get_mss(&self) -> usize {
@@ -100,44 +108,132 @@ impl<'a> TcpConnection<'a> {
         &mut self,
         size: usize,
     ) -> Result<()> {
-        self.send_window
-            .set_remote_receive_window_size(size, self.rt.now())
+        self.send_window.set_remote_receive_window_size(size)?;
+        Ok(())
     }
 
     pub fn try_get_next_transmittable_segment(
         &mut self,
     ) -> Option<TcpSegment> {
         trace!("TcpConnection::try_get_next_transmittable_segment()");
-        match self
+        if let Some(segment) = self.output_queue.pop_front() {
+            return Some(segment);
+        }
+
+        if let Some(segment) = self
             .send_window
             .try_get_next_transmittable_segment(self.rt.now(), false)
         {
-            None => None,
-            Some(segment) => {
-                let payload = segment.borrow().get_payload().clone();
-                Some(TcpSegment::default().payload(payload).connection(self))
-            }
-        }
-    }
-
-    pub fn get_retransmissions(&mut self) -> Result<VecDeque<TcpSegment>> {
-        let options = self.rt.options();
-        let mut retransmissions = self
-            .send_window
-            .get_retransmissions(self.rt.now(), options.tcp.retries2())?;
-        let mut segments = VecDeque::with_capacity(retransmissions.len());
-        while let Some(retransmission) = retransmissions.pop_front() {
-            let retransmission = retransmission.borrow();
-            let payload = retransmission.get_payload();
-            segments.push_back(
-                TcpSegment::default()
-                    .payload(payload.clone())
-                    .connection(self)
-                    .seq_num(retransmission.get_seq_num()),
+            let payload = segment.borrow().get_payload().clone();
+            return Some(
+                TcpSegment::default().payload(payload).connection(self),
             );
         }
 
-        Ok(segments)
+        None
+    }
+
+    pub fn enqueue_retransmissions(&mut self) -> Result<()> {
+        trace!("TcpSendWindow::enqueue_retransmissions()");
+        let now = self.rt.now();
+
+        {
+            let unacknowledged_segments =
+                self.send_window.get_unacknowledged_segments();
+            let unacknowledged_segment_age = unacknowledged_segments
+                .front()
+                .map(|s| now - s.borrow().get_last_transmission_timestamp());
+            if unacknowledged_segment_age.is_none()
+                && self.window_probe_needed_since.is_none()
+            {
+                return Ok(());
+            }
+
+            let timeout = {
+                if let Some(timeout) = self.retransmit_timeout {
+                    timeout
+                } else {
+                    let options = self.rt.options();
+                    let rto = self.get_rto();
+                    debug!("rto = {:?}", rto);
+                    let mut retry =
+                        Retry::binary_exponential(rto, options.tcp.retries2());
+                    let timeout = retry.next().unwrap();
+                    self.retransmit_retry = Some(retry);
+                    self.retransmit_timeout = Some(timeout);
+                    timeout
+                }
+            };
+
+            let age = match self.window_probe_needed_since {
+                None => unacknowledged_segment_age.unwrap(),
+                Some(timestamp) => {
+                    assert!(unacknowledged_segments.is_empty());
+                    let age = now - timestamp;
+                    debug!(
+                        "window_probe_needed_since = Some({:?}) / {:?}",
+                        timestamp, age
+                    );
+                    age
+                }
+            };
+
+            debug!("age = {:?}; timeout = {:?}", age, timeout);
+            if age <= timeout {
+                return Ok(());
+            }
+        }
+
+        if let Some(next_timeout) =
+            self.retransmit_retry.as_mut().unwrap().next()
+        {
+            self.retransmit_timeout = Some(next_timeout);
+        } else {
+            return Err(Fail::Timeout {});
+        }
+
+        let options = self.rt.options();
+        match self.window_probe_needed_since {
+            None => {
+                self.send_window.record_retransmission(now);
+                let unacknowledged =
+                    self.send_window.get_unacknowledged_segments();
+                debug!(
+                    "{}: {} unacknowledged segments will be retransmitted",
+                    options.my_ipv4_addr,
+                    unacknowledged.len()
+                );
+                for segment in unacknowledged {
+                    let segment = segment.borrow();
+                    let payload = segment.get_payload();
+                    self.output_queue.push_back(
+                        TcpSegment::default()
+                            .payload(payload.clone())
+                            .connection(self)
+                            .seq_num(segment.get_seq_num()),
+                    );
+                }
+            }
+            Some(_) => {
+                debug!("{}: transmitting window probe", options.my_ipv4_addr,);
+                let unacknowledged = self
+                    .send_window
+                    .try_get_next_transmittable_segment(now, true)
+                    .unwrap();
+                let unacknowledged = unacknowledged.borrow();
+                let payload = unacknowledged.get_payload();
+                assert_eq!(payload.len(), 1);
+                self.output_queue.push_back(
+                    TcpSegment::default()
+                        .payload(payload.clone())
+                        .connection(self)
+                        .seq_num(unacknowledged.get_seq_num()),
+                );
+                self.window_probe_needed_since = None;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn write(&mut self, bytes: IoVec) {
@@ -158,10 +254,7 @@ impl<'a> TcpConnection<'a> {
         &mut self.input_queue
     }
 
-    pub fn receive(
-        &mut self,
-        segment: TcpSegment,
-    ) -> Result<Option<TcpSegment>> {
+    pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
         if segment.syn {
             return Err(Fail::Malformed {
                 details: "unexpected SYN packet after handshake",
@@ -169,16 +262,45 @@ impl<'a> TcpConnection<'a> {
         }
 
         if segment.ack {
-            self.send_window
+            let bytes_acknowledged = self
+                .send_window
                 .acknowledge(segment.ack_num, self.rt.now())?;
+            if bytes_acknowledged > 0 {
+                self.cancel_retransmission();
+            }
         }
 
-        let remote_window_size = segment.window_size;
-        self.set_remote_receive_window_size(remote_window_size)?;
+        let new_remote_window_size = segment.window_size;
+        let old_remote_window_size = self
+            .send_window
+            .set_remote_receive_window_size(new_remote_window_size)?;
+        if new_remote_window_size != old_remote_window_size {
+            let now = self.rt.now();
+            if 0 == new_remote_window_size {
+                self.window_probe_needed_since = Some(now);
+            } else {
+                // retransmit the window probe immediately, if it was produced.
+                self.window_probe_needed_since = None;
+                self.cancel_retransmission();
+                self.send_window.record_retransmission(now);
+                let unacknowledged =
+                    self.send_window.get_unacknowledged_segments();
+                assert!(unacknowledged.len() < 2);
+                if let Some(unacknowledged) = unacknowledged.front() {
+                    let payload =
+                        unacknowledged.borrow().get_payload().clone();
+                    self.output_queue.push_back(
+                        TcpSegment::default()
+                            .payload(payload)
+                            .connection(self),
+                    );
+                }
+            }
+        }
 
         let payload_len = segment.payload.len();
         if payload_len == 0 {
-            return Ok(None);
+            return Ok(());
         }
 
         if self.receive_window.window_size() > 0 {
@@ -190,10 +312,10 @@ impl<'a> TcpConnection<'a> {
         }
 
         if self.receive_window.window_size() == 0 {
-            Ok(Some(self.window_advertisement()))
-        } else {
-            Ok(None)
+            self.output_queue.push_back(self.window_advertisement());
         }
+
+        Ok(())
     }
 
     pub fn window_advertisement(&self) -> TcpSegment {
@@ -202,5 +324,11 @@ impl<'a> TcpConnection<'a> {
 
     pub fn get_rto(&self) -> Duration {
         self.send_window.get_rto()
+    }
+
+    fn cancel_retransmission(&mut self) {
+        debug!("cancelling retransmission timer");
+        self.retransmit_retry = None;
+        self.retransmit_timeout = None;
     }
 }

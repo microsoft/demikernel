@@ -95,7 +95,7 @@ impl TcpSegment {
     }
 
     pub fn connection(self, cxn: &TcpConnection) -> TcpSegment {
-        let cxnid = cxn.get_cxnid();
+        let cxnid = cxn.get_id();
         let mut segment = self
             .src_ipv4_addr(cxnid.local.address())
             .src_port(cxnid.local.port())
