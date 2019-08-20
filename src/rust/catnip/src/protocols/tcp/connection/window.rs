@@ -1,6 +1,7 @@
 use super::{
     super::segment::{TcpSegment, MAX_MSS, MIN_MSS},
     rto::RtoCalculator,
+    TcpConnectionId,
 };
 use crate::{io::IoVec, prelude::*};
 use std::{
@@ -15,22 +16,20 @@ use std::{
 
 #[derive(Debug)]
 pub struct UnacknowledgedTcpSegment {
+    bytes: Rc<RefCell<Vec<u8>>>,
     last_transmission_timestamp: Instant,
-    payload: Rc<Vec<u8>>,
+    payload_size: usize,
     retries: usize,
-    seq_num: Wrapping<u32>,
 }
 
 impl UnacknowledgedTcpSegment {
-    pub fn new(
-        payload: Vec<u8>,
-        seq_num: Wrapping<u32>,
-        now: Instant,
-    ) -> UnacknowledgedTcpSegment {
+    pub fn new(segment: TcpSegment, now: Instant) -> UnacknowledgedTcpSegment {
+        assert!(segment.ack);
+        let payload_size = segment.payload.len();
         UnacknowledgedTcpSegment {
+            bytes: Rc::new(RefCell::new(segment.encode())),
             last_transmission_timestamp: now,
-            payload: Rc::new(payload),
-            seq_num,
+            payload_size,
             retries: 0,
         }
     }
@@ -43,16 +42,16 @@ impl UnacknowledgedTcpSegment {
         self.last_transmission_timestamp = timestamp;
     }
 
-    pub fn get_payload(&self) -> &Rc<Vec<u8>> {
-        &self.payload
+    pub fn get_bytes(&self) -> &Rc<RefCell<Vec<u8>>> {
+        &self.bytes
+    }
+
+    pub fn get_payload_size(&self) -> usize {
+        self.payload_size
     }
 
     pub fn get_retries(&self) -> usize {
         self.retries
-    }
-
-    pub fn get_seq_num(&self) -> Wrapping<u32> {
-        self.seq_num
     }
 
     pub fn add_retry(&mut self) {
@@ -188,7 +187,7 @@ impl TcpSendWindow {
         let mut acked_segment_count = 0;
         for segment in &self.unacknowledged_segments {
             let segment = segment.borrow();
-            n += i64::try_from(segment.payload.len()).unwrap();
+            n += i64::try_from(segment.get_payload_size()).unwrap();
             acked_segment_count += 1;
 
             if n >= bytes_acknowledged {
@@ -220,6 +219,9 @@ impl TcpSendWindow {
 
     pub fn try_get_next_transmittable_segment(
         &mut self,
+        cxnid: &TcpConnectionId,
+        ack_num: Wrapping<u32>,
+        window_size: usize,
         now: Instant,
         generate_window_probe: bool,
     ) -> Option<Rc<RefCell<UnacknowledgedTcpSegment>>> {
@@ -281,13 +283,17 @@ impl TcpSendWindow {
                 .smallest_unacknowledged_seq_num
                 + Wrapping(u32::try_from(self.bytes_unacknowledged).unwrap());
             self.bytes_unacknowledged += i64::try_from(payload.len()).unwrap();
-            let segment = UnacknowledgedTcpSegment::new(
-                payload,
-                self.last_seq_num_transmitted,
-                now,
-            );
-            self.unacknowledged_segments
-                .push_back(Rc::new(RefCell::new(segment)));
+            self.unacknowledged_segments.push_back(Rc::new(RefCell::new(
+                UnacknowledgedTcpSegment::new(
+                    TcpSegment::default()
+                        .connection_id(cxnid)
+                        .ack(ack_num)
+                        .seq_num(self.last_seq_num_transmitted)
+                        .window_size(window_size)
+                        .payload(payload),
+                    now,
+                ),
+            )));
             self.unacknowledged_segments.back().cloned()
         }
     }
@@ -345,8 +351,7 @@ impl TcpReceiveWindow {
     pub fn pop(&mut self) -> IoVec {
         let mut iovec = IoVec::new();
         while let Some(segment) = self.unread_segments.pop_front() {
-            let payload = Rc::try_unwrap(segment.payload).unwrap();
-            iovec.push_segment(payload);
+            iovec.push_segment(segment.payload);
         }
 
         self.bytes_unread = 0;

@@ -1,11 +1,13 @@
 mod rto;
 mod window;
 
-use super::segment::TcpSegment;
+use super::segment::{TcpSegment, TcpSegmentEncoder};
 use crate::{prelude::*, protocols::ipv4, r#async::Retry};
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     num::{NonZeroU16, Wrapping},
+    rc::Rc,
     time::{Duration, Instant},
 };
 use window::{TcpReceiveWindow, TcpSendWindow};
@@ -36,12 +38,13 @@ pub struct TcpConnection<'a> {
     handle: TcpConnectionHandle,
     id: TcpConnectionId,
     input_queue: VecDeque<TcpSegment>,
-    output_queue: VecDeque<TcpSegment>,
+    output_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
     receive_window: TcpReceiveWindow,
     retransmit_retry: Option<Retry<'a>>,
     retransmit_timeout: Option<Duration>,
     rt: Runtime<'a>,
     send_window: TcpSendWindow,
+    window_advertisement: Option<Rc<RefCell<Vec<u8>>>>,
     window_probe_needed_since: Option<Instant>,
 }
 
@@ -64,6 +67,7 @@ impl<'a> TcpConnection<'a> {
             retransmit_timeout: None,
             rt,
             send_window: TcpSendWindow::new(local_isn, advertised_mss),
+            window_advertisement: None,
             window_probe_needed_since: None,
         }
     }
@@ -114,20 +118,25 @@ impl<'a> TcpConnection<'a> {
 
     pub fn try_get_next_transmittable_segment(
         &mut self,
-    ) -> Option<TcpSegment> {
+    ) -> Option<Rc<RefCell<Vec<u8>>>> {
         trace!("TcpConnection::try_get_next_transmittable_segment()");
         if let Some(segment) = self.output_queue.pop_front() {
             return Some(segment);
         }
 
-        if let Some(segment) = self
-            .send_window
-            .try_get_next_transmittable_segment(self.rt.now(), false)
+        if let Some(unacknowledged) =
+            self.send_window.try_get_next_transmittable_segment(
+                &self.id,
+                self.receive_window.ack_num().unwrap(),
+                self.receive_window.window_size(),
+                self.rt.now(),
+                false,
+            )
         {
-            let payload = segment.borrow().get_payload().clone();
-            return Some(
-                TcpSegment::default().payload(payload).connection(self),
-            );
+            let unacknowledged = unacknowledged.borrow_mut();
+            let bytes = unacknowledged.get_bytes();
+            self.update_tcp_header(bytes);
+            return Some(bytes.clone());
         }
 
         None
@@ -196,39 +205,36 @@ impl<'a> TcpConnection<'a> {
         match self.window_probe_needed_since {
             None => {
                 self.send_window.record_retransmission(now);
-                let unacknowledged =
+                let unacknowledged_segments =
                     self.send_window.get_unacknowledged_segments();
                 debug!(
                     "{}: {} unacknowledged segments will be retransmitted",
                     options.my_ipv4_addr,
-                    unacknowledged.len()
+                    unacknowledged_segments.len()
                 );
-                for segment in unacknowledged {
-                    let segment = segment.borrow();
-                    let payload = segment.get_payload();
-                    self.output_queue.push_back(
-                        TcpSegment::default()
-                            .payload(payload.clone())
-                            .connection(self)
-                            .seq_num(segment.get_seq_num()),
-                    );
+                for unacknowledged in unacknowledged_segments {
+                    let unacknowledged = unacknowledged.borrow();
+                    let bytes = unacknowledged.get_bytes();
+                    self.update_tcp_header(bytes);
+                    self.output_queue.push_back(bytes.clone());
                 }
             }
             Some(_) => {
                 debug!("{}: transmitting window probe", options.my_ipv4_addr,);
                 let unacknowledged = self
                     .send_window
-                    .try_get_next_transmittable_segment(now, true)
+                    .try_get_next_transmittable_segment(
+                        &self.id,
+                        self.receive_window.ack_num().unwrap(),
+                        self.receive_window.window_size(),
+                        now,
+                        true,
+                    )
                     .unwrap();
                 let unacknowledged = unacknowledged.borrow();
-                let payload = unacknowledged.get_payload();
-                assert_eq!(payload.len(), 1);
-                self.output_queue.push_back(
-                    TcpSegment::default()
-                        .payload(payload.clone())
-                        .connection(self)
-                        .seq_num(unacknowledged.get_seq_num()),
-                );
+                let bytes = unacknowledged.get_bytes();
+                self.update_tcp_header(bytes);
+                self.output_queue.push_back(bytes.clone());
                 self.window_probe_needed_since = None;
             }
         }
@@ -283,17 +289,14 @@ impl<'a> TcpConnection<'a> {
                 self.window_probe_needed_since = None;
                 self.cancel_retransmission();
                 self.send_window.record_retransmission(now);
-                let unacknowledged =
+                let unacknowledged_segments =
                     self.send_window.get_unacknowledged_segments();
-                assert!(unacknowledged.len() < 2);
-                if let Some(unacknowledged) = unacknowledged.front() {
-                    let payload =
-                        unacknowledged.borrow().get_payload().clone();
-                    self.output_queue.push_back(
-                        TcpSegment::default()
-                            .payload(payload)
-                            .connection(self),
-                    );
+                assert!(unacknowledged_segments.len() < 2);
+                if let Some(unacknowledged) = unacknowledged_segments.front() {
+                    let unacknowledged = unacknowledged.borrow();
+                    let bytes = unacknowledged.get_bytes();
+                    self.update_tcp_header(bytes);
+                    self.output_queue.push_back(bytes.clone());
                 }
             }
         }
@@ -312,14 +315,32 @@ impl<'a> TcpConnection<'a> {
         }
 
         if self.receive_window.window_size() == 0 {
-            self.output_queue.push_back(self.window_advertisement());
+            let window_advertisement = self.window_advertisement().clone();
+            self.output_queue.push_back(window_advertisement);
         }
 
         Ok(())
     }
 
-    pub fn window_advertisement(&self) -> TcpSegment {
-        TcpSegment::default().connection(self)
+    pub fn window_advertisement(&mut self) -> &Rc<RefCell<Vec<u8>>> {
+        if self.window_advertisement.is_none() {
+            self.window_advertisement = Some(Rc::new(RefCell::new(
+                TcpSegment::default().connection(self).encode(),
+            )))
+        }
+
+        let window_advertisement = self.window_advertisement.as_ref().unwrap();
+        {
+            let mut bytes = window_advertisement.borrow_mut();
+            let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
+            let mut header = encoder.header();
+            header.ack_num(self.try_get_ack_num().unwrap());
+            header.window_size(
+                u16::try_from(self.get_local_receive_window_size()).unwrap(),
+            );
+        }
+
+        &window_advertisement
     }
 
     pub fn get_rto(&self) -> Duration {
@@ -330,5 +351,15 @@ impl<'a> TcpConnection<'a> {
         debug!("cancelling retransmission timer");
         self.retransmit_retry = None;
         self.retransmit_timeout = None;
+    }
+
+    pub fn update_tcp_header(&self, bytes: &Rc<RefCell<Vec<u8>>>) {
+        let mut bytes = bytes.borrow_mut();
+        let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
+        let mut header = encoder.header();
+        header.ack_num(self.try_get_ack_num().unwrap());
+        header.window_size(
+            u16::try_from(self.get_local_receive_window_size()).unwrap(),
+        );
     }
 }

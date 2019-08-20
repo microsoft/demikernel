@@ -43,7 +43,7 @@ fn syn_to_closed_port() {
     let (tcp_syn, private_port) = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(segment) => segment.to_vec(),
+            Event::Transmit(segment) => segment.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -64,6 +64,7 @@ fn syn_to_closed_port() {
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
+        let bytes = bytes.borrow().to_vec();
         let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
         assert!(segment.header().rst());
         assert_eq!(Some(private_port), segment.header().dest_port());
@@ -102,7 +103,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     let (tcp_syn, private_port, alice_isn) = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(segment) => segment.to_vec(),
+            Event::Transmit(segment) => segment.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -125,6 +126,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
+        let bytes = bytes.borrow().to_vec();
         let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
         let bob_isn = segment.header().seq_num();
         assert!(segment.header().syn());
@@ -148,6 +150,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
+        let bytes = bytes.borrow().to_vec();
         let segment = TcpSegmentDecoder::attach(&bytes).unwrap();
         assert!(!segment.header().syn());
         assert!(segment.header().ack());
@@ -201,6 +204,7 @@ fn unfragmented_data_exchange() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             (bytes, segment.seq_num)
@@ -229,6 +233,7 @@ fn unfragmented_data_exchange() {
     let event = cxn.bob.poll(cxn.now).unwrap().unwrap();
     let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             assert!(segment.ack);
@@ -262,6 +267,7 @@ fn unfragmented_data_exchange() {
     cxn.now += Duration::from_micros(1);
     let pure_ack = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.payload.len());
             assert!(segment.ack);
@@ -299,6 +305,7 @@ fn packetization() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let (bytes0, seq_num) = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             (bytes, segment.seq_num)
         }
@@ -308,7 +315,7 @@ fn packetization() {
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let bytes1 = match event {
-        Event::Transmit(bytes) => bytes,
+        Event::Transmit(bytes) => bytes.borrow().to_vec(),
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
@@ -340,6 +347,7 @@ fn packetization() {
     cxn.now += Duration::from_micros(1);
     let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.payload.len());
             assert!(segment.ack);
@@ -373,6 +381,7 @@ fn multiple_writes() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let (bytes, seq_num) = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             (bytes, segment.seq_num)
@@ -400,6 +409,7 @@ fn multiple_writes() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let bytes = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             bytes
@@ -428,6 +438,7 @@ fn multiple_writes() {
     cxn.now += Duration::from_micros(1);
     let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.payload.len());
             assert!(segment.ack);
@@ -467,6 +478,7 @@ fn syn_retry() {
     let event = alice.poll(now).unwrap().unwrap();
     match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert!(segment.syn);
         }
@@ -482,6 +494,7 @@ fn syn_retry() {
         let event = alice.poll(now).unwrap().unwrap();
         match event {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
                 assert!(segment.syn);
             }
@@ -515,6 +528,7 @@ fn retransmission_fail() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let dropped_segment = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             segment
@@ -534,6 +548,7 @@ fn retransmission_fail() {
         let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
         match event {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 assert_eq!(
                     dropped_segment,
                     TcpSegment::decode(bytes.as_slice()).unwrap()
@@ -576,6 +591,7 @@ fn retransmission_ok() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let first_dropped_segment = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             segment
@@ -591,6 +607,7 @@ fn retransmission_ok() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let second_dropped_segment = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             segment
@@ -609,6 +626,7 @@ fn retransmission_ok() {
     let bytes0 = {
         match cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
                 assert_eq!(first_dropped_segment, segment);
                 bytes
@@ -620,6 +638,7 @@ fn retransmission_ok() {
     let bytes1 = {
         match cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
                 assert_eq!(second_dropped_segment, segment);
                 bytes
@@ -651,6 +670,7 @@ fn retransmission_ok() {
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
     let bytes = match event {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.as_slice(), &data_in[0]);
             bytes
@@ -684,6 +704,7 @@ fn retransmission_ok() {
     cxn.now += Duration::from_micros(1);
     let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.payload.len());
             assert!(segment.ack);
@@ -719,6 +740,7 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let _ = TcpSegment::decode(bytes.as_slice()).unwrap();
             bytes
         }
@@ -728,6 +750,7 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_ne!(segment.payload.len(), 0);
             bytes
@@ -753,6 +776,7 @@ fn flow_control() {
     let zero_window_advertisement =
         match cxn.bob.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
                 assert_eq!(0, segment.window_size);
                 bytes
@@ -786,6 +810,7 @@ fn flow_control() {
         cxn.now += Duration::from_micros(1);
         let window_probe = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
                 assert_eq!(segment.payload.len(), 1);
                 bytes
@@ -798,6 +823,7 @@ fn flow_control() {
         let zero_window_advertisement =
             match cxn.bob.poll(cxn.now).unwrap().unwrap() {
                 Event::Transmit(bytes) => {
+                    let bytes = bytes.borrow().to_vec();
                     let segment =
                         TcpSegment::decode(bytes.as_slice()).unwrap();
                     assert_eq!(0, segment.window_size);
@@ -825,6 +851,7 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     let window_advertisement = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_ne!(0, segment.window_size);
             bytes
@@ -837,6 +864,7 @@ fn flow_control() {
     cxn.alice.receive(window_advertisement.as_slice()).unwrap();
     let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(segment.payload.len(), 1);
             bytes
@@ -847,6 +875,7 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_ne!(segment.payload.len(), 0);
             bytes
@@ -857,6 +886,7 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     let bytes2 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_ne!(segment.payload.len(), 0);
             bytes
@@ -882,6 +912,7 @@ fn flow_control() {
     cxn.bob.receive(bytes2.as_slice()).unwrap();
     let _ = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
             assert_eq!(0, segment.window_size);
             bytes

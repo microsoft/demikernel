@@ -124,7 +124,7 @@ impl<'a> Icmpv4Peer<'a> {
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
             let _ = echo.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
 
             let key = (id, seq_num);
             {
@@ -179,7 +179,7 @@ impl<'a> Icmpv4Peer<'a> {
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
             let _ = echo.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
 
             CoroutineOk(())
         });

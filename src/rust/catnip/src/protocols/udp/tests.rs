@@ -38,7 +38,7 @@ fn unicast() {
     let udp_datagram = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -94,7 +94,7 @@ fn destination_port_unreachable() {
     let udp_datagram = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -107,7 +107,7 @@ fn destination_port_unreachable() {
     let event = bob.poll(now).unwrap().unwrap();
     let icmpv4_datagram = {
         let bytes = match event {
-            Event::Transmit(bytes) => bytes,
+            Event::Transmit(bytes) => bytes.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 

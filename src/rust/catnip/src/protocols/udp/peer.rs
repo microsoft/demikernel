@@ -5,8 +5,8 @@ use crate::{
     r#async::WhenAny,
 };
 use std::{
-    collections::HashSet, convert::TryFrom, net::Ipv4Addr, rc::Rc,
-    time::Instant,
+    cell::RefCell, collections::HashSet, convert::TryFrom, net::Ipv4Addr,
+    rc::Rc, time::Instant,
 };
 
 pub struct UdpPeer<'a> {
@@ -119,7 +119,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.dest_addr(dest_link_addr);
             frame_header.src_addr(options.my_link_addr);
             let _ = encoder.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
             CoroutineOk(())
         })
     }
@@ -163,7 +163,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.src_addr(options.my_link_addr);
             frame_header.dest_addr(dest_link_addr);
             let _ = error.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(bytes)));
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
             CoroutineOk(())
         });
 

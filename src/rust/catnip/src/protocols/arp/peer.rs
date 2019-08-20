@@ -90,8 +90,8 @@ impl<'a> ArpPeer<'a> {
                 arp.op = ArpOp::ArpReply;
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
-                let datagram = Rc::new(arp.to_datagram()?);
-                self.rt.emit_event(Event::Transmit(datagram));
+                let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
+                self.rt.emit_event(Event::Transmit(bytes));
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -128,7 +128,7 @@ impl<'a> ArpPeer<'a> {
                 target_ip_addr: ipv4_addr,
             };
 
-            let datagram = Rc::new(arp.to_datagram()?);
+            let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
@@ -140,7 +140,7 @@ impl<'a> ArpPeer<'a> {
             let mut retries_remaining =
                 options.arp.retry_count.unwrap_or(20) + 1;
             while retries_remaining > 0 {
-                rt.emit_event(Event::Transmit(datagram.clone()));
+                rt.emit_event(Event::Transmit(bytes.clone()));
                 retries_remaining -= 1;
                 if yield_until!(
                     cache.borrow().get_link_addr(ipv4_addr).is_some(),

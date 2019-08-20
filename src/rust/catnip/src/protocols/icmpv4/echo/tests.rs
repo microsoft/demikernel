@@ -40,7 +40,7 @@ fn ping() {
     let ping_request = {
         let event = alice.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(bytes) => bytes.to_vec(),
+            Event::Transmit(bytes) => bytes.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -55,7 +55,7 @@ fn ping() {
     let ping_reply = {
         let event = bob.poll(now).unwrap().unwrap();
         let bytes = match event {
-            Event::Transmit(bytes) => bytes.to_vec(),
+            Event::Transmit(bytes) => bytes.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
 
@@ -84,6 +84,7 @@ fn timeout() {
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
     match alice.poll(now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let echo = Icmpv4Echo::attach(bytes.as_slice()).unwrap();
             assert_eq!(echo.op(), Icmpv4EchoOp::Request);
         }

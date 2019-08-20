@@ -3,12 +3,13 @@ use crate::{
     protocols::{icmpv4, tcp, udp},
 };
 use std::{
+    cell::RefCell,
     fmt::{Debug, Formatter, Result as FmtResult},
     rc::Rc,
 };
 
 pub enum Event {
-    Transmit(Rc<Vec<u8>>),
+    Transmit(Rc<RefCell<Vec<u8>>>),
     Icmpv4Error {
         id: icmpv4::ErrorId,
         next_hop_mtu: u16,
@@ -29,6 +30,7 @@ impl Debug for Event {
         match self {
             Event::Transmit(bytes) => {
                 write!(f, "Transmit {{ ")?;
+                let bytes = bytes.borrow();
                 match tcp::Segment::decode(&bytes) {
                     Ok(s) => write!(f, "{:?}", s)?,
                     _ => write!(f, "{:?}", bytes)?,

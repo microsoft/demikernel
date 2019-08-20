@@ -29,7 +29,7 @@ fn immediate_reply() {
     let request = {
         let event = alice.poll(now).unwrap().unwrap();
         match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
@@ -55,7 +55,7 @@ fn immediate_reply() {
     let reply = {
         let event = carrie.poll(now).unwrap().unwrap();
         match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
@@ -96,7 +96,7 @@ fn slow_reply() {
     let request = {
         let event = alice.poll(now).unwrap().unwrap();
         match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
@@ -123,7 +123,7 @@ fn slow_reply() {
     let reply = {
         let event = carrie.poll(now).unwrap().unwrap();
         match event {
-            Event::Transmit(datagram) => datagram.to_vec(),
+            Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
@@ -155,6 +155,7 @@ fn no_reply() {
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     match alice.poll(now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
+            let bytes = bytes.borrow().to_vec();
             let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
             let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
             assert_eq!(arp.op, ArpOp::ArpRequest);
@@ -169,6 +170,7 @@ fn no_reply() {
         now += Duration::from_micros(1);
         match alice.poll(now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
+                let bytes = bytes.borrow().to_vec();
                 let frame =
                     ethernet2::Frame::attach(bytes.as_slice()).unwrap();
                 let arp =
