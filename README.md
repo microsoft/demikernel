@@ -134,7 +134,7 @@ Contributing
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for details regarding how to contribute to _Demikernel_.
 
 
-Privacy Statement
+Usage Statement
 --------------
 
 The Demikernel is prototype code. As such, we provide no guarantees
