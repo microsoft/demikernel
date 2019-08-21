@@ -24,8 +24,8 @@ extern crate maplit;
 #[macro_use]
 pub mod r#async;
 
-mod bindings;
 mod event;
+mod interop;
 mod options;
 mod prelude;
 mod protocols;
