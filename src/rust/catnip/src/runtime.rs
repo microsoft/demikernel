@@ -20,7 +20,7 @@ pub struct Runtime<'a> {
 
 impl<'a> Runtime<'a> {
     pub fn from_options(now: Instant, options: Options) -> Runtime<'a> {
-        let rng = Rng::from_seed(options.decode_rng_seed());
+        let rng = Rng::from_seed(options.rng_seed);
         Runtime {
             options: Rc::new(options),
             events: Rc::new(RefCell::new(VecDeque::new())),

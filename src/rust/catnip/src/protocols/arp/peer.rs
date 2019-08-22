@@ -6,7 +6,6 @@ use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
-use float_duration::FloatDuration;
 use std::{
     cell::RefCell, collections::HashMap, convert::TryFrom, mem::swap,
     net::Ipv4Addr, rc::Rc, time::Instant,
@@ -22,7 +21,7 @@ pub struct ArpPeer<'a> {
 impl<'a> ArpPeer<'a> {
     pub fn new(now: Instant, rt: Runtime<'a>) -> Result<ArpPeer<'a>> {
         let options = rt.options();
-        let cache = ArpCache::new(now, Some(options.arp.cache_ttl()));
+        let cache = ArpCache::new(now, Some(options.arp.cache_ttl));
         Ok(ArpPeer {
             rt,
             cache: Rc::new(RefCell::new(cache)),
@@ -132,20 +131,14 @@ impl<'a> ArpPeer<'a> {
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
-            let timeout = options
-                .arp
-                .request_timeout
-                .unwrap_or_else(|| FloatDuration::seconds(1.0))
-                .to_std()?;
-            let mut retries_remaining =
-                options.arp.retry_count.unwrap_or(20) + 1;
+            let mut retries_remaining = options.arp.retry_count + 1;
             while retries_remaining > 0 {
                 rt.emit_event(Event::Transmit(bytes.clone()));
                 retries_remaining -= 1;
                 if yield_until!(
                     cache.borrow().get_link_addr(ipv4_addr).is_some(),
                     rt.now(),
-                    timeout
+                    options.arp.request_timeout
                 ) {
                     let link_addr = cache
                         .borrow()

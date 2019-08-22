@@ -1,6 +1,5 @@
 use super::pdu::{ArpOp, ArpPdu};
 use crate::{prelude::*, protocols::ethernet2, test};
-use float_duration::FloatDuration;
 use serde_yaml;
 use std::{
     io::Cursor,
@@ -17,10 +16,7 @@ fn immediate_reply() {
 
     // this test is written based on certain assumptions.
     let options = alice.options();
-    assert_eq!(
-        options.arp.request_timeout.unwrap(),
-        FloatDuration::seconds(1.0)
-    );
+    assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     let now = now + Duration::from_micros(1);
@@ -81,11 +77,8 @@ fn slow_reply() {
 
     // this test is written based on certain assumptions.
     let options = alice.options();
-    assert!(options.arp.retry_count.unwrap() > 0);
-    assert_eq!(
-        options.arp.request_timeout.unwrap(),
-        FloatDuration::seconds(1.0)
-    );
+    assert!(options.arp.retry_count > 0);
+    assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     // move time forward enough to trigger a timeout.
@@ -146,11 +139,8 @@ fn no_reply() {
     let alice = test::new_alice(now);
     let options = alice.options();
 
-    assert_eq!(options.arp.retry_count.unwrap(), 2);
-    assert_eq!(
-        options.arp.request_timeout.unwrap(),
-        FloatDuration::seconds(1.0)
-    );
+    assert_eq!(options.arp.retry_count, 2);
+    assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
     match alice.poll(now).unwrap().unwrap() {
@@ -163,8 +153,8 @@ fn no_reply() {
         e => panic!("got unanticipated event `{:?}`", e),
     }
 
-    for i in 0..options.arp.retry_count() {
-        now += options.arp.request_timeout();
+    for i in 0..options.arp.retry_count {
+        now += options.arp.request_timeout;
         assert!(fut.poll(now).is_none());
         info!("no_reply(): retry #{}", i + 1);
         now += Duration::from_micros(1);
@@ -182,7 +172,7 @@ fn no_reply() {
     }
 
     // timeout
-    now += options.arp.request_timeout();
+    now += options.arp.request_timeout;
     assert!(fut.poll(now).is_none());
     now += Duration::from_micros(1);
     match fut.poll(now).unwrap() {

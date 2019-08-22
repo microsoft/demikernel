@@ -129,7 +129,7 @@ impl<'a> TcpPeerState<'a> {
             cxnid.clone(),
             handle,
             local_isn,
-            options.tcp.receive_window_size(),
+            options.tcp.receive_window_size,
             rt.clone(),
         );
         let local_port = cxnid.local.port();
@@ -197,8 +197,8 @@ impl<'a> TcpPeerState<'a> {
             };
 
             let options = rt.options();
-            let retries = options.tcp.handshake_retries();
-            let timeout = options.tcp.handshake_timeout();
+            let retries = options.tcp.handshake_retries;
+            let timeout = options.tcp.handshake_timeout;
             let ack_segment = r#await!(
                 TcpPeerState::handshake(state.clone(), cxn.clone()),
                 rt.now(),
@@ -258,12 +258,13 @@ impl<'a> TcpPeerState<'a> {
             };
 
             let options = rt.options();
-            let retries = options.tcp.handshake_retries();
-            let timeout = options.tcp.handshake_timeout();
             let ack_segment = r#await!(
                 TcpPeerState::handshake(state.clone(), cxn.clone()),
                 rt.now(),
-                Retry::binary_exponential(timeout, retries)
+                Retry::binary_exponential(
+                    options.tcp.handshake_timeout,
+                    options.tcp.handshake_retries
+                )
             )?;
 
             {
@@ -471,11 +472,9 @@ impl<'a> TcpPeerState<'a> {
                     );
                     debug!(
                         "{}: options.tcp.trailing_ack_delay() = {:?}",
-                        options.my_ipv4_addr,
-                        options.tcp.trailing_ack_delay()
+                        options.my_ipv4_addr, options.tcp.trailing_ack_delay
                     );
-                    if rt.now() - timestamp > options.tcp.trailing_ack_delay()
-                    {
+                    if rt.now() - timestamp > options.tcp.trailing_ack_delay {
                         debug!(
                             "{}: delayed ACK timer has expired; sending pure \
                              ACK...",

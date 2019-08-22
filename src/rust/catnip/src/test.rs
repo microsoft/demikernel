@@ -4,10 +4,12 @@ use crate::{
     rand::Seed,
     Options,
 };
-use base64::{encode_config, STANDARD_NO_PAD};
 use flexi_logger::Logger;
-use float_duration::FloatDuration;
-use std::{net::Ipv4Addr, sync::Once, time::Instant};
+use std::{
+    net::Ipv4Addr,
+    sync::Once,
+    time::{Duration, Instant},
+};
 
 const RECEIVE_WINDOW_SIZE: usize = 1024;
 
@@ -40,27 +42,23 @@ pub fn new_engine<'a>(
     // we always want to use the same seed for our unit tests.
     let mut seed = Seed::default();
     seed[0..6].copy_from_slice(&link_addr.to_array());
-    let seed = encode_config(seed.as_ref(), STANDARD_NO_PAD);
     Engine::from_options(
         now,
-        Options {
-            my_link_addr: link_addr,
-            my_ipv4_addr: ipv4_addr,
-            arp: arp::Options {
-                request_timeout: Some(FloatDuration::seconds(1.0)),
-                retry_count: Some(2),
-                cache_ttl: Some(FloatDuration::minutes(5.0)),
-            },
-            rng_seed: Some(seed),
-            tcp: tcp::Options {
-                advertised_mss: Some(tcp::MIN_MSS),
-                handshake_retries: None,
-                handshake_timeout: None,
-                receive_window_size: Some(RECEIVE_WINDOW_SIZE),
-                retries2: None,
-                trailing_ack_delay: None,
-            },
-        },
+        Options::default()
+            .my_link_addr(link_addr)
+            .my_ipv4_addr(ipv4_addr)
+            .rng_seed(seed)
+            .arp(
+                arp::Options::default()
+                    .request_timeout(Duration::from_secs(1))
+                    .retry_count(2)
+                    .cache_ttl(Duration::from_secs(300)),
+            )
+            .tcp(
+                tcp::Options::default()
+                    .advertised_mss(tcp::MIN_MSS)
+                    .receive_window_size(RECEIVE_WINDOW_SIZE),
+            ),
     )
     .unwrap()
 }

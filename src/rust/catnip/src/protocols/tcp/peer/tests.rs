@@ -135,7 +135,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
         assert_eq!(segment.header().ack_num(), alice_isn + Wrapping(1));
         assert_eq!(
             usize::from(segment.header().window_size()),
-            alice.options().tcp.receive_window_size()
+            alice.options().tcp.receive_window_size
         );
         (bytes, bob_isn)
     };
@@ -159,7 +159,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
         assert_eq!(segment.header().ack_num(), bob_isn + Wrapping(1));
         assert_eq!(
             usize::from(segment.header().window_size()),
-            alice.options().tcp.receive_window_size()
+            alice.options().tcp.receive_window_size
         );
         bytes
     };
@@ -261,7 +261,7 @@ fn unfragmented_data_exchange() {
     assert!(data_in.structural_eq(data_out));
 
     info!("waiting for trailing ACK timeout to pass...");
-    cxn.now += cxn.alice.options().tcp.trailing_ack_delay();
+    cxn.now += cxn.alice.options().tcp.trailing_ack_delay;
     assert!(cxn.alice.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -341,7 +341,7 @@ fn packetization() {
 
     info!("waiting for trailing ACK timeout to pass...");
     cxn.now +=
-        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(1);
+        cxn.bob.options().tcp.trailing_ack_delay - Duration::from_micros(1);
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -432,7 +432,7 @@ fn multiple_writes() {
 
     info!("waiting for trailing ACK timeout to pass...");
     cxn.now +=
-        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(2);
+        cxn.bob.options().tcp.trailing_ack_delay - Duration::from_micros(2);
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -469,9 +469,9 @@ fn syn_retry() {
     });
 
     let options = alice.options();
-    let retries = options.tcp.handshake_retries();
-    let timeout = options.tcp.handshake_timeout();
-    let mut retry = Retry::binary_exponential(timeout, retries);
+    let retries = options.tcp.handshake_retries;
+    let mut retry =
+        Retry::binary_exponential(options.tcp.handshake_timeout, retries);
 
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
@@ -537,7 +537,7 @@ fn retransmission_fail() {
     };
 
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let retries = cxn.alice.options().tcp.retries2();
+    let retries = cxn.alice.options().tcp.retries2;
     let mut retry = Retry::binary_exponential(rto, retries);
     for i in 0..(retries - 1) {
         let timeout = retry.next().unwrap();
@@ -617,8 +617,8 @@ fn retransmission_ok() {
 
     info!("dropping data segments and attempting retransmission...");
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let retries = cxn.alice.options().tcp.retries2();
-    let mut retry = Retry::binary_exponential(rto, retries);
+    let mut retry =
+        Retry::binary_exponential(rto, cxn.alice.options().tcp.retries2);
     let timeout = retry.next().unwrap();
     cxn.now += timeout - Duration::from_micros(1);
     assert!(cxn.alice.poll(cxn.now).is_none());
@@ -698,7 +698,7 @@ fn retransmission_ok() {
 
     info!("waiting for trailing ACK timeout to pass...");
     cxn.now +=
-        cxn.bob.options().tcp.trailing_ack_delay() - Duration::from_micros(2);
+        cxn.bob.options().tcp.trailing_ack_delay - Duration::from_micros(2);
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
@@ -732,7 +732,7 @@ fn flow_control() {
     // reading.
     info!("flow_control(): Alice writes data to the TCP connection...");
     let data_in =
-        IoVec::from(vec![0xab; cxn.bob.options().tcp.receive_window_size()]);
+        IoVec::from(vec![0xab; cxn.bob.options().tcp.receive_window_size]);
     cxn.alice
         .tcp_write(cxn.alice_cxn_handle, data_in.clone())
         .unwrap();
@@ -800,7 +800,7 @@ fn flow_control() {
         "flow_control(): waiting for Alice to start sending window probes..."
     );
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let retries = cxn.alice.options().tcp.retries2();
+    let retries = cxn.alice.options().tcp.retries2;
     let mut retry = Retry::binary_exponential(rto, retries);
     for i in 0..(retries - 1) {
         let timeout = retry.next().unwrap();

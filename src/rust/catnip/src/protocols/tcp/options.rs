@@ -1,56 +1,63 @@
-use super::segment::DEFAULT_MSS;
-use float_duration::FloatDuration;
+use super::segment::{DEFAULT_MSS, MAX_MSS, MIN_MSS};
 use std::time::Duration;
 
-const DEFAULT_HANDSHAKE_TIMEOUT_SECS: f64 = 3.0;
-const DEFAULT_HANDSHAKE_RETRIES: usize = 5;
-const DEFAULT_RECEIVE_WINDOW_SIZE: usize = 0xffff;
-const DEFAULT_TRAILING_ACK_DELAY_SECS: f64 = 0.000_1;
-const DEFAULT_RETRIES2: usize = 5;
-
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TcpOptions {
-    pub advertised_mss: Option<usize>,
-    pub handshake_retries: Option<usize>,
-    pub handshake_timeout: Option<FloatDuration>,
-    pub receive_window_size: Option<usize>,
-    pub retries2: Option<usize>,
-    pub trailing_ack_delay: Option<FloatDuration>,
+    pub advertised_mss: usize,
+    pub handshake_retries: usize,
+    pub handshake_timeout: Duration,
+    pub receive_window_size: usize,
+    pub retries2: usize,
+    pub trailing_ack_delay: Duration,
+}
+
+impl Default for TcpOptions {
+    fn default() -> Self {
+        TcpOptions {
+            advertised_mss: DEFAULT_MSS,
+            handshake_retries: 5,
+            handshake_timeout: Duration::from_secs(3),
+            receive_window_size: 0xffff,
+            retries2: 5,
+            trailing_ack_delay: Duration::from_micros(100),
+        }
+    }
 }
 
 impl TcpOptions {
-    pub fn handshake_retries(&self) -> usize {
-        self.handshake_retries.unwrap_or(DEFAULT_HANDSHAKE_RETRIES)
+    pub fn advertised_mss(mut self, value: usize) -> Self {
+        assert!(value >= MIN_MSS);
+        assert!(value <= MAX_MSS);
+        self.advertised_mss = value;
+        self
     }
 
-    pub fn handshake_timeout(&self) -> Duration {
-        self.handshake_timeout
-            .unwrap_or_else(|| {
-                FloatDuration::seconds(DEFAULT_HANDSHAKE_TIMEOUT_SECS)
-            })
-            .to_std()
-            .unwrap()
+    pub fn handshake_retries(mut self, value: usize) -> Self {
+        assert!(value > 0);
+        self.handshake_retries = value;
+        self
     }
 
-    pub fn receive_window_size(&self) -> usize {
-        self.receive_window_size
-            .unwrap_or(DEFAULT_RECEIVE_WINDOW_SIZE)
+    pub fn handshake_timeout(mut self, value: Duration) -> Self {
+        assert!(value > Duration::new(0, 0));
+        self.handshake_timeout = value;
+        self
     }
 
-    pub fn trailing_ack_delay(&self) -> Duration {
-        self.trailing_ack_delay
-            .unwrap_or_else(|| {
-                FloatDuration::seconds(DEFAULT_TRAILING_ACK_DELAY_SECS)
-            })
-            .to_std()
-            .unwrap()
+    pub fn receive_window_size(mut self, value: usize) -> Self {
+        assert!(value > 0);
+        self.receive_window_size = value;
+        self
     }
 
-    pub fn retries2(&self) -> usize {
-        self.retries2.unwrap_or(DEFAULT_RETRIES2)
+    pub fn retries2(mut self, value: usize) -> Self {
+        assert!(value > 0);
+        self.retries2 = value;
+        self
     }
 
-    pub fn advertised_mss(&self) -> usize {
-        self.advertised_mss.unwrap_or(DEFAULT_MSS)
+    pub fn trailing_ack_delay(mut self, value: Duration) -> Self {
+        self.trailing_ack_delay = value;
+        self
     }
 }

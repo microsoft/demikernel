@@ -56,7 +56,7 @@ impl<'a> TcpConnection<'a> {
         receive_window_size: usize,
         rt: Runtime<'a>,
     ) -> Self {
-        let advertised_mss = rt.options().tcp.advertised_mss();
+        let advertised_mss = rt.options().tcp.advertised_mss;
         TcpConnection {
             handle,
             id,
@@ -166,7 +166,7 @@ impl<'a> TcpConnection<'a> {
                     let rto = self.get_rto();
                     debug!("rto = {:?}", rto);
                     let mut retry =
-                        Retry::binary_exponential(rto, options.tcp.retries2());
+                        Retry::binary_exponential(rto, options.tcp.retries2);
                     let timeout = retry.next().unwrap();
                     self.retransmit_retry = Some(retry);
                     self.retransmit_timeout = Some(timeout);

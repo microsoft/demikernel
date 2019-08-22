@@ -27,6 +27,8 @@ impl<'a> Retry<'a> {
     }
 
     pub fn periodic(timeout: Duration, count: usize) -> Retry<'a> {
+        assert!(timeout > Duration::new(0, 0));
+        assert!(count > 0);
         Retry::new(move || {
             for _ in 0..count {
                 yield timeout;
@@ -39,6 +41,8 @@ impl<'a> Retry<'a> {
         factor: u32,
         count: usize,
     ) -> Retry<'a> {
+        assert!(factor > 1);
+        assert!(count > 0);
         Retry::new(move || {
             let mut timeout = start;
             for _ in 0..count {
