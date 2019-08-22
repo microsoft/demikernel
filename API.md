@@ -1,9 +1,8 @@
 # The Demeter Demikernel Syscall API
 
-All syscalls return an error code. Additional return values are
-the first arguments passed, denoted by `_out`.
+This document provide a more detailed explanation of the Demikernel API
 
-#### `include/dmtr/libos.h`
+#### Calls in `include/dmtr/libos.h`
 
 * `int dmtr_init(int argc, char *argv[]);`
 
