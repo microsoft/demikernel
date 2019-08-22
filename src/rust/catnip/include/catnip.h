@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-int32_t nip_double_input(int32_t input);
+int nip_double_input(int input);
 
 #ifdef __cplusplus
 }
