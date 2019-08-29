@@ -3,36 +3,47 @@
 This document provide a more detailed explanation of the Demikernel
 API.  All syscalls return 0 if successful and an error code
 otherwise.  Each description documents the other incoming and outgoing
-arguments.
+arguments; arguments are labelled (in) if passed in, (out) if returned
+back. 
 
 #### Calls in `include/dmtr/libos.h`
 
 * `int dmtr_init(int argc, char *argv[]);`
-  * `argc`: in : number of commandline arguments, passed on to the libOS
-  * `argv`: in : values of commandline arguments, passed on to the libOS 
+  * `argc` (in) : number of commandline arguments, passed on to the libOS
+  * `argv` (in) : values of commandline arguments, passed on to the libOS 
 
 > Initialize libOS state. Set up devices, allocate data structures and
 > general initialization tasks.
 
 * `int dmtr_queue(int *qd_out);`
-  * `qd_out`: out : queue descriptor for newly allocated queue if
-    successful; otherwise invalid
+  * `qd_out`(out) : queue descriptor for newly allocated memory queue
+    if successful; otherwise invalid
 
 > Allocate an in-memory demeter queue. Returns a queue descriptor that
 > references a FIFO queue (i.e., popping an element from the queue
 > will return the first scatter-gather array that was pushed).
 
 * `int dmtr_socket(int *qd_out, int domain, int type, int protocol);`
-
+  * `qd_out` (out) : queue descriptor for newly allocated network
+    queue connected to the socket if successful; otherwise invalid
+  * `domain` (in) : communication domain for the newly allocated
+    socket queue if appropriate for the libOS
+  * `type` (in) : type for the newly allocated socket queue if
+    appropriate; sometimes translated by the libOS. For example, Linux
+    RDMA will allocate an RC queue pair if the type is `SOCK_STREAM`
+    and a UD queue pair if the type is `SOCK_DGRAM`
+  * `protocol` (in) : communication protocol for newly allocated
+    socket queue
 
 >  Allocate demeter queue associated with a socket. Returns queue
 >  descriptor.
 
-
 * `int dmtr_getsockname(int qd, struct sockaddr *saddr, socklen_t *size);`
+  * `qd` (in) : queue descriptor
+  * `saddr` (out) : socket address data structure
+  * `size` (out) : size (in bytes) of socket address data structure
 
 >  Get address that the socket is bound to
-
 
 * `int dmtr_listen(int fd, int backlog);`
 
