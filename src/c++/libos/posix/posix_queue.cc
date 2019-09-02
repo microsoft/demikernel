@@ -385,17 +385,17 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
             std::cout << "Handling partial write (" << total_bytes_written << "/" << message_bytes << ")";
             std::cout << " ret was " << strerror(ret) <<  std::endl;
 #endif
-            size_t nr = latest_bytes_written;
-            while (nr >= iov->iov_len) {
-                nr -= iov->iov_len;
+            size_t nw = latest_bytes_written;
+            while (nw >= iov[written_iov].iov_len) {
+                nw -= iov[written_iov].iov_len;
                 --iov_len;
                 ++written_iov;
             }
-            assert(nr > 0); //Otherwise we would not be handling a partial write
-            iov->iov_len -= nr;
-            iov->iov_base = (char *) iov->iov_base + nr;
+            assert(nw > 0); //Otherwise we would not be handling a partial write
+            iov[written_iov].iov_len -= nw;
+            iov[written_iov].iov_base = (char *) iov[written_iov].iov_base + nw;
         }
-        ret = writev(latest_bytes_written, my_fd, iov + written_iov, iov_len);
+        ret = writev(latest_bytes_written, my_fd, &iov[written_iov], iov_len);
         total_bytes_written += latest_bytes_written;
     }
 

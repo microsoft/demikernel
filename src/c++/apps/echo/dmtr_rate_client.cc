@@ -472,7 +472,8 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
  ********************** LONG LIVED CONNECTION MODE ********************
  **********************************************************************/
 int long_lived_processing(double interval_ns, uint32_t n_requests, std::string host, int port,
-                          int log_memq, hr_clock::time_point *time_end, int my_idx) {
+                          int log_memq, hr_clock::time_point *time_end, int my_idx,
+                          bool debug_duration_flag) {
     uint32_t regs[4];
     uint32_t p;
     /* Configure target */
@@ -518,7 +519,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                       "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
-        if (maintenant > *time_end) {
+        if (maintenant > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
             break;
@@ -604,12 +605,12 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 completed++;
             }
         } else {
-            log_warn("Got status %d out of dmtr_wait_any", status);
             assert(status == ECONNRESET || status == ECONNABORTED);
+            log_warn("Got status %d out of dmtr_wait_any", status);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
         }
 
-        if (hr_clock::now() > *time_end) {
+        if (hr_clock::now() > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
             break;
@@ -664,9 +665,10 @@ int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
-    bool short_lived;
+    bool short_lived, debug_duration_flag;
     po::options_description desc{"Rate client options"};
     desc.add_options()
+        ("debug-duration", po::bool_switch(&debug_duration_flag), "Remove duration limits for threads")
         ("short-lived", po::bool_switch(&short_lived), "Re-use connection for each request")
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
@@ -712,8 +714,15 @@ int main(int argc, char **argv) {
     DMTR_OK(dmtr_init(argc , argv));
 
     /* Setup worker threads */
-    log_info("Starting %d*3 threads to serve %d requests (%d reqs / thread)",
-              n_threads, total_requests, req_per_thread);
+    int nw;
+    if (short_lived) {
+        nw = 3;
+    } else {
+        nw = 2;
+    }
+
+    log_info("Starting %d*%d threads to serve %d requests (%d reqs / thread)",
+              n_threads, nw, total_requests, req_per_thread);
     log_info("Requests per second: %d. Adjusted total requests: %d", rate, req_per_thread*n_threads);
     log_info("Interval size: %.2f ns", interval_ns_per_thread);
 
@@ -749,7 +758,7 @@ int main(int argc, char **argv) {
     }
 
     /* Determine max thread running time */
-    // Give one extra second to initiate requests
+    // Give one extra second to initiate request
     std::chrono::seconds duration_init(duration + 1);
     hr_clock::time_point time_end_init = hr_clock::now() + duration_init;
 
@@ -775,7 +784,8 @@ int main(int argc, char **argv) {
             threads[i].resp = new std::thread(
                 long_lived_processing,
                 interval_ns_per_thread, req_per_thread,
-                host, port, log_memq, &time_end_process, i
+                host, port, log_memq, &time_end_process, i,
+                debug_duration_flag
             );
             pin_thread(threads[i].resp->native_handle(), i+1);
         } else {
@@ -807,7 +817,7 @@ int main(int argc, char **argv) {
     }
 
     // Wait on the response threads
-    // TODO: If init threads stop early, signal this to stop
+    // TODO: In short lived mode, when init threads stop early, signal this to stop
     for (int i = 0; i < n_threads; i++) {
         threads[i].resp->join();
         delete threads[i].resp;
