@@ -547,9 +547,10 @@ int tcp_work(uint64_t i,
             /* we have to wait because we can't free before sga is sent */
             DMTR_OK(dmtr_wait(NULL, token));
             log_debug("Answered the client on queue %d", client_qfd);
-            //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
-            free(wait_out.qr_value.sga.sga_buf);
+            free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
             wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+            //free(wait_out.qr_value.sga.sga_buf);
+            //wait_out.qr_value.sga.sga_buf = NULL;
         }
     }
     return 0;
