@@ -83,74 +83,17 @@ const struct ether_addr dmtr::dpdk_catnip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 };
 
-
-dpdk_catnip_addr::dpdk_catnip_addr(const struct sockaddr_in &addr)
-    : addr(addr)
-{
-    this->addr.sin_family = AF_INET;
-    memset((void *)this->addr.sin_zero, 0, sizeof(addr.sin_zero));
-}
-
-dpdk_catnip_addr::dpdk_catnip_addr()
-{
-    memset((void *)&addr, 0, sizeof(addr));
-}
-
-bool
-operator==(const dpdk_catnip_addr &a,
-           const dpdk_catnip_addr &b)
-{
-    if (a.addr.sin_addr.s_addr == INADDR_ANY || b.addr.sin_addr.s_addr == INADDR_ANY) {
-        return true;
-    } else {
-        return (a.addr.sin_addr.s_addr == b.addr.sin_addr.s_addr) &&
-            (a.addr.sin_port == b.addr.sin_port);
-    }
-}
-
-bool
-operator!=(const dpdk_catnip_addr &a,
-           const dpdk_catnip_addr &b)
-{
-    return !(a == b);
-}
-
-bool
-operator<(const dpdk_catnip_addr &a,
-          const dpdk_catnip_addr &b)
-{
-    return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) < 0);
-}
-
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
 bool dmtr::dpdk_catnip_queue::our_dpdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
-std::map<dpdk_catnip_addr, std::queue<dmtr_sgarray_t> *> dmtr::dpdk_catnip_queue::our_recv_queues;
-std::unordered_map<std::string, struct in_addr> dmtr::dpdk_catnip_queue::our_mac_to_ip_table;
-std::unordered_map<in_addr_t, struct ether_addr> dmtr::dpdk_catnip_queue::our_ip_to_mac_table;
-
-int dmtr::dpdk_catnip_queue::ip_to_mac(struct ether_addr &mac_out, const struct in_addr &ip)
-{
-    auto it = our_ip_to_mac_table.find(ip.s_addr);
-    DMTR_TRUE(ENOENT, our_ip_to_mac_table.cend() != it);
-    mac_out = it->second;
-    return 0;
-}
-
-int dmtr::dpdk_catnip_queue::mac_to_ip(struct in_addr &ip_out, const struct ether_addr &mac)
-{
-    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
-    auto it = our_mac_to_ip_table.find(mac_s);
-    DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != it);
-    ip_out = it->second;
-    return 0;
-}
+std::map<in_addr_t, std::queue<dmtr_sgarray_t> *> dmtr::dpdk_catnip_queue::our_recv_queues;
+in_addr_t dmtr::dpdk_catnip_queue::our_ipv4_addr = 0;
 
 bool
-dmtr::dpdk_catnip_queue::insert_recv_queue(const dpdk_catnip_addr &saddr,
+dmtr::dpdk_catnip_queue::insert_recv_queue(in_addr_t in_addr,
                                     const dmtr_sgarray_t &sga)
 {
-    auto it = our_recv_queues.find(dpdk_catnip_addr(saddr));
+    auto it = our_recv_queues.find(in_addr);
     if (it == our_recv_queues.end()) {
         return false;
     }
@@ -314,9 +257,6 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     }
     DMTR_TRUE(EPERM, !our_dpdk_init_flag);
 
-    printf("%d\n", nip_double_input(2));
-    abort();
-
     std::string config_path;
     bpo::options_description desc("Allowed options");
     desc.add_options()
@@ -353,13 +293,23 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
-    node = config["dpdk"]["known_hosts"];
-    if (YAML::NodeType::Map == node.Type()) {
-        for (auto i = node.begin(); i != node.end(); ++i) {
-            auto mac = i->first.as<std::string>();
-            auto ip = i->second.as<std::string>();
-            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+
+    node = config["catnip"]["my_ipv4_addr"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        auto ipv4_addr = node.as<std::string>();
+        struct in_addr in_addr = {};
+        if (inet_pton(AF_INET, ipv4_addr.c_str(), &in_addr) != 1) {
+            std::cerr << "Unable to parse IP address." << std::endl;
+            return EINVAL;
         }
+
+        our_ipv4_addr = in_addr.s_addr;
+        DMTR_OK(nip_set_my_ipv4_addr(our_ipv4_addr));
+    }
+
+    if (0 == our_ipv4_addr) {
+        std::cerr << "no IPV4 address specified";
+        return EINVAL;
     }
 
     int unused = -1;
@@ -390,6 +340,10 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     if (rte_lcore_count() > 1) {
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
     }
+
+    struct ether_addr mac = {};
+    DMTR_OK(rte_eth_macaddr_get(port_id, mac));
+    DMTR_OK(nip_set_my_link_addr(mac.addr_bytes));
 
     our_dpdk_init_flag = true;
     our_dpdk_port_id = port_id;
@@ -501,18 +455,18 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
                 yield();
         }
 
-        dmtr_sgarray_t &sga = my_recv_queue.front();
+        dmtr_sgarray_t * const sga = &my_recv_queue.front();
         // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
-        sockaddr_in &src = sga.sga_addr;
-        dpdk_catnip_addr addr = dpdk_catnip_addr(src);
+        sockaddr_in * const src = &sga->sga_addr;
+        auto addr = src->sin_addr.s_addr;
         DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
         new_lq->my_bound_src = my_bound_src;
-        new_lq->my_default_dst = src;
+        new_lq->my_default_dst = *src;
         our_recv_queues[addr] = &new_lq->my_recv_queue;
         // add the packet as the first to the new queue
-        new_lq->my_recv_queue.push(sga);
+        new_lq->my_recv_queue.push(*sga);
         new_lq->start_threads();
-        DMTR_OK(t->complete(0, new_lq->qd(), src, sizeof(src)));
+        DMTR_OK(t->complete(0, new_lq->qd(), *src, sizeof(*src)));
         my_recv_queue.pop();
     }
 
@@ -534,28 +488,23 @@ int dmtr::dpdk_catnip_queue::bind(const struct sockaddr * const saddr, socklen_t
     DMTR_TRUE(EINVAL, !is_bound());
     DMTR_NOTNULL(EINVAL, saddr);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    // only one socket can be bound to an address at a time
-    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
-
-    struct ether_addr mac = {};
-    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
-    struct in_addr ip;
-    DMTR_OK(mac_to_ip(ip, mac));
+    DMTR_NONZERO(EINVAL, our_ipv4_addr);
 
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
 
+    struct in_addr ip = {};
+    ip.s_addr = our_ipv4_addr;
     if (INADDR_ANY == saddr_copy.sin_addr.s_addr) {
         saddr_copy.sin_addr = ip;
     } else {
         // we cannot deviate from associations found in `config.yaml`.
-        DMTR_TRUE(EPERM, 0 == memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
+        DMTR_NONZERO(EPERM, memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
     }
-    DMTR_TRUE(EINVAL, our_recv_queues.find(dpdk_catnip_addr(saddr_copy)) == our_recv_queues.end());
+    DMTR_TRUE(EINVAL, our_recv_queues.find(our_ipv4_addr) == our_recv_queues.end());
     my_bound_src = saddr_copy;
-    our_recv_queues[dpdk_catnip_addr(saddr_copy)] = &my_recv_queue;
+    our_recv_queues[our_ipv4_addr] = &my_recv_queue;
 #if DMTR_DEBUG
     std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
 #endif
@@ -576,15 +525,16 @@ int dmtr::dpdk_catnip_queue::connect(const struct sockaddr * const saddr, sockle
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
-    our_recv_queues[dpdk_catnip_addr(saddr_copy)] = &my_recv_queue;
+    our_recv_queues[saddr_copy.sin_addr.s_addr] = &my_recv_queue;
 
     // give the connection the local ip;
     struct ether_addr mac;
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
+    // todo: this should use the port defined in the config.
     src.sin_port = htons(12345);
-    DMTR_OK(mac_to_ip(src.sin_addr, mac));
+    src.sin_addr.s_addr = our_ipv4_addr;
     my_bound_src = src;
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
     start_threads();
@@ -664,7 +614,7 @@ int dmtr::dpdk_catnip_queue::push_thread(task::thread_type::yield_type &yield, t
         memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
         eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
         rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
-        struct ether_addr mac;
+        struct ether_addr mac = {};
         DMTR_OK(ip_to_mac(mac, saddr->sin_addr));
         ether_addr_copy(&mac, &eth_hdr->d_addr);
 
@@ -872,7 +822,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 
         if (valid_packet) {
             // found valid packet, try to place in queue based on src
-            if (insert_recv_queue(dpdk_catnip_addr(src), sga)) {
+            if (insert_recv_queue(src.sin_addr.s_addr, sga)) {
                 // placed in appropriate queue, work is done
 #if DMTR_DEBUG
                 std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
@@ -881,7 +831,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
             }
             std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
             // otherwise place in queue based on dst
-            insert_recv_queue(dpdk_catnip_addr(dst), sga);
+            insert_recv_queue(dst.sin_addr.s_addr, sga);
         }
     }
     return 0;
@@ -1258,49 +1208,6 @@ int dmtr::dpdk_catnip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rt
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     ::rte_eth_link_get_nowait(port_id, &link);
-    return 0;
-}
-
-int dmtr::dpdk_catnip_queue::learn_addrs(const struct ether_addr &mac, const struct in_addr &ip) {
-    DMTR_TRUE(EINVAL, !is_same_ether_addr(&mac, &ether_broadcast));
-    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
-    DMTR_TRUE(EEXIST, our_mac_to_ip_table.find(mac_s) == our_mac_to_ip_table.cend());
-    DMTR_TRUE(EEXIST, our_ip_to_mac_table.find(ip.s_addr) == our_ip_to_mac_table.cend());
-
-    our_mac_to_ip_table.insert(std::make_pair(mac_s, ip));
-    our_ip_to_mac_table.insert(std::make_pair(ip.s_addr, mac));
-    return 0;
-}
-
-int dmtr::dpdk_catnip_queue::learn_addrs(const char *mac_s, const char *ip_s) {
-    DMTR_NOTNULL(EINVAL, mac_s);
-    DMTR_NOTNULL(EINVAL, ip_s);
-
-    struct ether_addr mac;
-    DMTR_OK(parse_ether_addr(mac, mac_s));
-
-    struct in_addr ip = {};
-    if (inet_pton(AF_INET, ip_s, &ip) != 1) {
-        DMTR_FAIL(EINVAL);
-    }
-
-    DMTR_OK(learn_addrs(mac, ip));
-    return 0;
-}
-
-int dmtr::dpdk_catnip_queue::parse_ether_addr(struct ether_addr &mac_out, const char *s) {
-    static_assert(ETHER_ADDR_LEN == 6);
-    DMTR_NOTNULL(EINVAL, s);
-
-    unsigned int values[ETHER_ADDR_LEN];
-    if (6 != sscanf(s, "%2x:%2x:%2x:%2x:%2x:%2x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])) {
-        return EINVAL;
-    }
-
-    for (size_t i = 0; i < ETHER_ADDR_LEN; ++i) {
-        DMTR_OK(dmtr_utou8(&mac_out.addr_bytes[i], values[i]));
-    }
-
     return 0;
 }
 

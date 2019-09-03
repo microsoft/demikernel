@@ -42,7 +42,7 @@ fn syn_to_closed_port() {
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let (tcp_syn, private_port) = {
         let event = alice.poll(now).unwrap().unwrap();
-        let bytes = match event {
+        let bytes = match &*event {
             Event::Transmit(segment) => segment.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
@@ -59,7 +59,7 @@ fn syn_to_closed_port() {
     bob.receive(&tcp_syn).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     let tcp_rst = {
-        let bytes = match event {
+        let bytes = match &*event {
             Event::Transmit(bytes) => bytes,
             e => panic!("got unanticipated event `{:?}`", e),
         };
@@ -102,7 +102,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let (tcp_syn, private_port, alice_isn) = {
         let event = alice.poll(now).unwrap().unwrap();
-        let bytes = match event {
+        let bytes = match &*event {
             Event::Transmit(segment) => segment.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         };
@@ -121,7 +121,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     bob.receive(&tcp_syn).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
     let (tcp_syn_ack, bob_isn) = {
-        let bytes = match event {
+        let bytes = match &*event {
             Event::Transmit(bytes) => bytes,
             e => panic!("got unanticipated event `{:?}`", e),
         };
@@ -145,7 +145,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     alice.receive(&tcp_syn_ack).unwrap();
     let event = alice.poll(now).unwrap().unwrap();
     let tcp_ack = {
-        let bytes = match event {
+        let bytes = match &*event {
             Event::Transmit(bytes) => bytes,
             e => panic!("got unanticipated event `{:?}`", e),
         };
@@ -168,8 +168,8 @@ fn establish_connection() -> EstablishedConnection<'static> {
     let now = now + Duration::from_micros(1);
     bob.receive(&tcp_ack).unwrap();
     let event = bob.poll(now).unwrap().unwrap();
-    let bob_cxn_handle = match event {
-        Event::TcpConnectionEstablished(h) => h,
+    let bob_cxn_handle = match &*event {
+        Event::TcpConnectionEstablished(h) => *h,
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
@@ -202,7 +202,7 @@ fn unfragmented_data_exchange() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let (bytes, seq_num) = match event {
+    let (bytes, seq_num) = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -215,9 +215,9 @@ fn unfragmented_data_exchange() {
     info!("passing data segment to Bob...");
     cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -231,7 +231,7 @@ fn unfragmented_data_exchange() {
         .unwrap();
     cxn.now += Duration::from_micros(1);
     let event = cxn.bob.poll(cxn.now).unwrap().unwrap();
-    let (bytes, seq_num) = match event {
+    let (bytes, seq_num) = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -250,9 +250,9 @@ fn unfragmented_data_exchange() {
     info!("passing data segment to Alice...");
     cxn.now += Duration::from_micros(1);
     cxn.alice.receive(bytes.as_slice()).unwrap();
-    match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.alice_cxn_handle, handle)
+            assert_eq!(cxn.alice_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -265,7 +265,7 @@ fn unfragmented_data_exchange() {
     assert!(cxn.alice.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let pure_ack = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -303,7 +303,7 @@ fn packetization() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let (bytes0, seq_num) = match event {
+    let (bytes0, seq_num) = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -314,7 +314,7 @@ fn packetization() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let bytes1 = match event {
+    let bytes1 = match &*event {
         Event::Transmit(bytes) => bytes.borrow().to_vec(),
         e => panic!("got unanticipated event `{:?}`", e),
     };
@@ -323,9 +323,9 @@ fn packetization() {
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
     cxn.bob.receive(bytes0.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -345,7 +345,7 @@ fn packetization() {
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let pure_ack = match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -379,7 +379,7 @@ fn multiple_writes() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let (bytes, seq_num) = match event {
+    let (bytes, seq_num) = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -393,9 +393,9 @@ fn multiple_writes() {
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
     cxn.bob.receive(bytes.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -407,7 +407,7 @@ fn multiple_writes() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let bytes = match event {
+    let bytes = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -436,7 +436,7 @@ fn multiple_writes() {
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let pure_ack = match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -476,7 +476,7 @@ fn syn_retry() {
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
     let event = alice.poll(now).unwrap().unwrap();
-    match event {
+    match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -492,7 +492,7 @@ fn syn_retry() {
         info!("syn_retry(): retry #{}", i + 1);
         now += Duration::from_micros(1);
         let event = alice.poll(now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -526,7 +526,7 @@ fn retransmission_fail() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let dropped_segment = match event {
+    let dropped_segment = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -546,7 +546,7 @@ fn retransmission_fail() {
         info!("retransmission(): retry #{}", i + 1);
         cxn.now += Duration::from_micros(1);
         let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 assert_eq!(
@@ -562,9 +562,9 @@ fn retransmission_fail() {
     assert!(retry.next().is_none());
     assert!(cxn.alice.poll(cxn.now).is_none());
     cxn.now += Duration::from_micros(1);
-    match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::TcpConnectionClosed { handle, error } => {
-            assert_eq!(handle, cxn.alice_cxn_handle);
+            assert_eq!(*handle, cxn.alice_cxn_handle);
             match error {
                 Some(Fail::Timeout {}) => (),
                 _ => panic!("expected a timeout error"),
@@ -589,7 +589,7 @@ fn retransmission_ok() {
     cxn.now += Duration::from_micros(1);
     // retransmission timer starts here.
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let first_dropped_segment = match event {
+    let first_dropped_segment = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -605,7 +605,7 @@ fn retransmission_ok() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let second_dropped_segment = match event {
+    let second_dropped_segment = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -624,7 +624,7 @@ fn retransmission_ok() {
     assert!(cxn.alice.poll(cxn.now).is_none());
     cxn.now += Duration::from_micros(1);
     let bytes0 = {
-        match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -636,7 +636,7 @@ fn retransmission_ok() {
     };
 
     let bytes1 = {
-        match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -651,9 +651,9 @@ fn retransmission_ok() {
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
     cxn.bob.receive(bytes0.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -668,7 +668,7 @@ fn retransmission_ok() {
 
     cxn.now += Duration::from_micros(1);
     let event = cxn.alice.poll(cxn.now).unwrap().unwrap();
-    let bytes = match event {
+    let bytes = match &*event {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -702,7 +702,7 @@ fn retransmission_ok() {
     assert!(cxn.bob.poll(cxn.now).is_none());
 
     cxn.now += Duration::from_micros(1);
-    let pure_ack = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let pure_ack = match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -738,7 +738,7 @@ fn flow_control() {
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
-    let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes0 = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let _ = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -748,7 +748,7 @@ fn flow_control() {
     };
 
     cxn.now += Duration::from_micros(1);
-    let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes1 = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -762,9 +762,9 @@ fn flow_control() {
     cxn.now += Duration::from_micros(1);
     // ACK timeout starts from here.
     cxn.bob.receive(bytes0.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -774,7 +774,7 @@ fn flow_control() {
     // Event::TcpBytesAvailable won't be emitted unless the read buffer starts
     // out empty.
     let zero_window_advertisement =
-        match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+        match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -808,7 +808,7 @@ fn flow_control() {
         assert!(cxn.alice.poll(cxn.now).is_none());
         info!("flow_control(): try #{}", i + 1);
         cxn.now += Duration::from_micros(1);
-        let window_probe = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+        let window_probe = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -821,7 +821,7 @@ fn flow_control() {
         debug!("flow_control(): passing window probe to Bob...");
         cxn.bob.receive(window_probe.as_slice()).unwrap();
         let zero_window_advertisement =
-            match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+            match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
                 Event::Transmit(bytes) => {
                     let bytes = bytes.borrow().to_vec();
                     let segment =
@@ -849,7 +849,8 @@ fn flow_control() {
     assert_eq!(data_in, data_out);
 
     cxn.now += Duration::from_micros(1);
-    let window_advertisement = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let window_advertisement = match &*cxn.bob.poll(cxn.now).unwrap().unwrap()
+    {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -862,7 +863,7 @@ fn flow_control() {
     info!("flow_control(): passing window advertisement to Alice...");
     cxn.now += Duration::from_micros(1);
     cxn.alice.receive(window_advertisement.as_slice()).unwrap();
-    let bytes0 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes0 = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -873,7 +874,7 @@ fn flow_control() {
     };
 
     cxn.now += Duration::from_micros(1);
-    let bytes1 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes1 = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -884,7 +885,7 @@ fn flow_control() {
     };
 
     cxn.now += Duration::from_micros(1);
-    let bytes2 = match cxn.alice.poll(cxn.now).unwrap().unwrap() {
+    let bytes2 = match &*cxn.alice.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();
@@ -897,9 +898,9 @@ fn flow_control() {
     info!("flow_control(): passing data segments to Bob...");
     cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes0.as_slice()).unwrap();
-    match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::TcpBytesAvailable(handle) => {
-            assert_eq!(cxn.bob_cxn_handle, handle)
+            assert_eq!(cxn.bob_cxn_handle, *handle)
         }
         e => panic!("got unanticipated event `{:?}`", e),
     }
@@ -910,7 +911,7 @@ fn flow_control() {
 
     cxn.now += Duration::from_micros(1);
     cxn.bob.receive(bytes2.as_slice()).unwrap();
-    let _ = match cxn.bob.poll(cxn.now).unwrap().unwrap() {
+    let _ = match &*cxn.bob.poll(cxn.now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let segment = TcpSegment::decode(bytes.as_slice()).unwrap();

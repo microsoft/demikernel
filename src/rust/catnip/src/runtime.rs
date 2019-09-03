@@ -12,7 +12,7 @@ use std::{
 
 #[derive(Clone)]
 pub struct Runtime<'a> {
-    events: Rc<RefCell<VecDeque<Event>>>,
+    events: Rc<RefCell<VecDeque<Rc<Event>>>>,
     options: Rc<Options>,
     r#async: r#async::Runtime<'a>,
     rng: Rc<RefCell<Rng>>,
@@ -55,16 +55,21 @@ impl<'a> Runtime<'a> {
             events.len() + 1,
             event
         );
-        events.push_back(event);
+        events.push_back(Rc::new(event));
     }
 
     pub fn rng_mut(&self) -> RefMut<Rng> {
         self.rng.borrow_mut()
     }
+
+    pub fn peek(&self, now: Instant) -> Option<Result<Rc<Event>>> {
+        while self.r#async.poll(now).is_some() {}
+        self.events.borrow().front().map(|e| Ok(e.clone()))
+    }
 }
 
-impl<'a> Async<Event> for Runtime<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Event>> {
+impl<'a> Async<Rc<Event>> for Runtime<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Rc<Event>>> {
         while self.r#async.poll(now).is_some() {}
         self.events.borrow_mut().pop_front().map(Ok)
     }

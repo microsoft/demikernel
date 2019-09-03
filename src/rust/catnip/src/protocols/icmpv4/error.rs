@@ -103,11 +103,9 @@ impl Icmpv4ErrorId {
         }
     }
 
-    fn encode(self) -> (Icmpv4Type, u8) {
+    pub fn encode(self) -> (u8, u8) {
         match self {
-            Icmpv4ErrorId::DestinationUnreachable(code) => {
-                (Icmpv4Type::DestinationUnreachable, code.into())
-            }
+            Icmpv4ErrorId::DestinationUnreachable(code) => (3, code.into()),
         }
     }
 }
@@ -187,6 +185,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
 
     pub fn id(&mut self, id: Icmpv4ErrorId) {
         let (r#type, code) = id.encode();
+        let r#type = Icmpv4Type::try_from(r#type).unwrap();
         let mut header = self.0.header();
         header.r#type(r#type);
         header.code(code);

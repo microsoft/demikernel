@@ -31,6 +31,10 @@ impl MacAddress {
         self.0.is_broadcast()
     }
 
+    pub fn is_unicast(self) -> bool {
+        self.0.is_unicast()
+    }
+
     pub fn to_canonical(self) -> String {
         self.0.to_canonical()
     }

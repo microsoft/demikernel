@@ -127,10 +127,16 @@ impl<'a> Engine<'a> {
     pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
         self.ipv4.tcp_rto(handle)
     }
+
+    pub fn peek(&self, now: Instant) -> Option<Result<Rc<Event>>> {
+        try_poll!(&self.arp, now);
+        try_poll!(&self.ipv4, now);
+        self.rt.peek(now)
+    }
 }
 
-impl<'a> Async<Event> for Engine<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Event>> {
+impl<'a> Async<Rc<Event>> for Engine<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<Rc<Event>>> {
         try_poll!(&self.arp, now);
         try_poll!(&self.ipv4, now);
         self.rt.poll(now)

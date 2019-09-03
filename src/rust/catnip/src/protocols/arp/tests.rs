@@ -24,7 +24,7 @@ fn immediate_reply() {
 
     let request = {
         let event = alice.poll(now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
@@ -50,7 +50,7 @@ fn immediate_reply() {
     );
     let reply = {
         let event = carrie.poll(now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
@@ -88,7 +88,7 @@ fn slow_reply() {
     debug!("!!!");
     let request = {
         let event = alice.poll(now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
@@ -115,7 +115,7 @@ fn slow_reply() {
     );
     let reply = {
         let event = carrie.poll(now).unwrap().unwrap();
-        match event {
+        match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
@@ -143,7 +143,7 @@ fn no_reply() {
     assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
-    match alice.poll(now).unwrap().unwrap() {
+    match &*alice.poll(now).unwrap().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
@@ -158,7 +158,7 @@ fn no_reply() {
         assert!(fut.poll(now).is_none());
         info!("no_reply(): retry #{}", i + 1);
         now += Duration::from_micros(1);
-        match alice.poll(now).unwrap().unwrap() {
+        match &*alice.poll(now).unwrap().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let frame =

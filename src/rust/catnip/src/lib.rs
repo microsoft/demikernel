@@ -36,6 +36,7 @@ pub mod fail;
 pub mod io;
 pub mod result;
 pub mod runtime;
+pub mod shims;
 
 #[cfg(test)]
 pub mod test;
