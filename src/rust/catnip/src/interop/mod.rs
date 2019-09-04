@@ -27,6 +27,18 @@ pub struct Icmpv4Error {
     code: u8,
 }
 
+#[repr(C)]
+pub struct UdpDatagram {
+    payload_bytes: *const u8,
+    payload_length: usize,
+    dest_ipv4_addr: u32,
+    src_ipv4_addr: u32,
+    dest_port: u16,
+    src_port: u16,
+    dest_link_addr: [u8; 6],
+    src_link_addr: [u8; 6],
+}
+
 impl From<&Event> for EventCode {
     fn from(event: &Event) -> Self {
         match event {
@@ -251,6 +263,128 @@ pub extern "C" fn nip_get_icmpv4_error_event(
                 error_out.context_length = context.len();
                 error_out.context_bytes = context.as_ptr();
 
+                0
+            }
+            _ => libc::EPERM,
+        },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_get_tcp_connection_closed_event(
+    handle_out: *mut u16,
+    error_out: *mut libc::c_int,
+    engine: *mut libc::c_void,
+) -> libc::c_int {
+    if handle_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *handle_out = 0 };
+
+    if error_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *error_out = -1 };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    match engine.peek(Instant::now()) {
+        None => libc::EAGAIN,
+        Some(Err(fail)) => fail_to_errno(&fail),
+        Some(Ok(event)) => match &*event {
+            Event::TcpConnectionClosed { handle, error } => {
+                unsafe {
+                    *handle_out = (*handle).into();
+                    *error_out = error.as_ref().map(fail_to_errno).unwrap_or(0)
+                }
+
+                0
+            }
+            _ => libc::EPERM,
+        },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_get_tcp_connection_established_event(
+    handle_out: *mut u16,
+    engine: *mut libc::c_void,
+) -> libc::c_int {
+    if handle_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *handle_out = 0 };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    match engine.peek(Instant::now()) {
+        None => libc::EAGAIN,
+        Some(Err(fail)) => fail_to_errno(&fail),
+        Some(Ok(event)) => match &*event {
+            Event::TcpConnectionEstablished(handle) => {
+                unsafe { *handle_out = (*handle).into() };
+                0
+            }
+            _ => libc::EPERM,
+        },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_get_udp_datagram_event(
+    udp_out: *mut UdpDatagram,
+    engine: *mut libc::c_void,
+) -> libc::c_int {
+    if udp_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    let udp_out = unsafe { &mut *udp_out };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    match engine.peek(Instant::now()) {
+        None => libc::EAGAIN,
+        Some(Err(fail)) => fail_to_errno(&fail),
+        Some(Ok(event)) => match &*event {
+            Event::UdpDatagramReceived(udp) => {
+                udp_out.payload_bytes = udp.payload.as_ptr();
+                udp_out.payload_length = udp.payload.len();
+                udp_out.dest_ipv4_addr =
+                    udp.dest_ipv4_addr.map(|a| a.into()).unwrap_or(0);
+                udp_out.src_ipv4_addr =
+                    udp.src_ipv4_addr.map(|a| a.into()).unwrap_or(0);
+                if let Some(addr) = udp.dest_link_addr {
+                    udp_out.dest_link_addr.copy_from_slice(addr.as_bytes());
+                } else {
+                    for i in &mut udp_out.dest_link_addr {
+                        *i = 0;
+                    }
+                }
+
+                if let Some(addr) = udp.src_link_addr {
+                    udp_out.src_link_addr.copy_from_slice(addr.as_bytes());
+                } else {
+                    for i in &mut udp_out.src_link_addr {
+                        *i = 0;
+                    }
+                }
+
+                udp_out.dest_port =
+                    udp.dest_port.map(|p| p.into()).unwrap_or(0);
+                udp_out.src_port = udp.src_port.map(|p| p.into()).unwrap_or(0);
                 0
             }
             _ => libc::EPERM,
