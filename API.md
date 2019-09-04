@@ -6,14 +6,14 @@ otherwise.  Each description documents the other incoming and outgoing
 arguments; arguments are labelled (in) if passed in, (out) if returned
 back. 
 
-#### Calls in `include/dmtr/libos.h`
+## API calls in `include/dmtr/libos.h`
 
 * `int dmtr_init(int argc, char *argv[]);`
   * `argc` (in) : number of commandline arguments, passed on to the libOS
   * `argv` (in) : values of commandline arguments, passed on to the libOS 
 
-> Initialize libOS state. Set up devices, allocate data structures and
-> general initialization tasks.
+Initialize libOS state. Set up devices, allocate data structures and
+general initialization tasks.
 
 * `int dmtr_queue(int *qd_out);`
   * `qd_out`(out) : queue descriptor for newly allocated memory queue
