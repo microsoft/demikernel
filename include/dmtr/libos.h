@@ -31,12 +31,12 @@ DMTR_EXPORT int dmtr_is_qd_valid(int *flag_out, int qd);
 
 DMTR_EXPORT int dmtr_push(
     dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga);
-DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qt_out, int qd);
-DMTR_EXPORT int dmtr_pop2(dmtr_qtoken_t *qt_out, int qd, size_t count);
+DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd);
+DMTR_EXPORT int dmtr_pop2(dmtr_qtoken_t *qtok_out, int qd, size_t count);
 DMTR_EXPORT int dmtr_lseek(int qd, off_t offset, int whence);
     
-DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
-DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
+DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qtok);
+DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qtok);
 
 #ifdef __cplusplus
 }
