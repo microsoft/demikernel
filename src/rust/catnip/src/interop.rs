@@ -1,5 +1,9 @@
 use crate::{
-    prelude::*, protocols::ethernet2, r#async::Async, shims::Mutex, Options,
+    prelude::*,
+    protocols::{ethernet2, tcp},
+    r#async::Async,
+    shims::Mutex,
+    Options,
 };
 use libc;
 use std::{net::Ipv4Addr, ptr::null, slice, time::Instant};
@@ -389,5 +393,39 @@ pub extern "C" fn nip_get_udp_datagram_event(
             }
             _ => libc::EPERM,
         },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_write(
+    engine: *mut libc::c_void,
+    handle: u16,
+    bytes: *const u8,
+    length: usize,
+) -> libc::c_int {
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+
+    if handle == 0 {
+        return libc::EINVAL;
+    }
+
+    if bytes.is_null() {
+        return libc::EINVAL;
+    }
+
+    if length == 0 {
+        return 0;
+    }
+
+    let bytes = unsafe { slice::from_raw_parts(bytes, length) };
+    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
+
+    match engine.tcp_write(handle, bytes.to_vec()) {
+        Ok(()) => 0,
+        Err(fail) => fail_to_errno(&fail),
     }
 }

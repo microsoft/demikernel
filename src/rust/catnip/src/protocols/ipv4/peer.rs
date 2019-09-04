@@ -91,7 +91,7 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_write(
         &mut self,
         handle: tcp::ConnectionHandle,
-        bytes: IoVec,
+        bytes: Vec<u8>,
     ) -> Result<()> {
         self.tcp.write(handle, bytes)
     }

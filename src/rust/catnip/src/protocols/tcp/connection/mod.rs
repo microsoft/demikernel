@@ -21,10 +21,17 @@ pub struct TcpConnectionId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Display)]
 pub struct TcpConnectionHandle(NonZeroU16);
 
-impl TcpConnectionHandle {
-    // todo: this function should be private to the TCP module.
-    pub fn new(n: u16) -> TcpConnectionHandle {
-        TcpConnectionHandle(NonZeroU16::new(n).unwrap())
+impl TryFrom<u16> for TcpConnectionHandle {
+    type Error = Fail;
+
+    fn try_from(n: u16) -> Result<Self> {
+        if let Some(n) = NonZeroU16::new(n) {
+            Ok(TcpConnectionHandle(n))
+        } else {
+            Err(Fail::OutOfRange {
+                details: "TCP connection handles may not be zero",
+            })
+        }
     }
 }
 
@@ -242,7 +249,7 @@ impl<'a> TcpConnection<'a> {
         Ok(())
     }
 
-    pub fn write(&mut self, bytes: IoVec) {
+    pub fn write(&mut self, bytes: Vec<u8>) {
         self.send_window.push(bytes)
     }
 

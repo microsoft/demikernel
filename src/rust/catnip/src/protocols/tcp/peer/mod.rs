@@ -52,7 +52,7 @@ impl<'a> TcpPeerState<'a> {
         let unassigned_connection_handles = {
             let mut handles = Vec::new();
             for i in 1..u16::max_value() {
-                handles.push(TcpConnectionHandle::new(i));
+                handles.push(TcpConnectionHandle::try_from(i).unwrap());
             }
             let mut rng = rt.rng_mut();
             handles.shuffle(&mut *rng);
@@ -682,7 +682,7 @@ impl<'a> TcpPeer<'a> {
     pub fn write(
         &self,
         handle: TcpConnectionHandle,
-        bytes: IoVec,
+        bytes: Vec<u8>,
     ) -> Result<()> {
         let state = self.state.borrow();
         let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();

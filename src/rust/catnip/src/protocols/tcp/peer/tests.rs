@@ -197,7 +197,7 @@ fn unfragmented_data_exchange() {
     info!("Alice writes data to the TCP connection...");
     let data_in = IoVec::from(vec![0xab; 10]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -227,7 +227,7 @@ fn unfragmented_data_exchange() {
 
     info!("Bob writes data to the TCP connection...");
     cxn.bob
-        .tcp_write(cxn.bob_cxn_handle, data_in.clone())
+        .tcp_write(cxn.bob_cxn_handle, data_in[0].to_vec())
         .unwrap();
     cxn.now += Duration::from_micros(1);
     let event = cxn.bob.poll(cxn.now).unwrap().unwrap();
@@ -298,7 +298,7 @@ fn packetization() {
             cxn.alice.tcp_mss(cxn.alice_cxn_handle).unwrap() + 1
         ]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -374,7 +374,7 @@ fn multiple_writes() {
     info!("Alice writes data to the TCP connection...");
     let data_in = IoVec::from(vec![0xab; 10]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -402,7 +402,7 @@ fn multiple_writes() {
 
     info!("Alice writes more data to the TCP connection...");
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -521,7 +521,7 @@ fn retransmission_fail() {
     info!("Alice writes data to the TCP connection...");
     let data_in = IoVec::from(vec![0xab; 10]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -583,7 +583,7 @@ fn retransmission_ok() {
     info!("Alice writes data to the TCP connection...");
     let data_in = IoVec::from(vec![0xab; 10]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -600,7 +600,7 @@ fn retransmission_ok() {
     };
 
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -663,7 +663,7 @@ fn retransmission_ok() {
 
     info!("Alice writes more data to the TCP connection...");
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -734,7 +734,7 @@ fn flow_control() {
     let data_in =
         IoVec::from(vec![0xab; cxn.bob.options().tcp.receive_window_size]);
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
 
     cxn.now += Duration::from_micros(1);
@@ -792,7 +792,7 @@ fn flow_control() {
     assert!(cxn.alice.poll(cxn.now).is_none());
 
     cxn.alice
-        .tcp_write(cxn.alice_cxn_handle, data_in.clone())
+        .tcp_write(cxn.alice_cxn_handle, data_in[0].to_vec())
         .unwrap();
     assert!(cxn.alice.poll(cxn.now).is_none());
 

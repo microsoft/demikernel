@@ -57,6 +57,7 @@ int nip_get_icmpv4_error_event(nip_icmpv4_error_t *error_out, nip_engine_t engin
 int nip_get_tcp_connection_closed_event(nip_tcp_connection_handle_t *handle_out, int *error_out, nip_engine_t engine);
 int nip_get_tcp_connection_estabished_event(nip_tcp_connection_handle_t *handle_out, nip_engine_t engine);
 int nip_get_udp_datagram_event(nip_udp_datagram_t *udp_out, nip_engine_t engine);
+int nip_tcp_write(nip_engine_t engine, nip_tcp_connection_handle_t handle, void *bytes, size_t length);
 
 #ifdef __cplusplus
 }

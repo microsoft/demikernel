@@ -144,8 +144,8 @@ impl TcpSendWindow {
         Ok(())
     }
 
-    pub fn push(&mut self, iovec: IoVec) {
-        self.unsent_segments.extend(iovec);
+    pub fn push(&mut self, bytes: Vec<u8>) {
+        self.unsent_segments.push_back(bytes);
     }
 
     pub fn acknowledge(

@@ -108,7 +108,7 @@ impl<'a> Engine<'a> {
     pub fn tcp_write(
         &mut self,
         handle: tcp::ConnectionHandle,
-        bytes: IoVec,
+        bytes: Vec<u8>,
     ) -> Result<()> {
         self.ipv4.tcp_write(handle, bytes)
     }
