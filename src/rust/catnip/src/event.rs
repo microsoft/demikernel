@@ -16,7 +16,7 @@ pub enum Event {
         context: Vec<u8>,
     },
     UdpDatagramReceived(udp::Datagram),
-    TcpConnectionEstablished(tcp::ConnectionHandle),
+    IncomingTcpConnection(tcp::ConnectionHandle),
     TcpBytesAvailable(tcp::ConnectionHandle),
     TcpConnectionClosed {
         handle: tcp::ConnectionHandle,
@@ -50,8 +50,8 @@ impl Debug for Event {
             Event::UdpDatagramReceived(datagram) => {
                 write!(f, "UdpDatagramReceived({:?})", datagram)?
             }
-            Event::TcpConnectionEstablished(handle) => {
-                write!(f, "TcpConnectionEstablished({})", handle)?
+            Event::IncomingTcpConnection(handle) => {
+                write!(f, "IncomingTcpConnection({})", handle)?
             }
             Event::TcpBytesAvailable(handle) => {
                 write!(f, "TcpBytesAvailable({})", handle)?

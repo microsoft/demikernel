@@ -12,7 +12,7 @@ use std::{
 };
 use window::{TcpReceiveWindow, TcpSendWindow};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct TcpConnectionId {
     pub local: ipv4::Endpoint,
     pub remote: ipv4::Endpoint,
@@ -43,7 +43,7 @@ impl Into<u16> for TcpConnectionHandle {
 
 pub struct TcpConnection<'a> {
     handle: TcpConnectionHandle,
-    id: TcpConnectionId,
+    id: Rc<TcpConnectionId>,
     receive_queue: VecDeque<TcpSegment>,
     transmit_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
     receive_window: TcpReceiveWindow,
@@ -57,7 +57,7 @@ pub struct TcpConnection<'a> {
 
 impl<'a> TcpConnection<'a> {
     pub fn new(
-        id: TcpConnectionId,
+        id: Rc<TcpConnectionId>,
         handle: TcpConnectionHandle,
         local_isn: Wrapping<u32>,
         receive_window_size: usize,
@@ -83,7 +83,7 @@ impl<'a> TcpConnection<'a> {
         self.handle
     }
 
-    pub fn get_id(&self) -> &TcpConnectionId {
+    pub fn get_id(&self) -> &Rc<TcpConnectionId> {
         &self.id
     }
 

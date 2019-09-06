@@ -21,7 +21,7 @@ enum EventCode {
     Icmpv4Error = 0,
     TcpBytesAvailable = 1,
     TcpConnectionClosed = 2,
-    TcpConnectionEstablished = 3,
+    IncomingTcpConnection = 3,
     Transmit = 4,
     UdpDatagramReceived = 5,
 }
@@ -55,8 +55,8 @@ impl From<&Event> for EventCode {
             Event::TcpConnectionClosed { .. } => {
                 EventCode::TcpConnectionClosed
             }
-            Event::TcpConnectionEstablished(_) => {
-                EventCode::TcpConnectionEstablished
+            Event::IncomingTcpConnection(_) => {
+                EventCode::IncomingTcpConnection
             }
             Event::Transmit(_) => EventCode::Transmit,
             Event::UdpDatagramReceived(_) => EventCode::UdpDatagramReceived,
@@ -324,7 +324,7 @@ pub extern "C" fn nip_get_tcp_connection_closed_event(
 }
 
 #[no_mangle]
-pub extern "C" fn nip_get_tcp_connection_established_event(
+pub extern "C" fn nip_get_incoming_tcp_connection_event(
     handle_out: *mut u16,
     engine: *mut libc::c_void,
 ) -> libc::c_int {
@@ -341,7 +341,7 @@ pub extern "C" fn nip_get_tcp_connection_established_event(
     let engine = unsafe { &mut *(engine as *mut Engine) };
     match engine.next_event() {
         Some(event) => match &*event {
-            Event::TcpConnectionEstablished(handle) => {
+            Event::IncomingTcpConnection(handle) => {
                 unsafe { *handle_out = (*handle).into() };
                 0
             }
@@ -579,5 +579,87 @@ pub extern "C" fn nip_tcp_connected(
             }
             Err(fail) => fail_to_errno(&fail),
         },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_get_local_endpoint(
+    addr_out: *mut u32,
+    port_out: *mut u16,
+    engine: *mut libc::c_void,
+    handle: u16,
+) -> libc::c_int {
+    if addr_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *addr_out = 0 };
+
+    if port_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *port_out = 0 };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if handle == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
+    match engine.tcp_get_connection_id(handle) {
+        Ok(cxnid) => {
+            unsafe {
+                *addr_out = cxnid.local.address().into();
+                *port_out = cxnid.local.port().into();
+            }
+            0
+        }
+        Err(fail) => fail_to_errno(&fail),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_get_remote_endpoint(
+    addr_out: *mut u32,
+    port_out: *mut u16,
+    engine: *mut libc::c_void,
+    handle: u16,
+) -> libc::c_int {
+    if addr_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *addr_out = 0 };
+
+    if port_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *port_out = 0 };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if handle == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
+    match engine.tcp_get_connection_id(handle) {
+        Ok(cxnid) => {
+            unsafe {
+                *addr_out = cxnid.remote.address().into();
+                *port_out = cxnid.remote.port().into();
+            }
+            0
+        }
+        Err(fail) => fail_to_errno(&fail),
     }
 }

@@ -175,7 +175,7 @@ fn establish_connection() -> EstablishedConnection<'static> {
     bob.advance_clock(now);
     let event = bob.pop_event().unwrap();
     let bob_cxn_handle = match &*event {
-        Event::TcpConnectionEstablished(h) => *h,
+        Event::IncomingTcpConnection(h) => *h,
         e => panic!("got unanticipated event `{:?}`", e),
     };
 

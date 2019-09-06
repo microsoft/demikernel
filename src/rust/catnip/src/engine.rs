@@ -148,4 +148,11 @@ impl<'a> Engine<'a> {
     pub fn pop_event(&self) -> Option<Rc<Event>> {
         self.rt.pop_event()
     }
+
+    pub fn tcp_get_connection_id(
+        &self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<Rc<tcp::ConnectionId>> {
+        self.ipv4.tcp_get_connection_id(handle)
+    }
 }

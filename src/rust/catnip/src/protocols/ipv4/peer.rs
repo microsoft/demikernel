@@ -124,4 +124,11 @@ impl<'a> Ipv4Peer<'a> {
         self.udp.advance_clock(now);
         self.tcp.advance_clock(now);
     }
+
+    pub fn tcp_get_connection_id(
+        &self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<Rc<tcp::ConnectionId>> {
+        self.tcp.get_connection_id(handle)
+    }
 }

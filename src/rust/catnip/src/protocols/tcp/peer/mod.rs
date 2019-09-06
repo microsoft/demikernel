@@ -25,9 +25,9 @@ use std::{
 
 struct TcpPeerState<'a> {
     arp: arp::Peer<'a>,
-    assigned_handles: HashMap<TcpConnectionHandle, TcpConnectionId>,
+    assigned_handles: HashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
     async_work: Rc<RefCell<WhenAny<'a, ()>>>,
-    connections: HashMap<TcpConnectionId, Rc<RefCell<TcpConnection<'a>>>>,
+    connections: HashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
     rt: Runtime<'a>,
@@ -79,7 +79,7 @@ impl<'a> TcpPeerState<'a> {
         handle: TcpConnectionHandle,
     ) -> Result<&Rc<RefCell<TcpConnection<'a>>>> {
         if let Some(cxnid) = self.assigned_handles.get(&handle) {
-            Ok(self.connections.get(&cxnid).unwrap())
+            Ok(self.connections.get(cxnid).unwrap())
         } else {
             Err(Fail::ResourceNotFound {
                 details: "unrecognized connection handle",
@@ -119,12 +119,12 @@ impl<'a> TcpPeerState<'a> {
 
     fn new_connection(
         &mut self,
-        cxnid: TcpConnectionId,
+        cxnid: Rc<TcpConnectionId>,
         rt: Runtime<'a>,
     ) -> Result<Rc<RefCell<TcpConnection<'a>>>> {
         let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
-        let local_isn = self.isn_generator.next(&cxnid);
+        let local_isn = self.isn_generator.next(&*cxnid);
         let cxn = TcpConnection::new(
             cxnid.clone(),
             handle,
@@ -180,7 +180,7 @@ impl<'a> TcpPeerState<'a> {
 
     fn new_active_connection(
         state: Rc<RefCell<TcpPeerState<'a>>>,
-        cxnid: TcpConnectionId,
+        cxnid: Rc<TcpConnectionId>,
     ) -> Future<'a, ()> {
         trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
         let rt = state.borrow().rt.clone();
@@ -239,13 +239,13 @@ impl<'a> TcpPeerState<'a> {
 
                 let remote_ipv4_addr = syn_segment.src_ipv4_addr.unwrap();
                 let remote_port = syn_segment.src_port.unwrap();
-                let cxnid = TcpConnectionId {
+                let cxnid = Rc::new(TcpConnectionId {
                     local: ipv4::Endpoint::new(
                         options.my_ipv4_addr,
                         local_port,
                     ),
                     remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
-                };
+                });
 
                 let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
                 {
@@ -273,9 +273,7 @@ impl<'a> TcpPeerState<'a> {
                 let mut cxn = cxn.borrow_mut();
                 cxn.set_remote_receive_window_size(ack_segment.window_size)?;
                 cxn.incr_seq_num();
-                rt.emit_event(Event::TcpConnectionEstablished(
-                    cxn.get_handle(),
-                ));
+                rt.emit_event(Event::IncomingTcpConnection(cxn.get_handle()));
             }
 
             r#await!(
@@ -337,7 +335,7 @@ impl<'a> TcpPeerState<'a> {
 
     fn close_connection(
         state: Rc<RefCell<TcpPeerState<'a>>>,
-        cxnid: TcpConnectionId,
+        cxnid: Rc<TcpConnectionId>,
         error: Option<Fail>,
         notify: bool,
     ) -> Future<'a, ()> {
@@ -615,13 +613,13 @@ impl<'a> TcpPeer<'a> {
                 let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
                 let options = rt.options();
-                let cxnid = TcpConnectionId {
+                let cxnid = Rc::new(TcpConnectionId {
                     local: ipv4::Endpoint::new(
                         options.my_ipv4_addr,
                         state.acquire_private_port()?,
                     ),
                     remote: remote_endpoint,
-                };
+                });
 
                 (rt, cxnid)
             };
@@ -736,5 +734,14 @@ impl<'a> TcpPeer<'a> {
         if let Some(result) = async_work.poll(now) {
             assert!(result.is_ok());
         }
+    }
+
+    pub fn get_connection_id(
+        &self,
+        handle: TcpConnectionHandle,
+    ) -> Result<Rc<TcpConnectionId>> {
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
+        Ok(cxn.get_id().clone())
     }
 }
