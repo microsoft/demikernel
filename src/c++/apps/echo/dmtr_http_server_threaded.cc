@@ -557,6 +557,8 @@ int tcp_work(uint64_t i,
 }
 
 static void *tcp_worker(void *args) {
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+        std::cout << "\ncan't ignore SIGPIPE\n";
     printf("Hello I am a TCP worker\n");
     Worker *me = (Worker *) args;
     /* In case we need to do the HTTP work */
