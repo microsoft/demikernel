@@ -63,11 +63,8 @@ const std::string CONTENT_LEN="Content-Length: ";
 
 /* Validates the given response, checking it against the valid response string */
 static inline bool validate_response(dmtr_sgarray_t &response) {
-    assert(response.sga_numsegs == 1);
-    std::string resp_str =
-        std::string(reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf));
-    /* 'Sanitize' response */
-    resp_str[response.sga_segs[0].sgaseg_len] = '\0';
+    char *str = reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf);
+    std::string resp_str = str;
     if (resp_str == VALID_RESP) {
         return true;
     }
@@ -76,8 +73,8 @@ static inline bool validate_response(dmtr_sgarray_t &response) {
     if (ctlen != std::string::npos && hdr_end != std::string::npos) {
         size_t body_len = std::stoi(resp_str.substr(ctlen+CONTENT_LEN.size(), hdr_end - ctlen));
         std::string body = resp_str.substr(hdr_end + 4);
-        /* For some reason, size() on the string accounts bytes after \0 */
-        if (strlen(body.c_str()) == body_len) {
+        /* We purposedly ignore the last byte, because we hacked the response to null terminate it */
+        if (strlen(body.c_str()) == body_len - 1) {
             return true;
         }
     }
@@ -138,6 +135,22 @@ struct log_data {
     dmtr_latency_t *l;
     char const *name;
 };
+
+
+static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
+    for (auto &log: logs) {
+        FILE *log_fd = fopen(
+            (const char *)generate_log_file_path(log_dir, label, log.name).c_str(), "w"
+        );
+        if (log_fd) {
+            DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
+            fclose(log_fd);
+        }
+        DMTR_OK(dmtr_delete_latency(&log.l));
+    }
+
+    return 0;
+}
 
 int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
@@ -213,19 +226,12 @@ int log_responses(uint32_t total_requests, int log_memq,
             log_warn("logging time has passed. %d requests were logged (%d invalid).",
                       logged, n_invalid);
             expired = true;
+            dump_logs(logs, log_dir, label);
             break;
         }
     }
 
-    for (auto &log: logs) {
-        FILE *log_fd = fopen(
-            (const char *)generate_log_file_path(log_dir, label, log.name).c_str(), "w"
-        );
-        DMTR_NOTNULL(EINVAL, log_fd);
-        DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
-        fclose(log_fd);
-        DMTR_OK(dmtr_delete_latency(&log.l));
-    }
+    dump_logs(logs, log_dir, label);
 
     if (!expired) {
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
@@ -323,6 +329,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 );
                 request->status = READING;
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
+                assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
@@ -582,6 +589,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 log_debug("Scheduling request %d for read", request->id);
                 requests.insert(std::pair<int, RequestState *>(token, request));
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
+                assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
@@ -829,7 +837,7 @@ int main(int argc, char **argv) {
         delete req;
     }
 
-    // Wait on the logging threads
+    // Wait on the logging threads TODO also shut this off if previosu threads stop early
     for (int i = 0; i < n_threads; i++) {
         threads[i].log->join();
         delete threads[i].log;
