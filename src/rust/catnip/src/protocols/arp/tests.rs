@@ -22,8 +22,9 @@ fn immediate_reply() {
     let now = now + Duration::from_micros(1);
     assert!(fut.poll(now).is_none());
 
+    alice.advance_clock(now);
     let request = {
-        let event = alice.poll(now).unwrap().unwrap();
+        let event = alice.pop_event().unwrap();
         match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -48,8 +49,10 @@ fn immediate_reply() {
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
+
+    carrie.advance_clock(now);
     let reply = {
-        let event = carrie.poll(now).unwrap().unwrap();
+        let event = carrie.pop_event().unwrap();
         match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -85,9 +88,9 @@ fn slow_reply() {
     let now = now + Duration::from_secs(1);
     assert!(fut.poll(now).is_none());
 
-    debug!("!!!");
     let request = {
-        let event = alice.poll(now).unwrap().unwrap();
+        alice.advance_clock(now);
+        let event = alice.pop_event().unwrap();
         match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -114,7 +117,8 @@ fn slow_reply() {
         Some(test::alice_link_addr())
     );
     let reply = {
-        let event = carrie.poll(now).unwrap().unwrap();
+        carrie.advance_clock(now);
+        let event = carrie.pop_event().unwrap();
         match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -143,7 +147,9 @@ fn no_reply() {
     assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
     let fut = alice.arp_query(*test::carrie_ipv4_addr());
-    match &*alice.poll(now).unwrap().unwrap() {
+
+    alice.advance_clock(now);
+    match &*alice.pop_event().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
             let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
@@ -158,7 +164,8 @@ fn no_reply() {
         assert!(fut.poll(now).is_none());
         info!("no_reply(): retry #{}", i + 1);
         now += Duration::from_micros(1);
-        match &*alice.poll(now).unwrap().unwrap() {
+        alice.advance_clock(now);
+        match &*alice.pop_event().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
                 let frame =

@@ -169,10 +169,10 @@ impl<'a> UdpPeer<'a> {
 
         self.async_work.add(fut);
     }
-}
 
-impl<'a> Async<()> for UdpPeer<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.async_work.poll(now).map(|r| r.map(|_| ()))
+    pub fn advance_clock(&self, now: Instant) {
+        if let Some(result) = self.async_work.poll(now) {
+            assert!(result.is_ok());
+        }
     }
 }

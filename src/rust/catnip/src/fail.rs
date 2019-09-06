@@ -21,7 +21,6 @@ custom_error! {#[derive(Clone)] pub Fail
     ResourceNotFound{details: Str} = "resource not found ({details})",
     Timeout{} = "an asynchronous operation timed out",
     TypeMismatch{details: Str} = "type mismatch ({details})",
-    Underflow{details: Str} = "underflow ({details})",
     Unsupported{details: Str} = "unsupported ({details})",
 }
 

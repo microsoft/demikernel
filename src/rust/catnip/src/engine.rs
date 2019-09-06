@@ -113,10 +113,17 @@ impl<'a> Engine<'a> {
         self.ipv4.tcp_write(handle, bytes)
     }
 
+    pub fn tcp_peek(
+        &self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<Rc<Vec<u8>>> {
+        self.ipv4.tcp_peek(handle)
+    }
+
     pub fn tcp_read(
         &mut self,
         handle: tcp::ConnectionHandle,
-    ) -> Result<IoVec> {
+    ) -> Result<Rc<Vec<u8>>> {
         self.ipv4.tcp_read(handle)
     }
 
@@ -128,17 +135,17 @@ impl<'a> Engine<'a> {
         self.ipv4.tcp_rto(handle)
     }
 
-    pub fn peek(&self, now: Instant) -> Option<Result<Rc<Event>>> {
-        try_poll!(&self.arp, now);
-        try_poll!(&self.ipv4, now);
-        self.rt.peek(now)
+    pub fn advance_clock(&self, now: Instant) {
+        self.arp.advance_clock(now);
+        self.ipv4.advance_clock(now);
+        self.rt.advance_clock(now);
     }
-}
 
-impl<'a> Async<Rc<Event>> for Engine<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Rc<Event>>> {
-        try_poll!(&self.arp, now);
-        try_poll!(&self.ipv4, now);
-        self.rt.poll(now)
+    pub fn next_event(&self) -> Option<Rc<Event>> {
+        self.rt.next_event()
+    }
+
+    pub fn pop_event(&self) -> Option<Rc<Event>> {
+        self.rt.pop_event()
     }
 }

@@ -1,6 +1,6 @@
 pub use crate::{
-    engine::Engine, event::Event, fail::*, io::IoVec, options::Options,
-    result::*, runtime::Runtime,
+    engine::Engine, event::Event, fail::*, options::Options, result::*,
+    runtime::Runtime,
 };
 
 pub use crate::r#async::{Async, CoroutineOk, Future};

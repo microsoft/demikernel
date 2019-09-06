@@ -36,7 +36,8 @@ fn unicast() {
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let event = alice.poll(now).unwrap().unwrap();
+        alice.advance_clock(now);
+        let event = alice.pop_event().unwrap();
         let bytes = match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -48,7 +49,8 @@ fn unicast() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let event = bob.poll(now).unwrap().unwrap();
+    bob.advance_clock(now);
+    let event = bob.pop_event().unwrap();
     match &*event {
         Event::UdpDatagramReceived(datagram) => {
             assert_eq!(
@@ -92,7 +94,8 @@ fn destination_port_unreachable() {
     fut.poll(now).unwrap().unwrap();
 
     let udp_datagram = {
-        let event = alice.poll(now).unwrap().unwrap();
+        alice.advance_clock(now);
+        let event = alice.pop_event().unwrap();
         let bytes = match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
@@ -104,7 +107,8 @@ fn destination_port_unreachable() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    let event = bob.poll(now).unwrap().unwrap();
+    bob.advance_clock(now);
+    let event = bob.pop_event().unwrap();
     let icmpv4_datagram = {
         let bytes = match &*event {
             Event::Transmit(bytes) => bytes.borrow().to_vec(),
@@ -117,7 +121,8 @@ fn destination_port_unreachable() {
 
     info!("passing ICMPv4 datagram to alice...");
     alice.receive(&icmpv4_datagram).unwrap();
-    let event = alice.poll(now).unwrap().unwrap();
+    alice.advance_clock(now);
+    let event = alice.pop_event().unwrap();
     match &*event {
         Event::Icmpv4Error {
             ref id,

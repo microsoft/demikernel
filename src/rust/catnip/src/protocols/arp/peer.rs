@@ -166,13 +166,10 @@ impl<'a> ArpPeer<'a> {
     pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
     }
-}
 
-impl<'a> Async<()> for ArpPeer<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<()>> {
+    pub fn advance_clock(&self, now: Instant) {
         let mut cache = self.cache.borrow_mut();
         cache.advance_clock(now);
         cache.try_evict(2);
-        Some(Ok(()))
     }
 }

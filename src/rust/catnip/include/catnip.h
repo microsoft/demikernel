@@ -50,14 +50,17 @@ int nip_set_my_ipv4_addr(int32_t ipv4_addr);
 int nip_set_my_link_addr(uint8_t link_addr[6]);
 int nip_new_engine(nip_engine_t *engine_out);
 int nip_receive_datagram(void *bytes, uintptr_t length);
-int nip_poll_event(nip_event_code_t *event_code_out, nip_engine_t engine);
+int nip_next_event(nip_event_code_t *event_code_out, nip_engine_t engine);
 int nip_drop_event(void *engine);
-int nip_get_transmit_event(uint8_t **bytes_out, uintptr_t *length_out, nip_engine_t engine);
+int nip_advance_clock(void *engine);
+int nip_get_transmit_event(const uint8_t **bytes_out, uintptr_t *length_out, nip_engine_t engine);
 int nip_get_icmpv4_error_event(nip_icmpv4_error_t *error_out, nip_engine_t engine);
 int nip_get_tcp_connection_closed_event(nip_tcp_connection_handle_t *handle_out, int *error_out, nip_engine_t engine);
 int nip_get_tcp_connection_estabished_event(nip_tcp_connection_handle_t *handle_out, nip_engine_t engine);
 int nip_get_udp_datagram_event(nip_udp_datagram_t *udp_out, nip_engine_t engine);
 int nip_tcp_write(nip_engine_t engine, nip_tcp_connection_handle_t handle, void *bytes, size_t length);
+int nip_tcp_peek(const uint8_t **bytes_out, uintptr_t *length_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
+int nip_tcp_read(nip_engine_t engine, nip_tcp_connection_handle_t handle);
 
 #ifdef __cplusplus
 }

@@ -33,7 +33,6 @@ mod rand;
 pub mod collections;
 pub mod engine;
 pub mod fail;
-pub mod io;
 pub mod result;
 pub mod runtime;
 pub mod shims;
@@ -43,6 +42,5 @@ pub mod test;
 
 pub use engine::Engine;
 pub use event::Event;
-pub use io::IoVec;
 pub use options::Options;
 pub use runtime::Runtime;

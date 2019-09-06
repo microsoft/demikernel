@@ -5,7 +5,7 @@ use crate::{
     prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
-use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
+use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping, rc::Rc};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
@@ -27,7 +27,7 @@ pub struct TcpSegment {
     pub ack: bool,
     pub rst: bool,
     pub mss: Option<usize>,
-    pub payload: Vec<u8>,
+    pub payload: Rc<Vec<u8>>,
 }
 
 impl TcpSegment {
@@ -95,7 +95,7 @@ impl TcpSegment {
     }
 
     pub fn payload(mut self, bytes: Vec<u8>) -> TcpSegment {
-        self.payload = bytes;
+        self.payload = Rc::new(bytes);
         self
     }
 
@@ -203,7 +203,7 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
         let frame_header = decoder.ipv4().frame().header();
         let src_link_addr = frame_header.src_addr();
         let dest_link_addr = frame_header.dest_addr();
-        let payload = decoder.text().to_vec();
+        let payload = Rc::new(decoder.text().to_vec());
 
         Ok(TcpSegment {
             dest_ipv4_addr: Some(dest_ipv4_addr),

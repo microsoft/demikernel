@@ -44,8 +44,8 @@ impl Into<u16> for TcpConnectionHandle {
 pub struct TcpConnection<'a> {
     handle: TcpConnectionHandle,
     id: TcpConnectionId,
-    input_queue: VecDeque<TcpSegment>,
-    output_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
+    receive_queue: VecDeque<TcpSegment>,
+    transmit_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
     receive_window: TcpReceiveWindow,
     retransmit_retry: Option<Retry<'a>>,
     retransmit_timeout: Option<Duration>,
@@ -67,8 +67,8 @@ impl<'a> TcpConnection<'a> {
         TcpConnection {
             handle,
             id,
-            input_queue: VecDeque::new(),
-            output_queue: VecDeque::new(),
+            receive_queue: VecDeque::new(),
+            transmit_queue: VecDeque::new(),
             receive_window: TcpReceiveWindow::new(receive_window_size),
             retransmit_retry: None,
             retransmit_timeout: None,
@@ -127,7 +127,14 @@ impl<'a> TcpConnection<'a> {
         &mut self,
     ) -> Option<Rc<RefCell<Vec<u8>>>> {
         trace!("TcpConnection::try_get_next_transmittable_segment()");
-        if let Some(segment) = self.output_queue.pop_front() {
+        if let Some(segment) = self.transmit_queue.pop_front() {
+            debug!(
+                "TcpConnection::try_get_next_transmittable_segment(): \
+                 segment ready to transmit, {} remain enqueued in output \
+                 queue.",
+                self.transmit_queue.len()
+            );
+            self.update_tcp_header(&segment);
             return Some(segment);
         }
 
@@ -146,6 +153,14 @@ impl<'a> TcpConnection<'a> {
             return Some(bytes.clone());
         }
 
+        if self.receive_window.is_window_advertisement_needed() {
+            return Some(self.window_advertisement().clone());
+        }
+
+        debug!(
+            "TcpConnection::try_get_next_transmittable_segment(): no \
+             segments ready to transmit."
+        );
         None
     }
 
@@ -222,8 +237,7 @@ impl<'a> TcpConnection<'a> {
                 for unacknowledged in unacknowledged_segments {
                     let unacknowledged = unacknowledged.borrow();
                     let bytes = unacknowledged.get_bytes();
-                    self.update_tcp_header(bytes);
-                    self.output_queue.push_back(bytes.clone());
+                    self.transmit_queue.push_back(bytes.clone());
                 }
             }
             Some(_) => {
@@ -241,7 +255,7 @@ impl<'a> TcpConnection<'a> {
                 let unacknowledged = unacknowledged.borrow();
                 let bytes = unacknowledged.get_bytes();
                 self.update_tcp_header(bytes);
-                self.output_queue.push_back(bytes.clone());
+                self.transmit_queue.push_back(bytes.clone());
                 self.window_probe_needed_since = None;
             }
         }
@@ -253,18 +267,29 @@ impl<'a> TcpConnection<'a> {
         self.send_window.push(bytes)
     }
 
-    pub fn read(&mut self) -> IoVec {
-        let iovec = self.receive_window.pop();
-        debug!("read {:?}", iovec);
-        iovec
+    pub fn peek(&self) -> Option<&Rc<Vec<u8>>> {
+        self.receive_window.peek()
     }
 
-    pub fn input_queue(&self) -> &VecDeque<TcpSegment> {
-        &self.input_queue
+    pub fn read(&mut self) -> Option<Rc<Vec<u8>>> {
+        if let Some(bytes) = self.receive_window.pop() {
+            debug!(
+                "TcpConnection::read(): {:?} read {:?}",
+                self.handle, bytes
+            );
+
+            Some(bytes)
+        } else {
+            None
+        }
     }
 
-    pub fn input_queue_mut(&mut self) -> &mut VecDeque<TcpSegment> {
-        &mut self.input_queue
+    pub fn receive_queue(&self) -> &VecDeque<TcpSegment> {
+        &self.receive_queue
+    }
+
+    pub fn receive_queue_mut(&mut self) -> &mut VecDeque<TcpSegment> {
+        &mut self.receive_queue
     }
 
     pub fn receive(&mut self, segment: TcpSegment) -> Result<()> {
@@ -295,6 +320,10 @@ impl<'a> TcpConnection<'a> {
                 // retransmit the window probe immediately, if it was produced.
                 self.window_probe_needed_since = None;
                 self.cancel_retransmission();
+                debug!(
+                    "TcpConnection::receive(): remote window is no longer \
+                     closed; retransmitting window probe."
+                );
                 self.send_window.record_retransmission(now);
                 let unacknowledged_segments =
                     self.send_window.get_unacknowledged_segments();
@@ -302,8 +331,7 @@ impl<'a> TcpConnection<'a> {
                 if let Some(unacknowledged) = unacknowledged_segments.front() {
                     let unacknowledged = unacknowledged.borrow();
                     let bytes = unacknowledged.get_bytes();
-                    self.update_tcp_header(bytes);
-                    self.output_queue.push_back(bytes.clone());
+                    self.transmit_queue.push_back(bytes.clone());
                 }
             }
         }
@@ -323,20 +351,21 @@ impl<'a> TcpConnection<'a> {
 
         if self.receive_window.window_size() == 0 {
             let window_advertisement = self.window_advertisement().clone();
-            self.output_queue.push_back(window_advertisement);
+            self.transmit_queue.push_back(window_advertisement);
         }
 
         Ok(())
     }
 
-    pub fn window_advertisement(&mut self) -> &Rc<RefCell<Vec<u8>>> {
+    pub fn window_advertisement(&mut self) -> Rc<RefCell<Vec<u8>>> {
         if self.window_advertisement.is_none() {
             self.window_advertisement = Some(Rc::new(RefCell::new(
                 TcpSegment::default().connection(self).encode(),
             )))
         }
 
-        let window_advertisement = self.window_advertisement.as_ref().unwrap();
+        let window_advertisement =
+            self.window_advertisement.as_ref().unwrap().clone();
         {
             let mut bytes = window_advertisement.borrow_mut();
             let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
@@ -347,7 +376,8 @@ impl<'a> TcpConnection<'a> {
             );
         }
 
-        &window_advertisement
+        self.update_tcp_header(&window_advertisement);
+        window_advertisement
     }
 
     pub fn get_rto(&self) -> Duration {
@@ -360,7 +390,7 @@ impl<'a> TcpConnection<'a> {
         self.retransmit_timeout = None;
     }
 
-    pub fn update_tcp_header(&self, bytes: &Rc<RefCell<Vec<u8>>>) {
+    pub fn update_tcp_header(&mut self, bytes: &Rc<RefCell<Vec<u8>>>) {
         let mut bytes = bytes.borrow_mut();
         let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
         let mut header = encoder.header();
@@ -368,5 +398,6 @@ impl<'a> TcpConnection<'a> {
         header.window_size(
             u16::try_from(self.get_local_receive_window_size()).unwrap(),
         );
+        self.receive_window.on_window_advertisement_sent();
     }
 }

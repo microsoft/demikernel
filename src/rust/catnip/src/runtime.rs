@@ -22,8 +22,8 @@ impl<'a> Runtime<'a> {
     pub fn from_options(now: Instant, options: Options) -> Runtime<'a> {
         let rng = Rng::from_seed(options.rng_seed);
         Runtime {
-            options: Rc::new(options),
             events: Rc::new(RefCell::new(VecDeque::new())),
+            options: Rc::new(options),
             r#async: r#async::Runtime::new(now),
             rng: Rc::new(RefCell::new(rng)),
         }
@@ -62,15 +62,26 @@ impl<'a> Runtime<'a> {
         self.rng.borrow_mut()
     }
 
-    pub fn peek(&self, now: Instant) -> Option<Result<Rc<Event>>> {
+    pub fn advance_clock(&self, now: Instant) {
         while self.r#async.poll(now).is_some() {}
-        self.events.borrow().front().map(|e| Ok(e.clone()))
     }
-}
 
-impl<'a> Async<Rc<Event>> for Runtime<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<Rc<Event>>> {
-        while self.r#async.poll(now).is_some() {}
-        self.events.borrow_mut().pop_front().map(Ok)
+    pub fn next_event(&self) -> Option<Rc<Event>> {
+        self.events.borrow().front().cloned()
+    }
+
+    pub fn pop_event(&self) -> Option<Rc<Event>> {
+        let mut events = self.events.borrow_mut();
+        if let Some(event) = events.pop_front() {
+            info!(
+                "event popped for {} (len is now {}) => {:?}",
+                self.options.my_ipv4_addr,
+                events.len(),
+                event
+            );
+            Some(event)
+        } else {
+            None
+        }
     }
 }

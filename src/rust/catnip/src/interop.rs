@@ -1,7 +1,6 @@
 use crate::{
     prelude::*,
     protocols::{ethernet2, tcp},
-    r#async::Async,
     shims::Mutex,
     Options,
 };
@@ -47,7 +46,7 @@ impl From<&Event> for EventCode {
     fn from(event: &Event) -> Self {
         match event {
             Event::Icmpv4Error { .. } => EventCode::Icmpv4Error,
-            Event::TcpBytesAvailable(_) => EventCode::TcpBytesAvailable,
+            Event::TcpBytesAvailable { .. } => EventCode::TcpBytesAvailable,
             Event::TcpConnectionClosed { .. } => {
                 EventCode::TcpConnectionClosed
             }
@@ -73,7 +72,6 @@ fn fail_to_errno(fail: &Fail) -> libc::c_int {
         Fail::ResourceNotFound { .. } => libc::ENOENT,
         Fail::Timeout {} => libc::ETIMEDOUT,
         Fail::TypeMismatch { .. } => libc::EPERM,
-        Fail::Underflow { .. } => libc::EOVERFLOW,
         Fail::Unsupported { .. } => libc::ENOTSUP,
     }
 }
@@ -154,7 +152,7 @@ pub extern "C" fn nip_receive_datagram(
 }
 
 #[no_mangle]
-pub extern "C" fn nip_poll_event(
+pub extern "C" fn nip_next_event(
     event_code_out: *mut libc::c_int,
     engine: *mut libc::c_void,
 ) -> libc::c_int {
@@ -167,10 +165,9 @@ pub extern "C" fn nip_poll_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
+    match engine.next_event() {
         None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => {
+        Some(event) => {
             unsafe {
                 *event_code_out =
                     EventCode::from(event.as_ref()) as libc::c_int
@@ -187,11 +184,21 @@ pub extern "C" fn nip_drop_event(engine: *mut libc::c_void) -> libc::c_int {
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    if engine.poll(Instant::now()).is_some() {
-        0
-    } else {
-        libc::EAGAIN
+    engine.pop_event();
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn nip_service_engine(
+    engine: *mut libc::c_void,
+) -> libc::c_int {
+    if engine.is_null() {
+        return libc::EINVAL;
     }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    engine.advance_clock(Instant::now());
+    0
 }
 
 #[no_mangle]
@@ -217,10 +224,8 @@ pub extern "C" fn nip_get_transmit_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => match &*event {
+    match engine.next_event() {
+        Some(event) => match &*event {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow();
                 unsafe {
@@ -230,8 +235,9 @@ pub extern "C" fn nip_get_transmit_event(
 
                 0
             }
-            _ => libc::EPERM,
+            _ => libc::ENOENT,
         },
+        None => libc::ENOENT,
     }
 }
 
@@ -251,10 +257,8 @@ pub extern "C" fn nip_get_icmpv4_error_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => match &*event {
+    match engine.next_event() {
+        Some(event) => match &*event {
             Event::Icmpv4Error {
                 id,
                 next_hop_mtu,
@@ -269,8 +273,9 @@ pub extern "C" fn nip_get_icmpv4_error_event(
 
                 0
             }
-            _ => libc::EPERM,
+            _ => libc::ENOENT,
         },
+        None => libc::ENOENT,
     }
 }
 
@@ -297,10 +302,8 @@ pub extern "C" fn nip_get_tcp_connection_closed_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => match &*event {
+    match engine.next_event() {
+        Some(event) => match &*event {
             Event::TcpConnectionClosed { handle, error } => {
                 unsafe {
                     *handle_out = (*handle).into();
@@ -309,8 +312,9 @@ pub extern "C" fn nip_get_tcp_connection_closed_event(
 
                 0
             }
-            _ => libc::EPERM,
+            _ => libc::ENOENT,
         },
+        None => libc::ENOENT,
     }
 }
 
@@ -330,16 +334,15 @@ pub extern "C" fn nip_get_tcp_connection_established_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => match &*event {
+    match engine.next_event() {
+        Some(event) => match &*event {
             Event::TcpConnectionEstablished(handle) => {
                 unsafe { *handle_out = (*handle).into() };
                 0
             }
-            _ => libc::EPERM,
+            _ => libc::ENOENT,
         },
+        None => libc::ENOENT,
     }
 }
 
@@ -359,10 +362,8 @@ pub extern "C" fn nip_get_udp_datagram_event(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    match engine.peek(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(Err(fail)) => fail_to_errno(&fail),
-        Some(Ok(event)) => match &*event {
+    match engine.next_event() {
+        Some(event) => match &*event {
             Event::UdpDatagramReceived(udp) => {
                 udp_out.payload_bytes = udp.payload.as_ptr();
                 udp_out.payload_length = udp.payload.len();
@@ -391,8 +392,9 @@ pub extern "C" fn nip_get_udp_datagram_event(
                 udp_out.src_port = udp.src_port.map(|p| p.into()).unwrap_or(0);
                 0
             }
-            _ => libc::EPERM,
+            _ => libc::ENOENT,
         },
+        None => libc::ENOENT,
     }
 }
 
@@ -426,6 +428,69 @@ pub extern "C" fn nip_tcp_write(
 
     match engine.tcp_write(handle, bytes.to_vec()) {
         Ok(()) => 0,
+        Err(fail) => fail_to_errno(&fail),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_peek(
+    bytes_out: *mut *const u8,
+    length_out: *mut usize,
+    engine: *mut libc::c_void,
+    handle: u16,
+) -> libc::c_int {
+    if bytes_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *bytes_out = null() };
+
+    if length_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *length_out = 0 };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if handle == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
+    match engine.tcp_peek(handle) {
+        Ok(bytes) => {
+            unsafe {
+                *bytes_out = bytes.as_ptr();
+                *length_out = bytes.len();
+            }
+
+            0
+        }
+        Err(fail) => fail_to_errno(&fail),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_read(
+    engine: *mut libc::c_void,
+    handle: u16,
+) -> libc::c_int {
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if handle == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
+    match engine.tcp_read(handle) {
+        Ok(_) => 0,
         Err(fail) => fail_to_errno(&fail),
     }
 }

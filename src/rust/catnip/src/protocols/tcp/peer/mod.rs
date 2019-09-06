@@ -311,12 +311,12 @@ impl<'a> TcpPeerState<'a> {
 
             loop {
                 if yield_until!(
-                    !cxn.borrow().input_queue().is_empty(),
+                    !cxn.borrow().receive_queue().is_empty(),
                     state.rt.now()
                 ) {
                     let segment = cxn
                         .borrow_mut()
-                        .input_queue_mut()
+                        .receive_queue_mut()
                         .pop_front()
                         .unwrap();
                     debug!("popped a segment for handshake: {:?}", segment);
@@ -428,7 +428,8 @@ impl<'a> TcpPeerState<'a> {
             loop {
                 {
                     let mut cxn = cxn.borrow_mut();
-                    while let Some(segment) = cxn.input_queue_mut().pop_front()
+                    while let Some(segment) =
+                        cxn.receive_queue_mut().pop_front()
                     {
                         // if there's a payload, we need to acknowledge it at
                         // some point. we set a timer if it hasn't already been
@@ -505,7 +506,7 @@ pub struct TcpPeer<'a> {
 }
 
 impl<'a> TcpPeer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> TcpPeer<'a> {
+    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Self {
         TcpPeer {
             state: Rc::new(RefCell::new(TcpPeerState::new(rt, arp))),
         }
@@ -565,7 +566,7 @@ impl<'a> TcpPeer<'a> {
 
             if let Some(cxn) = self.state.borrow_mut().connections.get(&cxnid)
             {
-                cxn.borrow_mut().input_queue_mut().push_back(segment);
+                cxn.borrow_mut().receive_queue_mut().push_back(segment);
                 return Ok(());
             } else {
                 return Err(Fail::ResourceNotFound {
@@ -690,33 +691,31 @@ impl<'a> TcpPeer<'a> {
         Ok(())
     }
 
-    pub fn read(&mut self, handle: TcpConnectionHandle) -> Result<IoVec> {
-        let (iovec, window_advertisement) = {
-            let state = self.state.borrow();
-            let mut cxn =
-                state.get_connection_given_handle(handle)?.borrow_mut();
-            let old_window_size = cxn.get_local_receive_window_size();
-            let iovec = cxn.read();
-            let window_advertisement = if old_window_size == 0
-                && cxn.get_local_receive_window_size() > 0
-            {
-                Some(cxn.window_advertisement().clone())
-            } else {
-                None
-            };
-
-            (iovec, window_advertisement)
-        };
-
-        if let Some(window_advertisement) = window_advertisement {
-            let async_work = self.state.borrow().async_work.clone();
-            async_work.borrow_mut().add(TcpPeerState::cast(
-                self.state.clone(),
-                window_advertisement.clone(),
-            ));
+    pub fn peek(&self, handle: TcpConnectionHandle) -> Result<Rc<Vec<u8>>> {
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
+        if let Some(bytes) = cxn.peek() {
+            Ok(bytes.clone())
+        } else {
+            Err(Fail::ResourceExhausted {
+                details: "The unread queue is empty.",
+            })
         }
+    }
 
-        Ok(iovec)
+    pub fn read(
+        &mut self,
+        handle: TcpConnectionHandle,
+    ) -> Result<Rc<Vec<u8>>> {
+        let state = self.state.borrow();
+        let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();
+        if let Some(bytes) = cxn.read() {
+            Ok(bytes)
+        } else {
+            Err(Fail::ResourceExhausted {
+                details: "The unread queue is empty.",
+            })
+        }
     }
 
     pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
@@ -730,12 +729,12 @@ impl<'a> TcpPeer<'a> {
         let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_rto())
     }
-}
 
-impl<'a> Async<()> for TcpPeer<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<()>> {
+    pub fn advance_clock(&self, now: Instant) {
         let async_work = self.state.borrow().async_work.clone();
         let async_work = async_work.borrow();
-        async_work.poll(now).map(|r| r.map(|_| ()))
+        if let Some(result) = async_work.poll(now) {
+            assert!(result.is_ok());
+        }
     }
 }

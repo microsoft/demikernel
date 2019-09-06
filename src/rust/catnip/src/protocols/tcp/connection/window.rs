@@ -3,7 +3,7 @@ use super::{
     rto::RtoCalculator,
     TcpConnectionId,
 };
-use crate::{io::IoVec, prelude::*};
+use crate::prelude::*;
 use std::{
     cell::RefCell,
     cmp::min,
@@ -248,12 +248,24 @@ impl TcpSendWindow {
             let byte_count = match expected_remote_receive_window_size {
                 -1 => {
                     assert!(!generate_window_probe);
+                    debug!("TcpSendWindow::try_get_next_transmittable_segment(): window probe in effect; no segments will be transmitted.");
                     return None;
                 }
                 0 => {
                     if generate_window_probe {
+                        debug!(
+                            "TcpSendWindow::\
+                             try_get_next_transmittable_segment(): starting \
+                             window probe."
+                        );
                         1
                     } else {
+                        debug!(
+                            "TcpSendWindow::\
+                             try_get_next_transmittable_segment(): no room \
+                             yet in remote window; no segments will be \
+                             transmitted."
+                        );
                         return None;
                     }
                 }
@@ -278,6 +290,13 @@ impl TcpSendWindow {
 
                 payload
             };
+
+            debug!(
+                "TcpSendWindow::try_get_next_transmittable_segment(): willl \
+                 transmit {} bytes; {} bytes remain unsent.",
+                byte_count,
+                bytes_remaining - byte_count
+            );
 
             self.last_seq_num_transmitted = self
                 .smallest_unacknowledged_seq_num
@@ -317,6 +336,7 @@ impl TcpSendWindow {
 pub struct TcpReceiveWindow {
     ack_num: Option<Wrapping<u32>>,
     bytes_unread: usize,
+    window_advertisement_needed: bool,
     max_window_size: usize,
     unread_segments: VecDeque<TcpSegment>,
 }
@@ -324,9 +344,10 @@ pub struct TcpReceiveWindow {
 impl TcpReceiveWindow {
     pub fn new(max_window_size: usize) -> TcpReceiveWindow {
         TcpReceiveWindow {
-            max_window_size,
             ack_num: None,
             bytes_unread: 0,
+            window_advertisement_needed: false,
+            max_window_size,
             unread_segments: VecDeque::new(),
         }
     }
@@ -343,24 +364,47 @@ impl TcpReceiveWindow {
         self.bytes_unread == 0
     }
 
+    pub fn is_window_advertisement_needed(&self) -> bool {
+        self.window_advertisement_needed
+    }
+
+    pub fn on_window_advertisement_sent(&mut self) {
+        self.window_advertisement_needed = false;
+    }
+
     pub fn remote_isn(&mut self, value: Wrapping<u32>) {
         assert!(self.ack_num.is_none());
         self.ack_num = Some(value + Wrapping(1));
     }
 
-    pub fn pop(&mut self) -> IoVec {
-        let mut iovec = IoVec::new();
-        while let Some(segment) = self.unread_segments.pop_front() {
-            iovec.push_segment(segment.payload);
-        }
+    pub fn peek(&self) -> Option<&Rc<Vec<u8>>> {
+        self.unread_segments.front().map(|s| &s.payload)
+    }
 
-        self.bytes_unread = 0;
-        iovec
+    pub fn pop(&mut self) -> Option<Rc<Vec<u8>>> {
+        if let Some(segment) = self.unread_segments.pop_front() {
+            self.bytes_unread -= segment.payload.len();
+            self.window_advertisement_needed = true;
+            debug!(
+                "TcpReceiveWindow::pop(): read {} bytes; {} bytes ({} \
+                 segments) remain unread",
+                segment.payload.len(),
+                self.bytes_unread,
+                self.unread_segments.len()
+            );
+            Some(segment.payload)
+        } else {
+            None
+        }
     }
 
     pub fn push(&mut self, segment: TcpSegment) -> Result<()> {
         trace!("TcpReceiveWindow::push({:?})", segment);
         let bytes_unread = self.bytes_unread + segment.payload.len();
+        // if we've exhausted our window size, we need to send out a window
+        // advertisement.
+        self.window_advertisement_needed =
+            self.bytes_unread == self.max_window_size;
         if bytes_unread > self.max_window_size {
             return Err(Fail::ResourceExhausted {
                 details: "receive window is full",

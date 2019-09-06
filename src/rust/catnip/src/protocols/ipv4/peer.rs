@@ -6,6 +6,7 @@ use crate::{
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
+    rc::Rc,
     time::{Duration, Instant},
 };
 
@@ -96,10 +97,17 @@ impl<'a> Ipv4Peer<'a> {
         self.tcp.write(handle, bytes)
     }
 
+    pub fn tcp_peek(
+        &self,
+        handle: tcp::ConnectionHandle,
+    ) -> Result<Rc<Vec<u8>>> {
+        self.tcp.peek(handle)
+    }
+
     pub fn tcp_read(
         &mut self,
         handle: tcp::ConnectionHandle,
-    ) -> Result<IoVec> {
+    ) -> Result<Rc<Vec<u8>>> {
         self.tcp.read(handle)
     }
 
@@ -110,12 +118,10 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
         self.tcp.get_rto(handle)
     }
-}
 
-impl<'a> Async<()> for Ipv4Peer<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<()>> {
-        try_poll!(self.icmpv4, now);
-        try_poll!(self.udp, now);
-        self.tcp.poll(now)
+    pub fn advance_clock(&self, now: Instant) {
+        self.icmpv4.advance_clock(now);
+        self.udp.advance_clock(now);
+        self.tcp.advance_clock(now);
     }
 }

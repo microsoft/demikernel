@@ -206,10 +206,10 @@ impl<'a> Icmpv4Peer<'a> {
         self.ping_seq_num_counter.set(seq_num + Wrapping(1));
         seq_num.0
     }
-}
 
-impl<'a> Async<()> for Icmpv4Peer<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<()>> {
-        self.async_work.poll(now).map(|r| r.map(|_| ()))
+    pub fn advance_clock(&self, now: Instant) {
+        if let Some(result) = self.async_work.poll(now) {
+            assert!(result.is_ok());
+        }
     }
 }
