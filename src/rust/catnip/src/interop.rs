@@ -1,11 +1,16 @@
 use crate::{
     prelude::*,
-    protocols::{ethernet2, tcp},
+    protocols::{ethernet2, ip, ipv4, tcp},
     shims::Mutex,
     Options,
 };
 use libc;
-use std::{net::Ipv4Addr, ptr::null, slice, time::Instant};
+use std::{
+    net::Ipv4Addr,
+    ptr::{null, null_mut},
+    slice,
+    time::Instant,
+};
 
 lazy_static! {
     static ref OPTIONS: Mutex<Options> = Mutex::new(Options::default());
@@ -492,5 +497,87 @@ pub extern "C" fn nip_tcp_read(
     match engine.tcp_read(handle) {
         Ok(_) => 0,
         Err(fail) => fail_to_errno(&fail),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_listen(
+    engine: *mut libc::c_void,
+    port: u16,
+) -> libc::c_int {
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if port == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let port = ip::Port::try_from(port).unwrap();
+    match engine.tcp_listen(port) {
+        Ok(_) => 0,
+        Err(fail) => fail_to_errno(&fail),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_connect(
+    future_out: *mut *mut libc::c_void,
+    engine: *mut libc::c_void,
+    remote_addr: u32,
+    remote_port: u16,
+) -> libc::c_int {
+    if future_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *future_out = null_mut() };
+
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    if remote_port == 0 {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    let remote_port = ip::Port::try_from(remote_port).unwrap();
+    let remote_addr = Ipv4Addr::from(remote_addr);
+    let remote_endpoint = ipv4::Endpoint::new(remote_addr, remote_port);
+    let mut future: Future<'static, tcp::ConnectionHandle> =
+        engine.tcp_connect(remote_endpoint);
+    unsafe { *future_out = &mut future as *mut _ as *mut libc::c_void };
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn nip_tcp_connected(
+    handle_out: *mut u16,
+    future: *mut *mut libc::c_void,
+) -> libc::c_int {
+    if handle_out.is_null() {
+        return libc::EINVAL;
+    }
+
+    unsafe { *handle_out = 0 };
+
+    if future.is_null() {
+        return libc::EINVAL;
+    }
+
+    let future = unsafe {
+        &mut *(future as *mut Future<'static, tcp::ConnectionHandle>)
+    };
+    match future.poll(Instant::now()) {
+        None => libc::EAGAIN,
+        Some(result) => match result {
+            Ok(handle) => {
+                unsafe { *handle_out = handle.into() };
+                0
+            }
+            Err(fail) => fail_to_errno(&fail),
+        },
     }
 }
