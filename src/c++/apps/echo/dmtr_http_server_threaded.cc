@@ -48,8 +48,9 @@ class Worker {
         struct worker_args args; // For TCP
         pthread_t me;
         uint8_t whoami;
+        uint8_t core_id;
         enum worker_type type;
-        std::vector<long int> runtimes;
+        std::vector<std::pair<long int, long int> > runtimes;
 };
 
 std::vector<Worker *> http_workers;
@@ -63,25 +64,31 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
 
     std::string wtype;
     if (worker.type == TCP) {
-        wtype = "tcp";
+        wtype = "network";
     } else if (worker.type == HTTP) {
         wtype = "http";
     }
 
     snprintf(filename, MAX_FILENAME_LEN, "%s/%s_%s-runtime-%d",
-             log_dir.c_str(), label.c_str(), wtype.c_str(), worker.whoami);
+             log_dir.c_str(), label.c_str(), wtype.c_str(), worker.core_id);
     f = fopen(filename, "w");
-    fprintf(f, "VALUE\n");
-    for (auto &l: worker.runtimes) {
-        fprintf(f, "%ld\n", l);
+    if (f) {
+        fprintf(f, "TIME\tVALUE\n");
+        for (auto &l: worker.runtimes) {
+            fprintf(f, "%ld\t%ld\n", l.first, l.second);
+        }
+        fflush(f);
+        fclose(f);
+    } else {
+        log_error("Failed to open %s for dumping latencies: %s", filename, strerror(errno));
     }
-    fflush(f);
-    fclose(f);
 }
 
-//FIXME: using POSIX libOS, this now segfaults
+//FIXME: pthread_cancel seems to be conflicting with the co-routines
+// This will throw: "FATAL: exception not rethrown"
+// But we kind of don't care for now
 void sig_handler(int signo) {
-    printf("entering signal handler\n");
+    printf("Entering signal handler\n");
     for (auto &w: tcp_workers) {
         if (w->me > 0) {
             pthread_cancel(w->me);
@@ -94,7 +101,7 @@ void sig_handler(int signo) {
         }
         dump_latencies(*w, log_dir, label);
     }
-    printf("exiting signal handler\n");
+    printf("Exiting signal handler\n");
     exit(1);
 }
 
@@ -221,7 +228,7 @@ static inline void no_op_loop(uint32_t iter) {
 
 int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                      dmtr_qtoken_t &token, int out_qfd, Worker *me) {
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
     uint32_t regs[4];
     uint32_t p;
     hr_clock::time_point start;
@@ -243,7 +250,7 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
         if (no_op_time > 0) {
             no_op_loop(no_op_time);
         }
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
         if (me->type == HTTP) {
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
@@ -255,7 +262,9 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                           "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
-            me->runtimes.push_back(ns_diff(start, end));
+            me->runtimes.push_back(
+                std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+            );
         }
 #endif
         wait_out.qr_value.sga.sga_numsegs = 1;
@@ -332,7 +341,7 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
     resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
     clean_state(state);
 
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
     if (me->type == HTTP) {
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
@@ -344,7 +353,9 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                       "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
-        me->runtimes.push_back(ns_diff(start, end));
+        me->runtimes.push_back(
+            std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+        );
     }
 #endif
     DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
@@ -398,7 +409,7 @@ int tcp_work(uint64_t i,
              dmtr_qresult_t &wait_out,
              int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, Worker *me, int lqd) {
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
     uint32_t regs[4];
     uint32_t p;
     asm volatile(
@@ -439,7 +450,7 @@ int tcp_work(uint64_t i,
             /* This is a new request */
             num_rcvd++;
             /*
-            if (num_rcvd % 500 == 0) {
+            if (num_rcvd % 100 == 0) {
                 log_info("received: %d requests\n", num_rcvd);
             }
             */
@@ -466,16 +477,18 @@ int tcp_work(uint64_t i,
                 http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
                 clients_in_waiting[wait_out.qr_qd] = true;
 
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
                 hr_clock::time_point end = hr_clock::now();
-                me->runtimes.push_back(ns_diff(start, end));
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                );
+                me->runtimes.push_back(
+                    std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
                 );
 #endif
                 DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga));
@@ -488,16 +501,18 @@ int tcp_work(uint64_t i,
                 tokens.push_back(token);
             } else {
                 http_work(i, state, wait_out, token, wait_out.qr_qd, me);
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
                 hr_clock::time_point end = hr_clock::now();
-                me->runtimes.push_back(ns_diff(start, end));
                 asm volatile(
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                );
+                me->runtimes.push_back(
+                    std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
                 );
 #endif
                 /* Re-enable TCP queue for reading */
@@ -530,16 +545,18 @@ int tcp_work(uint64_t i,
                 }
             }
 
-#ifdef DMTR_PROFILE
+#ifdef DMTR_APP_PROFILE
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                           "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
             );
             hr_clock::time_point end = hr_clock::now();
-            me->runtimes.push_back(ns_diff(start, end));
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                           "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+            );
+            me->runtimes.push_back(
+                std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
             );
 #endif
             /* Answer the client */
@@ -667,7 +684,8 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &tcp_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        pin_thread(worker->me, i+1);
+        worker->core_id = i + 1;
+        pin_thread(worker->me, worker->core_id);
         tcp_workers.push_back(worker);
     }
 
@@ -689,7 +707,8 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        pin_thread(worker->me, n_tcp_workers + i + 1);
+        worker->core_id = n_tcp_workers + i + 1;
+        pin_thread(worker->me, worker->core_id);
         http_workers.push_back(worker);
     }
 
@@ -763,7 +782,7 @@ int main(int argc, char *argv[]) {
 
         int ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
         if (ret != 0) {
-            fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
+            fprintf(stderr, "Couln't block SIGINT and SIGQUIT: %s\n", strerror(errno));
         }
     }
 
@@ -785,11 +804,15 @@ int main(int argc, char *argv[]) {
         }
 
         for (auto &w: tcp_workers) {
-            pthread_join(w->me, NULL);
+            if (pthread_join(w->me, NULL) != 0) {
+                log_error("pthread_join error: %s", strerror(errno));
+            }
             dump_latencies(*w, log_dir, label);
         }
         for (auto &w: http_workers) {
-            pthread_join(w->me, NULL);
+            if (pthread_join(w->me, NULL) != 0) {
+                log_error("pthread_join error: %s", strerror(errno));
+            }
             dump_latencies(*w, log_dir, label);
         }
 
