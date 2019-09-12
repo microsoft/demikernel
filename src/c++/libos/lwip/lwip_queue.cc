@@ -381,7 +381,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 
 #ifdef RTE_LIBRTE_PDUMP
     /* initialize packet capture framework */
-    rte_pdump_init(NULL);
+    rte_pdump_init();
 #endif
 
     std::string config_path;
@@ -981,6 +981,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 #endif
                     continue;
             }
+        }
+
+        for (int i = 0; i < nb_pkts; ++i) {
+            rte_pktmbuf_free(tx_pkts[i]);
         }
 
 #if DMTR_PROFILE
