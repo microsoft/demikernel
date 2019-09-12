@@ -972,26 +972,33 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         auto t0 = boost::chrono::steady_clock::now();
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
-        while (pkts_sent < 1) {
+#if DMTR_DEBUG
+        printf("Attempting to send %d packets\n", nb_pkts);
+#endif
+        while (pkts_sent < nb_pkts) {
             int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, tx_pkts, nb_pkts);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case 0:
-                    DMTR_TRUE(ENOTSUP, nb_pkts == pkts_sent);
+            if (ret > 0) {
+                if (nb_pkts == pkts_sent) {
                     continue;
-                case EAGAIN:
+                }
+            } else {
+                if (errno == EAGAIN) {
 #if DMTR_PROFILE
                     dt += boost::chrono::steady_clock::now() - t0;
 #endif
                     yield();
 #if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
+                    t0 = boost::chrono::steady_clock::now();
 #endif
-                    continue;
+                } else {
+                    DMTR_FAIL(ret);
+                }
             }
         }
 
+#if DMTR_DEBUG
+        printf("Sent %d packets\n", nb_pkts);
+#endif
         for (int i = 0; i < nb_pkts; ++i) {
             rte_pktmbuf_free(tx_pkts[i]);
         }
@@ -1090,6 +1097,9 @@ dmtr::lwip_queue::service_incoming_packets() {
             return ret;
     }
 
+    //FIXME: if the count of fragmented packets is > CONFIG_RTE_LIBRTE_IP_FRAG_MAX_FRAG
+    // this will fail to re-assemble, and Demeter will hang up
+    // We should discard the packet int his case, and move on
     for (size_t i = 0; i < count; ++i) {
         struct ether_hdr *eth_hdr;
         eth_hdr = rte_pktmbuf_mtod(pkts[i], struct ether_hdr *);
@@ -1112,7 +1122,6 @@ dmtr::lwip_queue::service_incoming_packets() {
 
                 if (out == NULL) {
                     pkts[i] = NULL;
-                    count--;
                     continue;
                 }
 
@@ -1193,14 +1202,14 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 #if DMTR_DEBUG
     printf("====================\n");
-    printf("recv: pkt len: %d\n", pkt->pkt_len);
+    printf("recv: pkt len: %d\n", ntohs(pkt->pkt_len));
     printf("recv: eth src addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
     printf("\n");
     printf("recv: eth dst addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
     printf("\n");
-    printf("recv: eth type: %x\n", eth_type);
+    printf("recv: eth type: %x\n", ntohs(eth_type));
 #endif
 
     struct ether_addr mac_addr = {};
@@ -1371,7 +1380,6 @@ int dmtr::lwip_queue::rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint
 }
 
 int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **tx_pkts, const uint16_t nb_pkts) {
-    count_out = 0;
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
@@ -1381,10 +1389,11 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status
         // needs to be checked to determine if an error occurred.
-        return EAGAIN;
+        errno = EAGAIN;
+        return -1;
     }
-    count_out = count;
-    return 0;
+    count_out += count;
+    return count;
 }
 
 int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp) {
