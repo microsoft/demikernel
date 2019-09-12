@@ -340,6 +340,13 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
+                /* Null terminate the response */
+                char *resp_char_end =
+                    reinterpret_cast<char *>(
+                        wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+                    ) + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
+                memcpy(resp_char_end, "\0", 1);
+
                 request->status = COMPLETED;
                 request->valid = validate_response(wait_out.qr_value.sga);
                 free(wait_out.qr_value.sga.sga_buf);
@@ -599,6 +606,14 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                     "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
                               "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
                 );
+
+                /* Null terminate the response */
+                char *resp_char_end =
+                    reinterpret_cast<char *>(
+                        wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+                    ) + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
+                memcpy(resp_char_end, "\0", 1);
+
                 request->valid = validate_response(wait_out.qr_value.sga);
                 free(wait_out.qr_value.sga.sga_buf);
                 log_debug("Request %d completed", request->id);
