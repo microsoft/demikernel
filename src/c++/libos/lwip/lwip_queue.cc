@@ -614,7 +614,16 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
         sockaddr_in &src = sga.sga_addr;
         lwip_4tuple tup = lwip_4tuple(lwip_addr(src), lwip_addr(boost::get(my_bound_src)));
-        DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
+
+        /* In some cases, e.g. when the first packets are received in batch by rte_eth_rx_burst()
+         * the accept queue will be filled with multiple packets from the same source */
+        auto it = our_recv_queues.find(tup);
+        if (it != our_recv_queues.end()) {
+            it->second->push(sga);
+            my_recv_queue.pop();
+            return 0;
+        }
+
         new_lq->my_bound_src = my_bound_src;
         new_lq->my_default_dst = src;
         new_lq->my_tuple = tup;
