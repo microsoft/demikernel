@@ -49,6 +49,14 @@ target_link_libraries(dmtr-lwip-http-server-threaded dmtr-libos-lwip pcre yaml-c
 add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
 target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
 
+# RDMA HTTP server threaded
+add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-rdma-http-server-threaded dmtr-libos-rdma rdmacm ibverbs pcre yaml-cpp yaml-cpp boost_program_options Threads::Threads)
+
+# RDMA HTTP rate client
+add_executable(dmtr-rdma-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+target_link_libraries(dmtr-rdma-http-rate-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options Threads::Threads)
+
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-http-server dmtr-libos-posix pcre yaml-cpp boost_program_options)
@@ -101,5 +109,5 @@ target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp b
 add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
 
-add_custom_target(echo)
-add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
+#add_custom_target(echo)
+#add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
