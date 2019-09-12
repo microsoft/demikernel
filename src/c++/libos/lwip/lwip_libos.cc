@@ -27,7 +27,7 @@ int dmtr_init(int argc, char *argv[])
     namespace po = boost::program_options;
     po::options_description desc{"LWIP libos options"};
     desc.add_options()
-        ("port", po::value<uint16_t>(&port)->default_value(12345),
+        ("port", po::value<uint16_t>(&port)->default_value(6789),
          "Port for lwip queues to listen to");
     po::variables_map vm;
     po::parsed_options parsed =
