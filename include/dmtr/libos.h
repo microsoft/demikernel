@@ -22,7 +22,7 @@ DMTR_EXPORT int dmtr_getsockname(int qd, struct sockaddr *saddr, socklen_t *size
 DMTR_EXPORT int dmtr_listen(int fd, int backlog);
 DMTR_EXPORT int dmtr_bind(int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd);
-DMTR_EXPORT int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);
+DMTR_EXPORT int dmtr_connect(dmtr_qtoken_t *qt_out, int qd, const struct sockaddr *saddr, socklen_t size);
 DMTR_EXPORT int dmtr_open(int *qd_out, const char *pathname, int flags);
 DMTR_EXPORT int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode);
 DMTR_EXPORT int dmtr_creat(int *qd_out, const char *pathname, mode_t mode);
@@ -34,7 +34,7 @@ DMTR_EXPORT int dmtr_push(
 DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qt_out, int qd);
 DMTR_EXPORT int dmtr_pop2(dmtr_qtoken_t *qt_out, int qd, size_t count);
 DMTR_EXPORT int dmtr_lseek(int qd, off_t offset, int whence);
-    
+
 DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
 DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 

@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers
                 auto t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_value.new_qd));
                 start_times[token] = t0;
                 tokens.push_back(token);
                 DMTR_OK(dmtr_accept(&token, lqd));

@@ -44,7 +44,9 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
-    DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    dmtr_qtoken_t cqt;
+    DMTR_OK(dmtr_connect(&cqt, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(dmtr_wait(NULL, cqt));
     std::cerr << "Connected." << std::endl;
 
     dmtr_sgarray_t sga = {};

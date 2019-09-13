@@ -28,21 +28,15 @@ typedef struct dmtr_sgarray {
     void *sga_buf;
     uint32_t sga_numsegs;
     dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
-    struct sockaddr_in sga_addr;
 } dmtr_sgarray_t;
 
 typedef enum dmtr_opcode {
     DMTR_OPC_INVALID = 0,
     DMTR_OPC_PUSH,
     DMTR_OPC_POP,
-    DMTR_OPC_ACCEPT
+    DMTR_OPC_ACCEPT,
+    DMTR_OPC_CONNECT,
 } dmtr_opcode_t;
-
-typedef struct dmtr_accept_result {
-    int qd;
-    struct sockaddr_in addr;
-    socklen_t len;
-} dmtr_accept_result_t;
 
 typedef struct dmtr_qresult {
     enum dmtr_opcode qr_opcode;
@@ -50,7 +44,7 @@ typedef struct dmtr_qresult {
     dmtr_qtoken_t qr_qt;
     union {
         dmtr_sgarray_t sga;
-        dmtr_accept_result_t ares;
+        int new_qd;
     } qr_value;
 } dmtr_qresult_t;
 

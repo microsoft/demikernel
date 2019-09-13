@@ -175,12 +175,16 @@ int dmtr::io_queue_api::listen(int qd, int backlog) {
     return 0;
 }
 
-int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, socklen_t size) {
+int dmtr::io_queue_api::connect(dmtr_qtoken_t &qtok_out, int qd, const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EINVAL, qd != 0);
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    int ret = q->connect(saddr, size);
+    dmtr_qtoken_t qt;
+    DMTR_OK(new_qtoken(qt, qd));
+
+    qtok_out = qt;
+    int ret = q->connect(qt, saddr, size);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -349,8 +353,8 @@ void dmtr::io_queue_api::on_poll_failure(dmtr_qresult_t * const qr_out, io_queue
     // if there's a failure on an accept token, we remove the queue
     // we created at the beginning of the operation.
     if (DMTR_OPC_ACCEPT == qr_out->qr_opcode) {
-        (void)self->remove_queue(qr_out->qr_value.ares.qd);
-        qr_out->qr_value.ares.qd = 0;
+        (void)self->remove_queue(qr_out->qr_value.new_qd);
+        qr_out->qr_value.new_qd = 0;
     }
 }
 

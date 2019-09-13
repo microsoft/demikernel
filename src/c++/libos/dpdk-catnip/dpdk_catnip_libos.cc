@@ -18,7 +18,7 @@ int dmtr_init(int argc, char *argv[])
 {
     DMTR_NULL(EINVAL, ioq_api.get());
 
-    DMTR_OK(dmtr::dpdk_catnip_queue::init_dpdk(argc, argv));
+    DMTR_OK(dmtr::dpdk_catnip_queue::initialize_class(argc, argv));
 
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
@@ -74,11 +74,11 @@ int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd)
     return ioq_api->accept(*qtok_out, sockqd);
 }
 
-int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
+int dmtr_connect(dmtr_qtoken_t *qt_out, int qd, const struct sockaddr *saddr, socklen_t size)
 {
     DMTR_NOTNULL(EINVAL, ioq_api.get());
 
-    return ioq_api->connect(qd, saddr, size);
+    return ioq_api->connect(*qt_out, qd, saddr, size);
 }
 
 int dmtr_close(int qd)

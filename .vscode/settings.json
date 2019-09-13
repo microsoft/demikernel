@@ -59,6 +59,12 @@
         "typeindex": "cpp",
         "variant": "cpp",
         "algorithm": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "iterator": "cpp",
+        "map": "cpp",
+        "memory_resource": "cpp",
+        "set": "cpp",
+        "string": "cpp",
+        "cfenv": "cpp"
     }
 }

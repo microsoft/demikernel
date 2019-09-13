@@ -10,18 +10,20 @@
 #include <boost/program_options/variables_map.hpp>
 #include <cassert>
 #include <cassert>
+#include <catnip.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
-#include <dmtr/sga.h>
-#include <iostream>
 #include <dmtr/libos/mem.h>
 #include <dmtr/libos/raii_guard.hh>
+#include <dmtr/sga.h>
+#include <iostream>
 #include <netinet/in.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
@@ -32,7 +34,6 @@
 #include <rte_udp.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
-#include <catnip.h>
 
 namespace bpo = boost::program_options;
 
@@ -79,56 +80,13 @@ static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
 
-const struct ether_addr dmtr::dpdk_catnip_queue::ether_broadcast = {
-    .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-};
-
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
 bool dmtr::dpdk_catnip_queue::our_dpdk_init_flag = false;
-// local ports bound for incoming connections, used to demultiplex incoming new messages for accept
-std::map<in_addr_t, std::queue<dmtr_sgarray_t> *> dmtr::dpdk_catnip_queue::our_recv_queues;
 in_addr_t dmtr::dpdk_catnip_queue::our_ipv4_addr = 0;
-
-bool
-dmtr::dpdk_catnip_queue::insert_recv_queue(in_addr_t in_addr,
-                                    const dmtr_sgarray_t &sga)
-{
-    auto it = our_recv_queues.find(in_addr);
-    if (it == our_recv_queues.end()) {
-        return false;
-    }
-    it->second->push(sga);
-    return true;
-}
-
-int dmtr::dpdk_catnip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len) {
-    DMTR_NOTNULL(EINVAL, hdr);
-    uint32_t sum = 0;
-
-    while (hdr_len > 1) {
-        sum += *hdr++;
-        if (sum & 0x80000000) {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-        hdr_len -= 2;
-    }
-
-    while (sum >> 16) {
-        sum = (sum & 0xFFFF) + (sum >> 16);
-    }
-
-    sum_out = ~sum;
-    return 0;
-}
-
-int dmtr::dpdk_catnip_queue::print_ether_addr(FILE *f, struct ether_addr &eth_addr) {
-    DMTR_NOTNULL(EINVAL, f);
-
-    char buf[ETHER_ADDR_FMT_SIZE];
-    ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, &eth_addr);
-    fputs(buf, f);
-    return 0;
-}
+nip_engine_t dmtr::dpdk_catnip_queue::our_tcp_engine = NULL;
+std::unique_ptr<dmtr::dpdk_catnip_queue::transmit_thread_type> dmtr::dpdk_catnip_queue::our_transmit_thread(new transmit_thread_type(&transmit_thread));
+std::queue<nip_tcp_connection_handle_t> dmtr::dpdk_catnip_queue::our_incoming_connection_handles;
+std::unordered_map<nip_tcp_connection_handle_t, dmtr::dpdk_catnip_queue *> dmtr::dpdk_catnip_queue::our_known_connections;
 
 int dmtr::dpdk_catnip_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
     DMTR_NOTNULL(EINVAL, f);
@@ -249,6 +207,13 @@ int dmtr::dpdk_catnip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool
     return 0;
 }
 
+int dmtr::dpdk_catnip_queue::initialize_class(int argc, char *argv[])
+{
+    DMTR_OK(init_dpdk(argc, argv));
+    DMTR_OK(init_catnip());
+    return 0;
+}
+
 int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -351,12 +316,19 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     return 0;
 }
 
+int dmtr::dpdk_catnip_queue::init_catnip()
+{
+    DMTR_OK(nip_new_engine(&our_tcp_engine));
+    return 0;
+}
+
 const size_t dmtr::dpdk_catnip_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::dpdk_catnip_queue::our_dpdk_port_id;
 
 dmtr::dpdk_catnip_queue::dpdk_catnip_queue(int qd) :
     io_queue(NETWORK_Q, qd),
-    my_listening_flag(false)
+    my_listening_flag(false),
+    my_tcp_connection_handle(0)
 {}
 
 int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
@@ -406,10 +378,10 @@ int
 dmtr::dpdk_catnip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
     DMTR_NOTNULL(EINVAL, size);
     DMTR_TRUE(ENOMEM, *size >= sizeof(struct sockaddr_in));
-    DMTR_TRUE(EINVAL, boost::none != my_bound_src);
+    DMTR_TRUE(EINVAL, boost::none != my_bound_endpoint);
 
     struct sockaddr_in *saddr_in = reinterpret_cast<struct sockaddr_in *>(saddr);
-    *saddr_in = *my_bound_src;
+    *saddr_in = *my_bound_endpoint;
     return 0;
 }
 
@@ -430,6 +402,36 @@ int dmtr::dpdk_catnip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoke
     return 0;
 }
 
+int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &yield, transmit_thread_type::queue_type &tq) {
+
+    while (1) {
+        if (!tq.empty()) {
+            DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+            const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+            struct rte_mbuf *packet = tq.front();
+            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
+            tq.pop();
+            size_t packets_sent = 0;
+            struct rte_mbuf *packets[] = { packet };
+            while (0 == packets_sent) {
+                int ret = rte_eth_tx_burst(packets_sent, dpdk_port_id, 0, packets, 1);
+                switch (ret) {
+                    default:
+                        DMTR_FAIL(ret);
+                    case 0:
+                        DMTR_TRUE(ENOTSUP, 1 == packets_sent);
+                        continue;
+                    case EAGAIN:
+                        yield();
+                        continue;
+                }
+            }
+        }
+
+        yield();
+    }
+}
+
 int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EINVAL, good());
     DMTR_TRUE(EINVAL, my_listening_flag);
@@ -446,28 +448,27 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
 
         io_queue *new_q = NULL;
         DMTR_TRUE(EINVAL, t->arg(new_q));
-        auto * const new_lq = dynamic_cast<dpdk_catnip_queue *>(new_q);
-        DMTR_NOTNULL(EINVAL, new_lq);
+        auto * const new_dcq = dynamic_cast<dpdk_catnip_queue *>(new_q);
+        DMTR_NOTNULL(EINVAL, new_dcq);
 
-        while (my_recv_queue.empty()) {
-            if (service_incoming_packets() == EAGAIN ||
-                my_recv_queue.empty())
-                yield();
+        while (our_incoming_connection_handles.empty()) {
+            int ret = service_event_queue();
+            switch (ret) {
+                default:
+                    DMTR_OK(ret);
+                    break;
+                case EAGAIN:
+                    yield();
+                    break;
+            }
         }
 
-        dmtr_sgarray_t * const sga = &my_recv_queue.front();
-        // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
-        sockaddr_in * const src = &sga->sga_addr;
-        auto addr = src->sin_addr.s_addr;
-        DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
-        new_lq->my_bound_src = my_bound_src;
-        new_lq->my_default_dst = *src;
-        our_recv_queues[addr] = &new_lq->my_recv_queue;
-        // add the packet as the first to the new queue
-        new_lq->my_recv_queue.push(*sga);
-        new_lq->start_threads();
-        DMTR_OK(t->complete(0, new_lq->qd(), *src, sizeof(*src)));
-        my_recv_queue.pop();
+        new_dcq->my_tcp_connection_handle = our_incoming_connection_handles.front();
+        our_incoming_connection_handles.pop();
+        new_dcq->start_threads();
+        DMTR_TRUE(ENOTSUP, our_known_connections.find(new_dcq->my_tcp_connection_handle) == our_known_connections.cend());
+        our_known_connections[new_dcq->my_tcp_connection_handle] = new_dcq;
+        DMTR_OK(t->complete(0, new_dcq->qd()));
     }
 
     return 0;
@@ -477,9 +478,15 @@ int dmtr::dpdk_catnip_queue::listen(int backlog)
 {
     DMTR_TRUE(EPERM, !my_listening_flag);
     DMTR_TRUE(EINVAL, is_bound());
-    //    std::cout << "Listening ..." << std::endl;
+    DMTR_NOTNULL(ENOTSUP, our_tcp_engine);
+
+    // std::cout << "Listening ..." << std::endl;
+    const sockaddr_in endpoint = boost::get(my_bound_endpoint);
+    DMTR_OK(nip_tcp_listen(our_tcp_engine, endpoint.sin_port));
     my_listening_flag = true;
-    start_threads();
+    my_accept_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+        return accept_thread(yield, tq);
+    }));
     return 0;
 }
 
@@ -490,253 +497,109 @@ int dmtr::dpdk_catnip_queue::bind(const struct sockaddr * const saddr, socklen_t
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_NONZERO(EINVAL, our_ipv4_addr);
 
-    struct sockaddr_in saddr_copy =
+    struct sockaddr_in sin =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
-    DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
+    DMTR_NONZERO(EINVAL, sin.sin_port);
 
-    struct in_addr ip = {};
-    ip.s_addr = our_ipv4_addr;
-    if (INADDR_ANY == saddr_copy.sin_addr.s_addr) {
-        saddr_copy.sin_addr = ip;
+    if (INADDR_ANY == sin.sin_addr.s_addr) {
+        sin.sin_addr.s_addr = our_ipv4_addr;
     } else {
-        // we cannot deviate from associations found in `config.yaml`.
-        DMTR_NONZERO(EPERM, memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
+        DMTR_TRUE(EPERM, sin.sin_addr.s_addr == our_ipv4_addr);
     }
-    DMTR_TRUE(EINVAL, our_recv_queues.find(our_ipv4_addr) == our_recv_queues.end());
-    my_bound_src = saddr_copy;
-    our_recv_queues[our_ipv4_addr] = &my_recv_queue;
+
+    my_bound_endpoint = sin;
+
 #if DMTR_DEBUG
-    std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
+    std::cout << "Binding to addr: " << sin.sin_addr.s_addr << ":" << sin.sin_port << std::endl;
 #endif
+
     return 0;
 }
 
-int dmtr::dpdk_catnip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
+int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, !is_bound());
     DMTR_TRUE(EPERM, !is_connected());
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+    DMTR_TRUE(EBUSY, my_connect_thread == NULL);
 
-    my_default_dst = *reinterpret_cast<const struct sockaddr_in *>(saddr);
-    struct sockaddr_in saddr_copy =
+    struct sockaddr_in saddr_in =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
-    DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
-    DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
-    DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
-    our_recv_queues[saddr_copy.sin_addr.s_addr] = &my_recv_queue;
+    DMTR_NONZERO(EINVAL, saddr_in.sin_port);
+    DMTR_NONZERO(EINVAL, saddr_in.sin_addr.s_addr);
+    DMTR_TRUE(EINVAL, saddr_in.sin_family == AF_INET);
 
-    // give the connection the local ip;
-    struct ether_addr mac;
-    DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
-    struct sockaddr_in src = {};
-    src.sin_family = AF_INET;
+    struct sockaddr_in local_endpoint = {};
+    local_endpoint.sin_family = AF_INET;
     // todo: this should use the port defined in the config.
-    src.sin_port = htons(12345);
-    src.sin_addr.s_addr = our_ipv4_addr;
-    my_bound_src = src;
-    std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
+    local_endpoint.sin_port = htons(12345);
+    local_endpoint.sin_addr.s_addr = our_ipv4_addr;
+    my_bound_endpoint = local_endpoint;
+    std::cout << "Connecting from " << local_endpoint.sin_addr.s_addr << " to " << saddr_in.sin_addr.s_addr << std::endl;
+
+
+    nip_future_t connect_future;
+    DMTR_OK(nip_tcp_connect(&connect_future, our_tcp_engine, saddr_in.sin_addr.s_addr, saddr_in.sin_port));
+
+    my_connect_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+        return connect_thread(yield, qt, connect_future);
+    }));
+
+    DMTR_OK(new_task(qt, DMTR_OPC_CONNECT));
+    my_connect_thread->enqueue(qt);
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_future_t connect_future) {
+    int ret;
+    while (1) {
+        ret = nip_tcp_connected(&my_tcp_connection_handle, connect_future);
+        if (EAGAIN == ret) {
+            yield();
+            continue;
+        }
+    }
+
+    DMTR_TRUE(ENOTSUP, our_known_connections.find(my_tcp_connection_handle) == our_known_connections.cend());
+    our_known_connections[my_tcp_connection_handle] = this;
     start_threads();
+
+    task *t;
+    DMTR_OK(get_task(t, qt));
+    DMTR_OK(t->complete(ret));
     return 0;
 }
 
 int dmtr::dpdk_catnip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    my_default_dst = boost::none;
-    my_bound_src = boost::none;
+    my_bound_endpoint = boost::none;
+    our_known_connections.erase(my_tcp_connection_handle);
+    my_tcp_connection_handle = 0;
+    my_connect_thread.reset(nullptr);
     return 0;
 }
 
 int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    DMTR_NOTNULL(EINVAL, my_push_thread);
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
-    my_push_thread->enqueue(qt);
+    task *t;
+    DMTR_OK(get_task(t, qt));
+    DMTR_OK(t->complete(push(sga)));
 
     return 0;
 }
 
-int dmtr::dpdk_catnip_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq)  {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    const uint16_t dpdk_port_id = *our_dpdk_port_id;
+int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
+    uint32_t number_of_segments = htonl(sga.sga_numsegs);
+    DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
-    while (good()) {
-        while (tq.empty()) {
-            yield();
-        }
-
-        auto qt = tq.front();
-        tq.pop();
-        task *t;
-        DMTR_OK(get_task(t, qt));
-
-        const dmtr_sgarray_t *sga = NULL;
-        DMTR_TRUE(EINVAL, t->arg(sga));
-
-        size_t sgalen = 0;
-        DMTR_OK(dmtr_sgalen(&sgalen, sga));
-        if (0 == sgalen) {
-            DMTR_OK(t->complete(ENOMSG));
-            // move onto the next task.
-            continue;
-        }
-
-        const struct sockaddr_in *saddr = NULL;
-        if (!is_connected()) {
-            saddr = &sga->sga_addr;
-        } else {
-            saddr = &boost::get(my_default_dst);
-            //std::cout << "Sending to default address: " << saddr->sin_addr.s_addr << std::endl;
-        }
-        struct rte_mbuf *pkt = NULL;
-        DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
-        auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
-        uint32_t total_len = 0;
-        // packet layout order is (from outside -> in):
-        // ether_hdr
-        // ipv4_hdr
-        // udp_hdr
-        // sga.num_bufs
-        // sga.buf[0].len
-        // sga.buf[0].buf
-        // sga.buf[1].len
-        // sga.buf[1].buf
-        // ...
-
-        // set up Ethernet header
-        auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
-        p += sizeof(*eth_hdr);
-        total_len += sizeof(*eth_hdr);
-        memset(eth_hdr, 0, sizeof(struct ::ether_hdr));
-        eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
-        rte_eth_macaddr_get(dpdk_port_id, eth_hdr->s_addr);
-        struct ether_addr mac = {};
-        DMTR_OK(ip_to_mac(mac, saddr->sin_addr));
-        ether_addr_copy(&mac, &eth_hdr->d_addr);
-
-        // set up IP header
-        auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
-        p += sizeof(*ip_hdr);
-        total_len += sizeof(*ip_hdr);
-        memset(ip_hdr, 0, sizeof(struct ::ipv4_hdr));
-        ip_hdr->version_ihl = IP_VHL_DEF;
-        ip_hdr->time_to_live = IP_DEFTTL;
-        ip_hdr->next_proto_id = IPPROTO_UDP;
-        // todo: need a way to get my own IP address even if `bind()` wasn't
-        // called.
-        if(is_bound()) {
-        auto bound_addr = *my_bound_src;
-        ip_hdr->src_addr = htonl(bound_addr.sin_addr.s_addr);
-        //std::cout << "Sending from address: " << bound_addr.sin_addr.s_addr << std::endl;
-        } else {
-            struct in_addr ip;
-            DMTR_OK(mac_to_ip(ip, eth_hdr->s_addr));
-            ip_hdr->src_addr = ip.s_addr;
-        }
-        ip_hdr->dst_addr = htonl(saddr->sin_addr.s_addr);
-        ip_hdr->total_length = htons(sizeof(struct udp_hdr) + sizeof(struct ipv4_hdr));
-        uint16_t checksum = 0;
-        DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(struct ipv4_hdr)));
-        ip_hdr->hdr_checksum = htons(checksum);
-
-        // set up UDP header
-        auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
-        p += sizeof(*udp_hdr);
-        total_len += sizeof(*udp_hdr);
-        memset(udp_hdr, 0, sizeof(struct ::udp_hdr));
-        udp_hdr->dst_port = htons(saddr->sin_port);
-        // todo: need a way to get my own IP address even if `bind()` wasn't
-        // called.
-        if (is_bound()) {
-            auto bound_addr = *my_bound_src;
-            udp_hdr->src_port = htons(bound_addr.sin_port);
-        } else {
-            udp_hdr->src_port = udp_hdr->dst_port;
-        }
-
-        uint32_t payload_len = 0;
-        auto *u32 = reinterpret_cast<uint32_t *>(p);
-        *u32 = htonl(sga->sga_numsegs);
-        payload_len += sizeof(*u32);
-        p += sizeof(*u32);
-
-        for (size_t i = 0; i < sga->sga_numsegs; i++) {
-            u32 = reinterpret_cast<uint32_t *>(p);
-            auto len = sga->sga_segs[i].sgaseg_len;
-            *u32 = htonl(len);
-            payload_len += sizeof(*u32);
-            p += sizeof(*u32);
-            // todo: remove copy by associating foreign memory with
-            // pktmbuf object.
-            rte_memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
-            payload_len += len;
-            p += len;
-        }
-
-        uint16_t udp_len = 0;
-        DMTR_OK(dmtr_u32tou16(&udp_len, sizeof(struct udp_hdr) + payload_len));
-        udp_hdr->dgram_len = htons(udp_len);
-        total_len += payload_len;
-        pkt->data_len = total_len;
-        pkt->pkt_len = total_len;
-        pkt->nb_segs = 1;
-
-#if DMTR_DEBUG
-        printf("send: eth src addr: ");
-        DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
-        printf("\n");
-        printf("send: eth dst addr: ");
-        DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
-        printf("\n");
-        printf("send: ip src addr: %x\n", ntohl(ip_hdr->src_addr));
-        printf("send: ip dst addr: %x\n", ntohl(ip_hdr->dst_addr));
-        printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
-        printf("send: udp dst port: %d\n", ntohs(udp_hdr->dst_port));
-        printf("send: sga_numsegs: %d\n", sga->sga_numsegs);
-        // for (size_t i = 0; i < sga->sga_numsegs; ++i) {
-        //     printf("send: buf [%lu] len: %u\n", i, sga->sga_segs[i].sgaseg_len);
-        //     printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
-        // }
-        printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
-        printf("send: pkt len: %d\n", total_len);
-        //rte_pktmbuf_dump(stderr, pkt, total_len);
-#endif
-
-        size_t pkts_sent = 0;
-#if DMTR_PROFILE
-        auto t0 = boost::chrono::steady_clock::now();
-        boost::chrono::duration<uint64_t, boost::nano> dt(0);
-#endif
-        while (pkts_sent < 1) {
-            int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, &pkt, 1);
-            switch (ret) {
-                default:
-                    DMTR_FAIL(ret);
-                case 0:
-                    DMTR_TRUE(ENOTSUP, 1 == pkts_sent);
-                    continue;
-                case EAGAIN:
-#if DMTR_PROFILE
-                    dt += boost::chrono::steady_clock::now() - t0;
-#endif
-                    yield();
-#if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
-#endif
-                    continue;
-            }
-        }
-
-#if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
-        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
-#endif
-
-        DMTR_OK(t->complete(0, *sga));
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        auto *segment = &sga.sga_segs[i];
+        auto segment_length = htonl(segment->sgaseg_len);
+        DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
+        DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
     }
 
     return 0;
@@ -753,10 +616,11 @@ int dmtr::dpdk_catnip_queue::pop(dmtr_qtoken_t qt) {
     return 0;
 }
 
-
 int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+
+    std::deque<uint8_t> buffer;
 
     while (good()) {
         while (tq.empty()) {
@@ -768,18 +632,29 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
         task *t;
         DMTR_OK(get_task(t, qt));
 
-        while (my_recv_queue.empty()) {
-            if (service_incoming_packets() == EAGAIN ||
-                my_recv_queue.empty())
-                yield();
-        }
-
-        dmtr_sgarray_t &sga = my_recv_queue.front();
-        // todo: pop from queue in `raii_guard`.
-        DMTR_OK(t->complete(0, sga));
-        my_recv_queue.pop();
+        dmtr_sgarray_t sga;
+        int ret = read_message(sga, buffer, yield);
+        DMTR_OK(t->complete(ret, sga));
     }
 
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
+    sga_out = {};
+    dmtr_sgarray_t sga = {};
+
+    DMTR_OK(tcp_read(sga.sga_numsegs, buffer, yield));
+    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+        uint32_t segment_length;
+        DMTR_OK(tcp_read(segment_length, buffer, yield));
+        sga.sga_segs[i].sgaseg_len = segment_length;
+        uint8_t *bytes;
+        DMTR_OK(tcp_read(bytes, buffer, segment_length, yield));
+        sga.sga_segs[i].sgaseg_buf = bytes;
+    }
+
+    sga_out = sga;
     return 0;
 }
 
@@ -790,21 +665,21 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
     // poll DPDK NIC
-    struct rte_mbuf *pkts[our_max_queue_depth];
+    struct rte_mbuf *packets[our_max_queue_depth];
     uint16_t depth = 0;
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
 #if DMTR_PROFILE
     auto t0 = boost::chrono::steady_clock::now();
 #endif
-    int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
+    int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, packets, depth);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
         case 0:
             break;
         case EAGAIN:
-            return ret;
+            return 0;
     }
 
 #if DMTR_PROFILE
@@ -812,152 +687,22 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
+    std::cerr << "rte_eth_rx_burst() => " << count << std::endl;
     for (size_t i = 0; i < count; ++i) {
-        struct sockaddr_in src, dst;
-        dmtr_sgarray_t sga;
-        // check the packet header
-
-        bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
-        rte_pktmbuf_free(pkts[i]);
-
-        if (valid_packet) {
-            // found valid packet, try to place in queue based on src
-            if (insert_recv_queue(src.sin_addr.s_addr, sga)) {
-                // placed in appropriate queue, work is done
-#if DMTR_DEBUG
-                std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
-#endif
-                continue;
-            }
-            std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
-            // otherwise place in queue based on dst
-            insert_recv_queue(dst.sin_addr.s_addr, sga);
+        struct rte_mbuf * const packet = packets[i];
+        auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
+        size_t length = rte_pktmbuf_data_len(packet);
+        int ret = nip_receive_datagram(p, length);
+        switch (ret) {
+            default:
+                std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
+                break;
+            case 0:
+                break;
         }
     }
+
     return 0;
-}
-
-bool
-dmtr::dpdk_catnip_queue::parse_packet(struct sockaddr_in &src,
-                               struct sockaddr_in &dst,
-                               dmtr_sgarray_t &sga,
-                               const struct rte_mbuf *pkt)
-{
-    // packet layout order is (from outside -> in):
-    // ether_hdr
-    // ipv4_hdr
-    // udp_hdr
-    // sga.num_bufs
-    // sga.buf[0].len
-    // sga.buf[0].buf
-    // sga.buf[1].len
-    // sga.buf[1].buf
-    // ...
-    auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
-
-    // check ethernet header
-    auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
-    p += sizeof(*eth_hdr);
-    auto eth_type = ntohs(eth_hdr->ether_type);
-
-#if DMTR_DEBUG
-    printf("=====\n");
-    printf("recv: pkt len: %d\n", pkt->pkt_len);
-    printf("recv: eth src addr: ");
-    DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
-    printf("\n");
-    printf("recv: eth dst addr: ");
-    DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
-    printf("\n");
-    printf("recv: eth type: %x\n", eth_type);
-#endif
-
-    struct ether_addr mac_addr = {};
-
-    DMTR_OK(rte_eth_macaddr_get(boost::get(our_dpdk_port_id), mac_addr));
-    if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
-#if DMTR_DEBUG
-        printf("recv: dropped (wrong eth addr)!\n");
-#endif
-        return false;
-    }
-
-    if (ETHER_TYPE_IPv4 != eth_type) {
-#if DMTR_DEBUG
-        printf("recv: dropped (wrong eth type)!\n");
-#endif
-        return false;
-    }
-
-    // check ip header
-    auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
-    p += sizeof(*ip_hdr);
-    uint32_t ipv4_src_addr = ntohl(ip_hdr->src_addr);
-    uint32_t ipv4_dst_addr = ntohl(ip_hdr->dst_addr);
-
-    if (IPPROTO_UDP != ip_hdr->next_proto_id) {
-#if DMTR_DEBUG
-        printf("recv: dropped (not UDP)!\n");
-#endif
-        return false;
-    }
-
-#if DMTR_DEBUG
-    printf("recv: ip src addr: %x\n", ipv4_src_addr);
-    printf("recv: ip dst addr: %x\n", ipv4_dst_addr);
-#endif
-    src.sin_addr.s_addr = ipv4_src_addr;
-    dst.sin_addr.s_addr = ipv4_dst_addr;
-
-    // check udp header
-    auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
-    p += sizeof(*udp_hdr);
-    uint16_t udp_src_port = ntohs(udp_hdr->src_port);
-    uint16_t udp_dst_port = ntohs(udp_hdr->dst_port);
-
-#if DMTR_DEBUG
-    printf("recv: udp src port: %d\n", udp_src_port);
-    printf("recv: udp dst port: %d\n", udp_dst_port);
-#endif
-    src.sin_port = udp_src_port;
-    dst.sin_port = udp_dst_port;
-    src.sin_family = AF_INET;
-    dst.sin_family = AF_INET;
-
-    // segment count
-    sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
-    p += sizeof(uint32_t);
-
-#if DMTR_DEBUG
-    printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
-#endif
-
-    for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        // segment length
-        auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
-        sga.sga_segs[i].sgaseg_len = seg_len;
-        p += sizeof(seg_len);
-
-#if DMTR_DEBUG
-        printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endif
-
-        void *buf = NULL;
-        DMTR_OK(dmtr_malloc(&buf, seg_len));
-        sga.sga_buf = buf;
-        sga.sga_segs[i].sgaseg_buf = buf;
-        // todo: remove copy if possible.
-        rte_memcpy(buf, p, seg_len);
-        p += seg_len;
-
-#if DMTR_DEBUG
-        //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
-#endif
-    }
-    sga.sga_addr.sin_family = AF_INET;
-    sga.sga_addr.sin_port = udp_src_port;
-    sga.sga_addr.sin_addr.s_addr = ipv4_src_addr;
-    return true;
 }
 
 int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
@@ -966,10 +711,13 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, good());
 
+    DMTR_OK(service_incoming_packets());
+    DMTR_OK(service_event_queue());
+
     task *t;
     DMTR_OK(get_task(t, qt));
 
-    int ret;
+    int ret = 0;
     switch (t->opcode()) {
         default:
             return ENOTSUP;
@@ -977,10 +725,12 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
             ret = my_accept_thread->service();
             break;
         case DMTR_OPC_PUSH:
-            ret = my_push_thread->service();
             break;
         case DMTR_OPC_POP:
             ret = my_pop_thread->service();
+            break;
+        case DMTR_OPC_CONNECT:
+            ret = my_connect_thread->service();
             break;
     }
 
@@ -1049,7 +799,6 @@ int dmtr::dpdk_catnip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct
     pkt_out = pkt;
     return 0;
 }
-
 
 int dmtr::dpdk_catnip_queue::rte_eal_init(int &count_out, int argc, char *argv[]) {
     count_out = -1;
@@ -1212,17 +961,147 @@ int dmtr::dpdk_catnip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rt
 }
 
 void dmtr::dpdk_catnip_queue::start_threads() {
-    if (my_listening_flag) {
-        my_accept_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
-            return accept_thread(yield, tq);
-        }));
-    } else {
-        my_push_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
-            return push_thread(yield, tq);
-        }));
+    my_pop_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+        return pop_thread(yield, tq);
+    }));
+}
 
-        my_pop_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
-            return pop_thread(yield, tq);
-        }));
+int dmtr::dpdk_catnip_queue::service_event_queue() {
+    nip_event_code_t event_code;
+    int ret = nip_next_event(&event_code, our_tcp_engine);
+    switch (ret) {
+        default:
+            DMTR_FAIL(ret);
+        case 0:
+            break;
+        case EAGAIN:
+            return 0;
     }
+
+    switch (event_code) {
+        default:
+            std::cerr << "unrecognized catnip event code (" << event_code << ")" << std::endl;
+            break;
+        case NIP_TCP_BYTES_AVAILABLE:
+            // this event can be safely ignored.
+            break;
+        case NIP_TCP_CONNECTION_CLOSED: {
+            nip_tcp_connection_handle_t handle = 0;
+            int error = 0;
+            DMTR_OK(nip_get_tcp_connection_closed_event(&handle, &error, our_tcp_engine));
+            DMTR_NONZERO(ENOTSUP, handle);
+            DMTR_TRUE(ENOENT, our_known_connections.find(handle) != our_known_connections.cend());
+            our_known_connections[handle]->close();
+            break;
+        }
+        case NIP_INCOMING_TCP_CONNECTION: {
+            nip_tcp_connection_handle_t handle = 0;
+            DMTR_OK(nip_get_incoming_tcp_connection_event(&handle, our_tcp_engine));
+            DMTR_NONZERO(ENOTSUP, handle);
+            our_incoming_connection_handles.push(handle);
+            break;
+        }
+        case NIP_TRANSMIT: {
+            struct rte_mbuf *packet = NULL;
+            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
+            DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
+            auto *p = rte_pktmbuf_mtod(packet, uint8_t *);
+
+            const uint8_t *bytes = NULL;
+            size_t length = 0;
+            DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine));
+            // not certain how we get the DPDK packet allocated with the
+            // proper length; the old code didn't do anything.
+            rte_memcpy(p, bytes, length);
+            our_transmit_thread->enqueue(packet);
+            rg0.cancel();
+            break;
+        }
+    }
+
+    DMTR_OK(nip_drop_event(our_tcp_engine));
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &length_out, task::thread_type::yield_type &yield) {
+    int ret;
+    while (1) {
+        ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle);
+        if (EAGAIN != ret) {
+            break;
+        }
+
+        yield();
+    }
+
+    return ret;
+}
+
+int dmtr::dpdk_catnip_queue::tcp_peek(std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
+    const uint8_t *bytes;
+    size_t length;
+    DMTR_OK(tcp_peek(bytes, length, yield));
+    for (size_t i = 0; i < length; ++i) {
+        buffer.push_back(bytes[i]);
+    }
+
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::pop_front(uint32_t &value_out, std::deque<uint8_t> &buffer) {
+    union {
+        uint32_t n;
+        uint8_t bytes[sizeof(uint32_t)];
+    } u;
+
+    if (buffer.size() < sizeof(uint32_t)) {
+        return ENOMEM;
+    }
+
+    for (size_t i = 0; i < sizeof(uint32_t); ++i) {
+        u.bytes[i] = buffer.front();
+        buffer.pop_front();
+    }
+
+    u.n = htonl(u.n);
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::pop_front(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length)
+{
+    if (buffer.size() < length) {
+        return ENOMEM;
+    }
+
+    void *p;
+    DMTR_OK(dmtr_malloc(&p, length));
+    bytes_out = reinterpret_cast<uint8_t *>(p);
+
+    for (size_t i = 0; i < length; ++i) {
+        bytes_out[i] = buffer.front();
+        buffer.pop_front();
+    }
+
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::tcp_read(std::deque<uint8_t> &buffer, size_t length, task::thread_type::yield_type &yield) {
+    while (buffer.size() < length) {
+        DMTR_OK(tcp_peek(buffer, yield));
+        DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle));
+    }
+
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::tcp_read(uint32_t &value_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
+    DMTR_OK(tcp_read(buffer, sizeof(value_out), yield));
+    DMTR_OK(pop_front(value_out, buffer));
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::tcp_read(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length, task::thread_type::yield_type &yield) {
+    DMTR_OK(tcp_read(buffer, length, yield));
+    DMTR_OK(pop_front(bytes_out, buffer, length));
+    return 0;
 }

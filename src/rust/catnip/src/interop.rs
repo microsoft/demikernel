@@ -122,7 +122,7 @@ pub extern "C" fn nip_new_engine(
         return libc::EINVAL;
     }
 
-    let mut engine = {
+    let engine = {
         let options = OPTIONS.lock();
         match Engine::from_options(Instant::now(), options.clone()) {
             Ok(e) => e,
@@ -130,7 +130,9 @@ pub extern "C" fn nip_new_engine(
         }
     };
 
-    unsafe { *engine_out = &mut engine as *mut _ as *mut libc::c_void };
+    unsafe {
+        *engine_out = Box::into_raw(Box::new(engine)) as *mut libc::c_void
+    };
     0
 }
 
@@ -475,6 +477,7 @@ pub extern "C" fn nip_tcp_peek(
 
             0
         }
+        Err(Fail::ResourceExhausted { .. }) => libc::EAGAIN,
         Err(fail) => fail_to_errno(&fail),
     }
 }
@@ -543,12 +546,14 @@ pub extern "C" fn nip_tcp_connect(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let remote_port = ip::Port::try_from(remote_port).unwrap();
+    let remote_port = ip::Port::try_from(u16::from_be(remote_port)).unwrap();
     let remote_addr = Ipv4Addr::from(remote_addr);
     let remote_endpoint = ipv4::Endpoint::new(remote_addr, remote_port);
-    let mut future: Future<'static, tcp::ConnectionHandle> =
+    let future: Future<'static, tcp::ConnectionHandle> =
         engine.tcp_connect(remote_endpoint);
-    unsafe { *future_out = &mut future as *mut _ as *mut libc::c_void };
+    unsafe {
+        *future_out = Box::into_raw(Box::new(future)) as *mut libc::c_void
+    };
     0
 }
 
