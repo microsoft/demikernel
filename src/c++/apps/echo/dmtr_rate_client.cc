@@ -134,14 +134,14 @@ std::string generate_log_file_path(std::string log_dir,
 struct log_data {
     dmtr_latency_t *l;
     char const *name;
+    FILE *fh;
+    char filename[MAX_FNAME_PATH_LEN];
 };
 
 
 static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
     for (auto &log: logs) {
-        FILE *log_fd = fopen(
-            (const char *)generate_log_file_path(log_dir, label, log.name).c_str(), "w"
-        );
+        FILE *log_fd = fopen(reinterpret_cast<const char *>(log.filename), "w");
         if (log_fd) {
             DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
             fclose(log_fd);
@@ -152,27 +152,39 @@ static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, st
     return 0;
 }
 
+/**
+ * It is a bit dirty, but this function has two modes: live dump, or
+ * post-mortem dump. In the former, request timing are directly dumped to their
+ * respective file when recorded. In the latter, requests are recorded using dmtr_latency
+ * objects, and dumped to files either when all requests in the experiment have been logged,
+ * or when the thread time out.
+ */
 int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
-                  std::string log_dir, std::string label, int my_idx) {
-
-    /* Create dmtr_latency objects */
+                  std::string log_dir, std::string label,
+                  int my_idx, bool live_dump) {
+    /* Init latencies */
     std::vector<struct log_data> logs;
-    struct log_data e2e = {.l = NULL, .name = "end-to-end"};
-    DMTR_OK(dmtr_new_latency(&e2e.l, "end-to-end"));
-    logs.push_back(e2e);
-    struct log_data connect;
-    if (!long_lived) {
-        connect = {.l = NULL, .name = "connect"};
-        DMTR_OK(dmtr_new_latency(&connect.l, "connect"));
-        logs.push_back(connect);
+    std::vector<const char *> latencies_names = {"end-to-end", "send", "receive"};
+    if (long_lived) {
+        latencies_names.push_back("connect");
     }
-    struct log_data send = {.l = NULL, .name = "send"};
-    DMTR_OK(dmtr_new_latency(&send.l, "send"));
-    logs.push_back(send);
-    struct log_data receive = {.l = NULL, .name = "receive"};
-    DMTR_OK(dmtr_new_latency(&receive.l, "receive"));
-    logs.push_back(receive);
+
+    for (auto &name: latencies_names) {
+        struct log_data l;
+        l.l = NULL; l.name = name; l.fh = NULL;
+        strncpy(l.filename,
+                generate_log_file_path(log_dir, label, name).c_str(),
+                MAX_FNAME_PATH_LEN
+        );
+        if (live_dump) {
+            l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
+            fprintf(l.fh, "TIME\tVALUE\n");
+        } else {
+            DMTR_OK(dmtr_new_latency(&l.l, name));
+        }
+        logs.push_back(l);
+    }
 
     uint32_t n_invalid = 0;
     bool expired = false;
@@ -187,34 +199,47 @@ int log_responses(uint32_t total_requests, int log_memq,
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
             );
 
-            if (long_lived) {
-                DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->sending),
-                                                  ns_diff(req->sending, req->completed)));
+            if (live_dump) {
+                if (long_lived) {
+                    fprintf(logs[0].fh, "%ld\t%ld\n",
+                            since_epoch(req->sending),
+                            ns_diff(req->sending, req->completed)
+                    );
+                } else {
+                    fprintf(logs[0].fh, "%ld\t%ld\n",
+                            since_epoch(req->connecting),
+                            ns_diff(req->connecting, req->completed)
+                    );
+                    fprintf(logs[3].fh, "%ld\t%ld\n",
+                            since_epoch(req->connecting),
+                            ns_diff(req->connecting, req->connected)
+                    );
+                }
+                fprintf(logs[1].fh, "%ld\t%ld\n",
+                        since_epoch(req->sending),
+                        ns_diff(req->sending, req->reading)
+                );
+                fprintf(logs[2].fh, "%ld\t%ld\n",
+                        since_epoch(req->reading),
+                        ns_diff(req->reading, req->completed)
+                );
             } else {
-                DMTR_OK(dmtr_record_timed_latency(e2e.l, since_epoch(req->connecting),
-                                                  ns_diff(req->connecting, req->completed)));
+                if (long_lived) {
+                    DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->sending),
+                                                      ns_diff(req->sending, req->completed)));
+                } else {
+                    DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->connecting),
+                                                      ns_diff(req->connecting, req->completed)));
+                    DMTR_OK(dmtr_record_timed_latency(logs[3].l, since_epoch(req->connecting),
+                                                      ns_diff(req->connecting, req->connected)));
+                }
+                DMTR_OK(dmtr_record_timed_latency(logs[1].l, since_epoch(req->sending),
+                                                  ns_diff(req->sending, req->reading)));
+                DMTR_OK(dmtr_record_timed_latency(logs[2].l, since_epoch(req->reading),
+                                                  ns_diff(req->reading, req->completed)));
             }
-            /*
-            fprintf(stderr, "Connect: %ld (%ld-%ld)\n",
-                    ns_diff(req->connecting, req->connected),
-                    since_epoch(req->connected), since_epoch(req->connecting));
-            fprintf(stderr, "Send: %ld (%ld-%ld)\n",
-                    ns_diff(req->sending, req->reading),
-                    since_epoch(req->reading), since_epoch(req->sending));
-            fprintf(stderr, "Receive: %ld (%ld-%ld)\n",
-                    ns_diff(req->reading, req->completed),
-                    since_epoch(req->completed), since_epoch(req->reading));
-            */
-            if (!long_lived) {
-                DMTR_OK(dmtr_record_timed_latency(connect.l, since_epoch(req->connecting),
-                                                  ns_diff(req->connecting, req->connected)));
-            }
-            DMTR_OK(dmtr_record_timed_latency(send.l, since_epoch(req->sending),
-                                              ns_diff(req->sending, req->reading)));
-            DMTR_OK(dmtr_record_timed_latency(receive.l, since_epoch(req->reading),
-                                              ns_diff(req->reading, req->completed)));
-            logged++;
 
+            logged++;
             if (!req->valid) {
                 n_invalid++;
             }
@@ -226,12 +251,16 @@ int log_responses(uint32_t total_requests, int log_memq,
             log_warn("logging time has passed. %d requests were logged (%d invalid).",
                       logged, n_invalid);
             expired = true;
-            dump_logs(logs, log_dir, label);
-            break;
         }
     }
 
-    dump_logs(logs, log_dir, label);
+    if (live_dump) {
+        for (auto &l: logs) {
+            fclose(l.fh);
+        }
+    } else {
+        dump_logs(logs, log_dir, label);
+    }
 
     if (!expired) {
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
@@ -688,11 +717,12 @@ int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
-    bool short_lived, debug_duration_flag;
+    bool short_lived, debug_duration_flag, no_live_dump, live_dump;
     po::options_description desc{"Rate client options"};
     desc.add_options()
         ("debug-duration", po::bool_switch(&debug_duration_flag), "Remove duration limits for threads")
         ("short-lived", po::bool_switch(&short_lived), "Re-use connection for each request")
+        ("no-live-dump", po::bool_switch(&no_live_dump), "Wait for the end of the experiment to dump data")
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
         ("url,u", po::value<std::string>(&url)->required(), "Target URL")
@@ -706,6 +736,8 @@ int main(int argc, char **argv) {
         log_info("Starting client in short lived mode");
         long_lived = false;
     }
+
+    live_dump = no_live_dump? false : true;
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
@@ -801,7 +833,7 @@ int main(int argc, char **argv) {
         threads[i].log = new std::thread(
             log_responses,
             req_per_thread, log_memq, &time_end_log,
-            log_dir, label, i
+            log_dir, label, i, live_dump
         );
         if (long_lived) {
             threads[i].resp = new std::thread(
