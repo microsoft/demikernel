@@ -58,6 +58,7 @@ std::vector<Worker *> tcp_workers;
 
 std::string label, log_dir;
 void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
+    log_debug("Dumping latencies for worker %d on core %d\n", worker.whoami, worker.core_id);
     size_t MAX_FILENAME_LEN = 128;
     char filename[MAX_FILENAME_LEN];
     FILE *f = NULL;
@@ -128,6 +129,7 @@ int match_filter(std::string message) {
     return 0;
 }
 
+//FIXME: dirty hardcoded null body
 static void file_work(char *url, char **response, int *response_len) {
     char filepath[MAX_FILEPATH_LEN];
     url_to_path(url, FILE_DIR, filepath, MAX_FILEPATH_LEN);
@@ -156,13 +158,22 @@ static void file_work(char *url, char **response, int *response_len) {
             int size = ftell(file);
             fseek(file, 0, SEEK_SET);
 
+            /*
             body = reinterpret_cast<char *>(malloc(size+1));
             body_len = fread(body, sizeof(char), size, file);
             body[body_len] = '\0';
+            */
 
+            body = reinterpret_cast<char *>(malloc(size+1));
+            fread(body, sizeof(char), size, file);
+            free(body);
+            body = NULL;
+            body_len = 0;
+            /*
             if (body_len != size) {
                 fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
             }
+            */
 
             fclose(file);
 
