@@ -45,7 +45,7 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-//#define DMTR_DEBUG 1
+#define DMTR_DEBUG 1
 #define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
 
@@ -406,6 +406,7 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
 
     while (1) {
         if (!tq.empty()) {
+            // todo: send as many packets as we can.
             DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
             const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
             struct rte_mbuf *packet = tq.front();
@@ -413,6 +414,9 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             tq.pop();
             size_t packets_sent = 0;
             struct rte_mbuf *packets[] = { packet };
+#ifdef DMTR_DEBUG
+            rte_pktmbuf_dump(stderr, packet, packet->pkt_len);
+#endif
             while (0 == packets_sent) {
                 int ret = rte_eth_tx_burst(packets_sent, dpdk_port_id, 0, packets, 1);
                 switch (ret) {
@@ -713,11 +717,14 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 
     DMTR_OK(service_incoming_packets());
     DMTR_OK(service_event_queue());
+    int ret = our_transmit_thread->service();
+    if (EAGAIN != ret) {
+        DMTR_OK(ret);
+    }
 
     task *t;
     DMTR_OK(get_task(t, qt));
 
-    int ret = 0;
     switch (t->opcode()) {
         default:
             return ENOTSUP;
@@ -1010,9 +1017,13 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             const uint8_t *bytes = NULL;
             size_t length = 0;
             DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine));
-            // not certain how we get the DPDK packet allocated with the
+            // todo: not certain how we get the DPDK packet allocated with the
             // proper length; the old code didn't do anything.
+            DMTR_TRUE(ENOTSUP, packet->buf_len >= length);
+            DMTR_TRUE(ENOTSUP, 1 == packet->nb_segs);
             rte_memcpy(p, bytes, length);
+            packet->data_len = length;
+            packet->pkt_len = length;
             our_transmit_thread->enqueue(packet);
             rg0.cancel();
             break;
