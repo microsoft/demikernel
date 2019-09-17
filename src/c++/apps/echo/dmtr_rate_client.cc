@@ -141,11 +141,7 @@ struct log_data {
 
 static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
     for (auto &log: logs) {
-        FILE *log_fd = fopen(reinterpret_cast<const char *>(log.filename), "w");
-        if (log_fd) {
-            DMTR_OK(dmtr_generate_timeseries(log_fd, log.l));
-            fclose(log_fd);
-        }
+        DMTR_OK(dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log.filename), log.l));
         DMTR_OK(dmtr_delete_latency(&log.l));
     }
 
@@ -243,14 +239,13 @@ int log_responses(uint32_t total_requests, int log_memq,
             if (!req->valid) {
                 n_invalid++;
             }
-        } else {
-            log_warn("dmtr_wait on log memq got status != 0");
         }
 
         if (hr_clock::now() > *time_end) {
             log_warn("logging time has passed. %d requests were logged (%d invalid).",
                       logged, n_invalid);
             expired = true;
+            break;
         }
     }
 

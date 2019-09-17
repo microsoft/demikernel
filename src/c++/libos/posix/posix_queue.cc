@@ -247,10 +247,12 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
         case 0: {
             DMTR_OK(set_non_blocking(my_fd));
 
-            void *p = malloc(size);
+            /*
+            void *p = malloc(size); //XXX why not use dmtr_malloc?
             DMTR_TRUE(ENOMEM, p != NULL);
             memcpy(p, saddr, size);
             my_peer_saddr = reinterpret_cast<struct sockaddr *>(p);
+            */
 
             start_threads();
             return 0;
@@ -364,7 +366,15 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
 
 #if DMTR_PROFILE
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
     auto t0 = boost::chrono::steady_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
     int written_iov = 0;
@@ -373,11 +383,27 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     size_t total_bytes_written = latest_bytes_written;
     while (EAGAIN == ret || total_bytes_written < message_bytes) {
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         dt += boost::chrono::steady_clock::now() - t0;
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 #endif
         yield();
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         t0 = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 #endif
         //Only handle partial write if it actually happened
         if (latest_bytes_written > 0) {
@@ -400,16 +426,27 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     }
 
 #if DMTR_PROFILE
-    dt += (boost::chrono::steady_clock::now() - t0);
-    std::lock_guard<std::mutex> lock(w_latencies_mutex);
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    now = boost::chrono::steady_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    dt += now - t0;
     pthread_t me = pthread_self();
-    auto it = write_latencies.find(me);
-    if (it != write_latencies.end()) {
-        DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
-    } else {
-        DMTR_OK(dmtr_register_latencies("write", write_latencies));
-        it = write_latencies.find(me);
-        DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+    {
+        std::lock_guard<std::mutex> lock(w_latencies_mutex);
+        auto it = write_latencies.find(me);
+        if (it != write_latencies.end()) {
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+        } else {
+            DMTR_OK(dmtr_register_latencies("write", write_latencies));
+            it = write_latencies.find(me);
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+        }
     }
 #endif
 
@@ -529,12 +566,28 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         t0 = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 #endif
         ret = read(bytes_read, my_fd, p, remaining_bytes);
         if (EAGAIN == ret) {
 #if DMTR_PROFILE
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+            );
             dt += (boost::chrono::steady_clock::now() - t0);
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+            );
 #endif
             yield();
             continue;
@@ -547,10 +600,17 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         header_bytes += bytes_read;
 
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 	    dt += (boost::chrono::steady_clock::now() - t0);
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 #endif
 	}
-
 
 #if DMTR_DEBUG
     std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
@@ -581,12 +641,28 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         t0 = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
 #endif
         ret = read(bytes_read, my_fd, p, remaining_bytes);
         if (EAGAIN == ret) {
 #if DMTR_PROFILE
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+            );
             dt += (boost::chrono::steady_clock::now() - t0);
+            asm volatile(
+                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+            );
 #endif
             yield();
             continue;
@@ -599,17 +675,26 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         data_bytes += bytes_read;
 
 #if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
+        now = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
+        dt += now - t0;
+        pthread_t me = pthread_self();
         {
-            std::lock_guard<std::mutex> lock(w_latencies_mutex);
-            pthread_t me = pthread_self();
+            std::lock_guard<std::mutex> lock(r_latencies_mutex);
             auto it = read_latencies.find(me);
             if (it != read_latencies.end()) {
-                DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+                DMTR_OK(dmtr_record_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
                 DMTR_OK(dmtr_register_latencies("read", read_latencies));
                 it = read_latencies.find(me);
-                DMTR_OK(dmtr_record_latency(it->second.get(), dt.count()));
+                DMTR_OK(dmtr_record_latency(it->second.get(), since_epoch(now), dt.count()));
             }
         }
 #endif

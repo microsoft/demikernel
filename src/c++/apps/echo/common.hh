@@ -21,7 +21,7 @@
 using hr_clock = std::chrono::steady_clock;
 
 /* Returns the number of nanoseconds since the epoch for a given high-res time point */
-static inline long int since_epoch(hr_clock::time_point &time){
+static inline long int since_epoch(hr_clock::time_point &time) {
     return std::chrono::time_point_cast<std::chrono::nanoseconds>(time).time_since_epoch().count();
 }
 
@@ -39,11 +39,14 @@ static inline long int ns_diff(hr_clock::time_point &start, hr_clock::time_point
  *****************************************************************/
 static const auto start_time = std::chrono::steady_clock::now();
 
+#define MAX_FNAME_PATH_LEN 128
+
 /* Enable profiling */
 #define DMTR_PROFILE
+#define DMTR_APP_PROFILE
 
 /* Enable debug statements  */
-//#define LOG_DEBUG
+#define LOG_DEBUG
 
 /* Where command-line output gets printed to  */
 #define LOG_FD stderr

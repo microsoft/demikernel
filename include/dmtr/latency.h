@@ -12,6 +12,7 @@
 #include <functional>
 #include <unordered_map>
 #include <mutex>
+#include <boost/chrono.hpp>
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,11 +36,14 @@ extern std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name);
 int dmtr_record_timed_latency(dmtr_latency_t *latency, uint64_t record_time, uint64_t ns);
 int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns);
-int dmtr_generate_timeseries(FILE *f, dmtr_latency_t *latency);
 int dmtr_dump_latency_to_file(const char *filename, dmtr_latency_t *latency);
 int dmtr_dump_latency(FILE *f, dmtr_latency_t *latency);
 int dmtr_delete_latency(dmtr_latency_t **latency);
 uint64_t dmtr_now_ns();
+
+long int since_epoch(boost::chrono::steady_clock::time_point &time);
+long int ns_diff(boost::chrono::steady_clock::time_point &start,
+                 boost::chrono::steady_clock::time_point &end);
 
 #ifdef __cplusplus
 }

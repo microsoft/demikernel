@@ -6,7 +6,6 @@
 #include <dmtr/latency.h>
 
 #include <algorithm>
-#include <boost/chrono.hpp>
 #include <cassert>
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
@@ -147,28 +146,14 @@ LatencyFmtNS(uint64_t ns, char *buf)
 }
 
 int
-LatencyToCsv(FILE *f, dmtr_latency_t *l)
-{
-    DMTR_NOTNULL(EINVAL, f);
-    DMTR_NOTNULL(EINVAL, l);
-
-    fprintf(f, "TIME\tVALUE\n");
-    for (unsigned int i = 0; i < l->latencies.size(); ++i) {
-        fprintf(f, "%ld\t%ld\n", l->record_times[i], l->latencies[i]);
-    }
-    fflush(f);
-    return 0;
-}
-
-int
 LatencyToCsv(const char *filename, dmtr_latency_t *l)
 {
     DMTR_NOTNULL(EINVAL, l);
     FILE *f = fopen(filename, "w");
     DMTR_NOTNULL(EINVAL, f);
-    fprintf(f, "VALUE\n");
+    fprintf(f, "TIME\tVALUE\n");
     for (unsigned int i = 0; i < l->latencies.size(); ++i) {
-        fprintf(f, "%ld\n", l->latencies[i]);
+        fprintf(f, "%ld\t%ld\n", l->record_times[i], l->latencies[i]);
     }
     DMTR_OK(fclose(f));
     return 0;
@@ -316,11 +301,6 @@ int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns) {
     return 0;
 }
 
-int dmtr_generate_timeseries(FILE *f, dmtr_latency_t *latency) {
-    DMTR_OK(LatencyToCsv(f, latency));
-    return 0;
-}
-
 int dmtr_dump_latency_to_file(const char *filename, dmtr_latency_t *latency) {
     DMTR_OK(LatencyToCsv(filename, latency));
     return 0;
@@ -345,6 +325,19 @@ uint64_t dmtr_now_ns() {
     return t.time_since_epoch().count();
 }
 
+long int since_epoch(boost::chrono::steady_clock::time_point &time) {
+    return boost::chrono::time_point_cast<boost::chrono::nanoseconds>(time).time_since_epoch().count();
+}
+
+long int ns_diff(boost::chrono::steady_clock::time_point &start,
+                               boost::chrono::steady_clock::time_point &end) {
+    auto ns = boost::chrono::duration_cast<boost::chrono::nanoseconds>(end-start).count();
+    if (ns < 0) {
+        ns = -1;
+    }
+    return ns;
+}
+
 int dmtr_register_latencies(const char *label,
                             std::unordered_map<pthread_t, latency_ptr_type> &latencies) {
     char log_filename[MAX_LOG_FILENAME_LEN];
@@ -352,20 +345,19 @@ int dmtr_register_latencies(const char *label,
     pthread_t me = pthread_self();
 
     auto it = latencies.find(me);
-    if (it == latencies.end()) {
-        snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-latencies", log_dir, me, label);
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, label));
-        latency_ptr_type latency =
-            latency_ptr_type(l, [log_filename](dmtr_latency_t *lat) {
-                //dmtr_dump_latency(stderr, lat);
-                dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log_filename), lat);
-                dmtr_delete_latency(&lat);
-            });
-        latencies.insert(
-            std::pair<pthread_t, latency_ptr_type>(me, std::move(latency))
-        );
-    }
+    DMTR_TRUE(EINVAL, it == latencies.end());
+    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-latencies", log_dir, me, label);
+    dmtr_latency_t *l;
+    DMTR_OK(dmtr_new_latency(&l, label));
+    latency_ptr_type latency =
+        latency_ptr_type(l, [log_filename](dmtr_latency_t *lat) {
+            dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log_filename), lat);
+            dmtr_dump_latency(stderr, lat);
+            dmtr_delete_latency(&lat);
+        });
+    latencies.insert(
+        std::pair<pthread_t, latency_ptr_type>(me, std::move(latency))
+    );
 
     return 0;
 }

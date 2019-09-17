@@ -100,9 +100,12 @@ namespace bpo = boost::program_options;
 #define RTE_TEST_TX_DESC_DEFAULT    128
 
 #if DMTR_PROFILE
-typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
-static latency_ptr_type read_latency;
-static latency_ptr_type write_latency;
+std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
+std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
+static std::mutex r_latencies_mutex;
+static std::mutex w_latencies_mutex;
+static uint32_t regs[4];
+static uint32_t p;
 #endif
 
 const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
@@ -512,26 +515,6 @@ dmtr::lwip_queue::lwip_queue(int qd) :
 int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-
-#if DMTR_PROFILE
-    if (NULL == read_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "read"));
-        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-
-    if (NULL == write_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "write"));
-        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-#endif
 
     q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
@@ -951,7 +934,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         printf("====================\n");
 #endif
 
-        uint16_t nb_pkts;
+        uint16_t nb_pkts = 0;
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
             pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 | PKT_TX_UDP_SEG);
@@ -969,7 +952,15 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         auto t0 = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
 #if DMTR_DEBUG
@@ -984,11 +975,27 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             } else {
                 if (errno == EAGAIN) {
 #if DMTR_PROFILE
+                    asm volatile(
+                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                    );
                     dt += boost::chrono::steady_clock::now() - t0;
+                    asm volatile(
+                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                    );
 #endif
                     yield();
 #if DMTR_PROFILE
+                    asm volatile(
+                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                    );
                     t0 = boost::chrono::steady_clock::now();
+                    asm volatile(
+                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+                    );
 #endif
                 } else {
                     DMTR_FAIL(ret);
@@ -1004,8 +1011,28 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
 #if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
-        DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
+        auto now = boost::chrono::steady_clock::now();
+        asm volatile(
+            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+        );
+        dt += (now - t0);
+        pthread_t me = pthread_self();
+        {
+            std::lock_guard<std::mutex> lock(w_latencies_mutex);
+            auto it = write_latencies.find(me);
+            if (it != write_latencies.end()) {
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+            } else {
+                DMTR_OK(dmtr_register_latencies("write", write_latencies));
+                it = write_latencies.find(me); //Not ideal but happens only once
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+            }
+        }
 #endif
 
         DMTR_OK(t->complete(0, *sga));
@@ -1080,7 +1107,15 @@ dmtr::lwip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
 #if DMTR_PROFILE
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
     auto t0 = boost::chrono::steady_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
 #endif
     int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
 #if DMTR_DEBUG
@@ -1133,8 +1168,28 @@ dmtr::lwip_queue::service_incoming_packets() {
     }
 
 #if DMTR_PROFILE
-    auto dt = boost::chrono::steady_clock::now() - t0;
-    DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    auto now = boost::chrono::steady_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    auto dt = (now - t0);
+    pthread_t me = pthread_self();
+    {
+        std::lock_guard<std::mutex> lock(r_latencies_mutex);
+        auto it = read_latencies.find(me);
+        if (it != read_latencies.end()) {
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+        } else {
+            DMTR_OK(dmtr_register_latencies("read", read_latencies));
+            it = read_latencies.find(me);
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
+        }
+    }
 #endif
 
     for (size_t i = 0; i < count; ++i) {
