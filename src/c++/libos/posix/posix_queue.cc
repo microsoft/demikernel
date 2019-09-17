@@ -31,6 +31,8 @@ std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
 std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 static std::mutex r_latencies_mutex;
 static std::mutex w_latencies_mutex;
+static uint32_t regs[4];
+static uint32_t p;
 #endif
 
 dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
@@ -430,7 +432,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
     );
-    now = boost::chrono::steady_clock::now();
+    auto now = boost::chrono::steady_clock::now();
     asm volatile(
         "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
@@ -679,7 +681,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
         );
-        now = boost::chrono::steady_clock::now();
+        auto now = boost::chrono::steady_clock::now();
         asm volatile(
             "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
@@ -690,11 +692,11 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
             std::lock_guard<std::mutex> lock(r_latencies_mutex);
             auto it = read_latencies.find(me);
             if (it != read_latencies.end()) {
-                DMTR_OK(dmtr_record_latency(it->second.get(), since_epoch(now), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
                 DMTR_OK(dmtr_register_latencies("read", read_latencies));
                 it = read_latencies.find(me);
-                DMTR_OK(dmtr_record_latency(it->second.get(), since_epoch(now), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }
         }
 #endif

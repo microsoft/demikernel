@@ -51,6 +51,7 @@ class Worker {
         uint8_t core_id;
         enum worker_type type;
         std::vector<std::pair<long int, long int> > runtimes;
+        bool terminate = false;
 };
 
 std::vector<Worker *> http_workers;
@@ -85,25 +86,19 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
     }
 }
 
-//FIXME: pthread_cancel seems to be conflicting with the co-routines
-// This will throw: "FATAL: exception not rethrown"
-// But we kind of don't care for now
 void sig_handler(int signo) {
     printf("Entering signal handler\n");
     for (auto &w: tcp_workers) {
         if (w->me > 0) {
-            pthread_cancel(w->me);
+            w->terminate = true;
         }
-        dump_latencies(*w, log_dir, label);
     }
     for (auto &w: http_workers) {
         if (w->me > 0) {
-            pthread_cancel(w->me);
+            w->terminate = true;
         }
-        dump_latencies(*w, log_dir, label);
     }
     printf("Exiting signal handler\n");
-    exit(1);
 }
 
 int match_filter(std::string message) {
@@ -280,8 +275,11 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
 #endif
         wait_out.qr_value.sga.sga_numsegs = 1;
         DMTR_OK(dmtr_push(&token, out_qfd, &wait_out.qr_value.sga));
-        DMTR_OK(dmtr_wait(NULL, token));
-
+        while (dmtr_wait(NULL, token) == EAGAIN) {
+            if (me->terminate) {
+                break;
+            }
+        }
         if (me->type == TCP) {
             free(wait_out.qr_value.sga.sga_buf);
         }
@@ -311,7 +309,11 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                          strlen(BAD_REQUEST_HEADER) + 1, "%s", BAD_REQUEST_HEADER);
             resp_sga.sga_segs[1].sgaseg_len = wait_out.qr_value.sga.sga_segs[1].sgaseg_len;
             DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &resp_sga));
-            DMTR_OK(dmtr_wait(NULL, token));
+            while (dmtr_wait(NULL, token) == EAGAIN) {
+                if (me->terminate) {
+                    break;
+                }
+            }
             clean_state(state);
             return -1;
         case REQ_INCOMPLETE:
@@ -371,7 +373,11 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
 #endif
     DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
     /* we have to wait because we can't free response before sga is sent */
-    DMTR_OK(dmtr_wait(NULL, token));
+    while (dmtr_wait(NULL, token) == EAGAIN) {
+        if (me->terminate) {
+            break;
+        }
+    }
 
     /* If we are called as part of a HTTP worker, the next component (TCP) will need
      * the buffer for sending on the network. Otherwise -- if called as part of TCP
@@ -388,23 +394,38 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
  *       It is ok because it is a memory queue, and we are both sending and reading.
  */
 static void *http_worker(void *args) {
-    printf("Hello I am an HTTP worker\n");
+    Worker *me = (Worker *) args;
+    std::cout << "Hello I am an HTTP worker." << std::endl;
+    log_debug("My ingress memq has id %d", me->in_qfd);
+    log_debug("My egress memq has id %d", me->out_qfd);
+
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
 
-    Worker *me = (Worker *) args;
     dmtr_qtoken_t token = 0;
     uint64_t iteration = 0;
+    bool new_op = true;
     while (1) {
         dmtr_qresult_t wait_out;
-        dmtr_pop(&token, me->in_qfd);
+        if (new_op) {
+            dmtr_pop(&token, me->in_qfd);
+        }
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             http_work(iteration, state, wait_out, token, me->out_qfd, me);
             iteration++;
         } else {
+            if (status == EAGAIN) {
+                if (me->terminate) {
+                    log_info("HTTP worker %d set to terminate", me->whoami);
+                    break;
+                }
+                new_op = false;
+                continue;
+            }
             log_debug("dmtr_wait returned status %d", status);
         }
+        new_op = true;
     }
 
     free(state);
@@ -503,7 +524,14 @@ int tcp_work(uint64_t i,
                 );
 #endif
                 DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &wait_out.qr_value.sga));
-                DMTR_OK(dmtr_wait(NULL, token)); //XXX do we need to wait for push to happen?
+                //XXX do we need to wait for push to happen?
+                while (dmtr_wait(NULL, token) == EAGAIN) {
+                    if (me->terminate) {
+                        break;
+                    }
+                    continue;
+                }
+
                 /* Enable reading from HTTP result queue */
                 DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
                 tokens.push_back(token);
@@ -573,7 +601,11 @@ int tcp_work(uint64_t i,
             /* Answer the client */
             DMTR_OK(dmtr_push(&token, client_qfd, &wait_out.qr_value.sga));
             /* we have to wait because we can't free before sga is sent */
-            DMTR_OK(dmtr_wait(NULL, token));
+            while (dmtr_wait(NULL, token) == EAGAIN) {
+                if (me->terminate) {
+                    break;
+                }
+            }
             log_debug("Answered the client on queue %d", client_qfd);
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf); //XXX see http_work FIXME
             wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
@@ -587,8 +619,10 @@ int tcp_work(uint64_t i,
 static void *tcp_worker(void *args) {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         std::cout << "\ncan't ignore SIGPIPE\n";
-    printf("Hello I am a TCP worker\n");
+    std::cout << "Hello I am a network worker." << std::endl;
+
     Worker *me = (Worker *) args;
+
     /* In case we need to do the HTTP work */
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
@@ -623,6 +657,13 @@ static void *tcp_worker(void *args) {
                 num_rcvd, tokens, token, state, me, lqd
             );
         } else {
+            if (status == EAGAIN) {
+                if (me->terminate) {
+                    log_info("Network worker %d set to terminate", me->whoami);
+                    break;
+                }
+                continue;
+            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
                 log_debug("An accept task failed with connreset or aborted??");
@@ -825,8 +866,9 @@ int main(int argc, char *argv[]) {
                 log_error("pthread_join error: %s", strerror(errno));
             }
             dump_latencies(*w, log_dir, label);
+            dmtr_close(w->in_qfd);
+            dmtr_close(w->out_qfd);
         }
-
     } else {
         no_pthread_work_setup();
     }

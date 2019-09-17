@@ -348,14 +348,17 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    int ret;
+    {
+        std::lock_guard<std::mutex> lock(q->my_mutex);
 
-    dmtr_qresult_t unused_qr = {};
-    if (NULL == qr_out) {
-        qr_out = &unused_qr;
+        dmtr_qresult_t unused_qr = {};
+        if (NULL == qr_out) {
+            qr_out = &unused_qr;
+        }
+
+        ret = q->poll(*qr_out, qt);
     }
-
-    int ret = q->poll(*qr_out, qt);
     switch (ret) {
         default:
             on_poll_failure(qr_out, this);

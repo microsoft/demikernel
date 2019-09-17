@@ -14,6 +14,8 @@
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 
+#define WAIT_MAX_ITER 10000
+
 #define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
@@ -25,7 +27,11 @@ static uint32_t p;
 
 int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     int ret = EAGAIN;
+    uint16_t iter = 0;
     while (EAGAIN == ret) {
+        if (++iter == WAIT_MAX_ITER) {
+            return EAGAIN;
+        }
         ret = dmtr_poll(qr_out, qt);
     }
     DMTR_OK(dmtr_drop(qt));
@@ -36,6 +42,7 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
     uint16_t iter = 0;
     while (1) {
         for (int i = 0; i < num_qts; i++) {
+            iter++;
 #if DMTR_PROFILE
             asm volatile(
                 "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
@@ -80,6 +87,9 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
                     return ret;
                 }
             }
+        }
+        if (iter == WAIT_MAX_ITER) {
+            return EAGAIN;
         }
     }
 

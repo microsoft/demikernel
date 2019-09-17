@@ -389,7 +389,9 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 log_warn("Non supported OP code");
             }
         } else {
-            //TODO log errors
+            if (status == EAGAIN) {
+                continue;
+            }
             log_warn("Got status %d out of dmtr_wait_any", status);
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
@@ -652,8 +654,10 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 completed++;
             }
         } else {
+            if (status == EAGAIN) {
+                continue;
+            }
             assert(status == ECONNRESET || status == ECONNABORTED);
-            log_warn("Got status %d out of dmtr_wait_any", status);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
         }
 
