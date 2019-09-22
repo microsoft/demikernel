@@ -4,6 +4,9 @@ import argparse
 import numpy as np
 import scipy.special
 import random
+import os.path
+
+webserver_root = '/media/wiki/'
 
 COLORS = dict(
     END='\033[0m',
@@ -52,11 +55,34 @@ def log_fatal(*args, **kwargs):
     print("Exiting")
     exit(-1)
 
-
 #Regex CPU time will increase exponentially from one bin to the next
 regex_strengths_bins = [1,2,3,4,5,6,7,8,9,10]
 
 #FIXME: Is it right to "uniformely draw a Zeta probability"?
+def draw_elements(zalpha, array, n_elems):
+    elements = []
+    z = 1.0 / scipy.special.zeta(zalpha)
+    p = [z / i**zalpha for i in range(1, len(array)+1)]
+    for n in range(0, n_elems):
+        r_key = 0.0
+        # random()'s range is [0.0, 1.0)
+        while r_key == 0.0:
+            r_key = random.random()
+
+        # We look for the Zeta value closest from the number we drew
+        l = 0
+        r = len(array)
+        while l < r:
+            mid = int((l + r) / 2)
+            if r_key > p[mid]:
+                r = mid - 1
+            elif r_key < p[mid]:
+                l = mid + 1
+            else:
+                break
+        elements.append(array[mid])
+    return elements
+
 def gen_regex_requests(n_req, zalpha):
     if (n_req <= 0):
         return []
@@ -68,26 +94,7 @@ def gen_regex_requests(n_req, zalpha):
         maxi = max(regex_strengths_bins) - 1
         strengths = np.random.randint(mini, maxi, size=n_req, dtype='i')
     else:
-        z = 1.0 / scipy.special.zeta(zalpha)
-        strengths_p = [z / i**zalpha for i in range(1, len(regex_strengths_bins)+1)]
-        for req in range(0, n_req):
-            r_key = 0.0
-            # random()'s range is [0.0, 1.0)
-            while r_key == 0.0:
-                r_key = random.random()
-
-            # We look for the Zeta value closest from the number we drew
-            l = 0
-            r = len(regex_strengths_bins)
-            while l < r:
-                mid = int((l + r) / 2)
-                if r_key > strengths_p[mid]:
-                    r = mid - 1
-                elif r_key < strengths_p[mid]:
-                    l = mid + 1
-                else:
-                    break
-            strengths.append(regex_strengths_bins[mid])
+        strengths = draw_elements(zalpha, regex_strengths_bin, n_req)
 
     # Generate URIS accordingly
     regex_uris = []
@@ -97,21 +104,27 @@ def gen_regex_requests(n_req, zalpha):
 
     return np.array(regex_uris)
 
-
-def gen_file_requests(n_req, zalpha, list_file):
-    files_uris = None
+def gen_file_requests(n_req, zalpha, list_file, sort=False, ascending=True):
+    files = []
     with open(list_file, 'r') as f:
-        files_uris = np.array(f.read().splitlines())
-    if files_uris is None:
+        files = np.array(f.read().splitlines())
+    if len(files) == 0:
         log_fatal('{} was (likely) empty'.format(list_file))
+
+    files = [(f, os.path.getsize(webserver_root + f)) for f in files]
+    if sort:
+        files.sort(key=lambda f: f[1], reverse=(not ascending))
+    else:
+        random.shuffle(files)
 
     selected_files_uris = []
     if zalpha == -1:
-        m = len(files_uris) - 1
-        selected_files_uris = files_uris[np.random.randint(0, m, size=n_req, dtype='i')]
-    else:
-        log_fatal('Zipf file selection not implemented yet')
+        m = len(files) - 1
+        idx = np.random.randint(0, m, size=n_req, dtype='i')
+        selected_files_uris = [files[i][0] for i in idx]
 
+    else:
+        selected_files_uris = draw_elements(zalpha, [f[0] for f in files], n_req)
     return selected_files_uris
 
 if __name__ == '__main__':
