@@ -26,6 +26,8 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 
+#define OP_DEBUG
+
 //FIXME:
 // Multiple create/process/log thread sets are now disfunctionnal
 // due to http_requests not being thread safe (TODO: create a
@@ -127,6 +129,21 @@ std::vector<RequestState *> http_requests;
 /*****************************************************************
  *********************** LOGGING *********************************
  *****************************************************************/
+#ifdef OP_DEBUG
+inline void print_op_debug(std::unordered_map<dmtr_qtoken_t, std::string> &m) {
+    int net_pop = 0;
+    int net_push = 0;
+    for (auto &p: m) {
+        if (p.second == "NET_POP") {
+            net_pop++;
+        } else if (p.second == "NET_PUSH") {
+            net_push++;
+        }
+    }
+    log_warn("%d NET_POP pending, %d NET_PUSH pending", net_pop, net_push);
+}
+#endif
+
 std::vector<poll_q_len *> workers_pql;
 
 inline void update_request_state(struct RequestState &req, enum ReqStatus status) {
@@ -521,11 +538,20 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     dmtr_qtoken_t token;
     std::vector<dmtr_qtoken_t> tokens;
     std::unordered_map<int, RequestState *> requests;
+#ifdef OP_DEBUG
+    std::unordered_map<dmtr_qtoken_t, std::string> pending_ops;
+#endif
     while (completed < n_requests) {
         hr_clock::time_point maintenant = take_time();
         if (maintenant > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
+#ifdef OP_DEBUG
+            int missing = n_requests - completed;
+            if (missing > 0) {
+                print_op_debug(pending_ops);
+            }
+#endif
             break;
         }
         /** First check if it is time to emmit a new request over the connection */
@@ -542,6 +568,9 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             log_debug("Scheduling new request %d for send", request->id);
             requests.insert(std::pair<int, RequestState *>(token, request));
             send_index++;
+#ifdef OP_DEBUG
+            pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_PUSH"));
+#endif
         }
 
         if (tokens.empty()) {
@@ -565,12 +594,21 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             //printf("There are %zu items in the requests map\n", requests.size());
 
             if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
+#ifdef OP_DEBUG
+                pending_ops.erase(token);
+#endif
                 update_request_state(*request, READING);
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
                 requests.insert(std::pair<int, RequestState *>(token, request));
+#ifdef OP_DEBUG
+                pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_POP"));
+#endif
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
+#ifdef OP_DEBUG
+                pending_ops.erase(token);
+#endif
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 update_request_state(*request, COMPLETED);
 
@@ -614,6 +652,12 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         if (take_time() > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
+#ifdef OP_DEBUG
+            int missing = n_requests - completed;
+            if (missing > 0) {
+                print_op_debug(pending_ops);
+            }
+#endif
             break;
         }
     }
@@ -765,7 +809,7 @@ int main(int argc, char **argv) {
     hr_clock::time_point time_end_process = take_time() + duration_process;
 
     // Give ten extra seconds to log responses
-    std::chrono::seconds duration_log(duration + 10);
+    std::chrono::seconds duration_log(duration + 15);
     hr_clock::time_point time_end_log = take_time() + duration_log;
 
     /* Initialize responses first, then logging, then request initialization */
