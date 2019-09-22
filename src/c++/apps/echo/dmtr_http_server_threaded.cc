@@ -52,6 +52,7 @@ class Worker {
         enum worker_type type;
         std::vector<std::pair<long int, long int> > runtimes;
         bool terminate = false;
+        struct poll_q_len pql;
 };
 
 std::vector<Worker *> http_workers;
@@ -235,20 +236,10 @@ static inline void no_op_loop(uint32_t iter) {
 int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
                      dmtr_qtoken_t &token, int out_qfd, Worker *me) {
 #ifdef DMTR_APP_PROFILE
-    uint32_t regs[4];
-    uint32_t p;
     hr_clock::time_point start;
     hr_clock::time_point end;
     if (me->type == HTTP) {
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        start = hr_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        start = take_time();
     }
 #endif
     /* If we are in no_op mode, just send back the request, as an echo server */
@@ -258,16 +249,8 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
         }
 #ifdef DMTR_APP_PROFILE
         if (me->type == HTTP) {
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
             /* Record http work */
-            end = hr_clock::now();
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            end = take_time();
             me->runtimes.push_back(
                 std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
             );
@@ -356,16 +339,8 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
 
 #ifdef DMTR_APP_PROFILE
     if (me->type == HTTP) {
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
         /* Record http work */
-        hr_clock::time_point end = hr_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        hr_clock::time_point end = take_time();
         me->runtimes.push_back(
             std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
         );
@@ -442,17 +417,7 @@ int tcp_work(uint64_t i,
              int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, Worker *me, int lqd) {
 #ifdef DMTR_APP_PROFILE
-    uint32_t regs[4];
-    uint32_t p;
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    hr_clock::time_point start = hr_clock::now();
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
+    hr_clock::time_point start = take_time();
 #endif
     if (wait_out.qr_qd == lqd) {
         assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
@@ -510,15 +475,7 @@ int tcp_work(uint64_t i,
                 clients_in_waiting[wait_out.qr_qd] = true;
 
 #ifdef DMTR_APP_PROFILE
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                hr_clock::time_point end = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
                     std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
                 );
@@ -541,15 +498,7 @@ int tcp_work(uint64_t i,
             } else {
                 http_work(i, state, wait_out, token, wait_out.qr_qd, me);
 #ifdef DMTR_APP_PROFILE
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                hr_clock::time_point end = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
                     std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
                 );
@@ -585,15 +534,7 @@ int tcp_work(uint64_t i,
             }
 
 #ifdef DMTR_APP_PROFILE
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
-            hr_clock::time_point end = hr_clock::now();
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            hr_clock::time_point end = take_time();
             me->runtimes.push_back(
                 std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
             );
@@ -649,6 +590,7 @@ static void *tcp_worker(void *args) {
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        update_pql(tokens.size(), &me->pql);
         if (status == 0) {
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
@@ -672,8 +614,8 @@ static void *tcp_worker(void *args) {
                 log_debug("Removing closed client connection from answerable list");
                 clients_in_waiting[wait_out.qr_qd] = false;
             }
-            dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
+            dmtr_close(wait_out.qr_qd);
         }
         iteration++;
     }
@@ -855,11 +797,13 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
         }
 
+        //FIXME I think we should `delete` the worker intances
         for (auto &w: tcp_workers) {
             if (pthread_join(w->me, NULL) != 0) {
                 log_error("pthread_join error: %s", strerror(errno));
             }
             dump_latencies(*w, log_dir, label);
+            dump_pql(&w->pql, log_dir, label);
         }
         for (auto &w: http_workers) {
             if (pthread_join(w->me, NULL) != 0) {

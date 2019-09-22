@@ -8,9 +8,11 @@
 #include <boost/program_options.hpp>
 #include <iostream>
 #include <chrono>
+#include <dmtr/latency.h>
 #include <dmtr/annot.h>
 #include <dmtr/libos/mem.h>
 #include <string.h>
+#include <stdio.h>
 #include <yaml-cpp/yaml.h>
 
 
@@ -46,7 +48,7 @@ static const auto start_time = std::chrono::steady_clock::now();
 #define DMTR_APP_PROFILE
 
 /* Enable debug statements  */
-#define LOG_DEBUG
+//#define LOG_DEBUG
 
 /* Where command-line output gets printed to  */
 #define LOG_FD stderr
@@ -104,6 +106,71 @@ static const auto start_time = std::chrono::steady_clock::now();
  */
 #define perror_request(fmt, ...) \
     print_request_error(fmt ": %s", ##__VA_ARGS__, strerror(errno))
+
+inline hr_clock::time_point take_time() {
+    uint32_t regs[4];
+    uint32_t p;
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    hr_clock::time_point time = hr_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    return time;
+}
+
+#define MAX_FILE_PATH_LEN 128
+
+struct log_data {
+    dmtr_latency_t *l;
+    char const *name;
+    FILE *fh;
+    char filename[MAX_FNAME_PATH_LEN];
+};
+
+inline int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
+    for (auto &log: logs) {
+        DMTR_OK(dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log.filename), log.l));
+        DMTR_OK(dmtr_delete_latency(&log.l));
+    }
+    return 0;
+}
+
+std::string generate_log_file_path(std::string log_dir,
+                                   std::string exp_label,
+                                   char const *log_label) {
+    char pathname[MAX_FILE_PATH_LEN];
+    snprintf(pathname, MAX_FILE_PATH_LEN, "%s/%s_%s",
+             log_dir.c_str(), exp_label.c_str(), log_label);
+    std::string str_pathname(pathname);
+    return pathname;
+}
+
+struct poll_q_len {
+    std::vector<hr_clock::time_point> times;
+    std::vector<size_t> n_tokens;
+};
+
+inline void update_pql(size_t n_tokens, struct poll_q_len *s) {
+    hr_clock::time_point t = take_time();
+    s->times.push_back(t);
+    s->n_tokens.push_back(n_tokens);
+}
+
+inline void dump_pql(struct poll_q_len *s, std::string log_dir, std::string label) {
+    char filename[MAX_FNAME_PATH_LEN];
+    strncpy(filename, generate_log_file_path(log_dir, label, "pql").c_str(), MAX_FNAME_PATH_LEN);
+    FILE *f = fopen(filename, "w");
+    fprintf(f, "TIME\tVALUE\n");
+    size_t n_points = s->n_tokens.size();
+    for (unsigned int i = 0; i < n_points; ++i) {
+        fprintf(f, "%ld\t%ld\n", since_epoch(s->times[i]), s->n_tokens[i]);
+    }
+    fclose(f);
+}
 
 /***************************************************************
  ************************* ARGS PARSING ************************

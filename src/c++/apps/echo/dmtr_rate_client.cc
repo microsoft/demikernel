@@ -35,6 +35,7 @@
  *********************** GENERAL VARIABLES ***********************
  *****************************************************************/
 bool long_lived = true;
+bool terminate = false; /** This will be when catching SIGINT */
 
 /*****************************************************************
  *********************** RATE VARIABLES **************************
@@ -87,6 +88,13 @@ static inline bool validate_response(dmtr_sgarray_t &response) {
 /*****************************************************************
  *********************** CLIENT STRUCTS **************************
  *****************************************************************/
+/* Each thread-group consists of a connect thread, a send/rcv thread, and a logging thread */
+struct state_threads {
+    std::thread *init;
+    std::thread *resp;
+    std::thread *log;
+};
+std::vector<state_threads *> threads;
 
 enum ReqStatus {
     CONNECTING,
@@ -119,33 +127,29 @@ std::vector<RequestState *> http_requests;
 /*****************************************************************
  *********************** LOGGING *********************************
  *****************************************************************/
-#define MAX_FILE_PATH_LEN 128
+std::vector<poll_q_len *> workers_pql;
 
-std::string generate_log_file_path(std::string log_dir,
-                                   std::string exp_label,
-                                   char const *log_label) {
-    char pathname[MAX_FILE_PATH_LEN];
-    snprintf(pathname, MAX_FILE_PATH_LEN, "%s/%s_%s",
-             log_dir.c_str(), exp_label.c_str(), log_label);
-    std::string str_pathname(pathname);
-    return pathname;
-}
-
-struct log_data {
-    dmtr_latency_t *l;
-    char const *name;
-    FILE *fh;
-    char filename[MAX_FNAME_PATH_LEN];
-};
-
-
-static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
-    for (auto &log: logs) {
-        DMTR_OK(dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log.filename), log.l));
-        DMTR_OK(dmtr_delete_latency(&log.l));
+inline void update_request_state(struct RequestState &req, enum ReqStatus status) {
+    req.status = status;
+    hr_clock::time_point *t;
+    switch (status) {
+        case CONNECTING:
+            t = &req.connecting;
+            break;
+        case CONNECTED:
+            t = &req.connected;
+            break;
+        case SENDING:
+            t = &req.sending;
+            break;
+        case READING:
+            t = &req.reading;
+            break;
+        case COMPLETED:
+            t = &req.completed;
+            break;
     }
-
-    return 0;
+    *t = take_time();
 }
 
 /**
@@ -153,7 +157,7 @@ static int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, st
  * post-mortem dump. In the former, request timing are directly dumped to their
  * respective file when recorded. In the latter, requests are recorded using dmtr_latency
  * objects, and dumped to files either when all requests in the experiment have been logged,
- * or when the thread time out.
+ * or when the thread times out.
  */
 int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
@@ -189,7 +193,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         dmtr_qresult_t wait_out;
         dmtr_qtoken_t token;
         dmtr_pop(&token, log_memq);
-        int status = dmtr_wait(&wait_out, token); //FIXME this is blocking
+        int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             RequestState *req = reinterpret_cast<RequestState *>(
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
@@ -239,9 +243,15 @@ int log_responses(uint32_t total_requests, int log_memq,
             if (!req->valid) {
                 n_invalid++;
             }
+        } else {
+            // We likely exited because MAX_ITER was reached in dmtr_wait
+            if (terminate) {
+                log_info(" worker %d set to terminate", my_idx);
+                break;
+            }
         }
 
-        if (hr_clock::now() > *time_end) {
+        if (take_time() > *time_end) {
             log_warn("logging time has passed. %d requests were logged (%d invalid).",
                       logged, n_invalid);
             expired = true;
@@ -256,6 +266,7 @@ int log_responses(uint32_t total_requests, int log_memq,
     } else {
         dump_logs(logs, log_dir, label);
     }
+    dump_pql(workers_pql[my_idx], log_dir, label);
 
     if (!expired) {
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
@@ -270,8 +281,6 @@ int log_responses(uint32_t total_requests, int log_memq,
 
 int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_point *time_end,
                         int process_conn_memq, int log_memq) {
-    uint32_t regs[4];
-    uint32_t p;
     bool expired = false;
     uint32_t completed = 0;
     uint32_t dequeued = 0;
@@ -282,12 +291,11 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
     tokens.push_back(token);
     while (completed < total_requests) {
         if (tokens.empty()) {
-            /*
-            if (hr_clock::now() > *time_end) {
+            if (take_time() > *time_end) {
+                expired = true;
                 log_warn("process time has passed. %d requests were processed.", completed);
                 break;
             }
-            */
             continue;
         }
 
@@ -295,6 +303,8 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        tokens.erase(tokens.begin()+idx);
+        update_pql(tokens.size(), workers_pql[my_idx]);
         if (status == 0) {
             tokens.erase(tokens.begin() + idx);
 
@@ -309,16 +319,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 sga.sga_segs[0].sgaseg_buf = const_cast<char *>(request->req.c_str());
                 dequeued++;
 
-                request->status = SENDING;
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->sending = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                update_request_state(*request, SENDING);
 
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
@@ -342,28 +343,11 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
 
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->reading = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->status = READING;
+                update_request_state(*request, READING);
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->completed = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                update_request_state(*request, COMPLETED);
                 /* Null terminate the response */
                 char *resp_char_end =
                     reinterpret_cast<char *>(
@@ -371,7 +355,6 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                     ) + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
                 memcpy(resp_char_end, "\0", 1);
 
-                request->status = COMPLETED;
                 request->valid = validate_response(wait_out.qr_value.sga);
                 free(wait_out.qr_value.sga.sga_buf);
                 DMTR_OK(dmtr_close(wait_out.qr_qd));
@@ -382,7 +365,12 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
                 sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request);
                 dmtr_push(&token, log_memq, &sga);
-                dmtr_wait(NULL, token);
+                while(dmtr_wait(NULL, token) == EAGAIN) {
+                    if (terminate) {
+                        break;
+                    }
+                    continue;
+                }
 
                 completed++;
             } else {
@@ -390,21 +378,22 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
             }
         } else {
             if (status == EAGAIN) {
+                if (terminate) {
+                    log_info(" worker %d set to terminate", my_idx);
+                    break;
+                }
                 continue;
             }
             log_warn("Got status %d out of dmtr_wait_any", status);
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
-            tokens.erase(tokens.begin()+idx);
         }
 
-        /*
-        if (hr_clock::now() > *time_end) {
+        if (take_time() > *time_end) {
             log_warn("process time has passed. %d requests were processed.", completed);
             expired = true;
             break;
         }
-        */
     }
 
     if (!expired) {
@@ -419,8 +408,6 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
 
 int create_queues(double interval_ns, int n_requests, std::string host, int port,
                   int process_conn_memq, hr_clock::time_point *time_end, int my_idx) {
-    uint32_t regs[4];
-    uint32_t p;
     /* Configure target */
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -432,7 +419,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
     saddr.sin_port = htons(port);
     log_info("Thread %d sending requests to %s", my_idx, inet_ntoa(saddr.sin_addr));
 
-    hr_clock::time_point create_start_time = hr_clock::now();
+    hr_clock::time_point create_start_time = take_time();
 
     /* Times at which the connections should be initiated */
     hr_clock::time_point send_times[n_requests];
@@ -462,28 +449,10 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         req->conn_qd = qd;
 
         /* Connect */
-        req->status = CONNECTING;
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        req->connecting = hr_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        update_request_state(*req, CONNECTING);
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
-        req->status = CONNECTED;
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        req->connected = hr_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        update_request_state(*req, CONNECTED);
 
         /* Make this request available to the request handler thread */
         dmtr_sgarray_t sga;
@@ -493,9 +462,14 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
 
         dmtr_qtoken_t token;
         dmtr_push(&token, process_conn_memq, &sga);
-        dmtr_wait(NULL, token);
+        while(dmtr_wait(NULL, token) == EAGAIN) {
+            if (terminate) {
+                break;
+            }
+            continue;
+        }
 
-        if (hr_clock::now() > *time_end) {
+        if (take_time() > *time_end) {
             log_warn("create time has passed. %d connection were established.", connected);
             expired = true;
             break;
@@ -514,8 +488,6 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
 int long_lived_processing(double interval_ns, uint32_t n_requests, std::string host, int port,
                           int log_memq, hr_clock::time_point *time_end, int my_idx,
                           bool debug_duration_flag) {
-    uint32_t regs[4];
-    uint32_t p;
     /* Configure target */
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -527,7 +499,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     saddr.sin_port = htons(port);
     log_info("Thread %d sending requests to %s", my_idx, inet_ntoa(saddr.sin_addr));
 
-    hr_clock::time_point create_start_time = hr_clock::now();
+    hr_clock::time_point create_start_time = take_time();
 
     /* Times at which the requests should be initiated */
     hr_clock::time_point send_times[n_requests];
@@ -550,15 +522,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     std::vector<dmtr_qtoken_t> tokens;
     std::unordered_map<int, RequestState *> requests;
     while (completed < n_requests) {
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        hr_clock::time_point maintenant = hr_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                      "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        hr_clock::time_point maintenant = take_time();
         if (maintenant > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
@@ -572,15 +536,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             sga.sga_numsegs = 1;
             sga.sga_segs[0].sgaseg_len = request->req.size();
             sga.sga_segs[0].sgaseg_buf = const_cast<char *>(request->req.c_str());
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
-            request->sending = hr_clock::now();
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                          "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            update_request_state(*request, SENDING);
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
             log_debug("Scheduling new request %d for send", request->id);
@@ -597,6 +553,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
+        update_pql(tokens.size(), workers_pql[my_idx]);
         if (status == 0) {
             auto req = requests.find(token);
             if (req == requests.end()) {
@@ -608,30 +565,14 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             //printf("There are %zu items in the requests map\n", requests.size());
 
             if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->reading = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                update_request_state(*request, READING);
+                log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-                log_debug("Scheduling request %d for read", request->id);
                 requests.insert(std::pair<int, RequestState *>(token, request));
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
-                request->completed = hr_clock::now();
-                asm volatile(
-                    "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                              "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                );
+                update_request_state(*request, COMPLETED);
 
                 /* Null terminate the response */
                 char *resp_char_end =
@@ -649,19 +590,28 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
                 sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request);
                 dmtr_push(&token, log_memq, &sga);
-                dmtr_wait(NULL, token);
+                while(dmtr_wait(NULL, token) == EAGAIN) {
+                    if (terminate) {
+                        break;
+                    }
+                    continue;
+                }
 
                 completed++;
             }
         } else {
             if (status == EAGAIN) {
+                if (terminate) {
+                    log_info(" worker %d set to terminate", my_idx);
+                    break;
+                }
                 continue;
             }
             assert(status == ECONNRESET || status == ECONNABORTED);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
         }
 
-        if (hr_clock::now() > *time_end && !debug_duration_flag) {
+        if (take_time() > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
             expired = true;
             break;
@@ -678,17 +628,10 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     return 0;
 }
 
-/* Each thread-group consists of a connect thread, a send/rcv thread, and a logging thread */
-struct state_threads {
-    std::thread *init;
-    std::thread *resp;
-    std::thread *log;
-};
-
-/* Outputs a single result to stdout */
-void print_result(const char *label, int result, bool print_if_zero=true) {
-    if (print_if_zero || result != 0)
-        printf("%-28s%d\n",label, result);
+void sig_handler(int signo) {
+    printf("Entering signal handler\n");
+    terminate = true;
+    printf("Exiting signal handler\n");
 }
 
 void pin_thread(pthread_t thread, u_int16_t cpu) {
@@ -701,7 +644,6 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
         fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
     }
 }
-
 
 /* TODO
  * - Handle maximum concurrency?
@@ -757,9 +699,11 @@ int main(int argc, char **argv) {
 
     // Compute interval -- the time we have to send a request -- per thread
     double interval_ns_per_thread = 1000000000.0 / rate_per_thread;
+    /*
     if (interval_ns_per_thread < SMALLEST_INTERVAL_NS) {
         log_warn("Rate too high for this machine's precision");
     }
+    */
 
     uint32_t total_requests = rate * duration;
     uint32_t req_per_thread = total_requests / n_threads;
@@ -814,58 +758,60 @@ int main(int argc, char **argv) {
     /* Determine max thread running time */
     // Give one extra second to initiate request
     std::chrono::seconds duration_init(duration + 1);
-    hr_clock::time_point time_end_init = hr_clock::now() + duration_init;
+    hr_clock::time_point time_end_init = take_time() + duration_init;
 
     // Give five extra second to send and gather responses
     std::chrono::seconds duration_process(duration + 5);
-    hr_clock::time_point time_end_process = hr_clock::now() + duration_process;
+    hr_clock::time_point time_end_process = take_time() + duration_process;
 
     // Give ten extra seconds to log responses
     std::chrono::seconds duration_log(duration + 10);
-    hr_clock::time_point time_end_log = hr_clock::now() + duration_log;
+    hr_clock::time_point time_end_log = take_time() + duration_log;
 
     /* Initialize responses first, then logging, then request initialization */
-    state_threads threads[n_threads];
     for (int i = 0; i < n_threads; ++i) {
+        struct state_threads *st = new state_threads();
         int log_memq;
         DMTR_OK(dmtr_queue(&log_memq));
-        threads[i].log = new std::thread(
+        st->log = new std::thread(
             log_responses,
             req_per_thread, log_memq, &time_end_log,
             log_dir, label, i, live_dump
         );
         if (long_lived) {
-            threads[i].resp = new std::thread(
+            /** some book-keeping */
+            st->resp = new std::thread(
                 long_lived_processing,
                 interval_ns_per_thread, req_per_thread,
-                host, port, log_memq, &time_end_process, i,
-                debug_duration_flag
+                host, port, log_memq, &time_end_process,
+                i, debug_duration_flag
             );
-            pin_thread(threads[i].resp->native_handle(), i+1);
+            pin_thread(st->resp->native_handle(), i+1);
+            workers_pql.push_back(new poll_q_len());
         } else {
-            //FIXME: do not collocate connections creation and processing?
             int process_conn_memq;
             DMTR_OK(dmtr_queue(&process_conn_memq));
-            threads[i].resp = new std::thread(
+            st->resp = new std::thread(
                 process_connections,
                 i, req_per_thread, &time_end_process,
                 process_conn_memq, log_memq
             );
-            pin_thread(threads[i].resp->native_handle(), i+1);
-            threads[i].init = new std::thread(
+            pin_thread(st->init->native_handle(), i+1);
+            st->init = new std::thread(
                 create_queues,
                 interval_ns_per_thread, req_per_thread,
                 host, port, process_conn_memq, &time_end_init, i
             );
-            pin_thread(threads[i].init->native_handle(), i+1);
+            pin_thread(st->init->native_handle(), i+1);
         }
+        threads.push_back(st);
     }
 
     // Wait on all of the initialization threads
     if (short_lived) {
-        for (int i=0; i<n_threads; i++) {
-            threads[i].init->join();
-            delete threads[i].init;
+        for (int i = 0; i < n_threads; i++) {
+            threads[i]->init->join();
+            delete threads[i]->init;
         }
         log_info("Requests creation finished");
     }
@@ -873,8 +819,8 @@ int main(int argc, char **argv) {
     // Wait on the response threads
     // TODO: In short lived mode, when init threads stop early, signal this to stop
     for (int i = 0; i < n_threads; i++) {
-        threads[i].resp->join();
-        delete threads[i].resp;
+        threads[i]->resp->join();
+        delete threads[i]->resp;
     }
     log_info("Responses gathered");
 
@@ -885,8 +831,13 @@ int main(int argc, char **argv) {
 
     // Wait on the logging threads TODO also shut this off if previosu threads stop early
     for (int i = 0; i < n_threads; i++) {
-        threads[i].log->join();
-        delete threads[i].log;
+        threads[i]->log->join();
+        delete threads[i]->log;
+    }
+
+    for (int i = 0; i < n_threads; i++) {
+        delete threads[i];
+        delete workers_pql[i];
     }
 
     return 0;
