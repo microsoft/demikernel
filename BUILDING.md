@@ -15,7 +15,7 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 - Make a directory for the build. We suggest `$DATACENTEROS/build/debug` or `$DATACENTEROS/build/release`.
 - Run CMake from the build directory, passing the source directory in as an argument.
 - Set the `CMAKE_BUILD_TYPE` variable to `Release` if you want an optimized build. You can do this with the CLI (`ccmake`) or the GUI (`cmake-gui`).
-- Set the `DPDK_USE_MELLANOX_PMD` option to `ON` if you need DPDK compiled with support for Mellanox ConnectX-4 NICs.
+- Set the `DPDK_MLX4_SUPPORT` and/or `DPDK_MLX5_SUPPORT` option to `ON` if you need DPDK compiled with support for Mellanox NICs.
 - Run `make` from the build directory.
 
 ### Cleaning

@@ -8,7 +8,8 @@ include(ExternalProject)
 include(list)
 include(azure)
 
-option(DPDK_MELLANOX_SUPPORT "Include DPDK support for the Mellanox adaptor" OFF)
+option(DPDK_MLX4_SUPPORT "Include DPDK support for Mellanox ConnectX-3 and Mellanox ConnectX-3 Pro 10/40 Gbps adapters" OFF)
+option(DPDK_MLX5_SUPPORT "Include DPDK support for Mellanox ConnectX-4, Mellanox ConnectX-4 Lx, Mellanox ConnectX-5, Mellanox ConnectX-6 and Mellanox BlueField families of 10/25/40/50/100/200 Gb/s adapters" OFF)
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 
 # DPDK
@@ -41,17 +42,21 @@ ExternalProject_Add(dpdk
 )
 
 # configure DPDK options.
-if(DPDK_MELLANOX_SUPPORT OR AZURE_SUPPORT)
+if(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
     set(DPDK_CONFIG_RTE_LIBRTR_MLX4_PMD y)
-    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
-    if(AZURE_SUPPORT)
-        set(DPDK_CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD y)
-    endif(AZURE_SUPPORT)
-else(DPDK_MELLANOX_SUPPORT OR AZURE_SUPPORT)
+else(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
     set(DPDK_CONFIG_RTE_LIBRTR_MLX4_PMD n)
+endif(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
+if(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
+    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
+else(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
     set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
+endif(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
+if(AZURE_SUPPORT)
+    set(DPDK_CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD y)
+else(AZURE_SUPPORT)
     set(DPDK_CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD n)
-endif(DPDK_MELLANOX_SUPPORT OR AZURE_SUPPORT)
+endif(AZURE_SUPPORT)
 set(DPDK_CONFIG_COMMON_BASE ${DPDK_SOURCE_DIR}/config/common_base)
 configure_file(${DPDK_CONFIG_COMMON_BASE}.in ${DPDK_CONFIG_COMMON_BASE})
 
