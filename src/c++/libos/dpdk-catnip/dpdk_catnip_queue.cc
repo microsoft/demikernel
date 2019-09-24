@@ -424,6 +424,8 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
                         DMTR_FAIL(ret);
                     case 0:
                         DMTR_TRUE(ENOTSUP, 1 == packets_sent);
+                        rg0.cancel();
+                        std::cerr << "sent packet" << std::endl;
                         continue;
                     case EAGAIN:
                         yield();

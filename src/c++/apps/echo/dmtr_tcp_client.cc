@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 {
     parse_args(argc, argv, false);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_latency_t *latency = NULL;
     DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
