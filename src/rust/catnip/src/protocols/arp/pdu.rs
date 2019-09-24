@@ -2,7 +2,7 @@ use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
-use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{NativeEndian, NetworkEndian, ReadBytesExt, WriteBytesExt};
 use num_traits::FromPrimitive;
 use std::{
     convert::TryFrom,
@@ -81,10 +81,12 @@ impl ArpPdu {
         let op = reader.read_u16::<NetworkEndian>()?;
         let mut sender_link_addr = [0; 6];
         reader.read_exact(&mut sender_link_addr)?;
-        let sender_ip_addr = reader.read_u32::<NetworkEndian>()?;
+        // IPv4 addresses, when encoded as `u32`, are already in network byte
+        // order.
+        let sender_ip_addr = reader.read_u32::<NativeEndian>()?;
         let mut target_link_addr = [0; 6];
         reader.read_exact(&mut target_link_addr)?;
-        let target_ip_addr = reader.read_u32::<NetworkEndian>()?;
+        let target_ip_addr = reader.read_u32::<NativeEndian>()?;
 
         Ok(ArpPdu {
             op: ArpOp::try_from(op)?,
@@ -104,9 +106,11 @@ impl ArpPdu {
         writer.write_all(&byte)?;
         writer.write_u16::<NetworkEndian>(self.op as u16)?;
         writer.write_all(self.sender_link_addr.as_bytes())?;
-        writer.write_u32::<NetworkEndian>(self.sender_ip_addr.into())?;
+        // IPv4 addresses, when encoded as `u32`, are already in network byte
+        // order.
+        writer.write_u32::<NativeEndian>(self.sender_ip_addr.into())?;
         writer.write_all(self.target_link_addr.as_bytes())?;
-        writer.write_u32::<NetworkEndian>(self.target_ip_addr.into())?;
+        writer.write_u32::<NativeEndian>(self.target_ip_addr.into())?;
         Ok(())
     }
 
