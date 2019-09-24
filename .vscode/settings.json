@@ -65,6 +65,7 @@
         "memory_resource": "cpp",
         "set": "cpp",
         "string": "cpp",
-        "cfenv": "cpp"
+        "cfenv": "cpp",
+        "random": "cpp"
     }
 }
