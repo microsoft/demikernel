@@ -50,7 +50,7 @@
 	url = https://github.com/mlr-msft/redis.git
 [submodule "src/c++/tools/ethq"]
 	path = src/c++/tools/ethq
-	url = git@github.com:maxdml/ethq.git
+	url = https://github.com/maxdml/ethq.git
 [submodule "src/python/benchmarking_utils/Finelame"]
 	path = src/python/benchmarking_utils/Finelame
-	url = git@github.com:maxdml/Finelame.git
+	url = https://github.com/maxdml/Finelame.git
