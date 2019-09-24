@@ -193,7 +193,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool
     // start the ethernet port.
     DMTR_OK(rte_eth_dev_start(port_id));
 
-    //DMTR_OK(rte_eth_promiscuous_enable(port_id));
+    DMTR_OK(rte_eth_promiscuous_enable(port_id));
 
     // disable the rx/tx flow control
     // todo: why?
@@ -415,6 +415,7 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             size_t packets_sent = 0;
             struct rte_mbuf *packets[] = { packet };
 #ifdef DMTR_DEBUG
+            std::cerr << "attempting to send packet:" << std::endl;
             rte_pktmbuf_dump(stderr, packet, packet->pkt_len);
 #endif
             while (0 == packets_sent) {
@@ -424,8 +425,11 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
                         DMTR_FAIL(ret);
                     case 0:
                         DMTR_TRUE(ENOTSUP, 1 == packets_sent);
+                        // the documentation for `rte_eth_tx_burst()` says that it is responsible for freeing the contents of `packets`.
                         rg0.cancel();
-                        std::cerr << "sent packet" << std::endl;
+#ifdef DMTR_DEBUG
+                        std::cerr << "packet sent." << std::endl;
+#endif
                         continue;
                     case EAGAIN:
                         yield();
@@ -463,6 +467,7 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
                 default:
                     DMTR_OK(ret);
                     break;
+                case 0:
                 case EAGAIN:
                     yield();
                     break;
@@ -685,6 +690,9 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
         case 0:
             break;
         case EAGAIN:
+#ifdef DMTR_DEBUG
+            //std::cerr << "rte_eth_rx_burst() => EAGAIN" << std::endl;
+#endif //DMTR_DEBUG
             return 0;
     }
 
@@ -696,9 +704,13 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     std::cerr << "rte_eth_rx_burst() => " << count << std::endl;
     for (size_t i = 0; i < count; ++i) {
         struct rte_mbuf * const packet = packets[i];
+#ifdef DMTR_DEBUG
+        std::cerr << "packet received:" << std::endl;
+        rte_pktmbuf_dump(stderr, packet, packet->pkt_len);
+#endif
         auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
         size_t length = rte_pktmbuf_data_len(packet);
-        int ret = nip_receive_datagram(p, length);
+        int ret = nip_receive_datagram(our_tcp_engine, p, length);
         switch (ret) {
             default:
                 std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
