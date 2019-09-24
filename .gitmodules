@@ -16,8 +16,8 @@
 	branch = msft/rdma
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
-	url = https://github.com/mlr-msft/dpdk.git
-	branch = msft/v18.11/dmtr
+	url = https://github.com/DPDK/dpdk.git
+	branch = master
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
