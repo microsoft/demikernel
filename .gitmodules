@@ -17,7 +17,7 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/DPDK/dpdk.git
-	branch = master
+	branch = remote/v19.05/upstream
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
