@@ -14,10 +14,6 @@
 	path = submodules/HoardRdma
 	url = https://github.com/mlr-msft/Hoard.git
 	branch = msft/rdma
-[submodule "submodules/dpdk"]
-	path = submodules/dpdk
-	url = https://github.com/DPDK/dpdk.git
-	branch = remote/v19.05/upstream
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
@@ -54,3 +50,7 @@
 [submodule "src/python/benchmarking_utils/Finelame"]
 	path = src/python/benchmarking_utils/Finelame
 	url = https://github.com/maxdml/Finelame.git
+[submodule "submodules/dpdk"]
+	path = submodules/dpdk
+	url = https://github.com/DPDK/dpdk.git
+	branch = msft/v18.11/dmtr
