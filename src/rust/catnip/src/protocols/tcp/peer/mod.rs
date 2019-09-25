@@ -505,6 +505,7 @@ pub struct TcpPeer<'a> {
 
 impl<'a> TcpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Self {
+
         TcpPeer {
             state: Rc::new(RefCell::new(TcpPeerState::new(rt, arp))),
         }
@@ -544,7 +545,6 @@ impl<'a> TcpPeer<'a> {
             details: "source port is zero",
         })?;
 
-        debug!("local_port => {:?}", local_port);
         if self.state.borrow().open_ports.contains(&local_port) {
             if segment.syn && !segment.ack && !segment.rst {
                 let async_work = self.state.borrow().async_work.clone();
@@ -574,6 +574,7 @@ impl<'a> TcpPeer<'a> {
         }
 
         // `local_port` is not open; send the appropriate RST segment.
+        debug!("local port {} is not open; sending RST.", local_port);
         let mut ack_num =
             segment.seq_num + Wrapping(u32::try_from(segment.payload.len())?);
         // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/TCP_IP+Illustrated,+Volume+1:+The+Protocols/9780132808200/ch13.html#ch13):

@@ -84,11 +84,8 @@ fn fail_to_errno(fail: &Fail) -> libc::c_int {
 
 #[no_mangle]
 pub extern "C" fn nip_set_my_ipv4_addr(ipv4_addr: u32) -> libc::c_int {
-    // the C runtime encodes `ipv4_addr` in network byte order.
-    #[cfg(not(target_endian = "big"))]
-    let ipv4_addr = ipv4_addr.swap_bytes();
-
-    let ipv4_addr = Ipv4Addr::from(ipv4_addr);
+    // the C runtime encodes IPv4 addresses in network byte order.
+    let ipv4_addr = Ipv4Addr::from(u32::from_be(ipv4_addr));
     if ipv4_addr.is_unspecified() || ipv4_addr.is_broadcast() {
         return libc::EINVAL;
     }
@@ -379,17 +376,11 @@ pub extern "C" fn nip_get_udp_datagram_event(
             Event::UdpDatagramReceived(udp) => {
                 udp_out.payload_bytes = udp.payload.as_ptr();
                 udp_out.payload_length = udp.payload.len();
+                // the C runtime encodes IPv4 addresses in network byte order.
                 udp_out.dest_ipv4_addr =
-                    udp.dest_ipv4_addr.map(|a| a.into()).unwrap_or(0);
+                    udp.dest_ipv4_addr.map(|a| a.into()).unwrap_or(0).to_be();
                 udp_out.src_ipv4_addr =
-                    udp.src_ipv4_addr.map(|a| a.into()).unwrap_or(0);
-
-                // the C runtime encodes `ipv4_addr` in network byte order.
-                #[cfg(not(target_endian = "big"))]
-                {
-                    udp_out.dest_ipv4_addr.swap_bytes();
-                    udp_out.src_ipv4_addr.swap_bytes();
-                }
+                    udp.src_ipv4_addr.map(|a| a.into()).unwrap_or(0).to_be();
 
                 if let Some(addr) = udp.dest_link_addr {
                     udp_out.dest_link_addr.copy_from_slice(addr.as_bytes());
@@ -529,8 +520,9 @@ pub extern "C" fn nip_tcp_listen(
         return libc::EINVAL;
     }
 
+    // the C runtime encodes `port` in network byte order.
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let port = ip::Port::try_from(port).unwrap();
+    let port = ip::Port::try_from(u16::from_be(port)).unwrap();
     match engine.tcp_listen(port) {
         Ok(_) => 0,
         Err(fail) => fail_to_errno(&fail),
@@ -558,13 +550,11 @@ pub extern "C" fn nip_tcp_connect(
         return libc::EINVAL;
     }
 
-    // the C runtime encodes `ipv4_addr` in network byte order.
-    #[cfg(not(target_endian = "big"))]
-    let remote_addr = remote_addr.swap_bytes();
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
+    // the C runtime encodes ports & IPv4 addresses in network byte order.
     let remote_port = ip::Port::try_from(u16::from_be(remote_port)).unwrap();
-    let remote_addr = Ipv4Addr::from(remote_addr);
+    let remote_addr = Ipv4Addr::from(u32::from_be(remote_addr));
     let remote_endpoint = ipv4::Endpoint::new(remote_addr, remote_port);
     let future: Future<'static, tcp::ConnectionHandle> =
         engine.tcp_connect(remote_endpoint);
@@ -689,5 +679,18 @@ pub extern "C" fn nip_tcp_get_remote_endpoint(
 #[no_mangle]
 pub extern "C" fn nip_start_logger() -> libc::c_int {
     logging::initialize();
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn nip_advance_clock(
+    engine: *mut libc::c_void,
+) -> libc::c_int {
+    if engine.is_null() {
+        return libc::EINVAL;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut Engine) };
+    engine.advance_clock(Instant::now());
     0
 }

@@ -719,9 +719,6 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
         case 0:
             break;
         case EAGAIN:
-#ifdef DMTR_DEBUG
-            //std::cerr << "rte_eth_rx_burst() => EAGAIN" << std::endl;
-#endif //DMTR_DEBUG
             return 0;
     }
 
@@ -730,7 +727,6 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
-    std::cerr << "rte_eth_rx_burst() => " << count << std::endl;
     struct timeval tv;
     DMTR_OK(gettimeofday(tv));
     for (size_t i = 0; i < count; ++i) {
@@ -1020,6 +1016,8 @@ void dmtr::dpdk_catnip_queue::start_threads() {
 }
 
 int dmtr::dpdk_catnip_queue::service_event_queue() {
+    DMTR_OK(nip_advance_clock(our_tcp_engine));
+
     nip_event_code_t event_code;
     int ret = nip_next_event(&event_code, our_tcp_engine);
     switch (ret) {
