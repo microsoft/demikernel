@@ -25,7 +25,6 @@
 #include <dmtr/sga.h>
 #include <iostream>
 #include <netinet/in.h>
-#include <pcapplusplus/PcapFileDevice.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -33,6 +32,7 @@
 #include <rte_lcore.h>
 #include <rte_memcpy.h>
 #include <rte_udp.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
@@ -88,6 +88,7 @@ nip_engine_t dmtr::dpdk_catnip_queue::our_tcp_engine = NULL;
 std::unique_ptr<dmtr::dpdk_catnip_queue::transmit_thread_type> dmtr::dpdk_catnip_queue::our_transmit_thread(new transmit_thread_type(&transmit_thread));
 std::queue<nip_tcp_connection_handle_t> dmtr::dpdk_catnip_queue::our_incoming_connection_handles;
 std::unordered_map<nip_tcp_connection_handle_t, dmtr::dpdk_catnip_queue *> dmtr::dpdk_catnip_queue::our_known_connections;
+std::unique_ptr<pcpp::PcapNgFileWriterDevice> dmtr::dpdk_catnip_queue::our_transcript = nullptr;
 
 int dmtr::dpdk_catnip_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
     DMTR_NOTNULL(EINVAL, f);
@@ -223,11 +224,12 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     }
     DMTR_TRUE(EPERM, !our_dpdk_init_flag);
 
-    std::string config_path;
+    std::string config_path, transcript_path("./transcript.pcapng");
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
+        ("transcript,t", "produce a transcript file");
 
     bpo::variables_map vm;
     bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
@@ -236,6 +238,16 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     if (vm.count("help")) {
         std::cout << desc << std::endl;
         return 0;
+    }
+
+    auto produce_transcript = vm.count("transcript") > 0;
+    if (produce_transcript) {
+        our_transcript.reset(new pcpp::PcapNgFileWriterDevice(transcript_path.c_str(), pcpp::LINKTYPE_ETHERNET));
+        if (!our_transcript->open()) {
+            std::cerr << "unable to open transcript at `" << transcript_path.c_str() << "`." << std::endl;
+            // todo: is there a better error to return?
+            return ENOENT;
+        }
     }
 
     if (access(config_path.c_str(), R_OK) == -1) {
@@ -415,11 +427,22 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             tq.pop();
             size_t packets_sent = 0;
             struct rte_mbuf *packets[] = { packet };
+            size_t data_len = rte_pktmbuf_data_len(packet);
 #ifdef DMTR_DEBUG
             std::cerr << "attempting to send packet:" << std::endl;
-            rte_pktmbuf_dump(stderr, packet, packet->pkt_len);
+            rte_pktmbuf_dump(stderr, packet, data_len);
 #endif
+            std::unique_ptr<uint8_t[]> packet_to_be_logged;
+            if (our_transcript) {
+                uint8_t *p = new uint8_t[data_len];
+                DMTR_NOTNULL(ENOMEM, p);
+                rte_memcpy(p, rte_pktmbuf_mtod(packet, uint8_t *), data_len);
+                packet_to_be_logged.reset(p);
+            }
+
             while (0 == packets_sent) {
+                struct timeval tv;
+                DMTR_OK(gettimeofday(tv));
                 int ret = rte_eth_tx_burst(packets_sent, dpdk_port_id, 0, packets, 1);
                 switch (ret) {
                     default:
@@ -431,6 +454,10 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
 #ifdef DMTR_DEBUG
                         std::cerr << "packet sent." << std::endl;
 #endif
+                        if (packet_to_be_logged) {
+                            log_packet(packet_to_be_logged.get(), data_len);
+                        }
+
                         continue;
                     case EAGAIN:
                         yield();
@@ -703,6 +730,8 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 #endif
 
     std::cerr << "rte_eth_rx_burst() => " << count << std::endl;
+    struct timeval tv;
+    DMTR_OK(gettimeofday(tv));
     for (size_t i = 0; i < count; ++i) {
         struct rte_mbuf * const packet = packets[i];
 #ifdef DMTR_DEBUG
@@ -711,6 +740,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 #endif
         auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
         size_t length = rte_pktmbuf_data_len(packet);
+        log_packet(p, length, tv);
         int ret = nip_receive_datagram(our_tcp_engine, p, length);
         switch (ret) {
             default:
@@ -1131,3 +1161,41 @@ int dmtr::dpdk_catnip_queue::tcp_read(uint8_t *&bytes_out, std::deque<uint8_t> &
     DMTR_OK(pop_front(bytes_out, buffer, length));
     return 0;
 }
+
+int dmtr::dpdk_catnip_queue::log_packet(const uint8_t *bytes, size_t length) {
+    if (!our_transcript) {
+        return 0;
+    }
+
+    struct timeval tv;
+    DMTR_OK(gettimeofday(tv));
+    DMTR_OK(log_packet(bytes, length, tv));
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::log_packet(const uint8_t *bytes, size_t length, const struct timeval &tv) {
+    if (!our_transcript) {
+        return 0;
+    }
+
+    int n;
+    DMTR_OK(dmtr_sztoi(&n, length));
+    pcpp::RawPacket packet(bytes, n, tv, false, pcpp::LINKTYPE_ETHERNET);
+    our_transcript->writePacket(packet);
+    return 0;
+}
+
+int dmtr::dpdk_catnip_queue::gettimeofday(struct timeval &tv) {
+    int ret = ::gettimeofday(&tv, NULL);
+    switch (ret) {
+        default:
+            tv = {};
+            return ENOTSUP;
+        case 0:
+            return 0;
+        case -1:
+            tv = {};
+            return errno;
+    }
+}
+

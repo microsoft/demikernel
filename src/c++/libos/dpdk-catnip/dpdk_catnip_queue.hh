@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <netinet/in.h>
+#include <pcapplusplus/PcapFileDevice.h>
 #include <queue>
 #include <rte_ethdev.h>
 #include <rte_ether.h>
@@ -29,6 +30,7 @@ class dpdk_catnip_queue : public io_queue {
     private: static std::unique_ptr<transmit_thread_type> our_transmit_thread;
     private: static std::queue<nip_tcp_connection_handle_t> our_incoming_connection_handles;
     private: static std::unordered_map<nip_tcp_connection_handle_t, dpdk_catnip_queue *> our_known_connections;
+    private: static std::unique_ptr<pcpp::PcapNgFileWriterDevice> our_transcript;
 
     private: bool my_listening_flag;
     protected: boost::optional<struct sockaddr_in> my_bound_endpoint;
@@ -93,6 +95,8 @@ class dpdk_catnip_queue : public io_queue {
     private: int tcp_read(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length, task::thread_type::yield_type &yield);
     private: int pop_front(uint32_t &value_out, std::deque<uint8_t> &buffer);
     private: int pop_front(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length);
+    private: static int log_packet(const uint8_t *bytes, size_t length);
+    private: static int log_packet(const uint8_t *bytes, size_t length, const struct timeval &tv);
 
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
@@ -111,6 +115,7 @@ class dpdk_catnip_queue : public io_queue {
     private: static int rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
+    private: static int gettimeofday(struct timeval &tv);
 };
 
 } // namespace dmtr
