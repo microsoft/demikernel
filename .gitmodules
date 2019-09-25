@@ -53,4 +53,4 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/DPDK/dpdk.git
-	branch = msft/v18.11/dmtr
+	branch = v19.05
