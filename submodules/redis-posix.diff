@@ -1,0 +1,13 @@
+diff --git a/src/Makefile b/src/Makefile
+index f8112844..cee4d2f9 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -76,7 +76,7 @@ FINAL_LDFLAGS=$(LDFLAGS) $(REDIS_LDFLAGS) $(DEBUG)
+ FINAL_LIBS=-lm
+ DEBUG=-g -ggdb
+ 
+-ZEUS_LIBS := -l:$(notdir $(DEMETER_LIBOS_SO)) -l:$(notdir $(DEMETER_LATENCY_A) ) -l:$(notdir $(DEMETER_COMMON_A)) -lboost_chrono -lboost_system -lstdc++
++ZEUS_LIBS := -l:$(notdir $(DEMETER_LIBOS_SO)) -l:$(notdir $(DEMETER_LATENCY_A) ) -l:$(notdir $(DEMETER_COMMON_A)) -lboost_chrono -lboost_system -lboost_program_options -lstdc++
+ FINAL_CFLAGS += $(ZEUS_CFLAGS)
+ FINAL_LDFLAGS += $(ZEUS_LDFLAGS)
+ FINAL_LIBS += $(ZEUS_LIBS)
