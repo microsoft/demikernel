@@ -18,6 +18,9 @@ set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR})
 set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include ${DPDK_INSTALL_DIR}/include/dpdk)
 set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
 
+# Have to apply max's changes to dpdk
+execute_process(COMMAND git apply ../dpdk_19.05.diff WORKING_DIRECTORY ${DPDK_SOURCE_DIR} ERROR_QUIET)
+
 # we hacked the DPDK build to divulge the flags it generated for
 # compilation and linking-- a technique borrowed from mTCP.
 set(DPDK_CFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt)
