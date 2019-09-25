@@ -7,6 +7,7 @@ target_add_hoard(dmtr-libos-dpdk-catnip hoard-vanilla)
 target_add_dpdk(dmtr-libos-dpdk-catnip)
 
 add_dependencies(dmtr-libos-dpdk-catnip catnip)
+target_add_PcapPlusPlus(dmtr-libos-dpdk-catnip)
 
 target_include_directories(dmtr-libos-dpdk-catnip PUBLIC ${DPDK_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/src/rust/catnip/include)
 

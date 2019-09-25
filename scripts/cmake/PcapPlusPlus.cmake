@@ -24,7 +24,7 @@ add_custom_target(PcapPlusPlus
 
 function(target_add_PcapPlusPlus TARGET)
     target_link_libraries(${TARGET} ${PCAPPLUSPLUS_LIBS})
-    target_include_directories(${TARGET} ${PCAPPLUSPLUS_INCLUDE_DIR})
+    target_include_directories(${TARGET} PRIVATE ${PCAPPLUSPLUS_INCLUDE_DIR})
 endfunction(target_add_PcapPlusPlus)
 
 endif(NOT PCAPPLUSPLUS_DOT_CMAKE_INCLUDED)
