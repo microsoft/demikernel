@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <signal.h>
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
@@ -38,6 +39,7 @@
  *****************************************************************/
 bool long_lived = true;
 bool terminate = false; /** This will be when catching SIGINT */
+bool check_resp_clen = false;
 
 /*****************************************************************
  *********************** RATE VARIABLES **************************
@@ -65,10 +67,10 @@ const std::string VALID_RESP="HTTP/1.1 200 OK";
 const std::string CONTENT_LEN="Content-Length: ";
 
 /* Validates the given response, checking it against the valid response string */
-static inline bool validate_response(dmtr_sgarray_t &response) {
+static inline bool validate_response(dmtr_sgarray_t &response, bool check_content_len) {
     char *str = reinterpret_cast<char *>(response.sga_segs[0].sgaseg_buf);
     std::string resp_str = str;
-    if (resp_str == VALID_RESP) {
+    if ((resp_str.find(VALID_RESP) == 0) & !check_content_len) {
         return true;
     }
     size_t ctlen = resp_str.find(CONTENT_LEN);
@@ -372,7 +374,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                     ) + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
                 memcpy(resp_char_end, "\0", 1);
 
-                request->valid = validate_response(wait_out.qr_value.sga);
+                request->valid = validate_response(wait_out.qr_value.sga, check_resp_clen);
                 free(wait_out.qr_value.sga.sga_buf);
                 DMTR_OK(dmtr_close(wait_out.qr_qd));
                 requests.erase(req);
@@ -384,7 +386,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 dmtr_push(&token, log_memq, &sga);
                 while(dmtr_wait(NULL, token) == EAGAIN) {
                     if (terminate) {
-                        break;
+                        return 0;
                     }
                     continue;
                 }
@@ -481,7 +483,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         dmtr_push(&token, process_conn_memq, &sga);
         while(dmtr_wait(NULL, token) == EAGAIN) {
             if (terminate) {
-                break;
+                return 0;
             }
             continue;
         }
@@ -619,7 +621,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                     ) + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
                 memcpy(resp_char_end, "\0", 1);
 
-                request->valid = validate_response(wait_out.qr_value.sga);
+                request->valid = validate_response(wait_out.qr_value.sga, check_resp_clen);
                 free(wait_out.qr_value.sga.sga_buf);
                 log_debug("Request %d completed", request->id);
 
@@ -641,7 +643,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             if (status == EAGAIN) {
                 if (terminate) {
                     log_info(" worker %d set to terminate", my_idx);
-                    break;
+                    return 0;
                 }
                 continue;
             }
@@ -812,6 +814,20 @@ int main(int argc, char **argv) {
     std::chrono::seconds duration_log(duration + 15);
     hr_clock::time_point time_end_log = take_time() + duration_log;
 
+    /* Block SIGINT to ensure handler will only be run in main thread */
+    sigset_t mask, oldmask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGQUIT);
+    int ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
+    if (ret != 0) {
+        fprintf(stderr, "Couln't block SIGINT and SIGQUIT: %s\n", strerror(errno));
+    }
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+        std::cout << "\ncan't catch SIGINT\n";
+    if (signal(SIGTERM, sig_handler) == SIG_ERR)
+        std::cout << "\ncan't catch SIGTERM\n";
+
     /* Initialize responses first, then logging, then request initialization */
     for (int i = 0; i < n_threads; ++i) {
         struct state_threads *st = new state_threads();
@@ -849,6 +865,12 @@ int main(int argc, char **argv) {
             pin_thread(st->init->native_handle(), i+1);
         }
         threads.push_back(st);
+    }
+
+    /* Re-enable SIGINT and SIGQUIT */
+    ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
+    if (ret != 0) {
+        fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
     }
 
     // Wait on all of the initialization threads

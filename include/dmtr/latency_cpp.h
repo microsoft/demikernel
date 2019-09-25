@@ -8,6 +8,22 @@
 #include <mutex>
 #include <boost/chrono.hpp>
 
+static inline boost::chrono::steady_clock::time_point now() {
+    uint32_t regs[4];
+    uint32_t p;
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    boost::chrono::steady_clock::time_point time =
+        boost::chrono::steady_clock::now();
+    asm volatile(
+        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
+                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
+    );
+    return time;
+}
+
 // The maximum lenth for the log URI
 #define MAX_LOG_FILENAME_LEN 128
 
