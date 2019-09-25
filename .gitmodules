@@ -54,3 +54,6 @@
 	path = submodules/dpdk
 	url = https://github.com/DPDK/dpdk.git
 	branch = v19.05
+[submodule "src/python/benchmarking_utils/Shremote"]
+	path = src/python/benchmarking_utils/Shremote
+	url = https://github.com/isaac-ped/Shremote
