@@ -59,6 +59,7 @@ int nip_next_event(nip_event_code_t *event_code_out, nip_engine_t engine);
 int nip_receive_datagram(nip_engine_t engine, void *bytes, uintptr_t length);
 int nip_set_my_ipv4_addr(int32_t ipv4_addr);
 int nip_set_my_link_addr(uint8_t link_addr[6]);
+int nip_start_logger();
 int nip_tcp_connect(nip_future_t *future_out, nip_engine_t engine, uint32_t remote_addr, uint16_t remote_port);
 int nip_tcp_connected(nip_tcp_connection_handle_t *handle_out, nip_future_t future);
 int nip_tcp_get_local_endpoint(int32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);

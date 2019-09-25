@@ -1,4 +1,5 @@
 use crate::{
+    logging,
     prelude::*,
     protocols::{ethernet2, ip, ipv4, tcp},
     shims::Mutex,
@@ -83,6 +84,10 @@ fn fail_to_errno(fail: &Fail) -> libc::c_int {
 
 #[no_mangle]
 pub extern "C" fn nip_set_my_ipv4_addr(ipv4_addr: u32) -> libc::c_int {
+    // the C runtime encodes `ipv4_addr` in network byte order.
+    #[cfg(not(target_endian = "big"))]
+    let ipv4_addr = ipv4_addr.swap_bytes();
+
     let ipv4_addr = Ipv4Addr::from(ipv4_addr);
     if ipv4_addr.is_unspecified() || ipv4_addr.is_broadcast() {
         return libc::EINVAL;
@@ -378,6 +383,14 @@ pub extern "C" fn nip_get_udp_datagram_event(
                     udp.dest_ipv4_addr.map(|a| a.into()).unwrap_or(0);
                 udp_out.src_ipv4_addr =
                     udp.src_ipv4_addr.map(|a| a.into()).unwrap_or(0);
+
+                // the C runtime encodes `ipv4_addr` in network byte order.
+                #[cfg(not(target_endian = "big"))]
+                {
+                    udp_out.dest_ipv4_addr.swap_bytes();
+                    udp_out.src_ipv4_addr.swap_bytes();
+                }
+
                 if let Some(addr) = udp.dest_link_addr {
                     udp_out.dest_link_addr.copy_from_slice(addr.as_bytes());
                 } else {
@@ -545,6 +558,10 @@ pub extern "C" fn nip_tcp_connect(
         return libc::EINVAL;
     }
 
+    // the C runtime encodes `ipv4_addr` in network byte order.
+    #[cfg(not(target_endian = "big"))]
+    let remote_addr = remote_addr.swap_bytes();
+
     let engine = unsafe { &mut *(engine as *mut Engine) };
     let remote_port = ip::Port::try_from(u16::from_be(remote_port)).unwrap();
     let remote_addr = Ipv4Addr::from(remote_addr);
@@ -667,4 +684,10 @@ pub extern "C" fn nip_tcp_get_remote_endpoint(
         }
         Err(fail) => fail_to_errno(&fail),
     }
+}
+
+#[no_mangle]
+pub extern "C" fn nip_start_logger() -> libc::c_int {
+    logging::initialize();
+    0
 }

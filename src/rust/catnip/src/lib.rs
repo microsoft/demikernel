@@ -25,6 +25,7 @@ pub mod r#async;
 
 mod event;
 mod interop;
+mod logging;
 mod options;
 mod prelude;
 mod protocols;

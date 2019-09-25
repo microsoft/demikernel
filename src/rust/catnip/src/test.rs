@@ -1,13 +1,12 @@
 use crate::{
+    logging,
     prelude::*,
     protocols::{arp, ethernet2::MacAddress, tcp},
     rand::Seed,
     Options,
 };
-use flexi_logger::Logger;
 use std::{
     net::Ipv4Addr,
-    sync::Once,
     time::{Duration, Instant},
 };
 
@@ -25,20 +24,12 @@ lazy_static! {
     static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 
-static INIT_LOG: Once = Once::new();
-
-fn initialize_logger() {
-    INIT_LOG.call_once(|| {
-        Logger::with_env_or_str("").start().unwrap();
-    });
-}
-
 pub fn new_engine<'a>(
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     now: Instant,
 ) -> Engine<'a> {
-    initialize_logger();
+    logging::initialize();
     // we always want to use the same seed for our unit tests.
     let mut seed = Seed::default();
     seed[0..6].copy_from_slice(&link_addr.to_array());

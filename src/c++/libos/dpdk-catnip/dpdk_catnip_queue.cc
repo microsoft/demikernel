@@ -331,6 +331,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
 
 int dmtr::dpdk_catnip_queue::init_catnip()
 {
+    DMTR_OK(nip_start_logger());
     DMTR_OK(nip_new_engine(&our_tcp_engine));
     return 0;
 }
