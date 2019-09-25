@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::prelude::*;
-use byteorder::{ByteOrder, NativeEndian, NetworkEndian};
+use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
 use std::{convert::TryFrom, net::Ipv4Addr};
 
@@ -104,11 +104,11 @@ impl<'a> Ipv4Header<'a> {
     }
 
     pub fn src_addr(&self) -> Ipv4Addr {
-        Ipv4Addr::from(NativeEndian::read_u32(&self.0[12..16]))
+        Ipv4Addr::from(NetworkEndian::read_u32(&self.0[12..16]))
     }
 
     pub fn dest_addr(&self) -> Ipv4Addr {
-        Ipv4Addr::from(NativeEndian::read_u32(&self.0[16..20]))
+        Ipv4Addr::from(NetworkEndian::read_u32(&self.0[16..20]))
     }
 }
 
@@ -184,10 +184,10 @@ impl<'a> Ipv4HeaderMut<'a> {
     }
 
     pub fn src_addr(&mut self, value: Ipv4Addr) {
-        NativeEndian::write_u32(&mut self.0[12..16], value.into());
+        NetworkEndian::write_u32(&mut self.0[12..16], value.into());
     }
 
     pub fn dest_addr(&mut self, value: Ipv4Addr) {
-        NativeEndian::write_u32(&mut self.0[16..20], value.into());
+        NetworkEndian::write_u32(&mut self.0[16..20], value.into());
     }
 }
