@@ -202,7 +202,8 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
         ("config-path,c", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
-        ("file", value<std::string>(), "log file");
+        ("file", value<std::string>(), "log file")
+        ("log-dir,L", value<std::string>(), "log directory");
 
     variables_map vm;
     try {
