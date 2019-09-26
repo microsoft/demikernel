@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cassert>
 #include <catnip.h>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -211,6 +212,11 @@ int dmtr::dpdk_catnip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool
 
 int dmtr::dpdk_catnip_queue::initialize_class(int argc, char *argv[])
 {
+    if (SIG_ERR == signal(SIGABRT, signal_handler)) {
+        std::cerr << "\ncan't catch SIGINT\n";
+        abort();
+    }
+
     DMTR_OK(init_dpdk(argc, argv));
     DMTR_OK(init_catnip());
     return 0;
@@ -1210,3 +1216,8 @@ int dmtr::dpdk_catnip_queue::gettimeofday(struct timeval &tv) {
     }
 }
 
+void dmtr::dpdk_catnip_queue::signal_handler(int signo) {
+    if (our_transcript) {
+        our_transcript.reset(nullptr);
+    }
+}

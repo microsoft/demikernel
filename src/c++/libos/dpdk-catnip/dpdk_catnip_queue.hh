@@ -97,6 +97,7 @@ class dpdk_catnip_queue : public io_queue {
     private: int pop_front(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length);
     private: static int log_packet(const uint8_t *bytes, size_t length);
     private: static int log_packet(const uint8_t *bytes, size_t length, const struct timeval &tv);
+    private: static void signal_handler(int signo);
 
     private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
