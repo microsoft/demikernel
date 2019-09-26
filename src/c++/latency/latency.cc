@@ -275,6 +275,7 @@ int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name) {
     auto latency = new dmtr_latency_t();
     latency->name = name;
     latency->latencies.reserve(MAX_ITERATIONS);
+    latency->record_times.reserve(MAX_ITERATIONS);
 
     for (int i = 0; i < LATENCY_DIST_POOL_SIZE; ++i) {
         Latency_Dist_t *d = &latency->distPool[i];
