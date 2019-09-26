@@ -46,7 +46,7 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
 }
 
 int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_queue_factory::ctor_type ctor) {
-    std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
+    //std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
     DMTR_OK(my_queue_factory.register_ctor(cid, ctor));
     return 0;
 }
@@ -54,7 +54,7 @@ int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_q
 int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     q_out = NULL;
 
-    std::lock_guard<std::mutex> lock(my_queues_mutex);
+    //std::lock_guard<std::mutex> lock(my_queues_mutex);
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;
@@ -77,7 +77,7 @@ int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
 }
 
 int dmtr::io_queue_api::new_qd() {
-    std::lock_guard<std::mutex> lock(my_qd_counter_mutex);
+    //std::lock_guard<std::mutex> lock(my_qd_counter_mutex);
     int qd = ++my_qd_counter;
     if (0 > qd) {
         DMTR_PANIC("Queue descriptor overflow");
@@ -92,13 +92,13 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
     int qd = new_qd();
     std::unique_ptr<io_queue> qq;
     {
-        std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
+        //std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
         DMTR_OK(my_queue_factory.construct(qq, cid, qd));
     }
     // Queue has not been stored anywhere yet so no need to lock
     q_out = qq.get();
     {
-        std::lock_guard<std::mutex> lock(qq->my_mutex);
+        //std::lock_guard<std::mutex> lock(qq->my_mutex);
         DMTR_OK(insert_queue(qq));
     }
 
@@ -109,7 +109,7 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
-    std::lock_guard<std::mutex> lock(my_queues_mutex);
+    //std::lock_guard<std::mutex> lock(my_queues_mutex);
     if (my_queues.find(qd) != my_queues.cend()) {
         return EEXIST;
     }
@@ -121,7 +121,7 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
 int dmtr::io_queue_api::remove_queue(int qd) {
     DMTR_TRUE(EINVAL, qd != 0);
 
-    std::lock_guard<std::mutex> lock(my_queues_mutex);
+    //std::lock_guard<std::mutex> lock(my_queues_mutex);
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;
@@ -147,7 +147,7 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
     io_queue *q = NULL;
     DMTR_OK(new_queue(q, io_queue::NETWORK_Q));
     {
-        std::lock_guard<std::mutex> lock(q->my_mutex);
+        //std::lock_guard<std::mutex> lock(q->my_mutex);
         int ret = q->socket(domain, type, protocol);
         if (ret != 0) {
             DMTR_OK(remove_queue(q->qd()));
@@ -164,7 +164,7 @@ int dmtr::io_queue_api::getsockname(int qd, struct sockaddr * const saddr, sockl
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     DMTR_OK(q->getsockname(saddr, size));
 
     return 0;
@@ -175,7 +175,7 @@ int dmtr::io_queue_api::bind(int qd, const struct sockaddr * const saddr, sockle
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     DMTR_OK(q->bind(saddr, size));
 
     return 0;
@@ -203,7 +203,7 @@ int dmtr::io_queue_api::listen(int qd, int backlog) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     DMTR_OK(q->listen(backlog));
 
     return 0;
@@ -214,7 +214,7 @@ int dmtr::io_queue_api::connect(int qd, const struct sockaddr * const saddr, soc
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     int ret = q->connect(saddr, size);
     switch (ret) {
         default:
@@ -284,7 +284,7 @@ int dmtr::io_queue_api::close(int qd) {
     DMTR_OK(get_queue(q, qd));
     int ret;
     {
-        std::lock_guard<std::mutex> lock(q->my_mutex);
+        //std::lock_guard<std::mutex> lock(q->my_mutex);
         ret = q->close();
     }
     DMTR_OK(remove_queue(qd));
@@ -299,7 +299,7 @@ int dmtr::io_queue_api::is_qd_valid(bool &flag, int qd)
 
     io_queue *q = NULL;
     int ret = get_queue(q, qd);
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -317,7 +317,7 @@ int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     dmtr_qtoken_t qt;
     DMTR_OK(new_qtoken(qt, qd));
     DMTR_OK(q->push(qt, sga));
@@ -332,7 +332,7 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     dmtr_qtoken_t qt;
     DMTR_OK(new_qtoken(qt, qd));
     DMTR_OK(q->pop(qt));
@@ -350,7 +350,7 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     DMTR_OK(get_queue(q, qd));
     int ret;
     {
-        std::lock_guard<std::mutex> lock(q->my_mutex);
+        //std::lock_guard<std::mutex> lock(q->my_mutex);
 
         dmtr_qresult_t unused_qr = {};
         if (NULL == qr_out) {
@@ -405,6 +405,6 @@ int dmtr::io_queue_api::drop(dmtr_qtoken_t qt) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    std::lock_guard<std::mutex> lock(q->my_mutex);
+    //std::lock_guard<std::mutex> lock(q->my_mutex);
     return q->drop(qt);
 }
