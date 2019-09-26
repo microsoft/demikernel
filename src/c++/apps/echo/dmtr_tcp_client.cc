@@ -20,6 +20,7 @@
 #include <yaml-cpp/yaml.h>
 
 namespace po = boost::program_options;
+static std::unordered_map<pthread_t, latency_ptr_type> e2e_latencies;
 
 int main(int argc, char *argv[])
 {
@@ -27,12 +28,10 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_init(argc, argv));
 
-    dmtr_latency_t *latency = NULL;
-    DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
-
     int qd = 0;
     DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
     printf("client qd:\t%d\n", qd);
+
 
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -47,6 +46,12 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     std::cerr << "Connected." << std::endl;
 
+    dmtr_log_directory = log_directory.c_str();
+    std::cout << argc << dmtr_log_directory << "IS LOG" << std::endl;
+    dmtr_register_latencies("end-to-end", e2e_latencies);
+    pthread_t me = pthread_self();
+    dmtr_latency_t *latency = e2e_latencies.find(me)->second.get();
+
     dmtr_sgarray_t sga = {};
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = packet_size;
@@ -59,11 +64,11 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_wait(NULL, qt));
         //fprintf(stderr, "send complete.\n");
 
-        dmtr_qresult_t qr = {};
+        dmtr_qresult_t qr;
         DMTR_OK(dmtr_pop(&qt, qd));
         DMTR_OK(dmtr_wait(&qr, qt));
         auto dt = boost::chrono::steady_clock::now() - t0;
-        DMTR_OK(dmtr_record_latency(latency, dt.count()));
+        DMTR_OK(dmtr_record_timed_latency(latency, since_epoch(t0), dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
@@ -71,7 +76,6 @@ int main(int argc, char *argv[])
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
         free(qr.qr_value.sga.sga_buf);
     }
-    DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
 
     return 0;
