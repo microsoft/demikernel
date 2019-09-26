@@ -429,10 +429,6 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             size_t packets_sent = 0;
             struct rte_mbuf *packets[] = { packet };
             size_t data_len = rte_pktmbuf_data_len(packet);
-#ifdef DMTR_DEBUG
-            std::cerr << "attempting to send packet:" << std::endl;
-            rte_pktmbuf_dump(stderr, packet, data_len);
-#endif
             std::unique_ptr<uint8_t[]> packet_to_be_logged;
             if (our_transcript) {
                 uint8_t *p = new uint8_t[data_len];
@@ -503,8 +499,13 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
             }
         }
 
-        new_dcq->my_tcp_connection_handle = our_incoming_connection_handles.front();
+        auto handle = our_incoming_connection_handles.front();
         our_incoming_connection_handles.pop();
+#ifdef DMTR_DEBUG
+            std::cerr << "completing accept for handle " << handle << "." << std::endl;
+#endif // DMTR_DEBUG
+
+        new_dcq->my_tcp_connection_handle = handle;
         new_dcq->start_threads();
         DMTR_TRUE(ENOTSUP, our_known_connections.find(new_dcq->my_tcp_connection_handle) == our_known_connections.cend());
         our_known_connections[new_dcq->my_tcp_connection_handle] = new_dcq;
@@ -592,13 +593,24 @@ int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * c
 
 int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_future_t connect_future) {
     int ret;
-    while (1) {
+    bool done = false;
+    while (!done) {
         ret = nip_tcp_connected(&my_tcp_connection_handle, connect_future);
-        if (EAGAIN == ret) {
-            yield();
-            continue;
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case 0:
+                done = true;
+                break;
+            case EAGAIN:
+                yield();
+                continue;
         }
     }
+
+#ifdef DMTR_DEBUG
+    std::cerr << "connection complete for handle " << my_tcp_connection_handle << "." << std::endl;
+#endif //DMTR_DEBUG
 
     DMTR_TRUE(ENOTSUP, our_known_connections.find(my_tcp_connection_handle) == our_known_connections.cend());
     our_known_connections[my_tcp_connection_handle] = this;
@@ -731,10 +743,6 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_OK(gettimeofday(tv));
     for (size_t i = 0; i < count; ++i) {
         struct rte_mbuf * const packet = packets[i];
-#ifdef DMTR_DEBUG
-        std::cerr << "packet received:" << std::endl;
-        rte_pktmbuf_dump(stderr, packet, packet->pkt_len);
-#endif
         auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
         size_t length = rte_pktmbuf_data_len(packet);
         log_packet(p, length, tv);
@@ -789,9 +797,13 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case EAGAIN:
             break;
         case 0:
-            // the threads should only exit if the queue has been closed
-            // (`good()` => `false`).
-            DMTR_UNREACHABLE();
+            if (t->opcode() != DMTR_OPC_CONNECT) {
+                // most of the threads should only exit if the queue has been
+                // closed (`good()` => `false`).
+                DMTR_UNREACHABLE();
+            }
+
+            break;
     }
 
     return t->poll(qr_out);

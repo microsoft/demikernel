@@ -207,17 +207,21 @@ impl<'a> TcpPeerState<'a> {
 
             let remote_isn = ack_segment.seq_num;
 
-            let bytes = {
+            let (bytes, handle) = {
                 let mut cxn = cxn.borrow_mut();
                 cxn.set_remote_isn(remote_isn);
                 cxn.negotiate_mss(ack_segment.mss)?;
                 cxn.set_remote_receive_window_size(ack_segment.window_size)?;
                 cxn.incr_seq_num();
                 let segment = TcpSegment::default().connection(&cxn);
-                Rc::new(RefCell::new(segment.encode()))
+                (Rc::new(RefCell::new(segment.encode())), cxn.get_handle())
             };
 
             r#await!(TcpPeerState::cast(state.clone(), bytes), rt.now())?;
+            info!(
+                "{}: connection established (handle = {})",
+                options.my_ipv4_addr, handle
+            );
             CoroutineOk(())
         })
     }
@@ -436,10 +440,10 @@ impl<'a> TcpPeerState<'a> {
                             && !segment.payload.is_empty()
                         {
                             ack_owed_since = Some(rt.now());
-                            debug!(
+                            /*debug!(
                                 "{}: ack_owed_since = {:?}",
                                 options.my_ipv4_addr, ack_owed_since
-                            );
+                            );*/
                         }
 
                         cxn.receive(segment)?;
@@ -490,7 +494,8 @@ impl<'a> TcpPeerState<'a> {
                         ack_owed_since = None;
                     }
                 } else {
-                    debug!("{}: ack_owed_since = None", options.my_ipv4_addr)
+                    //debug!("{}: ack_owed_since = None",
+                    // options.my_ipv4_addr)
                 }
 
                 yield None;
@@ -505,7 +510,6 @@ pub struct TcpPeer<'a> {
 
 impl<'a> TcpPeer<'a> {
     pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Self {
-
         TcpPeer {
             state: Rc::new(RefCell::new(TcpPeerState::new(rt, arp))),
         }

@@ -6,7 +6,10 @@ use super::{
     traits::Async,
 };
 use crate::prelude::*;
-use std::{fmt::Debug, time::Instant};
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    time::Instant,
+};
 
 pub use when_any::WhenAny;
 
@@ -80,5 +83,28 @@ where
                 rt.coroutine_status(*cid).into()
             }
         }
+    }
+}
+
+impl<'a, T> Debug for Future<'a, T>
+where
+    T: Clone + Debug + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "Future::")?;
+        match self {
+            Future::Const(x) => write!(f, "Const({:?})", x)?,
+            Future::CoroutineResult { rt, cid } => {
+                let status: Option<Result<T>> =
+                    rt.coroutine_status(*cid).into();
+                write!(
+                    f,
+                    "CoroutineResult {{ cid: {:?}, status: {:?} }}",
+                    cid, status
+                )?
+            }
+        }
+
+        Ok(())
     }
 }
