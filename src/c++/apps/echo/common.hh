@@ -206,7 +206,9 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
 
     variables_map vm;
     try {
-        store(parse_command_line(argc, argv, desc), vm);
+        parsed_options parsed =
+            command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+        store(parsed, vm);
         if (vm.count("help")) {
             std::cout << desc << std::endl;
             exit(0);
