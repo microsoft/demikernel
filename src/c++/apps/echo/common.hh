@@ -183,6 +183,7 @@ uint32_t iterations;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
+static std::string log_directory;
 boost::optional<std::string> file;
 std::string config_path;
 
@@ -203,7 +204,7 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
         ("config-path,c", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
         ("file", value<std::string>(), "log file")
-        ("log-dir,L", value<std::string>(), "log directory");
+        ("log-dir,L", value<std::string>(&log_directory)->default_value("."), "log directory");
 
     variables_map vm;
     try {
