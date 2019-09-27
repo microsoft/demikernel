@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
 
         dmtr_qresult_t qr;
         DMTR_OK(dmtr_pop(&qt, qd));
+        while (dmtr_wait(&qr, qt) == EAGAIN) {}
         DMTR_OK(dmtr_wait(&qr, qt));
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_timed_latency(latency, since_epoch(t0), dt.count()));
