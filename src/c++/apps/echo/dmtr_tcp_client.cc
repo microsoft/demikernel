@@ -66,8 +66,9 @@ int main(int argc, char *argv[])
 
         dmtr_qresult_t qr;
         DMTR_OK(dmtr_pop(&qt, qd));
-        while (dmtr_wait(&qr, qt) == EAGAIN) {}
-        DMTR_OK(dmtr_wait(&qr, qt));
+        int wait_rtn;
+        while ((wait_rtn = dmtr_wait(&qr, qt)) == EAGAIN) {}
+        DMTR_OK(wait_rtn);
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_timed_latency(latency, since_epoch(t0), dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
