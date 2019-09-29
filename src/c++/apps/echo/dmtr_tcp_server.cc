@@ -135,6 +135,9 @@ int main(int argc, char *argv[])
                 free(wait_out.qr_value.sga.sga_buf);
             }
         } else {
+            if (status == EAGAIN) {
+                continue;
+            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);

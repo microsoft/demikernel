@@ -56,12 +56,12 @@ int main(int argc, char *argv[])
         dmtr_qtoken_t qt;
         auto t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_push(&qt, qd, &sga));
-        DMTR_OK(dmtr_wait(NULL, qt));
+        while (dmtr_wait(NULL, qt) == EAGAIN);
         //fprintf(stderr, "send complete.\n");
 
         dmtr_qresult_t qr = {};
         DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&qr, qt));
+        while (dmtr_wait(&qr, qt) == EAGAIN);
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(latency, dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
