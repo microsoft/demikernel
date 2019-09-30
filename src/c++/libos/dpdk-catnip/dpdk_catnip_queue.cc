@@ -348,7 +348,8 @@ boost::optional<uint16_t> dmtr::dpdk_catnip_queue::our_dpdk_port_id;
 dmtr::dpdk_catnip_queue::dpdk_catnip_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_listening_flag(false),
-    my_tcp_connection_handle(0)
+    my_tcp_connection_handle(0),
+    my_connection_status(0)
 {}
 
 int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
@@ -640,6 +641,7 @@ int dmtr::dpdk_catnip_queue::close() {
 int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    DMTR_TRUE(ENOENT, good());
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     task *t;
@@ -681,8 +683,9 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
     std::deque<uint8_t> buffer;
 
     while (good()) {
-        while (tq.empty()) {
+        if (tq.empty()) {
             yield();
+            continue;
         }
 
         auto qt = tq.front();
@@ -692,7 +695,13 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
 
         dmtr_sgarray_t sga;
         int ret = read_message(sga, buffer, yield);
-        DMTR_OK(t->complete(ret, sga));
+        // things can fail if the connection has been dropped, so we report
+        // why the connection failed if this is the case.
+        if (EINVAL == ret) {
+            DMTR_OK(t->complete(0 == my_connection_status ? ret : my_connection_status, sga));
+        } else {
+            DMTR_OK(t->complete(ret, sga));
+        }
     }
 
     return 0;
@@ -702,13 +711,27 @@ int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<ui
     sga_out = {};
     dmtr_sgarray_t sga = {};
 
-    DMTR_OK(tcp_read(sga.sga_numsegs, buffer, yield));
+    int ret = tcp_read(sga.sga_numsegs, buffer, yield);
+    // things can fail if the connection has been dropped, so we don't print
+    // anything we're sure until something unexpected has happened.
+    if (0 != ret) {
+        return ret;
+    }
+
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
         uint32_t segment_length;
-        DMTR_OK(tcp_read(segment_length, buffer, yield));
+        ret = tcp_read(segment_length, buffer, yield);
+        if (0 != ret) {
+            return ret;
+        }
+
         sga.sga_segs[i].sgaseg_len = segment_length;
         uint8_t *bytes;
-        DMTR_OK(tcp_read(bytes, buffer, segment_length, yield));
+        ret = tcp_read(bytes, buffer, segment_length, yield);
+        if (0 != ret) {
+            return ret;
+        }
+
         sga.sga_segs[i].sgaseg_buf = bytes;
     }
 
@@ -769,7 +792,6 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EINVAL, good());
 
     DMTR_OK(service_incoming_packets());
     DMTR_OK(service_event_queue());
@@ -803,7 +825,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case EAGAIN:
             break;
         case 0:
-            if (t->opcode() != DMTR_OPC_CONNECT) {
+            if (good() && t->opcode() != DMTR_OPC_CONNECT) {
                 // most of the threads should only exit if the queue has been
                 // closed (`good()` => `false`).
                 DMTR_UNREACHABLE();
@@ -1060,7 +1082,7 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             DMTR_OK(nip_get_tcp_connection_closed_event(&handle, &error, our_tcp_engine));
             DMTR_NONZERO(ENOTSUP, handle);
             DMTR_TRUE(ENOENT, our_known_connections.find(handle) != our_known_connections.cend());
-            our_known_connections[handle]->close();
+            our_known_connections[handle]->close(error);
             break;
         }
         case NIP_INCOMING_TCP_CONNECTION: {
@@ -1116,8 +1138,13 @@ int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &leng
 int dmtr::dpdk_catnip_queue::tcp_peek(std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
     const uint8_t *bytes;
     size_t length;
-    DMTR_OK(tcp_peek(bytes, length, yield));
-    assert(length != 0);
+    int ret = tcp_peek(bytes, length, yield);
+    // things can fail if the connection has been dropped, so we don't print
+    // anything we're sure until something unexpected has happened.
+    if (0 != ret) {
+        return ret;
+    }
+
     for (size_t i = 0; i < length; ++i) {
         buffer.push_back(bytes[i]);
     }
@@ -1164,7 +1191,14 @@ int dmtr::dpdk_catnip_queue::pop_front(uint8_t *&bytes_out, std::deque<uint8_t> 
 
 int dmtr::dpdk_catnip_queue::tcp_read(std::deque<uint8_t> &buffer, size_t length, task::thread_type::yield_type &yield) {
     while (buffer.size() < length) {
-        DMTR_OK(tcp_peek(buffer, yield));
+        int ret = tcp_peek(buffer, yield);
+        // things can fail if the connection has been dropped, so we
+        // don't print anything we're sure until something unexpected has
+        // happened.
+        if (0 != ret) {
+            return ret;
+        }
+
         DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle));
     }
 
@@ -1172,13 +1206,25 @@ int dmtr::dpdk_catnip_queue::tcp_read(std::deque<uint8_t> &buffer, size_t length
 }
 
 int dmtr::dpdk_catnip_queue::tcp_read(uint32_t &value_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
-    DMTR_OK(tcp_read(buffer, sizeof(value_out), yield));
+    int ret = tcp_read(buffer, sizeof(value_out), yield);
+    // things can fail if the connection has been dropped, so we don't print
+    // anything we're sure until something unexpected has happened.
+    if (0 != ret) {
+        return ret;
+    }
+
     DMTR_OK(pop_front(value_out, buffer));
     return 0;
 }
 
 int dmtr::dpdk_catnip_queue::tcp_read(uint8_t *&bytes_out, std::deque<uint8_t> &buffer, size_t length, task::thread_type::yield_type &yield) {
-    DMTR_OK(tcp_read(buffer, length, yield));
+    int ret = tcp_read(buffer, length, yield);
+    // things can fail if the connection has been dropped, so we don't print
+    // anything we're sure until something unexpected has happened.
+    if (0 != ret) {
+        return ret;
+    }
+
     DMTR_OK(pop_front(bytes_out, buffer, length));
     return 0;
 }
@@ -1224,4 +1270,11 @@ void dmtr::dpdk_catnip_queue::signal_handler(int signo) {
     if (our_transcript) {
         our_transcript.reset(nullptr);
     }
+}
+
+int dmtr::dpdk_catnip_queue::close(int error) {
+    DMTR_TRUE(ENOTSUP, good());
+    my_connection_status = error;
+    DMTR_OK(close());
+    return 0;
 }

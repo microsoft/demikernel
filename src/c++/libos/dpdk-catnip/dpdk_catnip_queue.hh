@@ -38,6 +38,7 @@ class dpdk_catnip_queue : public io_queue {
     private: std::unique_ptr<task::thread_type> my_accept_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;
     private: std::unique_ptr<task::thread_type> my_connect_thread;
+    private: int my_connection_status;
 
     private: dpdk_catnip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -67,6 +68,7 @@ class dpdk_catnip_queue : public io_queue {
     private: static int wait_for_link_status_up(uint16_t port_id);
     private: static int init_catnip();
     private: int push(const dmtr_sgarray_t &sga);
+    private: int close(int error);
 
     private: bool is_bound() const {
         return boost::none != my_bound_endpoint;
