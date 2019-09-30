@@ -67,7 +67,31 @@ impl<'a> AsyncRuntime<'a> {
         self.schedule.borrow_mut().poll(now)
     }
 
-    pub fn poll(&self, now: Instant) -> Option<Result<CoroutineId>> {
+    pub fn drop_coroutine(&self, cid: CoroutineId) -> Result<()> {
+        trace!("AsyncRuntime::drop_coroutine({})", cid);
+        // this function should not panic as it's called from `drop()`.
+        self.schedule.try_borrow_mut()?.cancel(cid);
+        self.inactive_coroutines.try_borrow_mut()?.remove(&cid);
+        Ok(())
+    }
+
+    pub fn coroutine_status(&self, cid: CoroutineId) -> CoroutineStatus {
+        trace!("AsyncRuntime::coroutine_status({})", cid);
+        if self.active_coroutines.borrow().contains(&cid) {
+            CoroutineStatus::Active
+        } else {
+            self.inactive_coroutines
+                .borrow()
+                .get(&cid)
+                .unwrap()
+                .status()
+                .clone()
+        }
+    }
+}
+
+impl<'a> Async<CoroutineId> for AsyncRuntime<'a> {
+    fn poll(&self, now: Instant) -> Option<Result<CoroutineId>> {
         trace!("AsyncRuntime::poll({:?})", now);
         if let Some(cid) = self.poll_schedule(now) {
             trace!("coroutine (cid = {}) is now active", cid);
@@ -97,66 +121,6 @@ impl<'a> AsyncRuntime<'a> {
                 .insert(cid, coroutine)
                 .is_none());
             assert!(self.active_coroutines.borrow_mut().remove(&cid));
-            Some(Ok(cid))
-        } else {
-            None
-        }
-    }
-
-    pub fn drop_coroutine(&self, cid: CoroutineId) -> Result<()> {
-        trace!("AsyncRuntime::drop_coroutine({})", cid);
-        // this function should not panic as it's called from `drop()`.
-        self.schedule.try_borrow_mut()?.cancel(cid);
-        self.inactive_coroutines.try_borrow_mut()?.remove(&cid);
-        Ok(())
-    }
-
-    pub fn coroutine_status(&self, cid: CoroutineId) -> CoroutineStatus {
-        trace!("AsyncRuntime::coroutine_status({})", cid);
-        if self.active_coroutines.borrow().contains(&cid) {
-            CoroutineStatus::Active
-        } else {
-            self.inactive_coroutines
-                .borrow()
-                .get(&cid)
-                .unwrap()
-                .status()
-                .clone()
-        }
-    }
-}
-
-impl<'a> Async<CoroutineId> for AsyncRuntime<'a> {
-    fn poll(&self, now: Instant) -> Option<Result<CoroutineId>> {
-        trace!("AsyncRuntime::poll({:?})", now);
-        if let Some(cid) = self.poll_schedule(now) {
-            debug!("coroutine (cid = {:?}) is up", cid);
-            let mut coroutine = {
-                let mut inactive_coroutines =
-                    self.inactive_coroutines.borrow_mut();
-                // coroutine has to be removed from inactive_coroutines in
-                // order to work around a mutablility deadlock
-                // when futures are used from within a
-                // coroutine. we also don't anticipate a
-                // reasonable situation where the schedule
-                // would give us an ID that isn't in
-                // `self.inactive_coroutines`.
-                inactive_coroutines.remove(&cid).unwrap()
-            };
-
-            if !coroutine.resume(now) {
-                self.schedule.borrow_mut().schedule(&coroutine);
-            }
-
-            let cid = coroutine.id();
-            debug!(
-                "coroutine {} successfully resumed; status is now `{:?}`",
-                cid,
-                coroutine.status()
-            );
-            let mut inactive_coroutines =
-                self.inactive_coroutines.borrow_mut();
-            assert!(inactive_coroutines.insert(cid, coroutine).is_none());
             Some(Ok(cid))
         } else {
             None
