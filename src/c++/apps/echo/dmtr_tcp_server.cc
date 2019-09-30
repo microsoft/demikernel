@@ -140,7 +140,16 @@ int main(int argc, char *argv[])
                 start_times[token] = t0;
                 tokens[idx] = token;
                 //fprintf(stderr, "send complete.\n");
-                free(wait_out.qr_value.sga.sga_buf);
+
+                // we haven't got a good solution for communicating how to
+                // free scatter/gather arrays.
+                if (NULL == wait_out.qr_value.sga.sga_buf) {
+                    for (size_t i = 0; i < wait_out.qr_value.sga.sga_numsegs; ++i) {
+                        free(wait_out.qr_value.sga.sga_segs[i].sgaseg_buf);
+                    }
+                } else {
+                    free(wait_out.qr_value.sga.sga_buf);
+                }
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);

@@ -71,7 +71,16 @@ int main(int argc, char *argv[])
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
-        free(qr.qr_value.sga.sga_buf);
+
+        // we haven't got a good solution for communicating how to free
+        // scatter/gather arrays.
+        if (NULL == qr.qr_value.sga.sga_buf) {
+            for (size_t i = 0; i < qr.qr_value.sga.sga_numsegs; ++i) {
+                free(qr.qr_value.sga.sga_segs[i].sgaseg_buf);
+            }
+        } else {
+            free(qr.qr_value.sga.sga_buf);
+        }
     }
     DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
