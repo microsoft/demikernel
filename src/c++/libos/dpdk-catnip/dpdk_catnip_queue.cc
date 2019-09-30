@@ -47,7 +47,7 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DMTR_DEBUG 1
+//#define DMTR_DEBUG 1
 #define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
 
@@ -238,7 +238,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
         ("transcript,t", "produce a transcript file");
 
     bpo::variables_map vm;
-    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+    bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
     bpo::notify(vm);
 
     if (vm.count("help")) {
