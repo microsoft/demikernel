@@ -10,6 +10,7 @@ use std::{
 type Str = &'static str;
 
 custom_error! {#[derive(Clone)] pub Fail
+    ConnectionAborted{} = "connection aborted",
     ConnectionRefused{} = "connection refused",
     ForeignError{source: Rc<dyn Error>} = "{source}",
     Ignored{details: Str} = "operation had no effect ({details})",

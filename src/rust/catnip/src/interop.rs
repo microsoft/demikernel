@@ -67,6 +67,7 @@ impl From<&Event> for EventCode {
 
 fn fail_to_errno(fail: &Fail) -> libc::c_int {
     match fail {
+        Fail::ConnectionAborted {} => libc::ECONNABORTED,
         Fail::ConnectionRefused {} => libc::ECONNREFUSED,
         Fail::ForeignError { .. } => libc::ECHILD,
         Fail::Ignored { .. } => 0,

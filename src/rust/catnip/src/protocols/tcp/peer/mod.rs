@@ -433,6 +433,10 @@ impl<'a> TcpPeerState<'a> {
                     while let Some(segment) =
                         cxn.receive_queue_mut().pop_front()
                     {
+                        if segment.rst {
+                            return Err(Fail::ConnectionAborted {});
+                        }
+
                         // if there's a payload, we need to acknowledge it at
                         // some point. we set a timer if it hasn't already been
                         // set.
