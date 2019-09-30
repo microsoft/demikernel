@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
             free(qr.qr_value.sga.sga_buf);
         }
     }
+
     DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
 

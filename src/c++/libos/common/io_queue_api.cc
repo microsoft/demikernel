@@ -324,6 +324,7 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
         case EAGAIN:
         case ECONNABORTED:
         case ECONNRESET:
+        case ETIMEDOUT:
         // `EBADF` can occur if the queue is closed before completion.
         case EBADF:
             on_poll_failure(qr_out, this);
