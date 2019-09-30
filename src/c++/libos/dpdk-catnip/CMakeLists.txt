@@ -3,7 +3,7 @@
 
 file(GLOB LIBOS_DPDK_CATNIP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 add_library(dmtr-libos-dpdk-catnip SHARED ${LIBOS_DPDK_CATNIP_SOURCES})
-target_add_hoard(dmtr-libos-dpdk-catnip hoard-vanilla)
+#target_add_hoard(dmtr-libos-dpdk-catnip hoard-vanilla)
 target_add_dpdk(dmtr-libos-dpdk-catnip)
 
 add_dependencies(dmtr-libos-dpdk-catnip catnip)

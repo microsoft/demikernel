@@ -415,6 +415,13 @@ impl TcpReceiveWindow {
 
     pub fn push(&mut self, segment: TcpSegment) -> Result<()> {
         trace!("TcpReceiveWindow::push({:?})", segment);
+        // todo: we currently don't accept segments out of order.
+        if segment.seq_num != self.ack_num.unwrap() {
+            return Err(Fail::Ignored {
+                details: "duplicate segment",
+            });
+        }
+
         let bytes_unread = self.bytes_unread + segment.payload.len();
         // if we've exhausted our window size, we need to send out a window
         // advertisement.

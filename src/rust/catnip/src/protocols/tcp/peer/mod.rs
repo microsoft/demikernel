@@ -450,7 +450,13 @@ impl<'a> TcpPeerState<'a> {
                             );*/
                         }
 
-                        cxn.receive(segment)?;
+                        match cxn.receive(segment) {
+                            Ok(()) => (),
+                            Err(Fail::Ignored { details }) => {
+                                warn!("TCP segment ignored: {}", details)
+                            }
+                            e => e?,
+                        }
                     }
 
                     cxn.enqueue_retransmissions()?;

@@ -776,12 +776,9 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
         size_t length = rte_pktmbuf_data_len(packet);
         log_packet(p, length, tv);
         int ret = nip_receive_datagram(our_tcp_engine, p, length);
-        switch (ret) {
-            default:
-                std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
-                break;
-            case 0:
-                break;
+        rte_pktmbuf_free(packet);
+        if (0 != ret) {
+            std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
         }
     }
 
