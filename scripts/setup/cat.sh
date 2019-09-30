@@ -1,8 +1,6 @@
 #!/bin/bash -xe
 
 
-#FIXME: line 56 the variable wm is not correct. Need to fix transitions from decimal to hex
-
 # This script takes:
 # - the cores we want to CAT
 # - the number of ways we want to give to each core
@@ -37,7 +35,7 @@ if [ $reset == "reset" ]; then # FIXME: first test if $1 is set
 else
     uncated_ways=$((ways - wpc*${#cated_cores[*]}))
     new_default_mask=$(((2**$uncated_ways - 1 )))
-    new_default_mask=11
+    #new_default_mask=$((2**$ways - 1))
 
     # Update the base register to exclude those ways we want to allocate
     wrmsr -a $base_reg $new_default_mask
@@ -52,8 +50,8 @@ else
         reg=$(($base_reg + $i + 1)) #set way mask
         bm=$((16**($way_masks - $i)))
         wm=`printf "0x%x" $bm`
-        wrmsr -p ${cated_cores[$i]} $reg $core_mask
-        wrmsr -p ${cated_cores[$i]} $IA32_PQR_ASSOC $wm # have cpu use way mask
+        wrmsr -p ${cated_cores[$i]} $reg $core_mask  # set COS
+        wrmsr -p ${cated_cores[$i]} $IA32_PQR_ASSOC $wm # associate CPU with COS
     done
 
     # Set all other mask registers to default mask (should be useless)
