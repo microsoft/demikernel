@@ -474,6 +474,8 @@ pub extern "C" fn nip_tcp_peek(
     let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_peek(handle) {
         Ok(bytes) => {
+            assert!(!bytes.is_empty());
+
             unsafe {
                 *bytes_out = bytes.as_ptr();
                 *length_out = bytes.len();
@@ -549,7 +551,6 @@ pub extern "C" fn nip_tcp_connect(
     if remote_port == 0 {
         return libc::EINVAL;
     }
-
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
     // the C runtime encodes ports & IPv4 addresses in network byte order.
@@ -683,9 +684,7 @@ pub extern "C" fn nip_start_logger() -> libc::c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn nip_advance_clock(
-    engine: *mut libc::c_void,
-) -> libc::c_int {
+pub extern "C" fn nip_advance_clock(engine: *mut libc::c_void) -> libc::c_int {
     if engine.is_null() {
         return libc::EINVAL;
     }

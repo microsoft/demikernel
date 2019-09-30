@@ -1097,6 +1097,9 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
 }
 
 int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &length_out, task::thread_type::yield_type &yield) {
+    bytes_out = NULL;
+    length_out = 0;
+
     int ret;
     while (1) {
         ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle);
@@ -1114,6 +1117,7 @@ int dmtr::dpdk_catnip_queue::tcp_peek(std::deque<uint8_t> &buffer, task::thread_
     const uint8_t *bytes;
     size_t length;
     DMTR_OK(tcp_peek(bytes, length, yield));
+    assert(length != 0);
     for (size_t i = 0; i < length; ++i) {
         buffer.push_back(bytes[i]);
     }
@@ -1136,7 +1140,7 @@ int dmtr::dpdk_catnip_queue::pop_front(uint32_t &value_out, std::deque<uint8_t> 
         buffer.pop_front();
     }
 
-    u.n = htonl(u.n);
+    value_out = htonl(u.n);
     return 0;
 }
 

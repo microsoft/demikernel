@@ -61,6 +61,7 @@ impl UnacknowledgedTcpSegment {
 
 pub struct TcpSendWindow {
     bytes_unacknowledged: i64,
+    last_segment_pushed_at: Option<Instant>,
     last_seq_num_transmitted: Wrapping<u32>,
     mss: usize,
     remote_receive_window_size: i64,
@@ -75,6 +76,7 @@ impl TcpSendWindow {
     pub fn new(local_isn: Wrapping<u32>, advertised_mss: usize) -> Self {
         TcpSendWindow {
             bytes_unacknowledged: 0,
+            last_segment_pushed_at: None,
             last_seq_num_transmitted: local_isn,
             mss: advertised_mss,
             remote_receive_window_size: 0,
@@ -144,7 +146,20 @@ impl TcpSendWindow {
         Ok(())
     }
 
-    pub fn push(&mut self, bytes: Vec<u8>) {
+    pub fn push(&mut self, bytes: Vec<u8>, now: Instant) {
+        let last_segment_pushed_at = self.last_segment_pushed_at;
+        self.last_segment_pushed_at = Some(now);
+
+        if Some(now) == last_segment_pushed_at
+            && !self.unsent_segments.is_empty()
+        {
+            let segment = self.unsent_segments.back_mut().unwrap();
+            if segment.len() + bytes.len() <= self.mss {
+                segment.extend(bytes);
+                return;
+            }
+        }
+
         self.unsent_segments.push_back(bytes);
     }
 

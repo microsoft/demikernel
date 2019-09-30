@@ -264,7 +264,7 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn write(&mut self, bytes: Vec<u8>) {
-        self.send_window.push(bytes)
+        self.send_window.push(bytes, self.rt.now())
     }
 
     pub fn peek(&self) -> Option<&Rc<Vec<u8>>> {
