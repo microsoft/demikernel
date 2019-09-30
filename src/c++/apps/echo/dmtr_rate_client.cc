@@ -209,6 +209,10 @@ int log_responses(uint32_t total_requests, int log_memq,
     bool expired = false;
     uint32_t logged = 0;
     while (logged < total_requests) {
+        if (terminate) {
+            log_info(" worker %d set to terminate", my_idx);
+            break;
+        }
         dmtr_qresult_t wait_out;
         dmtr_qtoken_t token;
         dmtr_pop(&token, log_memq);
@@ -261,12 +265,6 @@ int log_responses(uint32_t total_requests, int log_memq,
             logged++;
             if (!req->valid) {
                 n_invalid++;
-            }
-        } else {
-            // We likely exited because MAX_ITER was reached in dmtr_wait
-            if (terminate) {
-                log_info(" worker %d set to terminate", my_idx);
-                break;
             }
         }
 
@@ -323,10 +321,8 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
-        update_pql(tokens.size(), workers_pql[my_idx]);
         if (status == 0) {
-            tokens.erase(tokens.begin() + idx);
-
+            update_pql(tokens.size(), workers_pql[my_idx]);
             /* Is this a new connection is ready to be processed ? */
             if (wait_out.qr_qd == process_conn_memq) {
                 RequestState *request = reinterpret_cast<RequestState *>(
@@ -483,7 +479,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         dmtr_push(&token, process_conn_memq, &sga);
         while(dmtr_wait(NULL, token) == EAGAIN) {
             if (terminate) {
-                return 0;
+                break;
             }
             continue;
         }
@@ -544,6 +540,10 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     std::unordered_map<dmtr_qtoken_t, std::string> pending_ops;
 #endif
     while (completed < n_requests) {
+        if (terminate) {
+            log_info(" worker %d set to terminate", my_idx);
+            break;
+        }
         hr_clock::time_point maintenant = take_time();
         if (maintenant > *time_end && !debug_duration_flag) {
             log_warn("Process time has passed. %d requests were processed.", completed);
@@ -584,8 +584,8 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
-        update_pql(tokens.size(), workers_pql[my_idx]);
         if (status == 0) {
+            update_pql(tokens.size(), workers_pql[my_idx]);
             auto req = requests.find(token);
             if (req == requests.end()) {
                 log_error("Operated unregistered request");
@@ -636,15 +636,10 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                     }
                     continue;
                 }
-
                 completed++;
             }
         } else {
             if (status == EAGAIN) {
-                if (terminate) {
-                    log_info(" worker %d set to terminate", my_idx);
-                    return 0;
-                }
                 continue;
             }
             assert(status == ECONNRESET || status == ECONNABORTED);

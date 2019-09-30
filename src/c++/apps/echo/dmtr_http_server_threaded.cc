@@ -381,6 +381,10 @@ static void *http_worker(void *args) {
     uint64_t iteration = 0;
     bool new_op = true;
     while (1) {
+        if (me->terminate) {
+            log_info("HTTP worker %d set to terminate", me->whoami);
+            break;
+        }
         dmtr_qresult_t wait_out;
         if (new_op) {
             dmtr_pop(&token, me->in_qfd);
@@ -391,10 +395,6 @@ static void *http_worker(void *args) {
             iteration++;
         } else {
             if (status == EAGAIN) {
-                if (me->terminate) {
-                    log_info("HTTP worker %d set to terminate", me->whoami);
-                    break;
-                }
                 new_op = false;
                 continue;
             }
@@ -587,11 +587,15 @@ static void *tcp_worker(void *args) {
     int num_rcvd = 0;
     uint64_t iteration = INT_MAX;
     while (1) {
+        if (me->terminate) {
+            log_info("Network worker %d set to terminate", me->whoami);
+            break;
+        }
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
-        update_pql(tokens.size(), &me->pql);
         if (status == 0) {
+            update_pql(tokens.size(), &me->pql);
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
             tcp_work(
@@ -600,10 +604,6 @@ static void *tcp_worker(void *args) {
             );
         } else {
             if (status == EAGAIN) {
-                if (me->terminate) {
-                    log_info("Network worker %d set to terminate", me->whoami);
-                    break;
-                }
                 continue;
             }
             assert(status == ECONNRESET || status == ECONNABORTED);
@@ -797,7 +797,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
         }
 
-        //FIXME I think we should `delete` the worker intances
+        //FIXME I think we should `delete` the Worker instances
         for (auto &w: tcp_workers) {
             if (pthread_join(w->me, NULL) != 0) {
                 log_error("pthread_join error: %s", strerror(errno));
