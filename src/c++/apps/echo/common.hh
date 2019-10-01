@@ -15,7 +15,6 @@
 #include <stdio.h>
 #include <yaml-cpp/yaml.h>
 
-
 /*****************************************************************
  *********************** TIME VARIABLES **************************
  *****************************************************************/
@@ -46,6 +45,8 @@ static const auto start_time = std::chrono::steady_clock::now();
 /* Enable profiling */
 #define DMTR_PROFILE
 #define DMTR_APP_PROFILE
+#define OP_DEBUG
+#define LEGACY_PROFILING
 
 /* Enable debug statements  */
 //#define LOG_DEBUG
@@ -139,9 +140,9 @@ inline int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, st
     return 0;
 }
 
-std::string generate_log_file_path(std::string log_dir,
-                                   std::string exp_label,
-                                   char const *log_label) {
+static std::string generate_log_file_path(std::string log_dir,
+                                          std::string exp_label,
+                                          char const *log_label) {
     char pathname[MAX_FILE_PATH_LEN];
     snprintf(pathname, MAX_FILE_PATH_LEN, "%s/%s_%s",
              log_dir.c_str(), exp_label.c_str(), log_label);
@@ -171,6 +172,8 @@ inline void dump_pql(struct poll_q_len *s, std::string log_dir, std::string labe
     }
     fclose(f);
 }
+
+#define MAX_RID_FIELD_LEN 64
 
 /***************************************************************
  ************************* ARGS PARSING ************************
@@ -285,5 +288,18 @@ void* generate_packet()
     s[packet_size - 1] = '\0';
     return p;
 };
+
+/**
+* Counts how many digits in the given integer
+* @param int
+* @return int
+*/
+int how_many_digits(int num) {
+    int length = 1;
+    while (num /= 10) {
+        length++;
+    }
+    return length;
+}
 
 #endif

@@ -62,7 +62,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 #define RTE_RX_DESC_DEFAULT     1024
-#define MBUF_DATA_SIZE          65535
+#define MBUF_DATA_SIZE          1500 //65535
 #define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
 
 /** Protocol related varialbes */
@@ -699,6 +699,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 #if DMTR_DEBUG
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
 #endif
+
     start_threads();
     return 0;
 }
@@ -1052,9 +1053,9 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #endif
             DMTR_OK(t->complete(ECONNABORTED));
         } else {
-            // todo: pop from queue in `raii_guard`.
             DMTR_OK(t->complete(0, sga));
         }
+        // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
     }
 
@@ -1207,7 +1208,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 #if DMTR_DEBUG
     printf("====================\n");
-    printf("recv: pkt len: %d\n", ntohs(pkt->pkt_len));
+    printf("recv: pkt len: %d\n", pkt->pkt_len);
     printf("recv: eth src addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
     printf("\n");
