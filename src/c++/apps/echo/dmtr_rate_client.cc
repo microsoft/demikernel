@@ -306,11 +306,21 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
     std::unordered_map<int, RequestState *> requests;
     dmtr_pop(&token, process_conn_memq);
     tokens.push_back(token);
+    //std::vector<std::pair<dmtr_qtoken_t, std::string> > token_to_op;
+    //token_to_op.push_back(std::pair<dmtr_qtoken_t, std::string>(token, "MEMQ_POP"));
     while (completed < total_requests) {
         if (tokens.empty()) {
             if (take_time() > *time_end) {
                 expired = true;
                 log_warn("process time has passed. %d requests were processed.", completed);
+            /*
+                printf("=====================\n");
+                printf("%lu Pending operations\n", token_to_op.size());
+                for (auto &t: token_to_op) {
+                    printf("%ld -> %s; ", t.first, t.second.c_str());
+                }
+                printf("\n=====================\n");
+            */
                 break;
             }
             continue;
@@ -322,6 +332,18 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
+            /*
+            token_to_op.erase(token_to_op.begin() + idx);
+            printf("=====================\n");
+            printf("%ld -> %s operated\n", tokens[idx], dmtr_opcode_labels[wait_out.qr_opcode]);
+            printf("=====================\n");
+            printf("Pending operations\n");
+            for (auto &t: token_to_op) {
+                printf("%ld -> %s; ", t.first, t.second.c_str());
+            }
+            printf("\n=====================\n");
+            */
+
             update_pql(tokens.size(), workers_pql[my_idx]);
             /* Is this a new connection is ready to be processed ? */
             if (wait_out.qr_qd == process_conn_memq) {
@@ -339,10 +361,21 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
                 requests.insert(std::pair<int, RequestState *>(request->conn_qd, request));
+                //token_to_op.push_back(std::pair<dmtr_qtoken_t, std::string>(token, "CONN_PUSH"));
 
                 /* Re-enable memory queue for reading */
                 DMTR_OK(dmtr_pop(&token, process_conn_memq));
                 tokens.push_back(token);
+                //token_to_op.push_back(std::pair<dmtr_qtoken_t, std::string>(token, "MEMQ_POP"));
+
+                /*
+                printf("=====================\n");
+                printf("Pending operations\n");
+                for (auto &t: token_to_op) {
+                    printf("%ld -> %s; ", t.first, t.second.c_str());
+                }
+                printf("\n=====================\n");
+                */
 
                 continue;
             }
@@ -357,6 +390,15 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 /* Create pop task now that data was sent */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
+                /*
+                token_to_op.push_back(std::pair<dmtr_qtoken_t, std::string>(token, "CONN_POP"));
+                printf("=====================\n");
+                printf("Pending operations\n");
+                for (auto &t: token_to_op) {
+                    printf("%ld -> %s; ", t.first, t.second.c_str());
+                }
+                printf("\n=====================\n");
+                */
 
                 update_request_state(*request, READING);
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
@@ -407,6 +449,14 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         if (take_time() > *time_end) {
             log_warn("process time has passed. %d requests were processed.", completed);
             expired = true;
+            /*
+            printf("=====================\n");
+            printf("%lu Pending operations\n", token_to_op.size());
+            for (auto &t: token_to_op) {
+                printf("%ld -> %s; ", t.first, t.second.c_str());
+            }
+            printf("\n=====================\n");
+            */
             break;
         }
     }
