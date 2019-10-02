@@ -208,8 +208,9 @@ int dmtr::io_queue::task::complete(int error, const dmtr_sgarray_t &sga) {
     return 0;
 }
 
-int dmtr::io_queue::task::complete(int error, int new_qd) {
+int dmtr::io_queue::task::complete(int error, int new_qd, const sockaddr_in &addr) {
     DMTR_OK(complete(error));
-    my_qr.qr_value.new_qd = new_qd;
+    my_qr.qr_value.ares.qd = new_qd;
+    my_qr.qr_value.ares.addr = addr;
     return 0;
 }

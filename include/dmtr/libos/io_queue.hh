@@ -42,7 +42,7 @@ class io_queue
         public: int poll(dmtr_qresult_t &qr_out) const;
         public: int complete(int error);
         public: int complete(int error, const dmtr_sgarray_t &sga);
-        public: int complete(int error, int new_qd);
+        public: int complete(int error, int new_qd, const sockaddr_in &addr);
         public: bool arg(const dmtr_sgarray_t *&arg_out) const;
         public: bool arg(io_queue *&arg_out) const;
 

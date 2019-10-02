@@ -627,9 +627,11 @@ pub extern "C" fn nip_tcp_get_local_endpoint(
     let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_get_connection_id(handle) {
         Ok(cxnid) => {
+            let addr = u32::to_be(cxnid.local.address().into());
+            let port = u16::to_be(cxnid.local.port().into());
             unsafe {
-                *addr_out = cxnid.local.address().into();
-                *port_out = cxnid.local.port().into();
+                *addr_out = addr;
+                *port_out = port;
             }
             0
         }
@@ -668,10 +670,13 @@ pub extern "C" fn nip_tcp_get_remote_endpoint(
     let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_get_connection_id(handle) {
         Ok(cxnid) => {
+            let addr = u32::to_be(cxnid.remote.address().into());
+            let port = u16::to_be(cxnid.remote.port().into());
             unsafe {
-                *addr_out = cxnid.remote.address().into();
-                *port_out = cxnid.remote.port().into();
+                *addr_out = addr;
+                *port_out = port;
             }
+
             0
         }
         Err(fail) => fail_to_errno(&fail),

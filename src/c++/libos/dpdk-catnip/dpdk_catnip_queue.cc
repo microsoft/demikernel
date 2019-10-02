@@ -516,7 +516,12 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
         new_dcq->start_threads();
         DMTR_TRUE(ENOTSUP, our_known_connections.find(new_dcq->my_tcp_connection_handle) == our_known_connections.cend());
         our_known_connections[new_dcq->my_tcp_connection_handle] = new_dcq;
-        DMTR_OK(t->complete(0, new_dcq->qd()));
+
+        struct sockaddr_in remote_endpoint = {};
+        remote_endpoint.sin_family = AF_INET;
+        DMTR_OK(nip_tcp_get_remote_endpoint(&remote_endpoint.sin_addr.s_addr, &remote_endpoint.sin_port, our_tcp_engine, new_dcq->my_tcp_connection_handle));
+
+        DMTR_OK(t->complete(0, new_dcq->qd(), remote_endpoint));
     }
 
     return 0;

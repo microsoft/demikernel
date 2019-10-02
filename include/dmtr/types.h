@@ -38,13 +38,18 @@ typedef enum dmtr_opcode {
     DMTR_OPC_CONNECT,
 } dmtr_opcode_t;
 
+typedef struct dmtr_accept_result {
+    int qd;
+    struct sockaddr_in addr;
+} dmtr_accept_result_t;
+
 typedef struct dmtr_qresult {
     enum dmtr_opcode qr_opcode;
     int qr_qd;
     dmtr_qtoken_t qr_qt;
     union {
         dmtr_sgarray_t sga;
-        int new_qd;
+        dmtr_accept_result_t ares;
     } qr_value;
 } dmtr_qresult_t;
 

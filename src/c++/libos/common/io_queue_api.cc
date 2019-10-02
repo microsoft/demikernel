@@ -355,8 +355,8 @@ void dmtr::io_queue_api::on_poll_failure(dmtr_qresult_t * const qr_out, io_queue
     // if there's a failure on an accept token, we remove the queue
     // we created at the beginning of the operation.
     if (DMTR_OPC_ACCEPT == qr_out->qr_opcode) {
-        (void)self->remove_queue(qr_out->qr_value.new_qd);
-        qr_out->qr_value.new_qd = 0;
+        (void)self->remove_queue(qr_out->qr_value.ares.qd);
+        qr_out->qr_value.ares.qd = 0;
     }
 }
 

@@ -97,10 +97,10 @@ int main(int argc, char *argv[])
 	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
-                std::cerr << "connection accepted (qid = " << wait_out.qr_value.new_qd << ")." << std::endl;
+                std::cerr << "connection accepted (qid = " << wait_out.qr_value.ares.qd << ")." << std::endl;
                 // check accept on servers
                 auto t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_pop(&token, wait_out.qr_value.new_qd));
+                DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
                 start_times[token] = t0;
                 tokens.push_back(token);
                 DMTR_OK(dmtr_accept(&token, lqd));
