@@ -1,28 +1,12 @@
 #ifndef DMTR_LATENCY_CPP_H_IS_INCLUDED
 #define DMTR_LATENCY_CPP_H_IS_INCLUDED
 
-
 #include <memory>
 #include <functional>
 #include <unordered_map>
 #include <mutex>
 #include <boost/chrono.hpp>
-
-static inline boost::chrono::steady_clock::time_point now() {
-    uint32_t regs[4];
-    uint32_t p;
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    boost::chrono::steady_clock::time_point time =
-        boost::chrono::steady_clock::now();
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    return time;
-}
+#include "types.h"
 
 // The maximum lenth for the log URI
 #define MAX_LOG_FILENAME_LEN 128
@@ -40,9 +24,5 @@ extern std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 
 int dmtr_record_timed_latency(dmtr_latency_t *latency, uint64_t record_time, uint64_t ns);
 
-long int since_epoch(boost::chrono::steady_clock::time_point &time);
-long int ns_diff(boost::chrono::steady_clock::time_point &start,
-                 boost::chrono::steady_clock::time_point &end);
-
 int dmtr_dump_latency_to_file(const char *filename, dmtr_latency_t *latency);
-#endif
+#endif /* DMTR_LATENCY_CPP_H_IS_INCLUDED */

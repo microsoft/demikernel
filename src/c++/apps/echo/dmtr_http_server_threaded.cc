@@ -65,7 +65,7 @@ class Worker {
         uint8_t whoami;
         uint8_t core_id;
         enum worker_type type;
-        std::vector<std::pair<long int, long int> > runtimes;
+        std::vector<std::pair<uint64_t, uint64_t> > runtimes;
         bool terminate = false;
         struct poll_q_len pql;
         std::vector<RequestState *> req_states; /* Used by network */
@@ -116,7 +116,7 @@ void dump_traces(Worker &w, std::string log_dir, std::string label) {
         );
         for (auto &r: w.req_states) {
             fprintf(
-                f, "%d\t%ld\t%ld\t%ld\t%ld\t%ld\t%ld\t%lu\t%lu\n",
+                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
                 r->id,
                 since_epoch(r->net_receive), since_epoch(r->http_dispatch),
                 since_epoch(r->start_http), since_epoch(r->end_http),
@@ -266,14 +266,10 @@ static void clean_state(struct parser_state *state) {
 }
 
 static inline void no_op_loop(uint32_t iter) {
-// ?? For some calls, the displayed timing will be a very (odly) large number, e.g. 1147211471 ??
-//    std::chrono::steady_clock::time_point b = std::chrono::steady_clock::now();
     volatile uint32_t j = 1;
     for (uint32_t i = j; i < iter+1; ++i) {
         j = j+i;
     }
-//    std::chrono::steady_clock::time_point a = std::chrono::steady_clock::now();
-//    std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(a-b).count() << std::endl;
 }
 
 int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
@@ -301,7 +297,7 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
             /* Record http work */
             end = take_time();
             me->runtimes.push_back(
-                std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+                std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
             );
         }
 #endif
@@ -421,7 +417,7 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
         /* Record http work */
         hr_clock::time_point end = take_time();
         me->runtimes.push_back(
-            std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+            std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
         );
     }
 #endif
@@ -564,7 +560,7 @@ int tcp_work(uint64_t i,
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
-                    std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+                    std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
                 );
 #endif
                 req->http_dispatch = take_time();
@@ -637,7 +633,7 @@ int tcp_work(uint64_t i,
 #ifdef LEGACY_PROFILING
             hr_clock::time_point end = take_time();
             me->runtimes.push_back(
-                std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
+                std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
             );
 #endif
 

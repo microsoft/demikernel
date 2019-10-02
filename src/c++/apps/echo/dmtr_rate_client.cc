@@ -24,6 +24,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
 #include <dmtr/latency.h>
+#include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 
@@ -226,7 +227,7 @@ int log_responses(uint32_t total_requests, int log_memq,
             );
 
             fprintf(
-                f, "%d\t%ld\t%ld\t%ld\t%ld\t%ld\n",
+                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
                 req->id,
                 since_epoch(req->sending),
                 since_epoch(req->reading),
@@ -238,25 +239,25 @@ int log_responses(uint32_t total_requests, int log_memq,
 #ifdef LEGACY_PROFILING
             if (live_dump) {
                 if (long_lived) {
-                    fprintf(logs[0].fh, "%ld\t%ld\n",
+                    fprintf(logs[0].fh, "%lu\t%lu\n",
                             since_epoch(req->sending),
                             ns_diff(req->sending, req->completed)
                     );
                 } else {
-                    fprintf(logs[0].fh, "%ld\t%ld\n",
+                    fprintf(logs[0].fh, "%lu\t%lu\n",
                             since_epoch(req->connecting),
                             ns_diff(req->connecting, req->completed)
                     );
-                    fprintf(logs[3].fh, "%ld\t%ld\n",
+                    fprintf(logs[3].fh, "%lu\t%lu\n",
                             since_epoch(req->connecting),
                             ns_diff(req->connecting, req->connected)
                     );
                 }
-                fprintf(logs[1].fh, "%ld\t%ld\n",
+                fprintf(logs[1].fh, "%lu\t%lu\n",
                         since_epoch(req->sending),
                         ns_diff(req->sending, req->reading)
                 );
-                fprintf(logs[2].fh, "%ld\t%ld\n",
+                fprintf(logs[2].fh, "%lu\t%lu\n",
                         since_epoch(req->reading),
                         ns_diff(req->reading, req->completed)
                 );
@@ -504,20 +505,15 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
     saddr.sin_port = htons(port);
     log_info("Thread %d sending requests to %s", my_idx, inet_ntoa(saddr.sin_addr));
 
-    hr_clock::time_point create_start_time = take_time();
+    // We use std chrono here, rather than Boost's, because it's more convenient for sleep_until
+    std::chrono::steady_clock::time_point create_start_time = std::chrono::steady_clock::now();
 
     /* Times at which the connections should be initiated */
-    hr_clock::time_point send_times[n_requests];
+    std::chrono::steady_clock::time_point send_times[n_requests];
 
     for (int i = 0; i < n_requests; ++i) {
         std::chrono::nanoseconds elapsed_time((long int)(interval_ns * i));
         send_times[i] = create_start_time + elapsed_time;
-        /*
-        fprintf(stdout, "%ld + %ld == %ld\n",
-                create_start_time.time_since_epoch().count(),
-                elapsed_time.count(),
-                send_times[i].time_since_epoch().count());
-        */
     }
 
     int connected = 0;
@@ -590,7 +586,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     hr_clock::time_point send_times[n_requests];
 
     for (uint32_t i = 0; i < n_requests; ++i) {
-        std::chrono::nanoseconds elapsed_time((long int)(interval_ns * i));
+        boost::chrono::nanoseconds elapsed_time((long int)(interval_ns * i));
         send_times[i] = create_start_time + elapsed_time;
     }
 
@@ -885,15 +881,15 @@ int main(int argc, char **argv) {
 
     /* Determine max thread running time */
     // Give one extra second to initiate request
-    std::chrono::seconds duration_init(duration + 1);
+    boost::chrono::seconds duration_init(duration + 1);
     hr_clock::time_point time_end_init = take_time() + duration_init;
 
     // Give five extra second to send and gather responses
-    std::chrono::seconds duration_process(duration + 5);
+    boost::chrono::seconds duration_process(duration + 5);
     hr_clock::time_point time_end_process = take_time() + duration_process;
 
     // Give ten extra seconds to log responses
-    std::chrono::seconds duration_log(duration + 15);
+    boost::chrono::seconds duration_log(duration + 15);
     hr_clock::time_point time_end_log = take_time() + duration_log;
 
     /* Block SIGINT to ensure handler will only be run in main thread */

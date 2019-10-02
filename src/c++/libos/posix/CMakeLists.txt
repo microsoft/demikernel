@@ -19,4 +19,3 @@ endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 target_link_libraries(dmtr-libos-posix "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
 
 target_link_libraries(dmtr-libos-posix boost_context dmtr-latency)
-

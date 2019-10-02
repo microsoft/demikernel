@@ -9,6 +9,7 @@
 #include <iostream>
 #include <chrono>
 #include <dmtr/latency.h>
+#include <dmtr/time.hh>
 #include <dmtr/annot.h>
 #include <dmtr/libos/mem.h>
 #include <string.h>
@@ -16,29 +17,9 @@
 #include <yaml-cpp/yaml.h>
 
 /*****************************************************************
- *********************** TIME VARIABLES **************************
- *****************************************************************/
-
-using hr_clock = std::chrono::steady_clock;
-
-/* Returns the number of nanoseconds since the epoch for a given high-res time point */
-static inline long int since_epoch(hr_clock::time_point &time) {
-    return std::chrono::time_point_cast<std::chrono::nanoseconds>(time).time_since_epoch().count();
-}
-
-/* Returns the number of nanoseconds between a start and end point */
-static inline long int ns_diff(hr_clock::time_point &start, hr_clock::time_point &end) {
-    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start).count();
-    if (ns < 0) {
-        ns = -1;
-    }
-    return ns;
-}
-
-/*****************************************************************
  *********************** LOGGING MACROS   ************************
  *****************************************************************/
-static const auto start_time = std::chrono::steady_clock::now();
+static const auto start_time = boost::chrono::steady_clock::now();
 
 #define MAX_FNAME_PATH_LEN 128
 
@@ -64,7 +45,7 @@ static const auto start_time = std::chrono::steady_clock::now();
 /* General logging function which can be filled in with arguments, color, etc. */
 #define log_at_level(lvl_label, color, fd, fmt, ...)\
         fprintf(fd, "" color "%07.03f:%s:%d:%s(): " lvl_label ": " fmt ANSI_COLOR_RESET "\n", \
-                ((std::chrono::duration<double>)(hr_clock::now() - start_time)).count(), \
+                ((boost::chrono::duration<double>)(hr_clock::now() - start_time)).count(), \
                 __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
 /* Debug statements are replaced with nothing if LOG_DEBUG is false  */
@@ -107,21 +88,6 @@ static const auto start_time = std::chrono::steady_clock::now();
  */
 #define perror_request(fmt, ...) \
     print_request_error(fmt ": %s", ##__VA_ARGS__, strerror(errno))
-
-inline hr_clock::time_point take_time() {
-    uint32_t regs[4];
-    uint32_t p;
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    hr_clock::time_point time = hr_clock::now();
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                  "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    return time;
-}
 
 #define MAX_FILE_PATH_LEN 128
 
@@ -168,7 +134,7 @@ inline void dump_pql(struct poll_q_len *s, std::string log_dir, std::string labe
     fprintf(f, "TIME\tVALUE\n");
     size_t n_points = s->n_tokens.size();
     for (unsigned int i = 0; i < n_points; ++i) {
-        fprintf(f, "%ld\t%ld\n", since_epoch(s->times[i]), s->n_tokens[i]);
+        fprintf(f, "%lu\t%lu\n", since_epoch(s->times[i]), s->n_tokens[i]);
     }
     fclose(f);
 }

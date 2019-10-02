@@ -12,6 +12,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
 #include <dmtr/latency.h>
+#include <dmtr/time.hh>
 #include <dmtr/libos.h>
 
 #define WAIT_MAX_ITER 10000
@@ -21,8 +22,6 @@
 #if DMTR_PROFILE
 static std::unordered_map<pthread_t, latency_ptr_type> success_poll_latencies;
 std::mutex poll_latencies_mutex;
-static uint32_t regs[4];
-static uint32_t p;
 #endif
 
 int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
@@ -44,30 +43,14 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
         for (int i = 0; i < num_qts; i++) {
             iter++;
 #if DMTR_PROFILE
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
-            auto t0 = boost::chrono::steady_clock::now();
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            auto t0 = take_time();
 #endif
             int ret = dmtr_poll(qr_out, qts[i]);
             if (ret != EAGAIN) {
                 if (ret == 0 || ret == ECONNABORTED) {
                     DMTR_OK(dmtr_drop(qts[i]));
 #if DMTR_PROFILE
-                    asm volatile(
-                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                    );
-                    auto now = boost::chrono::steady_clock::now();
-                    asm volatile(
-                        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-                    );
+                    auto now = take_time();
                     auto dt = now - t0;
                     pthread_t me = pthread_self();
                     {

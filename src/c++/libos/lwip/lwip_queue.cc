@@ -17,6 +17,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <dmtr/latency.h>
+#include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/sga.h>
 #include <iostream>
@@ -62,7 +63,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 #define RTE_RX_DESC_DEFAULT     1024
-#define MBUF_DATA_SIZE          1500 //65535
+#define MBUF_DATA_SIZE          2000 //65535
 #define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
 
 /** Protocol related varialbes */
@@ -754,6 +755,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = *our_dpdk_port_id;
+    pthread_t me = pthread_self();
 
     while (good()) {
         while (tq.empty()) {
@@ -951,7 +953,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
-        auto t0 = now();
+        auto t0 = take_time();
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
 #if DMTR_DEBUG
@@ -966,11 +968,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             } else {
                 if (errno == EAGAIN) {
 #if DMTR_PROFILE
-                    dt += now() - t0;
+                    dt += take_time() - t0;
 #endif
                     yield();
 #if DMTR_PROFILE
-                    t0 = now();
+                    t0 = take_time();
 #endif
                 } else {
                     DMTR_FAIL(ret);
@@ -986,18 +988,17 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
 #if DMTR_PROFILE
-        auto n = now();
-        dt += (n - t0);
-        pthread_t me = pthread_self();
+        auto now = take_time();
+        dt += (now - t0);
         {
             std::lock_guard<std::mutex> lock(w_latencies_mutex);
             auto it = write_latencies.find(me);
             if (it != write_latencies.end()) {
-                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
                 DMTR_OK(dmtr_register_latencies("write", write_latencies));
                 it = write_latencies.find(me); //Not ideal but happens only once
-                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }
         }
 #endif
@@ -1023,6 +1024,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    pthread_t me = pthread_self();
 
     while (good()) {
         while (tq.empty()) {
@@ -1074,7 +1076,7 @@ dmtr::lwip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
 #if DMTR_PROFILE
-    auto t0 = now();
+    auto t0 = take_time();
 #endif
     int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
 #if DMTR_DEBUG
@@ -1127,18 +1129,18 @@ dmtr::lwip_queue::service_incoming_packets() {
     }
 
 #if DMTR_PROFILE
-    auto n = now();
-    auto dt = (n - t0);
     pthread_t me = pthread_self();
+    auto now = take_time();
+    auto dt = (now - t0);
     {
         std::lock_guard<std::mutex> lock(r_latencies_mutex);
         auto it = read_latencies.find(me);
         if (it != read_latencies.end()) {
-            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         } else {
             DMTR_OK(dmtr_register_latencies("read", read_latencies));
             it = read_latencies.find(me);
-            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         }
     }
 #endif
