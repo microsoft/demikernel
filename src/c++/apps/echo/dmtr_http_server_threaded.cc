@@ -67,7 +67,9 @@ class Worker {
         enum worker_type type;
         std::vector<std::pair<uint64_t, uint64_t> > runtimes;
         bool terminate = false;
+#ifdef OP_DEBUG
         struct poll_q_len pql;
+#endif
         std::vector<RequestState *> req_states; /* Used by network */
 };
 
