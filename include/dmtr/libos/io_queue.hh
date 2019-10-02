@@ -88,7 +88,7 @@ class io_queue
     public: virtual int open(const char *pathname, int flags);
     public: virtual int open(const char *pathname, int flags, mode_t mode);
     public: virtual int creat(const char *pathname, mode_t mode);
-        
+
     // general control plane functions.
     public: virtual int close();
 

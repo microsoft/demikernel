@@ -321,24 +321,6 @@ int dmtr_delete_latency(dmtr_latency_t **latency) {
     return 0;
 }
 
-uint64_t dmtr_now_ns() {
-    auto t = boost::chrono::steady_clock::now();
-    return t.time_since_epoch().count();
-}
-
-long int since_epoch(boost::chrono::steady_clock::time_point &time) {
-    return boost::chrono::time_point_cast<boost::chrono::nanoseconds>(time).time_since_epoch().count();
-}
-
-long int ns_diff(boost::chrono::steady_clock::time_point &start,
-                               boost::chrono::steady_clock::time_point &end) {
-    auto ns = boost::chrono::duration_cast<boost::chrono::nanoseconds>(end-start).count();
-    if (ns < 0) {
-        ns = -1;
-    }
-    return ns;
-}
-
 int dmtr_register_latencies(const char *label,
                             std::unordered_map<pthread_t, latency_ptr_type> &latencies) {
     char log_filename[MAX_LOG_FILENAME_LEN];
@@ -361,4 +343,9 @@ int dmtr_register_latencies(const char *label,
     );
 
     return 0;
+}
+
+uint64_t dmtr_now_ns() {
+    auto t = boost::chrono::steady_clock::now();
+    return t.time_since_epoch().count();
 }

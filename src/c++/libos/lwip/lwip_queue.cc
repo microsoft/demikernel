@@ -17,6 +17,8 @@
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <dmtr/latency.h>
+#include <dmtr/trace.hh>
+#include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/sga.h>
 #include <iostream>
@@ -62,7 +64,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 #define RTE_RX_DESC_DEFAULT     1024
-#define MBUF_DATA_SIZE          65535
+#define MBUF_DATA_SIZE          2000 //65535
 #define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
 
 /** Protocol related varialbes */
@@ -71,8 +73,9 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
-#define TIME_ZEUS_LWIP		1
+#define DMTR_TRACE 1
+//#define DMTR_PROFILE 1
+#define TIME_ZEUS_LWIP 1
 
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
@@ -104,6 +107,13 @@ std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
 std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 static std::mutex r_latencies_mutex;
 static std::mutex w_latencies_mutex;
+#endif
+
+#if DMTR_TRACE
+std::unordered_map<pthread_t, trace_ptr_type> pop_token_traces;
+std::unordered_map<pthread_t, trace_ptr_type> push_token_traces;
+static std::mutex pop_token_traces_mutex;
+static std::mutex push_token_traces_mutex;
 #endif
 
 const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
@@ -699,6 +709,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 #if DMTR_DEBUG
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
 #endif
+
     start_threads();
     return 0;
 }
@@ -753,6 +764,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = *our_dpdk_port_id;
+    pthread_t me = pthread_self();
 
     while (good()) {
         while (tq.empty()) {
@@ -760,6 +772,24 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
         auto qt = tq.front();
+#if DMTR_TRACE
+        dmtr_qtoken_trace_t trace = {
+            .token = qt,
+            .start = true,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
+            auto it = push_token_traces.find(me);
+            if (it != push_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_OK(dmtr_register_trace("push", push_token_traces));
+                it = push_token_traces.find(me);
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            }
+        }
+#endif
         tq.pop();
         task *t;
         DMTR_OK(get_task(t, qt));
@@ -950,7 +980,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
-        auto t0 = now();
+        auto t0 = take_time();
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
 #if DMTR_DEBUG
@@ -965,11 +995,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             } else {
                 if (errno == EAGAIN) {
 #if DMTR_PROFILE
-                    dt += now() - t0;
+                    dt += take_time() - t0;
 #endif
                     yield();
 #if DMTR_PROFILE
-                    t0 = now();
+                    t0 = take_time();
 #endif
                 } else {
                     DMTR_FAIL(ret);
@@ -985,22 +1015,37 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
 #if DMTR_PROFILE
-        auto n = now();
-        dt += (n - t0);
-        pthread_t me = pthread_self();
+        auto now = take_time();
+        dt += (now - t0);
         {
             std::lock_guard<std::mutex> lock(w_latencies_mutex);
             auto it = write_latencies.find(me);
             if (it != write_latencies.end()) {
-                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
                 DMTR_OK(dmtr_register_latencies("write", write_latencies));
                 it = write_latencies.find(me); //Not ideal but happens only once
-                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+                DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }
         }
 #endif
 
+#if DMTR_TRACE
+        trace = {
+            .token = qt,
+            .start = false,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
+            auto it = push_token_traces.find(me);
+            if (it != push_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_FAIL(ENOENT);
+            }
+        }
+#endif
         DMTR_OK(t->complete(0, *sga));
     }
 
@@ -1022,6 +1067,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    pthread_t me = pthread_self();
 
     while (good()) {
         while (tq.empty()) {
@@ -1029,6 +1075,24 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         auto qt = tq.front();
+#if DMTR_TRACE
+        dmtr_qtoken_trace_t trace = {
+            .token = qt,
+            .start = true,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
+            auto it = pop_token_traces.find(me);
+            if (it != pop_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_OK(dmtr_register_trace("pop", pop_token_traces));
+                it = pop_token_traces.find(me);
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            }
+        }
+#endif
         tq.pop();
         task *t;
         DMTR_OK(get_task(t, qt));
@@ -1052,10 +1116,26 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #endif
             DMTR_OK(t->complete(ECONNABORTED));
         } else {
-            // todo: pop from queue in `raii_guard`.
             DMTR_OK(t->complete(0, sga));
         }
+        // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
+#if DMTR_TRACE
+        trace = {
+            .token = qt,
+            .start = false,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
+            auto it = pop_token_traces.find(me);
+            if (it != pop_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_FAIL(ENOENT);
+            }
+        }
+#endif
     }
 
     return 0;
@@ -1073,7 +1153,7 @@ dmtr::lwip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
 #if DMTR_PROFILE
-    auto t0 = now();
+    auto t0 = take_time();
 #endif
     int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
 #if DMTR_DEBUG
@@ -1126,18 +1206,18 @@ dmtr::lwip_queue::service_incoming_packets() {
     }
 
 #if DMTR_PROFILE
-    auto n = now();
-    auto dt = (n - t0);
     pthread_t me = pthread_self();
+    auto now = take_time();
+    auto dt = (now - t0);
     {
         std::lock_guard<std::mutex> lock(r_latencies_mutex);
         auto it = read_latencies.find(me);
         if (it != read_latencies.end()) {
-            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         } else {
             DMTR_OK(dmtr_register_latencies("read", read_latencies));
             it = read_latencies.find(me);
-            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(n), dt.count()));
+            DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         }
     }
 #endif
@@ -1207,7 +1287,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 #if DMTR_DEBUG
     printf("====================\n");
-    printf("recv: pkt len: %d\n", ntohs(pkt->pkt_len));
+    printf("recv: pkt len: %d\n", pkt->pkt_len);
     printf("recv: eth src addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->s_addr));
     printf("\n");

@@ -1,6 +1,8 @@
 #ifndef HTTPOPS_H_
 #define HTTPOPS_H_
 
+#include <pcre.h>
+
 #define MAX_FILEPATH_LEN 512
 #define MAX_MIME_TYPE 80
 #define MAX_REGEX_VALUE_LEN 128
@@ -25,6 +27,17 @@
 #define DEFAULT_MIME_TYPE\
     "text/html"
 
+#define EVIL_REGEX "^(a+)+$"
+#define HTML "\
+<!DOCTYPE html>\n\
+<html>\n\
+    <body>\n\
+        <h1>Does %s match %s?</h1> <br/>\n\
+        <p>%s.</p>\n\
+    </body>\n\
+</html>\
+"
+
 enum http_req_type {REGEX_REQ, FILE_REQ};
 
 /* HTTP functions */
@@ -34,7 +47,7 @@ int url_to_path(char *url, const char *dir, char *path, int capacity);
 void path_to_mime_type(char *path, char buf[], int capacity);
 int generate_header(char **dest, int code, int body_len, char *mime_type);
 void generate_response(char **response, char *header, char *body,
-                       int header_len, int body_len, int *response_len);
+                       int header_len, int body_len, int *response_len, uint32_t req_id);
 
 /* Regex functions */
 int regex_html(char *to_match, char *htmlDoc, size_t html_length);

@@ -5,6 +5,7 @@
 
 #include "posix_queue.hh"
 #include <dmtr/latency.h>
+#include <dmtr/time.hh>
 #include <dmtr/sga.h>
 #include <dmtr/libos/io_queue_api.hh>
 #include <dmtr/annot.h>
@@ -31,8 +32,6 @@ std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
 std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 static std::mutex r_latencies_mutex;
 static std::mutex w_latencies_mutex;
-static uint32_t regs[4];
-static uint32_t p;
 #endif
 
 dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
@@ -368,15 +367,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
 
 #if DMTR_PROFILE
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    auto t0 = boost::chrono::steady_clock::now();
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
+    auto t0 = take_time();
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
     int written_iov = 0;
@@ -385,27 +376,11 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     size_t total_bytes_written = latest_bytes_written;
     while (EAGAIN == ret || total_bytes_written < message_bytes) {
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        dt += boost::chrono::steady_clock::now() - t0;
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        dt += take_time() - t0;
 #endif
         yield();
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        t0 = boost::chrono::steady_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        t0 = take_time();
 #endif
         //Only handle partial write if it actually happened
         if (latest_bytes_written > 0) {
@@ -428,15 +403,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     }
 
 #if DMTR_PROFILE
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
-    auto now = boost::chrono::steady_clock::now();
-    asm volatile(
-        "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-         "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-    );
+    auto now = take_time();
     dt += now - t0;
     pthread_t me = pthread_self();
     {
@@ -568,28 +535,12 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        t0 = boost::chrono::steady_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        t0 = take_time();
 #endif
         ret = read(bytes_read, my_fd, p, remaining_bytes);
         if (EAGAIN == ret) {
 #if DMTR_PROFILE
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
-            dt += (boost::chrono::steady_clock::now() - t0);
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            dt += take_time() - t0;
 #endif
             yield();
             continue;
@@ -602,15 +553,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         header_bytes += bytes_read;
 
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-	    dt += (boost::chrono::steady_clock::now() - t0);
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+	    dt += take_time() - t0;
 #endif
 	}
 
@@ -643,28 +586,12 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        t0 = boost::chrono::steady_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        t0 = take_time();
 #endif
         ret = read(bytes_read, my_fd, p, remaining_bytes);
         if (EAGAIN == ret) {
 #if DMTR_PROFILE
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
-            dt += (boost::chrono::steady_clock::now() - t0);
-            asm volatile(
-                "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-                 "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-            );
+            dt += take_time() - t0;
 #endif
             yield();
             continue;
@@ -677,15 +604,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         data_bytes += bytes_read;
 
 #if DMTR_PROFILE
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
-        auto now = boost::chrono::steady_clock::now();
-        asm volatile(
-            "cpuid" : "=a" (regs[0]), "=b" (regs[1]),
-             "=c" (regs[2]), "=d" (regs[3]): "a" (p), "c" (0)
-        );
+        auto now = take_time();
         dt += now - t0;
         pthread_t me = pthread_self();
         {
