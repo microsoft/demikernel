@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 #ifndef DMTR_TIME_H_IS_INCLUDED
-#define DMTR_TIME_H_Is_INCLUDED
+#define DMTR_TIME_H_IS_INCLUDED
 
 #include <boost/chrono.hpp>
 using hr_clock = boost::chrono::steady_clock;
