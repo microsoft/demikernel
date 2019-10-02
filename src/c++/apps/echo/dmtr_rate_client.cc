@@ -138,7 +138,6 @@ inline void print_op_debug(std::unordered_map<dmtr_qtoken_t, std::string> &m) {
 }
 
 std::vector<poll_q_len *> workers_pql;
-workers_pql.reserve(PQL_RESA);
 #endif
 
 enum ReqStatus {
@@ -809,6 +808,8 @@ int main(int argc, char **argv) {
     }
 
     live_dump = no_live_dump? false : true;
+
+    workers_pql.reserve(PQL_RESA);
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
