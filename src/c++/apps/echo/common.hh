@@ -116,9 +116,15 @@ static std::string generate_log_file_path(std::string log_dir,
     return pathname;
 }
 
+#define PQL_RESA 1000000
 struct poll_q_len {
     std::vector<hr_clock::time_point> times;
     std::vector<size_t> n_tokens;
+
+    poll_q_len() {
+        times.reserve(PQL_RESA);
+        n_tokens.reserve(PQL_RESA);
+    }
 };
 
 inline void update_pql(size_t n_tokens, struct poll_q_len *s) {

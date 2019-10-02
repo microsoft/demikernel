@@ -124,7 +124,6 @@ std::vector<RequestState *> http_requests;
  *********************** LOGGING *********************************
  *****************************************************************/
 #ifdef OP_DEBUG
-#define PQL_RESA 1000000
 inline void print_op_debug(std::unordered_map<dmtr_qtoken_t, std::string> &m) {
     int net_pop = 0;
     int net_push = 0;
@@ -209,6 +208,10 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 #endif
     FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
+    if (f == NULL) {
+        log_error("Could not open log file!!");
+        return 0;
+    }
     fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
 
     uint32_t n_invalid = 0;
