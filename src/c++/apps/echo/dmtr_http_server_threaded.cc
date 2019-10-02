@@ -28,6 +28,7 @@
 #include <dmtr/libos/mem.h>
 
 #define MAX_CLIENTS 64
+#define MAX_REQ_STATES 10000000
 
 bool no_op;
 uint32_t no_op_time;
@@ -71,6 +72,11 @@ class Worker {
         struct poll_q_len pql;
 #endif
         std::vector<RequestState *> req_states; /* Used by network */
+
+        Worker() {
+            runtimes.reserve(MAX_REQ_STATES);
+            req_states.reserve(MAX_REQ_STATES);
+        }
 };
 
 std::vector<Worker *> http_workers;
@@ -79,7 +85,7 @@ std::vector<Worker *> tcp_workers;
 std::string label, log_dir;
 void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
     log_debug("Dumping latencies for worker %d on core %d\n", worker.whoami, worker.core_id);
-    char filename[MAX_FNAME_PATH_LEN];
+    char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
 
     std::string wtype;
@@ -89,7 +95,7 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
         wtype = "http";
     }
 
-    snprintf(filename, MAX_FNAME_PATH_LEN, "%s/%s_%s-runtime-%d",
+    snprintf(filename, MAX_FILE_PATH_LEN, "%s/%s_%s-runtime-%d",
              log_dir.c_str(), label.c_str(), wtype.c_str(), worker.core_id);
     f = fopen(filename, "w");
     if (f) {
@@ -105,10 +111,10 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
 
 void dump_traces(Worker &w, std::string log_dir, std::string label) {
     log_debug("Dumping traces for worker %d on core %d\n", w.whoami, w.core_id);
-    char filename[MAX_FNAME_PATH_LEN];
+    char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
 
-    snprintf(filename, MAX_FNAME_PATH_LEN, "%s/%s-traces-%d",
+    snprintf(filename, MAX_FILE_PATH_LEN, "%s/%s-traces-%d",
              log_dir.c_str(), label.c_str(), w.core_id);
     f = fopen(filename, "w");
     if (f) {

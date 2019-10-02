@@ -195,7 +195,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         l.l = NULL; l.name = name; l.fh = NULL;
         strncpy(l.filename,
                 generate_log_file_path(log_dir, label, name).c_str(),
-                MAX_FNAME_PATH_LEN
+                MAX_FILE_PATH_LEN
         );
         if (live_dump) {
             l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
@@ -326,8 +326,10 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
     uint32_t completed = 0;
     uint32_t dequeued = 0;
     std::vector<dmtr_qtoken_t> tokens;
+    tokens.reserve(total_requests);
     dmtr_qtoken_t token = 0;
     std::unordered_map<int, RequestState *> requests;
+    requests.reserve(total_requests);
     dmtr_pop(&token, process_conn_memq);
     tokens.push_back(token);
     //std::vector<std::pair<dmtr_qtoken_t, std::string> > token_to_op;
