@@ -633,7 +633,7 @@ int dmtr::lwip_queue::listen(int backlog)
 {
     DMTR_TRUE(EPERM, !my_listening_flag);
     DMTR_TRUE(EINVAL, is_bound());
-    //    std::cout << "Listening ..." << std::endl;
+        std::cout << "Listening ..." << std::endl;
     my_listening_flag = true;
     start_threads();
     return 0;

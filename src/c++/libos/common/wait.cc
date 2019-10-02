@@ -15,7 +15,7 @@
 #include <dmtr/time.hh>
 #include <dmtr/libos.h>
 
-#define WAIT_MAX_ITER 10000
+#define WAIT_MAX_ITER 500000
 
 #define DMTR_PROFILE 1
 

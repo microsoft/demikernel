@@ -69,6 +69,10 @@ class Worker {
         bool terminate = false;
         struct poll_q_len pql;
         std::vector<RequestState *> req_states; /* Used by network */
+
+        Worker() {
+            runtimes.reserve(1000000);
+        }
 };
 
 std::vector<Worker *> http_workers;

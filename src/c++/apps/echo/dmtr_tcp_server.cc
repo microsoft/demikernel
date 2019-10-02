@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(argc, argv));
     DMTR_OK(dmtr_new_latency(&pop_latency, "pop server"));
     DMTR_OK(dmtr_new_latency(&push_latency, "push server"));
     DMTR_OK(dmtr_new_latency(&push_wait_latency, "push wait server"));
@@ -87,12 +87,11 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
     }
 #endif
-
+    std::cout << "Entering" << std::endl;
     while (1) {
         dmtr_qresult wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
-
         // if we got an EOK back from wait
         if (status == 0) {
 	  //std::cout << "Found something: qd=" << wait_out.qr_qd;

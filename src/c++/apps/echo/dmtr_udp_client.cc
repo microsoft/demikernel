@@ -4,6 +4,7 @@
 #include "common.hh"
 #include <arpa/inet.h>
 #include <boost/chrono.hpp>
+#include <boost/optional/optional_io.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -68,7 +69,8 @@ int main(int argc, char *argv[])
 
         dmtr_qresult_t qr = {};
         DMTR_OK(dmtr_pop(&qt, qd));
-        DMTR_OK(dmtr_wait(&qr, qt));
+        int rtn;
+        while ( (rtn = dmtr_wait(&qr, qt)) == EAGAIN) {};
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(latency, dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);

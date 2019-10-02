@@ -149,7 +149,8 @@ enum ReqStatus {
     COMPLETED,
 };
 
-inline void update_request_state(struct RequestState &req, enum ReqStatus status) {
+inline void update_request_state(struct RequestState &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
+    req.status = status;
     hr_clock::time_point *t;
     switch (status) {
         case CONNECTING:
@@ -168,7 +169,7 @@ inline void update_request_state(struct RequestState &req, enum ReqStatus status
             t = &req.completed;
             break;
     }
-    *t = take_time();
+    *t = op_time;
 }
 
 /**
@@ -327,6 +328,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
     uint32_t completed = 0;
     uint32_t dequeued = 0;
     std::vector<dmtr_qtoken_t> tokens;
+    tokens.reserve(total_requests);
     dmtr_qtoken_t token = 0;
     std::unordered_map<int, RequestState *> requests;
     dmtr_pop(&token, process_conn_memq);
@@ -355,6 +357,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        hr_clock::time_point op_time = take_time();
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
             /*
@@ -382,7 +385,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 sga.sga_segs[0].sgaseg_buf = (void *) request->req;
                 dequeued++;
 
-                update_request_state(*request, SENDING);
+                update_request_state(*request, SENDING, op_time);
 
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
@@ -426,11 +429,11 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 printf("\n=====================\n");
                 */
 
-                update_request_state(*request, READING);
+                update_request_state(*request, READING, op_time);
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
-                update_request_state(*request, COMPLETED);
+                update_request_state(*request, COMPLETED, op_time);
                 /* Null terminate the response */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
@@ -528,6 +531,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
 
+
         RequestState *req = http_requests[interval];
 
         /* Create Demeter queue */
@@ -536,10 +540,10 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         req->conn_qd = qd;
 
         /* Connect */
-        update_request_state(*req, CONNECTING);
+        update_request_state(*req, CONNECTING, take_time());
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
-        update_request_state(*req, CONNECTED);
+        update_request_state(*req, CONNECTED, take_time());
 
         /* Make this request available to the request handler thread */
         dmtr_sgarray_t sga;
@@ -636,7 +640,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             sga.sga_numsegs = 1;
             sga.sga_segs[0].sgaseg_len = request->req_size;
             sga.sga_segs[0].sgaseg_buf = (void *) request->req;
-            update_request_state(*request, SENDING);
+            update_request_state(*request, SENDING, take_time());
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
             request->push_token = token;
@@ -654,6 +658,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        hr_clock::time_point op_time = take_time();
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
@@ -680,7 +685,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
-                update_request_state(*request, READING);
+                update_request_state(*request, READING, op_time);
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
@@ -692,7 +697,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
-                update_request_state(*request, COMPLETED);
+                update_request_state(*request, COMPLETED, op_time);
                 /* Null terminate the response (for validate_response) */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
@@ -922,6 +927,7 @@ int main(int argc, char **argv) {
             req_per_thread, log_memq, &time_end_log,
             log_dir, label, i, live_dump
         );
+        pin_thread(st->log->native_handle(), i+3);
         if (long_lived) {
             /** some book-keeping */
             st->resp = new std::thread(
@@ -930,10 +936,17 @@ int main(int argc, char **argv) {
                 host, port, log_memq, &time_end_process,
                 i, debug_duration_flag
             );
+<<<<<<< Updated upstream
             pin_thread(st->resp->native_handle(), i+1);
 #ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
 #endif
+=======
+            pin_thread(st->resp->native_handle(), i+4);
+            poll_q_len *pql = new poll_q_len();
+            workers_pql.push_back(pql);
+
+>>>>>>> Stashed changes
         } else {
             int process_conn_memq;
             DMTR_OK(dmtr_queue(&process_conn_memq));
@@ -942,13 +955,13 @@ int main(int argc, char **argv) {
                 i, req_per_thread, &time_end_process,
                 process_conn_memq, log_memq
             );
-            pin_thread(st->init->native_handle(), i+1);
+            pin_thread(st->init->native_handle(), i+4);
             st->init = new std::thread(
                 create_queues,
                 interval_ns_per_thread, req_per_thread,
                 host, port, process_conn_memq, &time_end_init, i
             );
-            pin_thread(st->init->native_handle(), i+1);
+            pin_thread(st->init->native_handle(), i+5);
         }
         threads.push_back(st);
     }

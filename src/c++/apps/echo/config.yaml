@@ -10,12 +10,13 @@ server:
         host: 198.19.200.1
         port: 6789
 dpdk:
-    eal_init: ["-c", "0x3fe",
-        "-n", "12",
-        "-w", "37:00.0"]
+    eal_init: ["-c", "0xe",
+        "-n", "1",
+        "-w", "17:00.1",
+        "--file-prefix", "dpdk_iped"]
     known_hosts:
-        "b8:83:03:79:af:50": 198.19.200.2
-        "b8:83:03:79:af:40": 198.19.200.1
+        "b8:59:9f:b4:41:15": 192.168.1.10
+        "b8:59:9f:b4:41:9d": 192.168.1.11
 
 # vim: set tabstop=2 shiftwidth=2
 #  eal_init: ["-l", "0-3", "-n", "1", "-w", "aa89:00:02.0", "--vdev=net_vdev_netvsc0,iface=eth1"]
