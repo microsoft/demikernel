@@ -17,6 +17,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
 #include <dmtr/latency.h>
+#include <dmtr/trace.hh>
 #include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/sga.h>
@@ -72,8 +73,9 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
-#define TIME_ZEUS_LWIP		1
+#define DMTR_TRACE 1
+//#define DMTR_PROFILE 1
+#define TIME_ZEUS_LWIP 1
 
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
@@ -105,6 +107,13 @@ std::unordered_map<pthread_t, latency_ptr_type> read_latencies;
 std::unordered_map<pthread_t, latency_ptr_type> write_latencies;
 static std::mutex r_latencies_mutex;
 static std::mutex w_latencies_mutex;
+#endif
+
+#if DMTR_TRACE
+std::unordered_map<pthread_t, trace_ptr_type> pop_token_traces;
+std::unordered_map<pthread_t, trace_ptr_type> push_token_traces;
+static std::mutex pop_token_traces_mutex;
+static std::mutex push_token_traces_mutex;
 #endif
 
 const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
@@ -763,6 +772,24 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
         auto qt = tq.front();
+#if DMTR_TRACE
+        dmtr_qtoken_trace_t trace = {
+            .token = qt,
+            .start = true,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
+            auto it = push_token_traces.find(me);
+            if (it != push_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_OK(dmtr_register_trace("push", push_token_traces));
+                it = push_token_traces.find(me);
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            }
+        }
+#endif
         tq.pop();
         task *t;
         DMTR_OK(get_task(t, qt));
@@ -1003,6 +1030,22 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 #endif
 
+#if DMTR_TRACE
+        trace = {
+            .token = qt,
+            .start = false,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
+            auto it = push_token_traces.find(me);
+            if (it != push_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_FAIL(ENOENT);
+            }
+        }
+#endif
         DMTR_OK(t->complete(0, *sga));
     }
 
@@ -1032,6 +1075,24 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         auto qt = tq.front();
+#if DMTR_TRACE
+        dmtr_qtoken_trace_t trace = {
+            .token = qt,
+            .start = true,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
+            auto it = pop_token_traces.find(me);
+            if (it != pop_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_OK(dmtr_register_trace("pop", pop_token_traces));
+                it = pop_token_traces.find(me);
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            }
+        }
+#endif
         tq.pop();
         task *t;
         DMTR_OK(get_task(t, qt));
@@ -1059,6 +1120,22 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
         // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
+#if DMTR_TRACE
+        trace = {
+            .token = qt,
+            .start = false,
+            .timestamp = take_time()
+        };
+        {
+            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
+            auto it = pop_token_traces.find(me);
+            if (it != pop_token_traces.end()) {
+                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
+            } else {
+                DMTR_FAIL(ENOENT);
+            }
+        }
+#endif
     }
 
     return 0;
