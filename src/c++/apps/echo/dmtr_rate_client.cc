@@ -124,6 +124,7 @@ std::vector<RequestState *> http_requests;
  *********************** LOGGING *********************************
  *****************************************************************/
 #ifdef OP_DEBUG
+#define PQL_RESA 1000000
 inline void print_op_debug(std::unordered_map<dmtr_qtoken_t, std::string> &m) {
     int net_pop = 0;
     int net_push = 0;
@@ -136,9 +137,10 @@ inline void print_op_debug(std::unordered_map<dmtr_qtoken_t, std::string> &m) {
     }
     log_warn("%d NET_POP pending, %d NET_PUSH pending", net_pop, net_push);
 }
-#endif
 
 std::vector<poll_q_len *> workers_pql;
+workers_pql.reserve(PQL_RESA);
+#endif
 
 enum ReqStatus {
     CONNECTING,
@@ -363,8 +365,9 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
             }
             printf("\n=====================\n");
             */
-
+#ifdef OP_DEBUG
             update_pql(tokens.size(), workers_pql[my_idx]);
+#endif
             /* Is this a new connection is ready to be processed ? */
             if (wait_out.qr_qd == process_conn_memq) {
                 RequestState *request = reinterpret_cast<RequestState *>(
@@ -925,7 +928,9 @@ int main(int argc, char **argv) {
                 i, debug_duration_flag
             );
             pin_thread(st->resp->native_handle(), i+1);
+#ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
+#endif
         } else {
             int process_conn_memq;
             DMTR_OK(dmtr_queue(&process_conn_memq));
@@ -983,7 +988,9 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < n_threads; i++) {
         delete threads[i];
+#ifdef OP_DEBUG
         delete workers_pql[i];
+#endif
     }
 
     return 0;
