@@ -40,7 +40,7 @@ int dmtr_dump_trace_to_file(const char *filename, dmtr_trace_t *trace) {
     DMTR_NOTNULL(EINVAL, trace);
     FILE *f = fopen(filename, "w");
     DMTR_NOTNULL(EINVAL, f);
-    fprintf(f, "TOKEN\tSTART\tTIME\n");
+    fprintf(f, "%s_TOKEN\tSTART\tTIME\n", trace->name.c_str());
     for (auto &t: trace->traces) {
         fprintf(f, "%lu\t%s\t%lu\n", t.token, t.start ? "true" : "false", since_epoch(t.timestamp));
     }
