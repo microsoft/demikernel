@@ -13,8 +13,10 @@
 #include <mutex>
 #include <memory>
 #include <unordered_map>
+#include <shared_mutex>
 
 namespace dmtr {
+
 
 class io_queue_api
 {
@@ -22,7 +24,7 @@ class io_queue_api
     private: mutable std::mutex my_qd_counter_mutex;
     private: boost::atomic<uint32_t> my_qt_counter;
     private: std::unordered_map<int, std::unique_ptr<io_queue>> my_queues;
-    private: mutable std::mutex my_queues_mutex;
+    private: mutable std::shared_mutex my_queues_mutex;
     private: io_queue_factory my_queue_factory;
     private: mutable std::mutex my_queue_factory_mutex;
 
