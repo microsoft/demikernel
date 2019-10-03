@@ -149,7 +149,6 @@ enum ReqStatus {
 };
 
 inline void update_request_state(struct RequestState &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
-    req.status = status;
     hr_clock::time_point *t;
     switch (status) {
         case CONNECTING:
@@ -196,7 +195,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         l.l = NULL; l.name = name; l.fh = NULL;
         strncpy(l.filename,
                 generate_log_file_path(log_dir, label, name).c_str(),
-                MAX_FNAME_PATH_LEN
+                MAX_FILE_PATH_LEN
         );
         if (live_dump) {
             l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
@@ -330,6 +329,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
     tokens.reserve(total_requests);
     dmtr_qtoken_t token = 0;
     std::unordered_map<int, RequestState *> requests;
+    requests.reserve(total_requests);
     dmtr_pop(&token, process_conn_memq);
     tokens.push_back(token);
     //std::vector<std::pair<dmtr_qtoken_t, std::string> > token_to_op;
@@ -866,7 +866,7 @@ int main(int argc, char **argv) {
                 uint32_t id = (uint32_t) http_requests.size();
                 memcpy(req, (uint32_t *) &id, sizeof(uint32_t));
                 size_t req_size = snprintf(
-                    req + sizeof(uint32_t), MAX_REQUEST_SIZE,
+                    req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
                     REQ_STR, uri.c_str(), host.c_str()
                 );
                 req_size += sizeof(uint32_t);
@@ -883,7 +883,7 @@ int main(int argc, char **argv) {
             memset(req, '\0', MAX_REQUEST_SIZE);
             memcpy(req, (uint32_t *) &i, sizeof(uint32_t));
             size_t req_size = snprintf(
-                req + sizeof(uint32_t), MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str()
+                req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t), REQ_STR, uri.c_str(), host.c_str()
             );
             req_size += sizeof(uint32_t);
             RequestState *req_obj = new RequestState(req, req_size);
@@ -937,17 +937,10 @@ int main(int argc, char **argv) {
                 host, port, log_memq, &time_end_process,
                 i, debug_duration_flag
             );
-<<<<<<< Updated upstream
-            pin_thread(st->resp->native_handle(), i+1);
+            pin_thread(st->resp->native_handle(), i+4);
 #ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
 #endif
-=======
-            pin_thread(st->resp->native_handle(), i+4);
-            poll_q_len *pql = new poll_q_len();
-            workers_pql.push_back(pql);
-
->>>>>>> Stashed changes
         } else {
             int process_conn_memq;
             DMTR_OK(dmtr_queue(&process_conn_memq));

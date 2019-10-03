@@ -784,7 +784,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             if (it != push_token_traces.end()) {
                 DMTR_OK(dmtr_record_trace(it->second.get(), trace));
             } else {
-                DMTR_OK(dmtr_register_trace("push", push_token_traces));
+                DMTR_OK(dmtr_register_trace("PUSH", push_token_traces));
                 it = push_token_traces.find(me);
                 DMTR_OK(dmtr_record_trace(it->second.get(), trace));
             }
@@ -1087,7 +1087,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
             if (it != pop_token_traces.end()) {
                 DMTR_OK(dmtr_record_trace(it->second.get(), trace));
             } else {
-                DMTR_OK(dmtr_register_trace("pop", pop_token_traces));
+                DMTR_OK(dmtr_register_trace("POP", pop_token_traces));
                 it = pop_token_traces.find(me);
                 DMTR_OK(dmtr_record_trace(it->second.get(), trace));
             }

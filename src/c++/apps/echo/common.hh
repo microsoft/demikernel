@@ -21,12 +21,10 @@
  *****************************************************************/
 static const auto start_time = boost::chrono::steady_clock::now();
 
-#define MAX_FNAME_PATH_LEN 128
-
 /* Enable profiling */
 #define DMTR_PROFILE
 #define DMTR_APP_PROFILE
-#define OP_DEBUG
+//#define OP_DEBUG
 #define LEGACY_PROFILING
 
 /* Enable debug statements  */
@@ -95,7 +93,7 @@ struct log_data {
     dmtr_latency_t *l;
     char const *name;
     FILE *fh;
-    char filename[MAX_FNAME_PATH_LEN];
+    char filename[MAX_FILE_PATH_LEN];
 };
 
 inline int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
@@ -134,8 +132,8 @@ inline void update_pql(size_t n_tokens, struct poll_q_len *s) {
 }
 
 inline void dump_pql(struct poll_q_len *s, std::string log_dir, std::string label) {
-    char filename[MAX_FNAME_PATH_LEN];
-    strncpy(filename, generate_log_file_path(log_dir, label, "pql").c_str(), MAX_FNAME_PATH_LEN);
+    char filename[MAX_FILE_PATH_LEN];
+    strncpy(filename, generate_log_file_path(log_dir, label, "pql").c_str(), MAX_FILE_PATH_LEN);
     FILE *f = fopen(filename, "w");
     fprintf(f, "TIME\tVALUE\n");
     size_t n_points = s->n_tokens.size();
