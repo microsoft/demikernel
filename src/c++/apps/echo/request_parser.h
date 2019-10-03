@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-#define MAX_URL_SIZE 128
-#define MAX_BODY_SIZE 256
+#define MAX_URL_SIZE 256
+#define MAX_BODY_SIZE 1024
 
 #define MAX_FIELD_NAME_LEN 64
 struct parser_state {
