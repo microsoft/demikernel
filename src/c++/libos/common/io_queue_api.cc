@@ -54,7 +54,7 @@ int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_q
 int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     q_out = NULL;
 
-    std::lock_guard<std::mutex> lock(my_queues_mutex);
+    boost::unique_lock<boost::shared_mutex> lock(my_queues_mutex);
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;
@@ -77,7 +77,6 @@ int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
 }
 
 int dmtr::io_queue_api::new_qd() {
-    std::lock_guard<std::mutex> lock(my_qd_counter_mutex);
     int qd = ++my_qd_counter;
     if (0 > qd) {
         DMTR_PANIC("Queue descriptor overflow");
@@ -95,12 +94,8 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
         std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
         DMTR_OK(my_queue_factory.construct(qq, cid, qd));
     }
-    // Queue has not been stored anywhere yet so no need to lock
     q_out = qq.get();
-    {
-        std::lock_guard<std::mutex> lock(qq->my_mutex);
-        DMTR_OK(insert_queue(qq));
-    }
+    DMTR_OK(insert_queue(qq));
 
     return 0;
 }
@@ -109,7 +104,7 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
-    std::lock_guard<std::mutex> lock(my_queues_mutex);
+    boost::unique_lock<boost::shared_mutex> lock(my_queues_mutex);
     if (my_queues.find(qd) != my_queues.cend()) {
         return EEXIST;
     }
