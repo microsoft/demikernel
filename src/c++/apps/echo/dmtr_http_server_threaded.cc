@@ -66,7 +66,9 @@ class Worker {
         uint8_t whoami;
         uint8_t core_id;
         enum worker_type type;
+#ifdef LEGACY_PROFILING
         std::vector<std::pair<uint64_t, uint64_t> > runtimes;
+#endif
         bool terminate = false;
 #ifdef OP_DEBUG
         struct poll_q_len pql;
@@ -498,7 +500,7 @@ static int filter_http_req(dmtr_sgarray_t *sga) {
 int tcp_work(uint64_t i,
              std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
-             int &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
+             uint64_t &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, Worker *me, int lqd) {
     hr_clock::time_point start = take_time();
     if (wait_out.qr_qd == lqd) {
@@ -622,7 +624,7 @@ int tcp_work(uint64_t i,
                 /* Otherwise ignore this message and fetch the next one */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-                log_debug("Dropping obsolete message aimed towards closed connection");
+                log_warn("Dropping obsolete message aimed towards closed connection");
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
                 req->net_send = take_time();
@@ -695,7 +697,7 @@ static void *tcp_worker(void *args) {
     //Used handle spuriously closed connections
     std::vector<bool> clients_in_waiting;
     clients_in_waiting.reserve(MAX_CLIENTS);
-    int num_rcvd = 0;
+    uint64_t num_rcvd = 0;
     uint64_t iteration = INT_MAX;
     while (1) {
         if (me->terminate) {
@@ -730,7 +732,6 @@ static void *tcp_worker(void *args) {
             tokens.erase(tokens.begin()+idx);
             dmtr_close(wait_out.qr_qd);
         }
-        iteration++;
     }
 
     clean_state(state);
