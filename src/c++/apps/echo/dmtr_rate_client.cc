@@ -750,15 +750,15 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
                 log_debug("Request %d stored in %p (%p) completed", request->id, &request, request.get());
 
-                requests.erase(request->id); // FIXME: Does that destroy the unique_ptr? probably not?
-                printf("Retired request %d (%p)\n", request->id, wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-                log_debug("Retired request %d", request->id);
+                RequestState *ptrtoreq = request.release();
+                requests.erase(ptrtoreq->id);
+                log_debug("Retired request %d", ptrtoreq-->id);
                 completed++;
 
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
                 sga.sga_segs[0].sgaseg_len = sizeof(request);
-                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request.release());
+                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(ptrtoreq);
                 dmtr_push(&token, log_memq, &sga);
                 tokens.push_back(token);
                 /*
