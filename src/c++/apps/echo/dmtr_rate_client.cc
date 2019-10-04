@@ -809,7 +809,9 @@ int main(int argc, char **argv) {
 
     live_dump = no_live_dump? false : true;
 
+#ifdef OP_DEBUG
     workers_pql.reserve(PQL_RESA);
+#endif
 
     static const size_t host_idx = url.find_first_of("/");
     if (host_idx == std::string::npos) {
