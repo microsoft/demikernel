@@ -759,7 +759,7 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
+int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split, bool pin_tcp, bool pin_http) {
     /* Create TCP worker threads */
     for (int i = 0; i < n_tcp_workers; ++i) {
         Worker *worker = new Worker();
@@ -801,8 +801,14 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &tcp_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        worker->core_id = i + 1;
-        pin_thread(worker->me, worker->core_id);
+        worker->core_id = i + 3;
+        if (pin_tcp) {
+            log_info("Pinning TCP thread");
+            pin_thread(worker->me, worker->core_id);
+        } else {
+            pin_thread(worker->me, worker->core_id - 2);
+            log_info("Not pinning TCP thread");
+        }
         tcp_workers.push_back(worker);
     }
 
@@ -824,8 +830,14 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        worker->core_id = n_tcp_workers + i + 1;
-        pin_thread(worker->me, worker->core_id);
+        worker->core_id = n_tcp_workers + i + 3;
+        if (pin_http) {
+            log_info("Pinning HTTP thread");
+            pin_thread(worker->me, worker->core_id);
+        } else {
+            log_info("Not pinning HTTP Thread");
+            pin_thread(worker->me, worker->core_id - 2);
+        }
         http_workers.push_back(worker);
     }
 
@@ -860,19 +872,21 @@ int no_pthread_work_setup() {
 }
 
 int main(int argc, char *argv[]) {
-    bool no_pthread, no_split;
+    bool no_pthread, no_split, no_pin_tcp, no_pin_http;
     bool split = true;
     u_int16_t n_http_workers, n_tcp_workers;
     options_description desc{"HTTP server options"};
     desc.add_options()
         ("label", value<std::string>(&label), "experiment label")
-        ("log-dir", value<std::string>(&log_dir), "experiment log_directory")
+        ("log-dir", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
         ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers")
         ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
-        ("no-pthread", bool_switch(&no_pthread), "use pthread or not");
+        ("no-pthread", bool_switch(&no_pthread), "use pthread or not")
+        ("no-pin-tcp", bool_switch(&no_pin_http), "Turn of HTTP thread pinning")
+        ("no-pin-http", bool_switch(&no_pin_tcp), "Turn of TCP thread pinning");
     parse_args(argc, argv, true, desc);
 
     if (no_split) {
@@ -912,7 +926,7 @@ int main(int argc, char *argv[]) {
     //pin_thread(pthread_self(), 4);
     if (!no_pthread) {
         /* Create worker threads */
-        work_setup(n_tcp_workers, n_http_workers, split);
+        work_setup(n_tcp_workers, n_http_workers, split, !no_pin_tcp, !no_pin_http);
 
         /* Re-enable SIGINT and SIGQUIT */
         int ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
