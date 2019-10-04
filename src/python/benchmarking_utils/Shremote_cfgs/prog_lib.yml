@@ -1,0 +1,135 @@
+demi_defaults: &DEMI_DEFAULTS
+    demi: '{0.dirs.demikernel}'
+    demi_build: '{demi}/build/release'
+    demi_apps: '{demi_build}/src/c++/apps'
+    demi_echo: '{demi_apps}/echo'
+    do_taskset: $( 'taskset {taskset_cores}' if {taskset_cores}  else '' )
+    do_nice: $( 'nice -n {nice_value}' if {nice_value}  else '' )
+    taskset_cores: False
+    nice_value: False
+
+perf:
+    start: sudo perf stat --per-core -D10000
+    stop: sudo pkill --signal SIGINT perf
+    duration_reduced_error: True
+    log:
+        err: perf_{host.name}.txt
+
+dpdk_http_server:
+    start: >-
+        cd {demi_echo} &&
+        sudo {do_nice} {do_taskset} ./dmtr-lwip-http-server-threaded --ip {server_ip} --port {port}
+        --log-dir {log_dir} {do_unpin_http} {do_unpin_tcp} -w 2
+    stop: sudo pkill -f 'port {port}'
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{host.ip}'
+        port: 12347
+        taskset_cores: False
+        nice_value: False
+        do_unpin_http: $( '--no-pin-http' if bool({unpin_http}) else '' )
+        do_unpin_tcp: $( '--no-pin-tcp' if bool({unpin_tcp}) else '' )
+        unpin_http: False
+        unpin_tcp: False
+    log:
+        dir: server
+        out: server.out
+        err: server.err
+
+dpdk_http_client:
+    start: >-
+        cd {demi_echo} &&
+        sudo {do_nice} {do_taskset} ./dmtr-lwip-http-rate-client
+        -r {rate} --url {server_ip}/{url} -d {min_duration} --port {port}
+        --log-dir {log_dir}  {uri_list_opt} --no-live-dump 
+    stop: sudo pkill --signal 9 -f 'port {port}'
+    duration_reduced_error: True
+    duration_exceeded_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{server.ip}'
+        port: 12347
+        taskset_cores: False
+        nice_value: False
+        uri_list_opt: $( "--uri-list {uri_list}" if "{uri_list}" else "" )
+        uri_list: ""
+    log:
+        dir: client
+        out: client.out
+        err: client.err
+
+posix_echo_client:
+    start: >-
+        cd {demi_echo} &&
+        {do_nice} {do_taskset} ./dmtr-posix-client --ip {server_ip} --port {port}
+        -i {iterations} -L {log_dir}
+    stop: pkill -f dmtr-posix-client
+    duration_exceeded_error: True
+    check_rtn: 0
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{server.ip}'
+        port: 12345
+        taskset_cores: False
+        nice_value: False
+    log:
+        append: True
+        dir: client
+        out: client.out
+        err: client.err
+
+posix_echo_server:
+    start: >-
+        cd {demi_echo} &&
+        {do_nice} {do_taskset} ./dmtr-posix-server --ip {server_ip} --port {port}
+    stop: pkill -f dmtr-posix-server
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{host.ip}'
+        port: 12345
+        taskset_cores: False
+        nice_value: False
+    log:
+        dir: server
+        out: server.out
+        err: server.err
+
+
+dpdk_echo_client:
+    start: >-
+        cd {demi_echo} &&
+        {do_nice} {do_taskset} ./dmtr-lwip-client --ip {server_ip} --port {port}
+        -i {iterations} -L {log_dir}
+    stop: pkill -f dmtr-lwip-client
+    duration_exceeded_error: True
+    check_rtn: 0
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{server.ip}'
+        port: 12345
+        taskset_cores: False
+        nice_value: False
+    log:
+        append: True
+        dir: client
+        out: client.out
+        err: client.err
+
+dpdk_echo_server:
+    start: >-
+        cd {demi_echo} &&
+        {do_nice} {do_taskset} ./dmtr-lwip-server --ip {server_ip} --port {port}
+    stop: pkill -f dmtr-lwip-server
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{host.ip}'
+        port: 12345
+        taskset_cores: False
+        nice_value: False
+    log:
+        dir: server
+        out: server.out
+        err: server.err
