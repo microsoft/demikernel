@@ -316,11 +316,13 @@ int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
             me->req_states.push_back(req);
         }
         DMTR_OK(dmtr_push(&token, out_qfd, &wait_out.qr_value.sga));
-        while (dmtr_wait(NULL, token) == EAGAIN) {
+        int status;
+        while ((status = dmtr_wait(NULL, token)) == EAGAIN) {
             if (me->terminate) {
                 break;
             }
         }
+        DMTR_TRUE(EINVAL, status == 0);
         if (me->type == TCP) {
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
         }
@@ -574,12 +576,15 @@ int tcp_work(uint64_t i,
                 req->http_dispatch = take_time();
                 DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &req_sga));
                 //XXX do we need to wait for push to happen?
-                while (dmtr_wait(NULL, token) == EAGAIN) {
+                int status;
+                while ((status = dmtr_wait(NULL, token)) == EAGAIN) {
                     if (me->terminate) {
                         return 0;
                     }
                     continue;
                 }
+                DMTR_TRUE(EINVAL, status == 0);
+
                 /* Enable reading from HTTP result queue */
                 DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
                 tokens.push_back(token);
@@ -654,7 +659,8 @@ int tcp_work(uint64_t i,
             req->push_token = token;
 
             /* we have to wait because we can't free before sga is sent */
-            while (dmtr_wait(NULL, token) == EAGAIN) {
+            int status;
+            while ((status = dmtr_wait(NULL, token)) == EAGAIN) {
                 if (me->terminate) {
                     return 0;
                 }
@@ -686,7 +692,10 @@ static void *tcp_worker(void *args) {
     int lqd = 0;
     dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in saddr = me->args.saddr;
-    dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
+    if (dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr))) {
+        log_error("Binding failed");
+        return NULL;
+    }
     dmtr_listen(lqd, 100); //XXX what is a good backlog size here?
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
