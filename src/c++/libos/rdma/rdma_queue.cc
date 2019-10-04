@@ -281,7 +281,7 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
-        DMTR_OK(t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr), sizeof(sockaddr_in)));
+        DMTR_OK(t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr)));
     }
 
     return 0;
@@ -299,24 +299,70 @@ int dmtr::rdma_queue::listen(int backlog)
     return 0;
 }
 
-int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t size)
+int dmtr::rdma_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     // Spin for 10 seconds before giving up.
     auto timeout = duration_type(1000 * 10);
 
+    // Convert regular address into an rdma address
     int timeout_int = 0;
     DMTR_OK(dmtr_u32toi(&timeout_int, timeout.count()));
-
-    // Convert regular address into an rdma address
     DMTR_OK(rdma_resolve_addr(my_rdma_id, NULL, saddr, timeout_int));
+
+    DMTR_OK(new_task(qt, DMTR_OPC_CONNECT));
+    my_connect_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+        return connect_thread(yield, qt, timeout);
+    }));
+    my_connect_thread->enqueue(qt);
+    return 0;
+}
+
+int dmtr::rdma_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, duration_type timeout) {
+    task *t;
+    DMTR_OK(get_task(t, qt));
+    DMTR_OK(t->complete(connect(yield, qt, timeout)));
+    return 0;
+}
+
+int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, duration_type timeout) {
     // Wait for address resolution
-    DMTR_OK(expect_rdma_cm_event(EADDRNOTAVAIL, RDMA_CM_EVENT_ADDR_RESOLVED, my_rdma_id, timeout));
+    int ret = EAGAIN;
+    while (0 != ret) {
+        ret = expect_rdma_cm_event(EADDRNOTAVAIL, RDMA_CM_EVENT_ADDR_RESOLVED, my_rdma_id, timeout);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EADDRNOTAVAIL:
+                return ret;
+            case 0:
+                break;
+            case EAGAIN:
+                yield();
+                break;
+        }
+    }
 
     // Find path to rdma address
+    int timeout_int = 0;
+    DMTR_OK(dmtr_u32toi(&timeout_int, timeout.count()));
     DMTR_OK(rdma_resolve_route(my_rdma_id, timeout_int));
     // Wait for path resolution
-    DMTR_OK(expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id, timeout));
+    ret = EAGAIN;
+    while (0 != ret) {
+        ret = expect_rdma_cm_event(EPERM, RDMA_CM_EVENT_ROUTE_RESOLVED, my_rdma_id, timeout);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case EPERM:
+                return ret;
+            case 0:
+                break;
+            case EAGAIN:
+                yield();
+                break;
+        }
+    }
 
     DMTR_OK(setup_rdma_qp());
     DMTR_OK(setup_recv_queue());
@@ -327,14 +373,20 @@ int dmtr::rdma_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     params.responder_resources = 1;
     params.rnr_retry_count = 1;
     DMTR_OK(rdma_connect(my_rdma_id, &params));
-    int ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout);
-    switch (ret) {
-        default:
-            DMTR_FAIL(ret);
-        case ECONNREFUSED:
-            return ret;
-        case 0:
-            break;
+    ret = EAGAIN;
+    while (0 != ret) {
+        ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout);
+        switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case ECONNREFUSED:
+                return ret;
+            case 0:
+                break;
+            case EINVAL:
+                yield();
+                break;
+        }
     }
 
     start_threads();
@@ -636,6 +688,9 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         case DMTR_OPC_POP:
             ret = my_pop_thread->service();
             break;
+        case DMTR_OPC_CONNECT:
+            ret = 0;
+            break;
     }
 
     switch (ret) {
@@ -644,9 +699,13 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         case EAGAIN:
             break;
         case 0:
-            // the threads should only exit if the queue has been closed
-            // (`good()` => `false`).
-            DMTR_UNREACHABLE();
+            if (DMTR_OPC_CONNECT != t->opcode()) {
+                // the threads should only exit if the queue has been closed
+                // (`good()` => `false`).
+                DMTR_UNREACHABLE();
+            }
+
+            break;
     }
 
     return t->poll(qr_out);
