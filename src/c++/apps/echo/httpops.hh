@@ -8,7 +8,7 @@
 #define MAX_REGEX_VALUE_LEN 128
 #define MAX_HEADER_LEN 512
 
-#define FILE_DIR "/scratch/memfs/wiki/"
+#define FILE_DIR "/media/memfs/wiki/"
 
 #define REGEX_KEY "regex="
 
