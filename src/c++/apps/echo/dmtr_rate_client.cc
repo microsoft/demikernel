@@ -105,7 +105,7 @@ std::vector<state_threads *> threads;
 
 /* Holds the state of a single attempted request. */
 struct RequestState {
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
     hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
     hr_clock::time_point connected;   /**< Time that dmrt_connect() completed */
     hr_clock::time_point sending;       /**< Time that dmtr_push() started */
@@ -155,7 +155,7 @@ enum ReqStatus {
     COMPLETED,
 };
 
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
 inline void update_request_state(struct RequestState *req, enum ReqStatus status) {
     //printf("Updating state for %d (%p)\n", req->id, req);
     hr_clock::time_point *t;
@@ -397,7 +397,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 sga.sga_segs[0].sgaseg_buf = (void *) request->req;
                 dequeued++;
 
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(request, SENDING);
 #endif
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
@@ -442,13 +442,13 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 printf("\n=====================\n");
                 */
 
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(request, READING);
 #endif
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(request, COMPLETED);
 #endif
                 char *req_c = reinterpret_cast<char *>(
@@ -553,12 +553,12 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         req->conn_qd = qd;
 
         /* Connect */
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
         update_request_state(req.get(), CONNECTING);
 #endif
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
         update_request_state(req.get(), CONNECTED);
 #endif
 
@@ -720,14 +720,14 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
-                printf("Sent %d\n", request->id);
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+                //printf("Sent %d\n", request->id);
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(request.get(), READING);
 #endif
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 request->pop_token = token;
 #endif
                 free(request->req); //XXX putting this in the log threads causes heap-read-after-free??
@@ -739,7 +739,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(request.get(), COMPLETED);
 #endif
                 char *req_c = reinterpret_cast<char *>(
