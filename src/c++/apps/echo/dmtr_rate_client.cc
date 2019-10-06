@@ -298,6 +298,10 @@ int log_responses(uint32_t total_requests, int log_memq,
                 n_invalid++;
             }
             delete req;
+        } else {
+            if (status != EAGAIN) {
+                log_warn("Logger's %d memory queue returned: %d", my_idx, status);
+            }
         }
 
         if (take_time() > *time_end) {
@@ -629,11 +633,14 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     uint32_t send_index = 0;
     dmtr_qtoken_t token;
     std::vector<dmtr_qtoken_t> tokens;
+    tokens.reserve(1024); // If we go beyond we really have other performance problems anyway
     std::unordered_map<uint32_t, std::unique_ptr<RequestState> > requests;
+    requests.reserve(1024);
 #ifdef OP_DEBUG
     std::unordered_map<dmtr_qtoken_t, std::string> pending_ops;
 #endif
-    while (completed < n_requests) {
+    /* If we still have pending requests, or we have pending push to logger's memory queue */
+    while (completed < n_requests || tokens.size() > 0) {
         if (terminate) {
             log_warn(" worker %d set to terminate", my_idx);
             break;
@@ -660,12 +667,12 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             sga.sga_numsegs = 1;
             sga.sga_segs[0].sgaseg_len = request->req_size;
             sga.sga_segs[0].sgaseg_buf = (void *) request->req;
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
             update_request_state(request.get(), SENDING);
 #endif
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(DMTR_LEGACY_PROFILE)
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
             request->push_token = token;
 #endif
             log_debug("Scheduling new request %d for send", request->id);
@@ -761,14 +768,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(ptrtoreq);
                 dmtr_push(&token, log_memq, &sga);
                 tokens.push_back(token);
-                /*
-                while(dmtr_wait(NULL, token) == EAGAIN) {
-                    if (terminate) {
-                        return 0;
-                    }
-                    continue;
-                }
-                */
             }
         } else {
             if (status == EAGAIN) {
