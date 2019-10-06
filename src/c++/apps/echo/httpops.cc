@@ -6,7 +6,10 @@
 int regex_html(char *to_match, char *htmlDoc, size_t length) {
     const char *pcreErrorStr;
     int errOffset;
-    pcre *reCompiled = pcre_compile(EVIL_REGEX, 0, &pcreErrorStr, &errOffset, NULL);
+    pcre * reCompiled = pcre_compile(EVIL_REGEX, 0, &pcreErrorStr, &errOffset, NULL);
+    if (reCompiled == NULL) {
+        fprintf(stderr, "Error compiling regex");
+    }
 
     pcre_extra pcreExtra;
     pcreExtra.match_limit = -1;
