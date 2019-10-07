@@ -747,7 +747,10 @@ impl<'a> TcpPeer<'a> {
         let async_work = self.state.borrow().async_work.clone();
         let async_work = async_work.borrow();
         if let Some(result) = async_work.poll(now) {
-            assert!(result.is_ok());
+            match result {
+                Ok(_) => (),
+                Err(e) => warn!("background coroutine failed: {:?}", e),
+            }
         }
     }
 
