@@ -341,16 +341,13 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     }
 
     /* Do the HTTP work */
-    log_debug("HTTP worker popped %s\n",
-            reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
-    );
-
     /* First cast the buffer and get request id. Then increment ptr to the start of the payload */
     uint32_t * const req_id =
         reinterpret_cast<uint32_t *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
     req->id = *req_id;
     char *req_c = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
     req_c += sizeof(uint32_t);
+    log_debug("HTTP worker popped %s", req_c);
     size_t req_size = wait_out.qr_value.sga.sga_segs[0].sgaseg_len - sizeof(uint32_t);
 
     init_parser_state(state);
@@ -387,7 +384,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                 resp_sga.sga_numsegs = 1;
             }
 
-            DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &resp_sga));
+            DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
             while (dmtr_wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     break;
