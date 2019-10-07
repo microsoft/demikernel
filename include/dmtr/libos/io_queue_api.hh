@@ -8,7 +8,6 @@
 
 #include "io_queue.hh"
 #include "io_queue_factory.hh"
-#include <boost/thread/shared_mutex.hpp>
 #include <boost/atomic.hpp>
 #include <dmtr/annot.h>
 #include <mutex>
