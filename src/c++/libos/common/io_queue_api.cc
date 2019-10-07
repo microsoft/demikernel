@@ -94,12 +94,8 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
         //std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
         DMTR_OK(my_queue_factory.construct(qq, cid, qd));
     }
-    // Queue has not been stored anywhere yet so no need to lock
     q_out = qq.get();
-    {
-        //std::lock_guard<std::mutex> lock(qq->my_mutex);
-        DMTR_OK(insert_queue(qq));
-    }
+    DMTR_OK(insert_queue(qq));
 
     return 0;
 }
@@ -143,15 +139,13 @@ int dmtr::io_queue_api::socket(int &qd_out, int domain, int type, int protocol) 
 
     io_queue *q = NULL;
     DMTR_OK(new_queue(q, io_queue::NETWORK_Q));
-    {
-        int ret = q->socket(domain, type, protocol);
-        if (ret != 0) {
-            DMTR_OK(remove_queue(q->qd()));
-            DMTR_FAIL(ret);
-        }
-
-        qd_out = q->qd();
+    int ret = q->socket(domain, type, protocol);
+    if (ret != 0) {
+        DMTR_OK(remove_queue(q->qd()));
+        DMTR_FAIL(ret);
     }
+
+    qd_out = q->qd();
     return 0;
 }
 
@@ -275,9 +269,7 @@ int dmtr::io_queue_api::close(int qd) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     int ret;
-    {
-        ret = q->close();
-    }
+    ret = q->close();
     DMTR_OK(remove_queue(qd));
 
     DMTR_OK(ret);
@@ -337,15 +329,12 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     int ret;
-    {
-
-        dmtr_qresult_t unused_qr = {};
-        if (NULL == qr_out) {
-            qr_out = &unused_qr;
-        }
-
-        ret = q->poll(*qr_out, qt);
+    dmtr_qresult_t unused_qr = {};
+    if (NULL == qr_out) {
+        qr_out = &unused_qr;
     }
+
+    ret = q->poll(*qr_out, qt);
     switch (ret) {
         default:
             on_poll_failure(qr_out, this);

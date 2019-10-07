@@ -67,11 +67,15 @@ const std::string VALID_RESP="HTTP/1.1 200 OK";
 const std::string CONTENT_LEN="Content-Length: ";
 
 /* Validates the given response, checking it against the valid response string */
-static inline bool validate_response(char *response, bool check_content_len) {
-    std::string resp_str = response;
+static inline bool validate_response(std::string &resp_str, bool check_content_len) {
     if ((resp_str.find(VALID_RESP) == 0) & !check_content_len) {
         return true;
     }
+    /* FIXME: if we have to null terminate, we will do it here
+    char *resp_char_end =
+        req_c + wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1;
+    memcpy(resp_char_end, "\0", 1);
+    */
     size_t ctlen = resp_str.find(CONTENT_LEN);
     size_t hdr_end = resp_str.find("\r\n\r\n");
     if (ctlen != std::string::npos && hdr_end != std::string::npos) {
@@ -101,24 +105,27 @@ std::vector<state_threads *> threads;
 
 /* Holds the state of a single attempted request. */
 struct RequestState {
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
     hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
     hr_clock::time_point connected;   /**< Time that dmrt_connect() completed */
     hr_clock::time_point sending;       /**< Time that dmtr_push() started */
     hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
     hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
+    dmtr_qtoken_t push_token; /** The token associated to writing the request */
+    dmtr_qtoken_t pop_token; /** The token associated with reading the response */
+#endif
     bool valid; /** Whether the response was valid */
-    const char *req; /** The actual request */
+    char * const req; /** The actual request */
     size_t req_size; /** Number of Bytes in the request */
     int conn_qd; /** The connection's queue descriptor */
     uint32_t id; /** Request id */
-    dmtr_qtoken_t push_token;
-    dmtr_qtoken_t pop_token;
 
-    RequestState(char *req, size_t req_size): req(req), req_size(req_size) {}
+    RequestState(char* const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
+    //~RequestState() { free(req); }
 };
 
 /* Pre-formatted HTTP GET requests */
-std::vector<RequestState *> http_requests;
+std::vector<std::unique_ptr<RequestState> > http_requests;
 
 /*****************************************************************
  *********************** LOGGING *********************************
@@ -148,27 +155,29 @@ enum ReqStatus {
     COMPLETED,
 };
 
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
 inline void update_request_state(struct RequestState &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
     hr_clock::time_point *t;
     switch (status) {
         case CONNECTING:
-            t = &req.connecting;
+            t = &req->connecting;
             break;
         case CONNECTED:
-            t = &req.connected;
+            t = &req->connected;
             break;
         case SENDING:
-            t = &req.sending;
+            t = &req->sending;
             break;
         case READING:
-            t = &req.reading;
+            t = &req->reading;
             break;
         case COMPLETED:
-            t = &req.completed;
+            t = &req->completed;
             break;
     }
     *t = op_time;
 }
+#endif
 
 /**
  * It is a bit dirty, but this function has two modes: live dump, or
@@ -199,7 +208,11 @@ int log_responses(uint32_t total_requests, int log_memq,
         );
         if (live_dump) {
             l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
-            fprintf(l.fh, "TIME\tVALUE\n");
+            if (l.fh) {
+                fprintf(l.fh, "TIME\tVALUE\n");
+            } else {
+                log_error("Could not open log file at %s", l.filename);
+            }
         } else {
             DMTR_OK(dmtr_new_latency(&l.l, name));
         }
@@ -207,11 +220,11 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 #endif
     FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
-    if (f == NULL) {
+    if (f) {
+        fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
+    } else {
         log_error("Could not open log file!!");
-        return 0;
     }
-    fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
 
     uint32_t n_invalid = 0;
     bool expired = false;
@@ -230,17 +243,21 @@ int log_responses(uint32_t total_requests, int log_memq,
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
             );
 
-            fprintf(
-                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
-                req->id,
-                since_epoch(req->sending),
-                since_epoch(req->reading),
-                since_epoch(req->completed),
-                req->push_token,
-                req->pop_token
-            );
+#ifdef DMTR_TRACE
+            if (f) {
+                fprintf(
+                    f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
+                    req->id,
+                    since_epoch(req->sending),
+                    since_epoch(req->reading),
+                    since_epoch(req->completed),
+                    req->push_token,
+                    req->pop_token
+                );
+            }
+#endif
 
-#ifdef LEGACY_PROFILING
+#ifdef LEGACY_PROFILING //FIXME: check if file handler is NULL
             if (live_dump) {
                 if (long_lived) {
                     fprintf(logs[0].fh, "%lu\t%lu\n",
@@ -285,6 +302,11 @@ int log_responses(uint32_t total_requests, int log_memq,
             if (!req->valid) {
                 n_invalid++;
             }
+            delete req;
+        } else {
+            if (status != EAGAIN) {
+                log_warn("Logger's %d memory queue returned: %d", my_idx, status);
+            }
         }
 
         if (take_time() > *time_end) {
@@ -313,6 +335,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
                 my_idx, logged, n_invalid);
     }
+    dmtr_close(log_memq);
     return 0;
 }
 
@@ -322,6 +345,7 @@ int log_responses(uint32_t total_requests, int log_memq,
 
 int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_point *time_end,
                         int process_conn_memq, int log_memq) {
+    int start_offset = 0;
     bool expired = false;
     uint32_t completed = 0;
     uint32_t dequeued = 0;
@@ -355,8 +379,8 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         /* Now wait_any and process pop/push task results */
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
         hr_clock::time_point op_time = take_time();
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
             /*
@@ -384,8 +408,9 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 sga.sga_segs[0].sgaseg_buf = (void *) request->req;
                 dequeued++;
 
-                update_request_state(*request, SENDING, op_time);
-
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
+                update_request_state(request, SENDING);
+#endif
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
                 requests.insert(std::pair<int, RequestState *>(request->conn_qd, request));
@@ -428,21 +453,23 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 printf("\n=====================\n");
                 */
 
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, READING, op_time);
+#endif
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, COMPLETED, op_time);
+#endif
                 /* Null terminate the response */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                 );
-                char *resp_char_end =
-                    req_c + wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
-                memcpy(resp_char_end, "\0", 1);
 
-                request->valid = validate_response(req_c, check_resp_clen);
-                free(wait_out.qr_value.sga.sga_buf);
+                std::string resp_str(req_c);
+                request->valid = validate_response(resp_str, check_resp_clen);
+                free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
                 DMTR_OK(dmtr_close(wait_out.qr_qd));
                 requests.erase(req);
 
@@ -530,8 +557,7 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         /* Wait until the appropriate time to create the connection */
         std::this_thread::sleep_until(send_times[interval]);
 
-
-        RequestState *req = http_requests[interval];
+        std::unique_ptr<RequestState> req = std::move(http_requests[interval]);
 
         /* Create Demeter queue */
         int qd = 0;
@@ -539,16 +565,21 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
         req->conn_qd = qd;
 
         /* Connect */
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
         update_request_state(*req, CONNECTING, take_time());
+#endif
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
         update_request_state(*req, CONNECTED, take_time());
+#endif
 
         /* Make this request available to the request handler thread */
         dmtr_sgarray_t sga;
         sga.sga_numsegs = 1;
-        sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(req);
-        sga.sga_segs[0].sgaseg_len = sizeof(RequestState);
+        //FIXME the process_connection() thread should now make this ptr unique at dequeue.
+        sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(req.release());
+        sga.sga_segs[0].sgaseg_len = sizeof(req);
 
         dmtr_qtoken_t token;
         dmtr_push(&token, process_conn_memq, &sga);
@@ -605,18 +636,22 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     /* Connect */
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
+    int start_offset = 0;
     bool expired = false;
     uint32_t completed = 0;
     uint32_t send_index = 0;
     dmtr_qtoken_t token;
     std::vector<dmtr_qtoken_t> tokens;
-    std::unordered_map<uint32_t, RequestState *> requests;
+    tokens.reserve(1024); // If we go beyond we really have other performance problems anyway
+    std::unordered_map<uint32_t, std::unique_ptr<RequestState> > requests;
+    requests.reserve(1024);
 #ifdef OP_DEBUG
     std::unordered_map<dmtr_qtoken_t, std::string> pending_ops;
 #endif
-    while (completed < n_requests) {
+    /* If we still have pending requests, or we have pending push to logger's memory queue */
+    while (completed < n_requests || tokens.size() > 0) {
         if (terminate) {
-            log_info(" worker %d set to terminate", my_idx);
+            log_warn(" worker %d set to terminate", my_idx);
             break;
         }
         hr_clock::time_point maintenant = take_time();
@@ -633,18 +668,26 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         }
         /** First check if it is time to emmit a new request over the connection */
         if (maintenant > send_times[send_index] && send_index < n_requests) {
-            RequestState *request = http_requests[send_index];
-            request->id = send_index++;
+            std::unique_ptr<RequestState> request = std::move(http_requests[send_index]);
+            //printf("Retrieving request %d stored in unique ptr %p (%p) from http_requests\n", request->id, &request, request.get());
+            assert(send_index == request->id);
+            send_index++;
             dmtr_sgarray_t sga;
             sga.sga_numsegs = 1;
             sga.sga_segs[0].sgaseg_len = request->req_size;
             sga.sga_segs[0].sgaseg_buf = (void *) request->req;
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
             update_request_state(*request, SENDING, take_time());
+#endif
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
             request->push_token = token;
+#endif
             log_debug("Scheduling new request %d for send", request->id);
-            requests.insert(std::pair<uint32_t, RequestState *>(request->id, request));
+            printf("Scheduled request %d (%p) for send\n", request->id, request->req);
+            //printf("storing %d, %p (%p) in requests map\n", request->id, &request, request.get());
+            requests.insert(std::pair<uint32_t, std::unique_ptr<RequestState> >(request->id, std::move(request)));
 #ifdef OP_DEBUG
             pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_PUSH"));
 #endif
@@ -656,7 +699,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         hr_clock::time_point op_time = take_time();
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
@@ -666,17 +709,27 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
             assert(wait_out.qr_value.sga.sga_numsegs == 1);
 
-            /* Strip the ID before the request is processed further */
+            if (wait_out.qr_qd == log_memq) {
+                assert(wait_out.qr_opcode == DMTR_OPC_PUSH);
+                continue;
+            }
+
+            /* Retrieve the ID before the request is processed further */
             uint32_t * const req_id_ptr =
                 reinterpret_cast<uint32_t *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
             uint32_t req_id = *req_id_ptr;
 
             auto req = requests.find(req_id);
             if (req == requests.end()) {
-                log_error("Operated unregistered request %d", req_id);
-                exit(1);
+                log_error("[OPC %d] operated unregistered request %d (%p) (completed/sent so far: %d/%d)",
+                           wait_out.qr_opcode,
+                           req_id, wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
+                           completed, send_index);
+                terminate = true;
+                continue;
             }
-            RequestState *request = req->second;
+            std::unique_ptr<RequestState> request = std::move(req->second);
+            //printf("Found request %p (%p) mapped to req id %d\n", &request, request.get(), req_id);
             assert(request->id == req_id);
             //printf("There are %zu items in the requests map\n", requests.size());
 
@@ -684,11 +737,17 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, READING, op_time);
+#endif
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 request->pop_token = token;
+#endif
+                free(request->req); //XXX putting this in the log threads causes heap-read-after-free??
+                requests[request->id] = std::move(request);
 #ifdef OP_DEBUG
                 pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_POP"));
 #endif
@@ -696,35 +755,29 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, COMPLETED, op_time);
+#endif
                 /* Null terminate the response (for validate_response) */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                 );
-                char *resp_char_end =
-                    req_c + wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
-                memcpy(resp_char_end, "\0", 1);
+                std::string resp_str(req_c+sizeof(uint32_t));
+                request->valid = validate_response(resp_str, check_resp_clen);
+                free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                log_debug("Request %d stored in %p (%p) completed", request->id, &request, request.get());
 
-                /* Skip request id */
-                req_c += + sizeof(uint32_t);
-
-                request->valid = validate_response(req_c, check_resp_clen);
-                free(wait_out.qr_value.sga.sga_buf);
-                log_debug("Request %d completed", request->id);
+                RequestState *ptrtoreq = request.release();
+                requests.erase(ptrtoreq->id);
+                log_debug("Retired request %d", ptrtoreq-->id);
+                completed++;
 
                 dmtr_sgarray_t sga;
                 sga.sga_numsegs = 1;
                 sga.sga_segs[0].sgaseg_len = sizeof(request);
-                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(request);
+                sga.sga_segs[0].sgaseg_buf = reinterpret_cast<void *>(ptrtoreq);
                 dmtr_push(&token, log_memq, &sga);
-                while(dmtr_wait(NULL, token) == EAGAIN) {
-                    if (terminate) {
-                        return 0;
-                    }
-                    continue;
-                }
-                completed++;
-                requests.erase(request->id);
+                tokens.push_back(token);
             }
         } else {
             if (status == EAGAIN) {
@@ -863,7 +916,7 @@ int main(int argc, char **argv) {
         /* We loop in case the URI file was not created with the desired amount of requests in mind */
         while (http_requests.size() < total_requests) {
             while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
-                char *req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
+                char * const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
                 memset(req, '\0', MAX_REQUEST_SIZE);
                 uint32_t id = (uint32_t) http_requests.size();
                 memcpy(req, (uint32_t *) &id, sizeof(uint32_t));
@@ -872,8 +925,8 @@ int main(int argc, char **argv) {
                     REQ_STR, uri.c_str(), host.c_str()
                 );
                 req_size += sizeof(uint32_t);
-                RequestState *req_obj = new RequestState(req, req_size);
-                http_requests.push_back(req_obj);
+                std::unique_ptr<RequestState> req_obj(new RequestState(req, req_size, id));
+                http_requests.push_back(std::move(req_obj));
             }
             urifile.clear(); //Is this needed in c++11?
             urifile.seekg(0, std::ios::beg);
@@ -881,15 +934,16 @@ int main(int argc, char **argv) {
     } else {
         /* All requests are the one given to the CLI */
         for (uint32_t i = 0; i < total_requests; ++i) {
-            char *req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
+            char * const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
             memset(req, '\0', MAX_REQUEST_SIZE);
             memcpy(req, (uint32_t *) &i, sizeof(uint32_t));
             size_t req_size = snprintf(
-                req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t), REQ_STR, uri.c_str(), host.c_str()
+                req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
+                REQ_STR, uri.c_str(), host.c_str()
             );
             req_size += sizeof(uint32_t);
-            RequestState *req_obj = new RequestState(req, req_size);
-            http_requests.push_back(req_obj);
+            std::unique_ptr<RequestState> req_obj(new RequestState(req, req_size, i));
+            http_requests.push_back(std::move(req_obj));
         }
     }
 
@@ -985,14 +1039,7 @@ int main(int argc, char **argv) {
     }
     log_info("Responses gathered");
 
-    // This quiets Valgrind, but seems unecessary
-    for (auto &r: http_requests) {
-        //error: invalid conversion from ‘const void*’ to ‘void*’ [-fpermissive] free(r->req);
-        //free(r->req); This does not work? What is auto giving us back?
-        delete r;
-    }
-
-    // Wait on the logging threads TODO also shut this off if previosu threads stop early
+    // Wait on the logging threads TODO also shut this off if previous threads stop early
     for (int i = 0; i < n_threads; i++) {
         threads[i]->log->join();
         delete threads[i]->log;

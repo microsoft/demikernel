@@ -74,10 +74,11 @@ int main(int argc, char *argv[])
     std::string answer_ok("200 OK");
     std::string answer_nok("400 BAD REQUEST");
 
+    int start_offset = 0;
     while (1) {
         dmtr_qresult wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
 
         // if we got an EOK back from wait
         if (status == 0) {
@@ -142,6 +143,9 @@ int main(int argc, char *argv[])
                 free(wait_out.qr_value.sga.sga_buf);
             }
         } else {
+            if (status == EAGAIN) {
+                continue;
+            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
