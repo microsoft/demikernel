@@ -67,8 +67,6 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, 
                     if (ready_offset != NULL)
                         *ready_offset = i;
                     return ret;
-                } else {
-                    std::cout << "Poll returned status " << ret << " to wait." << std::endl;
                 }
             } else {
                 if (start_offset != NULL) {
