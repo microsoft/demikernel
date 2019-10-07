@@ -648,9 +648,9 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
             request->push_token = token;
 #endif
-            log_debug("Scheduling new request %d for send", request->id);
-            printf("Scheduled request %d (%p) for send\n", request->id, request->req);
-            //printf("storing %d, %p (%p) in requests map\n", request->id, &request, request.get());
+            log_debug("Scheduling request %d for send", request->id);
+            //printf("Sending %s\n", request->req+sizeof(uint32_t));
+            //printf("Scheduled PUSH: %d/%lu\n", request->id, token);
             requests.insert(std::pair<uint32_t, std::unique_ptr<RequestState> >(request->id, std::move(request)));
 #ifdef OP_DEBUG
             pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_PUSH"));
@@ -710,7 +710,8 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 request->pop_token = token;
 #endif
-                free(request->req); //XXX putting this in the log threads causes heap-read-after-free??
+                free(request->req); //XXX putting this in the log threads causes ASAN heap-read-after-free??
+                //printf("Scheduled POP %d/%lu\n", request->id, token);
                 requests[request->id] = std::move(request);
 #ifdef OP_DEBUG
                 pending_ops.insert(std::pair<dmtr_qtoken_t, std::string>(token, "NET_POP"));
@@ -729,11 +730,11 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 std::string resp_str(req_c+sizeof(uint32_t));
                 request->valid = validate_response(resp_str, check_resp_clen);
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-                log_debug("Request %d stored in %p (%p) completed", request->id, &request, request.get());
 
                 RequestState *ptrtoreq = request.release();
                 requests.erase(ptrtoreq->id);
-                log_debug("Retired request %d", ptrtoreq-->id);
+                //printf("Retired %d\n", ptrtoreq->id);
+                log_debug("Retired request %d", ptrtoreq->id);
                 completed++;
 
                 dmtr_sgarray_t sga;
