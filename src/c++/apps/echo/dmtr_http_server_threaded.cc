@@ -293,7 +293,7 @@ static inline void no_op_loop(uint32_t iter) {
     }
 }
 
-int http_work(uint64_t i, struct parser_state *state, dmtr_qresult_t &wait_out,
+int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                      dmtr_qtoken_t &token, int out_qfd, Worker *me) {
 #ifdef LEGACY_PROFILING
     hr_clock::time_point start;
@@ -483,7 +483,6 @@ static void *http_worker(void *args) {
         (struct parser_state *) malloc(sizeof(*state));
 
     dmtr_qtoken_t token = 0;
-    uint64_t iteration = 0;
     bool new_op = true;
     while (1) {
         if (me->terminate) {
@@ -496,8 +495,7 @@ static void *http_worker(void *args) {
         }
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
-            http_work(iteration, state, wait_out, token, me->out_qfd, me);
-            iteration++;
+            http_work(state, wait_out, token, me->out_qfd, me);
         } else {
             if (status == EAGAIN) {
                 new_op = false;
@@ -516,8 +514,7 @@ static int filter_http_req(dmtr_sgarray_t *sga) {
     return get_request_type((char*) sga->sga_buf);
 }
 
-int tcp_work(uint64_t i,
-             std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
              uint64_t &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, Worker *me, int lqd) {
@@ -614,7 +611,7 @@ int tcp_work(uint64_t i,
                 wait_out.qr_value.sga.sga_numsegs = 2;
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_len = sizeof(req);
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
-                http_work(i, state, wait_out, token, wait_out.qr_qd, me);
+                http_work(state, wait_out, token, wait_out.qr_qd, me);
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
@@ -713,13 +710,12 @@ static void *tcp_worker(void *args) {
     dmtr_listen(lqd, 100); //XXX what is a good backlog size here?
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
-
     std::vector<int> http_q_pending; //FIXME reserve memory
     //Used handle spuriously closed connections
     std::vector<bool> clients_in_waiting;
     clients_in_waiting.reserve(MAX_CLIENTS);
     uint64_t num_rcvd = 0;
-    uint64_t iteration = INT_MAX;
+    int start_offset = 0;
     while (1) {
         if (me->terminate) {
             log_info("Network worker %d set to terminate", me->whoami);
@@ -727,7 +723,7 @@ static void *tcp_worker(void *args) {
         }
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         if (status == 0) {
 #ifdef OP_DEBUG
             update_pql(tokens.size(), &me->pql);
@@ -735,7 +731,7 @@ static void *tcp_worker(void *args) {
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
             tcp_work(
-                iteration, http_q_pending, clients_in_waiting, wait_out,
+                http_q_pending, clients_in_waiting, wait_out,
                 num_rcvd, tokens, token, state, me, lqd
             );
         } else {

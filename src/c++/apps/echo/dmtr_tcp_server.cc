@@ -83,11 +83,12 @@ int main(int argc, char *argv[])
         // open a log file
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
     }
-    
+
+    int start_offset = 0;
     while (1) {
         dmtr_qresult wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
 
         // if we got an EOK back from wait
         if (status == 0) {
@@ -127,7 +128,7 @@ int main(int argc, char *argv[])
                 DMTR_OK(dmtr_wait(NULL, token));
                 auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
-        		t0 = boost::chrono::steady_clock::now();
+                t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 start_times[token] = t0;
                 tokens[idx] = token;

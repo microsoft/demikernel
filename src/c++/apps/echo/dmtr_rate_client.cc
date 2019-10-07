@@ -340,6 +340,7 @@ int log_responses(uint32_t total_requests, int log_memq,
 
 int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_point *time_end,
                         int process_conn_memq, int log_memq) {
+    int start_offset = 0;
     bool expired = false;
     uint32_t completed = 0;
     uint32_t dequeued = 0;
@@ -373,7 +374,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         /* Now wait_any and process pop/push task results */
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
             /*
@@ -628,6 +629,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
     /* Connect */
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
+    int start_offset = 0;
     bool expired = false;
     uint32_t completed = 0;
     uint32_t send_index = 0;
@@ -690,7 +692,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &idx, tokens.data(), tokens.size());
+        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {

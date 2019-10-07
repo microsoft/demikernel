@@ -37,11 +37,10 @@ int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     return ret;
 }
 
-int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
+int dmtr_wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
     uint16_t iter = 0;
     while (1) {
-        for (int i = 0; i < num_qts; i++) {
-            iter++;
+        for (int i = start_offset? *start_offset : 0; i < num_qts; i++) {
 #if DMTR_PROFILE
             auto t0 = take_time();
 #endif
@@ -68,11 +67,17 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
                     if (ready_offset != NULL)
                         *ready_offset = i;
                     return ret;
+                } else {
+                    std::cout << "Poll returned status " << ret << " to wait." << std::endl;
+                }
+            } else {
+                if (start_offset != NULL) {
+                    *start_offset = i;
+                }
+                if (iter++ == WAIT_MAX_ITER) {
+                    return EAGAIN;
                 }
             }
-        }
-        if (iter == WAIT_MAX_ITER) {
-            return EAGAIN;
         }
     }
 
