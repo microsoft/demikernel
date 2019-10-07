@@ -79,8 +79,7 @@ int main(int argc, char *argv[])
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
-#if 0
-    // `dmtr_open2()` is only implemented for POSIX.
+#ifdef DMTR_OPEN2
     if (boost::none != file) {
         // open a log file
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
@@ -115,8 +114,7 @@ int main(int argc, char *argv[])
                 start_times.erase(token);
                 DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
 
-#if 0
-                // `dmtr_open2()` is only implemented for POSIX.
+#if DMTR_OPEN2
                 if (0 != fqd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();

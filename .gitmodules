@@ -51,3 +51,9 @@
 [submodule "submodules/PcapPlusPlus"]
 	path = submodules/PcapPlusPlus
 	url = https://github.com/mlr-msft/PcapPlusPlus.git
+[submodule "submodules/redis-dpdk-catnip"]
+	path = submodules/redis-dpdk-catnip
+	url = https://github.com/mlr-msft/redis.git
+[submodule "submodules/tapir-dpdk-catnip"]
+	path = submodules/tapir-dpdk-catnip
+	url = https://github.com/UWSysLab/tapir.git

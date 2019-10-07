@@ -71,7 +71,7 @@ add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
 
 add_custom_target(echo)
-add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
+add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo dmtr-dpdk-catnip-echo)
 
 # DPDK+catnip TCP server
 add_executable(dmtr-dpdk-catnip-server ${TCP_ECHO_SERVER_SOURCES})
