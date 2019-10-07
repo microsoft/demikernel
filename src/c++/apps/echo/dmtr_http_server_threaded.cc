@@ -495,6 +495,7 @@ static void *http_worker(void *args) {
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             http_work(state, wait_out, token, me->out_qfd, me);
+            new_op = true;
         } else {
             if (status == EAGAIN) {
                 new_op = false;
@@ -502,7 +503,6 @@ static void *http_worker(void *args) {
             }
             log_debug("dmtr_wait returned status %d", status);
         }
-        new_op = true;
     }
 
     free(state);
