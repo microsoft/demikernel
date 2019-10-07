@@ -156,27 +156,24 @@ enum ReqStatus {
 };
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-inline void update_request_state(struct RequestState *req, enum ReqStatus status) {
-    //printf("Updating state for %d (%p)\n", req->id, req);
-    hr_clock::time_point *t;
+inline void update_request_state(struct RequestState &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
     switch (status) {
         case CONNECTING:
-            t = &req->connecting;
+            req.connecting = op_time;
             break;
         case CONNECTED:
-            t = &req->connected;
+            req.connected = op_time;
             break;
         case SENDING:
-            t = &req->sending;
+            req.sending = op_time;
             break;
         case READING:
-            t = &req->reading;
+            req.reading = op_time;
             break;
         case COMPLETED:
-            t = &req->completed;
+            req.completed = op_time;
             break;
     }
-    *t = take_time();
 }
 #endif
 
@@ -346,6 +343,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         /* Now wait_any and process pop/push task results */
         dmtr_qresult_t wait_out;
         int idx;
+        hr_clock::time_point op_time = take_time();
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
@@ -375,7 +373,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 dequeued++;
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request, SENDING);
+                update_request_state(*request, SENDING, op_time);
 #endif
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
@@ -420,13 +418,13 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 */
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request, READING);
+                update_request_state(*request, READING, op_time);
 #endif
             } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
                 assert(wait_out.qr_value.sga.sga_numsegs== 1);
                 /* Log and complete request now that we have the answer */
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request, COMPLETED);
+                update_request_state(*request, COMPLETED, op_time);
 #endif
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
@@ -531,12 +529,12 @@ int create_queues(double interval_ns, int n_requests, std::string host, int port
 
         /* Connect */
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-        update_request_state(req.get(), CONNECTING);
+        update_request_state(*req, CONNECTING, take_time());
 #endif
         DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
         connected++;
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-        update_request_state(req.get(), CONNECTED);
+        update_request_state(*req, CONNECTED, take_time());
 #endif
 
         /* Make this request available to the request handler thread */
@@ -642,7 +640,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             sga.sga_segs[0].sgaseg_len = request->req_size;
             sga.sga_segs[0].sgaseg_buf = (void *) request->req;
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-            update_request_state(request.get(), SENDING);
+            update_request_state(*request, SENDING, take_time());
 #endif
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
@@ -665,6 +663,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+        hr_clock::time_point op_time = take_time();
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
@@ -701,9 +700,8 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #ifdef OP_DEBUG
                 pending_ops.erase(token);
 #endif
-                //printf("Sent %d\n", request->id);
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request.get(), READING);
+                update_request_state(*request, READING, op_time);
 #endif
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
@@ -722,7 +720,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 pending_ops.erase(token);
 #endif
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request.get(), COMPLETED);
+                update_request_state(*request, COMPLETED, op_time);
 #endif
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
