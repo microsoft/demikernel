@@ -157,25 +157,23 @@ enum ReqStatus {
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
 inline void update_request_state(struct RequestState &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
-    hr_clock::time_point *t;
     switch (status) {
         case CONNECTING:
-            t = &req->connecting;
+            req.connecting = op_time;
             break;
         case CONNECTED:
-            t = &req->connected;
+            req.connected = op_time;
             break;
         case SENDING:
-            t = &req->sending;
+            req.sending = op_time;
             break;
         case READING:
-            t = &req->reading;
+            req.reading = op_time;
             break;
         case COMPLETED:
-            t = &req->completed;
+            req.completed = op_time;
             break;
     }
-    *t = op_time;
 }
 #endif
 
@@ -409,7 +407,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
                 dequeued++;
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                update_request_state(request, SENDING);
+                update_request_state(*request, SENDING, op_time);
 #endif
                 DMTR_OK(dmtr_push(&token, request->conn_qd, &sga));
                 tokens.push_back(token);
