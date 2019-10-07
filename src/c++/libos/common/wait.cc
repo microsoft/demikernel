@@ -28,7 +28,7 @@ int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     int ret = EAGAIN;
     uint16_t iter = 0;
     while (EAGAIN == ret) {
-        if (++iter == WAIT_MAX_ITER) {
+        if (iter++ == WAIT_MAX_ITER) {
             return EAGAIN;
         }
         ret = dmtr_poll(qr_out, qt);

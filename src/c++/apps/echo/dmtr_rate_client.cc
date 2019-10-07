@@ -190,7 +190,7 @@ inline void update_request_state(struct RequestState *req, enum ReqStatus status
 int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
                   std::string log_dir, std::string label,
-                  int my_idx, bool live_dump) {
+                  int my_idx) {
 
 #ifdef LEGACY_PROFILING
     /* Init latencies */
@@ -207,16 +207,7 @@ int log_responses(uint32_t total_requests, int log_memq,
                 generate_log_file_path(log_dir, label, name).c_str(),
                 MAX_FILE_PATH_LEN
         );
-        if (live_dump) {
-            l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
-            if (l.fh) {
-                fprintf(l.fh, "TIME\tVALUE\n");
-            } else {
-                log_error("Could not open log file at %s", l.filename);
-            }
-        } else {
-            DMTR_OK(dmtr_new_latency(&l.l, name));
-        }
+        DMTR_OK(dmtr_new_latency(&l.l, name));
         logs.push_back(l);
     }
 #endif
@@ -227,17 +218,20 @@ int log_responses(uint32_t total_requests, int log_memq,
         log_error("Could not open log file!!");
     }
 
+    bool new_op = true;
     uint32_t n_invalid = 0;
     bool expired = false;
     uint32_t logged = 0;
+    dmtr_qresult_t wait_out;
+    dmtr_qtoken_t token;
     while (logged < total_requests) {
         if (terminate) {
             log_info(" worker %d set to terminate", my_idx);
             break;
         }
-        dmtr_qresult_t wait_out;
-        dmtr_qtoken_t token;
-        dmtr_pop(&token, log_memq);
+        if (new_op) {
+            dmtr_pop(&token, log_memq);
+        }
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             RequestState *req = reinterpret_cast<RequestState *>(
@@ -259,54 +253,32 @@ int log_responses(uint32_t total_requests, int log_memq,
 #endif
 
 #ifdef LEGACY_PROFILING //FIXME: check if file handler is NULL
-            if (live_dump) {
-                if (long_lived) {
-                    fprintf(logs[0].fh, "%lu\t%lu\n",
-                            since_epoch(req->sending),
-                            ns_diff(req->sending, req->completed)
-                    );
-                } else {
-                    fprintf(logs[0].fh, "%lu\t%lu\n",
-                            since_epoch(req->connecting),
-                            ns_diff(req->connecting, req->completed)
-                    );
-                    fprintf(logs[3].fh, "%lu\t%lu\n",
-                            since_epoch(req->connecting),
-                            ns_diff(req->connecting, req->connected)
-                    );
-                }
-                fprintf(logs[1].fh, "%lu\t%lu\n",
-                        since_epoch(req->sending),
-                        ns_diff(req->sending, req->reading)
-                );
-                fprintf(logs[2].fh, "%lu\t%lu\n",
-                        since_epoch(req->reading),
-                        ns_diff(req->reading, req->completed)
-                );
+            if (long_lived) {
+                DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->sending),
+                                                  ns_diff(req->sending, req->completed)));
             } else {
-                if (long_lived) {
-                    DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->sending),
-                                                      ns_diff(req->sending, req->completed)));
-                } else {
-                    DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->connecting),
-                                                      ns_diff(req->connecting, req->completed)));
-                    DMTR_OK(dmtr_record_timed_latency(logs[3].l, since_epoch(req->connecting),
-                                                      ns_diff(req->connecting, req->connected)));
-                }
-                DMTR_OK(dmtr_record_timed_latency(logs[1].l, since_epoch(req->sending),
-                                                  ns_diff(req->sending, req->reading)));
-                DMTR_OK(dmtr_record_timed_latency(logs[2].l, since_epoch(req->reading),
-                                                  ns_diff(req->reading, req->completed)));
+                DMTR_OK(dmtr_record_timed_latency(logs[0].l, since_epoch(req->connecting),
+                                                  ns_diff(req->connecting, req->completed)));
+                DMTR_OK(dmtr_record_timed_latency(logs[3].l, since_epoch(req->connecting),
+                                                  ns_diff(req->connecting, req->connected)));
             }
+            DMTR_OK(dmtr_record_timed_latency(logs[1].l, since_epoch(req->sending),
+                                              ns_diff(req->sending, req->reading)));
+            DMTR_OK(dmtr_record_timed_latency(logs[2].l, since_epoch(req->reading),
+                                              ns_diff(req->reading, req->completed)));
 #endif
             logged++;
             if (!req->valid) {
                 n_invalid++;
             }
             delete req;
+            new_op = true;
         } else {
             if (status != EAGAIN) {
                 log_warn("Logger's %d memory queue returned: %d", my_idx, status);
+            } else {
+                new_op = false;
+                continue;
             }
         }
 
@@ -319,13 +291,7 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 
 #ifdef LEGACY_PROFILING
-    if (live_dump) {
-        for (auto &l: logs) {
-            fclose(l.fh);
-        }
-    } else {
-        dump_logs(logs, log_dir, label);
-    }
+    dump_logs(logs, log_dir, label);
 #endif
 #ifdef OP_DEBUG
     dump_pql(workers_pql[my_idx], log_dir, label);
@@ -838,12 +804,11 @@ int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
-    bool short_lived, debug_duration_flag, no_live_dump, live_dump;
+    bool short_lived, debug_duration_flag;
     po::options_description desc{"Rate client options"};
     desc.add_options()
         ("debug-duration", po::bool_switch(&debug_duration_flag), "Remove duration limits for threads")
         ("short-lived", po::bool_switch(&short_lived), "Re-use connection for each request")
-        ("no-live-dump", po::bool_switch(&no_live_dump), "Wait for the end of the experiment to dump data")
         ("rate,r", po::value<int>(&rate)->required(), "Start rate")
         ("duration,d", po::value<int>(&duration)->required(), "Duration")
         ("url,u", po::value<std::string>(&url)->required(), "Target URL")
@@ -857,8 +822,6 @@ int main(int argc, char **argv) {
         log_info("Starting client in short lived mode");
         long_lived = false;
     }
-
-    live_dump = no_live_dump? false : true;
 
 #ifdef OP_DEBUG
     workers_pql.reserve(PQL_RESA);
@@ -980,7 +943,7 @@ int main(int argc, char **argv) {
         st->log = new std::thread(
             log_responses,
             req_per_thread, log_memq, &time_end_log,
-            log_dir, label, i, live_dump
+            log_dir, label, i
         );
         pin_thread(st->log->native_handle(), i+2);
         if (long_lived) {
