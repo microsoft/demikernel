@@ -115,7 +115,7 @@ struct RequestState {
     dmtr_qtoken_t pop_token; /** The token associated with reading the response */
 #endif
     bool valid; /** Whether the response was valid */
-    char* const req; /** The actual request */
+    char * const req; /** The actual request */
     size_t req_size; /** Number of Bytes in the request */
     int conn_qd; /** The connection's queue descriptor */
     uint32_t id; /** Request id */
@@ -209,7 +209,11 @@ int log_responses(uint32_t total_requests, int log_memq,
         );
         if (live_dump) {
             l.fh = fopen(reinterpret_cast<const char *>(l.filename), "w");
-            fprintf(l.fh, "TIME\tVALUE\n");
+            if (l.fh) {
+                fprintf(l.fh, "TIME\tVALUE\n");
+            } else {
+                log_error("Could not open log file at %s", l.filename);
+            }
         } else {
             DMTR_OK(dmtr_new_latency(&l.l, name));
         }
@@ -217,11 +221,11 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 #endif
     FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
-    if (f == NULL) {
+    if (f) {
+        fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
+    } else {
         log_error("Could not open log file!!");
-        return 0;
     }
-    fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
 
     uint32_t n_invalid = 0;
     bool expired = false;
@@ -241,18 +245,20 @@ int log_responses(uint32_t total_requests, int log_memq,
             );
 
 #ifdef DMTR_TRACE
-            fprintf(
-                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
-                req->id,
-                since_epoch(req->sending),
-                since_epoch(req->reading),
-                since_epoch(req->completed),
-                req->push_token,
-                req->pop_token
-            );
+            if (f) {
+                fprintf(
+                    f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
+                    req->id,
+                    since_epoch(req->sending),
+                    since_epoch(req->reading),
+                    since_epoch(req->completed),
+                    req->push_token,
+                    req->pop_token
+                );
+            }
 #endif
 
-#ifdef LEGACY_PROFILING
+#ifdef LEGACY_PROFILING //FIXME: check if file handler is NULL
             if (live_dump) {
                 if (long_lived) {
                     fprintf(logs[0].fh, "%lu\t%lu\n",
@@ -908,12 +914,12 @@ int main(int argc, char **argv) {
         /* We loop in case the URI file was not created with the desired amount of requests in mind */
         while (http_requests.size() < total_requests) {
             while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
-                char *req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
+                char * const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
                 memset(req, '\0', MAX_REQUEST_SIZE);
                 uint32_t id = (uint32_t) http_requests.size();
                 memcpy(req, (uint32_t *) &id, sizeof(uint32_t));
                 size_t req_size = snprintf(
-                    req + sizeof(uint32_t), MAX_REQUEST_SIZE,
+                    req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
                     REQ_STR, uri.c_str(), host.c_str()
                 );
                 req_size += sizeof(uint32_t);
@@ -926,11 +932,12 @@ int main(int argc, char **argv) {
     } else {
         /* All requests are the one given to the CLI */
         for (uint32_t i = 0; i < total_requests; ++i) {
-            char* const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
+            char * const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
             memset(req, '\0', MAX_REQUEST_SIZE);
             memcpy(req, (uint32_t *) &i, sizeof(uint32_t));
             size_t req_size = snprintf(
-                req + sizeof(uint32_t), MAX_REQUEST_SIZE, REQ_STR, uri.c_str(), host.c_str()
+                req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
+                REQ_STR, uri.c_str(), host.c_str()
             );
             req_size += sizeof(uint32_t);
             std::unique_ptr<RequestState> req_obj(new RequestState(req, req_size, i));
