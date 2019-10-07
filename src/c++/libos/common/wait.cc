@@ -64,15 +64,19 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, 
                         }
                     }
 #endif
-                    if (ready_offset != NULL)
+                    if (ready_offset != NULL) {
                         *ready_offset = i;
+                    }
+                    if (start_offset != NULL && *start_offset != 0) {
+                        *start_offset = 0;
+                    }
                     return ret;
                 }
             } else {
-                if (start_offset != NULL) {
-                    *start_offset = i;
-                }
                 if (iter++ == WAIT_MAX_ITER) {
+                    if (start_offset != NULL) {
+                        *start_offset = i;
+                    }
                     return EAGAIN;
                 }
             }
