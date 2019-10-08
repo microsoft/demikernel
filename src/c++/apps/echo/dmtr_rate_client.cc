@@ -956,7 +956,7 @@ int main(int argc, char **argv) {
                 host, port, log_memq, &time_end_process,
                 i, debug_duration_flag
             );
-            pin_thread(st->resp->native_handle(), i+9;
+            pin_thread(st->resp->native_handle(), i+9);
 #ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
 #endif
