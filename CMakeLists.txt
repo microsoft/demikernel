@@ -18,12 +18,12 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 set(RELEASE_CFLAGS "-O3 -mtune=intel -DNDEBUG" CACHE STRING "C compiler options for release builds")
-set(CMAKE_C_FLAGS_DEBUG "-Og")
+set(CMAKE_C_FLAGS_DEBUG "-Og -D_FORTIFY_SOURCE -fstack-protector-strong")
 set(CMAKE_C_FLAGS_RELEASE ${RELEASE_CFLAGS})
 set(CMAKE_CXX_FLAGS_RELEASE ${RELEASE_CFLAGS})
 
 # default CFLAGS
-set(COMMON_CFLAGS "-g3 -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs -fvisibility=hidden")
+set(COMMON_CFLAGS "-g3 -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs -fvisibility=hidden")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_CFLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  ${COMMON_CFLAGS} -std=c++11 -D__STDC_LIMIT_MACROS")
 

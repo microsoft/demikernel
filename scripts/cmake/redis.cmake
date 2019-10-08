@@ -13,7 +13,7 @@ function(add_redis REDIS_TARGET LIBOS_TARGET REDIS_SOURCE_DIR)
     if(CMAKE_BUILD_TYPE MATCHES "Rel")
         set(OPT_CFLAGS -O3)
     else(CMAKE_BUILD_TYPE MATCHES "Rel")
-        set(OPT_CFLAGS -O0)
+        set(OPT_CFLAGS "-O0 -D_FORTIFY_SOURCE -fstack-protector-strong")
     endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
     get_property(

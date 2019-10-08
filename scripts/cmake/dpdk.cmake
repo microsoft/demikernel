@@ -27,7 +27,7 @@ set(DPDK_LDFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt)
 if(CMAKE_BUILD_TYPE MATCHES "Rel")
     set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
 else(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd -D_FORTIFY_SOURCE -fstack-protector-strong")
 endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
 if(CMAKE_VERBOSE_MAKEFILE)
