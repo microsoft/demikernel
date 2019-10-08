@@ -440,9 +440,10 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             size_t data_len = rte_pktmbuf_data_len(packet);
             std::unique_ptr<uint8_t[]> packet_to_be_logged;
             if (our_transcript) {
-                uint8_t *p = new uint8_t[data_len];
+                uint8_t * const p = new uint8_t[data_len];
                 DMTR_NOTNULL(ENOMEM, p);
-                rte_memcpy(p, rte_pktmbuf_mtod(packet, uint8_t *), data_len);
+                uint8_t * const q = rte_pktmbuf_mtod(packet, uint8_t *);
+                rte_memcpy(p, q, data_len);
                 packet_to_be_logged.reset(p);
             }
 
@@ -1105,13 +1106,14 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             const uint8_t *bytes = NULL;
             size_t length = 0;
             DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine));
-            // todo: not certain how we get the DPDK packet allocated with the
-            // proper length; the old code didn't do anything.
-            DMTR_TRUE(ENOTSUP, packet->buf_len >= length);
-            DMTR_TRUE(ENOTSUP, 1 == packet->nb_segs);
+
+            // [$DPDK/examples/vhost/virtio_net.c](https://doc.dpdk.org/api/examples_2vhost_2virtio_net_8c-example.html#a20) demonstrates that you have to subtract `RTE_PKTMBUF_HEADROOM` from `struct rte_mbuf::buf_len` to get the maximum data length.
+            DMTR_TRUE(ENOTSUP, length <= packet->buf_len - static_cast<size_t>(RTE_PKTMBUF_HEADROOM));
             rte_memcpy(p, bytes, length);
             packet->data_len = length;
             packet->pkt_len = length;
+            packet->nb_segs = 1;
+            packet->next = NULL;
             our_transmit_thread->enqueue(packet);
             rg0.cancel();
             break;
