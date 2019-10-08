@@ -893,7 +893,7 @@ int main(int argc, char *argv[]) {
     options_description desc{"HTTP server options"};
     desc.add_options()
         ("label", value<std::string>(&label), "experiment label")
-        ("log-dir", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
+        ("log-dir, L", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
         ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers")
         ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
