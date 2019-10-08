@@ -26,7 +26,8 @@ use std::{
 struct TcpPeerState<'a> {
     arp: arp::Peer<'a>,
     assigned_handles: HashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
-    async_work: Rc<RefCell<WhenAny<'a, ()>>>,
+    background_queue: Rc<RefCell<VecDeque<Future<'a, ()>>>>,
+    background_work: Rc<RefCell<WhenAny<'a, ()>>>,
     connections: HashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
     isn_generator: IsnGenerator,
     open_ports: HashSet<ip::Port>,
@@ -64,7 +65,8 @@ impl<'a> TcpPeerState<'a> {
         TcpPeerState {
             arp,
             assigned_handles: HashMap::new(),
-            async_work: Rc::new(RefCell::new(WhenAny::new())),
+            background_queue: Rc::new(RefCell::new(VecDeque::new())),
+            background_work: Rc::new(RefCell::new(WhenAny::new())),
             connections: HashMap::new(),
             isn_generator,
             open_ports: HashSet::new(),
@@ -561,8 +563,9 @@ impl<'a> TcpPeer<'a> {
 
         if self.state.borrow().open_ports.contains(&local_port) {
             if segment.syn && !segment.ack && !segment.rst {
-                let async_work = self.state.borrow().async_work.clone();
-                async_work.borrow_mut().add(
+                let background_work =
+                    self.state.borrow().background_work.clone();
+                background_work.borrow_mut().add(
                     TcpPeerState::new_passive_connection(
                         self.state.clone(),
                         segment,
@@ -608,8 +611,8 @@ impl<'a> TcpPeer<'a> {
             .ack(ack_num)
             .rst();
         let bytes = Rc::new(RefCell::new(segment.encode()));
-        let async_work = self.state.borrow().async_work.clone();
-        async_work
+        let background_work = self.state.borrow().background_work.clone();
+        background_work
             .borrow_mut()
             .add(TcpPeerState::cast(self.state.clone(), bytes));
         Ok(())
@@ -654,8 +657,12 @@ impl<'a> TcpPeer<'a> {
                         .unwrap()
                         .clone();
                     let handle = cxn.borrow().get_handle();
-                    let async_work = state.borrow().async_work.clone();
-                    async_work.borrow_mut().add(
+                    // we cannot insert a new future into `background_work`
+                    // because it may be borrowed already (e.g.
+                    // `advance_clock()`).
+                    let background_queue =
+                        state.borrow().background_queue.clone();
+                    background_queue.borrow_mut().push_back(
                         TcpPeerState::on_connection_established(
                             state.clone(),
                             cxn,
@@ -744,9 +751,19 @@ impl<'a> TcpPeer<'a> {
     }
 
     pub fn advance_clock(&self, now: Instant) {
-        let async_work = self.state.borrow().async_work.clone();
-        let async_work = async_work.borrow();
-        if let Some(result) = async_work.poll(now) {
+        let background_work = self.state.borrow().background_work.clone();
+        let mut background_work = background_work.borrow_mut();
+
+        {
+            let background_queue =
+                self.state.borrow().background_queue.clone();
+            let mut background_queue = background_queue.borrow_mut();
+            while let Some(fut) = background_queue.pop_front() {
+                background_work.add(fut);
+            }
+        }
+
+        if let Some(result) = background_work.poll(now) {
             match result {
                 Ok(_) => (),
                 Err(e) => warn!("background coroutine failed: {:?}", e),
