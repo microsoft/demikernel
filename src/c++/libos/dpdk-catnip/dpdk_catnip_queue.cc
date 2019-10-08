@@ -382,7 +382,9 @@ int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd
 }
 
 dmtr::dpdk_catnip_queue::~dpdk_catnip_queue()
-{}
+{
+    close();
+}
 
 int dmtr::dpdk_catnip_queue::socket(int domain, int type, int protocol) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
@@ -431,8 +433,8 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
             const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
             struct rte_mbuf *packet = tq.front();
-            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
             tq.pop();
+            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
             size_t packets_sent = 0;
             struct rte_mbuf *packets[] = { packet };
             size_t data_len = rte_pktmbuf_data_len(packet);
@@ -452,9 +454,9 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
                     default:
                         DMTR_FAIL(ret);
                     case 0:
+                        rg0.cancel();
                         DMTR_TRUE(ENOTSUP, 1 == packets_sent);
                         // the documentation for `rte_eth_tx_burst()` says that it is responsible for freeing the contents of `packets`.
-                        rg0.cancel();
 #ifdef DMTR_DEBUG
                         std::cerr << "packet sent." << std::endl;
 #endif
@@ -1096,8 +1098,8 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
         }
         case NIP_TRANSMIT: {
             struct rte_mbuf *packet = NULL;
-            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
             DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
+            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
             auto *p = rte_pktmbuf_mtod(packet, uint8_t *);
 
             const uint8_t *bytes = NULL;
