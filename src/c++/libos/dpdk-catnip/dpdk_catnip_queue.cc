@@ -783,11 +783,15 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
         auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
         size_t length = rte_pktmbuf_data_len(packet);
         log_packet(p, length, tv);
+#ifdef DMTR_DEBUG
         int ret = nip_receive_datagram(our_tcp_engine, p, length);
-        rte_pktmbuf_free(packet);
         if (0 != ret) {
             std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
         }
+#else
+        nip_receive_datagram(our_tcp_engine, p, length);
+#endif
+        rte_pktmbuf_free(packet);
     }
 
     return 0;
