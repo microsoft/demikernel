@@ -766,7 +766,7 @@ static void *tcp_worker(void *args) {
 void pin_thread(pthread_t thread, u_int16_t cpu) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(cpu+4, &cpuset);
+    CPU_SET(cpu, &cpuset);
 
     int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
     if (rtn != 0) {
@@ -781,8 +781,8 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split, bo
         worker->whoami = i;
         worker->type = TCP;
 
-        worker->args.filter = ONE_TO_ONE;
-        //tcp_args->filter = RR;
+        //worker->args.filter = ONE_TO_ONE;
+        worker->args.filter = RR;
         //tcp_args->filter = HTTP_REQ_TYPE;
         worker->args.filter_f = filter_http_req;
 
@@ -821,7 +821,7 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split, bo
             log_info("Pinning TCP thread");
             pin_thread(worker->me, worker->core_id);
         } else {
-            pin_thread(worker->me, worker->core_id - 2);
+            pin_thread(worker->me, 2);
             log_info("Not pinning TCP thread");
         }
         tcp_workers.push_back(worker);
@@ -851,7 +851,7 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split, bo
             pin_thread(worker->me, worker->core_id);
         } else {
             log_info("Not pinning HTTP Thread");
-            pin_thread(worker->me, worker->core_id - 2);
+            pin_thread(worker->me, 3);
         }
         http_workers.push_back(worker);
     }

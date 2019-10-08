@@ -16,6 +16,7 @@
 #include <vector>
 #include <unordered_map>
 #include <fstream>
+#include <boost/filesystem.hpp>
 
 #include "common.hh"
 
@@ -946,7 +947,7 @@ int main(int argc, char **argv) {
             req_per_thread, log_memq, &time_end_log,
             log_dir, label, i
         );
-        pin_thread(st->log->native_handle(), i+3);
+        pin_thread(st->log->native_handle(), i+8);
         if (long_lived) {
             /** some book-keeping */
             st->resp = new std::thread(
@@ -955,7 +956,7 @@ int main(int argc, char **argv) {
                 host, port, log_memq, &time_end_process,
                 i, debug_duration_flag
             );
-            pin_thread(st->resp->native_handle(), i+4);
+            pin_thread(st->resp->native_handle(), i+9;
 #ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
 #endif
