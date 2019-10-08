@@ -320,7 +320,6 @@ int dmtr::io_queue_api::poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     switch (ret) {
         default:
             on_poll_failure(qr_out, this);
-            abort();
             DMTR_FAIL(ret);
         case EAGAIN:
         case ECONNABORTED:
