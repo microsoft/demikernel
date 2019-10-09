@@ -1047,6 +1047,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 #endif
         DMTR_OK(t->complete(0, *sga));
+        yield();
     }
 
     return 0;
@@ -1120,6 +1121,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
         // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
+        yield();
 #if DMTR_TRACE
         trace = {
             .token = qt,
