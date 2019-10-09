@@ -508,7 +508,7 @@ static void *http_worker(void *args) {
 }
 
 static int filter_http_req(dmtr_sgarray_t *sga) {
-    return get_request_type((char*) sga->sga_buf);
+    return get_request_type((char*) (sga->sga_buf) + sizeof(uint32_t));
 }
 
 int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
