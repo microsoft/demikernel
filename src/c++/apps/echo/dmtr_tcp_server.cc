@@ -10,14 +10,15 @@
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
-#include <dmtr/wait.h>
-#include <iostream>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <dmtr/libos/mem.h>
+#include <dmtr/sga.h>
+#include <dmtr/wait.h>
+#include <fcntl.h>
+#include <iostream>
 #include <netinet/in.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -139,15 +140,7 @@ int main(int argc, char *argv[])
                 tokens[idx] = token;
                 //fprintf(stderr, "send complete.\n");
 
-                // we haven't got a good solution for communicating how to
-                // free scatter/gather arrays.
-                if (NULL == wait_out.qr_value.sga.sga_buf) {
-                    for (size_t i = 0; i < wait_out.qr_value.sga.sga_numsegs; ++i) {
-                        free(wait_out.qr_value.sga.sga_segs[i].sgaseg_buf);
-                    }
-                } else {
-                    free(wait_out.qr_value.sga.sga_buf);
-                }
+                DMTR_OK(dmtr_sgafree(&wait_out.qr_value.sga));
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
