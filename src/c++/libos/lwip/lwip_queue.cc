@@ -431,7 +431,14 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 }
 
 dmtr::lwip_queue::~lwip_queue()
-{}
+{
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `lwip_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
+}
 
 int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
@@ -599,6 +606,10 @@ int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
 
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    if (!is_connected()) {
+        return 0;
+    }
+
     my_default_dst = boost::none;
     my_bound_src = boost::none;
     return 0;

@@ -19,18 +19,19 @@ class user_thread {
 
     private: int my_error;
     private: std::unique_ptr<queue_type> my_queue;
-    private: coroutine_type::pull_type my_coroutine;
+    private: std::unique_ptr<coroutine_type::pull_type> my_coroutine;
 
     public: user_thread(function_type fun) :
         my_error(EAGAIN),
-        my_queue(new queue_type),
-        my_coroutine([=](yield_type &yield) {
+        my_queue(new queue_type)
+    {
+        my_coroutine.reset(new coroutine_type::pull_type([=](yield_type &yield) {
             my_error = fun(yield, *my_queue);
             if (EAGAIN == my_error) {
                 DMTR_PANIC("User thread function may not return `EAGAIN`.");
             }
-        })
-    {}
+        }));
+    }
 
     private: user_thread(const user_thread &) = delete;
 
@@ -43,7 +44,7 @@ class user_thread {
     }
 
     public: bool done() const {
-        return !(bool)my_coroutine;
+        return !(bool)*my_coroutine;
     }
 
     public: void enqueue(const Value &value) {
@@ -52,7 +53,7 @@ class user_thread {
 
     public: int service() {
         if (!done()) {
-            my_coroutine();
+            (*my_coroutine)();
         }
 
         if (!done()) {

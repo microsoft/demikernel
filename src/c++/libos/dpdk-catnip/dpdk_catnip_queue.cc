@@ -19,7 +19,6 @@
 #include <deque>
 #include <dmtr/annot.h>
 #include <dmtr/cast.h>
-#include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/libos/mem.h>
 #include <dmtr/libos/raii_guard.hh>
@@ -43,13 +42,12 @@ namespace bpo = boost::program_options;
 #define MBUF_CACHE_SIZE         250
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
-#define IP_DEFTTL  64   /* from RFC 1340. */
-#define IP_VERSION 0x40
-#define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
-#define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
-#define TIME_ZEUS_LWIP		1
+//#define DMTR_PROFILE 1
+
+#if DMTR_PROFILE
+#   include <dmtr/latency.h>
+#endif
 
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
@@ -383,7 +381,12 @@ int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd
 
 dmtr::dpdk_catnip_queue::~dpdk_catnip_queue()
 {
-    close();
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `dpdk_catnip_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
 }
 
 int dmtr::dpdk_catnip_queue::socket(int domain, int type, int protocol) {
@@ -436,7 +439,6 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             tq.pop();
             raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
             size_t packets_sent = 0;
-            struct rte_mbuf *packets[] = { packet };
             size_t data_len = rte_pktmbuf_data_len(packet);
             std::unique_ptr<uint8_t[]> packet_to_be_logged;
             if (our_transcript) {
@@ -448,9 +450,9 @@ int dmtr::dpdk_catnip_queue::transmit_thread(transmit_thread_type::yield_type &y
             }
 
             while (0 == packets_sent) {
-                struct timeval tv;
+                struct timeval tv = {};
                 DMTR_OK(gettimeofday(tv));
-                int ret = rte_eth_tx_burst(packets_sent, dpdk_port_id, 0, packets, 1);
+                int ret = rte_eth_tx_burst(packets_sent, dpdk_port_id, 0, &packet, 1);
                 switch (ret) {
                     default:
                         DMTR_FAIL(ret);
@@ -488,10 +490,10 @@ int dmtr::dpdk_catnip_queue::accept_thread(task::thread_type::yield_type &yield,
 
         auto qt = tq.front();
         tq.pop();
-        task *t;
+        task *t = nullptr;
         DMTR_OK(get_task(t, qt));
 
-        io_queue *new_q = NULL;
+        io_queue *new_q = nullptr;
         DMTR_TRUE(EINVAL, t->arg(new_q));
         auto * const new_dcq = dynamic_cast<dpdk_catnip_queue *>(new_q);
         DMTR_NOTNULL(EINVAL, new_dcq);
@@ -593,8 +595,7 @@ int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * c
     my_bound_endpoint = local_endpoint;
     std::cout << "Connecting from " << local_endpoint.sin_addr.s_addr << " to " << saddr_in.sin_addr.s_addr << std::endl;
 
-
-    nip_future_t connect_future;
+    nip_future_t connect_future = {};
     DMTR_OK(nip_tcp_connect(&connect_future, our_tcp_engine, saddr_in.sin_addr.s_addr, saddr_in.sin_port));
 
     my_connect_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
@@ -607,7 +608,9 @@ int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * c
 }
 
 int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_future_t connect_future) {
-    int ret;
+    DMTR_TRUE(ENOTSUP, 0 == my_tcp_connection_handle);
+
+    int ret = -1;
     bool done = false;
     while (!done) {
         ret = nip_tcp_connected(&my_tcp_connection_handle, connect_future);
@@ -627,23 +630,30 @@ int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield
     std::cerr << "connection complete for handle " << my_tcp_connection_handle << "." << std::endl;
 #endif //DMTR_DEBUG
 
+    DMTR_NONZERO(ENOTSUP, my_tcp_connection_handle);
     DMTR_TRUE(ENOTSUP, our_known_connections.find(my_tcp_connection_handle) == our_known_connections.cend());
     our_known_connections[my_tcp_connection_handle] = this;
     start_threads();
 
-    task *t;
+    task *t = nullptr;
     DMTR_OK(get_task(t, qt));
-    DMTR_OK(t->complete(ret));
+    DMTR_OK(t->complete(0));
     return 0;
 }
 
 int dmtr::dpdk_catnip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    if (0 == my_tcp_connection_handle) {
+        return 0;
+    }
+
+    std::cerr << "closing connection " << my_tcp_connection_handle << "..." << std::endl;
     my_bound_endpoint = boost::none;
     our_known_connections.erase(my_tcp_connection_handle);
-    my_tcp_connection_handle = 0;
     my_connect_thread.reset(nullptr);
-    return 0;
+    my_tcp_connection_handle = 0;
+
+    return io_queue::close();
 }
 
 int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
@@ -652,20 +662,20 @@ int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(ENOENT, good());
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
-    task *t;
+    task *t = nullptr;
     DMTR_OK(get_task(t, qt));
-    DMTR_OK(t->complete(push(sga)));
+    DMTR_OK(t->complete(push(sga), sga));
 
     return 0;
 }
 
 int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
-    uint32_t number_of_segments = htonl(sga.sga_numsegs);
+    const uint32_t number_of_segments = htonl(sga.sga_numsegs);
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        auto *segment = &sga.sga_segs[i];
-        auto segment_length = htonl(segment->sgaseg_len);
+        auto * const segment = &sga.sga_segs[i];
+        const auto segment_length = htonl(segment->sgaseg_len);
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
     }
@@ -698,10 +708,10 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
 
         auto qt = tq.front();
         tq.pop();
-        task *t;
+        task *t = nullptr;
         DMTR_OK(get_task(t, qt));
 
-        dmtr_sgarray_t sga;
+        dmtr_sgarray_t sga = {};
         int ret = read_message(sga, buffer, yield);
         // things can fail if the connection has been dropped, so we report
         // why the connection failed if this is the case.
@@ -727,19 +737,22 @@ int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<ui
     }
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-        uint32_t segment_length;
+        uint32_t segment_length = 0;
         ret = tcp_read(segment_length, buffer, yield);
         if (0 != ret) {
             return ret;
         }
 
+        DMTR_NONZERO(EILSEQ, segment_length);
         sga.sga_segs[i].sgaseg_len = segment_length;
-        uint8_t *bytes;
+
+        uint8_t *bytes = nullptr;
         ret = tcp_read(bytes, buffer, segment_length, yield);
         if (0 != ret) {
             return ret;
         }
 
+        DMTR_NOTNULL(EILSEQ, bytes);
         sga.sga_segs[i].sgaseg_buf = bytes;
     }
 
@@ -752,9 +765,8 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
-
     // poll DPDK NIC
-    struct rte_mbuf *packets[our_max_queue_depth];
+    struct rte_mbuf *packets[our_max_queue_depth] = {};
     uint16_t depth = 0;
     DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
     size_t count = 0;
@@ -776,7 +788,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
-    struct timeval tv;
+    struct timeval tv = {};
     DMTR_OK(gettimeofday(tv));
     for (size_t i = 0; i < count; ++i) {
         struct rte_mbuf * const packet = packets[i];
@@ -809,7 +821,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         DMTR_OK(ret);
     }
 
-    task *t;
+    task *t = nullptr;
     DMTR_OK(get_task(t, qt));
 
     switch (t->opcode()) {
@@ -1078,13 +1090,14 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             return 0;
     }
 
+    raii_guard drop_guard(std::bind(nip_drop_event, our_tcp_engine));
     switch (event_code) {
         default:
             std::cerr << "unrecognized catnip event code (" << event_code << ")" << std::endl;
-            break;
+            return 0;
         case NIP_TCP_BYTES_AVAILABLE:
             // this event can be safely ignored.
-            break;
+            return 0;
         case NIP_TCP_CONNECTION_CLOSED: {
             nip_tcp_connection_handle_t handle = 0;
             int error = 0;
@@ -1092,23 +1105,23 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             DMTR_NONZERO(ENOTSUP, handle);
             DMTR_TRUE(ENOENT, our_known_connections.find(handle) != our_known_connections.cend());
             our_known_connections[handle]->close(error);
-            break;
+            return 0;
         }
         case NIP_INCOMING_TCP_CONNECTION: {
             nip_tcp_connection_handle_t handle = 0;
             DMTR_OK(nip_get_incoming_tcp_connection_event(&handle, our_tcp_engine));
             DMTR_NONZERO(ENOTSUP, handle);
             our_incoming_connection_handles.push(handle);
-            break;
+            return 0;
         }
         case NIP_TRANSMIT: {
-            struct rte_mbuf *packet = NULL;
+            struct rte_mbuf *packet = nullptr;
             DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
-            raii_guard rg0(std::bind(::rte_pktmbuf_free, packet));
+            raii_guard pktmbuf_guard(std::bind(::rte_pktmbuf_free, packet));
             auto *p = rte_pktmbuf_mtod(packet, uint8_t *);
 
-            const uint8_t *bytes = NULL;
-            size_t length = 0;
+            const uint8_t *bytes = nullptr;
+            size_t length = SIZE_MAX;
             DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine));
 
             // [$DPDK/examples/vhost/virtio_net.c](https://doc.dpdk.org/api/examples_2vhost_2virtio_net_8c-example.html#a20) demonstrates that you have to subtract `RTE_PKTMBUF_HEADROOM` from `struct rte_mbuf::buf_len` to get the maximum data length.
@@ -1117,15 +1130,12 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             packet->data_len = length;
             packet->pkt_len = length;
             packet->nb_segs = 1;
-            packet->next = NULL;
+            packet->next = nullptr;
             our_transmit_thread->enqueue(packet);
-            rg0.cancel();
-            break;
+            pktmbuf_guard.cancel();
+            return 0;
         }
     }
-
-    DMTR_OK(nip_drop_event(our_tcp_engine));
-    return 0;
 }
 
 int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &length_out, task::thread_type::yield_type &yield) {
@@ -1146,8 +1156,8 @@ int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &leng
 }
 
 int dmtr::dpdk_catnip_queue::tcp_peek(std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
-    const uint8_t *bytes;
-    size_t length;
+    const uint8_t *bytes = nullptr;
+    size_t length = 0;
     int ret = tcp_peek(bytes, length, yield);
     // things can fail if the connection has been dropped, so we don't print
     // anything we're sure until something unexpected has happened.
@@ -1166,7 +1176,7 @@ int dmtr::dpdk_catnip_queue::pop_front(uint32_t &value_out, std::deque<uint8_t> 
     union {
         uint32_t n;
         uint8_t bytes[sizeof(uint32_t)];
-    } u;
+    } u = {};
 
     if (buffer.size() < sizeof(uint32_t)) {
         return ENOMEM;
@@ -1187,7 +1197,7 @@ int dmtr::dpdk_catnip_queue::pop_front(uint8_t *&bytes_out, std::deque<uint8_t> 
         return ENOMEM;
     }
 
-    void *p;
+    void *p = nullptr;
     DMTR_OK(dmtr_malloc(&p, length));
     bytes_out = reinterpret_cast<uint8_t *>(p);
 
@@ -1244,7 +1254,7 @@ int dmtr::dpdk_catnip_queue::log_packet(const uint8_t *bytes, size_t length) {
         return 0;
     }
 
-    struct timeval tv;
+    struct timeval tv = {};
     DMTR_OK(gettimeofday(tv));
     DMTR_OK(log_packet(bytes, length, tv));
     return 0;
@@ -1255,7 +1265,7 @@ int dmtr::dpdk_catnip_queue::log_packet(const uint8_t *bytes, size_t length, con
         return 0;
     }
 
-    int n;
+    int n = -1;
     DMTR_OK(dmtr_sztoi(&n, length));
     pcpp::RawPacket packet(bytes, n, tv, false, pcpp::LINKTYPE_ETHERNET);
     our_transcript->writePacket(packet);
@@ -1284,6 +1294,10 @@ void dmtr::dpdk_catnip_queue::signal_handler(int signo) {
 
 int dmtr::dpdk_catnip_queue::close(int error) {
     DMTR_TRUE(ENOTSUP, good());
+    if (0 == my_tcp_connection_handle) {
+        return ENOTSUP;
+    }
+
     my_connection_status = error;
     DMTR_OK(close());
     return 0;

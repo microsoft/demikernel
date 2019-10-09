@@ -59,13 +59,13 @@ class rdma_queue : public io_queue {
     public: virtual ~rdma_queue();
 
     // network functions
-    public: int socket(int domain, int type, int protocol);
-    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
-    public: int listen(int backlog);
-    public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
-    public: int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
-    public: int close();
+    public: virtual int socket(int domain, int type, int protocol);
+    public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
+    public: virtual int listen(int backlog);
+    public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: virtual int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int close();
 
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);

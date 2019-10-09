@@ -76,7 +76,14 @@ int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 }
 
 dmtr::rdma_queue::~rdma_queue()
-{}
+{
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `rdma_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
+}
 
 int dmtr::rdma_queue::setup_rdma_qp()
 {
@@ -422,7 +429,7 @@ int dmtr::rdma_queue::close()
     //DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
     rdma_id->channel = NULL;
 
-    return 0;
+    return io_queue::close();
 }
 
 int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)

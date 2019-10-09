@@ -46,18 +46,18 @@ class dpdk_catnip_queue : public io_queue {
     public: virtual ~dpdk_catnip_queue();
 
     // network functions
-    public: int socket(int domain, int type, int protocol);
-    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
-    public: int listen(int backlog);
-    public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int newqd);
-    public: int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
-    public: int close();
+    public: virtual int socket(int domain, int type, int protocol);
+    public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
+    public: virtual int listen(int backlog);
+    public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int newqd);
+    public: virtual int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int close();
 
     // data path functions
-    public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
-    public: int pop(dmtr_qtoken_t qt);
-    public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
+    public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
+    public: virtual int pop(dmtr_qtoken_t qt);
+    public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     public: static int initialize_class(int argc, char *argv[]);
     private: static int init_dpdk(int argc, char *argv[]);

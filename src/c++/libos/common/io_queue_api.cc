@@ -156,7 +156,7 @@ int dmtr::io_queue_api::accept(dmtr_qtoken_t &qtok_out, int sockqd) {
     DMTR_OK(get_queue(sockq, sockqd));
 
     int qd = new_qd();
-    dmtr_qtoken_t qt;
+    dmtr_qtoken_t qt = 0;
     DMTR_OK(new_qtoken(qt, sockqd));
     std::unique_ptr<io_queue> q;
     DMTR_OK(sockq->accept(q, qt, qd));
@@ -180,7 +180,7 @@ int dmtr::io_queue_api::connect(dmtr_qtoken_t &qtok_out, int qd, const struct so
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
-    dmtr_qtoken_t qt;
+    dmtr_qtoken_t qt = 0;
     DMTR_OK(new_qtoken(qt, qd));
 
     qtok_out = qt;

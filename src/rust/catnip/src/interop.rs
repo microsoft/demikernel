@@ -199,19 +199,6 @@ pub extern "C" fn nip_drop_event(engine: *mut libc::c_void) -> libc::c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn nip_service_engine(
-    engine: *mut libc::c_void,
-) -> libc::c_int {
-    if engine.is_null() {
-        return libc::EINVAL;
-    }
-
-    let engine = unsafe { &mut *(engine as *mut Engine) };
-    engine.advance_clock(Instant::now());
-    0
-}
-
-#[no_mangle]
 pub extern "C" fn nip_get_transmit_event(
     bytes_out: *mut *const u8,
     length_out: *mut usize,
@@ -569,7 +556,7 @@ pub extern "C" fn nip_tcp_connect(
 #[no_mangle]
 pub extern "C" fn nip_tcp_connected(
     handle_out: *mut u16,
-    future: *mut *mut libc::c_void,
+    future: *mut libc::c_void,
 ) -> libc::c_int {
     if handle_out.is_null() {
         return libc::EINVAL;

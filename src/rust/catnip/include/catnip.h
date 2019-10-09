@@ -30,7 +30,7 @@ typedef enum nip_event_code {
 
 typedef struct nip_icmpv4_error {
     uint8_t *context_bytes;
-    uintptr_t context_length;
+    size_t context_length;
     uint16_t next_hop_mtu;
     uint8_t type;
     uint8_t code;
@@ -38,7 +38,7 @@ typedef struct nip_icmpv4_error {
 
 typedef struct nip_udp_datagram {
     uint8_t *payload_bytes;
-    uintptr_t payload_length;
+    size_t payload_length;
     uint32_t dest_ipv4_addr;
     uint32_t src_ipv4_addr;
     uint16_t dest_port;
@@ -52,11 +52,11 @@ int nip_drop_event(void *engine);
 int nip_get_icmpv4_error_event(nip_icmpv4_error_t *error_out, nip_engine_t engine);
 int nip_get_incoming_tcp_connection_event(nip_tcp_connection_handle_t *handle_out, nip_engine_t engine);
 int nip_get_tcp_connection_closed_event(nip_tcp_connection_handle_t *handle_out, int *error_out, nip_engine_t engine);
-int nip_get_transmit_event(const uint8_t **bytes_out, uintptr_t *length_out, nip_engine_t engine);
+int nip_get_transmit_event(const uint8_t **bytes_out, size_t *length_out, nip_engine_t engine);
 int nip_get_udp_datagram_event(nip_udp_datagram_t *udp_out, nip_engine_t engine);
 int nip_new_engine(nip_engine_t *engine_out);
 int nip_next_event(nip_event_code_t *event_code_out, nip_engine_t engine);
-int nip_receive_datagram(nip_engine_t engine, void *bytes, uintptr_t length);
+int nip_receive_datagram(nip_engine_t engine, void *bytes, size_t length);
 int nip_set_my_ipv4_addr(uint32_t ipv4_addr);
 int nip_set_my_link_addr(uint8_t link_addr[6]);
 int nip_start_logger();
@@ -65,9 +65,9 @@ int nip_tcp_connected(nip_tcp_connection_handle_t *handle_out, nip_future_t futu
 int nip_tcp_get_local_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_get_remote_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_listen(nip_engine_t engine, uint16_t port);
-int nip_tcp_peek(const uint8_t **bytes_out, uintptr_t *length_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
+int nip_tcp_peek(const uint8_t **bytes_out, size_t *length_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_read(nip_engine_t engine, nip_tcp_connection_handle_t handle);
-int nip_tcp_write(nip_engine_t engine, nip_tcp_connection_handle_t handle, void *bytes, size_t length);
+int nip_tcp_write(nip_engine_t engine, nip_tcp_connection_handle_t handle, const void *bytes, size_t length);
 
 #ifdef __cplusplus
 }

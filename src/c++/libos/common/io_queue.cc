@@ -9,7 +9,10 @@
 #include <sstream>
 
 dmtr::io_queue::task::task() :
-    my_error(EAGAIN)
+    my_qr{},
+    my_error(EAGAIN),
+    my_sga_arg{},
+    my_queue_arg(nullptr)
 {}
 
 int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {

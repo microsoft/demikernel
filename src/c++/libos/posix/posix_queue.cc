@@ -331,8 +331,6 @@ int dmtr::posix_queue::creat(const char *pathname, mode_t mode)
     return 0;
 }
 
-
-
 int dmtr::posix_queue::close()
 {
     if (-1 == my_fd) {
@@ -349,7 +347,7 @@ int dmtr::posix_queue::close()
         case -1:
             return errno;
         case 0:
-            return ret;
+            return io_queue::close();
     }
 }
 
