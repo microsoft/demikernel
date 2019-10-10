@@ -17,6 +17,7 @@
 #include <functional>
 #include <thread>
 
+#include "psp.hh"
 #include "common.hh"
 #include "request_parser.h"
 #include "httpops.hh"
@@ -28,126 +29,15 @@
 #include <dmtr/libos/mem.h>
 
 #define MAX_CLIENTS 64
-#define MAX_REQ_STATES 10000000
+
+uint16_t cpu_offset = 3;
 
 bool no_op;
 uint32_t no_op_time;
 
-enum tcp_filters { RR, HTTP_REQ_TYPE, ONE_TO_ONE };
-struct worker_args {
-    tcp_filters filter;
-    std::function<int(dmtr_sgarray_t *)> filter_f;
-    struct sockaddr_in saddr;
-    bool split;
-};
-
-struct RequestState {
-    uint32_t net_qd; /** Used to recall which network queue we should answer on */
-    uint32_t id;
-    dmtr_qtoken_t pop_token;
-    dmtr_qtoken_t push_token;
-    hr_clock::time_point net_receive;
-    hr_clock::time_point http_dispatch;
-    hr_clock::time_point start_http;
-    hr_clock::time_point end_http;
-    hr_clock::time_point http_done;
-    hr_clock::time_point net_send;
-
-    RequestState(uint32_t qfd): net_qd(qfd) {}
-};
-
-enum worker_type { TCP, HTTP };
-class Worker {
-    public:
-        int in_qfd;
-        int out_qfd;
-        struct worker_args args; /* Network args */
-        pthread_t me;
-        uint8_t whoami;
-        uint8_t core_id;
-        enum worker_type type;
-#ifdef LEGACY_PROFILING
-        std::vector<std::pair<uint64_t, uint64_t> > runtimes;
-#endif
-        bool terminate = false;
-#ifdef OP_DEBUG
-        struct poll_q_len pql;
-#endif
-        std::vector<std::unique_ptr<RequestState> > req_states; /* Used by network */
-
-#if defined(LEGACY_PROFILING) || defined(DMTR_TRACE)
-        Worker() {
-#ifdef LEGACY_PROFILING
-            runtimes.reserve(MAX_REQ_STATES);
-#endif
-#ifdef DMTR_TRACE
-            req_states.reserve(MAX_REQ_STATES);
-#endif
-        }
-#endif
-};
-
 std::vector<Worker *> http_workers;
 std::vector<Worker *> tcp_workers;
-
 std::string label, log_dir;
-#ifdef LEGACY_PROFILING
-void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
-    log_debug("Dumping latencies for worker %d on core %d\n", worker.whoami, worker.core_id);
-    char filename[MAX_FILE_PATH_LEN];
-    FILE *f = NULL;
-
-    std::string wtype;
-    if (worker.type == TCP) {
-        wtype = "network";
-    } else if (worker.type == HTTP) {
-        wtype = "http";
-    }
-
-    snprintf(filename, MAX_FILE_PATH_LEN, "%s/%s_%s-runtime-%d",
-             log_dir.c_str(), label.c_str(), wtype.c_str(), worker.core_id);
-    f = fopen(filename, "w");
-    if (f) {
-        fprintf(f, "TIME\tVALUE\n");
-        for (auto &l: worker.runtimes) {
-            fprintf(f, "%ld\t%ld\n", l.first, l.second);
-        }
-        fclose(f);
-    } else {
-        log_error("Failed to open %s for dumping latencies: %s", filename, strerror(errno));
-    }
-}
-#endif
-
-void dump_traces(Worker &w, std::string log_dir, std::string label) {
-    log_debug("Dumping traces for worker %d on core %d\n", w.whoami, w.core_id);
-    char filename[MAX_FILE_PATH_LEN];
-    FILE *f = NULL;
-
-    snprintf(filename, MAX_FILE_PATH_LEN, "%s/%s-traces-%d",
-             log_dir.c_str(), label.c_str(), w.core_id);
-    f = fopen(filename, "w");
-    if (f) {
-        fprintf(
-            f,
-            "REQ_ID\tNET_RECEIVE\tHTTP_DISPATCH\tSTART_HTTP\tEND_HTTP\tHTTP_DONE\tNET_SEND\tPUSH_TOKEN\tPOP_TOKEN\n"
-        );
-        for (auto &r: w.req_states) {
-            fprintf(
-                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
-                r->id,
-                since_epoch(r->net_receive), since_epoch(r->http_dispatch),
-                since_epoch(r->start_http), since_epoch(r->end_http),
-                since_epoch(r->http_done), since_epoch(r->net_send),
-                r->push_token, r->pop_token
-            );
-            r.reset(); //release ownership + calls destructor
-        }
-        fclose(f);
-    } else {
-        log_error("Failed to open %s for dumping traces: %s", filename, strerror(errno));
-    }
-}
 
 void sig_handler(int signo) {
     printf("Entering signal handler\n");
@@ -162,29 +52,6 @@ void sig_handler(int signo) {
         }
     }
     printf("Exiting signal handler\n");
-}
-
-int match_filter(std::string message) {
-    if (message.find("\r\n") != std::string::npos) {
-        std::string request_line = message.substr(0, message.find("\r\n"));
-        size_t next = 0;
-        size_t last = 0;
-        int i = 1;
-        while ((next = request_line.find(' ', last)) != std::string::npos) {
-            if (i == 3) {
-                std::string http = request_line.substr(last, next-last);
-                if (http.find("HTTP") != std::string::npos) {
-                    //that looks like an HTTP request line
-                    printf("Got an HTTP request: %s\n", request_line.c_str());
-                    return 1;
-                }
-                return 0;
-            }
-            last = next + 1;
-            ++i;
-        }
-    }
-    return 0;
 }
 
 //FIXME: dirty hardcoded null body
@@ -303,7 +170,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     }
 #endif
 
-    std::unique_ptr<RequestState> req(reinterpret_cast<RequestState *>(
+    std::unique_ptr<Request> req(reinterpret_cast<Request *>(
         wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
     ));
     req->start_http = take_time();
@@ -323,8 +190,8 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
         }
 #endif
         req->end_http = take_time();
-        /* Strip RequestState from sga if needed */
-        if (me->type == TCP) {
+        /* Strip Request from sga if needed */
+        if (me->type == NET) {
             wait_out.qr_value.sga.sga_numsegs = 1;
             me->req_states.push_back(std::move(req));
         }
@@ -334,7 +201,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                 break;
             }
         }
-        if (me->type == TCP) {
+        if (me->type == NET) {
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
         }
         return 0;
@@ -391,7 +258,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                 }
             }
 
-            if (me->type == TCP) {
+            if (me->type == NET) {
                 me->req_states.push_back(std::move(req));
                 free(resp_sga.sga_segs[0].sgaseg_buf);
             }
@@ -455,9 +322,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     }
 
     /* If we are called as part of a HTTP worker, the next component (network) will need
-     * the buffer for sending on the wire. Otherwise -- if called as part of TCP
+     * the buffer for sending on the wire. Otherwise -- if called as part of NET
      * work -- we need to free now.*/
-    if (me->type == TCP) {
+    if (me->type == NET) {
         me->req_states.push_back(std::move(req));
         free(response);
     }
@@ -465,11 +332,6 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     return 0;
 }
 
-/**
- *FIXME: this function purposefully format wrongly dmtr_sgarray_t. (I think.)
- *       It is ok because it is a memory queue, and we are both sending and reading.
- *TODO: make http parser into a Worker class member
- */
 static void *http_worker(void *args) {
     Worker *me = (Worker *) args;
     std::cout << "Hello I am an HTTP worker." << std::endl;
@@ -538,10 +400,12 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             log_debug(
                 "received new request on queue %d: %s\n",
                 wait_out.qr_qd,
-                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+                reinterpret_cast<char *>(
+                    wait_out.qr_value.sga.sga_segs[0].sgaseg_buf) + sizeof(uint32_t
+                )
             );
             /* This is a new request */
-            std::unique_ptr<RequestState> req(new RequestState(wait_out.qr_qd));
+            std::unique_ptr<Request> req(new Request(wait_out.qr_qd));
             req->net_receive = start;
             req->pop_token = token;
 
@@ -584,7 +448,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 );
 #endif
                 req->http_dispatch = take_time();
-                /** Set RequestState obj last due to release */
+                /** Set Request obj last due to release */
                 req_sga.sga_segs[1].sgaseg_len = sizeof(req);
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
@@ -599,12 +463,12 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 /* Enable reading from HTTP result queue */
                 DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
                 tokens.push_back(token);
-                /* Re-enable TCP queue for reading */
+                /* Re-enable NET queue for reading */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
             } else {
                 req->http_dispatch = take_time();
-                /* Append RequestState */
+                /* Append Request */
                 wait_out.qr_value.sga.sga_numsegs = 2;
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_len = sizeof(req);
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
@@ -615,7 +479,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                     std::pair<long int, long int>(since_epoch(start), ns_diff(start, end))
                 );
 #endif
-                /* Re-enable TCP queue for reading */
+                /* Re-enable NET queue for reading */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
             }
@@ -627,7 +491,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
             );
 
-            std::unique_ptr<RequestState> req(reinterpret_cast<RequestState *>(
+            std::unique_ptr<Request> req(reinterpret_cast<Request *>(
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
             ));
             req->http_done = take_time();
@@ -662,7 +526,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             );
 #endif
 
-            /* Mask RequestState from sga */
+            /* Mask Request from sga */
             wait_out.qr_value.sga.sga_numsegs = 1;
 
             /* Answer the client */
@@ -670,7 +534,8 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             DMTR_OK(dmtr_push(&token, req->net_qd, &wait_out.qr_value.sga));
             req->push_token = token;
 
-            /* we have to wait because we can't free before sga is sent */
+            //FIXME we don't have to wait.
+            // We can free when dmtr_wait returns that the push was done.
             while (dmtr_wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     return 0;
@@ -753,11 +618,10 @@ static void *tcp_worker(void *args) {
     pthread_exit(NULL);
 }
 
-//FIXME: hardcoded offset
 void pin_thread(pthread_t thread, u_int16_t cpu) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(cpu+4, &cpuset);
+    CPU_SET(cpu, &cpuset);
 
     int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
     if (rtn != 0) {
@@ -766,11 +630,11 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
 }
 
 int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
-    /* Create TCP worker threads */
+    /* Create NET worker threads */
     for (int i = 0; i < n_tcp_workers; ++i) {
         Worker *worker = new Worker();
         worker->whoami = i;
-        worker->type = TCP;
+        worker->type = NET;
 
         worker->args.filter = ONE_TO_ONE;
         //tcp_args->filter = RR;
@@ -797,7 +661,7 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
             address += i*2;
             address = htonl(address);
             saddr.sin_addr.s_addr = address;
-            log_info("TCP worker %d set to listen on %s:%d", i, inet_ntoa(saddr.sin_addr), port);
+            log_info("NET worker %d set to listen on %s:%d", i, inet_ntoa(saddr.sin_addr), port);
         }
         saddr.sin_port = htons(port);
 
@@ -807,7 +671,7 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &tcp_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        worker->core_id = i + 1;
+        worker->core_id = i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
         tcp_workers.push_back(worker);
     }
@@ -830,7 +694,7 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker)) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-        worker->core_id = n_tcp_workers + i + 1;
+        worker->core_id = n_tcp_workers + i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
         http_workers.push_back(worker);
     }
@@ -842,7 +706,7 @@ int no_pthread_work_setup() {
     Worker *worker = new Worker();
     worker->whoami = 0;
     worker->args.split = false;
-    worker->type = TCP;
+    worker->type = NET;
 
     /* Define which NIC this thread will be using */
     struct sockaddr_in saddr = {};
@@ -854,7 +718,7 @@ int no_pthread_work_setup() {
         /* We increment the base IP (given for worker #1) */
         const char *s = boost::get(server_ip_addr).c_str();
         saddr.sin_addr.s_addr = inet_addr(s);
-        log_info("TCP worker set to listen on %s:%d", inet_ntoa(saddr.sin_addr), port);
+        log_info("NET worker set to listen on %s:%d", inet_ntoa(saddr.sin_addr), port);
     }
     saddr.sin_port = htons(port);
     worker->args.saddr = saddr;
@@ -874,7 +738,7 @@ int main(int argc, char *argv[]) {
         ("label", value<std::string>(&label), "experiment label")
         ("log-dir, L", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
         ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers")
-        ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num TCP workers")
+        ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num NET workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
