@@ -426,11 +426,16 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 } else if (me->args.filter == ONE_TO_ONE) {
                     worker_idx = me->whoami;
                 } else {
-                    log_error("Non implemented TCP filter, falling back to RR");
+                    log_error("Non implemented NET filter, falling back to RR");
                     worker_idx = num_rcvd % http_workers.size();
                 }
-                log_debug("TCP worker %d sending request to HTTP worker %d",
-                          me->whoami, worker_idx);
+                log_debug("NET worker %d sending request %s to HTTP worker %d\n",
+                       me->whoami,
+                       reinterpret_cast<char *>(
+                           wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+                       ) + sizeof(uint32_t),
+                       worker_idx
+                );
 
                 dmtr_sgarray_t req_sga;
                 req_sga.sga_numsegs = 2;
