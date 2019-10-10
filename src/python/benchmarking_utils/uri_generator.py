@@ -5,6 +5,7 @@ import numpy as np
 import scipy.special
 import random
 import os.path
+import pickle
 
 webserver_root = '/media/wiki/'
 
@@ -62,7 +63,9 @@ regex_strengths_bins = [1,2,3,4,5,6,7,8,9,10]
 def draw_elements(zalpha, array, n_elems):
     elements = []
     z = 1.0 / scipy.special.zeta(zalpha)
+    print('z is {} (zalpha={})'.format(z, zalpha))
     p = [z / i**zalpha for i in range(1, len(array)+1)]
+    print('first 20 probas: {}'.format(p[:20]))
     for n in range(0, n_elems):
         r_key = 0.0
         # random()'s range is [0.0, 1.0)
@@ -94,7 +97,7 @@ def gen_regex_requests(n_req, zalpha):
         maxi = max(regex_strengths_bins) - 1
         strengths = np.random.randint(mini, maxi, size=n_req, dtype='i')
     else:
-        strengths = draw_elements(zalpha, regex_strengths_bin, n_req)
+        strengths = draw_elements(zalpha, regex_strengths_bins, n_req)
 
     # Generate URIS accordingly
     regex_uris = []
@@ -104,28 +107,78 @@ def gen_regex_requests(n_req, zalpha):
 
     return np.array(regex_uris)
 
-def gen_file_requests(n_req, zalpha, list_file, sort=False, ascending=True):
-    files = []
-    with open(list_file, 'r') as f:
-        files = np.array(f.read().splitlines())
-    if len(files) == 0:
-        log_fatal('{} was (likely) empty'.format(list_file))
+def get_files(list_file, sort=False, ascending=False):
+    filename = list_file + '.pkl'
+    files_and_sizes = []
+    if not os.path.isfile(filename):
+        files = []
+        with open(list_file, 'r') as f:
+            files = np.array(f.read().splitlines())
+        if len(files) == 0:
+            log_fatal('{} was (likely) empty'.format(list_file))
 
-    files = [(f, os.path.getsize(webserver_root + f)) for f in files]
-    if sort:
-        files.sort(key=lambda f: f[1], reverse=(not ascending))
+        for f in files:
+            try:
+                size = os.path.getsize(webserver_root + f)
+                if size > 0:
+                    files_and_sizes.append((f, size))
+            except OSError as e:
+                print('Could not get size for {}: {}'.format(f, repr(e)))
+
+        with open(filename, 'wb') as f:
+            pickle.dump(files_and_sizes, f);
     else:
-        random.shuffle(files)
+        with open(filename, 'rb') as f:
+            files_and_sizes = pickle.load(f)
+
+    if sort:
+        files_and_sizes.sort(key=lambda f: f[1], reverse=(not ascending))
+    else:#XXX untested
+        random.shuffle(files_and_sizes)
+
+    return [f[0] for f in files_and_sizes]
+
+def gen_file_requests_tweak(n_req, zalpha, list_file):
+    files = get_files(list_file, sort=False)
+    sorted_files = get_files(list_file, sort=True)
+    print('Generating 90% zipf popular + 10% unpopular (zalpha={})'.format(zalpha))
+
+    popular_files = draw_elements(zalpha, files, int(n_req*0.9))
+    unpopular_files = draw_elements(zalpha, sorted_files, int(n_req*0.1))
+    print('Selected popular URIS:')
+    print_file_uris_stats(popular_files)
+    print('Selected unpopular URIS:')
+    print_file_uris_stats(unpopular_files)
+
+    return popular_files + unpopular_files
+
+def gen_file_requests(n_req, zalpha, list_file):
+    files = get_files(list_file)
 
     selected_files_uris = []
     if zalpha == -1:
         m = len(files) - 1
         idx = np.random.randint(0, m, size=n_req, dtype='i')
         selected_files_uris = [files[i][0] for i in idx]
-
     else:
         selected_files_uris = draw_elements(zalpha, [f[0] for f in files], n_req)
+        print_file_uris_stats(selected_files_uris)
+
     return selected_files_uris
+
+def print_file_uris_stats(uris):
+    print('num URIs: {}'.format(len(uris)))
+    print('num unique requests: {}'.format(len(set(uris))))
+    sizes = []
+    for uri in set(uris):
+        try:
+            sizes.append(os.path.getsize(webserver_root + uri))
+        except OSError as e:
+            print('Could not get size for {}: {}'.format(uri, repr(e)))
+
+    print('total size for unique requests: {}'.format(sum(sizes)))
+    print('min size for unique requests: {}'.format(min(sizes)))
+    print('max size for unique requests: {}'.format(max(sizes)))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -143,6 +196,9 @@ if __name__ == '__main__':
                         dest='regex_zalpha', default=-1)
     parser.add_argument('--html-files-list', type=str, help='File holding html pages to request',
                         dest='html_files_list', default='./')
+    parser.add_argument('--tweak-html', action='store_true',
+                        help='Use _tweak function to generate html uris',
+                        dest='html_tweak', default=False)
 
     args = parser.parse_args()
 
@@ -156,9 +212,9 @@ if __name__ == '__main__':
             args.html_ratio, args.regex_ratio
         ))
     if args.regex_zalpha > -1 and args.regex_zalpha < 1:
-        log_fatal('Zipf alpha must be greater than 1 (regex zalpha: {})'.format(args.regex_zalpha))
+        log_fatal('Zipf alpha must be greater than 0 (regex zalpha: {})'.format(args.regex_zalpha))
     if args.html_zalpha > -1 and args.html_zalpha < 1:
-        log_fatal('Zipf alpha must be greater than 1 (html zalpha: {})'.format(args.html_zalpha))
+        log_fatal('Zipf alpha must be greater than 0 (html zalpha: {})'.format(args.html_zalpha))
 
     # Generate regex requests
     if args.regex_ratio > 0:
@@ -170,14 +226,12 @@ if __name__ == '__main__':
     # Generate file requests
     if args.html_ratio > 0:
         n_file_requests = int(args.n_requests * args.html_ratio)
-        file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+        if args.html_tweak:
+            file_requests = gen_file_requests_tweak(n_file_requests, args.html_zalpha, args.html_files_list)
+        else:
+            file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
     else:
         file_requests = np.array([])
-
-    # Generate file requests
-    if args.html_ratio > 0:
-        n_file_requests = int(args.n_requests * args.html_ratio)
-        file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
 
     all_requests = np.concatenate([regex_requests, file_requests])
     random.shuffle(all_requests)
