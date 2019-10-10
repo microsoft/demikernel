@@ -120,7 +120,7 @@ struct RequestState {
     int conn_qd; /** The connection's queue descriptor */
     uint32_t id; /** Request id */
 
-    RequestState(char* const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
+    RequestState(char * const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
     //~RequestState() { free(req); }
 };
 
@@ -275,7 +275,6 @@ int log_responses(uint32_t total_requests, int log_memq,
                 log_warn("Logger's %d memory queue returned: %d", my_idx, status);
             } else {
                 new_op = false;
-                continue;
             }
         }
 
@@ -664,6 +663,9 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         int idx;
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         hr_clock::time_point op_time = take_time();
+        if (status == EAGAIN) {
+            continue;
+        }
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
@@ -743,9 +745,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 tokens.push_back(token);
             }
         } else {
-            if (status == EAGAIN) {
-                continue;
-            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
         }
