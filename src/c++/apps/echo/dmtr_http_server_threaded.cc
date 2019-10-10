@@ -591,20 +591,20 @@ static void *tcp_worker(void *args) {
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+        if (status == EAGAIN) {
+            continue;
+        }
+        token = tokens[idx];
+        tokens.erase(tokens.begin()+idx);
         if (status == 0) {
 #ifdef OP_DEBUG
             update_pql(tokens.size(), &me->pql);
 #endif
-            token = tokens[idx];
-            tokens.erase(tokens.begin()+idx);
             tcp_work(
                 http_q_pending, clients_in_waiting, wait_out,
                 num_rcvd, tokens, token, state, me, lqd
             );
         } else {
-            if (status == EAGAIN) {
-                continue;
-            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
                 log_debug("An accept task failed with connreset or aborted??");
