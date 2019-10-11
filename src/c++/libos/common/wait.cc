@@ -9,7 +9,7 @@
 #include <dmtr/fail.h>
 #include <dmtr/libos.h>
 
-//#define DMTR_PROFILE 1
+#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 #   include <dmtr/latency.h>

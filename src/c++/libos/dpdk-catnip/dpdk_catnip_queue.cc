@@ -43,7 +43,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 //#define DMTR_DEBUG 1
-//#define DMTR_PROFILE 1
+#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 #   include <dmtr/latency.h>
