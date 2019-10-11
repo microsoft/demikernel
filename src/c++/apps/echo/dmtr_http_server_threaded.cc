@@ -35,21 +35,14 @@ uint16_t cpu_offset = 3;
 bool no_op;
 uint32_t no_op_time;
 
-std::vector<Worker *> http_workers;
-std::vector<Worker *> tcp_workers;
 std::string label, log_dir;
 
+Psp psp;
 void sig_handler(int signo) {
     printf("Entering signal handler\n");
-    for (auto &w: tcp_workers) {
-        if (w->me > 0) {
-            w->terminate = true;
-        }
-    }
-    for (auto &w: http_workers) {
-        if (w->me > 0) {
-            w->terminate = true;
-        }
+    for (auto &w: psp.workers) {
+        log_info("Scheduling worker %d to terminate", w->whoami);
+        w->terminate = true;
     }
     printf("Exiting signal handler\n");
 }
@@ -366,16 +359,25 @@ static void *http_worker(void *args) {
     }
 
     free(state);
+    dmtr_close(me->in_qfd);
+    dmtr_close(me->out_qfd);
     pthread_exit(NULL);
 }
 
-static int filter_http_req(dmtr_sgarray_t *sga) {
-    return get_request_type((char*) (sga->sga_buf) + sizeof(uint32_t));
+void check_availability(enum req_type type, std::vector<std::shared_ptr<Worker> > &workers) {
+    if (workers.empty()) {
+        log_error(
+            "%d request given to HTTP_REQ_TYPE dispatch policy,"
+            " but no such workers are to be found",
+            type
+        );
+        exit(1);
+    }
 }
 
-int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
-             uint64_t &num_rcvd, std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
+             std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, Worker *me, int lqd) {
     hr_clock::time_point start = take_time();
     if (wait_out.qr_qd == lqd) {
@@ -404,37 +406,78 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf) + sizeof(uint32_t
                 )
             );
+            /*
+            uint32_t * const ridp =
+                reinterpret_cast<uint32_t *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+            fprintf(stdout, "POPED %d/%lu\n", *ridp, token);
+            fflush(stdout);
+            */
             /* This is a new request */
             std::unique_ptr<Request> req(new Request(wait_out.qr_qd));
             req->net_receive = start;
             req->pop_token = token;
 
-            num_rcvd++;
+            me->num_rcvd++;
             /*
-            if (num_rcvd % 100 == 0) {
-                log_info("received: %d requests\n", num_rcvd);
+            if (me->num_rcvd % 1000 == 0) {
+                log_info("received: %d requests\n", me->num_rcvd);
             }
             */
             if (me->args.split) {
                 /* Load balance incoming requests among HTTP workers */
-                int worker_idx;
-                if (me->args.filter == RR) {
-                    worker_idx = num_rcvd % http_workers.size();
-                } else if (me->args.filter == HTTP_REQ_TYPE) {
-                    //FIXME: this won't handle well multiple instances of the same worker type
-                    worker_idx = me->args.filter_f(&wait_out.qr_value.sga) % http_workers.size();
-                } else if (me->args.filter == ONE_TO_ONE) {
-                    worker_idx = me->whoami;
+                std::shared_ptr<Worker> dest_worker;
+                if (me->args.dispatch_p == RR) {
+                    dest_worker = psp.http_workers[me->num_rcvd % psp.http_workers.size()];
+                } else if (me->args.dispatch_p == HTTP_REQ_TYPE) {
+                    std::string req_str(reinterpret_cast<const char *>(
+                        wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+                    ) +  sizeof(uint32_t));
+                    enum req_type type = me->args.dispatch_f(req_str);
+                    size_t index;
+                    switch (type) {
+                        default:
+                        case ALL:
+                        case UNKNOWN:
+                            //TODO handle failure
+                            log_error("Unknown request type");
+                            break;
+                        case REGEX:
+                            check_availability(type, psp.regex_workers);
+                            index = me->type_counts[REGEX] % psp.regex_workers.size();
+                            dest_worker = psp.regex_workers[index];
+                            me->type_counts[REGEX]++;
+                            break;
+                        case PAGE:
+                            check_availability(type, psp.page_workers);
+                            index = me->type_counts[PAGE] % psp.page_workers.size();
+                            dest_worker = psp.page_workers[index];
+                            me->type_counts[PAGE]++;
+                            break;
+                        case POPULAR_PAGE:
+                            check_availability(type, psp.popular_page_workers);
+                            index = me->type_counts[POPULAR_PAGE] % psp.popular_page_workers.size();
+                            dest_worker = psp.popular_page_workers[index];
+                            me->type_counts[POPULAR_PAGE]++;
+                            break;
+                        case UNPOPULAR_PAGE:
+                            check_availability(type, psp.unpopular_page_workers);
+                            index = me->type_counts[UNPOPULAR_PAGE] % psp.unpopular_page_workers.size();
+                            dest_worker = psp.unpopular_page_workers[index];
+                            me->type_counts[UNPOPULAR_PAGE]++;
+                            break;
+                    }
+                } else if (me->args.dispatch_p == ONE_TO_ONE) {
+                    dest_worker = psp.workers[me->whoami];
                 } else {
-                    log_error("Non implemented NET filter, falling back to RR");
-                    worker_idx = num_rcvd % http_workers.size();
+                    log_error("Non implemented network dispatch policy, falling back to RR");
+                    dest_worker = psp.http_workers[me->num_rcvd % psp.http_workers.size()];
                 }
                 log_debug("NET worker %d sending request %s to HTTP worker %d\n",
                        me->whoami,
                        reinterpret_cast<char *>(
                            wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                        ) + sizeof(uint32_t),
-                       worker_idx
+                       dest_worker->whoami
                 );
 
                 dmtr_sgarray_t req_sga;
@@ -443,7 +486,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 req_sga.sga_segs[0].sgaseg_buf = wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
                 req_sga.sga_segs[0].sgaseg_len = wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
 
-                http_q_pending.push_back(http_workers[worker_idx]->out_qfd);
+                http_q_pending.push_back(dest_worker->out_qfd);
                 clients_in_waiting[wait_out.qr_qd] = true;
 
 #ifdef LEGACY_PROFILING
@@ -457,8 +500,8 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 req_sga.sga_segs[1].sgaseg_len = sizeof(req);
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
-                DMTR_OK(dmtr_push(&token, http_workers[worker_idx]->in_qfd, &req_sga));
-                //XXX do we need to wait for push to happen?
+                DMTR_OK(dmtr_push(&token, dest_worker->in_qfd, &req_sga));
+                //FIXME we don't need to wait here.
                 while (dmtr_wait(NULL, token) == EAGAIN) {
                     if (me->terminate) {
                         return 0;
@@ -466,7 +509,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                     continue;
                 }
                 /* Enable reading from HTTP result queue */
-                DMTR_OK(dmtr_pop(&token, http_workers[worker_idx]->out_qfd));
+                DMTR_OK(dmtr_pop(&token, dest_worker->out_qfd));
                 tokens.push_back(token);
                 /* Re-enable NET queue for reading */
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
@@ -502,7 +545,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             req->http_done = take_time();
 
             /** The client should still be "in the wait".
-             * (Likely counter example: the connection was closed by the client
+             * (Likely counter example: the connection was closed by the client)
              */
             if (clients_in_waiting[req->net_qd] == false) {
                 /* Otherwise ignore this message and fetch the next one */
@@ -546,8 +589,8 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                     return 0;
                 }
             }
-            me->req_states.push_back(std::move(req));
             log_debug("Answered the client on queue %d", req->net_qd);
+            me->req_states.push_back(std::move(req));
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
             wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
         }
@@ -555,7 +598,7 @@ int tcp_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
     return 0;
 }
 
-static void *tcp_worker(void *args) {
+static void *net_worker(void *args) {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         std::cout << "\ncan't ignore SIGPIPE\n";
     std::cout << "Hello I am a network worker." << std::endl;
@@ -577,11 +620,10 @@ static void *tcp_worker(void *args) {
     dmtr_listen(lqd, 100); //XXX what is a good backlog size here?
     dmtr_accept(&token, lqd);
     tokens.push_back(token);
-    std::vector<int> http_q_pending; //FIXME reserve memory
-    //Used handle spuriously closed connections
+    std::vector<int> http_q_pending;
+    http_q_pending.reserve(1024);
     std::vector<bool> clients_in_waiting;
     clients_in_waiting.reserve(MAX_CLIENTS);
-    uint64_t num_rcvd = 0;
     int start_offset = 0;
     while (1) {
         if (me->terminate) {
@@ -600,9 +642,9 @@ static void *tcp_worker(void *args) {
 #ifdef OP_DEBUG
             update_pql(tokens.size(), &me->pql);
 #endif
-            tcp_work(
+            net_work(
                 http_q_pending, clients_in_waiting, wait_out,
-                num_rcvd, tokens, token, state, me, lqd
+                tokens, token, state, me, lqd
             );
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
@@ -613,7 +655,7 @@ static void *tcp_worker(void *args) {
                 log_debug("Removing closed client connection from answerable list");
                 clients_in_waiting[wait_out.qr_qd] = false;
             }
-            tokens.erase(tokens.begin()+idx);
+            printf("closing pseudo connection on %d", wait_out.qr_qd);
             dmtr_close(wait_out.qr_qd);
         }
     }
@@ -634,23 +676,17 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
+int work_setup(Psp &psp, bool split,
+               u_int16_t n_net_workers, u_int16_t n_http_workers, u_int16_t n_regex_workers,
+               u_int16_t n_page_workers, u_int16_t n_popular_page_workers, u_int16_t n_unpopular_page_workers) {
     /* Create NET worker threads */
-    for (int i = 0; i < n_tcp_workers; ++i) {
-        Worker *worker = new Worker();
+    for (int i = 0; i < n_net_workers; ++i) {
+        std::shared_ptr<Worker> worker(new Worker());
         worker->whoami = i;
         worker->type = NET;
 
-        worker->args.filter = ONE_TO_ONE;
-        //tcp_args->filter = RR;
-        //tcp_args->filter = HTTP_REQ_TYPE;
-        worker->args.filter_f = filter_http_req;
-
-        if (worker->args.filter == ONE_TO_ONE && n_tcp_workers < n_http_workers) {
-            log_error("Cannot set 1:1 workers mapping with %d tcp workers and %d http workers",
-                      n_tcp_workers, n_http_workers);
-            exit(1);
-        }
+        worker->args.dispatch_p = psp.net_dispatch_policy;
+        worker->args.dispatch_f = psp.net_dispatch_f;
 
         /* Define which NIC this thread will be using */
         struct sockaddr_in saddr = {};
@@ -673,42 +709,81 @@ int work_setup(u_int16_t n_tcp_workers, u_int16_t n_http_workers, bool split) {
         worker->args.saddr = saddr; // Pass by copy
         worker->args.split = split;
 
-        if (pthread_create(&worker->me, NULL, &tcp_worker, (void *) worker)) {
+        if (pthread_create(&worker->me, NULL, &net_worker, (void *) worker.get())) {
             log_error("pthread_create error: %s", strerror(errno));
         }
         worker->core_id = i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
-        tcp_workers.push_back(worker);
+        psp.workers.push_back(worker);
     }
 
     if (!split) {
-        return 1;
+        return 0;
     }
 
-    /* Create http worker threads */
-    for (int i = 0; i < n_http_workers; ++i) {
-        Worker *worker = new Worker();
-        worker->type = HTTP;
-        worker->me = -1;
-        worker->in_qfd = -1;
-        worker->out_qfd = -1;
-        worker->whoami = n_tcp_workers + i;
-        DMTR_OK(dmtr_queue(&worker->in_qfd));
-        DMTR_OK(dmtr_queue(&worker->out_qfd));
-
-        if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker)) {
-            log_error("pthread_create error: %s", strerror(errno));
+    if (n_http_workers > 0) {
+        for (int i = 0; i < n_http_workers; ++i) {
+            uint16_t index = n_net_workers + i;
+            create_http_worker(psp, true, ALL, index);
         }
-        worker->core_id = n_tcp_workers + i + cpu_offset;
-        pin_thread(worker->me, worker->core_id);
-        http_workers.push_back(worker);
+    } else {
+        for (int i = 0; i < n_regex_workers; ++i) {
+            uint16_t index = n_net_workers + i;
+            psp.regex_workers.push_back(
+                create_http_worker(psp, true, REGEX, index)
+            );
+        }
+        for (int i = 0; i < n_page_workers; ++i) {
+            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            psp.page_workers.push_back(
+                create_http_worker(psp, true, PAGE, index)
+            );
+        }
+        for (int i = 0; i < n_popular_page_workers; ++i) {
+            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            psp.popular_page_workers.push_back(
+                create_http_worker(psp, true, POPULAR_PAGE, index)
+            );
+        }
+        for (int i = 0; i < n_unpopular_page_workers; ++i) {
+            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            psp.unpopular_page_workers.push_back(
+                create_http_worker(psp, true, UNPOPULAR_PAGE, index)
+            );
+        }
     }
 
-    return 1;
+    return 0;
 }
 
-int no_pthread_work_setup() {
-    Worker *worker = new Worker();
+std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index) {
+    std::shared_ptr<Worker> worker(new Worker());
+    worker->type = HTTP;
+    worker->me = -1;
+    worker->in_qfd = -1;
+    worker->out_qfd = -1;
+    worker->handling_type = type;
+    worker->whoami = index;
+    if (dmtr_queue(&worker->in_qfd) != 0) {
+        log_error("Could not create memory queue for http worker %d", index);
+    }
+    if (dmtr_queue(&worker->out_qfd) != 0) {
+        log_error("Could not create memory queue for http worker %d", index);
+    }
+    if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker.get())) {
+        log_error("pthread_create error: %s", strerror(errno));
+        exit(1);
+    }
+    worker->core_id = index + cpu_offset;
+    pin_thread(worker->me, worker->core_id);
+    psp.http_workers.push_back(worker);
+    psp.workers.push_back(worker);
+
+    return worker;
+}
+
+int no_pthread_work_setup(Psp &psp) {
+    std::shared_ptr<Worker> worker(new Worker());
     worker->whoami = 0;
     worker->args.split = false;
     worker->type = NET;
@@ -727,31 +802,42 @@ int no_pthread_work_setup() {
     }
     saddr.sin_port = htons(port);
     worker->args.saddr = saddr;
-    tcp_workers.push_back(worker);
+    psp.workers.push_back(worker);
 
-    tcp_worker((void *) worker);
+    net_worker((void *) worker.get());
 
-    return 1;
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
     bool no_pthread, no_split;
     bool split = true;
-    u_int16_t n_http_workers, n_tcp_workers;
+    u_int16_t n_http_workers, n_net_workers;
+    u_int16_t n_regex_workers, n_page_workers, n_popular_page_workers, n_unpopular_page_workers;
+    std::string net_dispatch_pol;
     options_description desc{"HTTP server options"};
     desc.add_options()
         ("label", value<std::string>(&label), "experiment label")
         ("log-dir, L", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
-        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(1), "num HTTP workers")
-        ("tcp-workers,t", value<u_int16_t>(&n_tcp_workers)->default_value(1), "num NET workers")
+        ("regex-workers,w", value<u_int16_t>(&n_regex_workers)->default_value(0), "num REGEX workers")
+        ("page-workers,w", value<u_int16_t>(&n_page_workers)->default_value(0), "num PAGE workers")
+        ("popular-page-workers,w", value<u_int16_t>(&n_popular_page_workers)->default_value(0), "num POPULAR page workers")
+        ("unpopular-page-workers,w", value<u_int16_t>(&n_unpopular_page_workers)->default_value(0), "num UNPOPULAR page workers")
+        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(0), "num HTTP workers")
+        ("tcp-workers,t", value<u_int16_t>(&n_net_workers)->default_value(1), "num NET workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
-        ("no-pthread", bool_switch(&no_pthread), "use pthread or not");
+        ("no-pthread", bool_switch(&no_pthread), "use pthread or not (main thread will do everything)")
+        ("net-dispatch-policy", value<std::string>(&net_dispatch_pol)->default_value("RR"), "dispatch policy used by the network component");
     parse_args(argc, argv, true, desc);
+    dmtr_log_directory = log_dir;
 
     if (no_split) {
-        log_info("Starting in single component mode");
+        log_info(
+            "Starting in 'no split' mode. Network workers will handle all the load."
+            " Typed workers and dispatch policy are ignored"
+        );
         split = false;
     }
 
@@ -762,8 +848,42 @@ int main(int argc, char *argv[]) {
         log_info("Starting HTTP server in no-op mode (%d iterations per component)", no_op_time);
     }
 
+    /* Some checks about requested dispatch policy and workers */
+    uint32_t types_sum =
+        n_regex_workers + n_page_workers + n_popular_page_workers + n_unpopular_page_workers;
+    if (types_sum > 0) {
+        if (net_dispatch_pol == "ONE_TO_ONE" || net_dispatch_pol == "RR") {
+            log_error("Typed workers are for HTTP_REQ_TYPE policy only.");
+            exit(1);
+        }
+        if (n_http_workers > 0) {
+            log_error("Cannot request n_http_workers with typed workers.");
+            exit(1);
+        }
+        log_info("Instantiating typed workers. n_http_workers will be ignored.");
+    } else {
+        if (net_dispatch_pol == "HTTP_REQ_TYPE") {
+            log_error("Cannot use HTTP_REQ_TYPE policy without specifying a number of typed workers.");
+            exit(1);
+        } else if (net_dispatch_pol == "ONE_TO_ONE" && n_net_workers < n_http_workers) {
+            log_error("Cannot set 1:1 workers mapping with %d net workers and %d http workers.",
+                      n_net_workers, n_http_workers);
+            exit(1);
+        }
+    }
+
     /* Init Demeter */
     DMTR_OK(dmtr_init(argc, argv));
+
+    /* Set network dispatch policy */
+    if (net_dispatch_pol == "RR") {
+        psp.net_dispatch_policy = RR;
+    } else if (net_dispatch_pol == "HTTP_REQ_TYPE") {
+        psp.net_dispatch_policy = HTTP_REQ_TYPE;
+        psp.net_dispatch_f = psp_get_req_type;
+    } else if (net_dispatch_pol == "ONE_TO_ONE") {
+        psp.net_dispatch_policy = ONE_TO_ONE;
+    }
 
     sigset_t mask, oldmask;
     if (!no_pthread) {
@@ -787,7 +907,10 @@ int main(int argc, char *argv[]) {
     //pin_thread(pthread_self(), 4);
     if (!no_pthread) {
         /* Create worker threads */
-        work_setup(n_tcp_workers, n_http_workers, split);
+        work_setup(
+            psp, split, n_net_workers, n_http_workers, n_regex_workers,
+            n_page_workers, n_popular_page_workers, n_unpopular_page_workers
+        );
 
         /* Re-enable SIGINT and SIGQUIT */
         int ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
@@ -795,8 +918,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Couln't block SIGINT: %s\n", strerror(errno));
         }
 
-        //FIXME I think we should `delete` the Worker instances
-        for (auto &w: tcp_workers) {
+        for (auto &w: psp.workers) {
             if (pthread_join(w->me, NULL) != 0) {
                 log_error("pthread_join error: %s", strerror(errno));
             }
@@ -809,19 +931,18 @@ int main(int argc, char *argv[]) {
 #ifdef DMTR_TRACE
             dump_traces(*w, log_dir, label);
 #endif
-        }
-        for (auto &w: http_workers) {
-            if (pthread_join(w->me, NULL) != 0) {
-                log_error("pthread_join error: %s", strerror(errno));
+            /*
+            if (w->in_qfd > 0) {
+                dmtr_close(w->in_qfd);
             }
-#ifdef LEGACY_PROFILING
-            dump_latencies(*w, log_dir, label);
-#endif
-            dmtr_close(w->in_qfd);
-            dmtr_close(w->out_qfd);
+            if (w->out_qfd > 0) {
+                dmtr_close(w->out_qfd);
+            }
+            */
+            w.reset();
         }
     } else {
-        no_pthread_work_setup();
+        no_pthread_work_setup(psp);
     }
 
     return 0;

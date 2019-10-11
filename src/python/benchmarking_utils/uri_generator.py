@@ -63,9 +63,9 @@ regex_strengths_bins = [1,2,3,4,5,6,7,8,9,10]
 def draw_elements(zalpha, array, n_elems):
     elements = []
     z = 1.0 / scipy.special.zeta(zalpha)
-    print('z is {} (zalpha={})'.format(z, zalpha))
+    #print('z is {} (zalpha={})'.format(z, zalpha))
     p = [z / i**zalpha for i in range(1, len(array)+1)]
-    print('first 20 probas: {}'.format(p[:20]))
+    #print('first 20 probas: {}'.format(p[:20]))
     for n in range(0, n_elems):
         r_key = 0.0
         # random()'s range is [0.0, 1.0)
@@ -86,7 +86,7 @@ def draw_elements(zalpha, array, n_elems):
         elements.append(array[mid])
     return elements
 
-def gen_regex_requests(n_req, zalpha):
+def gen_regex_requests(n_req, zalpha, flag_type=False):
     if (n_req <= 0):
         return []
 
@@ -103,6 +103,8 @@ def gen_regex_requests(n_req, zalpha):
     regex_uris = []
     for i in range(0, n_req):
         regex_str = '?regex=' + ''.join(['a' for i in range(0, strengths[i])]) + 'b'
+        if flag_type:
+            regex_str = 'REGEX,' + regex_str
         regex_uris.append(regex_str)
 
     return np.array(regex_uris)
@@ -138,30 +140,46 @@ def get_files(list_file, sort=False, ascending=False):
 
     return [f[0] for f in files_and_sizes]
 
-def gen_file_requests_tweak(n_req, zalpha, list_file):
-    files = get_files(list_file, sort=False)
+def gen_file_requests_tweak(n_req, zalpha, list_file, flag_type=False):
+    files = get_files(list_file)
     sorted_files = get_files(list_file, sort=True)
     print('Generating 90% zipf popular + 10% unpopular (zalpha={})'.format(zalpha))
 
-    popular_files = draw_elements(zalpha, files, int(n_req*0.9))
-    unpopular_files = draw_elements(zalpha, sorted_files, int(n_req*0.1))
+    drawn_uris = draw_elements(zalpha, files, int(n_req*0.9))
     print('Selected popular URIS:')
-    print_file_uris_stats(popular_files)
+    print_file_uris_stats(drawn_uris)
+    if flag_type:
+        popular_files = ['POPULAR,'+uri for uri in drawn_uris]
+    else:
+        popular_files = drawn_uris
+
+    drawn_uris = draw_elements(zalpha, sorted_files, int(n_req*0.1))
     print('Selected unpopular URIS:')
-    print_file_uris_stats(unpopular_files)
+    print_file_uris_stats(drawn_uris)
+    if flag_type:
+        unpopular_files = ['UNPOPULAR,'+uri for uri in drawn_uris]
+    else:
+        unpopular_files = drawn_uris
 
     return popular_files + unpopular_files
 
-def gen_file_requests(n_req, zalpha, list_file):
+def gen_file_requests(n_req, zalpha, list_file, flag_type=False):
     files = get_files(list_file)
 
     selected_files_uris = []
     if zalpha == -1:
         m = len(files) - 1
         idx = np.random.randint(0, m, size=n_req, dtype='i')
-        selected_files_uris = [files[i][0] for i in idx]
+        if flag_type:
+            selected_files_uris = ['PAGE,'+files[i] for i in idx]
+        else:
+            selected_files_uris = [files[i] for i in idx]
     else:
-        selected_files_uris = draw_elements(zalpha, [f[0] for f in files], n_req)
+        drawn_uris = draw_elements(zalpha, files, n_req)
+        if flag_type:
+            selected_files_uris = ['PAGE,'+uri for uri in drawn_uris]
+        else:
+            selected_files_uris = drawn_uris
         print_file_uris_stats(selected_files_uris)
 
     return selected_files_uris
@@ -199,6 +217,9 @@ if __name__ == '__main__':
     parser.add_argument('--tweak-html', action='store_true',
                         help='Use _tweak function to generate html uris',
                         dest='html_tweak', default=False)
+    parser.add_argument('--flag-type', action='store_true',
+                        help='Append the type of request to the URI',
+                        dest='flag_type', default=False)
 
     args = parser.parse_args()
 
@@ -219,7 +240,7 @@ if __name__ == '__main__':
     # Generate regex requests
     if args.regex_ratio > 0:
         n_regex_requests = int(args.n_requests * args.regex_ratio)
-        regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha)
+        regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha, args.flag_type)
     else:
         regex_requests = np.array([])
 
@@ -227,9 +248,13 @@ if __name__ == '__main__':
     if args.html_ratio > 0:
         n_file_requests = int(args.n_requests * args.html_ratio)
         if args.html_tweak:
-            file_requests = gen_file_requests_tweak(n_file_requests, args.html_zalpha, args.html_files_list)
+            file_requests = gen_file_requests_tweak(
+                n_file_requests, args.html_zalpha, args.html_files_list, args.flag_type
+            )
         else:
-            file_requests = gen_file_requests(n_file_requests, args.html_zalpha, args.html_files_list)
+            file_requests = gen_file_requests(
+                n_file_requests, args.html_zalpha, args.html_files_list, args.flag_type
+            )
     else:
         file_requests = np.array([])
 

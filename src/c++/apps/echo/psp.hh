@@ -2,16 +2,26 @@
 #include "common.hh"
 #include <functional>
 #include <vector>
+#include <unordered_map>
 #include <memory>
 
 #define MAX_REQ_STATES 10000000
 
-enum net_filters { RR, HTTP_REQ_TYPE, ONE_TO_ONE };
+enum req_type {
+    UNKNOWN,
+    ALL,
+    REGEX,
+    PAGE,
+    POPULAR_PAGE,
+    UNPOPULAR_PAGE,
+};
+
+enum dispatch_policy { RR, HTTP_REQ_TYPE, ONE_TO_ONE };
 class Request {
     /* Request information */
     public: uint32_t net_qd; /** which network queue does the request originates from */
     public: uint32_t id;
-    enum http_req_type type;
+    enum req_type type;
 
     /* Profiling variables */
     public: dmtr_qtoken_t pop_token;
@@ -26,10 +36,40 @@ class Request {
     Request(uint32_t qfd): net_qd(qfd) {}
 };
 
+/**
+ * Retrieve the type stored in User-Agent
+ */
+static enum req_type psp_get_req_type(std::string &url) {
+    //get a pointer to the User-Agent part of the string
+    size_t user_agent_pos = url.find("User-Agent:");
+    if (user_agent_pos == std::string::npos) {
+        log_error("User-Agent was not present in request headers!");
+        return UNKNOWN;
+    }
+    user_agent_pos += 12; // "User-Agent: "
+    size_t body_pos = url.find("\r\n\r\n");
+    if (body_pos == std::string::npos) {
+        log_error("User-Agent was not present in request headers!");
+        return UNKNOWN;
+    }
+    std::string req_type(url.substr(user_agent_pos, body_pos));
+    if (strncmp(req_type.c_str(), "REGEX", 5) == 0) {
+        return REGEX;
+    } else if (strncmp(req_type.c_str(), "PAGE", 4) == 0) {
+        return PAGE;
+    } else if (strncmp(req_type.c_str(), "UNPOPULAR", 9) == 0) {
+        return UNPOPULAR_PAGE;
+    } else if (strncmp(req_type.c_str(), "POPULAR", 7) == 0) {
+        return POPULAR_PAGE;
+    } else {
+        return UNKNOWN;
+    }
+}
+
 /* TODO: make this an inner struct of the Worker class */
 struct net_worker_args {
-    net_filters filter;
-    std::function<int(dmtr_sgarray_t *)> filter_f;
+    dispatch_policy dispatch_p;
+    std::function<enum req_type(std::string &)> dispatch_f;
     struct sockaddr_in saddr;
     bool split;
 };
@@ -53,6 +93,11 @@ class Worker {
         /* ID variables */
         enum worker_type type;
 
+        /* Scheduling variables */
+        std::unordered_map<enum req_type, uint32_t> type_counts;
+        enum req_type handling_type;
+        uint32_t num_rcvd;
+
         /* Profiling and Co. */
 #ifdef LEGACY_PROFILING
         std::vector<std::pair<uint64_t, uint64_t> > runtimes;
@@ -68,15 +113,35 @@ class Worker {
 
 #if defined(LEGACY_PROFILING) || defined(DMTR_TRACE)
         Worker() {
+            num_rcvd = 0;
 #ifdef LEGACY_PROFILING
             runtimes.reserve(MAX_REQ_STATES);
 #endif
 #ifdef DMTR_TRACE
             req_states.reserve(MAX_REQ_STATES);
 #endif
+            type_counts.insert(std::pair<enum req_type, uint32_t>(REGEX, 0));
+            type_counts.insert(std::pair<enum req_type, uint32_t>(PAGE, 0));
+            type_counts.insert(std::pair<enum req_type, uint32_t>(POPULAR_PAGE, 0));
+            type_counts.insert(std::pair<enum req_type, uint32_t>(UNPOPULAR_PAGE, 0));
         }
 #endif
 };
+
+class Psp {
+    public: std::vector<std::shared_ptr<Worker> > workers; /* All the workers */
+    public: std::vector<std::shared_ptr<Worker> > http_workers; /* Just the HTTP workers */
+    public: std::vector<std::shared_ptr<Worker> > regex_workers; /* HTTP workers dedicated to REGEX type requests */
+    public: std::vector<std::shared_ptr<Worker> > page_workers;
+    public: std::vector<std::shared_ptr<Worker> > popular_page_workers;
+    public: std::vector<std::shared_ptr<Worker> > unpopular_page_workers;
+
+    public: dispatch_policy net_dispatch_policy;
+    public: std::function<enum req_type(std::string &)> net_dispatch_f;
+};
+
+//TODO this should be a class member function of Psp
+std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index);
 
 /***********************************
  **********  PROFILING  ************
@@ -138,4 +203,3 @@ void dump_traces(Worker &w, std::string log_dir, std::string label) {
         log_error("Failed to open %s for dumping traces: %s", filename, strerror(errno));
     }
 }
-
