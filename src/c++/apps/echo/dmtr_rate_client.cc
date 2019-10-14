@@ -644,9 +644,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-            request->push_token = token;
-#endif
             log_debug("Scheduling request %d for send", request->id);
             //printf("Sending %s\n", request->req+sizeof(uint32_t));
             //printf("Scheduled PUSH: %d/%lu\n", request->id, token);
@@ -691,7 +688,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                            wait_out.qr_opcode,
                            req_id, wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
                            completed, send_index);
-                terminate = true;
+                //terminate = true;
                 continue;
             }
             std::unique_ptr<RequestState> request = std::move(req->second);
@@ -705,13 +702,12 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, READING, op_time);
+                request->push_token = token;
 #endif
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                request->pop_token = token;
-#endif
+
                 free(request->req); //XXX putting this in the log threads causes ASAN heap-read-after-free??
                 //printf("Scheduled POP %d/%lu\n", request->id, token);
                 requests[request->id] = std::move(request);
@@ -724,6 +720,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, COMPLETED, op_time);
+                request->pop_token = token;
 #endif
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
