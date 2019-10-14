@@ -22,8 +22,6 @@ set(UDP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_client.cc)
 set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
-
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
@@ -73,4 +71,16 @@ add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
 
 add_custom_target(echo)
-add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
+add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo dmtr-dpdk-catnip-echo)
+
+# DPDK+catnip TCP server
+add_executable(dmtr-dpdk-catnip-server ${TCP_ECHO_SERVER_SOURCES})
+target_link_libraries(dmtr-dpdk-catnip-server dmtr-libos-dpdk-catnip yaml-cpp boost_program_options)
+
+# DPDK+catnip TCP client
+add_executable(dmtr-dpdk-catnip-client  ${TCP_ECHO_CLIENT_SOURCES})
+target_link_libraries(dmtr-dpdk-catnip-client dmtr-libos-dpdk-catnip yaml-cpp boost_program_options)
+
+# DPDK+catnip TCP client & server
+add_custom_target(dmtr-dpdk-catnip-echo)
+add_dependencies(dmtr-dpdk-catnip-echo dmtr-dpdk-catnip-server dmtr-dpdk-catnip-client)

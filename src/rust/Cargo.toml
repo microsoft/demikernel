@@ -1,0 +1,12 @@
+[profile.release]
+lto = true
+overflow-checks = true
+
+[profile.bench]
+lto = true
+overflow-checks = true
+
+[workspace]
+members = [
+    "catnip",
+]

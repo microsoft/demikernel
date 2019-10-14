@@ -16,8 +16,6 @@ uint16_t port = 12345;
 boost::optional<std::string> server_ip_addr;
 uint32_t packet_size = 64;
 uint32_t iterations = 10;
-int dmtr_argc = 0;
-char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
 boost::optional<std::string> file;
 
@@ -37,7 +35,7 @@ void parse_args(int argc, char **argv, bool server)
         ("file", value<std::string>(), "log file");
 
     variables_map vm;
-    store(parse_command_line(argc, argv, desc), vm);
+    store(command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
     notify(vm);
 
     // print help

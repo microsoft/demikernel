@@ -349,7 +349,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
-    node = config["dpdk"]["known_hosts"];
+    node = config["lwip"]["known_hosts"];
     if (YAML::NodeType::Map == node.Type()) {
         for (auto i = node.begin(); i != node.end(); ++i) {
             auto mac = i->first.as<std::string>();
@@ -431,7 +431,14 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 }
 
 dmtr::lwip_queue::~lwip_queue()
-{}
+{
+    int ret = close();
+    if (0 != ret) {
+        std::ostringstream msg;
+        msg << "Failed to close `lwip_queue` object (error " << ret << ")." << std::endl;
+        DMTR_PANIC(msg.str().c_str());
+    }
+}
 
 int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
@@ -508,7 +515,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
         new_lq->start_threads();
-        DMTR_OK(t->complete(0, new_lq->qd(), src, sizeof(src)));
+        DMTR_OK(t->complete(0, new_lq->qd(), src));
         my_recv_queue.pop();
     }
 
@@ -558,7 +565,7 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     return 0;
 }
 
-int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
+int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, !is_bound());
@@ -589,11 +596,20 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     std::cout << "Connecting from " << src_ip_str << " to " << dst_ip_str << std::endl;
 
     start_threads();
+
+    DMTR_OK(new_task(qt, DMTR_OPC_CONNECT));
+    task *t;
+    DMTR_OK(get_task(t, qt));
+    DMTR_OK(t->complete(0));
     return 0;
 }
 
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    if (!is_connected()) {
+        return 0;
+    }
+
     my_default_dst = boost::none;
     my_bound_src = boost::none;
     return 0;
@@ -1059,6 +1075,9 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case DMTR_OPC_POP:
             ret = my_pop_thread->service();
             break;
+        case DMTR_OPC_CONNECT:
+            ret = 0;
+            break;
     }
 
     switch (ret) {
@@ -1067,9 +1086,11 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case EAGAIN:
             break;
         case 0:
-            // the threads should only exit if the queue has been closed
-            // (`good()` => `false`).
-            DMTR_UNREACHABLE();
+            if (DMTR_OPC_CONNECT != t->opcode()) {
+                // the threads should only exit if the queue has been closed
+                // (`good()` => `false`).
+                DMTR_UNREACHABLE();
+            }
     }
 
     return t->poll(qr_out);

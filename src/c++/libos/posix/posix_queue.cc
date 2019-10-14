@@ -63,7 +63,7 @@ int dmtr::posix_queue::alloc_latency()
 
 int dmtr::posix_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
 #if DMTR_PROFILE
-    DMTR_OK(alloc_latency());        
+    DMTR_OK(alloc_latency());
 #endif
 
     q_out = std::unique_ptr<io_queue>(new posix_queue(qd, NETWORK_Q));
@@ -195,10 +195,14 @@ int dmtr::posix_queue::accept_thread(task::thread_type::yield_type &yield, task:
         int new_fd = -1;
         sockaddr_in addr;
         socklen_t len = sizeof(addr);
-        int ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
-        while (EAGAIN == ret) {
-            yield();
+        int ret;
+        while (1) {
             ret = accept(new_fd, my_fd, reinterpret_cast<sockaddr *>(&addr), &len);
+            if (EAGAIN != ret) {
+                break;
+            }
+
+            yield();
         }
 
         if (0 != ret) {
@@ -213,7 +217,7 @@ int dmtr::posix_queue::accept_thread(task::thread_type::yield_type &yield, task:
         new_pq->my_tcp_flag = true;
         new_pq->my_listening_flag = false;
         new_pq->start_threads();
-        DMTR_OK(t->complete(0, new_pq->qd(), addr, len));
+        DMTR_OK(t->complete(0, new_pq->qd(), addr));
     }
 
     return 0;
@@ -260,17 +264,21 @@ dmtr::posix_queue::listen(int backlog)
     }
 }
 
-int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t size)
+int dmtr::posix_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_TRUE(EINVAL, my_fd != -1);
     DMTR_NULL(EPERM, my_peer_saddr);
 
+    DMTR_OK(new_task(qt, DMTR_OPC_CONNECT));
+    task *t;
+    DMTR_OK(get_task(t, qt));
     int res = ::connect(my_fd, saddr, size);
     switch (res) {
         default:
             DMTR_UNREACHABLE();
         case -1:
-            return errno;
+            DMTR_OK(t->complete(errno));
+            return 0;
         case 0: {
             DMTR_OK(set_non_blocking(my_fd));
 
@@ -280,6 +288,8 @@ int dmtr::posix_queue::connect(const struct sockaddr * const saddr, socklen_t si
             my_peer_saddr = reinterpret_cast<struct sockaddr *>(p);
 
             start_threads();
+
+            DMTR_OK(t->complete(0));
             return 0;
         }
     }
@@ -291,7 +301,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
@@ -303,7 +313,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags, mode_t mode)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
@@ -315,13 +325,11 @@ int dmtr::posix_queue::creat(const char *pathname, mode_t mode)
     if (fd == -1) {
         return errno;
     }
-    
+
     my_fd = fd;
     start_threads();
     return 0;
 }
-
-
 
 int dmtr::posix_queue::close()
 {
@@ -339,7 +347,7 @@ int dmtr::posix_queue::close()
         case -1:
             return errno;
         case 0:
-            return ret;
+            return io_queue::close();
     }
 }
 
@@ -362,10 +370,10 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         const auto k = j + 1;
         iov[k].iov_base = sga->sga_segs[i].sgaseg_buf;
         iov[k].iov_len = sga->sga_segs[i].sgaseg_len;
-        
+
         // add up actual data size
         data_size += sga->sga_segs[i].sgaseg_len;
-        
+
         // add up expected packet size (not yet including header)
         message_bytes += sga->sga_segs[i].sgaseg_len;
         message_bytes += sizeof(sga->sga_segs[i].sgaseg_len);
@@ -402,7 +410,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
         ret = writev(bytes_written, my_fd, iov, iov_len);
     }
-            
+
 #if DMTR_PROFILE
     dt += (boost::chrono::steady_clock::now() - t0);
     DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
@@ -411,7 +419,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #if DMTR_DEBUG
     std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
 #endif
-    
+
     DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
 
     return ret;
@@ -493,7 +501,7 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
             ret = ENOTSUP;
             break;
         }
-        
+
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.
@@ -507,7 +515,7 @@ int dmtr::posix_queue::push_thread(task::thread_type::yield_type &yield, task::t
 
 int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    
+
     // if we don't have a full header yet, get one.
     size_t header_bytes = 0;
     dmtr_header_t header;
@@ -547,7 +555,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 #endif
 	}
 
-    
+
 #if DMTR_DEBUG
     std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
 #endif
@@ -597,14 +605,14 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 #if DMTR_PROFILE
         dt += (boost::chrono::steady_clock::now() - t0);
 #endif
-        
+
     }
 #if DMTR_PROFILE
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
     if (0 != ret) return ret;
-    
+
 #if DMTR_DEBUG
     std::cerr << "pop(" << qt << "): read " << data_bytes << " bytes for content." << std::endl;
     std::cerr << "pop(" << qt << "): sgarray has " << header.h_sgasegs << " segments." << std::endl;
@@ -628,7 +636,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
 int dmtr::posix_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    
+
     return 0;
 }
 
@@ -676,7 +684,7 @@ int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::th
             yield();
             continue;
         }
-        
+
         if (0 != ret) {
             DMTR_OK(t->complete(ret));
             // move onto the next task.
@@ -711,6 +719,9 @@ int dmtr::posix_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case DMTR_OPC_POP:
             ret = my_pop_thread->service();
             break;
+        case DMTR_OPC_CONNECT:
+            ret = 0;
+            break;
     }
 
     switch (ret) {
@@ -719,9 +730,13 @@ int dmtr::posix_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         case EAGAIN:
             break;
         case 0:
-            // the threads should only exit if the queue has been closed
-            // (`good()` => `false`).
-            DMTR_UNREACHABLE();
+            if (DMTR_OPC_CONNECT != t->opcode()) {
+                // the threads should only exit if the queue has been closed
+                // (`good()` => `false`).
+                DMTR_UNREACHABLE();
+            }
+
+            break;
     }
 
     return t->poll(qr_out);

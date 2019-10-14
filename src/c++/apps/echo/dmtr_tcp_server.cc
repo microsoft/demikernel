@@ -10,14 +10,15 @@
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
-#include <dmtr/wait.h>
-#include <iostream>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <dmtr/libos/mem.h>
+#include <dmtr/sga.h>
+#include <dmtr/wait.h>
+#include <fcntl.h>
+#include <iostream>
 #include <netinet/in.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -58,7 +59,7 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(argc, argv));
     DMTR_OK(dmtr_new_latency(&pop_latency, "pop server"));
     DMTR_OK(dmtr_new_latency(&push_latency, "push server"));
     DMTR_OK(dmtr_new_latency(&push_wait_latency, "push wait server"));
@@ -79,8 +80,7 @@ int main(int argc, char *argv[])
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
-#if 0
-    // `dmtr_open2()` is only implemented for POSIX.
+#ifdef DMTR_OPEN2
     if (boost::none != file) {
         // open a log file
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
@@ -97,6 +97,7 @@ int main(int argc, char *argv[])
 	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
+                std::cerr << "connection accepted (qid = " << wait_out.qr_value.ares.qd << ")." << std::endl;
                 // check accept on servers
                 auto t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
@@ -114,8 +115,7 @@ int main(int argc, char *argv[])
                 start_times.erase(token);
                 DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
 
-#if 0
-                // `dmtr_open2()` is only implemented for POSIX.
+#if DMTR_OPEN2
                 if (0 != fqd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
@@ -139,7 +139,8 @@ int main(int argc, char *argv[])
                 start_times[token] = t0;
                 tokens[idx] = token;
                 //fprintf(stderr, "send complete.\n");
-                free(wait_out.qr_value.sga.sga_buf);
+
+                DMTR_OK(dmtr_sgafree(&wait_out.qr_value.sga));
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);

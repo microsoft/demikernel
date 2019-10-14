@@ -7,10 +7,13 @@
 #include <cerrno>
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
-#include <dmtr/latency.h>
 #include <dmtr/libos.h>
 
 #define DMTR_PROFILE 1
+
+#if DMTR_PROFILE
+#   include <dmtr/latency.h>
+#endif
 
 #if DMTR_PROFILE
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;

@@ -46,6 +46,7 @@ class rdma_queue : public io_queue {
     private: std::unique_ptr<task::thread_type> my_accept_thread;
     private: std::unique_ptr<task::thread_type> my_push_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;
+    private: std::unique_ptr<task::thread_type> my_connect_thread;
 
     private: int service_event_channel();
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
@@ -58,13 +59,13 @@ class rdma_queue : public io_queue {
     public: virtual ~rdma_queue();
 
     // network functions
-    public: int socket(int domain, int type, int protocol);
-    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
-    public: int listen(int backlog);
-    public: int bind(const struct sockaddr * const saddr, socklen_t size);
-    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
-    public: int connect(const struct sockaddr * const saddr, socklen_t size);
-    public: int close();
+    public: virtual int socket(int domain, int type, int protocol);
+    public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);
+    public: virtual int listen(int backlog);
+    public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
+    public: virtual int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int close();
 
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
@@ -102,6 +103,8 @@ class rdma_queue : public io_queue {
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    private: int connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, duration_type timeout);
+    private: int connect(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, duration_type timeout);
 
     private: bool good() const {
         return my_rdma_id != NULL;

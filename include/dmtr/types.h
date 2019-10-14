@@ -28,6 +28,8 @@ typedef struct dmtr_sgarray {
     void *sga_buf;
     uint32_t sga_numsegs;
     dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
+    // todo: to be removed when LWIP libOS is retired in favor of
+    // `dpdk-catnip`.
     struct sockaddr_in sga_addr;
 } dmtr_sgarray_t;
 
@@ -35,13 +37,13 @@ typedef enum dmtr_opcode {
     DMTR_OPC_INVALID = 0,
     DMTR_OPC_PUSH,
     DMTR_OPC_POP,
-    DMTR_OPC_ACCEPT
+    DMTR_OPC_ACCEPT,
+    DMTR_OPC_CONNECT,
 } dmtr_opcode_t;
 
 typedef struct dmtr_accept_result {
     int qd;
     struct sockaddr_in addr;
-    socklen_t len;
 } dmtr_accept_result_t;
 
 typedef struct dmtr_qresult {

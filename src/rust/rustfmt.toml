@@ -1,0 +1,13 @@
+max_width = 79
+merge_derives = true
+reorder_modules = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# only supported on nightly
+comment_width = 79
+condense_wildcard_suffixes = true
+format_strings = true
+merge_imports = true
+reorder_impl_items = true
+wrap_comments = true

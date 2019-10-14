@@ -63,7 +63,7 @@ class lwip_queue : public io_queue {
     public: int listen(int backlog);
     public: int bind(const struct sockaddr * const saddr, socklen_t size);
     public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int newqd);
-    public: int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
     public: int close();
 
     // data path functions

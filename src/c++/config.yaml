@@ -3,15 +3,18 @@
 
 client:
   connect_to:
-    host: 10.10.1.5
+    host: 192.168.1.1
     port: 54321
 server:
   bind:
-    host: 10.10.1.5
+    host: 192.168.1.1
     port: 54321
+catnip:
+  my_ipv4_addr: 192.168.1.1
 dpdk:
 #  eal_init: ["-l", "0-3", "-n", "1", "-w", "aa89:00:02.0", "--vdev=net_vdev_netvsc0,iface=eth1"]
   eal_init: ["-c", "0xff", "-n", "4", "-w", "03:00.1","--proc-type=auto"]
+lwip:
   known_hosts:
     "24:8a:07:50:95:08": 192.168.1.1
     "50:6b:4b:48:f8:f2": 192.168.1.2

@@ -42,7 +42,7 @@ class io_queue
         public: int poll(dmtr_qresult_t &qr_out) const;
         public: int complete(int error);
         public: int complete(int error, const dmtr_sgarray_t &sga);
-        public: int complete(int error, int new_qd, const sockaddr_in &addr, socklen_t len);
+        public: int complete(int error, int new_qd, const sockaddr_in &addr);
         public: bool arg(const dmtr_sgarray_t *&arg_out) const;
         public: bool arg(io_queue *&arg_out) const;
 
@@ -77,13 +77,13 @@ class io_queue
     public: virtual int listen(int backlog);
     public: virtual int bind(const struct sockaddr * const saddr, socklen_t size);
     public: virtual int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
-    public: virtual int connect(const struct sockaddr * const saddr, socklen_t size);
+    public: virtual int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
 
     // file control plane functions
     public: virtual int open(const char *pathname, int flags);
     public: virtual int open(const char *pathname, int flags, mode_t mode);
     public: virtual int creat(const char *pathname, mode_t mode);
-        
+
     // general control plane functions.
     public: virtual int close();
 

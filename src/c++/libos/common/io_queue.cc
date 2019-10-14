@@ -9,7 +9,10 @@
 #include <sstream>
 
 dmtr::io_queue::task::task() :
-    my_error(EAGAIN)
+    my_qr{},
+    my_error(EAGAIN),
+    my_sga_arg{},
+    my_queue_arg(nullptr)
 {}
 
 int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
@@ -111,7 +114,7 @@ int dmtr::io_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok,
     return ENOTSUP;
 }
 
-int dmtr::io_queue::connect(const struct sockaddr * const saddr, socklen_t size) {
+int dmtr::io_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size) {
     return ENOTSUP;
 }
 
@@ -208,10 +211,9 @@ int dmtr::io_queue::task::complete(int error, const dmtr_sgarray_t &sga) {
     return 0;
 }
 
-int dmtr::io_queue::task::complete(int error, int new_qd, const sockaddr_in &addr, socklen_t len) {
+int dmtr::io_queue::task::complete(int error, int new_qd, const sockaddr_in &addr) {
     DMTR_OK(complete(error));
     my_qr.qr_value.ares.qd = new_qd;
     my_qr.qr_value.ares.addr = addr;
-    my_qr.qr_value.ares.len = len;
     return 0;
 }

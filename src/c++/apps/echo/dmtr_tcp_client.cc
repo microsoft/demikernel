@@ -3,18 +3,19 @@
 
 #include "common.hh"
 #include <arpa/inet.h>
+#include <boost/chrono.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
-#include <boost/chrono.hpp>
 #include <cstring>
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
+#include <dmtr/libos/mem.h>
+#include <dmtr/sga.h>
 #include <dmtr/wait.h>
 #include <iostream>
-#include <dmtr/libos/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
@@ -25,7 +26,7 @@ int main(int argc, char *argv[])
 {
     parse_args(argc, argv, false);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_latency_t *latency = NULL;
     DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
@@ -44,7 +45,9 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
-    DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    dmtr_qtoken_t cqt;
+    DMTR_OK(dmtr_connect(&cqt, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(dmtr_wait(NULL, cqt));
     std::cerr << "Connected." << std::endl;
 
     dmtr_sgarray_t sga = {};
@@ -69,8 +72,10 @@ int main(int argc, char *argv[])
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
-        free(qr.qr_value.sga.sga_buf);
+
+        DMTR_OK(dmtr_sgafree(&qr.qr_value.sga));
     }
+
     DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
 
