@@ -73,7 +73,7 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-#define DMTR_DEBUG 1
+//#define DMTR_DEBUG 1
 #define DMTR_TRACE 1
 //#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP 1
@@ -323,6 +323,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    port_conf.txmode.offloads = DEV_TX_OFFLOAD_MULTI_SEGS;
 
     struct ::rte_eth_rxconf rx_conf = {};
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
@@ -1021,10 +1022,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
             //        tx_pkts[i]->l2_len = sizeof(*eth_hdr);
             //        tx_pkts[i]->buf_len = total_len;
-                    printf("DATA LEN: %d\n", (int)tx_pkts[i]->data_len);
-                    printf("DATA NBSEGs: %d\n", (int)tx_pkts[i]->nb_segs);
+                    //printf("DATA LEN: %d\n", (int)tx_pkts[i]->data_len);
+                    //printf("DATA NBSEGs: %d\n", (int)tx_pkts[i]->nb_segs);
                     if (tx_pkts[i]->nb_segs > 1) {
-                        printf("->next DATA LEN: %d\n", (int)tx_pkts[i]->next->data_len);
+                        //printf("->next DATA LEN: %d\n", (int)tx_pkts[i]->next->data_len);
                     }
                     //tx_pkts[i]->buf_len= sizeof(*eth_hdr) + sizeof(struct ::ipv4_hdr);
                     //tx_pkts[i]->ol_flags |= (PKT_TX_IP_CKSUM | PKT_TX_IPV4);
@@ -1038,10 +1039,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             tx_pkts[0] = pkt;
             nb_pkts = 1;
         }
-        printf("DATA LEN: %d\n", (int)tx_pkts[0]->data_len);
-        printf("DATA NBSEGs: %d\n", (int)tx_pkts[0]->nb_segs);
+        //printf("DATA LEN: %d\n", (int)tx_pkts[0]->data_len);
+        //printf("DATA NBSEGs: %d\n", (int)tx_pkts[0]->nb_segs);
         if (tx_pkts[0]->nb_segs > 1) {
-            printf("->next DATA LEN: %d\n", (int)tx_pkts[0]->next->data_len);
+            //printf("->next DATA LEN: %d\n", (int)tx_pkts[0]->next->data_len);
         }
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
@@ -1341,22 +1342,8 @@ dmtr::lwip_queue::service_incoming_packets() {
 }
 
 template <typename T>
-T rte_buf(const struct rte_mbuf *pkt, size_t offset) {
-    size_t used_offset = 0;
-    std::cout << pkt->data_len << "pkt1" << std::endl;
-    std::cout << offset << std::endl;
-    size_t data_len = sizeof(struct ::ether_hdr) + sizeof(struct ::ipv4_hdr);
-    if (offset >= data_len && pkt->nb_segs > 1) {
-        pkt = pkt->next;
-        offset -= pkt->data_len;
-    }
-    /*while (used_offset + data_len < offset) {
-        used_offset += pkt->data_len;
-        offset -= pkt->data_len;
-        pkt = pkt->next;
-        std::cout << pkt->data_len << "pktnext" << std::endl;
-    }*/
-    return rte_pktmbuf_mtod_offset(pkt, T, offset);
+T* rte_read(const struct rte_mbuf *pkt, size_t offset, T& buf, size_t len = sizeof(T)) {
+    return (T*)rte_pktmbuf_read(pkt, offset, len, &buf);
 }
 
 
@@ -1377,7 +1364,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     // sga.buf[1].buf
     // ...
     size_t offset = 0;
-    auto * const eth_hdr = rte_buf<struct ::ether_hdr*>(pkt, 0);
+    ::rte_ether_hdr eth_buf;
+    auto * const eth_hdr = rte_read(pkt, 0, eth_buf);
     offset += sizeof(*eth_hdr);
 
     // check ethernet header
@@ -1392,7 +1380,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     printf("recv: eth dst addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
     printf("\n");
-    printf("recv: eth type: %x\n", ntohs(eth_type));
+    printf("recv: eth type: %x\n", eth_type);
 #endif
 
     struct ether_addr mac_addr = {};
@@ -1413,7 +1401,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     }
 
     // check ip header
-    auto * const ip_hdr = rte_buf<struct ::ipv4_hdr *>(pkt, offset);
+    ::rte_ipv4_hdr ip_hdr_buf;
+    auto * const ip_hdr = rte_read(pkt, offset, ip_hdr_buf);
     offset += sizeof(*ip_hdr);
 
     // In network byte order.
@@ -1435,7 +1424,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_addr.s_addr = ipv4_dst_addr;
 
     // check udp header
-    auto * const udp_hdr = rte_buf< struct ::udp_hdr *>(pkt, offset);
+    ::rte_udp_hdr udp_hdr_buf;
+    auto *const udp_hdr = rte_read(pkt, offset, udp_hdr_buf);
     offset += sizeof(*udp_hdr);
 
     // In network byte order.
@@ -1464,7 +1454,9 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_family = AF_INET;
 
     // segment count
-    sga.sga_numsegs = ntohl(*rte_buf<uint32_t *>(pkt, offset));
+    uint32_t numsegs_buf;
+    auto * const numsegs = rte_read(pkt, offset, numsegs_buf);
+    sga.sga_numsegs = ntohl(*numsegs);
     offset += sizeof(uint32_t);
 
 #if DMTR_DEBUG
@@ -1474,7 +1466,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     if (sga.sga_numsegs != 0xdeadbeef) {
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
             // segment length
-            auto seg_len = ntohl(*rte_buf<uint32_t *>(pkt, offset));
+            uint32_t seg_len_buf;
+            uint32_t seg_len = ntohl(*rte_read(pkt, offset, seg_len_buf));
             offset += sizeof(seg_len);
             sga.sga_segs[i].sgaseg_len = seg_len;
 
@@ -1482,12 +1475,15 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
 #endif
 
+            char cp_buf[seg_len];
+            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);
+
             void *buf = NULL;
             DMTR_OK(dmtr_malloc(&buf, seg_len));
             sga.sga_buf = buf;
             sga.sga_segs[i].sgaseg_buf = buf;
             // todo: remove copy if possible.
-            rte_memcpy(buf, rte_buf<char*>(pkt, offset), seg_len);
+            rte_memcpy(buf, read_buf, seg_len);
             offset += seg_len;
 
 #if DMTR_DEBUG
