@@ -1342,6 +1342,7 @@ dmtr::lwip_queue::service_incoming_packets() {
     return 0;
 }
 
+template <typename T>
 T* rte_read(const struct rte_mbuf *pkt, size_t offset, T& buf, size_t len = sizeof(T)) {
     return (T*)rte_pktmbuf_read(pkt, offset, len, &buf);
 }
