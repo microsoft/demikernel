@@ -87,7 +87,10 @@ int dmtr_accept(dmtr_qtoken_t *qtok_out, int sockqd)
     DMTR_NOTNULL(EINVAL, qtok_out);
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
-    return ioq_api->accept(*qtok_out, sockqd);
+    //std::cout << "ATTEMPTING ACCEPT" << std::endl;
+    int rtn = ioq_api->accept(*qtok_out, sockqd);
+    //std::cout << "ACCEPT RTN " << rtn << std::endl;
+    return rtn;
 }
 
 int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size)
@@ -133,6 +136,7 @@ int dmtr_pop(dmtr_qtoken_t *qtok_out, int qd)
     DMTR_NOTNULL(EINVAL, qtok_out);
     DMTR_NOTNULL(EINVAL, ioq_api.get());
 
+    //std::cout << "ATTEMPTING POP" << std::endl;
     return ioq_api->pop(*qtok_out, qd);
 }
 
@@ -140,6 +144,7 @@ int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt)
 {
     DMTR_NOTNULL(EINVAL, ioq_api.get());
 
+    //std::cout << "ATTEMPTING POLL" << std::endl;
     return ioq_api->poll(qr_out, qt);
 }
 
