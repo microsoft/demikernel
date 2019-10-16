@@ -6,8 +6,9 @@ import scipy.special
 import random
 import os.path
 import pickle
+import time
 
-webserver_root = '/media/wiki/'
+webserver_root = '/media/memfs/wiki/'
 
 COLORS = dict(
     END='\033[0m',
@@ -17,7 +18,9 @@ COLORS = dict(
 )
 
 LOG_DEBUG = True
+LOGFILE = None
 fatality = False
+start_time = time.time()
 
 def log_(s, **print_kwargs):
     if (LOGFILE is not None):
@@ -61,6 +64,11 @@ regex_strengths_bins = [1,2,3,4,5,6,7,8,9,10]
 
 #FIXME: Is it right to "uniformely draw a Zeta probability"?
 def draw_elements(zalpha, array, n_elems):
+    if len(array) == 0:
+        log_fatal('Cannot draw elements from an empty array')
+    if n_elems <= 0:
+        log_fatal('Cannot draw {} elements from an array'. format(n_elems))
+
     elements = []
     z = 1.0 / scipy.special.zeta(zalpha)
     #print('z is {} (zalpha={})'.format(z, zalpha))
@@ -75,6 +83,7 @@ def draw_elements(zalpha, array, n_elems):
         # We look for the Zeta value closest from the number we drew
         l = 0
         r = len(array)
+        mid = 0
         while l < r:
             mid = int((l + r) / 2)
             if r_key > p[mid]:
@@ -125,7 +134,7 @@ def get_files(list_file, sort=False, ascending=False):
                 if size > 0:
                     files_and_sizes.append((f, size))
             except OSError as e:
-                print('Could not get size for {}: {}'.format(f, repr(e)))
+                print('Could not get size for {}: {}'.format(webserver_root+f, repr(e)))
 
         with open(filename, 'wb') as f:
             pickle.dump(files_and_sizes, f);
@@ -140,28 +149,39 @@ def get_files(list_file, sort=False, ascending=False):
 
     return [f[0] for f in files_and_sizes]
 
-def gen_file_requests_tweak(n_req, zalpha, list_file, flag_type=False):
+'''
+ Generates a set of "popular files", randomly selected from a non size-sorted, zipf distributed list of files
+ Generates a set of "unpopular files, randomly selected from a size-sorted, zipf distributed list of files
+ To clarify: because the zipf probabilities are applied to the elements of the list in order, in the second case,
+ the largest files will have higher probability to get selected.
+ Generates a set of "cache no use" requests (regex)
+'''
+def gen_exp_series(n_req, cir_ratio, files_zalpha, list_file, regex_zalpha, flag_type=False):
+    print('Generating {} CIN and {:.2} CIN/CN (Zipf: files zalpha={}, regex zalpha={})'.format(
+        cir_ratio, 1-cir_ratio, files_zalpha, regex_zalpha
+    ))
     files = get_files(list_file)
     sorted_files = get_files(list_file, sort=True)
-    print('Generating 90% zipf popular + 10% unpopular (zalpha={})'.format(zalpha))
 
-    drawn_uris = draw_elements(zalpha, files, int(n_req*0.9))
-    print('Selected popular URIS:')
+    drawn_uris = draw_elements(files_zalpha, files, int(n_req*cir_ratio))
+    print('Selected CIR URIS:')
     print_file_uris_stats(drawn_uris)
     if flag_type:
         popular_files = ['POPULAR,'+uri for uri in drawn_uris]
     else:
         popular_files = drawn_uris
 
-    drawn_uris = draw_elements(zalpha, sorted_files, int(n_req*0.1))
-    print('Selected unpopular URIS:')
+    drawn_uris = draw_elements(files_zalpha, sorted_files, int(n_req*(1-cir_ratio)))
+    print('Selected CIN URIS:')
     print_file_uris_stats(drawn_uris)
     if flag_type:
         unpopular_files = ['UNPOPULAR,'+uri for uri in drawn_uris]
     else:
         unpopular_files = drawn_uris
 
-    return popular_files + unpopular_files
+    regex_requests = gen_regex_requests(int(n_req*(1-cir_ratio)), regex_zalpha, flag_type=flag_type)
+
+    return popular_files, unpopular_files, regex_requests
 
 def gen_file_requests(n_req, zalpha, list_file, flag_type=False):
     files = get_files(list_file)
@@ -213,10 +233,12 @@ if __name__ == '__main__':
     parser.add_argument('--regex-zalpha', type=float, help='RegEX strength Zipf alpha (-1 to disable)',
                         dest='regex_zalpha', default=-1)
     parser.add_argument('--html-files-list', type=str, help='File holding html pages to request',
-                        dest='html_files_list', default='./')
-    parser.add_argument('--tweak-html', action='store_true',
-                        help='Use _tweak function to generate html uris',
-                        dest='html_tweak', default=False)
+                        dest='html_files_list', default=None)
+    parser.add_argument('--exp-series', action='store_true',
+                        help='Generate a two files: CIN and CN, CIN and CIR, with the same CIN base',
+                        dest='exp_series', default=False)
+    parser.add_argument('--cir-ratio', type=float, help='Ratio of CIN requests',
+                        dest='cir_ratio', default=0.9)
     parser.add_argument('--flag-type', action='store_true',
                         help='Append the type of request to the URI',
                         dest='flag_type', default=False)
@@ -237,37 +259,63 @@ if __name__ == '__main__':
     if args.html_zalpha > -1 and args.html_zalpha < 1:
         log_fatal('Zipf alpha must be greater than 0 (html zalpha: {})'.format(args.html_zalpha))
 
-    # Generate regex requests
-    if args.regex_ratio > 0:
-        n_regex_requests = int(args.n_requests * args.regex_ratio)
-        regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha, args.flag_type)
-    else:
-        regex_requests = np.array([])
+    if args.exp_series:
+        log_info('Attempting to generate CIR/CIN/CN experimental dataset.')
 
-    # Generate file requests
-    if args.html_ratio > 0:
-        n_file_requests = int(args.n_requests * args.html_ratio)
-        if args.html_tweak:
-            file_requests = gen_file_requests_tweak(
-                n_file_requests, args.html_zalpha, args.html_files_list, args.flag_type
-            )
+        if args.html_zalpha == -1:
+            log_fatal('Need html zalpha > 0')
+        if args.regex_zalpha == -1:
+            log_fatal('Need regex zalpha > 0')
+        if args.html_files_list is None:
+            log_fatal('Need a list of HTML files')
+
+        cir, cin, cn = gen_exp_series(
+            args.n_requests, args.cir_ratio,
+            args.html_zalpha, args.html_files_list,
+            args.regex_zalpha, flag_type=args.flag_type
+        )
+
+        # Concatenate and shuffle CIN, CIR and CN in two datasets
+        cir_cn = np.concatenate([cir, cn])
+        random.shuffle(cir_cn)
+
+        cir_cin = np.concatenate([cir, cin])
+        random.shuffle(cir_cin)
+
+        # Now create two files: cir_cn, cir_cin
+        filename = 'CIR{:.2}-CN{:.2}-{}req-{}zf-{}zr_'.format(
+            args.cir_ratio, 1-args.cir_ratio,
+            args.n_requests, args.html_zalpha, args.regex_zalpha
+        ) + args.output_file
+        with open(filename, 'w+') as f:
+            f.writelines(['{}\n'.format(request) for request in cir_cn])
+
+        filename = 'CIR{:.2}-CIN{:.2}-{}req-{}zf-{}zr_'.format(
+            args.cir_ratio, 1-args.cir_ratio,
+            args.n_requests, args.html_zalpha, args.regex_zalpha
+        ) + args.output_file
+        with open(filename, 'w+') as f:
+            f.writelines(['{}\n'.format(request) for request in cir_cin])
+    else:
+        # Generate regex requests
+        if args.regex_ratio > 0:
+            n_regex_requests = int(args.n_requests * args.regex_ratio)
+            regex_requests = gen_regex_requests(n_regex_requests, args.regex_zalpha, args.flag_type)
         else:
+            regex_requests = np.array([])
+
+        # Generate file requests
+        if args.html_ratio > 0:
+            n_file_requests = int(args.n_requests * args.html_ratio)
             file_requests = gen_file_requests(
                 n_file_requests, args.html_zalpha, args.html_files_list, args.flag_type
             )
-    else:
-        file_requests = np.array([])
+        else:
+            file_requests = np.array([])
 
-    all_requests = np.concatenate([regex_requests, file_requests])
-    random.shuffle(all_requests)
+        all_requests = np.concatenate([regex_requests, file_requests])
+        random.shuffle(all_requests)
 
-    # interleave requests (of each type) in the output file
-    with open(args.output_file, 'w+') as f:
-        f.writelines(['{}\n'.format(request) for request in all_requests])
-
-    all_requests = np.concatenate([regex_requests, file_requests])
-    random.shuffle(all_requests)
-
-    # interleave requests (of each type) in the output file
-    with open(args.output_file, 'w+') as f:
-        f.writelines(['{}\n'.format(request) for request in all_requests])
+        # interleave requests (of each type) in the output file
+        with open(args.output_file, 'w+') as f:
+            f.writelines(['{}\n'.format(request) for request in all_requests])
