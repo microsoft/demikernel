@@ -12,8 +12,6 @@ find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS
   program_options chrono context system coroutine)
 include_directories(${Boost_INCLUDE_DIR})
-# FIXME: what's the relative path of this directory? Why isn't it properly parsed already for other dpdk libraries?
-link_directories(/u/maxdml/datacenter-OS/submodules/dpdk/build/lib/)
 
 set(ECHO_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -44,10 +42,12 @@ target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boos
 # LWIP HTTP server threaded
 add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
 target_link_libraries(dmtr-lwip-http-server-threaded dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
+target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
 
 # LWIP HTTP rate client
 add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
 target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
+target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # RDMA HTTP server threaded
 add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})

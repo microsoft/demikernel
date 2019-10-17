@@ -62,10 +62,11 @@ int timeout_ns = 10000000;
 
 /* Default HTTP GET request */
 const char *REQ_STR =
-        "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: dmtr\r\n\r\n";
+        "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: %s\r\n\r\n";
 /* Start of the string for a valid HTTP response */
-const std::string VALID_RESP="HTTP/1.1 200 OK";
-const std::string CONTENT_LEN="Content-Length: ";
+const std::string VALID_RESP = "HTTP/1.1 200 OK";
+const std::string CONTENT_LEN = "Content-Length: ";
+std::string DEFAULT_USER_AGENT = "Perséphone";
 
 /* Validates the given response, checking it against the valid response string */
 static inline bool validate_response(std::string &resp_str, bool check_content_len) {
@@ -121,7 +122,7 @@ struct RequestState {
     int conn_qd; /** The connection's queue descriptor */
     uint32_t id; /** Request id */
 
-    RequestState(char* const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
+    RequestState(char * const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
     //~RequestState() { free(req); }
 };
 
@@ -276,7 +277,6 @@ int log_responses(uint32_t total_requests, int log_memq,
                 log_warn("Logger's %d memory queue returned: %d", my_idx, status);
             } else {
                 new_op = false;
-                continue;
             }
         }
 
@@ -646,9 +646,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
             DMTR_OK(dmtr_push(&token, qd, &sga));
             tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-            request->push_token = token;
-#endif
             log_debug("Scheduling request %d for send", request->id);
             //printf("Sending %s\n", request->req+sizeof(uint32_t));
             //printf("Scheduled PUSH: %d/%lu\n", request->id, token);
@@ -666,6 +663,11 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         int idx;
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         hr_clock::time_point op_time = take_time();
+        if (status == EAGAIN) {
+            continue;
+        }
+        token = tokens[idx];
+        tokens.erase(tokens.begin()+idx);
         if (status == 0) {
             token = tokens[idx];
             tokens.erase(tokens.begin()+idx);
@@ -690,7 +692,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                            wait_out.qr_opcode,
                            req_id, wait_out.qr_value.sga.sga_segs[0].sgaseg_buf,
                            completed, send_index);
-                terminate = true;
+                //terminate = true;
                 continue;
             }
             std::unique_ptr<RequestState> request = std::move(req->second);
@@ -704,13 +706,12 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, READING, op_time);
+                request->push_token = token;
 #endif
                 log_debug("Scheduling request %d for read", request->id);
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
-#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
-                request->pop_token = token;
-#endif
+
                 free(request->req); //XXX putting this in the log threads causes ASAN heap-read-after-free??
                 //printf("Scheduled POP %d/%lu\n", request->id, token);
                 requests[request->id] = std::move(request);
@@ -723,6 +724,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
 #endif
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, COMPLETED, op_time);
+                request->pop_token = token;
 #endif
                 /* Null terminate the response (for validate_response) */
                 char *req_c = reinterpret_cast<char *>(
@@ -746,9 +748,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 tokens.push_back(token);
             }
         } else {
-            if (status == EAGAIN) {
-                continue;
-            }
             assert(status == ECONNRESET || status == ECONNABORTED);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
             token = tokens[idx];
@@ -808,7 +807,7 @@ int main(int argc, char **argv) {
     int rate, duration, n_threads;
     std::string url, uri_list, label, log_dir;
     namespace po = boost::program_options;
-    bool short_lived, debug_duration_flag;
+    bool short_lived, debug_duration_flag, flag_type;
     po::options_description desc{"Rate client options"};
     desc.add_options()
         ("debug-duration", po::bool_switch(&debug_duration_flag), "Remove duration limits for threads")
@@ -819,7 +818,8 @@ int main(int argc, char **argv) {
         ("label,l", po::value<std::string>(&label)->default_value("rate_client"), "experiment label")
         ("log-dir,L", po::value<std::string>(&log_dir)->default_value("./"), "Log directory")
         ("client-threads,T", po::value<int>(&n_threads)->default_value(1), "Number of client threads")
-        ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request");
+        ("uri-list,f", po::value<std::string>(&uri_list)->default_value(""), "List of URIs to request")
+        ("flag-type", po::bool_switch(&flag_type), "Specify request type in User-Agent");
     parse_args(argc, argv, false, desc);
 
     if (short_lived) {
@@ -881,13 +881,24 @@ int main(int argc, char **argv) {
         /* We loop in case the URI file was not created with the desired amount of requests in mind */
         while (http_requests.size() < total_requests) {
             while (std::getline(urifile, uri) && http_requests.size() < total_requests) {
+                std::string user_agent;
+                std::string req_uri;
+                if (flag_type) {
+                    std::stringstream ss(uri);
+                    getline(ss, user_agent, ',');
+                    getline(ss, req_uri, ',');
+                } else {
+                    user_agent = DEFAULT_USER_AGENT;
+                    req_uri = uri;
+                }
+
                 char * const req = reinterpret_cast<char *>(malloc(MAX_REQUEST_SIZE));
                 memset(req, '\0', MAX_REQUEST_SIZE);
                 uint32_t id = (uint32_t) http_requests.size();
                 memcpy(req, (uint32_t *) &id, sizeof(uint32_t));
                 size_t req_size = snprintf(
                     req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
-                    REQ_STR, uri.c_str(), host.c_str()
+                    REQ_STR, req_uri.c_str(), host.c_str(), user_agent.c_str()
                 );
                 req_size += sizeof(uint32_t);
                 std::unique_ptr<RequestState> req_obj(new RequestState(req, req_size, id));
@@ -904,7 +915,7 @@ int main(int argc, char **argv) {
             memcpy(req, (uint32_t *) &i, sizeof(uint32_t));
             size_t req_size = snprintf(
                 req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
-                REQ_STR, uri.c_str(), host.c_str()
+                REQ_STR, uri.c_str(), host.c_str(), DEFAULT_USER_AGENT.c_str()
             );
             req_size += sizeof(uint32_t);
             std::unique_ptr<RequestState> req_obj(new RequestState(req, req_size, i));
