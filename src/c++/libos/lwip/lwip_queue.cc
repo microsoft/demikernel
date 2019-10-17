@@ -1027,7 +1027,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     tx_pkts[i]->l2_len = sizeof(*eth_hdr);
 
                     // TODO IMP: Is the cast on the next line necessary
-                    char *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
+                    void *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
                     // TODO IMP: The ether header should be constructed once
                     // and copied into here, rather than re-getting macaddr every time (e.g)
                     auto * const eth_hdr = static_cast<::rte_ether_hdr *>(p);
@@ -1517,12 +1517,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 #if DMTR_DEBUG
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endiffdasfdfa
+#endif
 
             // TODO IMP: Duplicating above. Don't double-copy.
             // Something like: char * rtn = read(buffer). If rtn != buffer, memcpy(buffer, rtn);
             char cp_buf[seg_len];
-            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);fdafdsafsdfadsf
+            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);
 
             void *buf = NULL;
             DMTR_OK(dmtr_malloc(&buf, seg_len));
