@@ -52,10 +52,13 @@ int main(int argc, char *argv[])
     pthread_t me = pthread_self();
     dmtr_latency_t *latency = e2e_latencies.find(me)->second.get();
 
+    std::string pkt_contents = generate_sequence();
+    char *pkt_ptr = &pkt_contents[0];
+
     dmtr_sgarray_t sga = {};
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = packet_size;
-    sga.sga_segs[0].sgaseg_buf = generate_packet();
+    sga.sga_segs[0].sgaseg_buf = pkt_ptr;
 
     for (size_t i = 0; i < iterations; i++) {
         dmtr_qtoken_t qt;
@@ -73,9 +76,18 @@ int main(int argc, char *argv[])
         DMTR_OK(dmtr_record_timed_latency(latency, since_epoch(t0), dt.count()));
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
-        assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
-
-        /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
+        size_t out_len = qr.qr_value.sga.sga_segs[0].sgaseg_len;
+        assert(out_len == packet_size);
+        std::string output_contents(static_cast<char*>(qr.qr_value.sga.sga_segs[0].sgaseg_buf),
+                                    out_len);
+        if (pkt_contents.compare(output_contents)) {
+            log_error("Output did not match sent packet!");
+            fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n",
+                    i,
+                    reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf),
+                    qr.qr_value.sga.sga_segs[0].sgaseg_len);
+            return -1;
+        }
         free(qr.qr_value.sga.sga_buf);
     }
     DMTR_OK(dmtr_close(qd));

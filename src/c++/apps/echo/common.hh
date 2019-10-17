@@ -7,6 +7,7 @@
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
+#include <sstream>
 #include <chrono>
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
@@ -250,6 +251,20 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         file = vm["file"].as<std::string>();
     }
 };
+
+std::string generate_sequence()
+{
+    std::stringstream ss;
+    for (unsigned int i=0; i < packet_size; i++) {
+        if (i % 100 == 0) {
+            ss << "\n";
+        } else {
+            ss << char('0' + i % 10);
+        }
+    }
+    return ss.str();
+};
+
 
 void* generate_packet()
 {
