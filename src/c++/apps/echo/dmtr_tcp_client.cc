@@ -81,6 +81,7 @@ int main(int argc, char *argv[])
         std::string output_contents(static_cast<char*>(qr.qr_value.sga.sga_segs[0].sgaseg_buf),
                                     out_len);
         if (pkt_contents.compare(output_contents)) {
+            log_error("Output did not match sent packet!");
             fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n",
                     i,
                     reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf),
