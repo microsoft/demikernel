@@ -46,7 +46,7 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
 }
 
 int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_queue_factory::ctor_type ctor) {
-    //std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
+    std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
     DMTR_OK(my_queue_factory.register_ctor(cid, ctor));
     return 0;
 }
@@ -91,7 +91,7 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
     int qd = new_qd();
     std::unique_ptr<io_queue> qq;
     {
-        //std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
+        std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
         DMTR_OK(my_queue_factory.construct(qq, cid, qd));
     }
     q_out = qq.get();
