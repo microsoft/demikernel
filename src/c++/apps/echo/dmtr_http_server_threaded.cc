@@ -481,29 +481,23 @@ static void *http_worker(void *args) {
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
 
-    dmtr_qtoken_t token = 0;
-    bool new_op = true;
-    while (1) {
-        if (me->terminate) {
-            log_info("HTTP worker %d set to terminate", me->whoami);
-            break;
-        }
+    dmtr_qtoken_t token;
+    if (dmtr_pop(&token, me->in_qfd)) {
+        log_info("POP FAILED");
+    }
+    while (!me->terminate) {
         dmtr_qresult_t wait_out;
-        if (new_op) {
-            dmtr_pop(&token, me->in_qfd);
-        }
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             http_work(state, wait_out, token, me->out_qfd, me);
-            new_op = true;
-        } else {
-            if (status == EAGAIN) {
-                new_op = false;
-                continue;
+            if (dmtr_pop(&token, me->in_qfd)) {
+                log_info("POP FAILED");
             }
+        } else {
             log_debug("dmtr_wait returned status %d", status);
         }
     }
+    log_info("HTTP worker %d set to terminate", me->whoami);
 
     free(state);
     pthread_exit(NULL);
