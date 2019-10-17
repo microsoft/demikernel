@@ -894,9 +894,11 @@ int main(int argc, char *argv[]) {
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
         ("no-pthread", bool_switch(&no_pthread), "use pthread or not")
-        ("no-pin-tcp", bool_switch(&no_pin_http), "Turn of HTTP thread pinning")
-        ("no-pin-http", bool_switch(&no_pin_tcp), "Turn of TCP thread pinning");
+        ("no-pin-tcp", bool_switch(&no_pin_tcp), "Turn of HTTP thread pinning")
+        ("no-pin-http", bool_switch(&no_pin_http), "Turn of TCP thread pinning");
     parse_args(argc, argv, true, desc);
+
+    dmtr_log_directory = log_dir;
 
     if (no_split) {
         log_info("Starting in single component mode");
