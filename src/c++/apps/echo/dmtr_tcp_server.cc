@@ -92,7 +92,6 @@ int main(int argc, char *argv[])
 
         // if we got an EOK back from wait
         if (status == 0) {
-	  //std::cout << "Found something: qd=" << wait_out.qr_qd;
 
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers
@@ -104,7 +103,7 @@ int main(int argc, char *argv[])
                 tokens[idx] = token;
             } else if (DMTR_OPC_POP == wait_out.qr_opcode) {
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
-                //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+                //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", 1, reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf), wait_out.qr_value.sga.sga_segs[0].sgaseg_len);
 
                 dmtr_qtoken_t &pop_token = tokens[idx];
                 auto pop_dt = boost::chrono::steady_clock::now() - start_times[pop_token];
@@ -121,10 +120,13 @@ int main(int argc, char *argv[])
                 }
 #endif
                 auto t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_push(&pop_token, wait_out.qr_qd, &wait_out.qr_value.sga));
+                dmtr_qtoken_t push_token;
+                DMTR_OK(dmtr_push(&push_token, wait_out.qr_qd, &wait_out.qr_value.sga));
                 auto push_dt = boost::chrono::steady_clock::now() - t0;
                 t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_wait(NULL, token));
+                int rtn2;
+                while ((rtn2 = dmtr_wait(NULL, push_token)) == EAGAIN) {};
+                DMTR_OK(rtn2);
                 auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
                 t0 = boost::chrono::steady_clock::now();
