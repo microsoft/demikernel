@@ -57,7 +57,7 @@ namespace bpo = boost::program_options;
 #define MAX_FRAG_NUM RTE_LIBRTE_IP_FRAG_MAX_FRAG
 
 /** Memory pool and rings related variables */
-#define MAX_TX_MBUFS           128
+#define MAX_TX_MBUFS           64
 #define MAX_PKT_BURST          64
 
 #define NUM_MBUFS               16383 // 2^14 - 1
@@ -74,6 +74,8 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
+// TODO: This should be defined in a more global place so we don't have to
+// uncomment it in multiple places
 //#define DMTR_TRACE 1
 //#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP 1
@@ -215,16 +217,10 @@ int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct rte_ether_a
     return 0;
 }
 
-thread_local bool first_insert = true;
-
 bool
 dmtr::lwip_queue::insert_recv_queue(const lwip_4tuple &tup,
                                     const dmtr_sgarray_t &sga)
 {
-    if (first_insert) {
-        std::cout << "FIRST INSERT ON THREAD" << std::endl;
-        first_insert = false;
-    }
     auto it = our_recv_queues.find(tup);
     if (it == our_recv_queues.end()) {
         return false;
@@ -303,6 +299,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
+// TODO IMP: Stuff with these offloads
 #define REQUESTED_DEV_TX_OFFLOADS \
     (DEV_TX_OFFLOAD_IPV4_CKSUM | \
      DEV_TX_OFFLOAD_UDP_CKSUM | \
@@ -327,9 +324,11 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     struct ::rte_eth_conf port_conf = {};
     port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+    // TODO IMP: Do enabling these offloads actually do anything?
     port_conf.rxmode.offloads = DEV_RX_OFFLOAD_SCATTER | DEV_RX_OFFLOAD_JUMBO_FRAME;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    // TODO IMP: check (and store) availability of offloads
     port_conf.txmode.offloads = REQUESTED_DEV_TX_OFFLOADS;
 
     struct ::rte_eth_rxconf rx_conf = {};
@@ -343,7 +342,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     tx_conf.tx_thresh.hthresh = TX_HTHRESH;
     tx_conf.tx_thresh.wthresh = TX_WTHRESH;
 
-    // configure the rte_ethernet device.
+    // configure the ethernet device.
     DMTR_OK(rte_eth_dev_configure(port_id, rx_rings, tx_rings, port_conf));
 
     // todo: what does this do?
@@ -372,7 +371,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
         DMTR_OK(rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, tx_conf));
     }
 
-    // start the rte_ethernet port.
+    // start the ethernet port.
     DMTR_OK(rte_eth_dev_start(port_id));
 
     //DMTR_OK(rte_eth_promiscuous_enable(port_id));
@@ -499,10 +498,12 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         GSO_MBUFS_NUM * nb_ports,
         GSO_MBUF_CACHE_SIZE,
         0,
-        MBUF_DATA_SIZE,
+        MBUF_DATA_SIZE, // TODO IMP: Does it need a buffer size?
         //0,
         rte_socket_id()
     ));
+
+    // TODO IMP: Check if having a direct and indirect pool is necessary.
     /* Initialize GSO direct memory pool */
     struct rte_mempool *gso_dmbuf_pool = NULL;
     DMTR_OK(rte_pktmbuf_pool_create(
@@ -539,7 +540,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     return 0;
 }
 
-const size_t dmtr::lwip_queue::our_max_queue_depth = 1023;
+const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
 dmtr::lwip_queue::lwip_queue(int qd) :
@@ -697,6 +698,7 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     struct sockaddr_in generic_src = {};
     generic_src.sin_family = AF_INET;
     generic_src.sin_port = saddr_copy.sin_port;
+    // TODO IMP: Remove setting my_app_port from dpdk_init function
     my_app_port = ntohs(saddr_copy.sin_port);
     generic_src.sin_addr.s_addr = INADDR_ANY;
     lwip_4tuple tup = lwip_4tuple(lwip_addr(generic_src), lwip_addr(saddr_copy));
@@ -721,6 +723,8 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
+    // TODO IMP: Check if my_app_port is already set?
+    // Really it should be a list or std::set or something rather than a single variable
     my_app_port = ntohs(saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
@@ -832,7 +836,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             size_t sgalen = 0;
             DMTR_OK(dmtr_sgalen(&sgalen, sga));
             if (0 == sgalen) {
-                std::cout << "AHHAHAHAHAHAHAHAHAHAH" << std::endl;
                 DMTR_OK(t->complete(ENOMSG));
                 // move onto the next task.
                 continue;
@@ -848,11 +851,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
         struct rte_mbuf *pkt = NULL;
         DMTR_OK(rte_pktmbuf_alloc(pkt, our_mbuf_pool));
-        //auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
+        auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
         // packet layout order is (from outside -> in):
-        // rte_ether_hdr
-        // rte_ipv4_hdr
-        // rte_udp_hdr
+        // ether_hdr
+        // ipv4_hdr
+        // udp_hdr
         // sga.num_bufs
         // sga.buf[0].len
         // sga.buf[0].buf
@@ -860,7 +863,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         // sga.buf[1].buf
         // ...
 
-        auto *p = rte_pktmbuf_mtod(pkt, uint8_t*);
         // First, compute the offset of each header.  We will later fill them in, in reverse order.
         auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
         p += sizeof(*eth_hdr);
@@ -999,10 +1001,13 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
 
+// TODO IMP: This should not be a preprocessor definition.
+// Rather, it should depend on the capabilities of the NIC
+// and this should certainly not be defined here
 #define USE_GSO
 
-            /* Remove the Ethernet header and trailer from the input packet */
 #ifndef USE_GSO
+            /* Remove the Ethernet header and trailer from the input packet */
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
             int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN ,
                                                 our_gso_ctx.direct_pool,
@@ -1015,27 +1020,25 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             nb_pkts = ret;
 #ifndef USE_GSO
             if (ret > 0) {
+                // TODO IMP: This should be in the USE_GSO section, not here
                 tx_pkts[0]->ol_flags |= (PKT_TX_UDP_CKSUM);
                 for (int i=0; i < ret; i++) {
+                    // TODO IMP: Check if this next line is necessary
                     tx_pkts[i]->l2_len = sizeof(*eth_hdr);
-                    //char *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
-                    //auto *p1 = rte_pktmbuf_mtod(tx_pkts[i]->next, uint8_t *);
-                    //auto *p1 = p + sizeof(*eth_hdr) + sizeof(struct ::rte_ipv4_hdr);;
-                    //auto * const ip_hdr2 = reinterpret_cast<struct ::rte_udp_hdr *>(p1);
-                    //printf("send: udp src addr: %d\n", ntohs(ip_hdr2->src_port));
-                    //printf("send: udp dst addr: %d\n", ntohs(ip_hdr2->dst_port));
+
+                    // TODO IMP: Is the cast on the next line necessary
                     char *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
-                    auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
+                    // TODO IMP: The ether header should be constructed once
+                    // and copied into here, rather than re-getting macaddr every time (e.g)
+                    auto * const eth_hdr = static_cast<::rte_ether_hdr *>(p);
                     DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
                     rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
                     eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
 
-            //        tx_pkts[i]->buf_len = total_len;
-                    printf("pkt[%d] DATA LEN: %d\n", (int)i, (int)tx_pkts[i]->data_len);
-                    //printf("DATA NBSEGs: %d\n", (int)tx_pkts[i]->nb_segs);
-                    //tx_pkts[i]->buf_len= sizeof(*eth_hdr) + sizeof(struct ::rte_ipv4_hdr);
-                    //struct rte_mbuf *tx_pkt = tx_pkts[i];
-                    //tx_pkt->ol_flags |= (PKT_TX_IP_CKSUM | PKT_TX_IPV4);
+                    // TODO IMP: Should I be setting these offloads?
+                    // I am curious to see what offloads are set automatically
+                    // I should probably set these before calling fragment_packet
+                    //
                     //tx_pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
                     //while (tx_pkt->nb_segs > 1) {
                     //    tx_pkt = tx_pkt->next;
@@ -1050,16 +1053,14 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
                     tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
 #endif
+            // TODO IMP: Should this be happening regardless of GSO?
+            // It certainly shouldn't be happening twice, and I think that GSO automatically frees
             rte_pktmbuf_free(pkt);
         } else {
             tx_pkts[0] = pkt;
             nb_pkts = 1;
         }
-        //printf("DATA LEN: %d\n", (int)tx_pkts[0]->data_len);
-        //printf("DATA NBSEGs: %d\n", (int)tx_pkts[0]->nb_segs);
-        if (tx_pkts[0]->nb_segs > 1) {
-            //printf("->next DATA LEN: %d\n", (int)tx_pkts[0]->next->data_len);
-        }
+
         size_t pkts_sent = 0;
 #if DMTR_PROFILE
         auto t0 = take_time();
@@ -1102,7 +1103,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             if (it != write_latencies.end()) {
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
-                DMTR_OK(dmtr_regist/r_latencies("write", write_latencies));
+                DMTR_OK(dmtr_register_latencies("write", write_latencies));
                 it = write_latencies.find(me); //Not ideal but happens only once
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }
@@ -1153,7 +1154,6 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         while (tq.empty()) {
             yield();
         }
-        //std::cout << "GOT NONEMPTY!" << std::endl;
 
         auto qt = tq.front();
 #if DMTR_TRACE
@@ -1224,6 +1224,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
     return 0;
 }
 
+// TODO IMP: This is really like read_into_struct or something like that? cast_read?
 template <typename T>
 T* rte_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
     return (T*)rte_pktmbuf_read(pkt, offset, sizeof(T), &buf);
@@ -1298,15 +1299,12 @@ dmtr::lwip_queue::service_incoming_packets() {
                     pkts[i], rte_rdtsc(), ip_hdr
                 );
 
-
                 if (out == NULL) {
-                    //printf("Pkt %d was a fragment!\n", i);
                     pkts[i] = NULL;
                     continue;
                 }
 
                 if (out != pkts[i]) {
-                    //printf("Pkt %d was the last fragment!\n", i);
                     pkts[i] = out;
                 }
 #ifdef DMTR_DEBUG
@@ -1371,6 +1369,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         }
     }
 
+    // TODO IMP: Freeing death_row might actually be necessary...
     //rte_ip_frag_free_death_row(&our_death_row, -1);
 
     return 0;
@@ -1389,9 +1388,9 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
                                const struct rte_mbuf *pkt)
 {
     // packet layout order is (from outside -> in):
-    // rte_ether_hdr
-    // rte_ipv4_hdr
-    // rte_udp_hdr
+    // ether_hdr
+    // ipv4_hdr
+    // udp_hdr
     // sga.num_bufs
     // sga.buf[0].len
     // sga.buf[0].buf
@@ -1403,12 +1402,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         printf("L4 checksum is corrupted\n");
     }
 
+    // check ethernet header
     size_t offset = 0;
     ::rte_ether_hdr eth_buf;
     auto * const eth_hdr = rte_read(pkt, 0, eth_buf);
     offset += sizeof(*eth_hdr);
 
-    // check rte_ethernet header
     auto eth_type = ntohs(eth_hdr->ether_type);
 
 #if DMTR_DEBUG
@@ -1494,6 +1493,10 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     src.sin_family = AF_INET;
     dst.sin_family = AF_INET;
 
+    // TODO IMP: Allocate all sga segments (with total size of mbuf)
+    // TODO IMP: Can have the segbuf point to mbuf if possible, but then freeing gets tricky
+    // Otherwise, just copy out into the segbuf
+
     // segment count
     uint32_t numsegs_buf;
     auto * const numsegs = rte_read(pkt, offset, numsegs_buf);
@@ -1514,10 +1517,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
 #if DMTR_DEBUG
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endif
+#endiffdasfdfa
 
+            // TODO IMP: Duplicating above. Don't double-copy.
+            // Something like: char * rtn = read(buffer). If rtn != buffer, memcpy(buffer, rtn);
             char cp_buf[seg_len];
-            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);
+            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);fdafdsafsdfadsf
 
             void *buf = NULL;
             DMTR_OK(dmtr_malloc(&buf, seg_len));
@@ -1604,6 +1609,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
+    // TODO IMP: Add comment to explain why the use of count_out
     size_t count = ::rte_eth_tx_burst(port_id, queue_id, &tx_pkts[count_out], nb_pkts - count_out);
     // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
     if (0 == count) {
@@ -1653,6 +1659,7 @@ int dmtr::lwip_queue::rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, co
     mpool_out = NULL;
     DMTR_NOTNULL(EINVAL, name);
 
+    // TODO IMP: Is this headroom required?
     struct rte_mempool *ret = ::rte_pktmbuf_pool_create(name, n, cache_size, priv_size, data_room_size + RTE_PKTMBUF_HEADROOM, socket_id);
     if (NULL == ret) {
         return rte_errno;
@@ -1852,6 +1859,7 @@ int dmtr::lwip_queue::setup_rx_queue_ip_frag_tbl(uint32_t queue) {
 
     snprintf(buf, sizeof(buf), "ip_frag_mbuf_pool_%u", queue);
 
+    // TODO IMP: Why this ip_frag_mbuf pool is here at all?
     DMTR_OK(rte_pktmbuf_pool_create(
         our_ip_frag_mbuf_pool,
         buf, nb_mbuf,
