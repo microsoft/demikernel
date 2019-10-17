@@ -860,6 +860,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         // sga.buf[1].buf
         // ...
 
+        auto *p = rte_pktmbuf_mtod(pkt, uint8_t*);
         // First, compute the offset of each header.  We will later fill them in, in reverse order.
         auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
         p += sizeof(*eth_hdr);
@@ -895,7 +896,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
         // Fill in UDP header.
         {
-            memset(rte_udp_hdr, 0, sizeof(*rte_udp_hdr));
+            memset(udp_hdr, 0, sizeof(*udp_hdr));
 
             // sin_port is already in network byte order.
             const in_port_t dst_port = saddr->sin_port;
@@ -904,17 +905,17 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             const in_port_t src_port = is_bound() ? my_bound_src->sin_port : dst_port;
 
             uint16_t udp_len = 0; // In host byte order.
-            DMTR_OK(dmtr_u32tou16(&udp_len, total_len + sizeof(*rte_udp_hdr)));
+            DMTR_OK(dmtr_u32tou16(&udp_len, total_len + sizeof(*udp_hdr)));
 
             // Already in network byte order.
-            rte_udp_hdr->src_port = src_port;
-            rte_udp_hdr->dst_port = dst_port;
+            udp_hdr->src_port = src_port;
+            udp_hdr->dst_port = dst_port;
 
-            rte_udp_hdr->dgram_len = htons(udp_len);
-            rte_udp_hdr->dgram_cksum = 0;
+            udp_hdr->dgram_len = htons(udp_len);
+            udp_hdr->dgram_cksum = 0;
 
-            total_len += sizeof(*rte_udp_hdr);
-            pkt->l4_len = sizeof(*rte_udp_hdr);
+            total_len += sizeof(*udp_hdr);
+            pkt->l4_len = sizeof(*udp_hdr);
         }
 
         // Fill in IP header.
@@ -977,8 +978,8 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         printf("\n");
         printf("send: ip src addr: %x\n", ntohl(ip_hdr->src_addr));
         printf("send: ip dst addr: %x\n", ntohl(ip_hdr->dst_addr));
-        printf("send: udp src port: %d\n", ntohs(rte_udp_hdr->src_port));
-        printf("send: udp dst port: %d\n", ntohs(rte_udp_hdr->dst_port));
+        printf("send: udp src port: %d\n", ntohs(udp_hdr->src_port));
+        printf("send: udp dst port: %d\n", ntohs(udp_hdr->dst_port));
         if (sga->sga_numsegs == 0xdeadbeef) {
             printf("Sending close connection magic\n");
         } else {
@@ -988,7 +989,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 //printf("send: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(sga->sga_segs[i].sgaseg_buf));
             }
         }
-        printf("send: udp len: %d\n", ntohs(rte_udp_hdr->dgram_len));
+        printf("send: udp len: %d\n", ntohs(udp_hdr->dgram_len));
         printf("send: pkt len: %d\n", total_len);
         //rte_pktmbuf_dump(stderr, pkt, total_len);
         printf("====================\n");
