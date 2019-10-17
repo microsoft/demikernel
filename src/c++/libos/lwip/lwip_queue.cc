@@ -303,6 +303,12 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
+#define REQUESTED_DEV_TX_OFFLOADS \
+    (DEV_TX_OFFLOAD_IPV4_CKSUM | \
+     DEV_TX_OFFLOAD_UDP_CKSUM | \
+     DEV_TX_OFFLOAD_MULTI_SEGS | \
+     DEV_TX_OFFLOAD_TCP_TSO)
+
 /*
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
@@ -324,7 +330,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     port_conf.rxmode.offloads = DEV_RX_OFFLOAD_SCATTER | DEV_RX_OFFLOAD_JUMBO_FRAME;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-    port_conf.txmode.offloads = (DEV_TX_OFFLOAD_IPV4_CKSUM | DEV_TX_OFFLOAD_MULTI_SEGS);
+    port_conf.txmode.offloads = REQUESTED_DEV_TX_OFFLOADS;
 
     struct ::rte_eth_rxconf rx_conf = {};
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
@@ -996,20 +1002,24 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
 
+#define USE_GSO
 
             /* Remove the Ethernet header and trailer from the input packet */
+#ifndef USE_GSO
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
             int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN ,
                                                 our_gso_ctx.direct_pool,
                                                 our_gso_ctx.indirect_pool);
-            //rte_pktmbuf_free(pkt);
-            //pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
-            //int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
+#else
+            pkt->ol_flags |= ( PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
+            int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
+#endif
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
+#ifndef USE_GSO
             if (ret > 0) {
+                tx_pkts[0]->ol_flags |= (PKT_TX_UDP_CKSUM);
                 for (int i=0; i < ret; i++) {
-#if 1
                     tx_pkts[i]->l2_len = sizeof(*eth_hdr);
                     //char *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
                     //auto *p1 = rte_pktmbuf_mtod(tx_pkts[i]->next, uint8_t *);
@@ -1034,10 +1044,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     //    tx_pkt = tx_pkt->next;
                     //    tx_pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
                     //}
-#endif
                 }
-            }
             rte_pktmbuf_free(pkt);
+            }
+#endif
+
 #if DMTR_DEBUG
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
                     tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
