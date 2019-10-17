@@ -388,14 +388,15 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
+std::unordered_set<uint16_t> dmtr::lwip_queue::my_app_ports;
 uint16_t dmtr::lwip_queue::my_port_range_lo;
 uint16_t dmtr::lwip_queue::my_port_range_hi;
 uint16_t dmtr::lwip_queue::my_port_counter;
-uint16_t dmtr::lwip_queue::my_app_port;
 struct rte_gso_ctx dmtr::lwip_queue::our_gso_ctx;
 struct rte_ip_frag_tbl *dmtr::lwip_queue::our_ip_frag_tbl;
 struct rte_ip_frag_death_row dmtr::lwip_queue::our_death_row;
 struct rte_mempool *dmtr::lwip_queue::our_ip_frag_mbuf_pool;
+
 int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -694,13 +695,13 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     }
 
     my_bound_src = saddr_copy;
+    my_app_ports.insert(ntohs(saddr_copy.sin_port));
 
     struct sockaddr_in generic_src = {};
     generic_src.sin_family = AF_INET;
     generic_src.sin_port = saddr_copy.sin_port;
-    // TODO IMP: Remove setting my_app_port from dpdk_init function
-    my_app_port = ntohs(saddr_copy.sin_port);
     generic_src.sin_addr.s_addr = INADDR_ANY;
+
     lwip_4tuple tup = lwip_4tuple(lwip_addr(generic_src), lwip_addr(saddr_copy));
     DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
     our_recv_queues[tup] = &my_recv_queue;
@@ -719,13 +720,12 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-    my_default_dst = *reinterpret_cast<const struct sockaddr_in *>(saddr);
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    my_default_dst = saddr_copy;
+    my_app_ports.insert(ntohs(saddr_copy.sin_port));
+
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
-    // TODO IMP: Check if my_app_port is already set?
-    // Really it should be a list or std::set or something rather than a single variable
-    my_app_port = ntohs(saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
 
@@ -739,7 +739,6 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     my_bound_src = src;
 
     my_tuple = lwip_4tuple(lwip_addr(saddr_copy), lwip_addr(src));
-    my_app_port = ntohs(saddr_copy.sin_port);
     our_recv_queues[my_tuple] = &my_recv_queue;
 #if DMTR_DEBUG
     std::cout << "Connecting from " << my_bound_src->sin_addr.s_addr << " to " << my_default_dst->sin_addr.s_addr << std::endl;
@@ -1472,13 +1471,15 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     in_port_t udp_src_port = udp_hdr->src_port;
     in_port_t udp_dst_port = udp_hdr->dst_port;
 
-    if (udp_hdr->dst_port != htons(my_app_port) &&
-        udp_hdr->src_port != htons(my_app_port)) {
+    if (my_app_ports.find(ntohs(udp_hdr->dst_port)) == my_app_ports.end() &&
+            my_app_ports.find(ntohs(udp_hdr->src_port)) == my_app_ports.end()) {
 #if DMTR_DEBUG
-        printf("recv: dropped (dst port: %d, src port: %d, expecting %d)\n",
-                ntohs(udp_hdr->dst_port),
-                ntohs(udp_hdr->src_port),
-                my_app_port);
+        std::cout << "Recv: dropped (dst port: " << ntohs(udp_hdr->dst_port) << \
+                     ", src_port: " << ntohs(udp_hdr->src_port) << \
+                     ". Expecting one of: ";
+        for (auto it = my_app_ports.begin(); it != my_app_ports.end(); it++) {
+            std::cout << *it << ", ";
+        }
 #endif
         return false;
     }

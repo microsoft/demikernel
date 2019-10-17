@@ -16,6 +16,7 @@
 #include <rte_ip_frag.h>
 #include <unordered_map>
 #include <map>
+#include <unordered_set>
 
 class lwip_addr {
 public:
@@ -66,8 +67,11 @@ class lwip_queue : public io_queue {
     private: static std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct rte_ether_addr> our_ip_to_mac_table;
-    private: static uint16_t my_app_port; //FIXME this could/should be a list
-    public: static void set_app_port(uint16_t port) { my_app_port = port; }
+
+    // ???: Should this be static? (all queues share the same my_app_ports instance?)
+    // TODO: Some mechanic for unregistering ports from the application?
+    private: static std::unordered_set<uint16_t> my_app_ports;
+
     private: static uint16_t my_port_range_lo;
     private: static uint16_t my_port_range_hi;
     private: static uint16_t my_port_counter;
