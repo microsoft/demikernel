@@ -327,7 +327,11 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
 
 static void *http_worker(void *args) {
     Worker *me = (Worker *) args;
-    std::cout << "Hello I am an HTTP worker." << std::endl;
+    //FIXME: the variables are not print, even if they are already set. OOO?
+    printf("Hello I am HTTP worker %d running on core %d\n",
+           me->whoami, me->core_id
+    );
+
     log_debug("My ingress memq has id %d", me->in_qfd);
     log_debug("My egress memq has id %d", me->out_qfd);
 
@@ -601,9 +605,11 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
 static void *net_worker(void *args) {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         std::cout << "\ncan't ignore SIGPIPE\n";
-    std::cout << "Hello I am a network worker." << std::endl;
 
     Worker *me = (Worker *) args;
+    std::cout << "Hello I am network worker " << me->whoami;
+    std::cout << " running on core " << me->core_id << std::endl;
+
 
     /* In case we need to do the HTTP work */
     struct parser_state *state =
@@ -728,25 +734,25 @@ int work_setup(Psp &psp, bool split,
         }
     } else {
         for (int i = 0; i < n_regex_workers; ++i) {
-            uint16_t index = n_net_workers + i;
+            uint16_t index = n_net_workers + psp.http_workers.size();
             psp.regex_workers.push_back(
                 create_http_worker(psp, true, REGEX, index)
             );
         }
         for (int i = 0; i < n_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            uint16_t index = n_net_workers + psp.http_workers.size();
             psp.page_workers.push_back(
                 create_http_worker(psp, true, PAGE, index)
             );
         }
         for (int i = 0; i < n_popular_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            uint16_t index = n_net_workers + psp.http_workers.size();
             psp.popular_page_workers.push_back(
                 create_http_worker(psp, true, POPULAR_PAGE, index)
             );
         }
         for (int i = 0; i < n_unpopular_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size() + i;
+            uint16_t index = n_net_workers + psp.http_workers.size();
             psp.unpopular_page_workers.push_back(
                 create_http_worker(psp, true, UNPOPULAR_PAGE, index)
             );
@@ -929,7 +935,9 @@ int main(int argc, char *argv[]) {
             dump_pql(&w->pql, log_dir, label);
 #endif
 #ifdef DMTR_TRACE
-            dump_traces(*w, log_dir, label);
+            if (w->type == NET) {
+                dump_traces(*w, log_dir, label);
+            }
 #endif
             /*
             if (w->in_qfd > 0) {
