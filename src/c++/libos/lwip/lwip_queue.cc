@@ -623,6 +623,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         new_lq->start_threads();
         DMTR_OK(t->complete(0, new_lq->qd(), src, sizeof(src)));
         my_recv_queue.pop();
+        yield();
     }
 
     return 0;
@@ -1043,6 +1044,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 #endif
         DMTR_OK(t->complete(0, *sga));
+        yield();
     }
 
     return 0;
@@ -1132,6 +1134,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
             }
         }
 #endif
+        yield(); //"disable" batching
     }
 
     return 0;
@@ -1165,6 +1168,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         case EAGAIN:
             return ret;
     }
+    /*
     printf("RECEIVED %lu PACKETS!\n", count);
     for (size_t i; i < count; ++i) {
         auto *p = rte_pktmbuf_mtod(pkts[i], uint8_t *);
@@ -1173,6 +1177,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         uint32_t * const ridptr = reinterpret_cast<uint32_t *>(p);
         printf("Received request %d\n", (uint32_t) *ridptr);
     }
+    */
 
     /* TODO: explore prefetching opportunities
      *         if (likely(i < nb_rx - 1))
@@ -1275,6 +1280,12 @@ dmtr::lwip_queue::service_incoming_packets() {
     return 0;
 }
 
+
+/**
+ * TODO:
+ * - Check if ip total_len == ip header len + ip payload len
+ * - Check if udp len == udp header + udp payload len
+ */
 bool
 dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
                                struct sockaddr_in &dst,
