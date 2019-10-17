@@ -82,7 +82,7 @@ enum parser_status parse_http(struct parser_state *state, char *buf, size_t byte
     }
 
     if (bytes > MAX_URL_SIZE) {
-        printf("Request too large\n");
+        printf("Request too large (%lu/%d)\n", bytes, MAX_URL_SIZE);
         return REQ_ERROR;
     }
 
