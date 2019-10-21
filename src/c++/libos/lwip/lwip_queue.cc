@@ -1042,9 +1042,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             nb_pkts = ret;
 
             for (int i=0; i < ret; i++) {
-                // TODO IMP: Check if this next line is necessary
-                tx_pkts[i]->l2_len = sizeof(*eth_hdr);
-
                 // Add back in the original ethernet header
                 void *p = rte_pktmbuf_prepend(tx_pkts[i], sizeof(*eth_hdr));
                 auto *eth_hdr = static_cast<::rte_ether_hdr *>(p);
