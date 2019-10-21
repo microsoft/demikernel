@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 // we don't include the prelude here to avoid circular dependencies
 use super::datagram::{
     Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Header, Icmpv4Type,

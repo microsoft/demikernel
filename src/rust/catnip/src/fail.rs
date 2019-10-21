@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use custom_error::custom_error;
 use float_duration;
 use std::{

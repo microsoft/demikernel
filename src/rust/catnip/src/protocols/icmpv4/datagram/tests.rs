@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
 use crate::test;
 use byteorder::{NetworkEndian, WriteBytesExt};

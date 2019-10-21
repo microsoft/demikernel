@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use flexi_logger::Logger;
 use std::sync::Once;
 

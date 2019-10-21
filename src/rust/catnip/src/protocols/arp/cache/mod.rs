@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 // todo: remove once all functions are referenced.
 #![allow(dead_code)]
 

@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 cmake_minimum_required(VERSION 3.10)
 project(catnip NONE)
 

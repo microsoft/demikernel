@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #![feature(generators, generator_trait)]
 #![warn(clippy::all)]
 

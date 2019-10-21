@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::super::connection::TcpConnectionId;
 use crate::prelude::*;
 use crc::{crc32, Hasher32};

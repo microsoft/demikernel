@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 mod header;
 
 pub use header::{UdpHeader, UdpHeaderMut, UDP_HEADER_SIZE};

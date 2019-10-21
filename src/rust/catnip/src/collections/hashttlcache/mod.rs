@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 // todo: implement `HashMap` forwarding as needed.
 
 #[cfg(test)]
