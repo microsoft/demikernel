@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::{
     datagram::{Icmpv4Datagram, Icmpv4Type},
     echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp},

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 // todo: remove once all aliases are referenced.
 #![allow(dead_code)]
 

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::{
     super::segment::{TcpSegment, MAX_MSS, MIN_MSS},
     rto::RtoCalculator,

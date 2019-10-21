@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use crate::{prelude::*, r#async, rand::Rng};
 use rand_core::SeedableRng;
 use std::{

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::{TcpSegmentEncoder, TcpSegmentOptions, MAX_TCP_HEADER_SIZE};
 use crate::{
     prelude::*,

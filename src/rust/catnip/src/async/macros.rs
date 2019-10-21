@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 #[macro_export]
 macro_rules! try_poll {
     ($async:expr, $now:expr) => {{

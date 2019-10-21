@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 mod transcode;
 
 use super::connection::{TcpConnection, TcpConnectionId};

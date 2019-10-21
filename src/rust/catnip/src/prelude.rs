@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 pub use crate::{
     engine::Engine, event::Event, fail::*, options::Options, result::*,
     runtime::Runtime,
