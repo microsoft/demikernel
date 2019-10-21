@@ -963,10 +963,14 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             ip_hdr->src_addr = src_ip.s_addr;
             ip_hdr->dst_addr = saddr->sin_addr.s_addr;
 
+#ifdef OFFLOAD_IP_CKSUM
+            pkt->ol_flags |= PKT_TX_IP_CKSUM;
+#else
             uint16_t checksum = 0;
             DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(*ip_hdr)));
             // The checksum is computed on the raw header and is already in the correct byte order.
             ip_hdr->hdr_checksum = checksum;
+#endif
 
             total_len += sizeof(*ip_hdr);
             //pkt->l3_len = 4 * (ip_hdr->version_ihl & 0xf);
@@ -1020,19 +1024,23 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
 
-#ifndef USE_GSO
+#ifdef USE_GSO
+            pkt->ol_flags |= ( PKT_TX_IPV4 | PKT_TX_UDP_SEG );
+            int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
+            DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
+            nb_pkts = ret;
+            // TODO IMP: rte_pktmbuf_free(pkt) ? Is that necessary?
+
+#else // |v| USE_GSO not defined
+
             /* Remove the Ethernet header and trailer from the input packet */
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
             int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN ,
                                                 our_gso_ctx.direct_pool,
                                                 our_gso_ctx.indirect_pool);
-#else
-            pkt->ol_flags |= ( PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
-            int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
-#endif
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
-#ifndef USE_GSO
+
             if (ret > 0) {
                 for (int i=0; i < ret; i++) {
                     // TODO IMP: Check if this next line is necessary
@@ -1046,18 +1054,18 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
                     rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
                     eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
-
-                    // TODO IMP: Should I be setting these offloads?
-                    // I am curious to see what offloads are set automatically
-                    // I should probably set these before calling fragment_packet
-                    //
-                    //tx_pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
-                    //while (tx_pkt->nb_segs > 1) {
-                    //    tx_pkt = tx_pkt->next;
-                    //    tx_pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 |  PKT_TX_UDP_SEG );
-                    //}
                 }
-            rte_pktmbuf_free(pkt);
+                rte_pktmbuf_free(pkt);
+            }
+#endif // |^| USE_GSO not defined
+
+#ifndef OFFLOAD_IP_CKSUM
+            for (int i=0; i < ret: i++) {
+                auto *ip_hdr = rte_pktmbuf_mtod(tx_pkts[i], ::rte_ipv4_hdr*, sizeof(eth_hdr));
+                uint16_t checksum = 0;
+                DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(*ip_hdr)));
+                // The checksum is computed on the raw header and is already in the correct byte order.
+                ip_hdr->hdr_checksum = checksum;
             }
 #endif
 
@@ -1065,9 +1073,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
                     tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
 #endif
-            // TODO IMP: Should this be happening regardless of GSO?
-            // It certainly shouldn't be happening twice, and I think that GSO automatically frees
-            rte_pktmbuf_free(pkt);
         } else {
             tx_pkts[0] = pkt;
             nb_pkts = 1;
