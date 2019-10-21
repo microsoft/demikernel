@@ -304,11 +304,11 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 // TODO: These should be checked and set in the program based on capabilities of NIC
 /////////
 
-#define USE_GSO
+//#define USE_GSO
 #define OFFLOAD_IP_CKSUM
 
 #ifdef USE_GSO
-#define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO | DEV_TX_OFFLOAD_MULTI_SEGS)
+#define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO )
 #else
 #define GSO_OFFLOADS 0
 #endif
@@ -319,9 +319,12 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 #define IP_OFFLOADS 0
 #endif
 
+// TODO IMP: Haven't worked out how to get this working without multi seg offload
+#define REQUIRED_OFFLOADS (DEV_TX_OFFLOAD_MULTI_SEGS)
+
 // TODO IMP: Stuff with these offloads
 #define REQUESTED_DEV_TX_OFFLOADS \
-    ( GSO_OFFLOADS | IP_OFFLOADS )
+    ( GSO_OFFLOADS | IP_OFFLOADS | REQUIRED_OFFLOADS )
 
 /*
  * Initializes a given port using global settings and with the RX buffers
