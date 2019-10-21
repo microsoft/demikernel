@@ -304,7 +304,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 // TODO: These should be checked and set in the program based on capabilities of NIC
 /////////
 
-//#define USE_GSO
+#define USE_GSO
 #define OFFLOAD_IP_CKSUM
 
 #ifdef USE_GSO
@@ -1029,45 +1029,35 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
-            // TODO IMP: rte_pktmbuf_free(pkt) ? Is that necessary?
+
+            // WTF: Without this free, the server segfaults...
+            rte_pktmbuf_free(pkt);
 
 #else // |v| USE_GSO not defined
 
             /* Remove the Ethernet header and trailer from the input packet */
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
-            int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN ,
+            int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN,
                                                 our_gso_ctx.direct_pool,
                                                 our_gso_ctx.indirect_pool);
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
 
-            if (ret > 0) {
-                for (int i=0; i < ret; i++) {
-                    // TODO IMP: Check if this next line is necessary
-                    tx_pkts[i]->l2_len = sizeof(*eth_hdr);
+            for (int i=0; i < ret; i++) {
+                // TODO IMP: Check if this next line is necessary
+                tx_pkts[i]->l2_len = sizeof(*eth_hdr);
 
-                    // TODO IMP: Is the cast on the next line necessary
-                    void *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
-                    // TODO IMP: The ether header should be constructed once
-                    // and copied into here, rather than re-getting macaddr every time (e.g)
-                    auto * const eth_hdr = static_cast<::rte_ether_hdr *>(p);
-                    DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
-                    rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
-                    eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
-                }
-                rte_pktmbuf_free(pkt);
+                // TODO IMP: Is the cast on the next line necessary
+                void *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
+                // TODO IMP: The ether header should be constructed once
+                // and copied into here, rather than re-getting macaddr every time (e.g)
+                auto * const eth_hdr = static_cast<::rte_ether_hdr *>(p);
+                DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
+                rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
+                eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
             }
+            rte_pktmbuf_free(pkt);
 #endif // |^| USE_GSO not defined
-
-#ifndef OFFLOAD_IP_CKSUM
-            for (int i=0; i < ret: i++) {
-                auto *ip_hdr = rte_pktmbuf_mtod(tx_pkts[i], ::rte_ipv4_hdr*, sizeof(eth_hdr));
-                uint16_t checksum = 0;
-                DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(*ip_hdr)));
-                // The checksum is computed on the raw header and is already in the correct byte order.
-                ip_hdr->hdr_checksum = checksum;
-            }
-#endif
 
 #if DMTR_DEBUG
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
