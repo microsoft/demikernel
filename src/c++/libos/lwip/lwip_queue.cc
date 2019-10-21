@@ -304,7 +304,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 // TODO: These should be checked and set in the program based on capabilities of NIC
 /////////
 
-#define USE_GSO
+//#define USE_GSO
 #define OFFLOAD_IP_CKSUM
 
 #ifdef USE_GSO
@@ -1031,8 +1031,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             nb_pkts = ret;
 #else // |v| USE_GSO not defined
 
-            /* Remove the Ethernet header and trailer from the input packet */
+            // Make a copy of the ethernet header and remove from the packet
+            ::rte_ether_hdr eth_hdr_orig = *eth_hdr;
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
+            // (Fragmentation requires no l2 hdr)
             int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN,
                                                 our_gso_ctx.direct_pool,
                                                 our_gso_ctx.indirect_pool);
@@ -1043,14 +1045,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 // TODO IMP: Check if this next line is necessary
                 tx_pkts[i]->l2_len = sizeof(*eth_hdr);
 
-                // TODO IMP: Is the cast on the next line necessary
-                void *p = rte_pktmbuf_prepend(tx_pkts[i], (uint16_t)sizeof(*eth_hdr));
-                // TODO IMP: The ether header should be constructed once
-                // and copied into here, rather than re-getting macaddr every time (e.g)
-                auto * const eth_hdr = static_cast<::rte_ether_hdr *>(p);
-                DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
-                rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
-                eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
+                // Add back in the original ethernet header
+                void *p = rte_pktmbuf_prepend(tx_pkts[i], sizeof(*eth_hdr));
+                auto *eth_hdr = static_cast<::rte_ether_hdr *>(p);
+                *eth_hdr = eth_hdr_orig;
             }
 #endif // |^| USE_GSO not defined
 
