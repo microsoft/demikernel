@@ -299,12 +299,29 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
+/////////
+// DEFINE THE OFFLOADS TO USE
+// TODO: These should be checked and set in the program based on capabilities of NIC
+/////////
+
+#define USE_GSO
+#define OFFLOAD_IP_CKSUM
+
+#ifdef USE_GSO
+#define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO | DEV_TX_OFFLOAD_MULTI_SEGS)
+#else
+#define GSO_OFFLOADS 0
+#endif
+
+#ifdef OFFLOAD_IP_CKSUM
+#define IP_OFFLOADS DEV_TX_OFFLOAD_IPV4_CKSUM
+#else
+#define IP_OFFLOADS 0
+#endif
+
 // TODO IMP: Stuff with these offloads
 #define REQUESTED_DEV_TX_OFFLOADS \
-    (DEV_TX_OFFLOAD_IPV4_CKSUM | \
-     DEV_TX_OFFLOAD_UDP_CKSUM | \
-     DEV_TX_OFFLOAD_MULTI_SEGS | \
-     DEV_TX_OFFLOAD_TCP_TSO)
+    ( GSO_OFFLOADS | IP_OFFLOADS )
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -1000,11 +1017,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
 
-// TODO IMP: This should not be a preprocessor definition.
-// Rather, it should depend on the capabilities of the NIC
-// and this should certainly not be defined here
-#define USE_GSO
-
 #ifndef USE_GSO
             /* Remove the Ethernet header and trailer from the input packet */
             rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
@@ -1019,8 +1031,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             nb_pkts = ret;
 #ifndef USE_GSO
             if (ret > 0) {
-                // TODO IMP: This should be in the USE_GSO section, not here
-                tx_pkts[0]->ol_flags |= (PKT_TX_UDP_CKSUM);
                 for (int i=0; i < ret; i++) {
                     // TODO IMP: Check if this next line is necessary
                     tx_pkts[i]->l2_len = sizeof(*eth_hdr);
