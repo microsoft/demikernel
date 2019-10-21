@@ -1029,10 +1029,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
-
-            // WTF: Without this free, the server segfaults...
-            rte_pktmbuf_free(pkt);
-
 #else // |v| USE_GSO not defined
 
             /* Remove the Ethernet header and trailer from the input packet */
@@ -1056,7 +1052,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
                 eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
             }
-            rte_pktmbuf_free(pkt);
 #endif // |^| USE_GSO not defined
 
 #if DMTR_DEBUG
@@ -1095,6 +1090,12 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     DMTR_FAIL(ret);
                 }
             }
+        }
+
+        // If multiple packets were generated due to fragments,
+        // free the original buffer
+        if (nb_pkts > 0) {
+            rte_pktmbuf_free(pkt);
         }
 
 #if DMTR_DEBUG
