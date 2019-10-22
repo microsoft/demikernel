@@ -1,4 +1,4 @@
-[![alt text](./astrocat-small.jpg "Astro Cat")](https://io9.gizmodo.com/my-god-its-full-of-cats-the-very-best-artwork-of-cats-1676879337?utm_campaign=socialflow_io9_facebook&utm_source=io9_facebook&utm_medium=socialflow)
+[![alt text](./astrocat-small.jpg "Astro-cat")](https://io9.gizmodo.com/my-god-its-full-of-cats-the-very-best-artwork-of-cats-1676879337?utm_campaign=socialflow_io9_facebook&utm_source=io9_facebook&utm_medium=socialflow)
 
 catnip
 =======
@@ -9,10 +9,21 @@ _catnip_ is a TCP/IP stack written in [Rust](https://www.rust-lang.org/) that fo
 features
 --------
 
-- low latency
+- low-latency
 - fully deterministic
-- async/await with coroutines
-- supports declarative retry policies
+- built with coroutines (instead of a state machine)
+- **async**/**await** with declarative retry policies
+```rust
+let ack_segment = r#await!(
+    TcpPeerState::handshake(state.clone(), cxn.clone()),
+    rt.now(),
+    Retry::binary_exponential(
+        options.tcp.handshake_timeout,
+        options.tcp.handshake_retries
+    )
+)?;
+```
+- embeddable
 - C/C++ interoperability
 
 usage statement
