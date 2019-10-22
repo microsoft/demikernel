@@ -16,11 +16,11 @@ server:
      "-w", "17:00.1",
      "--file-prefix", "dpdk_iped"]
 
-? &MAX_EAL
-    ["-l", "4",
-     "-n", "2",
-     "-w", "17:00.0",
-     "--file-prefix", "maxdml"]
+? &MAX_EAL [
+        "-n", "2",
+        "-w", "17:00.0",
+        "-l", "0",
+        "--file-prefix", "maxdml"]
 
 dpdk:
     eal_init: *IPED_EAL

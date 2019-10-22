@@ -30,7 +30,7 @@
 
 #define MAX_CLIENTS 64
 
-uint16_t cpu_offset = 3;
+uint16_t cpu_offset = 4;
 
 bool no_op;
 uint32_t no_op_time;
@@ -74,6 +74,9 @@ static void file_work(char *url, char **response, int *response_len, uint32_t re
             // Get file size
             fseek(file, 0, SEEK_END);
             int size = ftell(file);
+            if (size == -1) {
+                printf("could not ftell the file :%s\n", strerror(errno));
+            }
             fseek(file, 0, SEEK_SET);
 
             /*
@@ -83,10 +86,17 @@ static void file_work(char *url, char **response, int *response_len, uint32_t re
             */
 
             body = reinterpret_cast<char *>(malloc(size+1));
-            fread(body, sizeof(char), size, file);
+            size_t char_read = fread(body, sizeof(char), size, file);
+            if (char_read < (unsigned) size) {
+                printf("fread() read less bytes than file's size\n");
+            }
+            if (strstr(body, "somedummystring") != NULL) {
+                printf("dummy string comparison worked\n");
+            }
             free(body);
             body = NULL;
             body_len = 0;
+
             /*
             if (body_len != size) {
                 fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
@@ -107,7 +117,7 @@ static void file_work(char *url, char **response, int *response_len, uint32_t re
     generate_response(response, header, body, header_len, body_len, response_len, req_id);
 }
 
-static void regex_work(char *url, char **response, int *response_len, uint32_t req_id, Worker *me) {
+static void regex_work(char *url, char **response, int *response_len, uint32_t req_id) {
     char *body = NULL;
     int body_len = 0;
     int code = 200;
@@ -154,7 +164,7 @@ static inline void no_op_loop(uint32_t iter) {
 }
 
 int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
-                     dmtr_qtoken_t &token, int out_qfd, Worker *me) {
+                     dmtr_qtoken_t &token, int out_qfd, std::shared_ptr<Worker> me) {
 #ifdef LEGACY_PROFILING
     hr_clock::time_point start;
     hr_clock::time_point end;
@@ -166,7 +176,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     std::unique_ptr<Request> req(reinterpret_cast<Request *>(
         wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
     ));
+#ifdef DMTR_TRACE
     req->start_http = take_time();
+#endif
 
     /* If we are in no_op mode, just send back the request, as an echo server */
     if (no_op) {
@@ -182,11 +194,15 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
             );
         }
 #endif
+#ifdef DMTR_TRACE
         req->end_http = take_time();
+#endif
         /* Strip Request from sga if needed */
         if (me->type == NET) {
             wait_out.qr_value.sga.sga_numsegs = 1;
+#ifdef DMTR_TRACE
             me->req_states.push_back(std::move(req));
+#endif
         }
         DMTR_OK(dmtr_push(&token, out_qfd, &wait_out.qr_value.sga));
         int status;
@@ -237,8 +253,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                     strlen(BAD_REQUEST_HEADER) + 1, "%s", BAD_REQUEST_HEADER
                 );
             resp_sga.sga_segs[0].sgaseg_len += sizeof(uint32_t);
-
+#ifdef DMTR_TRACE
             req->end_http = take_time();
+#endif
             if (me->type == HTTP) {
                 resp_sga.sga_numsegs = 2;
                 resp_sga.sga_segs[1].sgaseg_len = sizeof(req);
@@ -255,7 +272,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
             }
 
             if (me->type == NET) {
+#ifdef DMTR_TRACE
                 me->req_states.push_back(std::move(req));
+#endif
                 free(resp_sga.sga_segs[0].sgaseg_buf);
             }
             return -1;
@@ -265,7 +284,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     int response_size;
     switch(get_request_type(state->url)) {
         case REGEX_REQ:
-            regex_work(state->url, &response, &response_size, req->id, me);
+            regex_work(state->url, &response, &response_size, req->id);
             break;
         case FILE_REQ:
             file_work(state->url, &response, &response_size, req->id);
@@ -300,7 +319,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     }
 #endif
 
+#ifdef DMTR_TRACE
     req->end_http = take_time();
+#endif
     /* release ReqState last */
     if (me->type == HTTP) {
         resp_sga.sga_numsegs = 2;
@@ -321,7 +342,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
      * the buffer for sending on the wire. Otherwise -- if called as part of NET
      * work -- we need to free now.*/
     if (me->type == NET) {
+#ifdef DMTR_TRACE
         me->req_states.push_back(std::move(req));
+#endif
         free(response);
     }
 
@@ -329,7 +352,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
 }
 
 static void *http_worker(void *args) {
-    Worker *me = (Worker *) args;
+    std::shared_ptr<Worker> me(static_cast<Worker *>(args));
     //FIXME: the variables are not print, even if they are already set. OOO?
     printf("Hello I am HTTP worker %d running on core %d\n",
            me->whoami, me->core_id
@@ -340,6 +363,8 @@ static void *http_worker(void *args) {
 
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
+    state->url = NULL;
+    state->body = NULL;
 
     dmtr_qtoken_t token;
     if (dmtr_pop(&token, me->in_qfd)) {
@@ -359,9 +384,12 @@ static void *http_worker(void *args) {
     }
     log_info("HTTP worker %d set to terminate", me->whoami);
 
+    log_info("Cleaning HTTP worker %d", me->whoami);
+    clean_state(state);
     free(state);
     dmtr_close(me->in_qfd);
     dmtr_close(me->out_qfd);
+    log_info("Exiting HTTP worker %d", me->whoami);
     pthread_exit(NULL);
 }
 
@@ -379,8 +407,10 @@ void check_availability(enum req_type type, std::vector<std::shared_ptr<Worker> 
 int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
              std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
-             struct parser_state *state, Worker *me, int lqd) {
+             struct parser_state *state, std::shared_ptr<Worker> me, int lqd) {
+#if defined DMTR_TRACE || defined LEGACY_PROFILING
     hr_clock::time_point start = take_time();
+#endif
     if (wait_out.qr_qd == lqd) {
         assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
         /* Enable reading on the accepted socket */
@@ -410,14 +440,14 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             /*
             uint32_t * const ridp =
                 reinterpret_cast<uint32_t *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-            fprintf(stdout, "POPED %d/%lu\n", *ridp, token);
-            fflush(stdout);
+            printf("POPED %d/%lu", *ridp, token);
             */
             /* This is a new request */
             std::unique_ptr<Request> req(new Request(wait_out.qr_qd));
+#ifdef DMTR_TRACE
             req->net_receive = start;
             req->pop_token = token;
-
+#endif
             me->num_rcvd++;
             /*
             if (me->num_rcvd % 1000 == 0) {
@@ -490,17 +520,22 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 http_q_pending.push_back(dest_worker->out_qfd);
                 clients_in_waiting[wait_out.qr_qd] = true;
 
+                req_sga.sga_segs[1].sgaseg_len = sizeof(req);
+
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
                     std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
                 );
 #endif
+#ifdef DMTR_TRACE
                 req->http_dispatch = take_time();
+#endif
+
                 /** Set Request obj last due to release */
-                req_sga.sga_segs[1].sgaseg_len = sizeof(req);
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
+                log_debug("Scheduling request %d/%lu for send", *ridp, token);
                 DMTR_OK(dmtr_push(&token, dest_worker->in_qfd, &req_sga));
                 //FIXME we don't need to wait here.
                 int status;
@@ -519,10 +554,12 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 tokens.push_back(token);
             } else {
-                req->http_dispatch = take_time();
                 /* Append Request */
                 wait_out.qr_value.sga.sga_numsegs = 2;
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_len = sizeof(req);
+#ifdef DMTR_TRACE
+                req->http_dispatch = take_time();
+#endif
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
                 http_work(state, wait_out, token, wait_out.qr_qd, me);
 #ifdef LEGACY_PROFILING
@@ -546,7 +583,9 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             std::unique_ptr<Request> req(reinterpret_cast<Request *>(
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
             ));
-            req->http_done = take_time();
+#ifdef DMTR_TRACE
+            req->http_done = start;
+#endif
 
             /** The client should still be "in the wait".
              * (Likely counter example: the connection was closed by the client)
@@ -558,9 +597,11 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 log_warn("Dropping obsolete message aimed towards closed connection");
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+#ifdef DMTR_TRACE
                 req->net_send = take_time();
                 req->push_token = -1;
                 me->req_states.push_back(std::move(req));
+#endif
                 return 0;
             }
             http_q_pending.erase(it);
@@ -582,9 +623,11 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             wait_out.qr_value.sga.sga_numsegs = 1;
 
             /* Answer the client */
+#ifdef DMTR_TRACE
             req->net_send = take_time();
+#endif
             DMTR_OK(dmtr_push(&token, req->net_qd, &wait_out.qr_value.sga));
-            req->push_token = token;
+            log_debug("Scheduled PUSH %d/%lu\n", req->id, token);
 
             //FIXME we don't have to wait.
             // We can free when dmtr_wait returns that the push was done.
@@ -594,7 +637,10 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 }
             }
             log_debug("Answered the client on queue %d", req->net_qd);
+#ifdef DMTR_TRACE
+            req->push_token = token;
             me->req_states.push_back(std::move(req));
+#endif
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
             wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
         }
@@ -606,14 +652,16 @@ static void *net_worker(void *args) {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         std::cout << "\ncan't ignore SIGPIPE\n";
 
-    Worker *me = (Worker *) args;
-    std::cout << "Hello I am network worker " << me->whoami;
-    std::cout << " running on core " << me->core_id << std::endl;
-
+    std::shared_ptr<Worker> me(static_cast<Worker *>(args));
+    printf("Hello I am net worker %d running on core %d\n",
+           me->whoami, me->core_id
+    );
 
     /* In case we need to do the HTTP work */
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
+    state->url = NULL;
+    state->body = NULL;
 
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t token = 0; //temporary token
@@ -669,9 +717,15 @@ static void *net_worker(void *args) {
         }
     }
 
+    log_info("Cleaning net worker %d", me->whoami);
     clean_state(state);
+    free(state);
     dmtr_close(lqd);
-    pthread_exit(NULL);
+    log_info("Exiting net worker %d", me->whoami);
+    if (me->me > 0) {
+        pthread_exit(NULL);
+    }
+    return NULL;
 }
 
 void pin_thread(pthread_t thread, u_int16_t cpu) {
@@ -770,7 +824,7 @@ int work_setup(Psp &psp, bool split,
 std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index) {
     std::shared_ptr<Worker> worker(new Worker());
     worker->type = HTTP;
-    worker->me = -1;
+    worker->me = 0;
     worker->in_qfd = -1;
     worker->out_qfd = -1;
     worker->handling_type = type;
@@ -793,11 +847,13 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
     return worker;
 }
 
-int no_pthread_work_setup(Psp &psp) {
+std::shared_ptr<Worker> no_pthread_work_setup(Psp &psp) {
     std::shared_ptr<Worker> worker(new Worker());
     worker->whoami = 0;
     worker->args.split = false;
     worker->type = NET;
+    worker->me = 0;
+    worker->core_id = 0;
 
     /* Define which NIC this thread will be using */
     struct sockaddr_in saddr = {};
@@ -815,9 +871,9 @@ int no_pthread_work_setup(Psp &psp) {
     worker->args.saddr = saddr;
     psp.workers.push_back(worker);
 
-    net_worker((void *) worker.get());
+    net_worker(static_cast<void *>(worker.get()));
 
-    return 0;
+    return worker;
 }
 
 int main(int argc, char *argv[]) {
@@ -915,7 +971,7 @@ int main(int argc, char *argv[]) {
         std::cout << "\ncan't catch SIGTERM\n";
 
     /* Pin main thread */
-    //pin_thread(pthread_self(), 4);
+    pin_thread(pthread_self(), 4);
     if (!no_pthread) {
         /* Create worker threads */
         work_setup(
@@ -955,7 +1011,10 @@ int main(int argc, char *argv[]) {
             w.reset();
         }
     } else {
-        no_pthread_work_setup(psp);
+        std::shared_ptr<Worker> w = no_pthread_work_setup(psp);
+#ifdef DMTR_TRACE
+        dump_traces(*w.get(), log_dir, label);
+#endif
     }
 
     return 0;
