@@ -1476,10 +1476,6 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     src.sin_family = AF_INET;
     dst.sin_family = AF_INET;
 
-    // TODO IMP: Allocate all sga segments (with total size of mbuf)
-    // TODO IMP: Can have the segbuf point to mbuf if possible, but then freeing gets tricky
-    // Otherwise, just copy out into the segbuf
-
     // segment count
     uint32_t numsegs_buf;
     auto * const numsegs = pktmbuf_struct_read(pkt, offset, numsegs_buf);
@@ -1492,7 +1488,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 #endif
 
     if (sga.sga_numsegs != 0xdeadbeef) {
-        // Allocate enough space for the entire packet
+        // Allocate enough space for all sga segments
         size_t sga_total_size = ntohs(ip_hdr->total_length) - sizeof(*ip_hdr) - sizeof(*udp_hdr) - sizeof(uint32_t);
         DMTR_OK(dmtr_malloc(&sga.sga_buf, sga_total_size));
 
