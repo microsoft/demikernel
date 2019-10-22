@@ -10,9 +10,10 @@ server:
         host: 192.168.2.10
         port: 6789
 dpdk:
-    eal_init: ["-l", "4",
+    eal_init: [
         "-n", "2",
         "-w", "17:00.0",
+        "-l", "0",
         "--file-prefix", "maxdml"]
     known_hosts:
         "b8:59:9f:b4:41:9c": 192.168.2.11
