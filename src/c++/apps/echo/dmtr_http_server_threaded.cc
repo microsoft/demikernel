@@ -844,8 +844,6 @@ int main(int argc, char *argv[]) {
     parse_args(argc, argv, true, desc);
     dmtr_log_directory = log_dir;
 
-    dmtr_log_directory = log_dir;
-
     if (no_split) {
         log_info(
             "Starting in 'no split' mode. Network workers will handle all the load."
