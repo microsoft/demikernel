@@ -24,6 +24,7 @@ class Request {
     enum req_type type;
 
     /* Profiling variables */
+#ifdef DMTR_TRACE
     public: dmtr_qtoken_t pop_token;
     public: dmtr_qtoken_t push_token;
     public: hr_clock::time_point net_receive;
@@ -32,6 +33,7 @@ class Request {
     public: hr_clock::time_point end_http;
     public: hr_clock::time_point http_done;
     public: hr_clock::time_point net_send;
+#endif
 
     Request(uint32_t qfd): net_qd(qfd) {}
 };
@@ -174,8 +176,9 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
 }
 #endif
 
+#ifdef DMTR_TRACE
 void dump_traces(Worker &w, std::string log_dir, std::string label) {
-    log_debug("Dumping traces for worker %d on core %d\n", w.whoami, w.core_id);
+    log_debug("Dumping traces for worker %d on core %d", w.whoami, w.core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
 
@@ -203,3 +206,4 @@ void dump_traces(Worker &w, std::string log_dir, std::string label) {
         log_error("Failed to open %s for dumping traces: %s", filename, strerror(errno));
     }
 }
+#endif
