@@ -1587,9 +1587,10 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
-    // TODO IMP: Add comment to explain why the use of count_out
+    // If count_out packets were sent on the previous burst, they don't have to be sent again
     size_t count = ::rte_eth_tx_burst(port_id, queue_id, &tx_pkts[count_out], nb_pkts - count_out);
     // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
+    // (I think that's when the packets aren't sent on the first try)
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status
         // needs to be checked to determine if an error occurred.
@@ -1637,7 +1638,6 @@ int dmtr::lwip_queue::rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, co
     mpool_out = NULL;
     DMTR_NOTNULL(EINVAL, name);
 
-    // TODO IMP: Is this headroom required?
     struct rte_mempool *ret = ::rte_pktmbuf_pool_create(name, n, cache_size, priv_size, data_room_size + RTE_PKTMBUF_HEADROOM, socket_id);
     if (NULL == ret) {
         return rte_errno;
@@ -1837,13 +1837,12 @@ int dmtr::lwip_queue::setup_rx_queue_ip_frag_tbl(uint32_t queue) {
 
     snprintf(buf, sizeof(buf), "ip_frag_mbuf_pool_%u", queue);
 
-    // TODO IMP: Why this ip_frag_mbuf pool is here at all?
     DMTR_OK(rte_pktmbuf_pool_create(
         our_ip_frag_mbuf_pool,
         buf, nb_mbuf,
         MBUF_CACHE_SIZE,
         0,
-        5000, //RTE_MBUF_DEFAULT_BUF_SIZE,
+        RTE_MBUF_DEFAULT_BUF_SIZE,
         rte_socket_id()
     ));
 
