@@ -34,12 +34,15 @@
 //FIXME: Now pending requests state are hashed based on their request ID
 //short lived mode still does hash based on the operation token (which can result
 //in incorrect tracing if the sender sends out of order).
+
 //FIXME: short lived mode does not account for request_id being suffixed to the request
 
 //FIXME:
 // Multiple create/process/log thread sets are now disfunctionnal
 // due to http_requests not being thread safe (TODO: create a
 // vector of http_request, one per thread set
+
+//FIXME: The whole logging thread should not be instantiated if none of the debug flag are set
 
 /*****************************************************************
  *********************** GENERAL VARIABLES ***********************
@@ -209,12 +212,14 @@ int log_responses(uint32_t total_requests, int log_memq,
         logs.push_back(l);
     }
 #endif
+#ifdef DMTR_TRACE
     FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
     if (f) {
         fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
     } else {
         log_error("Could not open log file!!");
     }
+#endif
 
     bool new_op = true;
     uint32_t n_invalid = 0;
@@ -293,7 +298,9 @@ int log_responses(uint32_t total_requests, int log_memq,
 #ifdef OP_DEBUG
     dump_pql(workers_pql[my_idx], log_dir, label);
 #endif
-    fclose(f);
+    if (f) {
+        fclose(f);
+    }
 
     if (!expired) {
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
@@ -343,7 +350,9 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
         /* Now wait_any and process pop/push task results */
         dmtr_qresult_t wait_out;
         int idx;
+#ifdef DMTR_TRACE
         hr_clock::time_point op_time = take_time();
+#endif
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
@@ -660,7 +669,9 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         dmtr_qresult_t wait_out;
         int idx;
         int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+#ifdef DMTR_TRACE
         hr_clock::time_point op_time = take_time();
+#endif
         if (status == EAGAIN) {
             continue;
         }
@@ -879,6 +890,10 @@ int main(int argc, char **argv) {
                 if (flag_type) {
                     std::stringstream ss(uri);
                     getline(ss, user_agent, ',');
+                    if (user_agent.size() == uri.size()) {
+                        log_error("flag-type requested but request %s has no flag", uri.c_str());
+                        exit(1);
+                    }
                     getline(ss, req_uri, ',');
                 } else {
                     user_agent = DEFAULT_USER_AGENT;
