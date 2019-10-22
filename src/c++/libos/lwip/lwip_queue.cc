@@ -44,6 +44,14 @@
 
 namespace bpo = boost::program_options;
 
+/////////
+// DEFINE THE OFFLOADS TO USE
+// TODO: These should be checked and set in the program based on capabilities of NIC
+/////////
+
+#define USE_GSO
+#define OFFLOAD_IP_CKSUM
+
 /** Fragmentation and reassembly related variables */
 #define MTU_LEN                 1500
 #define GSO_MBUFS_PER_CORE      127
@@ -299,13 +307,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
-/////////
-// DEFINE THE OFFLOADS TO USE
-// TODO: These should be checked and set in the program based on capabilities of NIC
-/////////
 
-#define USE_GSO
-#define OFFLOAD_IP_CKSUM
 
 #ifdef USE_GSO
 #define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO )
@@ -322,7 +324,6 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 // TODO IMP: Haven't worked out how to get this working without multi seg offload
 #define REQUIRED_OFFLOADS (DEV_TX_OFFLOAD_MULTI_SEGS)
 
-// TODO IMP: Stuff with these offloads
 #define REQUESTED_DEV_TX_OFFLOADS \
     ( GSO_OFFLOADS | IP_OFFLOADS | REQUIRED_OFFLOADS )
 
@@ -509,7 +510,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
 
-    /* Initialize GSO memory pool */
+    /* Initialize GSO indirect memory pool */
     struct rte_mempool *gso_mbuf_pool = NULL;
     DMTR_OK(rte_pktmbuf_pool_create(
         gso_mbuf_pool,
@@ -517,24 +518,9 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         GSO_MBUFS_NUM * nb_ports,
         GSO_MBUF_CACHE_SIZE,
         0,
-        MBUF_DATA_SIZE, // TODO IMP: Does it need a buffer size?
-        //0,
-        rte_socket_id()
-    ));
-
-    // TODO IMP: Check if having a direct and indirect pool is necessary.
-    /* Initialize GSO direct memory pool */
-    struct rte_mempool *gso_dmbuf_pool = NULL;
-    DMTR_OK(rte_pktmbuf_pool_create(
-        gso_dmbuf_pool,
-        "gso_direct__mbuf_pool",
-        NUM_MBUFS * nb_ports,
-        MBUF_CACHE_SIZE,
         0,
-        MBUF_DATA_SIZE,
         rte_socket_id()
     ));
-
 
     /* Setup local port range */
     my_port_range_lo = 32768;
