@@ -344,8 +344,6 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     struct ::rte_eth_conf port_conf = {};
     port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-    // TODO IMP: Do enabling these offloads actually do anything?
-    port_conf.rxmode.offloads = DEV_RX_OFFLOAD_SCATTER | DEV_RX_OFFLOAD_JUMBO_FRAME;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
     // TODO IMP: check (and store) availability of offloads
