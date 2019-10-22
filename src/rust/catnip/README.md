@@ -9,8 +9,8 @@ features
 
 - low-latency
 - fully deterministic
-- built with coroutines (instead of a state machine)
-- **async**/**await** with declarative retry policies
+- built with coroutines (instead of explicit state machines)
+- polling **async**/**await** with declarative retry policies
 ```rust
 let ack_segment = r#await!(
     TcpPeerState::handshake(state.clone(), cxn.clone()),
