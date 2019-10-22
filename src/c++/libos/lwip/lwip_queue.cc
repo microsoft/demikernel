@@ -764,7 +764,9 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = *our_dpdk_port_id;
+#if defined DMTR_TRACE || defined DMTR_PROFILE
     pthread_t me = pthread_self();
+#endif
 
     while (good()) {
         while (tq.empty()) {
@@ -1065,7 +1067,9 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+#if DMTR_TRACE
     pthread_t me = pthread_self();
+#endif
 
     while (good()) {
         while (tq.empty()) {
