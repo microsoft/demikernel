@@ -1207,9 +1207,8 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
     return 0;
 }
 
-// TODO IMP: This is really like read_into_struct or something like that? cast_read?
 template <typename T>
-T* rte_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
+T* pktmbuf_struct_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
     return (T*)rte_pktmbuf_read(pkt, offset, sizeof(buf), &buf);
 }
 
@@ -1264,7 +1263,7 @@ dmtr::lwip_queue::service_incoming_packets() {
     for (size_t i = 0; i < count; ++i) {
         if (RTE_ETH_IS_IPV4_HDR(pkts[i]->packet_type)) {
             ::rte_ipv4_hdr ip_hdr_buf;
-            auto * const ip_hdr = rte_read(pkts[i], sizeof(::rte_ether_hdr), ip_hdr_buf);
+            auto * const ip_hdr = pktmbuf_struct_read(pkts[i], sizeof(::rte_ether_hdr), ip_hdr_buf);
 #if DMTR_DEBUG
             uint16_t offset_full_flag = ip_hdr->fragment_offset;
             uint16_t offset = rte_be_to_cpu_16(offset_full_flag) & RTE_IPV4_HDR_OFFSET_MASK;
@@ -1388,7 +1387,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     // check ethernet header
     size_t offset = 0;
     ::rte_ether_hdr eth_buf;
-    auto * const eth_hdr = rte_read(pkt, 0, eth_buf);
+    auto * const eth_hdr = pktmbuf_struct_read(pkt, 0, eth_buf);
     offset += sizeof(*eth_hdr);
 
     auto eth_type = ntohs(eth_hdr->ether_type);
@@ -1424,7 +1423,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
     // check ip header
     ::rte_ipv4_hdr ip_hdr_buf;
-    auto * const ip_hdr = rte_read(pkt, offset, ip_hdr_buf);
+    auto * const ip_hdr = pktmbuf_struct_read(pkt, offset, ip_hdr_buf);
     offset += sizeof(*ip_hdr);
 
     // In network byte order.
@@ -1448,7 +1447,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
     // check udp header
     ::rte_udp_hdr udp_hdr_buf;
-    auto *const udp_hdr = rte_read(pkt, offset, udp_hdr_buf);
+    auto *const udp_hdr = pktmbuf_struct_read(pkt, offset, udp_hdr_buf);
     offset += sizeof(*udp_hdr);
 
     // In network byte order.
@@ -1484,7 +1483,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
     // segment count
     uint32_t numsegs_buf;
-    auto * const numsegs = rte_read(pkt, offset, numsegs_buf);
+    auto * const numsegs = pktmbuf_struct_read(pkt, offset, numsegs_buf);
     sga.sga_numsegs = ntohl(*numsegs);
     offset += sizeof(uint32_t);
 
@@ -1496,7 +1495,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
             // segment length
             uint32_t seg_len_buf;
-            uint32_t *seg_len_ptr = rte_read(pkt, offset, seg_len_buf);
+            uint32_t *seg_len_ptr = pktmbuf_struct_read(pkt, offset, seg_len_buf);
             uint32_t seg_len = ntohl(*seg_len_ptr);
             offset += sizeof(seg_len);
             sga.sga_segs[i].sgaseg_len = seg_len;
