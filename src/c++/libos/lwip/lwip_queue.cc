@@ -304,7 +304,7 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 // TODO: These should be checked and set in the program based on capabilities of NIC
 /////////
 
-//#define USE_GSO
+#define USE_GSO
 #define OFFLOAD_IP_CKSUM
 
 #ifdef USE_GSO
@@ -1047,6 +1047,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 auto *eth_hdr = static_cast<::rte_ether_hdr *>(p);
                 *eth_hdr = eth_hdr_orig;
             }
+            rte_pktmbuf_free(pkt);
 #endif // |^| USE_GSO not defined
 
 #if DMTR_DEBUG
@@ -1087,11 +1088,6 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             }
         }
 
-        // If multiple packets were generated due to fragments,
-        // free the original buffer
-        if (nb_pkts > 0) {
-            rte_pktmbuf_free(pkt);
-        }
 
 #if DMTR_DEBUG
         printf("Sent %d packets\n", nb_pkts);
@@ -1230,7 +1226,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 // TODO IMP: This is really like read_into_struct or something like that? cast_read?
 template <typename T>
 T* rte_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
-    return (T*)rte_pktmbuf_read(pkt, offset, sizeof(T), &buf);
+    return (T*)rte_pktmbuf_read(pkt, offset, sizeof(buf), &buf);
 }
 
 int
@@ -1516,7 +1512,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
             // segment length
             uint32_t seg_len_buf;
-            uint32_t seg_len = ntohl(*rte_read(pkt, offset, seg_len_buf));
+            uint32_t *seg_len_ptr = rte_read(pkt, offset, seg_len_buf);
+            uint32_t seg_len = ntohl(*seg_len_ptr);
             offset += sizeof(seg_len);
             sga.sga_segs[i].sgaseg_len = seg_len;
 
