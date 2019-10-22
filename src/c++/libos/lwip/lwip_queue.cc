@@ -65,7 +65,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 #define RTE_RX_DESC_DEFAULT     1024
-#define MBUF_DATA_SIZE          5000 //65535
+#define MBUF_DATA_SIZE          16383 //65535
 #define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
 
 /** Protocol related varialbes */
