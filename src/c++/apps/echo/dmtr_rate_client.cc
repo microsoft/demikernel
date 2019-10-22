@@ -16,7 +16,6 @@
 #include <vector>
 #include <unordered_map>
 #include <fstream>
-#include <boost/filesystem.hpp>
 
 #include "common.hh"
 
