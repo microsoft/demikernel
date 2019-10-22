@@ -1,4 +1,4 @@
-catn/ip
+catnip
 =======
 
 _catnip_ is a TCP/IP stack written in [Rust](https://www.rust-lang.org/) that focuses on being an embeddable, low-latency solution for user-space networking.
