@@ -821,7 +821,7 @@ int no_pthread_work_setup(Psp &psp) {
 }
 
 int main(int argc, char *argv[]) {
-    bool no_pthread, no_split, no_pin_tcp, no_pin_http;
+    bool no_pthread, no_split;
     bool split = true;
     u_int16_t n_http_workers, n_net_workers;
     u_int16_t n_regex_workers, n_page_workers, n_popular_page_workers, n_unpopular_page_workers;
