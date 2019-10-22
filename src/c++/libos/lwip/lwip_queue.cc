@@ -1351,8 +1351,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         }
     }
 
-    // TODO IMP: Freeing death_row might actually be necessary...
-    //rte_ip_frag_free_death_row(&our_death_row, -1);
+    rte_ip_frag_free_death_row(&our_death_row, -1);
 
     return 0;
 }
