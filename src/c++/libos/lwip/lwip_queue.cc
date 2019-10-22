@@ -1486,39 +1486,37 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     sga.sga_numsegs = ntohl(*numsegs);
     offset += sizeof(uint32_t);
 
+
 #if DMTR_DEBUG
     printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
 #endif
 
     if (sga.sga_numsegs != 0xdeadbeef) {
-        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            // segment length
-            uint32_t seg_len_buf;
-            uint32_t *seg_len_ptr = pktmbuf_struct_read(pkt, offset, seg_len_buf);
-            uint32_t seg_len = ntohl(*seg_len_ptr);
-            offset += sizeof(seg_len);
-            sga.sga_segs[i].sgaseg_len = seg_len;
+        // Allocate enough space for the entire packet
+        size_t sga_total_size = ntohs(ip_hdr->total_length) - sizeof(*ip_hdr) - sizeof(*udp_hdr) - sizeof(uint32_t);
+        DMTR_OK(dmtr_malloc(&sga.sga_buf, sga_total_size));
 
+        // Read into the sga buffer
+        const void *read_buf = rte_pktmbuf_read(pkt, offset, sga_total_size, sga.sga_buf);
+        // If read_buf is not pointing to sga_buf, it's because no copy was necessary
+        // (to avoid freeing problems later, copy into sga_buf anyway)
+        if (read_buf != sga.sga_buf) {
+            rte_memcpy(sga.sga_buf, read_buf, sga_total_size);
+        }
+
+        char *offset_buf = static_cast<char*>(sga.sga_buf);
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            uint32_t seg_len = ntohl(*(uint32_t*)offset_buf);
+            offset_buf += sizeof(seg_len);
+
+            sga.sga_segs[i].sgaseg_len = seg_len;
+            sga.sga_segs[i].sgaseg_buf = offset_buf;
+
+            offset_buf += seg_len;
 #if DMTR_DEBUG
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endif
-
-            // TODO IMP: Duplicating above. Don't double-copy.
-            // Something like: char * rtn = read(buffer). If rtn != buffer, memcpy(buffer, rtn);
-            char cp_buf[seg_len];
-            const void *read_buf = rte_pktmbuf_read(pkt, offset, seg_len, cp_buf);
-
-            void *buf = NULL;
-            DMTR_OK(dmtr_malloc(&buf, seg_len));
-            sga.sga_buf = buf;
-            sga.sga_segs[i].sgaseg_buf = buf;
-            // todo: remove copy if possible.
-            rte_memcpy(buf, read_buf, seg_len);
-            offset += seg_len;
-
-#if DMTR_DEBUG
-        //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
-        printf("====================\n");
+            //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+            printf("====================\n");
 #endif
         }
     }
