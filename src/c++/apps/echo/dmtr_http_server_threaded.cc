@@ -223,7 +223,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
     req->id = *req_id;
     char *req_c = reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
     req_c += sizeof(uint32_t);
-    log_debug("HTTP worker popped %s", req_c);
+    log_debug("HTTP worker popped req %d: %s", req->id, req_c);
     size_t req_size = wait_out.qr_value.sga.sga_segs[0].sgaseg_len - sizeof(uint32_t);
 
     init_parser_state(state);
@@ -349,7 +349,7 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
 }
 
 static void *http_worker(void *args) {
-    std::shared_ptr<Worker> me(static_cast<Worker *>(args));
+    std::shared_ptr<Worker> me = *static_cast<std::shared_ptr<Worker> *>(args);
     //FIXME: the variables are not print, even if they are already set. OOO?
     printf("Hello I am HTTP worker %d running on core %d\n",
            me->whoami, me->core_id
@@ -387,12 +387,13 @@ static void *http_worker(void *args) {
         }
     }
 
-    log_info("Cleaning HTTP worker %d", me->whoami);
+    log_debug("Cleaning HTTP worker %d", me->whoami);
     clean_state(state);
     free(state);
     dmtr_close(me->in_qfd);
     dmtr_close(me->out_qfd);
-    log_info("Exiting HTTP worker %d", me->whoami);
+    delete static_cast<std::shared_ptr<Worker>*>(args);
+    log_debug("Exiting HTTP worker %d", me->whoami);
     pthread_exit(NULL);
 }
 
@@ -574,15 +575,15 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             }
         } else {
             assert(wait_out.qr_value.sga.sga_numsegs == 2);
-            log_debug(
-                "received response from HTTP queue %d: %s\n",
-                wait_out.qr_qd,
-                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
-            );
-
             std::unique_ptr<Request> req(reinterpret_cast<Request *>(
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
             ));
+            log_debug(
+                "received response for request %d from HTTP queue %d: %s\n",
+                req->id,
+                wait_out.qr_qd,
+                reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf)
+            );
 #ifdef DMTR_TRACE
             req->http_done = start;
 #endif
@@ -618,10 +619,8 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 std::pair<uint64_t, uint64_t>(since_epoch(start), ns_diff(start, end))
             );
 #endif
-
             /* Mask Request from sga */
             wait_out.qr_value.sga.sga_numsegs = 1;
-
             /* Answer the client */
 #ifdef DMTR_TRACE
             req->net_send = take_time();
@@ -652,7 +651,7 @@ static void *net_worker(void *args) {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         std::cout << "\ncan't ignore SIGPIPE\n";
 
-    std::shared_ptr<Worker> me(static_cast<Worker *>(args));
+    auto me = *static_cast<std::shared_ptr<Worker> *>(args);
     printf("Hello I am net worker %d running on core %d\n",
            me->whoami, me->core_id
     );
@@ -718,10 +717,12 @@ static void *net_worker(void *args) {
     clean_state(state);
     free(state);
     dmtr_close(lqd);
-    log_info("Exiting net worker %d", me->whoami);
+    delete static_cast<std::shared_ptr<Worker>*>(args);
+    log_debug("Exiting net worker %d", me->whoami);
     if (me->me > 0) {
         pthread_exit(NULL);
     }
+    log_debug("... which was running in main thread %d", me->whoami);
     return NULL;
 }
 
@@ -769,7 +770,8 @@ int work_setup(Psp &psp, bool split,
         worker->args.saddr = saddr; // Pass by copy
         worker->args.split = split;
 
-        if (pthread_create(&worker->me, NULL, &net_worker, (void *) worker.get())) {
+        if (pthread_create(&worker->me, NULL, &net_worker,
+                    static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
             log_error("pthread_create error: %s", strerror(errno));
         }
         worker->core_id = i + cpu_offset;
@@ -830,7 +832,8 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
     if (dmtr_queue(&worker->out_qfd) != 0) {
         log_error("Could not create memory queue for http worker %d", index);
     }
-    if (pthread_create(&worker->me, NULL, &http_worker, (void *) worker.get())) {
+    if (pthread_create(&worker->me, NULL, &http_worker,
+                       static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
         log_error("pthread_create error: %s", strerror(errno));
         exit(1);
     }
@@ -866,7 +869,7 @@ std::shared_ptr<Worker> no_pthread_work_setup(Psp &psp) {
     worker->args.saddr = saddr;
     psp.workers.push_back(worker);
 
-    net_worker(static_cast<void *>(worker.get()));
+    net_worker(static_cast<void *>(new std::shared_ptr<Worker>(worker)));
 
     return worker;
 }
@@ -984,6 +987,7 @@ int main(int argc, char *argv[]) {
             if (pthread_join(w->me, NULL) != 0) {
                 log_error("pthread_join error: %s", strerror(errno));
             }
+            log_debug("Joined worker %d", w->whoami);
 #ifdef LEGACY_PROFILING
             dump_latencies(*w, log_dir, label);
 #endif
@@ -992,7 +996,7 @@ int main(int argc, char *argv[]) {
 #endif
 #ifdef DMTR_TRACE
             if (w->type == NET) {
-                dump_traces(*w, log_dir, label);
+                dump_traces(w, log_dir, label);
             }
 #endif
             /*
@@ -1008,7 +1012,7 @@ int main(int argc, char *argv[]) {
     } else {
         std::shared_ptr<Worker> w = no_pthread_work_setup(psp);
 #ifdef DMTR_TRACE
-        dump_traces(*w.get(), log_dir, label);
+        dump_traces(w, log_dir, label);
 #endif
     }
 

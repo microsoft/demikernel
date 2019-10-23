@@ -177,20 +177,20 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
 #endif
 
 #ifdef DMTR_TRACE
-void dump_traces(Worker &w, std::string log_dir, std::string label) {
-    log_debug("Dumping traces for worker %d on core %d", w.whoami, w.core_id);
+void dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::string &label) {
+    log_debug("Dumping traces for worker %d on core %d", w->whoami, w->core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
 
     snprintf(filename, MAX_FILE_PATH_LEN, "%s/%s-traces-%d",
-             log_dir.c_str(), label.c_str(), w.core_id);
+             log_dir.c_str(), label.c_str(), w->core_id);
     f = fopen(filename, "w");
     if (f) {
         fprintf(
             f,
             "REQ_ID\tNET_RECEIVE\tHTTP_DISPATCH\tSTART_HTTP\tEND_HTTP\tHTTP_DONE\tNET_SEND\tPUSH_TOKEN\tPOP_TOKEN\n"
         );
-        for (auto &r: w.req_states) {
+        for (auto &r: w->req_states) {
             fprintf(
                 f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
                 r->id,
