@@ -10,10 +10,10 @@ server:
         host: 192.168.2.10
         port: 6789
 
-? &IPED_EAL
-    ["-c", "0xe",
-     "-n", "1",
-     "-w", "17:00.1",
+? &IPED_EAL [
+     "-n", "2",
+     "-w", "17:00.0",
+     "-l", "0",
      "--file-prefix", "dpdk_iped"]
 
 ? &MAX_EAL [
