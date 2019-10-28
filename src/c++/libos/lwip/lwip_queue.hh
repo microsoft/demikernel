@@ -68,7 +68,8 @@ class lwip_queue : public io_queue {
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct rte_ether_addr> our_ip_to_mac_table;
 
-    // ???: Should this be static? (all queues share the same my_app_ports instance?)
+    // This is static because tx_burst can dequeue packets destined to other queues,
+    // thus the list must be shared
     // TODO: Some mechanic for unregistering ports from the application?
     private: static std::unordered_set<uint16_t> my_app_ports;
 
