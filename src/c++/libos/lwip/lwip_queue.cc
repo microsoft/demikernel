@@ -1506,7 +1506,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
         char *offset_buf = static_cast<char*>(sga.sga_buf);
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            uint32_t seg_len = ntohl(*(uint32_t*)offset_buf);
+            uint32_t seg_len = ntohl(*reinterpret_cast<uint32_t*>(offset_buf));
             offset_buf += sizeof(seg_len);
 
             sga.sga_segs[i].sgaseg_len = seg_len;
