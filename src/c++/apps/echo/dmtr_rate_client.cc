@@ -679,8 +679,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         token = tokens[idx];
         tokens.erase(tokens.begin()+idx);
         if (status == 0) {
-            token = tokens[idx];
-            tokens.erase(tokens.begin()+idx);
 #ifdef OP_DEBUG
             update_pql(tokens.size(), workers_pql[my_idx]);
 #endif
@@ -760,8 +758,6 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
             DMTR_OK(dmtr_close(wait_out.qr_qd));
-            token = tokens[idx];
-            tokens.erase(tokens.begin()+idx);
         }
 
         if (take_time() > *time_end && !debug_duration_flag) {
