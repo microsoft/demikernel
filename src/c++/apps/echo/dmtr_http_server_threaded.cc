@@ -776,7 +776,6 @@ int work_setup(Psp &psp, bool split,
             log_error("pthread_create error: %s", strerror(errno));
         }
 
-        //FIXME: optional pinning has been removed. Remove from options to reflect that
         worker->core_id = i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
         psp.workers.push_back(worker);
