@@ -12,7 +12,7 @@ server:
 
 ? &IPED_EAL [
      "-n", "2",
-     "-w", "17:00.0",
+     "-w", "17:00.1",
      "-l", "0",
      "--file-prefix", "dpdk_iped"]
 
