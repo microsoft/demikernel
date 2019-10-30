@@ -24,7 +24,7 @@ int PspServiceUnit::init(int argc, char *argv[]) {
             po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
         po::store(parsed, vm);
         po::notify(vm);
-        dmtr::lwip_queue::set_app_port(port);
+        //dmtr::lwip_queue::set_app_port(port);
     }
 
     ioqapi.register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
