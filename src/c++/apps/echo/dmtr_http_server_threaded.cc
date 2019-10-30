@@ -553,19 +553,19 @@ int net_work(PspServiceUnit &psp_su,
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
                 log_debug("Scheduling request %d/%lu for send", *ridp, token);
-                DMTR_OK(dmtr_push(&token, dest_worker->in_qfd, &req_sga));
+                DMTR_OK(psp_su.ioqapi.push(token, dest_worker->in_qfd, req_sga));
                 //FIXME we don't need to wait here.
-                while (dmtr_wait(NULL, token) == EAGAIN) {
+                while (psp_su.wait(NULL, token) == EAGAIN) {
                     if (me->terminate) {
                         return 0;
                     }
                     continue;
                 }
                 /* Enable reading from HTTP result queue */
-                DMTR_OK(dmtr_pop(&token, dest_worker->out_qfd));
+                DMTR_OK(psp_su.ioqapi.pop(token, dest_worker->out_qfd));
                 tokens.push_back(token);
                 /* Re-enable NET queue for reading */
-                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
             } else {
                 /* Append Request */
@@ -575,7 +575,7 @@ int net_work(PspServiceUnit &psp_su,
                 req->http_dispatch = take_time();
 #endif
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
-                http_work(state, wait_out, token, wait_out.qr_qd, me);
+                http_work(psp_su, state, wait_out, token, wait_out.qr_qd, me);
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
@@ -583,7 +583,7 @@ int net_work(PspServiceUnit &psp_su,
                 );
 #endif
                 /* Re-enable NET queue for reading */
-                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
             }
         } else {
@@ -606,7 +606,7 @@ int net_work(PspServiceUnit &psp_su,
              */
             if (clients_in_waiting[req->net_qd] == false) {
                 /* Otherwise ignore this message and fetch the next one */
-                DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
+                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
                 log_warn("Dropping obsolete message aimed towards closed connection");
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
@@ -638,12 +638,12 @@ int net_work(PspServiceUnit &psp_su,
 #ifdef DMTR_TRACE
             req->net_send = take_time();
 #endif
-            DMTR_OK(dmtr_push(&token, req->net_qd, &wait_out.qr_value.sga));
+            DMTR_OK(psp_su.ioqapi.push(token, req->net_qd, wait_out.qr_value.sga));
             log_debug("Scheduled PUSH %d/%lu\n", req->id, token);
 
             //FIXME we don't have to wait.
             // We can free when dmtr_wait returns that the push was done.
-            while (dmtr_wait(NULL, token) == EAGAIN) {
+            while (psp_su.wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     return 0;
                 }
@@ -669,6 +669,11 @@ static void *net_worker(void *args) {
            me->whoami, me->core_id
     );
 
+    /* Setup PspServiceUnique */
+    PspServiceUnit psp_su(me->whoami,
+                          dmtr::io_queue::category_id::NETWORK_Q,
+                          g_argc, g_argv);
+
     /* In case we need to do the HTTP work */
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
@@ -680,11 +685,11 @@ static void *net_worker(void *args) {
 
     /* Create and bind the worker's accept socket */
     int lqd = 0;
-    dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0);
+    psp_su.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in saddr = me->args.saddr;
-    dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
-    dmtr_listen(lqd, 100); //XXX what is a good backlog size here?
-    dmtr_accept(&token, lqd);
+    psp_su.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
+    psp_su.ioqapi.listen(lqd, 100);
+    psp_su.ioqapi.accept(token, lqd);
     tokens.push_back(token);
     std::vector<int> http_q_pending;
     http_q_pending.reserve(1024);
@@ -698,7 +703,7 @@ static void *net_worker(void *args) {
         }
         dmtr_qresult_t wait_out;
         int idx;
-        int status = dmtr_wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+        int status = psp_su.wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         if (status == EAGAIN) {
             continue;
         }
@@ -709,6 +714,7 @@ static void *net_worker(void *args) {
             update_pql(tokens.size(), &me->pql);
 #endif
             net_work(
+                psp_su,
                 http_q_pending, clients_in_waiting, wait_out,
                 tokens, token, state, me, lqd
             );
@@ -722,14 +728,14 @@ static void *net_worker(void *args) {
                 clients_in_waiting[wait_out.qr_qd] = false;
             }
             printf("closing pseudo connection on %d", wait_out.qr_qd);
-            dmtr_close(wait_out.qr_qd);
+            psp_su.ioqapi.close(wait_out.qr_qd);
         }
     }
 
     log_info("Cleaning net worker %d", me->whoami);
     clean_state(state);
     free(state);
-    dmtr_close(lqd);
+    psp_su.ioqapi.close(lqd);
     delete static_cast<std::shared_ptr<Worker>*>(args);
     log_debug("Exiting net worker %d", me->whoami);
     if (me->me > 0) {
@@ -835,16 +841,8 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
     std::shared_ptr<Worker> worker(new Worker());
     worker->type = HTTP;
     worker->me = 0;
-    worker->in_qfd = -1;
-    worker->out_qfd = -1;
     worker->handling_type = type;
     worker->whoami = index;
-    if (dmtr_queue(&worker->in_qfd) != 0) {
-        log_error("Could not create memory queue for http worker %d", index);
-    }
-    if (dmtr_queue(&worker->out_qfd) != 0) {
-        log_error("Could not create memory queue for http worker %d", index);
-    }
     if (pthread_create(&worker->me, NULL, &http_worker,
                        static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
         log_error("pthread_create error: %s", strerror(errno));
@@ -911,6 +909,9 @@ int main(int argc, char *argv[]) {
     parse_args(argc, argv, true, desc);
     dmtr_log_directory = log_dir;
 
+    g_argc = argc;
+    g_argv = argv;
+
     if (no_split) {
         log_info(
             "Starting in 'no split' mode. Network workers will handle all the load."
@@ -949,9 +950,6 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
-
-    /* Init Demeter */
-    DMTR_OK(dmtr_init(argc, argv));
 
     /* Set network dispatch policy */
     if (net_dispatch_pol == "RR") {
@@ -1012,14 +1010,6 @@ int main(int argc, char *argv[]) {
                 dump_traces(w, log_dir, label);
             }
 #endif
-            /*
-            if (w->in_qfd > 0) {
-                dmtr_close(w->in_qfd);
-            }
-            if (w->out_qfd > 0) {
-                dmtr_close(w->out_qfd);
-            }
-            */
             w.reset();
         }
     } else {
