@@ -32,12 +32,12 @@ set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 
 # POSIX HTTP server threaded
-add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml-cpp boost_program_options Threads::Threads)
+#add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+#target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml-cpp boost_program_options Threads::Threads)
 
 # POSIX HTTP rate client
-add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
+#add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+#target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 
 # LWIP HTTP server threaded
 add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
@@ -50,12 +50,12 @@ target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp boost_
 target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # RDMA HTTP server threaded
-add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-target_link_libraries(dmtr-rdma-http-server-threaded dmtr-libos-rdma rdmacm ibverbs pcre yaml-cpp yaml-cpp boost_program_options Threads::Threads)
+#add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+#target_link_libraries(dmtr-rdma-http-server-threaded dmtr-libos-rdma rdmacm ibverbs pcre yaml-cpp yaml-cpp boost_program_options Threads::Threads)
 
 # RDMA HTTP rate client
-add_executable(dmtr-rdma-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-target_link_libraries(dmtr-rdma-http-rate-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options Threads::Threads)
+#add_executable(dmtr-rdma-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+#target_link_libraries(dmtr-rdma-http-rate-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options Threads::Threads)
 
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})

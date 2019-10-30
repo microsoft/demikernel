@@ -68,4 +68,3 @@ class user_thread {
 } //namespace dmtr
 
 #endif /* DMTR_LIBOS_USER_THREAD_HH_IS_INCLUDED */
-

@@ -46,7 +46,6 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
 }
 
 int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_queue_factory::ctor_type ctor) {
-    std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
     DMTR_OK(my_queue_factory.register_ctor(cid, ctor));
     return 0;
 }
@@ -54,7 +53,6 @@ int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_q
 int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     q_out = NULL;
 
-    std::shared_lock<std::shared_mutex> lock(my_queues_mutex);
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;
@@ -90,10 +88,7 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
 
     int qd = new_qd();
     std::unique_ptr<io_queue> qq;
-    {
-        std::lock_guard<std::mutex> lock(my_queue_factory_mutex);
-        DMTR_OK(my_queue_factory.construct(qq, cid, qd));
-    }
+    DMTR_OK(my_queue_factory.construct(qq, cid, qd));
     q_out = qq.get();
     DMTR_OK(insert_queue(qq));
 
@@ -103,7 +98,6 @@ int dmtr::io_queue_api::new_queue(io_queue *&q_out, enum io_queue::category_id c
 int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
     int qd = q->qd();
-    std::unique_lock<std::shared_mutex> lock(my_queues_mutex);
     if (my_queues.find(qd) != my_queues.cend()) {
         return EEXIST;
     }
@@ -114,7 +108,6 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
 
 int dmtr::io_queue_api::remove_queue(int qd) {
     DMTR_TRUE(EINVAL, qd != 0);
-    std::unique_lock<std::shared_mutex> lock(my_queues_mutex);
     auto it = my_queues.find(qd);
     if (my_queues.cend() == it) {
         return ENOENT;

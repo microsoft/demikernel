@@ -27,8 +27,13 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <dmtr/libos/mem.h>
+#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/persephone.hh>
 
 #define MAX_CLIENTS 64
+
+int g_argc = 0;
+char **g_argv = nullptr;
 
 uint16_t cpu_offset = 4;
 
@@ -163,8 +168,9 @@ static inline void no_op_loop(uint32_t iter) {
     }
 }
 
-int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
-                     dmtr_qtoken_t &token, int out_qfd, std::shared_ptr<Worker> me) {
+int http_work(PspServiceUnit &psp_su,
+              struct parser_state *state, dmtr_qresult_t &wait_out,
+              dmtr_qtoken_t &token, int out_qfd, std::shared_ptr<Worker> me) {
 #ifdef LEGACY_PROFILING
     hr_clock::time_point start;
     hr_clock::time_point end;
@@ -172,7 +178,6 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
         start = take_time();
     }
 #endif
-
     std::unique_ptr<Request> req(reinterpret_cast<Request *>(
         wait_out.qr_value.sga.sga_segs[1].sgaseg_buf
     ));
@@ -204,8 +209,8 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
             me->req_states.push_back(std::move(req));
 #endif
         }
-        DMTR_OK(dmtr_push(&token, out_qfd, &wait_out.qr_value.sga));
-        while (dmtr_wait(NULL, token) == EAGAIN) {
+        DMTR_OK(psp_su.ioqapi.push(token, out_qfd, wait_out.qr_value.sga));
+        while (psp_su.wait(NULL, token) == EAGAIN) {
             if (me->terminate) {
                 break;
             }
@@ -261,8 +266,8 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
                 resp_sga.sga_numsegs = 1;
             }
 
-            DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
-            while (dmtr_wait(NULL, token) == EAGAIN) {
+            DMTR_OK(psp_su.ioqapi.push(token, out_qfd, resp_sga));
+            while (psp_su.wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     break;
                 }
@@ -328,8 +333,8 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
         resp_sga.sga_numsegs = 1;
     }
 
-    DMTR_OK(dmtr_push(&token, out_qfd, &resp_sga));
-    while (dmtr_wait(NULL, token) == EAGAIN) {
+    DMTR_OK(psp_su.ioqapi.push(token, out_qfd, resp_sga));
+    while (psp_su.wait(NULL, token) == EAGAIN) {
         if (me->terminate) {
             break;
         }
@@ -355,7 +360,14 @@ static void *http_worker(void *args) {
            me->whoami, me->core_id
     );
 
+    PspServiceUnit psp_su(me->whoami, dmtr::io_queue::category_id::MEMORY_Q, 0, nullptr); //mbe prefix
+    if (psp_su.ioqapi.queue(me->in_qfd) != 0) {
+        log_error("Could not create memory queue for http worker %d", me->whoami);
+    }
     log_debug("My ingress memq has id %d", me->in_qfd);
+    if (psp_su.ioqapi.queue(me->out_qfd) != 0) {
+        log_error("Could not create memory queue for http worker %d", me->whoami);
+    }
     log_debug("My egress memq has id %d", me->out_qfd);
 
     struct parser_state *state =
@@ -372,11 +384,11 @@ static void *http_worker(void *args) {
         }
         dmtr_qresult_t wait_out;
         if (new_op) {
-            dmtr_pop(&token, me->in_qfd);
+            psp_su.ioqapi.pop(token, me->in_qfd);
         }
-        int status = dmtr_wait(&wait_out, token);
+        int status = psp_su.wait(&wait_out, token);
         if (status == 0) {
-            http_work(state, wait_out, token, me->out_qfd, me);
+            http_work(psp_su, state, wait_out, token, me->out_qfd, me);
             new_op = true;
         } else {
             if (status == EAGAIN) {
@@ -390,8 +402,8 @@ static void *http_worker(void *args) {
     log_debug("Cleaning HTTP worker %d", me->whoami);
     clean_state(state);
     free(state);
-    dmtr_close(me->in_qfd);
-    dmtr_close(me->out_qfd);
+    psp_su.ioqapi.close(me->in_qfd);
+    psp_su.ioqapi.close(me->out_qfd);
     delete static_cast<std::shared_ptr<Worker>*>(args);
     log_debug("Exiting HTTP worker %d", me->whoami);
     pthread_exit(NULL);
@@ -408,7 +420,8 @@ void check_availability(enum req_type type, std::vector<std::shared_ptr<Worker> 
     }
 }
 
-int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+int net_work(PspServiceUnit &psp_su,
+             std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
              std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, std::shared_ptr<Worker> me, int lqd) {
@@ -418,10 +431,10 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
     if (wait_out.qr_qd == lqd) {
         assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
         /* Enable reading on the accepted socket */
-        DMTR_OK(dmtr_pop(&token, wait_out.qr_value.ares.qd));
+        DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_value.ares.qd));
         tokens.push_back(token);
         /* Re-enable accepting on the listening socket */
-        DMTR_OK(dmtr_accept(&token, lqd));
+        DMTR_OK(psp_su.ioqapi.accept(token, lqd));
         tokens.push_back(token);
         log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
     } else {
