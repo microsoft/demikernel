@@ -23,11 +23,10 @@
 static const auto start_time = boost::chrono::steady_clock::now();
 
 /* Enable profiling */
-#define DMTR_PROFILE
-#define DMTR_APP_PROFILE
-#define OP_DEBUG
-#define LEGACY_PROFILING
-#define DMTR_TRACE
+//#define DMTR_PROFILE
+//#define OP_DEBUG
+//#define LEGACY_PROFILING
+//#define DMTR_TRACE
 
 /* Enable debug statements  */
 //#define LOG_DEBUG

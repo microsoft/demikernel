@@ -401,7 +401,6 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
     fc_conf.mode = RTE_FC_NONE;
     DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
-
     DMTR_OK(wait_for_link_status_up(port_id));
 
     return 0;
@@ -769,11 +768,6 @@ int dmtr::lwip_queue::close() {
         my_push_thread->enqueue(token);
 
         my_push_thread->service();
-        /* The thread will return EAGAIN. How do we termine the threads?
-        if (ret != 0) {
-            DMTR_FAIL(ret);
-        }
-        */
 
         my_default_dst = boost::none;
         my_bound_src = boost::none;
@@ -812,6 +806,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         }
 
         auto qt = tq.front();
+        //printf("PUSH %lu processing (tq size: %lu)\n", qt, tq.size());
 #if DMTR_TRACE
         dmtr_qtoken_trace_t trace = {
             .token = qt,
@@ -842,6 +837,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             DMTR_OK(dmtr_sgalen(&sgalen, sga));
             if (0 == sgalen) {
                 DMTR_OK(t->complete(ENOMSG));
+                printf("SGA length was 0 for push operation\n");
                 // move onto the next task.
                 continue;
             }
@@ -886,6 +882,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             p += sizeof(*u32);
         }
 
+        //uint32_t *ridptr = NULL;
         if (sga->sga_numsegs != 0xdeadbeef) {
             for (size_t i = 0; i < sga->sga_numsegs; i++) {
                 auto * const u32 = reinterpret_cast<uint32_t *>(p);
@@ -896,6 +893,10 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 // todo: remove copy by associating foreign memory with
                 // pktmbuf object.
                 rte_memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
+                /*
+                ridptr = reinterpret_cast<uint32_t *>(p);
+                printf("Sending request %d(%d) \n", (uint32_t) *ridptr, len);
+                */
                 total_len += len;
                 p += len;
             }
@@ -961,6 +962,8 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             total_len += sizeof(*ip_hdr);
             //pkt->l3_len = 4 * (ip_hdr->version_ihl & 0xf);
             pkt->l3_len = sizeof(*ip_hdr);
+
+            //udp_hdr->dgram_cksum = rte_ipv4_udptcp_cksum(ip_hdr, udp_hdr); //FIXME: offload in HW
         }
 
         // Fill in  Ethernet header
@@ -1053,6 +1056,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 #if DMTR_DEBUG
         printf("Attempting to send %d packets\n", nb_pkts);
 #endif
+        /*
+        if (nb_pkts > 1) {
+            printf("Attempting to send %d packets\n", nb_pkts);
+        }
+        */
         while (pkts_sent < nb_pkts) {
             int ret = rte_eth_tx_burst(pkts_sent, dpdk_port_id, 0, tx_pkts, nb_pkts);
             if (ret > 0) {
@@ -1074,7 +1082,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             }
         }
 
-
+        /*
+        if (nb_pkts > 1) {
+            printf("Sent %d packets\n", nb_pkts);
+        }
+        */
 #if DMTR_DEBUG
         printf("Sent %d packets\n", nb_pkts);
 #endif
@@ -1111,6 +1123,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             }
         }
 #endif
+        //printf("Sent request %d/%lu\n", (uint32_t) *ridptr, qt);
         DMTR_OK(t->complete(0, *sga));
         yield();
     }
@@ -1143,6 +1156,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
         auto qt = tq.front();
+        //printf("POP %lu processing (tq size: %lu)\n", qt, tq.size());
 #if DMTR_TRACE
         dmtr_qtoken_trace_t trace = {
             .token = qt,
@@ -1320,6 +1334,7 @@ dmtr::lwip_queue::service_incoming_packets() {
     }
 #endif
 
+    //printf("Attempting to parse %d packets\n", count);
     for (size_t i = 0; i < count; ++i) {
         if (pkts[i] == NULL) {
             continue; /** Packet was a fragment */
@@ -1512,6 +1527,14 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
             sga.sga_segs[i].sgaseg_len = seg_len;
             sga.sga_segs[i].sgaseg_buf = offset_buf;
 
+            /* XXX not tested since segmentation fix PR
+            uint32_t * const ridptr2 = reinterpret_cast<uint32_t *>(offset_buf);
+            printf("Received request %d (%d)\n", (uint32_t) *ridptr2, seg_len);
+            printf("received buf %s of len: %u (%lu)\n",
+                    reinterpret_cast<char *>(buf)+sizeof(uint32_t),
+                    seg_len, strlen(reinterpret_cast<char *>(offset_buf)+sizeof(uint32_t)));
+            */
+
             offset_buf += seg_len;
 #if DMTR_DEBUG
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
@@ -1543,9 +1566,11 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
             ret = my_accept_thread->service();
             break;
         case DMTR_OPC_PUSH:
+            //printf("PUSH %lu triggered\n", qt);
             ret = my_push_thread->service();
             break;
         case DMTR_OPC_POP:
+            //printf("POP %lu triggered\n", qt);
             ret = my_pop_thread->service();
             break;
     }
