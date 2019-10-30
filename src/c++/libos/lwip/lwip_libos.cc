@@ -23,19 +23,6 @@ int dmtr_init(int argc, char *argv[])
 
     DMTR_OK(dmtr::lwip_queue::init_dpdk(argc, argv));
 
-    uint16_t port;
-    namespace po = boost::program_options;
-    po::options_description desc{"LWIP libos options"};
-    desc.add_options()
-        ("port", po::value<uint16_t>(&port)->default_value(6789),
-         "Port for lwip queues to listen to");
-    po::variables_map vm;
-    po::parsed_options parsed =
-        po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
-    po::store(parsed, vm);
-    po::notify(vm);
-    dmtr::lwip_queue::set_app_port(port);
-
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));
     ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);

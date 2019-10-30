@@ -9,19 +9,27 @@ server:
     bind:
         host: 192.168.2.10
         port: 6789
-dpdk:
-    eal_init: [
+
+? &IPED_EAL [
+     "-n", "2",
+     "-w", "17:00.1",
+     "-l", "0",
+     "--file-prefix", "dpdk_iped"]
+
+? &MAX_EAL [
         "-n", "2",
         "-w", "17:00.0",
         "-l", "0",
         "--file-prefix", "maxdml"]
+
+dpdk:
+    eal_init: *IPED_EAL
     known_hosts:
         "b8:59:9f:b4:41:9c": 192.168.2.11
         "b8:59:9f:b4:41:14": 192.168.2.10
         "b8:59:9f:b4:41:9d": 192.168.1.11
         "b8:59:9f:b4:41:15": 192.168.1.10
 
-# vim: set tabstop=2 shiftwidth=2
 #  eal_init: ["-l", "0-3", "-n", "1", "-w", "aa89:00:02.0", "--vdev=net_vdev_netvsc0,iface=eth1"]
 #0x3fe is for the first 10 cores (excluding core 0)
 #"--proc-type=auto",

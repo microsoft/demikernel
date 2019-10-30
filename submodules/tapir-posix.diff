@@ -1,0 +1,17 @@
+diff --git a/lib/dmtransport.cc b/lib/dmtransport.cc
+index 4ba120b..2f0d2ff 100644
+--- a/lib/dmtransport.cc
++++ b/lib/dmtransport.cc
+@@ -421,10 +421,11 @@ DmTransport::Run()
+         return;
+     }
+     tokens.push_back(token);
++    int start_idx = 0;
+     while (!stopLoop) {
+         dmtr_qresult wait_out;
+         int ready_idx;
+-        int status = dmtr_wait_any(&wait_out, &ready_idx, tokens.data(), tokens.size());
++        int status = dmtr_wait_any(&wait_out, &start_idx, &ready_idx, tokens.data(), tokens.size());
+ 
+         // if we got an EOK back from wait
+         if (status == 0) {

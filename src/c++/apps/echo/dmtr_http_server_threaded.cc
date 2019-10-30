@@ -210,11 +210,14 @@ int http_work(PspServiceUnit &psp_su,
 #endif
         }
         DMTR_OK(psp_su.ioqapi.push(token, out_qfd, wait_out.qr_value.sga));
-        while (psp_su.wait(NULL, token) == EAGAIN) {
+        int status;
+        while ((status = psp_su.wait(NULL, token)) == EAGAIN) {
             if (me->terminate) {
                 break;
             }
         }
+        DMTR_TRUE(EINVAL, status == 0);
+
         if (me->type == NET) {
             free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
         }
@@ -375,29 +378,23 @@ static void *http_worker(void *args) {
     state->url = NULL;
     state->body = NULL;
 
-    dmtr_qtoken_t token = 0;
-    bool new_op = true;
-    while (1) {
-        if (me->terminate) {
-            log_info("HTTP worker %d set to terminate", me->whoami);
-            break;
-        }
+    dmtr_qtoken_t token;
+    if (dmtr_pop(&token, me->in_qfd)) {
+        log_info("POP FAILED");
+    }
+    while (!me->terminate) {
         dmtr_qresult_t wait_out;
-        if (new_op) {
-            psp_su.ioqapi.pop(token, me->in_qfd);
-        }
         int status = psp_su.wait(&wait_out, token);
         if (status == 0) {
             http_work(psp_su, state, wait_out, token, me->out_qfd, me);
-            new_op = true;
-        } else {
-            if (status == EAGAIN) {
-                new_op = false;
-                continue;
+            if (psp_su.ioqapi.pop(token, me->in_qfd)) {
+                log_info("POP FAILED");
             }
+        } else {
             log_debug("dmtr_wait returned status %d", status);
         }
     }
+    log_info("HTTP worker %d set to terminate", me->whoami);
 
     log_debug("Cleaning HTTP worker %d", me->whoami);
     clean_state(state);
@@ -555,12 +552,15 @@ int net_work(PspServiceUnit &psp_su,
                 log_debug("Scheduling request %d/%lu for send", *ridp, token);
                 DMTR_OK(psp_su.ioqapi.push(token, dest_worker->in_qfd, req_sga));
                 //FIXME we don't need to wait here.
-                while (psp_su.wait(NULL, token) == EAGAIN) {
+                int status;
+                while ((status = psp_su.wait(NULL, token)) == EAGAIN) {
                     if (me->terminate) {
                         return 0;
                     }
                     continue;
                 }
+                DMTR_TRUE(EINVAL, status == 0);
+
                 /* Enable reading from HTTP result queue */
                 DMTR_OK(psp_su.ioqapi.pop(token, dest_worker->out_qfd));
                 tokens.push_back(token);
@@ -687,7 +687,9 @@ static void *net_worker(void *args) {
     int lqd = 0;
     psp_su.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in saddr = me->args.saddr;
-    psp_su.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr));
+    if (psp_su.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr))) {
+        log_error("Binding failed");
+    }
     psp_su.ioqapi.listen(lqd, 100);
     psp_su.ioqapi.accept(token, lqd);
     tokens.push_back(token);
@@ -793,6 +795,7 @@ int work_setup(Psp &psp, bool split,
                     static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
             log_error("pthread_create error: %s", strerror(errno));
         }
+
         worker->core_id = i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
         psp.workers.push_back(worker);
