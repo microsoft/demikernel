@@ -233,7 +233,7 @@ int log_responses(uint32_t total_requests, int log_memq,
             break;
         }
         if (new_op) {
-            dmtr_pop(&token, log_memq);
+            DMTR_OK(dmtr_pop(&token, log_memq));
         }
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
@@ -435,6 +435,7 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
                 update_request_state(*request, COMPLETED, op_time);
 #endif
+                /* Null terminate the response */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                 );
@@ -733,6 +734,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 update_request_state(*request, COMPLETED, op_time);
                 request->pop_token = token;
 #endif
+                /* Null terminate the response (for validate_response) */
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                 );
@@ -968,7 +970,7 @@ int main(int argc, char **argv) {
             req_per_thread, log_memq, &time_end_log,
             log_dir, label, i
         );
-        pin_thread(st->log->native_handle(), i+2);
+        pin_thread(st->log->native_handle(), i+8);
         if (long_lived) {
             /** some book-keeping */
             st->resp = new std::thread(
@@ -977,7 +979,7 @@ int main(int argc, char **argv) {
                 host, port, log_memq, &time_end_process,
                 i, debug_duration_flag
             );
-            pin_thread(st->resp->native_handle(), i+1);
+            pin_thread(st->resp->native_handle(), i+9);
 #ifdef OP_DEBUG
             workers_pql.push_back(new poll_q_len());
 #endif
@@ -989,13 +991,13 @@ int main(int argc, char **argv) {
                 i, req_per_thread, &time_end_process,
                 process_conn_memq, log_memq
             );
-            pin_thread(st->init->native_handle(), i+1);
+            pin_thread(st->init->native_handle(), i+4);
             st->init = new std::thread(
                 create_queues,
                 interval_ns_per_thread, req_per_thread,
                 host, port, process_conn_memq, &time_end_init, i
             );
-            pin_thread(st->init->native_handle(), i+1);
+            pin_thread(st->init->native_handle(), i+5);
         }
         threads.push_back(st);
     }

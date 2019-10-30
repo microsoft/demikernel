@@ -7,6 +7,7 @@
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <iostream>
+#include <sstream>
 #include <chrono>
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
@@ -23,6 +24,7 @@ static const auto start_time = boost::chrono::steady_clock::now();
 
 /* Enable profiling */
 #define DMTR_PROFILE
+#define DMTR_APP_PROFILE
 #define OP_DEBUG
 #define LEGACY_PROFILING
 #define DMTR_TRACE
@@ -156,6 +158,7 @@ uint32_t iterations;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
+static std::string log_directory;
 boost::optional<std::string> file;
 std::string config_path;
 
@@ -248,6 +251,20 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
         file = vm["file"].as<std::string>();
     }
 };
+
+std::string generate_sequence()
+{
+    std::stringstream ss;
+    for (unsigned int i=0; i < packet_size; i++) {
+        if (i % 100 == 0) {
+            ss << "\n";
+        } else {
+            ss << char('0' + i % 10);
+        }
+    }
+    return ss.str();
+};
+
 
 void* generate_packet()
 {

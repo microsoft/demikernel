@@ -25,6 +25,7 @@
 #include <dmtr/libos/mem.h>
 #include <dmtr/libos/raii_guard.hh>
 #include <netinet/in.h>
+#include <rte_ether.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -42,6 +43,14 @@
 #endif
 
 namespace bpo = boost::program_options;
+
+/////////
+// DEFINE THE OFFLOADS TO USE
+// TODO: These should be checked and set in the program based on capabilities of NIC
+/////////
+
+#define USE_GSO
+#define OFFLOAD_IP_CKSUM
 
 /** Fragmentation and reassembly related variables */
 #define MTU_LEN                 1500
@@ -64,7 +73,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 #define RTE_RX_DESC_DEFAULT     1024
-#define MBUF_DATA_SIZE          2000 //65535
+#define MBUF_DATA_SIZE          16383 //65535
 #define BUF_SIZE                RTE_MBUF_DEFAULT_DATAROOM
 
 /** Protocol related varialbes */
@@ -73,7 +82,9 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_TRACE 1
+// TODO: This should be defined in a more global place so we don't have to
+// uncomment it in multiple places
+//#define DMTR_TRACE 1
 //#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP 1
 
@@ -296,6 +307,26 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
+
+
+#ifdef USE_GSO
+#define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO )
+#else
+#define GSO_OFFLOADS 0
+#endif
+
+#ifdef OFFLOAD_IP_CKSUM
+#define IP_OFFLOADS DEV_TX_OFFLOAD_IPV4_CKSUM
+#else
+#define IP_OFFLOADS 0
+#endif
+
+// TODO IMP: Haven't worked out how to get this working without multi seg offload
+#define REQUIRED_OFFLOADS (DEV_TX_OFFLOAD_MULTI_SEGS)
+
+#define REQUESTED_DEV_TX_OFFLOADS \
+    ( GSO_OFFLOADS | IP_OFFLOADS | REQUIRED_OFFLOADS )
+
 /*
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
@@ -316,6 +347,8 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    // TODO IMP: check (and store) availability of offloads
+    port_conf.txmode.offloads = REQUESTED_DEV_TX_OFFLOADS;
 
     struct ::rte_eth_rxconf rx_conf = {};
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
@@ -374,14 +407,15 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     return 0;
 }
 
+std::unordered_set<uint16_t> dmtr::lwip_queue::my_app_ports;
 uint16_t dmtr::lwip_queue::my_port_range_lo;
 uint16_t dmtr::lwip_queue::my_port_range_hi;
 uint16_t dmtr::lwip_queue::my_port_counter;
-uint16_t dmtr::lwip_queue::my_app_port;
 struct rte_gso_ctx dmtr::lwip_queue::our_gso_ctx;
 struct rte_ip_frag_tbl *dmtr::lwip_queue::our_ip_frag_tbl;
 struct rte_ip_frag_death_row dmtr::lwip_queue::our_death_row;
 struct rte_mempool *dmtr::lwip_queue::our_ip_frag_mbuf_pool;
+
 int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -476,7 +510,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
 
-    /* Initialize GSO memory pool */
+    /* Initialize GSO indirect memory pool */
     struct rte_mempool *gso_mbuf_pool = NULL;
     DMTR_OK(rte_pktmbuf_pool_create(
         gso_mbuf_pool,
@@ -633,7 +667,7 @@ int dmtr::lwip_queue::listen(int backlog)
 {
     DMTR_TRUE(EPERM, !my_listening_flag);
     DMTR_TRUE(EINVAL, is_bound());
-    //    std::cout << "Listening ..." << std::endl;
+        std::cout << "Listening ..." << std::endl;
     my_listening_flag = true;
     start_threads();
     return 0;
@@ -665,11 +699,13 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     }
 
     my_bound_src = saddr_copy;
+    my_app_ports.insert(ntohs(saddr_copy.sin_port));
 
     struct sockaddr_in generic_src = {};
     generic_src.sin_family = AF_INET;
     generic_src.sin_port = saddr_copy.sin_port;
     generic_src.sin_addr.s_addr = INADDR_ANY;
+
     lwip_4tuple tup = lwip_4tuple(lwip_addr(generic_src), lwip_addr(saddr_copy));
     DMTR_TRUE(EINVAL, our_recv_queues.find(tup) == our_recv_queues.end());
     our_recv_queues[tup] = &my_recv_queue;
@@ -688,9 +724,11 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-    my_default_dst = *reinterpret_cast<const struct sockaddr_in *>(saddr);
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
+    my_default_dst = saddr_copy;
+    my_app_ports.insert(ntohs(saddr_copy.sin_port));
+
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
@@ -911,10 +949,14 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             ip_hdr->src_addr = src_ip.s_addr;
             ip_hdr->dst_addr = saddr->sin_addr.s_addr;
 
+#ifdef OFFLOAD_IP_CKSUM
+            pkt->ol_flags |= PKT_TX_IP_CKSUM;
+#else
             uint16_t checksum = 0;
             DMTR_OK(ip_sum(checksum, reinterpret_cast<uint16_t *>(ip_hdr), sizeof(*ip_hdr)));
             // The checksum is computed on the raw header and is already in the correct byte order.
             ip_hdr->hdr_checksum = checksum;
+#endif
 
             total_len += sizeof(*ip_hdr);
             //pkt->l3_len = 4 * (ip_hdr->version_ihl & 0xf);
@@ -967,10 +1009,33 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         uint16_t nb_pkts = 0;
         struct rte_mbuf *tx_pkts[MAX_TX_MBUFS];
         if (pkt->pkt_len > MTU_LEN) {
-            pkt->ol_flags |= (PKT_TX_UDP_CKSUM | PKT_TX_IP_CKSUM | PKT_TX_IPV4 | PKT_TX_UDP_SEG);
-            int ret = rte_gso_segment(pkt, &our_gso_ctx, (struct rte_mbuf **)&tx_pkts, RTE_DIM(tx_pkts));
+
+#ifdef USE_GSO
+            pkt->ol_flags |= ( PKT_TX_IPV4 | PKT_TX_UDP_SEG );
+            int ret = rte_gso_segment(pkt, &our_gso_ctx, tx_pkts, RTE_DIM(tx_pkts));
             DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
             nb_pkts = ret;
+#else // |v| USE_GSO not defined
+
+            // Make a copy of the ethernet header and remove from the packet
+            ::rte_ether_hdr eth_hdr_orig = *eth_hdr;
+            rte_pktmbuf_adj(pkt, (uint16_t)sizeof(*eth_hdr));
+            // (Fragmentation requires no l2 hdr)
+            int ret = rte_ipv4_fragment_packet(pkt, tx_pkts, (uint16_t)MAX_TX_MBUFS, MTU_LEN,
+                                                our_gso_ctx.direct_pool,
+                                                our_gso_ctx.indirect_pool);
+            DMTR_TRUE(EINVAL, ret > 0); //XXX could be ENOMEM if run out of memory in mbuf pools
+            nb_pkts = ret;
+
+            for (int i=0; i < ret; i++) {
+                // Add back in the original ethernet header
+                void *p = rte_pktmbuf_prepend(tx_pkts[i], sizeof(*eth_hdr));
+                auto *eth_hdr = static_cast<::rte_ether_hdr *>(p);
+                *eth_hdr = eth_hdr_orig;
+            }
+            rte_pktmbuf_free(pkt);
+#endif // |^| USE_GSO not defined
+
 #if DMTR_DEBUG
             printf("Segmenting packet with GSO: sending %d bytes accross %d packets\n",
                     tx_pkts[0]->pkt_len * (nb_pkts - 1) + tx_pkts[nb_pkts - 1]->pkt_len, nb_pkts);
@@ -1008,6 +1073,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                 }
             }
         }
+
 
 #if DMTR_DEBUG
         printf("Sent %d packets\n", nb_pkts);
@@ -1122,6 +1188,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
         // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
+        yield();
 #if DMTR_TRACE
         trace = {
             .token = qt,
@@ -1142,6 +1209,11 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
     }
 
     return 0;
+}
+
+template <typename T>
+T* pktmbuf_struct_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
+    return (T*)rte_pktmbuf_read(pkt, offset, sizeof(buf), &buf);
 }
 
 int
@@ -1193,21 +1265,19 @@ dmtr::lwip_queue::service_incoming_packets() {
     // this will fail to re-assemble, and Demeter will hang up
     // We should discard the packet int his case, and move on
     for (size_t i = 0; i < count; ++i) {
-        struct rte_ether_hdr *eth_hdr;
-        eth_hdr = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
-
         if (RTE_ETH_IS_IPV4_HDR(pkts[i]->packet_type)) {
-            struct rte_ipv4_hdr *ip_hdr = (struct ::rte_ipv4_hdr *) (eth_hdr + 1);
+            ::rte_ipv4_hdr ip_hdr_buf;
+            auto * const ip_hdr = pktmbuf_struct_read(pkts[i], sizeof(::rte_ether_hdr), ip_hdr_buf);
 #if DMTR_DEBUG
             uint16_t offset_full_flag = ip_hdr->fragment_offset;
-            uint16_t offset = rte_be_to_cpu_16(offset_full_flag) & IPV4_HDR_OFFSET_MASK;
+            uint16_t offset = rte_be_to_cpu_16(offset_full_flag) & RTE_IPV4_HDR_OFFSET_MASK;
             printf("packet #%zu's payload is offset by %d bytes\n", i, offset * 8);
 #endif
             if (rte_ipv4_frag_pkt_is_fragmented(ip_hdr)) {
 #if DMTR_DEBUG
                 printf("Handling IP fragment");
 #endif
-                pkts[i]->l2_len = sizeof(*eth_hdr);
+                pkts[i]->l2_len = sizeof(::rte_ether_hdr);
                 pkts[i]->l3_len = sizeof(*ip_hdr);
 
                 struct rte_mbuf *out = rte_ipv4_frag_reassemble_packet(
@@ -1223,6 +1293,12 @@ dmtr::lwip_queue::service_incoming_packets() {
                 if (out != pkts[i]) {
                     pkts[i] = out;
                 }
+#ifdef DMTR_DEBUG
+                printf("defragmented pkt %d :  NB_SEGS: %d DATA LEN: %d PKT_LEN: %d BUF_LEN: %d\n", i, (int)pkts[i]->nb_segs, (int)pkts[i]->data_len, (int)pkts[i]->pkt_len, (int)pkts[i]->buf_len);
+                if (pkts[i]->nb_segs > 1) {
+                    printf("defragmented PKTS %d->next NB_SEGS: %d DATA LEN: %d PKT_LEN: %d BUF LEN: %d\n", i, (int)pkts[i]->next->nb_segs, (int)pkts[i]->next->data_len, (int)pkts[i]->next->pkt_len, (int)pkts[i]->next->buf_len);
+                }
+#endif
             }
         }
     }
@@ -1279,7 +1355,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         }
     }
 
-    rte_ip_frag_free_death_row(&our_death_row, 0);
+    rte_ip_frag_free_death_row(&our_death_row, -1);
 
     return 0;
 }
@@ -1311,11 +1387,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         printf("L4 checksum is corrupted\n");
     }
 
-    auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
-
     // check ethernet header
-    auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
-    p += sizeof(*eth_hdr);
+    size_t offset = 0;
+    ::rte_ether_hdr eth_buf;
+    auto * const eth_hdr = pktmbuf_struct_read(pkt, 0, eth_buf);
+    offset += sizeof(*eth_hdr);
+
     auto eth_type = ntohs(eth_hdr->ether_type);
 
 #if DMTR_DEBUG
@@ -1327,7 +1404,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     printf("recv: eth dst addr: ");
     DMTR_OK(print_ether_addr(stdout, eth_hdr->d_addr));
     printf("\n");
-    printf("recv: eth type: %x\n", ntohs(eth_type));
+    printf("recv: eth type: %x\n", eth_type);
 #endif
 
     struct rte_ether_addr mac_addr = {};
@@ -1348,8 +1425,9 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     }
 
     // check ip header
-    auto * const ip_hdr = reinterpret_cast<struct ::rte_ipv4_hdr *>(p);
-    p += sizeof(*ip_hdr);
+    ::rte_ipv4_hdr ip_hdr_buf;
+    auto * const ip_hdr = pktmbuf_struct_read(pkt, offset, ip_hdr_buf);
+    offset += sizeof(*ip_hdr);
 
     // In network byte order.
     in_addr_t ipv4_src_addr = ip_hdr->src_addr;
@@ -1357,7 +1435,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
     if (IPPROTO_UDP != ip_hdr->next_proto_id) {
 #if DMTR_DEBUG
-        printf("recv: dropped (not UDP)!\n");
+        printf("recv: dropped (not UDP, instead %d)!\n", (int)ip_hdr->next_proto_id);
 #endif
         return false;
     }
@@ -1365,25 +1443,29 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 #if DMTR_DEBUG
     printf("recv: ip src addr: %x\n", ntohl(ipv4_src_addr));
     printf("recv: ip dst addr: %x\n", ntohl(ipv4_dst_addr));
+    printf("recv: ip tot len: %i\n", ntohs(ip_hdr->total_length));
 #endif
     src.sin_addr.s_addr = ipv4_src_addr;
     dst.sin_addr.s_addr = ipv4_dst_addr;
 
     // check udp header
-    auto * const udp_hdr = reinterpret_cast<struct ::rte_udp_hdr *>(p);
-    p += sizeof(*udp_hdr);
+    ::rte_udp_hdr udp_hdr_buf;
+    auto *const udp_hdr = pktmbuf_struct_read(pkt, offset, udp_hdr_buf);
+    offset += sizeof(*udp_hdr);
 
     // In network byte order.
     in_port_t udp_src_port = udp_hdr->src_port;
     in_port_t udp_dst_port = udp_hdr->dst_port;
 
-    if (udp_hdr->dst_port != htons(my_app_port) &&
-        udp_hdr->src_port != htons(my_app_port)) {
+    if (my_app_ports.find(ntohs(udp_hdr->dst_port)) == my_app_ports.end() &&
+            my_app_ports.find(ntohs(udp_hdr->src_port)) == my_app_ports.end()) {
 #if DMTR_DEBUG
-        printf("recv: dropped (dst port: %d, src port: %d, expecting %d)\n",
-                htons(udp_hdr->dst_port),
-                htons(udp_hdr->src_port),
-                htons(my_app_port));
+        std::cout << "Recv: dropped (dst port: " << ntohs(udp_hdr->dst_port) << \
+                     ", src_port: " << ntohs(udp_hdr->src_port) << \
+                     ". Expecting one of: ";
+        for (auto it = my_app_ports.begin(); it != my_app_ports.end(); it++) {
+            std::cout << *it << ", ";
+        }
 #endif
         return false;
     }
@@ -1399,35 +1481,42 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_family = AF_INET;
 
     // segment count
-    sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
-    p += sizeof(uint32_t);
+    uint32_t numsegs_buf;
+    auto * const numsegs = pktmbuf_struct_read(pkt, offset, numsegs_buf);
+    sga.sga_numsegs = ntohl(*numsegs);
+    offset += sizeof(uint32_t);
+
 
 #if DMTR_DEBUG
     printf("recv: sga_numsegs: %d\n", sga.sga_numsegs);
 #endif
 
     if (sga.sga_numsegs != 0xdeadbeef) {
-        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
-            // segment length
-            auto seg_len = ntohl(*reinterpret_cast<uint32_t *>(p));
-            sga.sga_segs[i].sgaseg_len = seg_len;
-            p += sizeof(seg_len);
+        // Allocate enough space for all sga segments
+        size_t sga_total_size = ntohs(ip_hdr->total_length) - sizeof(*ip_hdr) - sizeof(*udp_hdr) - sizeof(uint32_t);
+        DMTR_OK(dmtr_malloc(&sga.sga_buf, sga_total_size));
 
+        // Read into the sga buffer
+        const void *read_buf = rte_pktmbuf_read(pkt, offset, sga_total_size, sga.sga_buf);
+        // If read_buf is not pointing to sga_buf, it's because no copy was necessary
+        // (to avoid freeing problems later, copy into sga_buf anyway)
+        if (read_buf != sga.sga_buf) {
+            rte_memcpy(sga.sga_buf, read_buf, sga_total_size);
+        }
+
+        char *offset_buf = static_cast<char*>(sga.sga_buf);
+        for (size_t i = 0; i < sga.sga_numsegs; ++i) {
+            uint32_t seg_len = ntohl(*reinterpret_cast<uint32_t*>(offset_buf));
+            offset_buf += sizeof(seg_len);
+
+            sga.sga_segs[i].sgaseg_len = seg_len;
+            sga.sga_segs[i].sgaseg_buf = offset_buf;
+
+            offset_buf += seg_len;
 #if DMTR_DEBUG
             printf("recv: buf [%lu] len: %u\n", i, seg_len);
-#endif
-
-            void *buf = NULL;
-            DMTR_OK(dmtr_malloc(&buf, seg_len));
-            sga.sga_buf = buf;
-            sga.sga_segs[i].sgaseg_buf = buf;
-            // todo: remove copy if possible.
-            rte_memcpy(buf, p, seg_len);
-            p += seg_len;
-
-#if DMTR_DEBUG
-        //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
-        printf("====================\n");
+            //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+            printf("====================\n");
 #endif
         }
     }
@@ -1502,8 +1591,10 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
     DMTR_NOTNULL(EINVAL, tx_pkts);
 
-    size_t count = ::rte_eth_tx_burst(port_id, queue_id, tx_pkts, nb_pkts);
+    // If count_out packets were sent on the previous burst, they don't have to be sent again
+    size_t count = ::rte_eth_tx_burst(port_id, queue_id, &tx_pkts[count_out], nb_pkts - count_out);
     // todo: documentation mentions that we're responsible for freeing up `tx_pkts` _sometimes_.
+    // (I think that's when the packets aren't sent on the first try)
     if (0 == count) {
         // todo: after enough retries on `0 == count`, the link status
         // needs to be checked to determine if an error occurred.
@@ -1551,7 +1642,7 @@ int dmtr::lwip_queue::rte_pktmbuf_pool_create(struct rte_mempool *&mpool_out, co
     mpool_out = NULL;
     DMTR_NOTNULL(EINVAL, name);
 
-    struct rte_mempool *ret = ::rte_pktmbuf_pool_create(name, n, cache_size, priv_size, data_room_size, socket_id);
+    struct rte_mempool *ret = ::rte_pktmbuf_pool_create(name, n, cache_size, priv_size, data_room_size + RTE_PKTMBUF_HEADROOM, socket_id);
     if (NULL == ret) {
         return rte_errno;
     }
