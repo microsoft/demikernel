@@ -14,14 +14,19 @@ def plot_hist(csvfile):
                 s.append(float(line[:-1]) * 1e6)
     series = pd.Series(s)
 
+    '''
     vplot = sns.violinplot(series)
     vplot.set(xlabel='Bytes')
     plt.show()
     vplot.figure.suptitle('Size distribution of files served')
     vplot.figure.savefig('files-size-violin.pdf', format='pdf')
+    '''
 
-    hplot = sns.distplot(series, bins=100)
+    hplot = sns.distplot(series, bins=1000)
     hplot.set(xlabel='Bytes', ylabel='#files')
+    hplot.xaxis.set_major_locator(plt.MaxNLocator(18))
+    for item in hplot.get_xticklabels():
+        item.set_rotation(45)
     plt.show()
     hplot.figure.suptitle('Size distribution of files served')
     hplot.figure.savefig('files-size-hist.pdf', format='pdf')

@@ -28,6 +28,8 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 
+#define DMTR_TRACE
+
 //FIXME: new profiling has not been implemented for short lived mode.
 //Need to use #LEGACY_PROFILING to get data
 
@@ -125,7 +127,6 @@ struct RequestState {
     uint32_t id; /** Request id */
 
     RequestState(char * const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
-    //~RequestState() { free(req); }
 };
 
 /* Pre-formatted HTTP GET requests */
@@ -693,6 +694,17 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
             uint32_t * const req_id_ptr =
                 reinterpret_cast<uint32_t *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
             uint32_t req_id = *req_id_ptr;
+            /*
+            if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
+                printf("PUSHED %d/%lu\n", req_id, token);
+            } else if (wait_out.qr_opcode == DMTR_OPC_POP) {
+                printf("POPED %d/%lu\n", req_id, token);
+            }
+            */
+            /*
+            char *rf = r+sizeof(uint32_t);
+            printf("Response str: %s (%p)\n", rf, rf);
+            */
 
             auto req = requests.find(req_id);
             if (req == requests.end()) {
@@ -862,6 +874,7 @@ int main(int argc, char **argv) {
 
     /* Setup Demeter */
     DMTR_OK(dmtr_init(argc , argv));
+    //sleep(3);
 
     /* Setup worker threads */
     int nw;
