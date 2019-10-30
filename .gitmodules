@@ -18,18 +18,22 @@
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
 	branch = msft/4.0.9/mirobert
+    ignore = dirty
 [submodule "submodules/redis-rdma"]
 	path = submodules/redis-rdma
 	url = https://github.com/mlr-msft/redis.git
 	branch = msft/4.0.9/mirobert
+    ignore = dirty
 [submodule "apps/tapir-rdma"]
 	path = submodules/tapir-rdma
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-rdma
+    ignore = dirty
 [submodule "apps/tapir-lwip"]
 	path = submodules/tapir-lwip
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-lwip
+    ignore = dirty
 [submodule "tapir-posix"]
 	path = apps/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
@@ -38,9 +42,11 @@
 	path = submodules/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
 	branch = dmtr-posix
+    ignore = dirty
 [submodule "submodules/redis-lwip"]
 	path = submodules/redis-lwip
 	url = https://github.com/mlr-msft/redis.git
+    ignore = dirty
 [submodule "submodules/redis-vanilla"]
 	path = submodules/redis-vanilla
 	url = https://github.com/mlr-msft/redis.git
@@ -53,7 +59,8 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = https://github.com/DPDK/dpdk.git
-	branch = v19.05
+    branch = v19.08
+    ignore = dirty
 [submodule "src/python/benchmarking_utils/Shremote"]
 	path = src/python/benchmarking_utils/Shremote
 	url = https://github.com/isaac-ped/Shremote

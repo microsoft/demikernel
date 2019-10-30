@@ -69,6 +69,7 @@ int main(int argc, char *argv[])
     printf("server qd:\t%d\n", lqd);
 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(dmtr_listen(lqd, 3));
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
@@ -77,7 +78,7 @@ int main(int argc, char *argv[])
         dmtr_qresult_t qr = {};
         dmtr_qtoken_t qt = 0;
         auto t0 = boost::chrono::steady_clock::now();
-        DMTR_OK(dmtr_pop(&qt, lqd));
+        DMTR_OK(dmtr_accept(&qt, lqd));
         DMTR_OK(dmtr_wait(&qr, qt));
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));

@@ -65,6 +65,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_new_latency(&file_log_latency, "file log server"));
 
     std::vector<dmtr_qtoken_t> tokens;
+    tokens.reserve(100);
     std::unordered_map<dmtr_qtoken_t, boost::chrono::time_point<boost::chrono::steady_clock>> start_times;
     dmtr_qtoken_t token;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
@@ -83,7 +84,6 @@ int main(int argc, char *argv[])
         // open a log file
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
     }
-
     int start_offset = 0;
     while (1) {
         dmtr_qresult wait_out;
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 
         // if we got an EOK back from wait
         if (status == 0) {
-            //std::cout << "Found something: qd=" << wait_out.qr_qd;
+
             if (wait_out.qr_qd == lqd) {
                 // check accept on servers
                 auto t0 = boost::chrono::steady_clock::now();
@@ -101,16 +101,15 @@ int main(int argc, char *argv[])
                 tokens.push_back(token);
                 DMTR_OK(dmtr_accept(&token, lqd));
                 tokens[idx] = token;
-            } else {
-                assert(DMTR_OPC_POP == wait_out.qr_opcode);
+            } else if (DMTR_OPC_POP == wait_out.qr_opcode) {
                 assert(wait_out.qr_value.sga.sga_numsegs == 1);
-                //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
+                //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", 1, reinterpret_cast<char *>(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf), wait_out.qr_value.sga.sga_segs[0].sgaseg_len);
 
-                token = tokens[idx];
-                auto pop_dt = boost::chrono::steady_clock::now() - start_times[token];
-                start_times.erase(token);
-                DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
+                dmtr_qtoken_t &pop_token = tokens[idx];
+                auto pop_dt = boost::chrono::steady_clock::now() - start_times[pop_token];
 
+#if 0
+                // `dmtr_open2()` is only implemented for POSIX.
                 if (0 != fqd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
@@ -119,13 +118,15 @@ int main(int argc, char *argv[])
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }
-
+#endif
                 auto t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
+                dmtr_qtoken_t push_token;
+                DMTR_OK(dmtr_push(&push_token, wait_out.qr_qd, &wait_out.qr_value.sga));
                 auto push_dt = boost::chrono::steady_clock::now() - t0;
-                DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
                 t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_wait(NULL, token));
+                int rtn2;
+                while ((rtn2 = dmtr_wait(NULL, push_token)) == EAGAIN) {};
+                DMTR_OK(rtn2);
                 auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
                 t0 = boost::chrono::steady_clock::now();
@@ -133,11 +134,22 @@ int main(int argc, char *argv[])
                 start_times[token] = t0;
                 tokens[idx] = token;
                 //fprintf(stderr, "send complete.\n");
+                DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
+                DMTR_OK(dmtr_record_latency(pop_latency, pop_dt.count()));
+            } else {
+                dmtr_qtoken_t &push_token = tokens[idx];
+                auto t0 = boost::chrono::steady_clock::now();
+                auto push_wait_dt = t0 - start_times[push_token];
+                DMTR_OK(dmtr_pop(&push_token, wait_out.qr_qd));
+                start_times[push_token] = t0;
                 free(wait_out.qr_value.sga.sga_buf);
+                DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
             }
-        } else {
-            if (status == EAGAIN) {
-                continue;
+
+        } else if (status != EAGAIN) {
+            if (wait_out.qr_qd == lqd) {
+                std::cout << "Error on listening fd! Exiting" << std::endl;
+                exit(0);
             }
             assert(status == ECONNRESET || status == ECONNABORTED);
             dmtr_close(wait_out.qr_qd);
@@ -145,3 +157,5 @@ int main(int argc, char *argv[])
         }
     }
 }
+
+

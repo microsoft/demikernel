@@ -1,0 +1,214 @@
+diff --git a/.gitignore b/.gitignore
+index 5eda2c31e..a9b4eac0d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -27,3 +27,5 @@ TAGS
+ # ignore default build directory, and directories from test-meson-builds.sh
+ build
+ build-*
++/build/
++/x86_64-native-linuxapp-gcc/
+diff --git a/config/common_base b/config/common_base
+index 8ef75c203..68e7ec594 100644
+--- a/config/common_base
++++ b/config/common_base
+@@ -276,11 +276,6 @@ CONFIG_RTE_LIBRTE_E1000_DEBUG_TX=n
+ CONFIG_RTE_LIBRTE_E1000_DEBUG_TX_FREE=n
+ CONFIG_RTE_LIBRTE_E1000_PF_DISABLE_STRIP_CRC=n
+ 
+-#
+-# Compile burst-oriented HINIC PMD driver
+-#
+-CONFIG_RTE_LIBRTE_HINIC_PMD=n
+-
+ #
+ # Compile burst-oriented IXGBE PMD driver
+ #
+@@ -332,7 +327,6 @@ CONFIG_RTE_LIBRTE_IAVF_INC_VECTOR=y
+ CONFIG_RTE_LIBRTE_IAVF_DEBUG_TX=n
+ CONFIG_RTE_LIBRTE_IAVF_DEBUG_TX_FREE=n
+ CONFIG_RTE_LIBRTE_IAVF_DEBUG_RX=n
+-CONFIG_RTE_LIBRTE_IAVF_DEBUG_DUMP_DESC=n
+ CONFIG_RTE_LIBRTE_IAVF_16BYTE_RX_DESC=n
+ #
+ # Compile burst-oriented IPN3KE PMD driver
+@@ -342,14 +336,14 @@ CONFIG_RTE_LIBRTE_IPN3KE_PMD=y
+ #
+ # Compile burst-oriented Mellanox ConnectX-3 (MLX4) PMD
+ #
+-CONFIG_RTE_LIBRTE_MLX4_PMD=n
++CONFIG_RTE_LIBRTE_MLX4_PMD=y
+ CONFIG_RTE_LIBRTE_MLX4_DEBUG=n
+ 
+ #
+ # Compile burst-oriented Mellanox ConnectX-4, ConnectX-5,
+ # ConnectX-6 & Bluefield (MLX5) PMD
+ #
+-CONFIG_RTE_LIBRTE_MLX5_PMD=n
++CONFIG_RTE_LIBRTE_MLX5_PMD=y
+ CONFIG_RTE_LIBRTE_MLX5_DEBUG=n
+ 
+ # Linking method for mlx4/5 dependency on ibverbs and related libraries
+@@ -411,11 +405,6 @@ CONFIG_RTE_LIBRTE_LIO_DEBUG_REGS=n
+ #
+ CONFIG_RTE_LIBRTE_OCTEONTX_PMD=y
+ 
+-#
+-# Compile burst-oriented Marvell OCTEON TX2 network PMD driver
+-#
+-CONFIG_RTE_LIBRTE_OCTEONTX2_PMD=y
+-
+ #
+ # Compile WRS accelerated virtual port (AVP) guest PMD driver
+ #
+@@ -455,11 +444,6 @@ CONFIG_RTE_LIBRTE_PMD_AF_PACKET=n
+ #
+ CONFIG_RTE_LIBRTE_PMD_AF_XDP=n
+ 
+-#
+-# Compile Memory Interface PMD driver (Linux only)
+-#
+-CONFIG_RTE_LIBRTE_PMD_MEMIF=n
+-
+ #
+ # Compile link bonding PMD library
+ #
+@@ -498,7 +482,7 @@ CONFIG_RTE_LIBRTE_NETVSC_DEBUG_DUMP=n
+ #
+ # Compile virtual device driver for NetVSC on Hyper-V/Azure
+ #
+-CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD=n
++CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD=
+ 
+ #
+ # Compile null PMD
+@@ -537,11 +521,8 @@ CONFIG_RTE_PMD_PACKET_PREFETCH=y
+ # EXPERIMENTAL: API may change without prior notice
+ #
+ CONFIG_RTE_LIBRTE_BBDEV=y
+-CONFIG_RTE_LIBRTE_BBDEV_DEBUG=n
+ CONFIG_RTE_BBDEV_MAX_DEVS=128
+ CONFIG_RTE_BBDEV_OFFLOAD_COST=y
+-CONFIG_RTE_BBDEV_SDK_AVX2=n
+-CONFIG_RTE_BBDEV_SDK_AVX512=n
+ 
+ #
+ # Compile PMD for NULL bbdev device
+@@ -551,12 +532,7 @@ CONFIG_RTE_LIBRTE_PMD_BBDEV_NULL=y
+ #
+ # Compile PMD for turbo software bbdev device
+ #
+-CONFIG_RTE_LIBRTE_PMD_BBDEV_TURBO_SW=y
+-
+-#
+-# Compile PMD for Intel FPGA LTE FEC bbdev device
+-#
+-CONFIG_RTE_LIBRTE_PMD_FPGA_LTE_FEC=y
++CONFIG_RTE_LIBRTE_PMD_BBDEV_TURBO_SW=n
+ 
+ #
+ # Compile generic crypto device library
+@@ -727,11 +703,6 @@ CONFIG_RTE_LIBRTE_PMD_DSW_EVENTDEV=y
+ #
+ CONFIG_RTE_LIBRTE_PMD_OCTEONTX_SSOVF=y
+ 
+-#
+-# Compile PMD for octeontx2 sso event device
+-#
+-CONFIG_RTE_LIBRTE_PMD_OCTEONTX2_EVENTDEV=y
+-
+ #
+ # Compile PMD for OPDL event device
+ #
+@@ -770,21 +741,6 @@ CONFIG_RTE_LIBRTE_PMD_DPAA2_QDMA_RAWDEV=n
+ #
+ CONFIG_RTE_LIBRTE_PMD_IFPGA_RAWDEV=y
+ 
+-#
+-# Compile PMD for Intel IOAT raw device
+-#
+-CONFIG_RTE_LIBRTE_PMD_IOAT_RAWDEV=y
+-
+-#
+-# Compile PMD for octeontx2 DMA raw device
+-#
+-CONFIG_RTE_LIBRTE_PMD_OCTEONTX2_DMA_RAWDEV=y
+-
+-#
+-# Compile PMD for NTB raw device
+-#
+-CONFIG_RTE_LIBRTE_PMD_NTB_RAWDEV=y
+-
+ #
+ # Compile librte_ring
+ #
+@@ -815,11 +771,6 @@ CONFIG_RTE_DRIVER_MEMPOOL_STACK=y
+ #
+ CONFIG_RTE_LIBRTE_OCTEONTX_MEMPOOL=y
+ 
+-#
+-# Compile PMD for octeontx2 npa mempool device
+-#
+-CONFIG_RTE_LIBRTE_OCTEONTX2_MEMPOOL=y
+-
+ #
+ # Compile librte_mbuf
+ #
+@@ -922,7 +873,7 @@ CONFIG_RTE_LIBRTE_NET=y
+ #
+ CONFIG_RTE_LIBRTE_IP_FRAG=y
+ CONFIG_RTE_LIBRTE_IP_FRAG_DEBUG=n
+-CONFIG_RTE_LIBRTE_IP_FRAG_MAX_FRAG=4
++CONFIG_RTE_LIBRTE_IP_FRAG_MAX_FRAG=64
+ CONFIG_RTE_LIBRTE_IP_FRAG_TBL_STAT=n
+ 
+ #
+@@ -991,6 +942,7 @@ CONFIG_RTE_PIPELINE_STATS_COLLECT=n
+ CONFIG_RTE_LIBRTE_KNI=n
+ CONFIG_RTE_LIBRTE_PMD_KNI=n
+ CONFIG_RTE_KNI_KMOD=n
++CONFIG_RTE_KNI_KMOD_ETHTOOL=n
+ CONFIG_RTE_KNI_PREEMPT_DEFAULT=y
+ 
+ #
+diff --git a/mk/rte.app.mk b/mk/rte.app.mk
+index ba5c39e01..af9b215dd 100644
+--- a/mk/rte.app.mk
++++ b/mk/rte.app.mk
+@@ -396,6 +396,11 @@ O_TO_EXE = $(LD) -o $@ $(OBJS-y) \
+ 	$(LDLIBS) $(LDFLAGS) $(LDFLAGS_$(@)) $(EXTRA_LDFLAGS) \
+ 	$(MAPFLAGS)
+ endif
++
++# get DPDK to divulge the correct linker flags (borrowed from mTCP).
++$(shell if [ ! -d ${RTE_SDK}/${RTE_TARGET}/lib ]; then mkdir -p ${RTE_SDK}/${RTE_TARGET}/lib; fi)
++$(shell echo $(call linkerprefix,$(LDLIBS)) > ${RTE_SDK}/${RTE_TARGET}/lib/ldflags.txt)
++
+ O_TO_EXE_STR = $(subst ','\'',$(O_TO_EXE)) #'# fix syntax highlight
+ O_TO_EXE_DISP = $(if $(V),"$(O_TO_EXE_STR)","  LD $(@)")
+ O_TO_EXE_CMD = "cmd_$@ = $(O_TO_EXE_STR)"
+diff --git a/mk/rte.cpuflags.mk b/mk/rte.cpuflags.mk
+index fa8753531..28578bde9 100644
+--- a/mk/rte.cpuflags.mk
++++ b/mk/rte.cpuflags.mk
+@@ -122,3 +122,7 @@ space:= $(empty) $(empty)
+ CPUFLAGSTMP1 := $(addprefix RTE_CPUFLAG_,$(CPUFLAGS))
+ CPUFLAGSTMP2 := $(subst $(space),$(comma),$(CPUFLAGSTMP1))
+ CPUFLAGS_LIST := -DRTE_COMPILE_TIME_CPUFLAGS=$(CPUFLAGSTMP2)
++
++# get DPDK to divulge the correct compiler flags (borrowed from mTCP).
++$(shell if [ ! -d ${RTE_SDK}/${RTE_TARGET}/include ]; then mkdir -p ${RTE_SDK}/${RTE_TARGET}/include; fi)
++$(shell echo ${MACHINE_CFLAGS} > ${RTE_SDK}/${RTE_TARGET}/include/cflags.txt)
+diff --git a/usertools/dpdk-setup.sh b/usertools/dpdk-setup.sh
+index e5bbe9fee..62cfd1498 100755
+--- a/usertools/dpdk-setup.sh
++++ b/usertools/dpdk-setup.sh
+@@ -76,7 +76,7 @@ setup_target()
+ 		fi
+ 	fi
+ 	if [ "$QUIT" == "0" ] ; then
+-		make install T=${RTE_TARGET}
++		make -j install T=${RTE_TARGET}
+ 	fi
+ 	echo "------------------------------------------------------------------------------"
+ 	echo " RTE_TARGET exported as $RTE_TARGET"
