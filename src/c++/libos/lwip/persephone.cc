@@ -17,6 +17,7 @@ int PspServiceUnit::init(int argc, char *argv[]) {
 
     ioqapi.register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
     ioqapi.register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::lwip_queue::new_object);
+    ioqapi.register_queue_ctor(dmtr::io_queue::SHARED_Q, dmtr::shared_queue::new_object);
 
     return 0;
 }

@@ -25,6 +25,7 @@ class io_queue
         MEMORY_Q,
         NETWORK_Q,
         FILE_Q,
+        SHARED_Q
     };
 
     protected: class task {

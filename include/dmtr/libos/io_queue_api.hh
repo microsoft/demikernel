@@ -8,6 +8,7 @@
 
 #include "io_queue.hh"
 #include "io_queue_factory.hh"
+#include <dmtr/libos/shared_queue.hh>
 #include <boost/atomic.hpp>
 #include <dmtr/annot.h>
 #include <mutex>
@@ -40,6 +41,7 @@ class io_queue_api
     public: static int init(io_queue_api *&newobj_out, int argc, char *argv[]);
     public: int register_queue_ctor(enum io_queue::category_id cid, io_queue_factory::ctor_type ctor);
 
+    public: int shared_queue(int &qd_out, dmtr::shared_item *producer, dmtr::shared_item *consumer);
     public: int queue(int &qd_out);
 
     // ================================================
