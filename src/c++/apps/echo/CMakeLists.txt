@@ -29,6 +29,7 @@ set(UDP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_client.cc)
 set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 set(THREADED_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_echo_threaded.cc)
+set(PSP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/psp_echo_threaded.cc)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 
@@ -78,6 +79,9 @@ add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
 # Threaded echo server
 add_executable(dmtr-lwip-threaded-echo ${THREADED_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-lwip-threaded-echo dmtr-libos-lwip yaml-cpp boost_program_options)
+add_executable(psp-lwip-threaded-echo ${PSP_ECHO_SERVER_SOURCES})
+target_link_libraries(psp-lwip-threaded-echo dmtr-libos-lwip yaml-cpp boost_program_options)
+
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
