@@ -8,6 +8,7 @@
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/libos/memory_queue.hh>
+#include <dmtr/libos/shared_queue.hh>
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
@@ -114,6 +115,20 @@ int dmtr::io_queue_api::remove_queue(int qd) {
     }
 
     my_queues.erase(it);
+    return 0;
+}
+
+int dmtr::io_queue_api::shared_queue(int &qd_out, dmtr::shared_item *producer, dmtr::shared_item *consumer) {
+    qd_out = 0;
+
+    io_queue *q = NULL;
+    DMTR_OK(new_queue(q, io_queue::SHARED_Q));
+
+    dmtr::shared_queue *sq = dynamic_cast<dmtr::shared_queue*>(q);
+    sq->set_producer(producer);
+    sq->set_consumer(consumer);
+
+    qd_out = q->qd();
     return 0;
 }
 

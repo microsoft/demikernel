@@ -28,6 +28,7 @@ int dmtr_init(int argc, char *argv[])
     ioq_api = std::unique_ptr<dmtr::io_queue_api>(p);
     ioq_api->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
     ioq_api->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::lwip_queue::new_object);
+    ioq_api->register_queue_ctor(dmtr::io_queue::SHARED_Q, dmtr::shared_queue::new_object);
     return 0;
 }
 
