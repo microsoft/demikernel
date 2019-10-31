@@ -7,10 +7,12 @@
 #include <boost/optional.hpp>
 #include <cassert>
 #include <cstring>
+#include <vector>
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
+#include <dmtr/libos/persephone.hh>
 #include <iostream>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -22,10 +24,6 @@
 #include <unordered_map>
 
 static bool exit_signal = false;
-
-int lqd = 0;
-int fqd = 0;
-dmtr_latency_t *latency = NULL;
 
 void sig_handler(int signo)
 {
@@ -44,49 +42,42 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-int worker_iteration(int in_queue, int out_queue, dmtr_qtoken_t &token, boost::chrono::steady_clock::time_point &t) {
+struct suqd {
+    PspServiceUnit *psu;
+    int qd;
+};
 
-    DMTR_OK(dmtr_pop(&token, in_queue));
+int worker_iteration(struct suqd *in, struct suqd *out) {
+    dmtr_qtoken_t token;
+    DMTR_OK(in->psu->ioqapi.pop(token, in->qd));
     dmtr_qresult_t wait_out;
-    volatile int status;
-    t = boost::chrono::steady_clock::now();
-    while ( (status = dmtr_wait(&wait_out, token)) == EAGAIN && !exit_signal) {
-    t = boost::chrono::steady_clock::now();
-    }
+    int status;
+    while ( (status = in->psu->wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
     if (status != 0) {
         exit_signal = true;
         fprintf(stderr, "dmtr_wait returned %d\n", status);
         return status;
-    } else {
-        DMTR_OK(dmtr_push(&token, out_queue, &wait_out.qr_value.sga));
-        DMTR_OK(dmtr_wait(&wait_out, token));
-        return 0;
     }
+    DMTR_OK(out->psu->ioqapi.push(token, out->qd, wait_out.qr_value.sga));
+    DMTR_OK(out->psu->wait(&wait_out, token));
+    return 0;
 }
 
-int worker_loop(uint16_t cpu_id, int in_queue, int out_queue) {
+int worker_loop(uint16_t cpu_id, struct suqd *in_queue, struct suqd *out_queue) {
     pin_thread(pthread_self(), cpu_id);
 
-    dmtr_qtoken_t token;
     while (!exit_signal) {
-        boost::chrono::steady_clock::time_point t0;
-        DMTR_OK(worker_iteration(in_queue, out_queue, token, t0));
+        DMTR_OK(worker_iteration(in_queue, out_queue));
     }
     return 0;
 }
 
-int main_worker_loop(uint16_t cpu_id, int client_queue, int in_queue, int out_queue) {
+int main_worker_loop(uint16_t cpu_id, struct suqd *client_queue, struct suqd *in_queue, struct suqd *out_queue) {
     pin_thread(pthread_self(), cpu_id);
-    DMTR_OK(dmtr_new_latency(&latency, "main"));
 
-    dmtr_qtoken_t token;
     while (!exit_signal) {
-        boost::chrono::steady_clock::time_point t0;
-        DMTR_OK(worker_iteration(client_queue, out_queue, token, t0));
-        boost::chrono::steady_clock::time_point t1;
-        DMTR_OK(worker_iteration(in_queue, client_queue, token, t1));
-        t1 = boost::chrono::steady_clock::now();
-        dmtr_record_latency(latency, (t1 - t0).count());
+        DMTR_OK(worker_iteration(client_queue, out_queue));
+        DMTR_OK(worker_iteration(in_queue, client_queue));
     }
     return 0;
 }
@@ -94,43 +85,50 @@ int main_worker_loop(uint16_t cpu_id, int client_queue, int in_queue, int out_qu
 
 struct worker_args {
     int cpu_id;
-    int in_qd;
-    int out_qd;
-    int client_qd;
+    struct suqd client;
+    struct suqd in;
+    struct suqd out;
 };
 
 void* worker_entry(void *vargs) {
     struct worker_args *args = (struct worker_args *)vargs;
-    worker_loop(args->cpu_id, args->in_qd,  args->out_qd);
+    worker_loop(args->cpu_id, &args->in,  &args->out);
     return NULL;
 }
 
 void *main_worker_entry(void *vargs) {
     struct worker_args *args = (struct worker_args *)vargs;
-    main_worker_loop(args->cpu_id, args->client_qd, args->in_qd, args->out_qd);
-    printf("Dumping\n");
-    dmtr_dump_latency(stderr, latency);
-    printf("Dumped\n");
+    main_worker_loop(args->cpu_id, &args->client, &args->in, &args->out);
+    exit_signal = true;
     return NULL;
 }
 
-int main_work(int lqd, int n_threads) {
+int main_work(PspServiceUnit &psu, int lqd, int n_threads) {
+    std::vector<PspServiceUnit*> service_units;
     int memory_qds[n_threads];
+    std::vector<dmtr::shared_item> shared_items(n_threads);
+
     for (int i=0; i < n_threads; i++) {
-        DMTR_OK(dmtr_queue(&memory_qds[i]));
+        service_units.push_back(new PspServiceUnit(i, dmtr::io_queue::MEMORY_Q, 0, nullptr));
+        int producer_i = i;
+        int consumer_i = (i == n_threads - 1) ? 0 : i + 1;
+        DMTR_OK(service_units[i]->ioqapi.shared_queue(memory_qds[i],
+                                                              &shared_items[producer_i],
+                                                              &shared_items[consumer_i]));
     }
 
     dmtr_qtoken_t token;
-    DMTR_OK(dmtr_accept(&token, lqd));
+    DMTR_OK(psu.ioqapi.accept(token, lqd));
 
     dmtr_qresult_t wait_out;
     int status;
-    while ( (status = dmtr_wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
+    while ( (status = psu.wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
     if (status != 0) {
         DMTR_OK(status /*dmtr_wait*/);
         return -1;
     } else {
         printf("Accepted connection!\n");
+
         int client_qd = wait_out.qr_value.ares.qd;
 
         pthread_t pthreads[n_threads];
@@ -139,21 +137,24 @@ int main_work(int lqd, int n_threads) {
         for (int i=0; i < n_threads; i++) {
             struct worker_args *args = &thread_args[i];
             args->cpu_id = 3 + i;
-            args->client_qd = client_qd;
-            args->in_qd = (i == 0) ? memory_qds[n_threads - 1] : memory_qds[i-1];
-            args->out_qd = memory_qds[i];
+            args->client.psu = &psu;
+            args->client.qd = client_qd;
+            args->in.psu = service_units[i];
+            args->in.qd = memory_qds[i];
+            //args->in.psu = (i == 0) ? service_units[n_threads - 1] :service_units[i-1];
+            //args->in.qd = (i == 0) ? memory_qds[n_threads - 1]: memory_qds[i-1];
+            args->out.psu  = service_units[i];
+            args->out.qd = memory_qds[i];
 
-            main_worker_entry(args);
-
-            //if (pthread_create(&pthreads[i], NULL, (i == 0) ? main_worker_entry : worker_entry, args)) {
-            //    perror("pthread_create");
-            //    exit_signal = true;
-            //}
+            if (pthread_create(&pthreads[i], NULL, (i == 0) ? main_worker_entry : worker_entry, args)) {
+                perror("pthread_create");
+                exit_signal = true;
+            }
         }
 
-        //for (int i=0; i < n_threads; i++) {
-        //    pthread_join(pthreads[i], NULL);
-        //}
+        for (int i=0; i < n_threads; i++) {
+            pthread_join(pthreads[i], NULL);
+        }
     }
     return 0;
 }
@@ -202,17 +203,18 @@ int main(int argc, char *argv[])
 
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(argc, argv));
+    //DMTR_OK(dmtr_init(argc, argv));
 
     int lqd;
-    DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
-    DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-    DMTR_OK(dmtr_listen(lqd, 3));
+    PspServiceUnit psu(42, dmtr::io_queue::NETWORK_Q, argc, argv);
+    DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
+    DMTR_OK(psu.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(psu.ioqapi.listen(lqd, 3));
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
-    return main_work(lqd, n_threads);
+    return main_work(psu, lqd, n_threads);
 }
 
 
