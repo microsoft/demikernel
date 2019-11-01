@@ -1,3 +1,5 @@
+#ifndef PSP_HH_
+#define PSP_HH_
 #include <stdint.h>
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
@@ -26,3 +28,5 @@ class PspServiceUnit {
     public: int shared_queue(int &qd_out, dmtr::shared_item *producer, dmtr::shared_item *consumer);
     // delete copy ctor
 };
+
+#endif // PSP_HH_
