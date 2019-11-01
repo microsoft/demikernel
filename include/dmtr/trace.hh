@@ -26,9 +26,9 @@ typedef struct dmtr_trace {
 typedef std::unique_ptr<dmtr_trace_t, std::function<void(dmtr_trace_t *)> > trace_ptr_type;
 
 int dmtr_dump_trace_to_file(const char * filename, dmtr_trace_t *trace);
-int dmtr_record_trace(dmtr_trace_t *trace, dmtr_qtoken_trace_t &qt_trace);
+int dmtr_record_trace(dmtr_trace_t &trace, dmtr_qtoken_trace_t &qt_trace);
 int dmtr_new_trace(dmtr_trace_t **trace_out, const char *name);
 int dmtr_delete_trace(dmtr_trace_t **trace);
-int dmtr_register_trace(const char *label, std::unordered_map<pthread_t, trace_ptr_type> &traces);
+int dmtr_register_trace(const char *label, trace_ptr_type &traces);
 
 #endif /* DMTR_TRACE_H_IS_INCLUDED */

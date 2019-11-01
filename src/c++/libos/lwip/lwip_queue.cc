@@ -84,7 +84,7 @@ namespace bpo = boost::program_options;
 //#define DMTR_DEBUG 1
 // TODO: This should be defined in a more global place so we don't have to
 // uncomment it in multiple places
-//#define DMTR_TRACE 1
+#define DMTR_TRACE 1
 //#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP 1
 
@@ -121,10 +121,8 @@ static std::mutex w_latencies_mutex;
 #endif
 
 #if DMTR_TRACE
-std::unordered_map<pthread_t, trace_ptr_type> pop_token_traces;
-std::unordered_map<pthread_t, trace_ptr_type> push_token_traces;
-static std::mutex pop_token_traces_mutex;
-static std::mutex push_token_traces_mutex;
+trace_ptr_type pop_token_traces;
+trace_ptr_type push_token_traces;
 #endif
 
 const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
@@ -558,6 +556,10 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 
     q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
+
+    DMTR_OK(dmtr_register_trace("POP", pop_token_traces));
+    DMTR_OK(dmtr_register_trace("PUSH", push_token_traces));
+
     return 0;
 }
 
@@ -796,7 +798,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = *our_dpdk_port_id;
-#if defined DMTR_TRACE || defined DMTR_PROFILE
+#ifdef DMTR_PROFILE
     pthread_t me = pthread_self();
 #endif
 
@@ -813,17 +815,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             .start = true,
             .timestamp = take_time()
         };
-        {
-            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
-            auto it = push_token_traces.find(me);
-            if (it != push_token_traces.end()) {
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            } else {
-                DMTR_OK(dmtr_register_trace("PUSH", push_token_traces));
-                it = push_token_traces.find(me);
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            }
-        }
+        DMTR_OK(dmtr_record_trace(*push_token_traces, trace));
 #endif
         tq.pop();
         task *t;
@@ -1113,15 +1105,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             .start = false,
             .timestamp = take_time()
         };
-        {
-            std::lock_guard<std::mutex> lock(push_token_traces_mutex);
-            auto it = push_token_traces.find(me);
-            if (it != push_token_traces.end()) {
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            } else {
-                DMTR_FAIL(ENOENT);
-            }
-        }
+        DMTR_OK(dmtr_record_trace(*push_token_traces, trace));
 #endif
         //printf("Sent request %d/%lu\n", (uint32_t) *ridptr, qt);
         DMTR_OK(t->complete(0, *sga));
@@ -1146,9 +1130,6 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-#if DMTR_TRACE
-    pthread_t me = pthread_self();
-#endif
 
     while (good()) {
         while (tq.empty()) {
@@ -1163,17 +1144,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
             .start = true,
             .timestamp = take_time()
         };
-        {
-            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
-            auto it = pop_token_traces.find(me);
-            if (it != pop_token_traces.end()) {
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            } else {
-                DMTR_OK(dmtr_register_trace("POP", pop_token_traces));
-                it = pop_token_traces.find(me);
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            }
-        }
+        DMTR_OK(dmtr_record_trace(*pop_token_traces, trace));
 #endif
         tq.pop();
         task *t;
@@ -1202,22 +1173,13 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
         // todo: pop from queue in `raii_guard`.
         my_recv_queue.pop();
-        yield();
 #if DMTR_TRACE
         trace = {
             .token = qt,
             .start = false,
             .timestamp = take_time()
         };
-        {
-            std::lock_guard<std::mutex> lock(pop_token_traces_mutex);
-            auto it = pop_token_traces.find(me);
-            if (it != pop_token_traces.end()) {
-                DMTR_OK(dmtr_record_trace(it->second.get(), trace));
-            } else {
-                DMTR_FAIL(ENOENT);
-            }
-        }
+        DMTR_OK(dmtr_record_trace(*pop_token_traces, trace));
 #endif
         yield(); //"disable" batching
     }

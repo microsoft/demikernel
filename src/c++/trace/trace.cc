@@ -25,12 +25,11 @@ int dmtr_new_trace(dmtr_trace_t **trace_out, const char *name) {
     return 0;
 }
 
-int dmtr_record_trace(dmtr_trace_t *trace, dmtr_qtoken_trace_t &qt_trace) {
-    DMTR_NOTNULL(EINVAL, trace);
+int dmtr_record_trace(dmtr_trace_t &trace, dmtr_qtoken_trace_t &qt_trace) {
     DMTR_NONZERO(EINVAL, qt_trace.token);
 
-    if (trace->traces.size() < MAX_TRACES) {
-        trace->traces.push_back(qt_trace);
+    if (trace.traces.size() < MAX_TRACES) {
+        trace.traces.push_back(qt_trace);
     }
 
     return 0;
@@ -55,25 +54,18 @@ int dmtr_delete_trace(dmtr_trace_t **trace) {
     return 0;
 }
 
-int dmtr_register_trace(const char *label,
-                        std::unordered_map<pthread_t, trace_ptr_type> &traces) {
+int dmtr_register_trace(const char *label, trace_ptr_type &traces) {
     char log_filename[MAX_LOG_FILENAME_LEN];
     const char *log_dir = dmtr_log_directory.c_str();
-    pthread_t me = pthread_self();
 
-    auto it = traces.find(me);
-    DMTR_TRUE(EINVAL, it == traces.end());
-    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-traces", log_dir, me, label);
+    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%s-traces", log_dir, label);
     dmtr_trace_t *t;
     DMTR_OK(dmtr_new_trace(&t, label));
-    trace_ptr_type trace =
+    traces =
         trace_ptr_type(t, [log_filename](dmtr_trace_t *trc) {
             dmtr_dump_trace_to_file(reinterpret_cast<const char *>(log_filename), trc);
             dmtr_delete_trace(&trc);
         });
-    traces.insert(
-        std::pair<pthread_t, trace_ptr_type>(me, std::move(trace))
-    );
 
     return 0;
 }
