@@ -61,12 +61,16 @@ int dmtr::shared_queue::pop_task(dmtr_qresult_t &qr_out) {
 
 int dmtr::shared_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, my_good_flag);
+    qr_out.qr_qt = qt;
+    qr_out.qr_qd = qd();
     auto it_push = push_queue.find(qt);
     if (it_push != push_queue.end()) {
+        qr_out.qr_opcode = DMTR_OPC_PUSH;
         return push_task(it_push->second);
     }
     auto it_pop = pop_set.find(qt);
     if (it_pop != pop_set.end()) {
+        qr_out.qr_opcode = DMTR_OPC_POP;
         return pop_task(qr_out);
     }
     DMTR_UNREACHABLE();
