@@ -28,7 +28,7 @@ int dmtr::shared_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
 int dmtr::shared_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(EINVAL, my_good_flag);
     DMTR_NOTNULL(EINVAL, consumer);
-    push_queue[qt] = &sga;
+    push_queue[qt] = sga;
     return 0;
 }
 
@@ -37,7 +37,7 @@ int dmtr::shared_queue::push_task(const dmtr_sgarray_t &sga) {
     if (consumer->full_flag.test_and_set()) {
         return EAGAIN;
     }
-    consumer->to_pop = &sga;
+    consumer->to_pop = sga;
     consumer->empty_flag.clear();
     return 0;
 }
@@ -54,8 +54,7 @@ int dmtr::shared_queue::pop_task(dmtr_qresult_t &qr_out) {
     if (producer->empty_flag.test_and_set()) {
         return EAGAIN;
     }
-    qr_out.qr_value.sga = *producer->to_pop;
-    producer->to_pop = nullptr;
+    qr_out.qr_value.sga = producer->to_pop;
     producer->full_flag.clear();
     return 0;
 }
@@ -64,7 +63,7 @@ int dmtr::shared_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, my_good_flag);
     auto it_push = push_queue.find(qt);
     if (it_push != push_queue.end()) {
-        return push_task(*it_push->second);
+        return push_task(it_push->second);
     }
     auto it_pop = pop_set.find(qt);
     if (it_pop != pop_set.end()) {
