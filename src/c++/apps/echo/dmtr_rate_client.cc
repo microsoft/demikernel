@@ -222,20 +222,13 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 #endif
 
-    bool new_op = true;
     uint32_t n_invalid = 0;
     bool expired = false;
     uint32_t logged = 0;
     dmtr_qresult_t wait_out;
     dmtr_qtoken_t token;
-    while (logged < total_requests) {
-        if (terminate) {
-            log_info(" worker %d set to terminate", my_idx);
-            break;
-        }
-        if (new_op) {
-            DMTR_OK(dmtr_pop(&token, log_memq));
-        }
+    DMTR_OK(dmtr_pop(&token, log_memq));
+    while (logged < total_requests && !terminate) {
         int status = dmtr_wait(&wait_out, token);
         if (status == 0) {
             RequestState *req = reinterpret_cast<RequestState *>(
@@ -276,12 +269,10 @@ int log_responses(uint32_t total_requests, int log_memq,
                 n_invalid++;
             }
             delete req;
-            new_op = true;
+            DMTR_OK(dmtr_pop(&token, log_memq));
         } else {
             if (status != EAGAIN) {
                 log_warn("Logger's %d memory queue returned: %d", my_idx, status);
-            } else {
-                new_op = false;
             }
         }
 
