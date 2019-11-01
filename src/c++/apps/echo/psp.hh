@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <memory>
 
+#include <dmtr/libos/persephone.hh>
+
 #define MAX_REQ_STATES 10000000
 
 enum req_type {
@@ -74,6 +76,7 @@ struct net_worker_args {
     std::function<enum req_type(std::string &)> dispatch_f;
     struct sockaddr_in saddr;
     bool split;
+    std::unordered_map<uint8_t, int> shared_qfds;
 };
 
 /* TODO: have child classse for each worker type */
@@ -81,10 +84,11 @@ enum worker_type { NET, HTTP };
 class Worker {
     public:
         /* I/O variables */
-        int in_qfd;
-        int out_qfd;
+        int shared_qfd;
 
         struct net_worker_args args;
+
+        PspServiceUnit *psp_su;
 
         /* Management variables */
         pthread_t me;
@@ -131,19 +135,33 @@ class Worker {
 };
 
 class Psp {
+    public: std::unordered_map<
+                enum req_type,
+                std::pair<std::vector<std::shared_ptr<Worker> > *, uint16_t>
+            > types_map;
+
     public: std::vector<std::shared_ptr<Worker> > workers; /* All the workers */
     public: std::vector<std::shared_ptr<Worker> > http_workers; /* Just the HTTP workers */
+    public: uint16_t n_http_workers;
     public: std::vector<std::shared_ptr<Worker> > regex_workers; /* HTTP workers dedicated to REGEX type requests */
+    public: uint16_t n_regex_workers;
     public: std::vector<std::shared_ptr<Worker> > page_workers;
+    public: uint16_t n_page_workers;
     public: std::vector<std::shared_ptr<Worker> > popular_page_workers;
+    public: uint16_t n_popular_page_workers;
     public: std::vector<std::shared_ptr<Worker> > unpopular_page_workers;
+    public: uint16_t n_unpopular_page_workers;
+
+    public: std::vector<std::shared_ptr<Worker> > net_workers;
+    public: uint16_t n_net_workers;
 
     public: dispatch_policy net_dispatch_policy;
     public: std::function<enum req_type(std::string &)> net_dispatch_f;
 };
 
 //TODO this should be a class member function of Psp
-std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index);
+std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index,
+                                           dmtr::shared_item *producer_si, dmtr::shared_item *consumer_si);
 
 /***********************************
  **********  PROFILING  ************

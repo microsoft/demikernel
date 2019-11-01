@@ -43,6 +43,7 @@ uint32_t no_op_time;
 std::string label, log_dir;
 
 Psp psp;
+
 void sig_handler(int signo) {
     printf("Entering signal handler\n");
     for (auto &w: psp.workers) {
@@ -168,8 +169,7 @@ static inline void no_op_loop(uint32_t iter) {
     }
 }
 
-int http_work(PspServiceUnit &psp_su,
-              struct parser_state *state, dmtr_qresult_t &wait_out,
+int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
               dmtr_qtoken_t &token, int out_qfd, std::shared_ptr<Worker> me) {
 #ifdef LEGACY_PROFILING
     hr_clock::time_point start;
@@ -209,9 +209,9 @@ int http_work(PspServiceUnit &psp_su,
             me->req_states.push_back(std::move(req));
 #endif
         }
-        DMTR_OK(psp_su.ioqapi.push(token, out_qfd, wait_out.qr_value.sga));
+        DMTR_OK(me->psp_su->ioqapi.push(token, out_qfd, wait_out.qr_value.sga));
         int status;
-        while ((status = psp_su.wait(NULL, token)) == EAGAIN) {
+        while ((status = me->psp_su->wait(NULL, token)) == EAGAIN) {
             if (me->terminate) {
                 break;
             }
@@ -219,7 +219,7 @@ int http_work(PspServiceUnit &psp_su,
         DMTR_TRUE(EINVAL, status == 0);
 
         if (me->type == NET) {
-            free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+            free(wait_out.qr_value.sga.sga_buf);
         }
         return 0;
     }
@@ -234,6 +234,7 @@ int http_work(PspServiceUnit &psp_su,
     log_debug("HTTP worker popped req %d: %s", req->id, req_c);
     size_t req_size = wait_out.qr_value.sga.sga_segs[0].sgaseg_len - sizeof(uint32_t);
 
+    dmtr_sgarray_t resp_sga;
     init_parser_state(state);
     enum parser_status pstatus = parse_http(state, req_c, req_size);
     switch (pstatus) {
@@ -245,10 +246,9 @@ int http_work(PspServiceUnit &psp_su,
             log_warn("HTTP worker got incomplete or malformed request: %.*s",
                     (int) req_size, req_c);
             clean_state(state);
-            free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-            wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+            free(wait_out.qr_value.sga.sga_buf);
+            wait_out.qr_value.sga.sga_buf = NULL;
 
-            dmtr_sgarray_t resp_sga;
             resp_sga.sga_segs[0].sgaseg_buf =
                 malloc(strlen(BAD_REQUEST_HEADER) + 1 + sizeof(uint32_t));
             memcpy(resp_sga.sga_segs[0].sgaseg_buf, (uint32_t *) &req->id, sizeof(uint32_t));
@@ -263,14 +263,14 @@ int http_work(PspServiceUnit &psp_su,
 #endif
             if (me->type == HTTP) {
                 resp_sga.sga_numsegs = 2;
-                resp_sga.sga_segs[1].sgaseg_len = sizeof(req);
+                resp_sga.sga_segs[1].sgaseg_len = sizeof(req.get());
                 resp_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
             } else {
                 resp_sga.sga_numsegs = 1;
             }
 
-            DMTR_OK(psp_su.ioqapi.push(token, out_qfd, resp_sga));
-            while (psp_su.wait(NULL, token) == EAGAIN) {
+            DMTR_OK(me->psp_su->ioqapi.push(token, out_qfd, resp_sga));
+            while (me->psp_su->wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     break;
                 }
@@ -307,10 +307,9 @@ int http_work(PspServiceUnit &psp_su,
      * we should not reuse it because it was sized for the request
      */
     clean_state(state);
-    free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
-    wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
+    free(wait_out.qr_value.sga.sga_buf);
+    wait_out.qr_value.sga.sga_buf = NULL;
 
-    dmtr_sgarray_t resp_sga;
     resp_sga.sga_segs[0].sgaseg_len = response_size;
     resp_sga.sga_segs[0].sgaseg_buf = response;
 
@@ -330,14 +329,14 @@ int http_work(PspServiceUnit &psp_su,
     /* release ReqState last */
     if (me->type == HTTP) {
         resp_sga.sga_numsegs = 2;
-        resp_sga.sga_segs[1].sgaseg_len = sizeof(req);
+        resp_sga.sga_segs[1].sgaseg_len = sizeof(req.get());
         resp_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
     } else {
         resp_sga.sga_numsegs = 1;
     }
 
-    DMTR_OK(psp_su.ioqapi.push(token, out_qfd, resp_sga));
-    while (psp_su.wait(NULL, token) == EAGAIN) {
+    DMTR_OK(me->psp_su->ioqapi.push(token, out_qfd, resp_sga));
+    while (me->psp_su->wait(NULL, token) == EAGAIN) {
         if (me->terminate) {
             break;
         }
@@ -363,31 +362,21 @@ static void *http_worker(void *args) {
            me->whoami, me->core_id
     );
 
-    PspServiceUnit psp_su(me->whoami, dmtr::io_queue::category_id::MEMORY_Q, 0, nullptr); //mbe prefix
-    if (psp_su.ioqapi.queue(me->in_qfd) != 0) {
-        log_error("Could not create memory queue for http worker %d", me->whoami);
-    }
-    log_debug("My ingress memq has id %d", me->in_qfd);
-    if (psp_su.ioqapi.queue(me->out_qfd) != 0) {
-        log_error("Could not create memory queue for http worker %d", me->whoami);
-    }
-    log_debug("My egress memq has id %d", me->out_qfd);
-
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
     state->url = NULL;
     state->body = NULL;
 
     dmtr_qtoken_t token;
-    if (dmtr_pop(&token, me->in_qfd)) {
+    if (me->psp_su->ioqapi.pop(token, me->shared_qfd)) {
         log_info("POP FAILED");
     }
     while (!me->terminate) {
         dmtr_qresult_t wait_out;
-        int status = psp_su.wait(&wait_out, token);
+        int status = me->psp_su->wait(&wait_out, token);
         if (status == 0) {
-            http_work(psp_su, state, wait_out, token, me->out_qfd, me);
-            if (psp_su.ioqapi.pop(token, me->in_qfd)) {
+            http_work(state, wait_out, token, me->shared_qfd, me);
+            if (me->psp_su->ioqapi.pop(token, me->shared_qfd)) {
                 log_info("POP FAILED");
             }
         } else {
@@ -399,8 +388,7 @@ static void *http_worker(void *args) {
     log_debug("Cleaning HTTP worker %d", me->whoami);
     clean_state(state);
     free(state);
-    psp_su.ioqapi.close(me->in_qfd);
-    psp_su.ioqapi.close(me->out_qfd);
+    me->psp_su->ioqapi.close(me->shared_qfd);
     delete static_cast<std::shared_ptr<Worker>*>(args);
     log_debug("Exiting HTTP worker %d", me->whoami);
     pthread_exit(NULL);
@@ -417,8 +405,7 @@ void check_availability(enum req_type type, std::vector<std::shared_ptr<Worker> 
     }
 }
 
-int net_work(PspServiceUnit &psp_su,
-             std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
+int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_waiting,
              dmtr_qresult_t &wait_out,
              std::vector<dmtr_qtoken_t> &tokens, dmtr_qtoken_t &token,
              struct parser_state *state, std::shared_ptr<Worker> me, int lqd) {
@@ -428,10 +415,10 @@ int net_work(PspServiceUnit &psp_su,
     if (wait_out.qr_qd == lqd) {
         assert(DMTR_OPC_ACCEPT == wait_out.qr_opcode);
         /* Enable reading on the accepted socket */
-        DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_value.ares.qd));
+        DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_value.ares.qd));
         tokens.push_back(token);
         /* Re-enable accepting on the listening socket */
-        DMTR_OK(psp_su.ioqapi.accept(token, lqd));
+        DMTR_OK(me->psp_su->ioqapi.accept(token, lqd));
         tokens.push_back(token);
         log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
     } else {
@@ -528,13 +515,15 @@ int net_work(PspServiceUnit &psp_su,
                 dmtr_sgarray_t req_sga;
                 req_sga.sga_numsegs = 2;
                 /** First set the original payload */
+                req_sga.sga_buf = wait_out.qr_value.sga.sga_buf;
                 req_sga.sga_segs[0].sgaseg_buf = wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
                 req_sga.sga_segs[0].sgaseg_len = wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
 
-                http_q_pending.push_back(dest_worker->out_qfd);
+                int dest_qfd = me->args.shared_qfds[dest_worker->whoami];
+                http_q_pending.push_back(dest_qfd);
                 clients_in_waiting[wait_out.qr_qd] = true;
 
-                req_sga.sga_segs[1].sgaseg_len = sizeof(req);
+                req_sga.sga_segs[1].sgaseg_len = sizeof(req.get());
 
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
@@ -550,10 +539,10 @@ int net_work(PspServiceUnit &psp_su,
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
                 log_debug("Scheduling request %d/%lu for send", *ridp, token);
-                DMTR_OK(psp_su.ioqapi.push(token, dest_worker->in_qfd, req_sga));
+                DMTR_OK(me->psp_su->ioqapi.push(token, dest_qfd, req_sga));
                 //FIXME we don't need to wait here.
                 int status;
-                while ((status = psp_su.wait(NULL, token)) == EAGAIN) {
+                while ((status = me->psp_su->wait(NULL, token)) == EAGAIN) {
                     if (me->terminate) {
                         return 0;
                     }
@@ -562,20 +551,20 @@ int net_work(PspServiceUnit &psp_su,
                 DMTR_TRUE(EINVAL, status == 0);
 
                 /* Enable reading from HTTP result queue */
-                DMTR_OK(psp_su.ioqapi.pop(token, dest_worker->out_qfd));
+                DMTR_OK(me->psp_su->ioqapi.pop(token, dest_qfd));
                 tokens.push_back(token);
                 /* Re-enable NET queue for reading */
-                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
+                DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
             } else {
                 /* Append Request */
                 wait_out.qr_value.sga.sga_numsegs = 2;
-                wait_out.qr_value.sga.sga_segs[1].sgaseg_len = sizeof(req);
+                wait_out.qr_value.sga.sga_segs[1].sgaseg_len = sizeof(req.get());
 #ifdef DMTR_TRACE
                 req->http_dispatch = take_time();
 #endif
                 wait_out.qr_value.sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
-                http_work(psp_su, state, wait_out, token, wait_out.qr_qd, me);
+                http_work(state, wait_out, token, wait_out.qr_qd, me);
 #ifdef LEGACY_PROFILING
                 hr_clock::time_point end = take_time();
                 me->runtimes.push_back(
@@ -583,7 +572,7 @@ int net_work(PspServiceUnit &psp_su,
                 );
 #endif
                 /* Re-enable NET queue for reading */
-                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
+                DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
             }
         } else {
@@ -606,7 +595,7 @@ int net_work(PspServiceUnit &psp_su,
              */
             if (clients_in_waiting[req->net_qd] == false) {
                 /* Otherwise ignore this message and fetch the next one */
-                DMTR_OK(psp_su.ioqapi.pop(token, wait_out.qr_qd));
+                DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
                 log_warn("Dropping obsolete message aimed towards closed connection");
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
@@ -638,12 +627,12 @@ int net_work(PspServiceUnit &psp_su,
 #ifdef DMTR_TRACE
             req->net_send = take_time();
 #endif
-            DMTR_OK(psp_su.ioqapi.push(token, req->net_qd, wait_out.qr_value.sga));
+            DMTR_OK(me->psp_su->ioqapi.push(token, req->net_qd, wait_out.qr_value.sga));
             log_debug("Scheduled PUSH %d/%lu\n", req->id, token);
 
             //FIXME we don't have to wait.
             // We can free when dmtr_wait returns that the push was done.
-            while (psp_su.wait(NULL, token) == EAGAIN) {
+            while (me->psp_su->wait(NULL, token) == EAGAIN) {
                 if (me->terminate) {
                     return 0;
                 }
@@ -669,11 +658,6 @@ static void *net_worker(void *args) {
            me->whoami, me->core_id
     );
 
-    /* Setup PspServiceUnique */
-    PspServiceUnit psp_su(me->whoami,
-                          dmtr::io_queue::category_id::NETWORK_Q,
-                          g_argc, g_argv);
-
     /* In case we need to do the HTTP work */
     struct parser_state *state =
         (struct parser_state *) malloc(sizeof(*state));
@@ -685,13 +669,13 @@ static void *net_worker(void *args) {
 
     /* Create and bind the worker's accept socket */
     int lqd = 0;
-    psp_su.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0);
+    me->psp_su->ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in saddr = me->args.saddr;
-    if (psp_su.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr))) {
+    if (me->psp_su->ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr))) {
         log_error("Binding failed");
     }
-    psp_su.ioqapi.listen(lqd, 100);
-    psp_su.ioqapi.accept(token, lqd);
+    me->psp_su->ioqapi.listen(lqd, 100);
+    me->psp_su->ioqapi.accept(token, lqd);
     tokens.push_back(token);
     std::vector<int> http_q_pending;
     http_q_pending.reserve(1024);
@@ -705,7 +689,7 @@ static void *net_worker(void *args) {
         }
         dmtr_qresult_t wait_out;
         int idx;
-        int status = psp_su.wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+        int status = me->psp_su->wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
         if (status == EAGAIN) {
             continue;
         }
@@ -716,7 +700,6 @@ static void *net_worker(void *args) {
             update_pql(tokens.size(), &me->pql);
 #endif
             net_work(
-                psp_su,
                 http_q_pending, clients_in_waiting, wait_out,
                 tokens, token, state, me, lqd
             );
@@ -730,14 +713,14 @@ static void *net_worker(void *args) {
                 clients_in_waiting[wait_out.qr_qd] = false;
             }
             printf("closing pseudo connection on %d", wait_out.qr_qd);
-            psp_su.ioqapi.close(wait_out.qr_qd);
+            me->psp_su->ioqapi.close(wait_out.qr_qd);
         }
     }
 
     log_info("Cleaning net worker %d", me->whoami);
     clean_state(state);
     free(state);
-    psp_su.ioqapi.close(lqd);
+    me->psp_su->ioqapi.close(lqd);
     delete static_cast<std::shared_ptr<Worker>*>(args);
     log_debug("Exiting net worker %d", me->whoami);
     if (me->me > 0) {
@@ -758,17 +741,28 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-int work_setup(Psp &psp, bool split,
-               u_int16_t n_net_workers, u_int16_t n_http_workers, u_int16_t n_regex_workers,
-               u_int16_t n_page_workers, u_int16_t n_popular_page_workers, u_int16_t n_unpopular_page_workers) {
+int work_setup(Psp &psp, bool split) {
+    /* Aggregate types map */
+    psp.types_map[REGEX] = std::pair(&psp.regex_workers, psp.n_regex_workers);
+    psp.types_map[PAGE] = std::pair(&psp.page_workers, psp.n_page_workers);
+    psp.types_map[POPULAR_PAGE] = std::pair(&psp.popular_page_workers, psp.n_popular_page_workers);
+    psp.types_map[UNPOPULAR_PAGE] = std::pair(&psp.unpopular_page_workers, psp.n_unpopular_page_workers);
+
     /* Create NET worker threads */
-    for (int i = 0; i < n_net_workers; ++i) {
+    for (int i = 0; i < psp.n_net_workers; ++i) {
         std::shared_ptr<Worker> worker(new Worker());
         worker->whoami = i;
         worker->type = NET;
 
         worker->args.dispatch_p = psp.net_dispatch_policy;
         worker->args.dispatch_f = psp.net_dispatch_f;
+
+        /* Setup PspServiceUnique */
+        worker->psp_su = new PspServiceUnit(
+            worker->whoami,
+            dmtr::io_queue::category_id::NETWORK_Q,
+            g_argc, g_argv
+        );
 
         /* Define which NIC this thread will be using */
         struct sockaddr_in saddr = {};
@@ -790,67 +784,73 @@ int work_setup(Psp &psp, bool split,
 
         worker->args.saddr = saddr; // Pass by copy
         worker->args.split = split;
+        worker->core_id = i + cpu_offset;
 
+        psp.workers.push_back(worker);
+        psp.net_workers.push_back(worker);
+    }
+
+    if (split) {
+        //XXX
+        std::shared_ptr<Worker> worker = psp.workers.front();
+        if (psp.n_http_workers > 0) {
+            for (int i = 0; i < psp.n_http_workers; ++i) {
+                uint16_t index = psp.n_net_workers + i;
+                dmtr::shared_item *producer_si = new dmtr::shared_item();
+                dmtr::shared_item *consumer_si = new dmtr::shared_item();
+                create_http_worker(psp, true, ALL, index, producer_si, consumer_si);
+                int shared_qfd;
+                worker->psp_su->ioqapi.shared_queue(shared_qfd, consumer_si, producer_si);
+                worker->args.shared_qfds[index] = shared_qfd;
+            }
+        } else {
+            for (auto &it: psp.types_map) {
+                for (uint16_t i = 0; i < it.second.second; ++i) {
+                    uint16_t index = psp.n_net_workers + psp.http_workers.size();
+                    dmtr::shared_item *producer_si = new dmtr::shared_item();
+                    dmtr::shared_item *consumer_si = new dmtr::shared_item();
+                    it.second.first->push_back(
+                        create_http_worker(psp, true, it.first, index, producer_si, consumer_si)
+                    );
+                    int shared_qfd;
+                    worker->psp_su->ioqapi.shared_queue(shared_qfd, consumer_si, producer_si);
+                    worker->args.shared_qfds[index] = shared_qfd;
+                }
+            }
+        }
+    }
+
+    for (auto &worker: psp.net_workers) {
         if (pthread_create(&worker->me, NULL, &net_worker,
                     static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
             log_error("pthread_create error: %s", strerror(errno));
         }
-
-        worker->core_id = i + cpu_offset;
         pin_thread(worker->me, worker->core_id);
-        psp.workers.push_back(worker);
-    }
-
-    if (!split) {
-        return 0;
-    }
-
-    if (n_http_workers > 0) {
-        for (int i = 0; i < n_http_workers; ++i) {
-            uint16_t index = n_net_workers + i;
-            create_http_worker(psp, true, ALL, index);
-        }
-    } else {
-        for (int i = 0; i < n_regex_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size();
-            psp.regex_workers.push_back(
-                create_http_worker(psp, true, REGEX, index)
-            );
-        }
-        for (int i = 0; i < n_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size();
-            psp.page_workers.push_back(
-                create_http_worker(psp, true, PAGE, index)
-            );
-        }
-        for (int i = 0; i < n_popular_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size();
-            psp.popular_page_workers.push_back(
-                create_http_worker(psp, true, POPULAR_PAGE, index)
-            );
-        }
-        for (int i = 0; i < n_unpopular_page_workers; ++i) {
-            uint16_t index = n_net_workers + psp.http_workers.size();
-            psp.unpopular_page_workers.push_back(
-                create_http_worker(psp, true, UNPOPULAR_PAGE, index)
-            );
-        }
     }
 
     return 0;
 }
 
-std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index) {
+std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index,
+                                           dmtr::shared_item *producer_si, dmtr::shared_item *consumer_si) {
     std::shared_ptr<Worker> worker(new Worker());
     worker->type = HTTP;
     worker->me = 0;
     worker->handling_type = type;
     worker->whoami = index;
+    // create the shared queue, set the shared item given as parameter
+    worker->psp_su =
+        new PspServiceUnit(worker->whoami, dmtr::io_queue::category_id::MEMORY_Q, 0, nullptr);
+    if (worker->psp_su->ioqapi.shared_queue(worker->shared_qfd, producer_si, consumer_si) != 0) {
+        log_error("Could not create shared queue for http worker %d", worker->whoami);
+    }
+
     if (pthread_create(&worker->me, NULL, &http_worker,
                        static_cast<void *>(new std::shared_ptr<Worker>(worker)))) {
         log_error("pthread_create error: %s", strerror(errno));
         exit(1);
     }
+
     worker->core_id = index + cpu_offset;
     pin_thread(worker->me, worker->core_id);
     psp.http_workers.push_back(worker);
@@ -891,19 +891,17 @@ std::shared_ptr<Worker> no_pthread_work_setup(Psp &psp) {
 int main(int argc, char *argv[]) {
     bool no_pthread, no_split;
     bool split = true;
-    u_int16_t n_http_workers, n_net_workers;
-    u_int16_t n_regex_workers, n_page_workers, n_popular_page_workers, n_unpopular_page_workers;
     std::string net_dispatch_pol;
     options_description desc{"HTTP server options"};
     desc.add_options()
         ("label", value<std::string>(&label), "experiment label")
         ("log-dir, L", value<std::string>(&log_dir)->default_value("./"), "experiment log_directory")
-        ("regex-workers,w", value<u_int16_t>(&n_regex_workers)->default_value(0), "num REGEX workers")
-        ("page-workers,w", value<u_int16_t>(&n_page_workers)->default_value(0), "num PAGE workers")
-        ("popular-page-workers,w", value<u_int16_t>(&n_popular_page_workers)->default_value(0), "num POPULAR page workers")
-        ("unpopular-page-workers,w", value<u_int16_t>(&n_unpopular_page_workers)->default_value(0), "num UNPOPULAR page workers")
-        ("http-workers,w", value<u_int16_t>(&n_http_workers)->default_value(0), "num HTTP workers")
-        ("tcp-workers,t", value<u_int16_t>(&n_net_workers)->default_value(1), "num NET workers")
+        ("regex-workers,w", value<u_int16_t>(&psp.n_regex_workers)->default_value(0), "num REGEX workers")
+        ("page-workers,w", value<u_int16_t>(&psp.n_page_workers)->default_value(0), "num PAGE workers")
+        ("popular-page-workers,w", value<u_int16_t>(&psp.n_popular_page_workers)->default_value(0), "num POPULAR page workers")
+        ("unpopular-page-workers,w", value<u_int16_t>(&psp.n_unpopular_page_workers)->default_value(0), "num UNPOPULAR page workers")
+        ("http-workers,w", value<u_int16_t>(&psp.n_http_workers)->default_value(0), "num HTTP workers")
+        ("tcp-workers,t", value<u_int16_t>(&psp.n_net_workers)->default_value(1), "num NET workers")
         ("no-op", bool_switch(&no_op), "run no-op workers only")
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
@@ -932,24 +930,24 @@ int main(int argc, char *argv[]) {
 
     /* Some checks about requested dispatch policy and workers */
     uint32_t types_sum =
-        n_regex_workers + n_page_workers + n_popular_page_workers + n_unpopular_page_workers;
+        psp.n_regex_workers + psp.n_page_workers + psp.n_popular_page_workers + psp.n_unpopular_page_workers;
     if (types_sum > 0) {
         if (net_dispatch_pol == "ONE_TO_ONE" || net_dispatch_pol == "RR") {
             log_error("Typed workers are for HTTP_REQ_TYPE policy only.");
             exit(1);
         }
-        if (n_http_workers > 0) {
-            log_error("Cannot request n_http_workers with typed workers.");
+        if (psp.n_http_workers > 0) {
+            log_error("Cannot request psp.n_http_workers with typed workers.");
             exit(1);
         }
-        log_info("Instantiating typed workers. n_http_workers will be ignored.");
+        log_info("Instantiating typed workers. psp.n_http_workers will be ignored.");
     } else {
         if (net_dispatch_pol == "HTTP_REQ_TYPE") {
             log_error("Cannot use HTTP_REQ_TYPE policy without specifying a number of typed workers.");
             exit(1);
-        } else if (net_dispatch_pol == "ONE_TO_ONE" && n_net_workers < n_http_workers) {
+        } else if (net_dispatch_pol == "ONE_TO_ONE" && psp.n_net_workers < psp.n_http_workers) {
             log_error("Cannot set 1:1 workers mapping with %d net workers and %d http workers.",
-                      n_net_workers, n_http_workers);
+                      psp.n_net_workers, psp.n_http_workers);
             exit(1);
         }
     }
@@ -983,13 +981,10 @@ int main(int argc, char *argv[]) {
         std::cout << "\ncan't catch SIGTERM\n";
 
     /* Pin main thread */
-    pin_thread(pthread_self(), 4);
+    pin_thread(pthread_self(), 3);
     if (!no_pthread) {
         /* Create worker threads */
-        work_setup(
-            psp, split, n_net_workers, n_http_workers, n_regex_workers,
-            n_page_workers, n_popular_page_workers, n_unpopular_page_workers
-        );
+        work_setup(psp, split);
 
         /* Re-enable SIGINT and SIGQUIT */
         int ret = pthread_sigmask(SIG_SETMASK, &oldmask, NULL);
@@ -1013,6 +1008,7 @@ int main(int argc, char *argv[]) {
                 dump_traces(w, log_dir, label);
             }
 #endif
+            //TODO: release shared items
             w.reset();
         }
     } else {
