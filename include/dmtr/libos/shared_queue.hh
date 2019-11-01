@@ -26,7 +26,7 @@ class shared_item {
 
     public: std::atomic_flag empty_flag;
     public: std::atomic_flag full_flag = ATOMIC_FLAG_INIT;
-    public: const dmtr_sgarray_t *to_pop;
+    public: dmtr_sgarray_t to_pop;
 };
 
 class shared_queue : public io_queue {
@@ -42,7 +42,7 @@ class shared_queue : public io_queue {
     public: virtual int drop(dmtr_qtoken_t qt);
     public: virtual int close();
 
-    private: std::unordered_map<dmtr_qtoken_t, const dmtr_sgarray_t *> push_queue;
+    private: std::unordered_map<dmtr_qtoken_t, dmtr_sgarray_t> push_queue;
     private: std::unordered_set<dmtr_qtoken_t> pop_set;
 
     private: shared_item *producer;
