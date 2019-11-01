@@ -967,11 +967,11 @@ int main(int argc, char *argv[]) {
         /* Block SIGINT to ensure handler will only be run in main thread */
         sigemptyset(&mask);
         sigaddset(&mask, SIGINT);
-        sigaddset(&mask, SIGQUIT);
+        sigaddset(&mask, SIGTERM);
 
         int ret = pthread_sigmask(SIG_BLOCK, &mask, &oldmask);
         if (ret != 0) {
-            fprintf(stderr, "Couln't block SIGINT and SIGQUIT: %s\n", strerror(errno));
+            fprintf(stderr, "Couln't block SIGINT and SIGTERM: %s\n", strerror(errno));
         }
     }
 
