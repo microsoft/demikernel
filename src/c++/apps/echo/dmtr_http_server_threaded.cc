@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <queue>
 #include <functional>
@@ -41,6 +42,8 @@ bool no_op;
 uint32_t no_op_time;
 
 std::string label, log_dir;
+std::string uris_list;
+std::unordered_map<std::string, std::vector<char>> uri_store;
 
 Psp psp;
 
@@ -53,7 +56,45 @@ void sig_handler(int signo) {
     printf("Exiting signal handler\n");
 }
 
-//FIXME: dirty hardcoded null body
+void read_from_file(char *filepath, char *body, int *code, char *mime_type) {
+    FILE *file = fopen(filepath, "rb");
+    if (file == NULL) {
+        fprintf(stdout, "Failed to access requested file %s: %s\n", filepath, strerror(errno));
+        strncpy(mime_type, "text/html", MAX_MIME_TYPE);
+    } else {
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        int size = ftell(file);
+        if (size == -1) {
+            printf("could not ftell the file :%s\n", strerror(errno));
+        }
+        fseek(file, 0, SEEK_SET);
+        /*
+        body = reinterpret_cast<char *>(malloc(size+1));
+        body_len = fread(body, sizeof(char), size, file);
+        body[body_len] = '\0';
+        */
+        body = static_cast<char *>(malloc(size));
+        size_t char_read = fread(body, sizeof(char), size, file);
+        if (char_read < (unsigned) size) {
+            printf("fread() read less bytes than file's size\n");
+        }
+        if (strstr(body, "somedummystring") != NULL) {
+            printf("dummy string comparison worked\n");
+        }
+        free(body);
+        /*
+        if (body_len != size) {
+            fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
+        }
+        */
+        fclose(file);
+        path_to_mime_type(filepath, mime_type, MAX_MIME_TYPE);
+        *code = 200;
+        //fprintf(stdout, "Found file: %s\n", filepath);
+    }
+}
+
 static void file_work(char *url, char **response, int *response_len, uint32_t req_id) {
     char filepath[MAX_FILEPATH_LEN];
     url_to_path(url, FILE_DIR, filepath, MAX_FILEPATH_LEN);
@@ -72,51 +113,31 @@ static void file_work(char *url, char **response, int *response_len, uint32_t re
         }
         strncpy(mime_type, "text/html", MAX_MIME_TYPE);
     } else {
-        FILE *file = fopen(filepath, "rb");
-        if (file == NULL) {
-            fprintf(stdout, "Failed to access requested file %s: %s\n", filepath, strerror(errno));
-            strncpy(mime_type, "text/html", MAX_MIME_TYPE);
+        if (uri_store.empty()) {
+                read_from_file(filepath, body, &code, mime_type);
         } else {
-            // Get file size
-            fseek(file, 0, SEEK_END);
-            int size = ftell(file);
-            if (size == -1) {
-                printf("could not ftell the file :%s\n", strerror(errno));
+            auto it = uri_store.find(std::string(filepath));
+            if (it == uri_store.end()) {
+                log_error("Requested non registered file (%s)", filepath);
+            } else {
+                //size_t size = it->second.size();
+                //std::cout << "found file: " << it->first << "(" << size << ")" << std::endl;
+                /* We copy bytes here to simulate transfering them from memory to client */
+                std::vector<char> data(it->second);
+                /*
+                body = static_cast<char *>(malloc(size));
+                memcpy(body, it->second.data(), it->second.size());
+                if (strstr(body, "somedummystring") != NULL) {
+                    printf("dummy string comparison worked\n");
+                }
+                free(body);
+                */
             }
-            fseek(file, 0, SEEK_SET);
-
-            /*
-            body = reinterpret_cast<char *>(malloc(size+1));
-            body_len = fread(body, sizeof(char), size, file);
-            body[body_len] = '\0';
-            */
-
-            body = reinterpret_cast<char *>(malloc(size+1));
-            size_t char_read = fread(body, sizeof(char), size, file);
-            if (char_read < (unsigned) size) {
-                printf("fread() read less bytes than file's size\n");
-            }
-            if (strstr(body, "somedummystring") != NULL) {
-                printf("dummy string comparison worked\n");
-            }
-            free(body);
-            body = NULL;
-            body_len = 0;
-
-            /*
-            if (body_len != size) {
-                fprintf(stdout, "Only read %d of %u bytes from file %s\n", body_len, size, filepath);
-            }
-            */
-
-            fclose(file);
-
-            path_to_mime_type(filepath, mime_type, MAX_MIME_TYPE);
-
-            code = 200;
-            //fprintf(stdout, "Found file: %s\n", filepath);
         }
     }
+    //FIXME: maybe it's time to move on to giving the full answer now that segmentation is fixed...
+    body = NULL;
+    body_len = 0;
 
     char *header = NULL;
     int header_len = generate_header(&header, code, body_len, mime_type);
@@ -445,6 +466,7 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
             */
             /* This is a new request */
             std::unique_ptr<Request> req(new Request(wait_out.qr_qd));
+            req->net_qd = wait_out.qr_qd;
 #ifdef DMTR_TRACE
             req->net_receive = start;
             req->pop_token = token;
@@ -906,7 +928,8 @@ int main(int argc, char *argv[]) {
         ("no-op-time", value<uint32_t>(&no_op_time)->default_value(10000), "tune no-op sleep time")
         ("no-split", bool_switch(&no_split), "do all work in a single component")
         ("no-pthread", bool_switch(&no_pthread), "use pthread or not (main thread will do everything)")
-        ("net-dispatch-policy", value<std::string>(&net_dispatch_pol)->default_value("RR"), "dispatch policy used by the network component");
+        ("net-dispatch-policy", value<std::string>(&net_dispatch_pol)->default_value("RR"), "dispatch policy used by the network component")
+        ("uris-list", value<std::string>(&uris_list)->default_value(""), "URIs to load in memory");
     parse_args(argc, argv, true, desc);
     dmtr_log_directory = log_dir;
 
@@ -949,6 +972,36 @@ int main(int argc, char *argv[]) {
             log_error("Cannot set 1:1 workers mapping with %d net workers and %d http workers.",
                       psp.n_net_workers, psp.n_http_workers);
             exit(1);
+        }
+    }
+
+    /* Load URIs in a map if list provided */
+    if (!uris_list.empty()) {
+        std::ifstream urifile(uris_list.c_str());
+        if (urifile.bad() || !urifile.is_open()) {
+            log_error("Failed to open uri list file");
+        }
+        std::string uri;
+        while (std::getline(urifile, uri)) {
+            FILE *file = fopen(uri.c_str(), "rb");
+            if (file == NULL) {
+                fprintf(stdout, "Failed to open '%s': %s\n", uri.c_str(), strerror(errno));
+            } else {
+                // Get file size
+                fseek(file, 0, SEEK_END);
+                int size = ftell(file);
+                if (size == -1) {
+                    printf("could not ftell the file :%s\n", strerror(errno));
+                }
+                fseek(file, 0, SEEK_SET);
+                std::vector<char> body(size);
+                size_t char_read = fread(&body[0], sizeof(char), size, file);
+                if (char_read < (unsigned) size) {
+                    printf("fread() read less bytes than file's size\n");
+                }
+                //std::cout << "Read " << char_read << " Bytes " << std::endl;
+                uri_store.insert(std::pair<std::string, std::vector<char>>(uri, body));
+            }
         }
     }
 
