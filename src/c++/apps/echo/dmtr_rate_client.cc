@@ -741,6 +741,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 char *req_c = reinterpret_cast<char *>(
                     wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
                 );
+                req_c[wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1] = '\0';
                 std::string resp_str(req_c+sizeof(uint32_t));
                 request->valid = validate_response(resp_str, check_resp_clen);
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
