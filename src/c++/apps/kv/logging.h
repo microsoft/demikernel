@@ -22,7 +22,7 @@ static const auto start_time = log_clock::now();
                 ((std::chrono::duration<double>)(log_clock::now() - start_time)).count(), \
                 __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
-#define LOG_DEBUG
+//#define LOG_DEBUG
 
 /* Debug statements are replaced with nothing if LOG_DEBUG is false  */
 #ifdef LOG_DEBUG
