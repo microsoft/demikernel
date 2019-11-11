@@ -20,6 +20,8 @@ namespace dmtr {
 
 class shared_item {
 
+    shared_item(const shared_item &x) = delete;
+
     public: shared_item() {
         empty_flag.test_and_set();
     }
