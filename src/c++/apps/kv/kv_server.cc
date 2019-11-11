@@ -26,16 +26,17 @@ private:
     int id;
 
     bool terminate = false;
-
     bool launched = false;
     bool exited = false;
     bool started = false;
+
     int rtn_code;
     std::thread thread;
 
     std::unordered_map<int, int> peer_qd_to_id;
     std::unordered_map<int, int> peer_id_to_qd;
 
+    // A deque is necessary instead of a vector since shared_item has no copy ctor
     std::deque<dmtr::shared_item> input_channels;
 
     dmtr::shared_item &generate_channel() {
@@ -268,8 +269,7 @@ public:
     NetWorker(struct sockaddr_in &addr) :
             Worker(0, dmtr::io_queue::NETWORK_Q),
             bind_addr(addr)
-    {
-    }
+    {}
 
     int setup() {
         DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
@@ -294,15 +294,11 @@ public:
         if (status == EAGAIN) {
             return EAGAIN;
         }
-        if (status == 0 || status == ECONNABORTED) {
-            tokens.erase(tokens.begin() + idx);
-            if (status == ECONNABORTED) {
-                return EAGAIN;
-            }
-        } else {
-            log_warn("wait_any returned non-0 exit code %d", status);
+        tokens.erase(tokens.begin() + idx);
+        log_debug("wait_any returned %d", status);
+        if (status == ECONNABORTED) {
+            return EAGAIN;
         }
-
         return status;
     }
 
@@ -323,7 +319,8 @@ public:
             return 0;
         }
         if (dequeued.qr_opcode == DMTR_OPC_PUSH) {
-            log_debug("Received PUSH code");
+            // sga segment must be freed after pushing to the client
+            free(dequeued.qr_value.sga.sga_segs[0].sgaseg_buf);
             return 0;
         }
         log_debug("Received POP code");
@@ -335,8 +332,8 @@ public:
             KvRequest *kvr = new KvRequest(dequeued.qr_qd, dequeued.qr_value.sga);
             dmtr_sgarray_t sga_req;
             as_sga(*kvr, sga_req);
-            log_debug("NetWorker pushing to peer %d", new_worker_id);
             push_to_peer(new_worker_id, sga_req);
+            log_debug("NetWorker pushed to peer %d", new_worker_id);
 
             dmtr_qtoken_t token;
             DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_qd));
@@ -514,7 +511,7 @@ public:
         if (status == EAGAIN) {
             return EAGAIN;
         }
-        log_debug("Got non-EAGAIN");
+        log_debug("StoreWorker Got non-EAGAIN");
         DMTR_OK(status);
         DMTR_OK(psu.ioqapi.pop(pop_token, networker_qd));
         return status;
@@ -542,6 +539,7 @@ public:
         as_sga(*kvr, sga_resp);
         DMTR_OK(push_to_peer(0, sga_resp));
         delete kvreq;
+        free(sga.sga_buf);
 
         return 0;
 
