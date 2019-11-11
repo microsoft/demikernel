@@ -557,8 +557,10 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
 
+#ifdef DMTR_TRACE
     DMTR_OK(dmtr_register_trace("POP", pop_token_traces));
     DMTR_OK(dmtr_register_trace("PUSH", push_token_traces));
+#endif
 
     return 0;
 }
@@ -759,10 +761,10 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    DMTR_NOTNULL(EINVAL, my_push_thread);
 
     /** If we are at the "initiating side" of the close */
     if (is_connected()) {
+        DMTR_NOTNULL(EINVAL, my_push_thread);
         dmtr_sgarray_t sga;
         sga.sga_numsegs = 0xdeadbeef;
         dmtr_qtoken_t token;
@@ -779,6 +781,25 @@ int dmtr::lwip_queue::close() {
 #endif
         return 0;
     }
+
+    int ret;
+    struct rte_eth_stats stats;
+    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
+
+    ret = rte_eth_stats_get(dpdk_port_id, &stats);
+    if (ret) {
+        printf("dpdk: error getting eth stats");
+    }
+
+    auto now = take_time();
+    printf("eth stats for port %d at time %" PRIu64 "\n", dpdk_port_id, since_epoch(now));
+    printf("RX-packets: %" PRIu64 " RX-dropped: %" PRIu64 " RX-bytes: %" PRIu64 "\n",
+            stats.ipackets, stats.imissed, stats.ibytes);
+    printf("TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 "\n", stats.opackets,
+            stats.obytes);
+    printf("RX-error: %" PRIu64 " TX-error: %" PRIu64 " RX-mbuf-fail: %" PRIu64 "\n",
+            stats.ierrors, stats.oerrors, stats.rx_nombuf);
+
 
     return 0;
 }

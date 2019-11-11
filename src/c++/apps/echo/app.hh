@@ -1,13 +1,24 @@
+#ifndef APPS_H_
+#define APPS_H_
+
 #include "httpops.hh" // for http_req_type
 #include "common.hh"
 #include <functional>
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <fstream>
 
 #include <dmtr/libos/persephone.hh>
 
 #define MAX_REQ_STATES 10000000
+#define MAX_REQUEST_SIZE 4192
+
+#define DMTR_TRACE
+
+/*****************************************************************
+ *********************** REQUEST STRUCTURES **********************
+ *****************************************************************/
 
 enum req_type {
     UNKNOWN,
@@ -39,6 +50,127 @@ class Request {
 
     Request(uint32_t qfd): net_qd(qfd) {}
 };
+
+class ClientRequest {
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
+    public: hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
+    public: hr_clock::time_point connected;   /**< Time that dmrt_connect() completed */
+    public: hr_clock::time_point sending;       /**< Time that dmtr_push() started */
+    public: hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
+    public: hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
+    public: dmtr_qtoken_t push_token; /** The token associated to writing the request */
+    public: dmtr_qtoken_t pop_token; /** The token associated with reading the response */
+#endif
+    public: bool valid; /** Whether the response was valid */
+    public: char * const req; /** The actual request */
+    public: size_t req_size; /** Number of Bytes in the request */
+    public: int conn_qd; /** The connection's queue descriptor */
+    public: uint32_t id; /** Request id */
+
+    public: ClientRequest(char * const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
+    public: ~ClientRequest() { free(req); }
+};
+
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
+enum ReqStatus {
+    CONNECTING,
+    CONNECTED,
+    SENDING,
+    READING,
+    COMPLETED,
+};
+
+inline void update_request_state(struct ClientRequest &req, enum ReqStatus status, const hr_clock::time_point &op_time) {
+    switch (status) {
+        case CONNECTING:
+            req.connecting = op_time;
+            break;
+        case CONNECTED:
+            req.connected = op_time;
+            break;
+        case SENDING:
+            req.sending = op_time;
+            break;
+        case READING:
+            req.reading = op_time;
+            break;
+        case COMPLETED:
+            req.completed = op_time;
+            break;
+    }
+}
+#endif
+
+/*****************************************************************
+ *********************** HTTP TOOLS ******************************
+ *****************************************************************/
+/* Default HTTP GET request */
+const char *REQ_STR =
+        "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: %s\r\n\r\n";
+/* Start of the string for a valid HTTP response */
+const std::string VALID_RESP = "HTTP/1.1 200 OK";
+const std::string CONTENT_LEN = "Content-Length: ";
+std::string DEFAULT_USER_AGENT = "Perséphone";
+
+/* Validates the given response, checking it against the valid response string */
+static inline bool validate_response(std::string &resp_str, bool check_content_len) {
+    if ((resp_str.find(VALID_RESP) == 0) & !check_content_len) {
+        return true;
+    }
+    size_t ctlen = resp_str.find(CONTENT_LEN);
+    size_t hdr_end = resp_str.find("\r\n\r\n");
+    if (ctlen != std::string::npos && hdr_end != std::string::npos) {
+        size_t body_len = std::stoi(resp_str.substr(ctlen+CONTENT_LEN.size(), hdr_end - ctlen));
+        std::string body = resp_str.substr(hdr_end + 4);
+        /* We purposedly ignore the last byte, because we hacked the response to null terminate it */
+        if (strlen(body.c_str()) == body_len - 1) {
+            return true;
+        }
+    }
+    log_debug("Invalid response received: %s", resp_str.c_str());
+    return false;
+}
+
+
+static void read_uris(std::vector<std::string> &requests_str, std::string &uri_list) {
+    if (!uri_list.empty()) {
+        /* Loop-over URI file to create requests */
+        std::ifstream urifile(uri_list.c_str());
+        if (urifile.bad() || !urifile.is_open()) {
+            log_error("Failed to open uri list file");
+            exit(1);
+        }
+        std::string uri;
+        while (std::getline(urifile, uri)) {
+            requests_str.push_back(uri);
+        }
+    }
+}
+
+static ClientRequest * format_request(uint32_t id, std::string &req_uri, std::string &host) {
+    /* Extract request type from request string */
+    std::string user_agent;
+    std::string uri;
+    std::stringstream ss(req_uri);
+    getline(ss, user_agent, ',');
+    if (user_agent.size() == req_uri.size()) {
+        log_error("Request type not present in URI!");
+        exit(1);
+    }
+    getline(ss, uri, ',');
+
+    /* Allocate and format buffer */
+    char * const req = static_cast<char *>(malloc(MAX_REQUEST_SIZE));
+    memset(req, '\0', MAX_REQUEST_SIZE);
+    /* Prepend request ID to payload */
+    memcpy(req, (uint32_t *) &id, sizeof(uint32_t));
+    size_t req_size = snprintf(
+        req + sizeof(uint32_t), MAX_REQUEST_SIZE - sizeof(uint32_t),
+        REQ_STR, uri.c_str(), host.c_str(), user_agent.c_str()
+    );
+    req_size += sizeof(uint32_t);
+    return new ClientRequest(req, req_size, id);
+}
 
 /**
  * Retrieve the type stored in User-Agent
@@ -225,3 +357,5 @@ void dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::string &
     }
 }
 #endif
+
+#endif // APPS_H_
