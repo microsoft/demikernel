@@ -27,7 +27,7 @@ target_link_libraries(posix-kv-server dmtr-libos-posix yaml-cpp boost_program_op
 target_add_hoard(posix-kv-server hoard-vanilla)
 
 add_executable(lwip-kv-client ${KV_CLIENT_SOURCES})
-target_link_libraries(lwip-kv-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
+target_link_libraries(lwip-kv-client dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
 target_add_hoard(lwip-kv-client hoard-vanilla)
 
 add_executable(posix-kv-client ${KV_CLIENT_SOURCES})

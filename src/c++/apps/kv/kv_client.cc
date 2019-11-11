@@ -15,6 +15,7 @@
 
 #include "logging.h"
 
+#define DMTR_TRACE
 
 class ClientRequest {
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
@@ -57,13 +58,14 @@ struct ArgumentOpts {
     std::string cmd_file;
     std::string log_dir;
     int duration;
+    int pipeline;
 };
 
 int parse_args(int argc, char **argv, ArgumentOpts &options) {
     boost_opts::options_description opts{"KV Server options"};
     opts.add_options()
                     ("help", "produce help message")
-                    ("duration,d", boost_opts::value<int>(&options.duration), "Duration")
+                    ("duration,d", boost_opts::value<int>(&options.duration)->required(), "Duration")
                     ("ip",
                         boost_opts::value<std::string>(&options.ip)->default_value("127.0.0.1"),
                         "Server IP")
@@ -71,11 +73,14 @@ int parse_args(int argc, char **argv, ArgumentOpts &options) {
                         boost_opts::value<uint16_t>(&options.port)->default_value(12345),
                         "Server port")
                     ("cmd-file",
-                        boost_opts::value<std::string>(&options.cmd_file)->default_value(""),
+                        boost_opts::value<std::string>(&options.cmd_file)->required(),
                         "Initial commands")
                     ("log-dir,L",
                          boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
-                        "experiment log directory");
+                        "experiment log directory")
+                    ("pipeline,P",
+                        boost_opts::value<int>(&options.pipeline)->default_value(1),
+                        "Number to pipeline");
 
     boost_opts::variables_map vm;
     try {
@@ -93,6 +98,35 @@ int parse_args(int argc, char **argv, ArgumentOpts &options) {
         return 1;
     }
     return 0;
+}
+
+std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::string request_str, int id) {
+    dmtr_sgarray_t sga;
+    auto cr = std::make_unique<ClientRequest>(request_str.c_str(), request_str.size(), id);
+    sga.sga_numsegs = 1;
+    sga.sga_segs[0].sgaseg_len = request_str.size();
+    sga.sga_segs[0].sgaseg_buf = const_cast<void *>(static_cast<const void *>(request_str.c_str()));
+    /* Schedule and send the request */
+#ifdef DMTR_TRACE
+    cr->sending = take_time();
+#endif
+    dmtr_qtoken_t token;
+    if (su.ioqapi.push(token, qfd, sga)) {
+        log_error("Error pushing");
+        return nullptr;
+    }
+#ifdef DMTR_TRACE
+    cr->push_token = token;
+#endif
+    dmtr_qresult_t qr;
+    while (su.wait(&qr, token) == EAGAIN) {
+        if (terminate) { break; }
+    } //XXX should we check for severed connection here?
+    assert(DMTR_OPC_PUSH == qr.qr_opcode);
+#ifdef DMTR_TRACE
+    cr->reading = take_time();
+#endif
+    return std::move(cr);
 }
 
 int main (int argc, char *argv[]) {
@@ -152,38 +186,32 @@ int main (int argc, char *argv[]) {
 
     std::vector<std::unique_ptr<ClientRequest> > requests;
     requests.reserve(100000); //XXX
+    int resp_idx = 0;
+
+    uint32_t sent_requests = 0;
+    for (int i=0; i < opts.pipeline - 1; i++) {
+        std::string request_str = requests_str[sent_requests % requests_str.size()];
+        requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
+        sent_requests++;
+    }
+
+
     dmtr_qtoken_t token;
     dmtr_sgarray_t sga;
     dmtr_qresult_t qr;
-    uint32_t sent_requests = 0;
     hr_clock::time_point start_time = take_time();
     while (take_time() - start_time < duration_tp) {
         /* Pick a request, craft it, prepare the SGA */
         std::string request_str = requests_str[sent_requests % requests_str.size()];
-        auto cr = std::make_unique<ClientRequest>(request_str.c_str(), request_str.size(), sent_requests);
 
-        sga.sga_numsegs = 1;
-        sga.sga_segs[0].sgaseg_len = request_str.size();
-        sga.sga_segs[0].sgaseg_buf = const_cast<void *>(static_cast<const void *>(request_str.c_str()));
-        /* Schedule and send the request */
-#ifdef DMTR_TRACE
-        cr->sending = take_time();
-#endif
-        DMTR_OK(su.ioqapi.push(token, qfd, sga));
-#ifdef DMTR_TRACE
-        cr->push_token = token;
-#endif
-        while (su.wait(&qr, token) == EAGAIN) {
-            if (terminate) { break; }
-        } //XXX should we check for severed connection here?
-        assert(DMTR_OPC_PUSH == qr.qr_opcode);
-#ifdef DMTR_TRACE
-        cr->reading = take_time();
-#endif
+        requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
+
+        ClientRequest &resp_cr = *requests[resp_idx++];
+
         /* Wait for an answer */
         DMTR_OK(su.ioqapi.pop(token, qfd));
 #ifdef DMTR_TRACE
-        cr->pop_token = token;
+        resp_cr.pop_token = token;
 #endif
         int wait_rtn;
         while ((wait_rtn = su.wait(&qr, token)) == EAGAIN) {
@@ -195,14 +223,13 @@ int main (int argc, char *argv[]) {
         assert(DMTR_OPC_POP == qr.qr_opcode);
         assert(qr.qr_value.sga.sga_numsegs == 1);
 #ifdef DMTR_TRACE
-        cr->completed = take_time();
+        resp_cr.completed = take_time();
 #endif
-        requests.push_back(std::move(cr));
         free(qr.qr_value.sga.sga_buf);
         sent_requests++;
     }
 
-    DMTR_OK(su.ioqapi.close(qfd));
+    //DMTR_OK(su.ioqapi.close(qfd));
 
 #ifdef DMTR_TRACE
     std::string trace_file = opts.log_dir + "/traces";

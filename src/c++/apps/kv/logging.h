@@ -4,7 +4,7 @@
 
 using log_clock = std::chrono::system_clock;
 
-static const auto start_time = log_clock::now();
+static const auto log_start = log_clock::now();
 
 /* Where command-line output gets printed to  */
 #define LOG_FD stderr
@@ -19,7 +19,7 @@ static const auto start_time = log_clock::now();
 /* General logging function which can be filled in with arguments, color, etc. */
 #define log_at_level(lvl_label, color, fd, fmt, ...)\
         fprintf(fd, "" color "%07.03f:%s:%d:%s(): " lvl_label ": " fmt ANSI_COLOR_RESET "\n", \
-                ((std::chrono::duration<double>)(log_clock::now() - start_time)).count(), \
+                ((std::chrono::duration<double>)(log_clock::now() - log_start)).count(), \
                 __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
 //#define LOG_DEBUG
