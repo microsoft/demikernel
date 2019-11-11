@@ -1,23 +1,22 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-#include <dmtr/libos.h>
-
-#include <dmtr/libos/persephone.hh>
 #include <thread>
-#include <signal.h>
+#include <csignal>
 
+#include <arpa/inet.h>
 
 #include <boost/program_options.hpp>
 
-struct ArgumentOpts {
-    std::string ip;
-    uint16_t port;
-    std::string log_dir;
-    int n_workers;
-};
+#include <dmtr/libos.h>
+#include <dmtr/libos/persephone.hh>
+
+#include "logging.h"
+
 
 class Worker {
+private:
+    static std::unordered_map<int, Worker*> all_workers;
 
 protected:
     PspServiceUnit psu;
@@ -28,6 +27,7 @@ private:
 
     bool terminate = false;
 
+    bool launched = false;
     bool exited = false;
     bool started = false;
     int rtn_code;
@@ -43,21 +43,28 @@ private:
     }
 
 
-    void register_peer(Worker &peer, dmtr::shared_item &peer_in, dmtr::shared_item &peer_out) {
+    int register_peer(Worker &peer, dmtr::shared_item &peer_in, dmtr::shared_item &peer_out) {
         int peer_qd;
-        psu.shared_queue(peer_qd, &peer_in, &peer_out);
+        DMTR_OK(psu.ioqapi.shared_queue(peer_qd, &peer_out, &peer_in));
+        log_debug("Worker %d : peer %d is at qd %d", id, peer.id, peer_qd);
         peer_id_to_qd[peer.id] = peer_qd;
         peer_qd_to_id[peer_qd] = peer.id;
+        log_debug("Worker %d Pushing back %d", id, peer.id);
         peer_ids.push_back(peer.id);
+        return 0;
     }
 
-    virtual int setup() { return 0;};
+    virtual int setup() { return 0; };
     virtual int dequeue(dmtr_qresult_t &dequeued) = 0;
     virtual int work(int status, dmtr_qresult_t &result) = 0;
 
     int run(void) {
-        DMTR_OK(setup());
+        if (setup()) {
+            log_error("Worker thread %d failed to initialize properly", id);
+            return -1;
+        }
         started = true;
+        log_info("Worker thread %d started", id);
         while (!terminate) {
             dmtr_qresult_t dequeued;
             int status = dequeue(dequeued);
@@ -72,6 +79,7 @@ private:
     void run_wrapper(void) {
         rtn_code = run();
         exited = true;
+        log_info("Worker thread %d terminating", id);
     }
 
 protected:
@@ -80,6 +88,7 @@ protected:
         if (it == peer_id_to_qd.end()) {
             return -1;
         }
+        log_debug("%d: %d", peer_id, it->second);
         return it->second;
     }
 
@@ -100,36 +109,90 @@ protected:
         dmtr_qtoken_t token;
         DMTR_OK(psu.ioqapi.push(token, it->second, sga));
         DMTR_OK(psu.wait(NULL, token));
+        log_debug("Pushed from %d to %d", id, peer_id);
+        return 0;
+    }
+
+    int pop_from_peer(int peer_id, dmtr_qtoken_t &token) {
+        auto it = peer_id_to_qd.find(peer_id);
+        if (it == peer_id_to_qd.end()) {
+            return -1;
+        }
+        DMTR_OK(psu.ioqapi.pop(token, it->second));
         return 0;
     }
 
 public:
     Worker(int id, dmtr::io_queue::category_id q_type) :
             psu(id, q_type, 0, NULL), id(id)  {
+        if (all_workers.find(id) != all_workers.end()) {
+            // RAISE WARNING
+        }
+        all_workers[id] = this;
     }
 
     virtual ~Worker() {
         if (thread.joinable()) {
             thread.join();
         }
+        auto it = all_workers.find(id);
+        if (it == all_workers.end()) {
+            // RAISE WARNING
+        }
+        all_workers.erase(it);
     }
 
-    int launch(void) {
+    int join() {
+        if (thread.joinable()) {
+            thread.join();
+            return 0;
+        }
+        return -1;
+    }
+
+    int launch() {
+        if (launched) {
+            log_error("Cannot launch worker a second time");
+            return -1;
+        }
+        launched = true;
         thread = std::thread(&Worker::run_wrapper, this);
-        while (!started && !exited) {}
+        while (!started && !exited) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        log_debug("Thread %d launched", id);
         if (exited && !started) {
             return -1;
         }
         return 0;
     }
 
-    static void register_peers(Worker &a, Worker &b) {
+    bool has_exited() {
+        return exited;
+    }
+
+    void stop() {
+        log_debug("Terminating worker %d", id);
+        terminate = true;
+    }
+
+    static int register_peers(Worker &a, Worker &b) {
         auto &a_input = a.generate_channel();
         auto &b_input = b.generate_channel();
-        a.register_peer(b, b_input, a_input);
-        b.register_peer(a, a_input, b_input);
+        DMTR_OK(a.register_peer(b, b_input, a_input));
+        DMTR_OK(b.register_peer(a, a_input, b_input));
+        return 0;
+    }
+
+    static void stop_all() {
+        log_debug("Stopping all workers");
+        for (auto w : all_workers) {
+            w.second->stop();
+        }
     }
 };
+
+std::unordered_map<int, Worker*> Worker::all_workers;
 
 template <typename T>
 void as_sga(T &from, dmtr_sgarray_t &sga) {
@@ -177,7 +240,7 @@ struct KvResponse {
     }
 };
 
-class NetWorker : Worker {
+class NetWorker : public Worker {
 
     struct sockaddr_in bind_addr;
 
@@ -190,13 +253,15 @@ class NetWorker : Worker {
 
     virtual int choose_worker(dmtr_qresult_t &dequeued) {
         int n_peers = peer_ids.size();
+        log_debug("Choosing from %d peers", n_peers);
         if (n_peers == 0) {
             return -1;
         }
-        if (worker_offset++ >= n_peers) {
+        if (++worker_offset >= n_peers) {
             worker_offset = 0;
         }
-        return *(peer_ids.begin() + worker_offset);
+
+        return peer_ids[worker_offset];
     }
 
 public:
@@ -204,7 +269,9 @@ public:
             Worker(0, dmtr::io_queue::NETWORK_Q),
             bind_addr(addr)
     {
-        psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0);
+        if (psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0) != 0) {
+            log_error("Could not create socket");
+        }
     }
 
     int setup() {
@@ -215,6 +282,11 @@ public:
         DMTR_OK(psu.ioqapi.listen(lqd, 100));
         DMTR_OK(psu.ioqapi.accept(token, lqd));
         tokens.push_back(token);
+
+        for (int peer_id : peer_ids) {
+            DMTR_OK(pop_from_peer(peer_id, token));
+            tokens.push_back(token);
+        }
         return 0;
     }
 
@@ -224,32 +296,55 @@ public:
         if (status == EAGAIN) {
             return EAGAIN;
         }
-        tokens.erase(tokens.begin() + idx);
+        if (status == 0 || status == ECONNABORTED) {
+            tokens.erase(tokens.begin() + idx);
+            if (status == ECONNABORTED) {
+                return EAGAIN;
+            }
+        } else {
+            log_warn("wait_any returned non-0 exit code %d", status);
+        }
+
         return status;
     }
 
     int work(int status, dmtr_qresult_t &dequeued) {
+        if (status != 0) {
+            log_error("NetWorker work() received non-0 status %d", status);
+            return -1;
+        }
         if (dequeued.qr_qd == lqd) {
             assert(dequeued.qr_opcode == DMTR_OPC_ACCEPT);
             dmtr_qtoken_t token;
             DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_value.ares.qd));
             tokens.push_back(token);
+
+            DMTR_OK(psu.ioqapi.accept(token, lqd));
+            tokens.push_back(token);
+            log_debug("Accepted a new connection");
             return 0;
         }
         if (dequeued.qr_opcode == DMTR_OPC_PUSH) {
+            log_debug("Received PUSH code");
             return 0;
         }
+        log_debug("Received POP code");
         assert(DMTR_OPC_POP == dequeued.qr_opcode);
         int dequeued_id = get_peer_id(dequeued.qr_qd);
         if (dequeued_id == -1) {
             // New request
             int new_worker_id = choose_worker(dequeued);
-            KvRequest *kvr = new KvRequest(dequeued_id, dequeued.qr_value.sga);
+            KvRequest *kvr = new KvRequest(dequeued.qr_qd, dequeued.qr_value.sga);
             dmtr_sgarray_t sga_req;
             as_sga(*kvr, sga_req);
+            log_debug("NetWorker pushing to peer %d", new_worker_id);
             push_to_peer(new_worker_id, sga_req);
+
+            dmtr_qtoken_t token;
+            DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_qd));
+            tokens.push_back(token);
         } else {
-            // Returned frozam peer
+            // Returned from peer
             dmtr_sgarray_t &sga = dequeued.qr_value.sga;
             assert(sga.sga_numsegs == 1 && sga.sga_segs[0].sgaseg_len == sizeof(KvResponse));
 
@@ -259,12 +354,17 @@ public:
             dmtr_sgarray_t resp_sga;
             resp->move_to_sga(resp_sga);
             DMTR_OK(psu.ioqapi.push(token, resp->req_qfd, resp_sga));
-            if (psu.wait(NULL, token) == EAGAIN) {
+            int status = psu.wait(NULL, token);
+            if (status == EAGAIN) {
                 tokens.push_back(token);
             }
+            DMTR_OK(status);
+
+            DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_qd));
+            tokens.push_back(token);
             delete resp;
         }
-        return -1;
+        return 0;
     }
 };
 
@@ -298,7 +398,7 @@ private:
         }
         size_t keylen = key_end - PUT_STR.size();
         size_t vallen = req.size() - key_end;
-        store[req.substr(PUT_STR.size()+1, keylen)] = req.substr(key_end, vallen);
+        store[req.substr(PUT_STR.size(), keylen)] = req.substr(key_end+1, vallen);
         output = "SUCCESS";
         return 0;
     }
@@ -309,15 +409,15 @@ private:
             return -1;
         }
 
-        if (req.find_first_of(" ", GET_STR.size() + 1) != std::string::npos) {
+        if (req.find_first_of(" ", GET_STR.size()+1) != std::string::npos) {
             output = "ERR: Key contains space";
             return -1;
         }
 
         size_t keylen = req.size() - GET_STR.size();
-        auto it = store.find(req.substr(GET_STR.size()+1, keylen));
+        auto it = store.find(req.substr(GET_STR.size(), keylen));
         if (it == store.end()) {
-            output = "ERR: Bad key";
+            output = "ERR: Bad key " + req.substr(GET_STR.size(), keylen);
             return -1;
         }
         output = it->second;
@@ -336,7 +436,7 @@ private:
         }
 
         size_t keylen = req.size() - SZOF_STR.size();
-        auto it = store.find(req.substr(SZOF_STR.size() + 1, keylen));
+        auto it = store.find(req.substr(SZOF_STR.size(), keylen));
         if (it == store.end()) {
             output = "ERR: Bad key";
             return -1;
@@ -368,17 +468,23 @@ public:
             while (std::getline(input_file, line)) {
                 std::string output;
                 if (process_req(line, output)) {
-                    // RAISE WARNING
+                    log_warn("Could not process line %s", line.c_str());
                 }
             }
             input_file.close();
+        } else {
+            log_warn("Could not open input file %s", filename.c_str());
+            log_warn("KV store will be writeable! May have concurrency issues");
+            writeable = true;
+            readable = true;
+            return;
         }
         writeable = false;
         readable = true;
     }
 };
 
-class StoreWorker : Worker {
+class StoreWorker : public Worker {
 
     int networker_qd;
     dmtr_qtoken_t pop_token;
@@ -389,10 +495,18 @@ private:
 public:
     StoreWorker(int id, KvStore &store) :
             Worker(id, dmtr::io_queue::SHARED_Q),
-            store(store) {}
+            store(store) {
+        if (id == 0) {
+            // RAISE WARNING
+        }
+    }
 
     int setup() {
-        assert((networker_qd = get_peer_qd(0)) != -1);
+        networker_qd = get_peer_qd(0);
+        if (networker_qd == -1) {
+            log_error("Must register networker before starting StoreWorker");
+            return -1;
+        }
         DMTR_OK(psu.ioqapi.pop(pop_token, networker_qd));
         return 0;
     }
@@ -402,11 +516,17 @@ public:
         if (status == EAGAIN) {
             return EAGAIN;
         }
+        log_debug("Got non-EAGAIN");
+        DMTR_OK(status);
         DMTR_OK(psu.ioqapi.pop(pop_token, networker_qd));
         return status;
     }
 
     int work(int status, dmtr_qresult_t &dequeued) {
+        if (status) {
+            log_error("StoreWorker work() received non-0 status %d", status);
+            return -1;
+        }
         assert(dequeued.qr_qd == networker_qd);
         assert(dequeued.qr_opcode == DMTR_OPC_POP);
         dmtr_sgarray_t &sga = dequeued.qr_value.sga;
@@ -415,6 +535,7 @@ public:
         assert(kvreq->sga.sga_numsegs == 1);
         std::string req((char*)kvreq->sga.sga_segs[0].sgaseg_buf,
                         kvreq->sga.sga_segs[0].sgaseg_len);
+        log_debug("Received request %s", req.c_str());
         std::string resp;
         store.process_req(req, resp);
 
@@ -432,16 +553,32 @@ public:
 
 namespace boost_opts = boost::program_options;
 
+struct ArgumentOpts {
+    std::string ip;
+    uint16_t port;
+    std::string cmd_file;
+    std::string log_dir;
+    int n_workers;
+
+};
+
 int parse_args(int argc, char **argv, ArgumentOpts &options) {
     boost_opts::options_description opts{"KV Server options"};
     opts.add_options()
                     ("help", "produce help message")
-                    ("ip", boost_opts::value<std::string>(&options.ip), "Server IP")
-                    ("port", boost_opts::value<uint16_t>(&options.port), "Server port")
+                    ("ip",
+                        boost_opts::value<std::string>(&options.ip)->default_value("127.0.0.1"),
+                        "Server IP")
+                    ("port",
+                        boost_opts::value<uint16_t>(&options.port)->default_value(12345),
+                        "Server port")
+                    ("cmd-file",
+                        boost_opts::value<std::string>(&options.cmd_file)->default_value(""),
+                        "Initial commands")
                     ("log-dir,L",
                          boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
                         "experiment log directory")
-                    ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(0));
+                    ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(1));
 
     boost_opts::variables_map vm;
     try {
@@ -468,12 +605,56 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    struct sockaddr_in  addr;
+    log_info("Launching kv store on %s:%u", opts.ip.c_str(), opts.port);
+
+    struct sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    if (inet_pton(AF_INET, opts.ip.c_str(), &addr.sin_addr) != 1) {
+        log_error("Could not convert %s to ip", opts.ip.c_str());
+        return -1;
+    }
+    addr.sin_port = htons(opts.port);
+
     NetWorker n(addr);
-    /*
-    if (signal(SIGINT, sig_handler) == SIG_ERR)
-        std::cout << "\ncan't catch SIGINT\n";
-    if (signal(SIGTERM, sig_handler) == SIG_ERR)
-        std::cout << "\ncan't catch SIGTERM\n";
-        */
+    KvStore store(opts.cmd_file);
+    StoreWorker w(1, store);
+
+    std::vector<Worker*> workers = {&n, &w};
+
+    auto sig_handler = [](int signal) {
+        Worker::stop_all();
+    };
+
+    std::signal(SIGINT, sig_handler);
+    std::signal(SIGTERM, sig_handler);
+
+    Worker::register_peers(n, w);
+
+    bool failed_launch = false;
+    for (auto w : workers) {
+        if (w->launch()) {
+            failed_launch = true;
+            break;
+        }
+    }
+    if (failed_launch) {
+        Worker::stop_all();
+    } else {
+        bool stopped = false;
+        while (!stopped) {
+            for (auto w : workers) {
+                if (w->has_exited()) {
+                    stopped = true;
+                    Worker::stop_all();
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+    for (auto w : workers) {
+        w->join();
+    }
+
+    log_info("Execution complete");
 }
