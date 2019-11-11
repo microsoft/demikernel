@@ -26,7 +26,6 @@ static const auto start_time = boost::chrono::steady_clock::now();
 //#define DMTR_PROFILE
 //#define OP_DEBUG
 //#define LEGACY_PROFILING
-//#define DMTR_TRACE
 
 /* Enable debug statements  */
 //#define LOG_DEBUG
@@ -160,6 +159,7 @@ const char FILL_CHAR = 'a';
 static std::string log_directory;
 boost::optional<std::string> file;
 std::string config_path;
+std::string ip;
 
 using namespace boost::program_options;
 
@@ -172,7 +172,7 @@ void parse_args(int argc, char **argv, bool server, const options_description &d
     }
     desc.add_options()
         ("help", "produce help message")
-        ("ip", value<std::string>(), "server ip address")
+        ("ip", value<std::string>(&ip), "server ip address")
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
