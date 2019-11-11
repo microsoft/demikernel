@@ -18,7 +18,7 @@
 #include <functional>
 #include <thread>
 
-#include "psp.hh"
+#include "app.hh"
 #include "common.hh"
 #include "request_parser.h"
 #include "httpops.hh"
@@ -734,7 +734,7 @@ static void *net_worker(void *args) {
                 log_debug("Removing closed client connection from answerable list");
                 clients_in_waiting[wait_out.qr_qd] = false;
             }
-            printf("closing pseudo connection on %d", wait_out.qr_qd);
+            log_info("closing pseudo connection on %d", wait_out.qr_qd);
             me->psp_su->ioqapi.close(wait_out.qr_qd);
         }
     }
@@ -743,6 +743,7 @@ static void *net_worker(void *args) {
     clean_state(state);
     free(state);
     me->psp_su->ioqapi.close(lqd);
+    //TODO also close the connected io queues.
     delete static_cast<std::shared_ptr<Worker>*>(args);
     log_debug("Exiting net worker %d", me->whoami);
     if (me->me > 0) {
@@ -779,7 +780,7 @@ int work_setup(Psp &psp, bool split) {
         worker->args.dispatch_p = psp.net_dispatch_policy;
         worker->args.dispatch_f = psp.net_dispatch_f;
 
-        /* Setup PspServiceUnique */
+        /* Setup PspServiceUnit */
         worker->psp_su = new PspServiceUnit(
             worker->whoami,
             dmtr::io_queue::category_id::NETWORK_Q,
