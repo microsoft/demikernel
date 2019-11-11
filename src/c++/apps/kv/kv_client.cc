@@ -1,0 +1,233 @@
+#include <string>
+#include <iostream>
+#include <fstream>
+#include <thread>
+
+#include <signal.h>
+#include <errno.h>
+#include <arpa/inet.h>
+
+#include <boost/program_options.hpp>
+
+#include <dmtr/time.hh>
+#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io_queue.hh>
+
+#include "logging.h"
+
+
+class ClientRequest {
+#if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
+    public: hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
+    public: hr_clock::time_point connected;   /**< Time that dmrt_connect() completed */
+    public: hr_clock::time_point sending;       /**< Time that dmtr_push() started */
+    public: hr_clock::time_point reading;        /**< Time that dmtr_pop() started */
+    public: hr_clock::time_point completed;   /**< Time that dmtr_pop() completed */
+    public: dmtr_qtoken_t push_token; /** The token associated to writing the request */
+    public: dmtr_qtoken_t pop_token; /** The token associated with reading the response */
+#endif
+    public: bool valid; /** Whether the response was valid */
+    public: const char * req; /** The actual request */
+    public: size_t req_size; /** Number of Bytes in the request */
+    public: int conn_qd; /** The connection's queue descriptor */
+    public: uint32_t id; /** Request id */
+
+    public: ClientRequest(const char * req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
+    public: ~ClientRequest() {}
+};
+
+
+/*
+ * This client sends requests in a closed loop.
+ * It takes a list of URI from the command line, and will loop over it until $duration expires
+ */
+
+bool terminate = false;
+void sig_handler(int signo) {
+    log_debug("Setting terminate flag in signal handler");
+    terminate = true;
+}
+
+
+namespace boost_opts = boost::program_options;
+
+struct ArgumentOpts {
+    std::string ip;
+    uint16_t port;
+    std::string cmd_file;
+    std::string log_dir;
+    int duration;
+};
+
+int parse_args(int argc, char **argv, ArgumentOpts &options) {
+    boost_opts::options_description opts{"KV Server options"};
+    opts.add_options()
+                    ("help", "produce help message")
+                    ("duration,d", boost_opts::value<int>(&options.duration), "Duration")
+                    ("ip",
+                        boost_opts::value<std::string>(&options.ip)->default_value("127.0.0.1"),
+                        "Server IP")
+                    ("port",
+                        boost_opts::value<uint16_t>(&options.port)->default_value(12345),
+                        "Server port")
+                    ("cmd-file",
+                        boost_opts::value<std::string>(&options.cmd_file)->default_value(""),
+                        "Initial commands")
+                    ("log-dir,L",
+                         boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
+                        "experiment log directory");
+
+    boost_opts::variables_map vm;
+    try {
+        boost_opts::parsed_options parsed =
+            boost_opts::command_line_parser(argc, argv).options(opts).run();
+        boost_opts::store(parsed, vm);
+        if (vm.count("help")) {
+            std::cout << opts << std::endl;
+            exit(0);
+        }
+        boost_opts::notify(vm);
+    } catch (const boost_opts::error &e) {
+        std::cerr << e.what() << std::endl;
+        std::cerr << opts << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
+int main (int argc, char *argv[]) {
+    /* Parse options */
+    int duration;
+    std::string uri_list, label, log_dir, remote_host;
+    namespace po = boost::program_options;
+    ArgumentOpts opts;
+    parse_args(argc, argv, opts);
+
+    log_info(
+        "Running closed loop client for %d seconds, using URIs listed in %s",
+        duration, uri_list.c_str()
+    );
+
+    /* Configure signal handler */
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+        log_error("can't catch SIGINT");
+    if (signal(SIGTERM, sig_handler) == SIG_ERR)
+        log_error("can't catch SIGTERM");
+
+    /* Extract URIS from list */
+    std::vector<std::string> requests_str;
+    std::ifstream input_file(opts.cmd_file);
+    if (!input_file.is_open()) {
+        log_error("Cannot open %s", opts.cmd_file.c_str());
+        return -1;
+    }
+    std::string line;
+    while (std::getline(input_file, line)) {
+        requests_str.push_back(line);
+    }
+    input_file.close();
+
+    /* Init Persephone ServiceUnit */
+    PspServiceUnit su(0, dmtr::io_queue::category_id::NETWORK_Q, argc, argv);
+
+    /* Configure socket */
+    struct sockaddr_in saddr = {};
+    saddr.sin_family = AF_INET;
+    if (inet_pton(AF_INET, opts.ip.c_str(), &saddr.sin_addr) != 1) {
+        log_error("Unable to parse host address: %s", strerror(errno));
+        exit(1);
+    }
+    saddr.sin_port = htons(opts.port);
+    log_info("Closed loop client configured to send requests to %s:%d", inet_ntoa(saddr.sin_addr), opts.port);
+
+    /* Configure IO queue */
+    int qfd;
+    DMTR_OK(su.ioqapi.socket(qfd, AF_INET, SOCK_STREAM, 0));
+
+    /* "Connect" */
+    DMTR_OK(su.ioqapi.connect(qfd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+
+    boost::chrono::seconds duration_tp(opts.duration);
+    log_info("Running for %lu", duration_tp.count());
+
+    std::vector<std::unique_ptr<ClientRequest> > requests;
+    requests.reserve(100000); //XXX
+    dmtr_qtoken_t token;
+    dmtr_sgarray_t sga;
+    dmtr_qresult_t qr;
+    uint32_t sent_requests = 0;
+    hr_clock::time_point start_time = take_time();
+    while (take_time() - start_time < duration_tp) {
+        /* Pick a request, craft it, prepare the SGA */
+        std::string request_str = requests_str[sent_requests % requests_str.size()];
+        auto cr = std::make_unique<ClientRequest>(request_str.c_str(), request_str.size(), sent_requests);
+
+        sga.sga_numsegs = 1;
+        sga.sga_segs[0].sgaseg_len = request_str.size();
+        sga.sga_segs[0].sgaseg_buf = const_cast<void *>(static_cast<const void *>(request_str.c_str()));
+        /* Schedule and send the request */
+#ifdef DMTR_TRACE
+        cr->sending = take_time();
+#endif
+        DMTR_OK(su.ioqapi.push(token, qfd, sga));
+#ifdef DMTR_TRACE
+        cr->push_token = token;
+#endif
+        while (su.wait(&qr, token) == EAGAIN) {
+            if (terminate) { break; }
+        } //XXX should we check for severed connection here?
+        assert(DMTR_OPC_PUSH == qr.qr_opcode);
+#ifdef DMTR_TRACE
+        cr->reading = take_time();
+#endif
+        /* Wait for an answer */
+        DMTR_OK(su.ioqapi.pop(token, qfd));
+#ifdef DMTR_TRACE
+        cr->pop_token = token;
+#endif
+        int wait_rtn;
+        while ((wait_rtn = su.wait(&qr, token)) == EAGAIN) {
+            if (terminate) { break; }
+        }
+        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) {
+            break;
+        }
+        assert(DMTR_OPC_POP == qr.qr_opcode);
+        assert(qr.qr_value.sga.sga_numsegs == 1);
+#ifdef DMTR_TRACE
+        cr->completed = take_time();
+#endif
+        requests.push_back(std::move(cr));
+        free(qr.qr_value.sga.sga_buf);
+        sent_requests++;
+    }
+
+    DMTR_OK(su.ioqapi.close(qfd));
+
+#ifdef DMTR_TRACE
+    std::string trace_file = opts.log_dir + "/traces";
+    FILE *f = fopen(trace_file.c_str(), "w");
+    if (f) {
+        fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
+    } else {
+        log_error("Could not open log file!!");
+        return 1;
+    }
+
+    for (auto &req: requests) {
+        fprintf(
+            f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
+            req->id,
+            since_epoch(req->sending),
+            since_epoch(req->reading),
+            since_epoch(req->completed),
+            req->push_token,
+            req->pop_token
+        );
+    }
+
+    fclose(f);
+#endif
+
+    return 0;
+}

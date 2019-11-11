@@ -16,6 +16,7 @@ include_directories(${Boost_INCLUDE_DIR})
 set(KV_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(KV_SERVER_SOURCES ${KV_APPS_DIR}/kv_server.cc)
+set(KV_CLIENT_SOURCES ${KV_APPS_DIR}/kv_client.cc)
 
 add_executable(lwip-kv-server ${KV_SERVER_SOURCES})
 target_link_libraries(lwip-kv-server dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
@@ -24,3 +25,11 @@ target_add_hoard(lwip-kv-server hoard-vanilla)
 add_executable(posix-kv-server ${KV_SERVER_SOURCES})
 target_link_libraries(posix-kv-server dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 target_add_hoard(posix-kv-server hoard-vanilla)
+
+add_executable(lwip-kv-client ${KV_CLIENT_SOURCES})
+target_link_libraries(lwip-kv-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
+target_add_hoard(lwip-kv-client hoard-vanilla)
+
+add_executable(posix-kv-client ${KV_CLIENT_SOURCES})
+target_link_libraries(posix-kv-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
+target_add_hoard(posix-kv-client hoard-vanilla)
