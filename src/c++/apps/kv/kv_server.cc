@@ -269,12 +269,10 @@ public:
             Worker(0, dmtr::io_queue::NETWORK_Q),
             bind_addr(addr)
     {
-        if (psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0) != 0) {
-            log_error("Could not create socket");
-        }
     }
 
     int setup() {
+        DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
         DMTR_OK(psu.ioqapi.bind(lqd,
                                 reinterpret_cast<struct sockaddr*>(&bind_addr),
                                 sizeof(bind_addr)));
