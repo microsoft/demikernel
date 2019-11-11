@@ -13,6 +13,16 @@
 
 #include "logging.h"
 
+void pin_thread(pthread_t thread, u_int16_t cpu) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu, &cpuset);
+
+    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (rtn != 0) {
+        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
+    }
+}
 
 class Worker {
 private:
@@ -21,9 +31,9 @@ private:
 protected:
     PspServiceUnit psu;
     std::vector<int> peer_ids;
+    int id;
 
 private:
-    int id;
 
     bool terminate = false;
     bool launched = false;
@@ -272,6 +282,7 @@ public:
     {}
 
     int setup() {
+        pin_thread(pthread_self(), 4);
         DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
         DMTR_OK(psu.ioqapi.bind(lqd,
                                 reinterpret_cast<struct sockaddr*>(&bind_addr),
@@ -497,6 +508,7 @@ public:
     }
 
     int setup() {
+        pin_thread(pthread_self(), 4+id);
         networker_qd = get_peer_qd(0);
         if (networker_qd == -1) {
             log_error("Must register networker before starting StoreWorker");
@@ -611,11 +623,14 @@ int main(int argc, char **argv) {
     }
     addr.sin_port = htons(opts.port);
 
-    NetWorker n(addr);
-    KvStore store(opts.cmd_file);
-    StoreWorker w(1, store);
+    NetWorker *n = new NetWorker(addr);
 
-    std::vector<Worker*> workers = {&n, &w};
+    std::vector<Worker*> store_workers;
+    KvStore store(opts.cmd_file);
+    for (int i=0; i < opts.n_workers; i++) {
+        store_workers.push_back(new StoreWorker(i+1, store));
+        Worker::register_peers(*n, *store_workers[i]);
+    }
 
     auto sig_handler = [](int signal) {
         Worker::stop_all();
@@ -624,10 +639,8 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, sig_handler);
     std::signal(SIGTERM, sig_handler);
 
-    Worker::register_peers(n, w);
-
-    bool failed_launch = false;
-    for (auto w : workers) {
+    bool failed_launch = (n->launch() != 0);
+    for (auto w : store_workers) {
         if (w->launch()) {
             failed_launch = true;
             break;
@@ -638,7 +651,12 @@ int main(int argc, char **argv) {
     } else {
         bool stopped = false;
         while (!stopped) {
-            for (auto w : workers) {
+            if (n->has_exited()) {
+                stopped = true;
+                Worker::stop_all();
+                break;
+            }
+            for (auto w : store_workers) {
                 if (w->has_exited()) {
                     stopped = true;
                     Worker::stop_all();
@@ -648,8 +666,11 @@ int main(int argc, char **argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
-    for (auto w : workers) {
+    n->join();
+    delete n;
+    for (auto w : store_workers) {
         w->join();
+        delete w;
     }
 
     log_info("Execution complete");
