@@ -262,7 +262,7 @@ class NetWorker : public Worker {
 
     int worker_offset = 0;
 
-    virtual int choose_worker(dmtr_qresult_t &dequeued) {
+    int round_robin_choice(dmtr_qresult_t &dequeued) {
         int n_peers = peer_ids.size();
         log_debug("Choosing from %d peers", n_peers);
         if (n_peers == 0) {
@@ -275,10 +275,46 @@ class NetWorker : public Worker {
         return peer_ids[worker_offset];
     }
 
+    int first_key_digit_choice(dmtr_qresult_t &dequeued) {
+        void *buf = dequeued.qr_value.sga.sga_segs[0].sgaseg_buf;
+        char *req = static_cast<char*>(buf);
+        char *space = strstr(req, " ");
+        char dig;
+        if (space == NULL) {
+            dig = '0';
+        } else {
+            dig = *(space + 1);
+        }
+        int idx = ((int)dig - (int)'0');
+        int n_peers = peer_ids.size();
+        return peer_ids[idx % n_peers];
+    }
+
+
+    int choose_worker(dmtr_qresult_t &dequeued) {
+        switch (choice_fn) {
+            case KEY:
+                return first_key_digit_choice(dequeued);
+            case RR:
+            default:
+                return round_robin_choice(dequeued);
+        }
+    }
+
 public:
-    NetWorker(struct sockaddr_in &addr) :
+
+    enum worker_choice {
+        RR, KEY
+    };
+
+private:
+    worker_choice choice_fn;
+
+public:
+
+    NetWorker(struct sockaddr_in &addr, worker_choice choice = RR) :
             Worker(0, dmtr::io_queue::NETWORK_Q),
-            bind_addr(addr)
+            bind_addr(addr), choice_fn(choice)
     {}
 
     int setup() {
@@ -343,8 +379,11 @@ public:
             KvRequest *kvr = new KvRequest(dequeued.qr_qd, dequeued.qr_value.sga);
             dmtr_sgarray_t sga_req;
             as_sga(*kvr, sga_req);
-            push_to_peer(new_worker_id, sga_req);
-            log_debug("NetWorker pushed to peer %d", new_worker_id);
+            if (push_to_peer(new_worker_id, sga_req) == -1) {
+                log_warn("Could not push to worker %d", new_worker_id);
+            } else {
+                log_debug("NetWorker pushed to peer %d", new_worker_id);
+            }
 
             dmtr_qtoken_t token;
             DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_qd));
@@ -567,6 +606,7 @@ struct ArgumentOpts {
     std::string cmd_file;
     std::string log_dir;
     int n_workers;
+    std::string choice_fn;
 
 };
 
@@ -586,7 +626,9 @@ int parse_args(int argc, char **argv, ArgumentOpts &options) {
                     ("log-dir,L",
                          boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
                         "experiment log directory")
-                    ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(1));
+                    ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(1))
+                    ("choice,c", boost_opts::value<std::string>(&options.choice_fn)->default_value("RR"),
+                        "Worker chouce function (RR or KEY)");
 
     boost_opts::variables_map vm;
     try {
@@ -613,6 +655,15 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    NetWorker::worker_choice choice_fn;
+    if (opts.choice_fn == "RR") {
+        choice_fn = NetWorker::RR;
+    } else {
+        choice_fn = NetWorker::KEY;
+    } else {
+        log_error("Unknown choice function '%s'", choice_fn.c_str());
+    }
+
     log_info("Launching kv store on %s:%u", opts.ip.c_str(), opts.port);
 
     struct sockaddr_in addr = {};
@@ -623,7 +674,7 @@ int main(int argc, char **argv) {
     }
     addr.sin_port = htons(opts.port);
 
-    NetWorker *n = new NetWorker(addr);
+    NetWorker *n = new NetWorker(addr, choice_fn);
 
     std::vector<Worker*> store_workers;
     KvStore store(opts.cmd_file);
