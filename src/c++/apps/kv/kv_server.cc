@@ -658,10 +658,10 @@ int main(int argc, char **argv) {
     NetWorker::worker_choice choice_fn;
     if (opts.choice_fn == "RR") {
         choice_fn = NetWorker::RR;
-    } else {
+    } else if (opts.choice_fn == "KEY") {
         choice_fn = NetWorker::KEY;
     } else {
-        log_error("Unknown choice function '%s'", choice_fn.c_str());
+        log_error("Unknown choice function '%s'", opts.choice_fn.c_str());
     }
 
     log_info("Launching kv store on %s:%u", opts.ip.c_str(), opts.port);
