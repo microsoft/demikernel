@@ -252,11 +252,28 @@ struct KvResponse {
 };
 
 class NetWorker : public Worker {
+public:
+
+    enum worker_choice {
+        RR, KEY
+    };
+
+private:
+
 
     struct sockaddr_in bind_addr;
 
+    worker_choice choice_fn;
+
+    using hr_clock = std::chrono::high_resolution_clock;
+    std::vector<hr_clock::time_point> entry_times;
+    std::vector<hr_clock::time_point> exit_times;
+    std::string log_filename;
+
+    bool record_lat;
     int lqd;
     std::vector<dmtr_qtoken_t> tokens;
+
 
     int start_offset = 0;
 
@@ -301,21 +318,44 @@ class NetWorker : public Worker {
         }
     }
 
-public:
-
-    enum worker_choice {
-        RR, KEY
-    };
-
-private:
-    worker_choice choice_fn;
+    long int ns_since_start(hr_clock::time_point &tp) {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(tp - entry_times[0]).count();
+    }
 
 public:
 
-    NetWorker(struct sockaddr_in &addr, worker_choice choice = RR) :
+    int dump_times() {
+        if (log_filename.size() == 0) {
+            return 0;
+        }
+        std::ofstream logfile(log_filename);
+        if (logfile.is_open()) {
+            logfile << "entry\texit" << std::endl;
+            for (unsigned int i=0; i < exit_times.size(); i++) {
+                logfile << ns_since_start(entry_times[i]) << "\t"
+                        << ns_since_start(exit_times[i]) << std::endl;
+            }
+            logfile.close();
+            log_info("Wrote net logs to %s", log_filename.c_str());
+            return 0;
+        } else {
+            log_error("Coult not open logfile %s", log_filename.c_str());
+            return -1;
+        }
+    }
+
+public:
+
+    NetWorker(struct sockaddr_in &addr,
+              worker_choice choice = RR,
+              std::string log_filename = "") :
             Worker(0, dmtr::io_queue::NETWORK_Q),
-            bind_addr(addr), choice_fn(choice)
-    {}
+            bind_addr(addr), choice_fn(choice),
+            log_filename(log_filename), record_lat(log_filename.size() > 0)
+    {
+        entry_times.reserve(10000000);
+        exit_times.reserve(10000000);
+    }
 
     int setup() {
         pin_thread(pthread_self(), 4);
@@ -350,6 +390,7 @@ public:
     }
 
     int work(int status, dmtr_qresult_t &dequeued) {
+        hr_clock::time_point entry_time = hr_clock::now();
         if (status != 0) {
             log_error("NetWorker work() received non-0 status %d", status);
             return -1;
@@ -374,6 +415,9 @@ public:
         assert(DMTR_OPC_POP == dequeued.qr_opcode);
         int dequeued_id = get_peer_id(dequeued.qr_qd);
         if (dequeued_id == -1) {
+            if (record_lat) {
+                entry_times.push_back(entry_time);
+            }
             // New request
             int new_worker_id = choose_worker(dequeued);
             KvRequest *kvr = new KvRequest(dequeued.qr_qd, dequeued.qr_value.sga);
@@ -403,6 +447,9 @@ public:
             if (status == EAGAIN) {
                 tokens.push_back(token);
             }
+            if (record_lat) {
+                exit_times.push_back(hr_clock::now());
+            }
             DMTR_OK(status);
 
             DMTR_OK(psu.ioqapi.pop(token, dequeued.qr_qd));
@@ -422,6 +469,7 @@ private:
     const std::string PUT_STR = "PUT ";
     const std::string GET_STR = "GET ";
     const std::string SZOF_STR = "SZOF ";
+    const std::string NNZ_STR = "NNZ ";
 
     static bool startswith(const std::string a, const std::string b) {
         if (a.compare(0, b.size(), b)) {
@@ -486,11 +534,38 @@ private:
             output = "ERR: Bad key";
             return -1;
         }
-        // Making copy so it will take up space;
-        std::string val_cp = it->second;
-        output = std::to_string(val_cp.size());
+        // Using strlen() rather than str::size so that it requires accessing the full string
+        output = std::to_string(strlen(it->second.c_str()));
         return 0;
     }
+
+    int process_nnz(const std::string &req, std::string &output) {
+        if (!readable) {
+            output = "ERR: Not readable";
+            return -1;
+        }
+
+        if (req.find_first_of(" ", NNZ_STR.size() + 1) != std::string::npos) {
+            output = "ERR: Key contains space";
+            return -1;
+        }
+
+        size_t keylen = req.size() - NNZ_STR.size();
+        auto it = store.find(req.substr(NNZ_STR.size(), keylen));
+        if (it == store.end()) {
+            output = "ERR: Bad key";
+            return -1;
+        }
+        int count = 0;
+        for (const char &c: it->second) {
+            if (c != '0') {
+                count++;
+            }
+        }
+        output = std::to_string(count);
+        return 0;
+    }
+
 
 public:
 
@@ -501,6 +576,8 @@ public:
             return process_get(req, output);
         } else if (startswith(req, SZOF_STR)) {
             return process_szof(req, output);
+        } else if (startswith(req, NNZ_STR)) {
+            return process_nnz(req, output);
         }
         output = "ERR: Unknown reqtype";
         return -1;
@@ -607,6 +684,7 @@ struct ArgumentOpts {
     std::string log_dir;
     int n_workers;
     std::string choice_fn;
+    bool record_latencies;
 
 };
 
@@ -627,6 +705,8 @@ int parse_args(int argc, char **argv, ArgumentOpts &options) {
                          boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
                         "experiment log directory")
                     ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(1))
+                    ("record-lat,r", boost_opts::bool_switch(&options.record_latencies),
+                        "Turn on latency recording")
                     ("choice,c", boost_opts::value<std::string>(&options.choice_fn)->default_value("RR"),
                         "Worker chouce function (RR or KEY)");
 
@@ -674,13 +754,17 @@ int main(int argc, char **argv) {
     }
     addr.sin_port = htons(opts.port);
 
-    NetWorker *n = new NetWorker(addr, choice_fn);
+    std::string log_file;
+    if (opts.record_latencies)
+        log_file = opts.log_dir + "/net_traces";
+
+    NetWorker n = NetWorker(addr, choice_fn, log_file);
 
     std::vector<Worker*> store_workers;
     KvStore store(opts.cmd_file);
     for (int i=0; i < opts.n_workers; i++) {
         store_workers.push_back(new StoreWorker(i+1, store));
-        Worker::register_peers(*n, *store_workers[i]);
+        Worker::register_peers(n, *store_workers[i]);
     }
 
     auto sig_handler = [](int signal) {
@@ -690,7 +774,7 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, sig_handler);
     std::signal(SIGTERM, sig_handler);
 
-    bool failed_launch = (n->launch() != 0);
+    bool failed_launch = (n.launch() != 0);
     for (auto w : store_workers) {
         if (w->launch()) {
             failed_launch = true;
@@ -702,7 +786,7 @@ int main(int argc, char **argv) {
     } else {
         bool stopped = false;
         while (!stopped) {
-            if (n->has_exited()) {
+            if (n.has_exited()) {
                 stopped = true;
                 Worker::stop_all();
                 break;
@@ -717,8 +801,9 @@ int main(int argc, char **argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
-    n->join();
-    delete n;
+    n.join();
+    if (opts.record_latencies)
+        n.dump_times();
     for (auto w : store_workers) {
         w->join();
         delete w;
