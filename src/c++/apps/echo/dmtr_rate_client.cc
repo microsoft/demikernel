@@ -344,7 +344,8 @@ int process_connections(int my_idx, uint32_t total_requests, hr_clock::time_poin
 
                 std::string resp_str(req_c);
                 request->valid = validate_response(resp_str, check_resp_clen);
-                free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                dmtr_free_mbuf(&wait_out.qr_value.sga);
                 DMTR_OK(dmtr_close(wait_out.qr_qd));
                 requests.erase(req);
 
@@ -634,6 +635,7 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 tokens.push_back(token);
 
                 free(request->req); //XXX putting this in the log threads causes ASAN heap-read-after-free??
+                request->req = NULL;
                 //printf("Scheduled POP %d/%lu\n", request->id, token);
                 requests[request->id] = std::move(request);
 #ifdef OP_DEBUG
@@ -654,7 +656,8 @@ int long_lived_processing(double interval_ns, uint32_t n_requests, std::string h
                 req_c[wait_out.qr_value.sga.sga_segs[0].sgaseg_len - 1] = '\0';
                 std::string resp_str(req_c+sizeof(uint32_t));
                 request->valid = validate_response(resp_str, check_resp_clen);
-                free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                //free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
+                dmtr_free_mbuf(&wait_out.qr_value.sga);
 
                 ClientRequest *ptrtoreq = request.release();
                 requests.erase(ptrtoreq->id);

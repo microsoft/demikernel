@@ -240,7 +240,8 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
         DMTR_TRUE(EINVAL, status == 0);
 
         if (me->type == NET) {
-            free(wait_out.qr_value.sga.sga_buf);
+            //free(wait_out.qr_value.sga.sga_buf);
+            dmtr_free_mbuf(&wait_out.qr_value.sga);
         }
         return 0;
     }
@@ -267,8 +268,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
             log_warn("HTTP worker got incomplete or malformed request: %.*s",
                     (int) req_size, req_c);
             clean_state(state);
-            free(wait_out.qr_value.sga.sga_buf);
-            wait_out.qr_value.sga.sga_buf = NULL;
+            //free(wait_out.qr_value.sga.sga_buf);
+            //wait_out.qr_value.sga.sga_buf = NULL;
+            dmtr_free_mbuf(&wait_out.qr_value.sga);
 
             resp_sga.sga_segs[0].sgaseg_buf =
                 malloc(strlen(BAD_REQUEST_HEADER) + 1 + sizeof(uint32_t));
@@ -328,8 +330,9 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
      * we should not reuse it because it was sized for the request
      */
     clean_state(state);
-    free(wait_out.qr_value.sga.sga_buf);
-    wait_out.qr_value.sga.sga_buf = NULL;
+    //free(wait_out.qr_value.sga.sga_buf);
+    //wait_out.qr_value.sga.sga_buf = NULL;
+    dmtr_free_mbuf(&wait_out.qr_value.sga);
 
     resp_sga.sga_segs[0].sgaseg_len = response_size;
     resp_sga.sga_segs[0].sgaseg_buf = response;
@@ -536,8 +539,9 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
 
                 dmtr_sgarray_t req_sga;
                 req_sga.sga_numsegs = 2;
-                /** First set the original payload */
+                /** First copy the original SGA */
                 req_sga.sga_buf = wait_out.qr_value.sga.sga_buf;
+                req_sga.mbuf = wait_out.qr_value.sga.mbuf;
                 req_sga.sga_segs[0].sgaseg_buf = wait_out.qr_value.sga.sga_segs[0].sgaseg_buf;
                 req_sga.sga_segs[0].sgaseg_len = wait_out.qr_value.sga.sga_segs[0].sgaseg_len;
 

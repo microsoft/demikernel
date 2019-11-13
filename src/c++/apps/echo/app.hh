@@ -62,7 +62,7 @@ class ClientRequest {
     public: dmtr_qtoken_t pop_token; /** The token associated with reading the response */
 #endif
     public: bool valid; /** Whether the response was valid */
-    public: char * const req; /** The actual request */
+    public: char * req; /** The actual request */
     public: size_t req_size; /** Number of Bytes in the request */
     public: int conn_qd; /** The connection's queue descriptor */
     public: uint32_t id; /** Request id */

@@ -12,6 +12,7 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <rte_mbuf.h>
 
 #include <memory>
 
@@ -141,6 +142,20 @@ int dmtr_drop(dmtr_qtoken_t qt)
 int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode) {
     DMTR_NOTNULL(EINVAL, qd_out);
     DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return 0;
+}
+
+int dmtr_free_mbuf(dmtr_sgarray_t *sga) {
+    DMTR_NOTNULL(EINVAL, sga);
+    DMTR_NOTNULL(EINVAL, sga->mbuf);
+
+    if (sga->mbuf == NULL) {
+        free(sga->sga_buf);
+    } else {
+        struct rte_mbuf *mbuf = static_cast<struct rte_mbuf *>(sga->mbuf);
+        rte_pktmbuf_free(mbuf);
+    }
 
     return 0;
 }

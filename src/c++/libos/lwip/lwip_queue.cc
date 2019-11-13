@@ -815,7 +815,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     return 0;
 }
 
-int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq)  {
+int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
     const uint16_t dpdk_port_id = *our_dpdk_port_id;
@@ -1328,7 +1328,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         // check the packet header
 
         bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
-        rte_pktmbuf_free(pkts[i]);
+        //rte_pktmbuf_free(pkts[i]);
 
         if (valid_packet) {
             lwip_4tuple packet_tuple = lwip_4tuple(lwip_addr(src), lwip_addr(dst));
@@ -1358,7 +1358,6 @@ dmtr::lwip_queue::service_incoming_packets() {
     return 0;
 }
 
-
 /**
  * TODO:
  * - Check if ip total_len == ip header len + ip payload len
@@ -1368,7 +1367,7 @@ bool
 dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
                                struct sockaddr_in &dst,
                                dmtr_sgarray_t &sga,
-                               const struct rte_mbuf *pkt)
+                               struct rte_mbuf *pkt)
 {
     // packet layout order is (from outside -> in):
     // ether_hdr
@@ -1492,14 +1491,21 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     if (sga.sga_numsegs != 0xdeadbeef) {
         // Allocate enough space for all sga segments
         size_t sga_total_size = ntohs(ip_hdr->total_length) - sizeof(*ip_hdr) - sizeof(*udp_hdr) - sizeof(uint32_t);
-        DMTR_OK(dmtr_malloc(&sga.sga_buf, sga_total_size));
 
         // Read into the sga buffer
-        const void *read_buf = rte_pktmbuf_read(pkt, offset, sga_total_size, sga.sga_buf);
+        if (unlikely(offset + sga_total_size > rte_pktmbuf_data_len(pkt))) {
+            DMTR_OK(dmtr_malloc(&sga.sga_buf, sga_total_size));
+        }
+        const void * read_buf = rte_pktmbuf_read(pkt, offset, sga_total_size, sga.sga_buf);
+        if (read_buf == NULL) {
+            fprintf(stderr, "Buffer provided to rte_pktmbuf_read() was too small");
+        }
         // If read_buf is not pointing to sga_buf, it's because no copy was necessary
-        // (to avoid freeing problems later, copy into sga_buf anyway)
         if (read_buf != sga.sga_buf) {
-            rte_memcpy(sga.sga_buf, read_buf, sga_total_size);
+            sga.sga_buf = const_cast<void *>(read_buf);
+            sga.mbuf = static_cast<void *>(pkt);
+        } else {
+            sga.mbuf = NULL;
         }
 
         char *offset_buf = static_cast<char*>(sga.sga_buf);

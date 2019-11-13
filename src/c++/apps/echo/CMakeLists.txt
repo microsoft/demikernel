@@ -34,7 +34,6 @@ set(PSP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/psp_echo_threaded.cc)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
 
-
 # POSIX HTTP server threaded
 #add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
 #target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml-cpp boost_program_options Threads::Threads)

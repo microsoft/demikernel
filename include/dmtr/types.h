@@ -25,6 +25,7 @@ typedef struct dmtr_sgaseg {
 } dmtr_sgaseg_t;
 
 typedef struct dmtr_sgarray {
+    void *mbuf;
     void *sga_buf;
     uint32_t sga_numsegs;
     dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];

@@ -157,3 +157,12 @@ int dmtr_drop(dmtr_qtoken_t qt)
 
     return ioq_api->drop(qt);
 }
+
+int dmtr_free_mbuf(dmtr_sgarray_t *sga)
+{
+    DMTR_NOTNULL(EINVAL, sga);
+
+    free(sga->sga_buf);
+
+    return 0;
+}

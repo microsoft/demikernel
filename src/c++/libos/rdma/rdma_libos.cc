@@ -139,3 +139,12 @@ int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode) {
 
     return 0;
 }
+
+int dmtr_free_mbuf(dmtr_sgarray_t *sga)
+{
+    DMTR_NOTNULL(EINVAL, sga);
+
+    free(sga->sga_buf);
+
+    return 0;
+}
