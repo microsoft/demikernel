@@ -17,6 +17,18 @@
 
 #define DMTR_TRACE
 
+void pin_thread(pthread_t thread, int cpu) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu, &cpuset);
+
+    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (rtn != 0) {
+        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
+    }
+    log_info("Pinned to core %u", cpu);
+}
+
 class ClientRequest {
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
     public: hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
@@ -164,6 +176,7 @@ int main (int argc, char *argv[]) {
     /* Init Persephone ServiceUnit */
     PspServiceUnit su(0, dmtr::io_queue::category_id::NETWORK_Q, argc, argv);
 
+    pin_thread(pthread_self(), 4);
     /* Configure socket */
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -185,7 +198,7 @@ int main (int argc, char *argv[]) {
     log_info("Running for %lu", duration_tp.count());
 
     std::vector<std::unique_ptr<ClientRequest> > requests;
-    requests.reserve(100000); //XXX
+    requests.reserve(9000000); //XXX
     int resp_idx = 0;
 
     uint32_t sent_requests = 0;
@@ -229,6 +242,7 @@ int main (int argc, char *argv[]) {
         sent_requests++;
     }
 
+    log_info("Done with all of %d requests", sent_requests);
     //DMTR_OK(su.ioqapi.close(qfd));
 
 #ifdef DMTR_TRACE
