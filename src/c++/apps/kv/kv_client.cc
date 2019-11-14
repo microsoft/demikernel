@@ -213,7 +213,8 @@ int main (int argc, char *argv[]) {
         sent_requests++;
     }
 
-    //DMTR_OK(su.ioqapi.close(qfd));
+    // FIXME: CLIENT CRASHES ON CLOSE FOR SOME REASON
+    // DMTR_OK(su.ioqapi.close(qfd));
 
 #ifdef DMTR_TRACE
     std::string trace_file = opts.common.log_dir + "/traces";
