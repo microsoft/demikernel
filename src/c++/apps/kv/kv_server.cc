@@ -11,10 +11,11 @@
 #include <dmtr/libos.h>
 #include <dmtr/libos/persephone.hh>
 
+#include "PspWorker.hh"
 #include "common.hh"
 #include "logging.h"
 
-
+/*
 class Worker {
 private:
     static std::unordered_map<int, Worker*> all_workers;
@@ -31,7 +32,6 @@ private:
     bool exited = false;
     bool started = false;
 
-    int rtn_code;
     std::thread thread;
 
     std::unordered_map<int, int> peer_qd_to_id;
@@ -60,9 +60,10 @@ private:
     virtual int dequeue(dmtr_qresult_t &dequeued) = 0;
     virtual int work(int status, dmtr_qresult_t &result) = 0;
 
-    int run(void) {
+    int main_loop(void) {
         if (setup()) {
             log_error("Worker thread %d failed to initialize properly", id);
+            exited = true;
             return -1;
         }
         started = true;
@@ -75,14 +76,11 @@ private:
             }
             DMTR_OK(work(status, dequeued));
         }
+        exited = true;
+        log_info("Worker thread %d terminating", id);
         return 0;
     }
 
-    void run_wrapper(void) {
-        rtn_code = run();
-        exited = true;
-        log_info("Worker thread %d terminating", id);
-    }
 
 protected:
     int get_peer_qd(int peer_id) {
@@ -153,11 +151,9 @@ public:
     }
 
     int launch() {
-        if (launched) {
-            log_error("Cannot launch worker a second time");
-            return -1;
+        if (thread.joinable()) {
+            log_error("Cannot launch thread a second time");
         }
-        launched = true;
         thread = std::thread(&Worker::run_wrapper, this);
         while (!started && !exited) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -195,7 +191,7 @@ public:
 };
 
 std::unordered_map<int, Worker*> Worker::all_workers;
-
+*/
 template <typename T>
 void as_sga(T &from, dmtr_sgarray_t &sga) {
     sga.sga_buf = nullptr;
@@ -242,7 +238,7 @@ struct KvResponse {
     }
 };
 
-class NetWorker : public Worker {
+class NetWorker : public PspWorker {
 public:
 
     enum worker_choice {
@@ -340,7 +336,7 @@ public:
     NetWorker(struct sockaddr_in &addr,
               worker_choice choice = RR,
               std::string log_filename = "") :
-            Worker(0, dmtr::io_queue::NETWORK_Q),
+            PspWorker(0, dmtr::io_queue::NETWORK_Q),
             bind_addr(addr), choice_fn(choice),
             log_filename(log_filename), record_lat(log_filename.size() > 0)
     {
@@ -414,7 +410,7 @@ public:
             KvRequest *kvr = new KvRequest(dequeued.qr_qd, dequeued.qr_value.sga);
             dmtr_sgarray_t sga_req;
             as_sga(*kvr, sga_req);
-            if (push_to_peer(new_worker_id, sga_req) == -1) {
+            if (blocking_push_to_peer(new_worker_id, sga_req) == -1) {
                 log_warn("Could not push to worker %d", new_worker_id);
             } else {
                 log_debug("NetWorker pushed to peer %d", new_worker_id);
@@ -597,7 +593,7 @@ public:
     }
 };
 
-class StoreWorker : public Worker {
+class StoreWorker : public PspWorker {
 
     int networker_qd;
     dmtr_qtoken_t pop_token;
@@ -607,7 +603,7 @@ private:
 
 public:
     StoreWorker(int id, KvStore &store) :
-            Worker(id, dmtr::io_queue::SHARED_Q),
+            PspWorker(id, dmtr::io_queue::SHARED_Q),
             store(store) {
         if (id == 0) {
             // RAISE WARNING
@@ -615,7 +611,7 @@ public:
     }
 
     int setup() {
-        pin_thread(pthread_self(), 4+id);
+        pin_thread(pthread_self(), 4+worker_id);
         networker_qd = get_peer_qd(0);
         if (networker_qd == -1) {
             log_error("Must register networker before starting StoreWorker");
@@ -656,7 +652,7 @@ public:
         KvResponse *kvr = new KvResponse(kvreq->req_qfd, resp);
         dmtr_sgarray_t sga_resp;
         as_sga(*kvr, sga_resp);
-        DMTR_OK(push_to_peer(0, sga_resp));
+        DMTR_OK(blocking_push_to_peer(0, sga_resp));
         delete kvreq;
         free(sga.sga_buf);
 
@@ -735,15 +731,15 @@ int main(int argc, char **argv) {
 
     NetWorker n = NetWorker(addr, choice_fn, log_file);
 
-    std::vector<Worker*> store_workers;
+    std::vector<PspWorker*> store_workers;
     KvStore store(opts.cmd_file);
     for (int i=0; i < opts.n_workers; i++) {
         store_workers.push_back(new StoreWorker(i+1, store));
-        Worker::register_peers(n, *store_workers[i]);
+        PspWorker::register_peers(n, *store_workers[i]);
     }
 
     auto sig_handler = [](int signal) {
-        Worker::stop_all();
+        PspWorker::stop_all();
     };
 
     std::signal(SIGINT, sig_handler);
@@ -757,19 +753,19 @@ int main(int argc, char **argv) {
         }
     }
     if (failed_launch) {
-        Worker::stop_all();
+        PspWorker::stop_all();
     } else {
         bool stopped = false;
         while (!stopped) {
             if (n.has_exited()) {
                 stopped = true;
-                Worker::stop_all();
+                PspWorker::stop_all();
                 break;
             }
             for (auto w : store_workers) {
                 if (w->has_exited()) {
                     stopped = true;
-                    Worker::stop_all();
+                    PspWorker::stop_all();
                     break;
                 }
             }

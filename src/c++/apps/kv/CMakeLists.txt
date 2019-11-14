@@ -14,7 +14,7 @@ find_package(Boost REQUIRED COMPONENTS
 include_directories(${Boost_INCLUDE_DIR})
 
 set(KV_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(COMMON_SOURCES ${KV_APPS_DIR}/common.cc)
+set(COMMON_SOURCES ${KV_APPS_DIR}/common.cc ${KV_APPS_DIR}/PspWorker.cc)
 
 set(KV_SERVER_SOURCES ${KV_APPS_DIR}/kv_server.cc ${COMMON_SOURCES})
 set(KV_CLIENT_SOURCES ${KV_APPS_DIR}/kv_client.cc ${COMMON_SOURCES})
