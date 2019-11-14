@@ -18,6 +18,18 @@
 
 #define DMTR_TRACE
 
+void pin_thread(pthread_t thread, int cpu) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu, &cpuset);
+
+    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (rtn != 0) {
+        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
+    }
+    log_info("Pinned to core %u", cpu);
+}
+
 class ClientRequest {
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
     public: hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */
@@ -148,6 +160,7 @@ int main (int argc, char *argv[]) {
     /* Init Persephone ServiceUnit */
     PspServiceUnit su(0, dmtr::io_queue::category_id::NETWORK_Q, argc, argv);
 
+    pin_thread(pthread_self(), 4);
     /* Configure socket */
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
@@ -214,6 +227,8 @@ int main (int argc, char *argv[]) {
 
     // FIXME: CLIENT CRASHES ON CLOSE FOR SOME REASON
     // DMTR_OK(su.ioqapi.close(qfd));
+
+    log_info("Done with all of %d requests", sent_requests);
 
 #ifdef DMTR_TRACE
     std::string trace_file = opts.common.log_dir + "/traces";
