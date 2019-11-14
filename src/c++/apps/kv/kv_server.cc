@@ -14,16 +14,6 @@
 #include "common.hh"
 #include "logging.h"
 
-void pin_thread(pthread_t thread, u_int16_t cpu) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-
-    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (rtn != 0) {
-        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
-    }
-}
 
 class Worker {
 private:

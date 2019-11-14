@@ -18,18 +18,6 @@
 
 #define DMTR_TRACE
 
-void pin_thread(pthread_t thread, int cpu) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-
-    int rtn = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (rtn != 0) {
-        fprintf(stderr, "could not pin thread: %s\n", strerror(errno));
-    }
-    log_info("Pinned to core %u", cpu);
-}
-
 class ClientRequest {
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
     public: hr_clock::time_point connecting;     /**< Time that dmtr_connect() started */

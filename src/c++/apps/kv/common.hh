@@ -12,4 +12,6 @@ int parse_args(int argc, char **argv,
                boost::program_options::options_description &opts,
                CommonOptions &common);
 
+int pin_thread(pthread_t thread, int cpu);
+
 #endif
