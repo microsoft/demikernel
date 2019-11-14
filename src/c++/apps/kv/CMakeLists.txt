@@ -14,9 +14,10 @@ find_package(Boost REQUIRED COMPONENTS
 include_directories(${Boost_INCLUDE_DIR})
 
 set(KV_APPS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(COMMON_SOURCES ${KV_APPS_DIR}/common.cc)
 
-set(KV_SERVER_SOURCES ${KV_APPS_DIR}/kv_server.cc)
-set(KV_CLIENT_SOURCES ${KV_APPS_DIR}/kv_client.cc)
+set(KV_SERVER_SOURCES ${KV_APPS_DIR}/kv_server.cc ${COMMON_SOURCES})
+set(KV_CLIENT_SOURCES ${KV_APPS_DIR}/kv_client.cc ${COMMON_SOURCES})
 
 add_executable(lwip-kv-server ${KV_SERVER_SOURCES})
 target_link_libraries(lwip-kv-server dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)

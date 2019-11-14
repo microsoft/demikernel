@@ -11,6 +11,7 @@
 #include <dmtr/libos.h>
 #include <dmtr/libos/persephone.hh>
 
+#include "common.hh"
 #include "logging.h"
 
 void pin_thread(pthread_t thread, u_int16_t cpu) {
@@ -675,63 +676,47 @@ public:
 
 };
 
-namespace boost_opts = boost::program_options;
 
-struct ArgumentOpts {
+struct ServerOpts {
     std::string ip;
     uint16_t port;
     std::string cmd_file;
-    std::string log_dir;
     int n_workers;
     std::string choice_fn;
     bool record_latencies;
-
+    CommonOptions common;
 };
 
-int parse_args(int argc, char **argv, ArgumentOpts &options) {
-    boost_opts::options_description opts{"KV Server options"};
+namespace bpo = boost::program_options;
+
+int parse_server_args(int argc, char **argv, ServerOpts &options) {
+    bpo::options_description opts{"KV Server options"};
     opts.add_options()
-                    ("help", "produce help message")
                     ("ip",
-                        boost_opts::value<std::string>(&options.ip)->default_value("127.0.0.1"),
+                        bpo::value<std::string>(&options.ip)->default_value("127.0.0.1"),
                         "Server IP")
                     ("port",
-                        boost_opts::value<uint16_t>(&options.port)->default_value(12345),
+                        bpo::value<uint16_t>(&options.port)->default_value(12345),
                         "Server port")
                     ("cmd-file",
-                        boost_opts::value<std::string>(&options.cmd_file)->default_value(""),
+                        bpo::value<std::string>(&options.cmd_file)->default_value(""),
                         "Initial commands")
-                    ("log-dir,L",
-                         boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
-                        "experiment log directory")
-                    ("workers,w", boost_opts::value<int>(&options.n_workers)->default_value(1))
-                    ("record-lat,r", boost_opts::bool_switch(&options.record_latencies),
+                    ("workers,w",
+                        bpo::value<int>(&options.n_workers)->default_value(1),
+                        "Number of 'store' workers")
+                    ("record-lat,r",
+                        bpo::bool_switch(&options.record_latencies),
                         "Turn on latency recording")
-                    ("choice,c", boost_opts::value<std::string>(&options.choice_fn)->default_value("RR"),
-                        "Worker chouce function (RR or KEY)");
-
-    boost_opts::variables_map vm;
-    try {
-        boost_opts::parsed_options parsed =
-            boost_opts::command_line_parser(argc, argv).options(opts).run();
-        boost_opts::store(parsed, vm);
-        if (vm.count("help")) {
-            std::cout << opts << std::endl;
-            exit(0);
-        }
-        boost_opts::notify(vm);
-    } catch (const boost_opts::error &e) {
-        std::cerr << e.what() << std::endl;
-        std::cerr << opts << std::endl;
-        return 1;
-    }
-    return 0;
+                    ("strategy,s",
+                        bpo::value<std::string>(&options.choice_fn)->default_value("RR"),
+                        "Worker delegation strategy (RR or KEY)");
+    return parse_args(argc, argv, opts, options.common);
 }
 
 int main(int argc, char **argv) {
 
-    ArgumentOpts opts;
-    if (parse_args(argc, argv, opts)) {
+    ServerOpts opts;
+    if (parse_server_args(argc, argv, opts)) {
         return 1;
     }
 
@@ -756,7 +741,7 @@ int main(int argc, char **argv) {
 
     std::string log_file;
     if (opts.record_latencies)
-        log_file = opts.log_dir + "/net_traces";
+        log_file = opts.common.log_dir + "/net_traces";
 
     NetWorker n = NetWorker(addr, choice_fn, log_file);
 
