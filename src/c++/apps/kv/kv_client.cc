@@ -169,7 +169,7 @@ int main (int argc, char *argv[]) {
     log_info("Running for %lu", duration_tp.count());
 
     std::vector<std::unique_ptr<ClientRequest> > requests;
-    requests.reserve(100000); //XXX
+    requests.reserve(10000000); //XXX
     int resp_idx = 0;
 
     uint32_t sent_requests = 0;
@@ -181,7 +181,6 @@ int main (int argc, char *argv[]) {
 
 
     dmtr_qtoken_t token;
-    dmtr_sgarray_t sga;
     dmtr_qresult_t qr;
     hr_clock::time_point start_time = take_time();
     while (take_time() - start_time < duration_tp) {
