@@ -13,6 +13,7 @@
 #include <dmtr/libos/persephone.hh>
 #include <dmtr/libos/io_queue.hh>
 
+#include "common.hh"
 #include "logging.h"
 
 #define DMTR_TRACE
@@ -50,54 +51,35 @@ void sig_handler(int signo) {
 }
 
 
-namespace boost_opts = boost::program_options;
+namespace bpo = boost::program_options;
 
-struct ArgumentOpts {
+struct ClientOpts {
     std::string ip;
     uint16_t port;
     std::string cmd_file;
-    std::string log_dir;
     int duration;
     int pipeline;
+    CommonOptions common;
 };
 
-int parse_args(int argc, char **argv, ArgumentOpts &options) {
-    boost_opts::options_description opts{"KV Server options"};
+int parse_client_args(int argc, char **argv, ClientOpts &options) {
+    bpo::options_description opts{"KV Server options"};
     opts.add_options()
-                    ("help", "produce help message")
-                    ("duration,d", boost_opts::value<int>(&options.duration)->required(), "Duration")
+                    ("duration,d", bpo::value<int>(&options.duration)->required(), "Duration")
                     ("ip",
-                        boost_opts::value<std::string>(&options.ip)->default_value("127.0.0.1"),
+                        bpo::value<std::string>(&options.ip)->default_value("127.0.0.1"),
                         "Server IP")
                     ("port",
-                        boost_opts::value<uint16_t>(&options.port)->default_value(12345),
+                        bpo::value<uint16_t>(&options.port)->default_value(12345),
                         "Server port")
                     ("cmd-file",
-                        boost_opts::value<std::string>(&options.cmd_file)->required(),
+                        bpo::value<std::string>(&options.cmd_file)->required(),
                         "Initial commands")
-                    ("log-dir,L",
-                         boost_opts::value<std::string>(&options.log_dir)->default_value("./"),
-                        "experiment log directory")
                     ("pipeline,P",
-                        boost_opts::value<int>(&options.pipeline)->default_value(1),
+                        bpo::value<int>(&options.pipeline)->default_value(1),
                         "Number to pipeline");
 
-    boost_opts::variables_map vm;
-    try {
-        boost_opts::parsed_options parsed =
-            boost_opts::command_line_parser(argc, argv).options(opts).run();
-        boost_opts::store(parsed, vm);
-        if (vm.count("help")) {
-            std::cout << opts << std::endl;
-            exit(0);
-        }
-        boost_opts::notify(vm);
-    } catch (const boost_opts::error &e) {
-        std::cerr << e.what() << std::endl;
-        std::cerr << opts << std::endl;
-        return 1;
-    }
-    return 0;
+    return parse_args(argc, argv, opts, options.common);
 }
 
 std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::string request_str, int id) {
@@ -134,8 +116,10 @@ int main (int argc, char *argv[]) {
     int duration;
     std::string uri_list, label, log_dir, remote_host;
     namespace po = boost::program_options;
-    ArgumentOpts opts;
-    parse_args(argc, argv, opts);
+    ClientOpts opts;
+    if (parse_client_args(argc, argv, opts)) {
+        return 1;
+    }
 
     log_info(
         "Running closed loop client for %d seconds, using URIs listed in %s",
@@ -232,7 +216,7 @@ int main (int argc, char *argv[]) {
     //DMTR_OK(su.ioqapi.close(qfd));
 
 #ifdef DMTR_TRACE
-    std::string trace_file = opts.log_dir + "/traces";
+    std::string trace_file = opts.common.log_dir + "/traces";
     FILE *f = fopen(trace_file.c_str(), "w");
     if (f) {
         fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
