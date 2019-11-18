@@ -16,48 +16,93 @@
 #include "logging.h"
 
 template <typename T>
-void as_sga(T &from, dmtr_sgarray_t &sga) {
+static void as_sga(T &from, dmtr_sgarray_t &sga) {
     sga.sga_buf = nullptr;
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_buf = &from;
     sga.sga_segs[0].sgaseg_len = sizeof(from);
 }
+
 struct KvRequest {
     int req_qfd;
     dmtr_sgarray_t sga;
 
-    KvRequest(int qfd, dmtr_sgarray_t &sga) : req_qfd(qfd), sga(sga) {}
+    const char *data;
+    size_t data_len;
+    const char *data_end;
+    KvRequest(int qfd, dmtr_sgarray_t &sga) :
+            req_qfd(qfd), sga(sga),
+            data((char*)sga.sga_segs[0].sgaseg_buf),
+            data_len(sga.sga_segs[0].sgaseg_len),
+            data_end((char*)data + data_len) {}
+
+    KvRequest(std::string &str) :
+        data(str.c_str()),
+        data_len(str.size()),
+        data_end(str.c_str() + str.size()) {}
+
+    // FIXME: is_reqtype must be called (with the proper reqtype) before the key is used
+    // This isn't necessarily bad. Should be made more clear though
+    const char *key = NULL;
+    const char *key_end = NULL;
+
+    bool is_reqtype(const char *type, size_t qlen) {
+        if (strncmp(data, type, qlen) == 0) {
+            key = data+qlen;
+            key_end = (const char*)memchr(key, ' ', data_len - (qlen));
+            if (key_end == NULL) {
+                key_end = data + data_len;
+            }
+            return true;
+        }
+        return false;
+    }
+
+
 };
 
-struct KvResponse {
-    int req_qfd;
+class KvResponse {
+private:
     void *data;
     size_t data_size;
-    bool moved;
+    bool data_valid = false;
 
-    KvResponse(int req_qfd, std::string &resp) :
-            req_qfd(req_qfd), moved(false){
+public:
+    int req_qfd;
+    KvResponse(int req_qfd) :
+            data_valid(false), req_qfd(req_qfd)
+    {}
+
+    void set_data(const std::string &resp) {
+        data_valid = true;
         data = malloc(resp.size());
         data_size = resp.size();
         memcpy(data, resp.c_str(), data_size);
     }
 
     ~KvResponse() {
-        if (!moved) {
+        if (data_valid) {
              free(data);
         }
     }
 
     int move_to_sga(dmtr_sgarray_t &sga) {
-        if (moved) {
+        if (!data_valid) {
             return -1;
         }
-        sga.sga_buf = nullptr;
+        sga.sga_buf = data;
         sga.sga_numsegs = 1;
         sga.sga_segs[0].sgaseg_buf = data;
         sga.sga_segs[0].sgaseg_len = data_size;
-        moved = true;
+        data_valid = false;
         return 0;
+    }
+
+    // This may be more confusing than using set_data() explicitely,
+    // but setting a KvResponse equal to a string just copies the data in
+    KvResponse & operator=(const std::string &resp) {
+        set_data(resp);
+        return *this;
     }
 };
 
@@ -102,26 +147,34 @@ private:
         return peer_ids[worker_offset];
     }
 
-    int first_key_digit_choice(dmtr_qresult_t &dequeued) {
+    static inline int fast_atoi( const char * str, const char *end)
+    {
+        int val = 0;
+        while( *str != ' ' && str < end) {
+            val = val*10 + (*str++ - '0');
+        }
+        return val;
+    }
+
+    int key_based_routing(dmtr_qresult_t &dequeued) {
         void *buf = dequeued.qr_value.sga.sga_segs[0].sgaseg_buf;
         char *req = static_cast<char*>(buf);
-        char *space = strstr(req, " ");
-        char dig;
-        if (space == NULL) {
-            dig = '0';
-        } else {
-            dig = *(space + 1);
+        char *req_end = req + dequeued.qr_value.sga.sga_segs[0].sgaseg_len;
+        char *space;
+        for (space=req; *space != ' ' && space < req_end; ++space) {};
+        if (space == req_end) {
+            // FIXME: This means all PUT requests go to the same server
+            return peer_ids[0];
         }
-        int idx = ((int)dig - (int)'0');
-        int n_peers = peer_ids.size();
-        return peer_ids[idx % n_peers];
+        int idx = fast_atoi(space + 1, req + dequeued.qr_value.sga.sga_segs[0].sgaseg_len);
+        return peer_ids[idx % peer_ids.size()];
     }
 
 
     int choose_worker(dmtr_qresult_t &dequeued) {
         switch (choice_fn) {
             case KEY:
-                return first_key_digit_choice(dequeued);
+                return key_based_routing(dequeued);
             case RR:
             default:
                 return round_robin_choice(dequeued);
@@ -276,70 +329,63 @@ private:
     bool readable;
     std::unordered_map<std::string, std::string> store;
 
-    const std::string PUT_STR = "PUT ";
-    const std::string GET_STR = "GET ";
-    const std::string SZOF_STR = "SZOF ";
-    const std::string NNZ_STR = "NNZ ";
+    // Pre-calculating the length of the strings for the sake of optimization
+    // (I don't think it made a huge difference)
+    const char *PUT_STR = "PUT ";
+    const size_t PUT_LEN = strlen(PUT_STR);
+    const char *GET_STR = "GET ";
+    const size_t GET_LEN = strlen(GET_STR);
+    const char *SZOF_STR = "SZOF ";
+    const size_t SZOF_LEN = strlen(SZOF_STR);
+    const char *NNZ_STR = "NNZ ";
+    const size_t NNZ_LEN = strlen(NNZ_STR);
 
-    static bool startswith(const std::string a, const std::string b) {
-        if (a.compare(0, b.size(), b)) {
-            return false;
-        }
-        return true;
-    }
-
-    int process_put(const std::string &req, std::string &output) {
+    int process_put(KvRequest &input, KvResponse &output) {
         if (!writeable) {
             output = "ERR: Not writeable";
             return -1;
         }
-
-        size_t key_end = req.find_first_of(" ", PUT_STR.size()+1);
-        if (key_end == std::string::npos) {
-            output = "ERR: No key";
-            return -1;
+        if (input.key_end == NULL) {
+            output = "ERR: No KEY";
+            return 0;
         }
-        size_t keylen = key_end - PUT_STR.size();
-        size_t vallen = req.size() - key_end;
-        store[req.substr(PUT_STR.size(), keylen)] = req.substr(key_end+1, vallen);
+        if (input.key_end >= input.data_end) {
+            output = "ERR: No value";
+            return 0;
+        }
+
+        // Make a copy of the key and value to store in the map.
+        // Don't think this is avoidable
+        std::string key(input.key, input.key_end);
+        std::string value(input.key_end+1, input.data_end);
+        store[key] = value;
         output = "SUCCESS";
         return 0;
     }
 
-    int process_get(const std::string &req, std::string &output) {
+    int process_get(KvRequest &input, KvResponse &output) {
         if (!readable) {
             output = "ERR: Not readable";
             return -1;
         }
-
-        if (req.find_first_of(" ", GET_STR.size()+1) != std::string::npos) {
-            output = "ERR: Key contains space";
-            return -1;
-        }
-
-        size_t keylen = req.size() - GET_STR.size();
-        auto it = store.find(req.substr(GET_STR.size(), keylen));
+        std::string key(input.key, input.key_end);
+        auto it = store.find(key);
         if (it == store.end()) {
-            output = "ERR: Bad key " + req.substr(GET_STR.size(), keylen);
+            output = "ERR: Bad key " + key;
             return -1;
         }
         output = it->second;
         return 0;
     }
 
-    int process_szof(const std::string &req, std::string &output) {
+    int process_szof(KvRequest &input, KvResponse &output) {
         if (!readable) {
             output = "ERR: Not readable";
             return -1;
         }
 
-        if (req.find_first_of(" ", SZOF_STR.size() + 1) != std::string::npos) {
-            output = "ERR: Key contains space";
-            return -1;
-        }
-
-        size_t keylen = req.size() - SZOF_STR.size();
-        auto it = store.find(req.substr(SZOF_STR.size(), keylen));
+        std::string key(input.key, input.key_end);
+        auto it = store.find(key);
         if (it == store.end()) {
             output = "ERR: Bad key";
             return -1;
@@ -349,25 +395,22 @@ private:
         return 0;
     }
 
-    int process_nnz(const std::string &req, std::string &output) {
+    // This is really slow. Much slower than strlen 
+    // (though in theory both are iterating over the string)
+    int process_nnz(KvRequest &input, KvResponse &output) {
         if (!readable) {
             output = "ERR: Not readable";
             return -1;
         }
 
-        if (req.find_first_of(" ", NNZ_STR.size() + 1) != std::string::npos) {
-            output = "ERR: Key contains space";
-            return -1;
-        }
-
-        size_t keylen = req.size() - NNZ_STR.size();
-        auto it = store.find(req.substr(NNZ_STR.size(), keylen));
+        std::string key(input.key, input.key_end);
+        auto it = store.find(key);
         if (it == store.end()) {
             output = "ERR: Bad key";
             return -1;
         }
         int count = 0;
-        for (const char &c: it->second) {
+        for (const char c: it->second) {
             if (c != '0') {
                 count++;
             }
@@ -379,14 +422,14 @@ private:
 
 public:
 
-    int process_req(const std::string &req, std::string &output) {
-        if (startswith(req, PUT_STR)) {
+    int process_req(KvRequest &req, KvResponse &output) {
+        if (req.is_reqtype(PUT_STR, PUT_LEN)) {
             return process_put(req, output);
-        } else if (startswith(req, GET_STR)) {
+        } else if (req.is_reqtype(GET_STR, GET_LEN)) {
             return process_get(req, output);
-        } else if (startswith(req, SZOF_STR)) {
+        } else if (req.is_reqtype(SZOF_STR, SZOF_LEN)) {
             return process_szof(req, output);
-        } else if (startswith(req, NNZ_STR)) {
+        } else if (req.is_reqtype(NNZ_STR, NNZ_LEN)) {
             return process_nnz(req, output);
         }
         output = "ERR: Unknown reqtype";
@@ -398,8 +441,9 @@ public:
         if (input_file.is_open()) {
             std::string line;
             while (std::getline(input_file, line)) {
-                std::string output;
-                if (process_req(line, output)) {
+                KvRequest req(line);
+                KvResponse output(0);
+                if (process_req(req, output)) {
                     log_warn("Could not process line %s", line.c_str());
                 }
             }
@@ -421,16 +465,55 @@ class StoreWorker : public PspWorker {
     int networker_qd;
     dmtr_qtoken_t pop_token;
 
+    int n_accesses = 0;
+
 private:
+    using hr_clock = std::chrono::high_resolution_clock;
     KvStore &store;
+    bool record_lat;
+    std::string log_filename_base;
+    std::vector<hr_clock::time_point> entry_times;
+    std::vector<hr_clock::time_point> exit_times;
+
+    long int ns_since_start(hr_clock::time_point &tp) {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(tp - entry_times[0]).count();
+    }
 
 public:
-    StoreWorker(int id, KvStore &store) :
+
+    int dump_times() {
+        if (log_filename_base.size() == 0) {
+            return 0;
+        }
+        std::string log_filename = log_filename_base + "_s" + std::to_string(worker_id);
+        std::ofstream logfile(log_filename);
+        if (logfile.is_open()) {
+            logfile << "entry\texit" << std::endl;
+            for (unsigned int i=0; i < exit_times.size(); i++) {
+                logfile << ns_since_start(entry_times[i]) << "\t"
+                        << ns_since_start(exit_times[i]) << std::endl;
+            }
+            logfile.close();
+            log_info("Wrote net logs to %s", log_filename.c_str());
+            return 0;
+        } else {
+            log_error("Coult not open logfile %s", log_filename.c_str());
+            return -1;
+        }
+    }
+
+    StoreWorker(int id, KvStore &store, std::string log_filename_base) :
             PspWorker(id, dmtr::io_queue::SHARED_Q),
-            store(store) {
+            store(store), record_lat(log_filename_base.size() > 0),
+            log_filename_base(log_filename_base)  {
         if (id == 0) {
             // RAISE WARNING
         }
+        entry_times.reserve(5000000);
+        exit_times.reserve(5000000);
+    }
+    ~StoreWorker() {
+        std::cout << "Worker " << worker_id << " called " << n_accesses << " times" << std::endl;
     }
 
     int setup() {
@@ -460,6 +543,10 @@ public:
             log_error("StoreWorker work() received non-0 status %d", status);
             return -1;
         }
+        if (record_lat) {
+            entry_times.push_back(hr_clock::now());
+        }
+        n_accesses++;
         assert(dequeued.qr_qd == networker_qd);
         assert(dequeued.qr_opcode == DMTR_OPC_POP);
         dmtr_sgarray_t &sga = dequeued.qr_value.sga;
@@ -469,16 +556,18 @@ public:
         std::string req((char*)kvreq->sga.sga_segs[0].sgaseg_buf,
                         kvreq->sga.sga_segs[0].sgaseg_len);
         log_debug("Received request %s", req.c_str());
-        std::string resp;
-        store.process_req(req, resp);
+        KvResponse *kvresp = new KvResponse(kvreq->req_qfd);
+        store.process_req(*kvreq, *kvresp);
 
-        KvResponse *kvr = new KvResponse(kvreq->req_qfd, resp);
         dmtr_sgarray_t sga_resp;
-        as_sga(*kvr, sga_resp);
+        as_sga(*kvresp, sga_resp);
         DMTR_OK(blocking_push_to_peer(0, sga_resp));
+        free(kvreq->sga.sga_buf);
         delete kvreq;
-        free(sga.sga_buf);
 
+        if (record_lat) {
+            exit_times.push_back(hr_clock::now());
+        }
         return 0;
 
     }
@@ -493,6 +582,7 @@ struct ServerOpts {
     int n_workers;
     std::string choice_fn;
     bool record_latencies;
+    bool record_store_latencies;
     CommonOptions common;
 };
 
@@ -516,6 +606,9 @@ int parse_server_args(int argc, char **argv, ServerOpts &options) {
                     ("record-lat,r",
                         bpo::bool_switch(&options.record_latencies),
                         "Turn on latency recording")
+                    ("record-store-lat",
+                        bpo::bool_switch(&options.record_store_latencies),
+                        "Turn on store latency recording")
                     ("strategy,s",
                         bpo::value<std::string>(&options.choice_fn)->default_value("RR"),
                         "Worker delegation strategy (RR or KEY)");
@@ -549,15 +642,18 @@ int main(int argc, char **argv) {
     addr.sin_port = htons(opts.port);
 
     std::string log_file;
+    std::string store_log_file;
     if (opts.record_latencies)
         log_file = opts.common.log_dir + "/net_traces";
+    if (opts.record_store_latencies)
+        store_log_file = opts.common.log_dir + "/store_traces";
 
     NetWorker n = NetWorker(addr, choice_fn, log_file);
 
-    std::vector<PspWorker*> store_workers;
+    std::vector<StoreWorker*> store_workers;
     KvStore store(opts.cmd_file);
     for (int i=0; i < opts.n_workers; i++) {
-        store_workers.push_back(new StoreWorker(i+1, store));
+        store_workers.push_back(new StoreWorker(i+1, store, store_log_file));
         PspWorker::register_peers(n, *store_workers[i]);
     }
 
@@ -600,6 +696,9 @@ int main(int argc, char **argv) {
         n.dump_times();
     for (auto w : store_workers) {
         w->join();
+        if (opts.record_store_latencies) {
+            w->dump_times();
+        }
         delete w;
     }
 
