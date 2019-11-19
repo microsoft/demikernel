@@ -42,6 +42,10 @@
 	path = submodules/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
         branch = io-queue
+[submodule "submodules/tapir-dpdk-catnip"]
+	path = submodules/tapir-dpdk-catnip
+	url = https://github.com/UWSysLab/tapir.git
+        branch = io-queue
 [submodule "submodules/tapir-rdma"]
 	path = submodules/tapir-rdma
 	url = https://github.com/UWSysLab/tapir.git
