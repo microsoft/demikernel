@@ -35,7 +35,7 @@ void parse_args(int argc, char **argv, bool server)
         ("file", value<std::string>(), "log file");
 
     variables_map vm;
-    store(command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
+    store(parse_command_line(argc, argv, desc), vm);
     notify(vm);
 
     // print help
