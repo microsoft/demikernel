@@ -7,7 +7,7 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 
 - Get drivers from Mellanox website: http://www.mellanox.com/page/products_dyn?product_family=26&mtag=linux
 - Run 'mlxnofed_install --upstream-libs --dpdk' for dpdk support
-- on a clean Ubuntu install, you may have to run 'apt-get install libnl-3-dev' to get the Mellanox script to complete
+- on a clean Ubuntu install, you may have to run 'apt-get install libnl-3-dev' or 'libnl-route-3-dev'to get the Mellanox script to complete because it seems to not be updated with all dependencies
 - The mlxnofed script should install the RDMA library headers that are needed.  DO NOT install the RDMA ibverbs libraries from Ubuntu.
 ## Building
 
