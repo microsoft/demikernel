@@ -209,12 +209,17 @@ public:
 
 public:
 
+    ~NetWorker() {
+        psu.ioqapi.close(lqd);
+    }
+
     NetWorker(struct sockaddr_in &addr,
               worker_choice choice = RR,
-              std::string log_filename = "") :
-            PspWorker(0, dmtr::io_queue::NETWORK_Q),
-            bind_addr(addr), choice_fn(choice),
-            log_filename(log_filename), record_lat(log_filename.size() > 0)
+              std::string log_filename = "",
+              int argc = 0, char **argv = NULL) :
+        PspWorker(0, dmtr::io_queue::NETWORK_Q, argc, argv),
+        bind_addr(addr), choice_fn(choice),
+        log_filename(log_filename), record_lat(log_filename.size() > 0)
     {
         entry_times.reserve(10000000);
         exit_times.reserve(10000000);
@@ -502,10 +507,11 @@ public:
         }
     }
 
-    StoreWorker(int id, KvStore &store, std::string log_filename_base) :
-            PspWorker(id, dmtr::io_queue::SHARED_Q),
-            store(store), record_lat(log_filename_base.size() > 0),
-            log_filename_base(log_filename_base)  {
+    StoreWorker(int id, KvStore &store, std::string log_filename_base, int argc, char **argv) :
+        PspWorker(id, dmtr::io_queue::SHARED_Q, argc, argv),
+        store(store), record_lat(log_filename_base.size() > 0),
+        log_filename_base(log_filename_base)
+    {
         if (id == 0) {
             // RAISE WARNING
         }
@@ -562,7 +568,8 @@ public:
         dmtr_sgarray_t sga_resp;
         as_sga(*kvresp, sga_resp);
         DMTR_OK(blocking_push_to_peer(0, sga_resp));
-        free(kvreq->sga.sga_buf);
+        //free(kvreq->sga.sga_buf);
+        dmtr_free_mbuf(&kvreq->sga);
         delete kvreq;
 
         if (record_lat) {
@@ -573,7 +580,6 @@ public:
     }
 
 };
-
 
 struct ServerOpts {
     std::string ip;
@@ -648,12 +654,12 @@ int main(int argc, char **argv) {
     if (opts.record_store_latencies)
         store_log_file = opts.common.log_dir + "/store_traces";
 
-    NetWorker n = NetWorker(addr, choice_fn, log_file);
+    NetWorker n = NetWorker(addr, choice_fn, log_file, argc, argv);
 
     std::vector<StoreWorker*> store_workers;
     KvStore store(opts.cmd_file);
     for (int i=0; i < opts.n_workers; i++) {
-        store_workers.push_back(new StoreWorker(i+1, store, store_log_file));
+        store_workers.push_back(new StoreWorker(i+1, store, store_log_file, argc, argv));
         PspWorker::register_peers(n, *store_workers[i]);
     }
 

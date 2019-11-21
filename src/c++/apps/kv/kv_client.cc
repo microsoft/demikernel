@@ -209,7 +209,8 @@ int main (int argc, char *argv[]) {
 #ifdef DMTR_TRACE
         resp_cr.completed = take_time();
 #endif
-        free(qr.qr_value.sga.sga_buf);
+        //free(qr.qr_value.sga.sga_buf);
+        dmtr_free_mbuf(&qr.qr_value.sga);
         sent_requests++;
     }
 

@@ -81,6 +81,7 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, 
                 }
             }
         }
+        *start_offset = 0;
     }
 
     DMTR_UNREACHABLE();

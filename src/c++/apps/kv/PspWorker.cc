@@ -73,7 +73,7 @@ int PspWorker::blocking_push_to_peer(int peer_id, const dmtr_sgarray_t &sga) {
     }
     dmtr_qtoken_t token;
     DMTR_OK(psu.ioqapi.push(token, qd, sga));
-    DMTR_OK(psu.wait(NULL, token));
+    while (psu.wait(NULL, token) == EAGAIN) {};
     return 0;
 }
 

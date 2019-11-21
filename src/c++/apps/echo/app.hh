@@ -132,7 +132,7 @@ static inline bool validate_response(std::string &resp_str, bool check_content_l
 }
 
 
-static void read_uris(std::vector<std::string> &requests_str, std::string &uri_list) {
+static inline void read_uris(std::vector<std::string> &requests_str, std::string &uri_list) {
     if (!uri_list.empty()) {
         /* Loop-over URI file to create requests */
         std::ifstream urifile(uri_list.c_str());
@@ -147,7 +147,7 @@ static void read_uris(std::vector<std::string> &requests_str, std::string &uri_l
     }
 }
 
-static ClientRequest * format_request(uint32_t id, std::string &req_uri, std::string &host) {
+static inline ClientRequest * format_request(uint32_t id, std::string &req_uri, std::string &host) {
     /* Extract request type from request string */
     std::string user_agent;
     std::string uri;
@@ -175,7 +175,7 @@ static ClientRequest * format_request(uint32_t id, std::string &req_uri, std::st
 /**
  * Retrieve the type stored in User-Agent
  */
-static enum req_type psp_get_req_type(std::string &url) {
+static inline enum req_type psp_get_req_type(std::string &url) {
     //get a pointer to the User-Agent part of the string
     size_t user_agent_pos = url.find("User-Agent:");
     if (user_agent_pos == std::string::npos) {
@@ -300,7 +300,7 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
  ***********************************/
 
 #ifdef LEGACY_PROFILING
-void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
+void inline dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
     log_debug("Dumping latencies for worker %d on core %d\n", worker.whoami, worker.core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
@@ -327,7 +327,7 @@ void dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
 #endif
 
 #ifdef DMTR_TRACE
-void dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::string &label) {
+void inline dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::string &label) {
     log_debug("Dumping traces for worker %d on core %d", w->whoami, w->core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
