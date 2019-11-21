@@ -1,0 +1,73 @@
+ssh:
+    key: ~/.ssh/id_rsa_internal
+    port: 2324
+
+dirs:
+    demikernel: ~/demeter/demikernel
+
+files:
+    server_uri_list:
+        hosts: server
+        src: $(getarg('server-files', 'server-files_list.txt'))
+        dst: '{host.output_dir}/server_files_list.txt'
+        enabled: $(hasarg('server-files'))
+    client_uri_list:
+        hosts: client
+        src: $(getarg('client-files', 'client_files_list.txt'))
+        dst: '{host.output_dir}/client_files_list.txt'
+        enabled: $(hasarg('client-files'))
+
+hosts:
+    server: &server
+        addr: dedos010
+        ip: 192.168.2.11
+
+    client:
+        addr: dedos09
+        ip: 192.168.2.10
+
+programs:
+
+    dpdk_client: !import ../prog_lib.yml::dpdk_http_client
+    dpdk_server: !import ../prog_lib.yml::dpdk_http_server
+    pcm: !import ../prog_lib.yml::pcm
+    setup_cat: !import ../prog_lib.yml::setup_cat
+
+commands:
+
+    - program: setup_cat
+      hosts: server
+      action: $( getarg('cat-action', 'reset') )
+      begin: -5
+
+    - program: dpdk_client
+      hosts: client
+      server: *server
+      min_duration: 30
+      max_duration: 50
+      url: $(getarg('url', ''))
+      uri_list: $( '{0.files.client_uri_list.dst}' if hasarg('client-files') else '')
+      rate: '{0.args.rate}'
+      use_flag_type: True
+      begin: 5
+
+
+    - program: dpdk_server
+      hosts: server
+      begin: 0
+      min_duration: 35
+      max_duration: 40
+      uris_list: '{0.files.server_uri_list.dst}'
+      extra_args: >-
+          $(passarg('http-workers'))
+          $(passarg('popular-page-workers'))
+          $(passarg('unpopular-page-workers'))
+          $(passarg('net-dispatch-policy'))
+
+    - program: pcm
+      hosts: server
+      begin: -5
+      max_duration: 40
+      freq: 0.5
+      enabled: $(not hasarg('no-pcm'))
+

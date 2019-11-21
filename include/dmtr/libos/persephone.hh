@@ -25,7 +25,6 @@ class PspServiceUnit {
 
     private: DMTR_EXPORT int init(int argc, char *argv[]);
 
-    public: int shared_queue(int &qd_out, dmtr::shared_item *producer, dmtr::shared_item *consumer);
     // delete copy ctor
 };
 

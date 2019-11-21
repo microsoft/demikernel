@@ -1,0 +1,67 @@
+ssh:
+    key: ~/.ssh/id_rsa_internal
+    port: 2324
+
+dirs:
+    demikernel: ~/demeter/demikernel
+
+files:
+    server_cmds:
+        hosts: server
+        src: '{0.args.server-cmds}'
+        dst: '{host.output_dir}/server_cmds.txt'
+    client_cmds:
+        hosts: client
+        src: '{0.args.client-cmds}'
+        dst: '{host.output_dir}/client_cmds.txt'
+
+hosts:
+    server: &server
+        addr: dedos010
+        ip: 192.168.2.11
+
+    client:
+        addr: dedos09
+        ip: 192.168.2.10
+
+programs:
+
+    kv_client: !import ../prog_lib.yml::kv_client
+    kv_server: !import ../prog_lib.yml::kv_server
+    pcm: !import ../prog_lib.yml::pcm
+    setup_cat: !import ../prog_lib.yml::setup_cat
+
+commands:
+
+    - program: setup_cat
+      hosts: server
+      action: $( getarg('cat-action', 'reset') )
+      begin: -5
+
+    - program: kv_client
+      hosts: client
+      server: *server
+      min_duration: 30
+      max_duration: 50
+      cmd_file: '{0.files.client_cmds.dst}'
+      pipeline: $(getarg('pipeline', 1))
+      begin: 5
+
+
+    - program: kv_server
+      hosts: server
+      begin: 0
+      min_duration: 35
+      max_duration: 40
+      cmd_file: '{0.files.server_cmds.dst}'
+      n_workers: $(getarg('n-workers', 1))
+      strategy: '{0.args.strategy}'
+      extra_opts: '--record-store-lat --record-lat'
+
+    - program: pcm
+      hosts: server
+      begin: -5
+      max_duration: 40
+      freq: 0.5
+      enabled: $(hasarg('use-pcm'))
+
