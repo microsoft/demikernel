@@ -79,6 +79,7 @@ int PspServiceUnit::wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *rea
                 }
             }
         }
+        *start_offset = 0;
     }
 
     DMTR_UNREACHABLE();
