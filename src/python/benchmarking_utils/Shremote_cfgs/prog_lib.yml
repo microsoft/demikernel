@@ -7,6 +7,77 @@ demi_defaults: &DEMI_DEFAULTS
     do_nice: $( 'nice -n {nice_value}' if {nice_value}  else '' )
     taskset_cores: False
     nice_value: False
+    unused: '{0.unused_val}'
+
+kv_server:
+    start: >-
+        cd {demi_apps}/kv &&
+        sudo ./lwip-kv-server --ip {host.ip} --cmd-file {cmd_file}
+        -w {n_workers} -s {strategy} --log-dir {log_dir} {extra_opts}
+    stop: sudo kill {pid}
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        extra_opts: ''
+    log:
+        dir: server
+        out: kv_server.out
+        err: kv_server.err
+
+kv_client:
+    start: >-
+        cd {demi_apps}/kv &&
+        sudo ./lwip-kv-client
+        --ip {server.ip} --cmd-file {cmd_file} -d {min_duration}
+        --pipeline {pipeline} --log-dir {log_dir}
+    stop: sudo kill -9 {pid}
+    duration_reduced_error: True
+    duration_exceeded_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        pipeline: 1
+    log:
+        dir: client
+        out: kv_client.out
+        err: kv_client.err
+
+
+redis_server:
+    start: >-
+        cd {demi_build} &&
+        sudo ./ExternalProject/redis-lwip/bin/redis-server redis.conf
+    stop: sudo pkill redis-server
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+    log:
+        out: redis_server.out
+        err: redis_server.err
+
+redis_benchmark:
+    start: >-
+        cd {demi_build} &&
+        sudo ./ExternalProject/redis-lwip/bin/redis-benchmark
+        -h {server.ip} -c 1 --log {log_dir}
+        --warmup {warmup_file} --custom {test_file}
+    stop: sudo pkill redis-benchmark
+    duration_exceeded_error: True
+    check_rtn: 0
+    defaults:
+        <<: *DEMI_DEFAULTS
+    log:
+        dir: benchmark
+        out: benchmark.out
+        err: benchmark.err
+
+setup_cat:
+    start: sudo {demi}/scripts/setup/setup_cat.sh {action}
+    check_rtn: 0
+    defaults:
+        <<: *DEMI_DEFAULTS
+    log:
+        out: cat.out
+        err: cat.err
 
 perf:
     start: sudo perf stat --per-core -D10000
@@ -18,20 +89,18 @@ perf:
 dpdk_http_server:
     start: >-
         cd {demi_echo} &&
-        sudo {do_nice} {do_taskset} ./dmtr-lwip-http-server-threaded --ip {server_ip} --port {port}
-        --log-dir {log_dir} {do_unpin_http} {do_unpin_tcp} -w 2
-    stop: sudo pkill -f 'port {port}'
+        sudo ./dmtr-lwip-http-server-threaded --ip {server_ip} --port {port}
+        --log-dir {log_dir} --label {0.label}
+        --config-path {cfg} 
+        --uris-list {uris_list} {extra_args}
+    stop: sudo kill {pid}
     duration_reduced_error: True
     defaults:
         <<: *DEMI_DEFAULTS
         server_ip: '{host.ip}'
         port: 12347
-        taskset_cores: False
-        nice_value: False
-        do_unpin_http: $( '--no-pin-http' if bool({unpin_http}) else '' )
-        do_unpin_tcp: $( '--no-pin-tcp' if bool({unpin_tcp}) else '' )
-        unpin_http: False
-        unpin_tcp: False
+        cfg: ./config.yaml
+        extra_args: ''
     log:
         dir: server
         out: server.out
@@ -40,10 +109,11 @@ dpdk_http_server:
 dpdk_http_client:
     start: >-
         cd {demi_echo} &&
-        sudo {do_nice} {do_taskset} ./dmtr-lwip-http-rate-client
-        -r {rate} --url {server_ip}/{url} -d {min_duration} --port {port}
-        --log-dir {log_dir}  {uri_list_opt} --no-live-dump 
-    stop: sudo pkill --signal 9 -f 'port {port}'
+        sudo ./dmtr-lwip-http-rate-client
+        -r {rate} --url '{server_ip}/{url}' -d {min_duration} --port {port}
+        --log-dir {log_dir}  {uri_list_opt} --no-live-dump --label {0.label}
+        --config-path {cfg} {flag_type_opt}
+    stop: sudo kill -9 {pid}
     duration_reduced_error: True
     duration_exceeded_error: True
     defaults:
@@ -54,6 +124,9 @@ dpdk_http_client:
         nice_value: False
         uri_list_opt: $( "--uri-list {uri_list}" if "{uri_list}" else "" )
         uri_list: ""
+        flag_type_opt: $( "--flag-type" if {use_flag_type} else "" )
+        use_flag_type: False
+        cfg: ./config.yaml
     log:
         dir: client
         out: client.out
@@ -64,7 +137,7 @@ posix_echo_client:
         cd {demi_echo} &&
         {do_nice} {do_taskset} ./dmtr-posix-client --ip {server_ip} --port {port}
         -i {iterations} -L {log_dir}
-    stop: pkill -f dmtr-posix-client
+    stop: sudo kill {pid}
     duration_exceeded_error: True
     check_rtn: 0
     defaults:
@@ -83,7 +156,7 @@ posix_echo_server:
     start: >-
         cd {demi_echo} &&
         {do_nice} {do_taskset} ./dmtr-posix-server --ip {server_ip} --port {port}
-    stop: pkill -f dmtr-posix-server
+    stop: sudo kill {pid}
     duration_reduced_error: True
     defaults:
         <<: *DEMI_DEFAULTS
@@ -100,9 +173,9 @@ posix_echo_server:
 dpdk_echo_client:
     start: >-
         cd {demi_echo} &&
-        {do_nice} {do_taskset} ./dmtr-lwip-client --ip {server_ip} --port {port}
-        -i {iterations} -L {log_dir}
-    stop: pkill -f dmtr-lwip-client
+        {do_nice} {do_taskset} sudo ./dmtr-lwip-client --ip {server_ip} --port {port}
+        -i {iterations} --log-dir {log_dir}
+    stop: sudo kill {pid}
     duration_exceeded_error: True
     check_rtn: 0
     defaults:
@@ -120,8 +193,8 @@ dpdk_echo_client:
 dpdk_echo_server:
     start: >-
         cd {demi_echo} &&
-        {do_nice} {do_taskset} ./dmtr-lwip-server --ip {server_ip} --port {port}
-    stop: pkill -f dmtr-lwip-server
+        {do_nice} {do_taskset} sudo ./dmtr-lwip-server --ip {server_ip} --port {port}
+    stop: sudo pkill {pid}
     duration_reduced_error: True
     defaults:
         <<: *DEMI_DEFAULTS
@@ -133,3 +206,35 @@ dpdk_echo_server:
         dir: server
         out: server.out
         err: server.err
+
+dpdk_threaded_echo_server:
+    start: >-
+        cd {demi_echo} &&
+        {do_nice} {do_taskset} sudo ./psp-lwip-threaded-echo --ip {server_ip} --port {port} --threads {threads}
+    stop: sudo pkill {pid}
+    duration_reduced_error: True
+    defaults:
+        <<: *DEMI_DEFAULTS
+        server_ip: '{host.ip}'
+        port: 12345
+        taskset_cores: False
+        nice_value: False
+    log:
+        dir: server
+        out: server.out
+        err: server.err
+
+pcm:
+    start: >-
+        cd {log_dir} &&
+        sudo /home/maxdml/nfs/maxdml/codeZ/pcm/pcm.x {freq}
+        -ns
+        -nsys
+        -csv=pcm.csv
+    stop: sudo kill {pid}
+    check_rtn: False
+    duration_reduced_error: True
+    log:
+        dir: pcm
+        out: pcm.out
+        err: pcm.err
