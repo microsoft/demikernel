@@ -23,6 +23,35 @@ static void as_sga(T &from, dmtr_sgarray_t &sga) {
     sga.sga_segs[0].sgaseg_len = sizeof(from);
 }
 
+using hr_clock = std::chrono::high_resolution_clock;
+
+struct RequestTimes {
+    int req_id;
+    hr_clock::time_point entry;
+    hr_clock::time_point exit;
+
+    RequestTimes(int req_id, hr_clock::time_point entry, hr_clock::time_point exit) :
+        req_id(req_id), entry(entry), exit(exit) {}
+};
+
+bool lat_cmp(const RequestTimes &a, const RequestTimes &b) {
+    return (a.exit - a.entry) < (b.exit - b.entry);
+}
+
+bool time_cmp(const RequestTimes &a, const RequestTimes &b) {
+    return (a.entry) < (b.entry);
+}
+
+void to_request_times(std::vector<hr_clock::time_point> entries, 
+                      std::vector<hr_clock::time_point> exits,
+                      std::vector<RequestTimes> out) {
+    std::vector<RequestTimes> tmp;
+    for (unsigned int i=0; i < entries.size(); i++) {
+        tmp.emplace_back(i, entries[i], exits[i]);
+    }
+    sample_into(tmp, out, lat_cmp, time_cmp, 10000);
+}
+
 struct KvRequest {
     int req_qfd;
     dmtr_sgarray_t sga;
@@ -120,7 +149,6 @@ private:
 
     worker_choice choice_fn;
 
-    using hr_clock = std::chrono::high_resolution_clock;
     std::vector<hr_clock::time_point> entry_times;
     std::vector<hr_clock::time_point> exit_times;
     std::string log_filename;
@@ -191,12 +219,17 @@ public:
         if (log_filename.size() == 0) {
             return 0;
         }
+        std::vector<RequestTimes> req_times;
+        to_request_times(entry_times, exit_times, req_times);
+
+
         std::ofstream logfile(log_filename);
         if (logfile.is_open()) {
-            logfile << "entry\texit" << std::endl;
-            for (unsigned int i=0; i < exit_times.size(); i++) {
-                logfile << ns_since_start(entry_times[i]) << "\t"
-                        << ns_since_start(exit_times[i]) << std::endl;
+            logfile << "id\tentry\texit" << std::endl;
+            for (unsigned int i=0; i < req_times.size(); i++) {
+                logfile << req_times[i].req_id << "\t"
+                        << ns_since_start(req_times[i].entry) << "\t"
+                        << ns_since_start(req_times[i].exit) << std::endl;
             }
             logfile.close();
             log_info("Wrote net logs to %s", log_filename.c_str());
@@ -473,7 +506,6 @@ class StoreWorker : public PspWorker {
     int n_accesses = 0;
 
 private:
-    using hr_clock = std::chrono::high_resolution_clock;
     KvStore &store;
     bool record_lat;
     std::string log_filename_base;
@@ -490,13 +522,18 @@ public:
         if (log_filename_base.size() == 0) {
             return 0;
         }
+        std::vector<RequestTimes> req_times;
+        to_request_times(entry_times, exit_times, req_times);
+
+
         std::string log_filename = log_filename_base + "_s" + std::to_string(worker_id);
         std::ofstream logfile(log_filename);
         if (logfile.is_open()) {
-            logfile << "entry\texit" << std::endl;
-            for (unsigned int i=0; i < exit_times.size(); i++) {
-                logfile << ns_since_start(entry_times[i]) << "\t"
-                        << ns_since_start(exit_times[i]) << std::endl;
+            logfile << "id\tentry\texit" << std::endl;
+            for (unsigned int i=0; i < req_times.size(); i++) {
+                logfile << req_times[i].req_id << "\t"
+                        << ns_since_start(req_times[i].entry) << "\t"
+                        << ns_since_start(req_times[i].exit) << std::endl;
             }
             logfile.close();
             log_info("Wrote net logs to %s", log_filename.c_str());

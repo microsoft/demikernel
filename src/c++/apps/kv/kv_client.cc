@@ -38,6 +38,12 @@ class ClientRequest {
     public: ~ClientRequest() {}
 };
 
+bool req_latency_sorter(const std::unique_ptr<ClientRequest> &a, const std::unique_ptr<ClientRequest> &b) {
+    return (a->completed - a->sending) < (b->completed - b->sending);
+}
+bool req_time_sorter(const std::unique_ptr<ClientRequest> &a, const std::unique_ptr<ClientRequest> &b) {
+    return a->sending < b->sending;
+}
 
 /*
  * This client sends requests in a closed loop.
@@ -229,7 +235,10 @@ int main (int argc, char *argv[]) {
         return 1;
     }
 
-    for (auto &req: requests) {
+    std::vector<std::unique_ptr<ClientRequest>> filtered_reqs;
+    sample_into(requests, filtered_reqs, req_latency_sorter, req_time_sorter, 10000);
+
+    for (auto &req: filtered_reqs) {
         fprintf(
             f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
             req->id,
