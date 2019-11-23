@@ -26,7 +26,11 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 
 ## Configuring
 
-Some system-wide configuration needs to be performed before DPDK will function.
+The Demikernel libOSes and apps are configured through a config.yaml file. You can find an example in `src/c++/config.yaml` 
+
+DPDK requires a white list to ensure that it does not co-opt all of your network connections. Use 'ifconfig' to find the name of your DPDK network device, then 'ethtool -i' to find the PCI bus ID. Update the PCI bus ID in the eal args in your config.yaml file.
+
+In addition, some system-wide configuration needs to be performed before DPDK will function.
 
 ### Hugepage Support
 
