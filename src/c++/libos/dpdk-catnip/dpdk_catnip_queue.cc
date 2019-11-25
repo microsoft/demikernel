@@ -69,14 +69,14 @@ namespace bpo = boost::program_options;
 #define TX_WTHRESH          0  /**< Default values of TX write-back threshold reg. */
 
 #if DMTR_PROFILE
-#define NIPX_LATENCY(Statement) do { \
+#define NIPX_LATENCY(Which, Statement) do { \
         auto t0 = boost::chrono::steady_clock::now(); \
         Statement; \
         auto dt = boost::chrono::steady_clock::now() - t0; \
-        DMTR_OK(dmtr_record_latency(catnip_latency.get(), dt.count())); \
+        DMTR_OK(dmtr_record_latency((Which).get(), dt.count())); \
     } while (0)
 #else
-#define NIPX_LATENCY(Statement) (Statement)
+#define NIPX_LATENCY(Which, Statement) (Statement)
 #endif
 
 /*
@@ -90,6 +90,7 @@ typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> l
 static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 static latency_ptr_type catnip_latency;
+static latency_ptr_type copy_latency;
 #endif
 
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
@@ -393,6 +394,15 @@ int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd
             dmtr_delete_latency(&latency);
         });
     }
+
+    if (NULL == copy_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "copy"));
+        copy_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
 #endif
 
     q_out = std::unique_ptr<io_queue>(new dpdk_catnip_queue(qd));
@@ -634,7 +644,7 @@ int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield
     int ret = -1;
     bool done = false;
     while (!done) {
-        NIPX_LATENCY(ret = nip_tcp_connected(&my_tcp_connection_handle, connect_future));
+        NIPX_LATENCY(catnip_latency, ret = nip_tcp_connected(&my_tcp_connection_handle, connect_future));
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
@@ -819,13 +829,13 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 #ifdef DMTR_DEBUG
         {
             int ret = -1;
-            NIPX_LATENCY(ret = nip_receive_datagram(our_tcp_engine, p, length));
+            NIPX_LATENCY(catnip_latency, ret = nip_receive_datagram(our_tcp_engine, p, length));
             if (0 != ret) {
                 std::cerr << "failed to receive packet (errno " << ret << ")" << std::endl;
             }
         }
 #else
-        NIPX_LATENCY(nip_receive_datagram(our_tcp_engine, p, length));
+        NIPX_LATENCY(catnip_latency, nip_receive_datagram(our_tcp_engine, p, length));
 #endif
         rte_pktmbuf_free(packet);
     }
@@ -1105,7 +1115,7 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
 
     nip_event_code_t event_code;
     int ret = -1;
-    NIPX_LATENCY(ret = nip_next_event(&event_code, our_tcp_engine));
+    NIPX_LATENCY(catnip_latency, ret = nip_next_event(&event_code, our_tcp_engine));
     switch (ret) {
         default:
             DMTR_FAIL(ret);
@@ -1126,7 +1136,7 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
         case NIP_TCP_CONNECTION_CLOSED: {
             nip_tcp_connection_handle_t handle = 0;
             int error = 0;
-            NIPX_LATENCY(DMTR_OK(nip_get_tcp_connection_closed_event(&handle, &error, our_tcp_engine)));
+            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_tcp_connection_closed_event(&handle, &error, our_tcp_engine)));
             DMTR_NONZERO(ENOTSUP, handle);
             DMTR_TRUE(ENOENT, our_known_connections.find(handle) != our_known_connections.cend());
             our_known_connections[handle]->close(error);
@@ -1134,7 +1144,7 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
         }
         case NIP_INCOMING_TCP_CONNECTION: {
             nip_tcp_connection_handle_t handle = 0;
-            NIPX_LATENCY(DMTR_OK(nip_get_incoming_tcp_connection_event(&handle, our_tcp_engine)));
+            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_incoming_tcp_connection_event(&handle, our_tcp_engine)));
             DMTR_NONZERO(ENOTSUP, handle);
             our_incoming_connection_handles.push(handle);
             return 0;
@@ -1147,11 +1157,11 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
 
             const uint8_t *bytes = nullptr;
             size_t length = SIZE_MAX;
-            NIPX_LATENCY(DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
+            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
 
             // [$DPDK/examples/vhost/virtio_net.c](https://doc.dpdk.org/api/examples_2vhost_2virtio_net_8c-example.html#a20) demonstrates that you have to subtract `RTE_PKTMBUF_HEADROOM` from `struct rte_mbuf::buf_len` to get the maximum data length.
             DMTR_TRUE(ENOTSUP, length <= packet->buf_len - static_cast<size_t>(RTE_PKTMBUF_HEADROOM));
-            rte_memcpy(p, bytes, length);
+            NIPX_LATENCY(copy_latency, rte_memcpy(p, bytes, length));
             packet->data_len = length;
             packet->pkt_len = length;
             packet->nb_segs = 1;
@@ -1169,7 +1179,7 @@ int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &leng
 
     int ret;
     while (1) {
-        NIPX_LATENCY(ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle));
+        NIPX_LATENCY(catnip_latency, ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle));
         if (EAGAIN != ret) {
             break;
         }
