@@ -148,7 +148,6 @@ int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode) {
 
 int dmtr_free_mbuf(dmtr_sgarray_t *sga) {
     DMTR_NOTNULL(EINVAL, sga);
-    DMTR_NOTNULL(EINVAL, sga->mbuf);
 
     if (sga->mbuf == NULL) {
         free(sga->sga_buf);
