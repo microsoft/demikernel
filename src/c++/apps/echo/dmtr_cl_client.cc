@@ -58,7 +58,8 @@ std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::st
     return std::move(cr);
 }
 
-int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr) {
+int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr,
+                 hr_clock::time_point start_time, boost::chrono::seconds exp_t) {
     dmtr_qtoken_t token;
     /* Wait for an answer */
     su.ioqapi.pop(token, qfd);
@@ -68,7 +69,7 @@ int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr) {
     dmtr_qresult_t qr;
     int wait_rtn;
     while ((wait_rtn = su.wait(&qr, token)) == EAGAIN) {
-        if (terminate) { return ETIME; }
+        if (terminate || take_time() - start_time > exp_t) { return ETIME; }
     }
     assert(DMTR_OPC_POP == qr.qr_opcode);
     assert(qr.qr_value.sga.sga_numsegs == 1);
@@ -147,7 +148,6 @@ int main (int argc, char *argv[]) {
     }
 
     //FIXME this assumes that we always receive the request we just sent $pipeline ago
-    //Plus we will always ignore $pipeline - & responses
     dmtr_qtoken_t token;
     dmtr_sgarray_t sga;
     dmtr_qresult_t qr;
@@ -158,30 +158,24 @@ int main (int argc, char *argv[]) {
         requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
         sent_requests++;
 
-        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get());
-        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) {
+        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get(), start_time, duration_tp);
+        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
             break;
         }
-        if (wait_rtn == ETIME) {
-            break;
-        }
+        assert(wait_rtn == 0);
         rcv_requests++;
     }
 
+    std::cout << "Receving pipelined requests..." << std::endl;
     /* Now take 2 seconds to get pending requests */
     boost::chrono::seconds grace_tp(duration+2);
-    for (uint16_t i = 0; i < pipeline - 1; ++i) {
-        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get());
-        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) {
+    for (uint16_t i = 0; (i < pipeline - 1) && (take_time() - start_time <= grace_tp); ++i) {
+        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get(), start_time, grace_tp);
+        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
             break;
         }
-        if (wait_rtn == ETIME) {
-            break;
-        }
+        assert(wait_rtn == 0);
         rcv_requests++;
-        if (take_time() - start_time > grace_tp) {
-            break;
-        }
     }
 
     DMTR_OK(su.ioqapi.close(qfd));
