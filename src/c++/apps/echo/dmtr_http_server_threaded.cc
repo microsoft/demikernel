@@ -381,7 +381,6 @@ int http_work(struct parser_state *state, dmtr_qresult_t &wait_out,
 
 static void *http_worker(void *args) {
     std::shared_ptr<Worker> me = *static_cast<std::shared_ptr<Worker> *>(args);
-    //FIXME: the variables are not print, even if they are already set. OOO?
     printf("Hello I am HTTP worker %d running on core %d\n",
            me->whoami, me->core_id
     );
@@ -732,7 +731,7 @@ static void *net_worker(void *args) {
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
             if (wait_out.qr_opcode == DMTR_OPC_ACCEPT) {
-                log_debug("An accept task failed with connreset or aborted??");
+                log_warn("An accept task failed with ECONNRESET or ECONNABORTED");
             }
             if (clients_in_waiting[wait_out.qr_qd]) {
                 log_debug("Removing closed client connection from answerable list");
@@ -988,9 +987,10 @@ int main(int argc, char *argv[]) {
         }
         std::string uri;
         while (std::getline(urifile, uri)) {
-            FILE *file = fopen(uri.c_str(), "rb");
+            std::string full_uri = FILE_DIR + uri;
+            FILE *file = fopen(full_uri.c_str(), "rb");
             if (file == NULL) {
-                fprintf(stdout, "Failed to open '%s': %s\n", uri.c_str(), strerror(errno));
+                fprintf(stdout, "Failed to open '%s': %s\n", full_uri.c_str(), strerror(errno));
             } else {
                 // Get file size
                 fseek(file, 0, SEEK_END);
@@ -1005,7 +1005,7 @@ int main(int argc, char *argv[]) {
                     printf("fread() read less bytes than file's size\n");
                 }
                 //std::cout << "Read " << char_read << " Bytes " << std::endl;
-                uri_store.insert(std::pair<std::string, std::vector<char>>(uri, body));
+                uri_store.insert(std::pair<std::string, std::vector<char>>(full_uri, body));
             }
         }
     }
