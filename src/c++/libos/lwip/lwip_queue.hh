@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <map>
 #include <unordered_set>
+#include <iostream>
 
 class lwip_addr {
 public:
@@ -26,12 +27,10 @@ public:
 private:
     sockaddr_in addr;
     friend class lwip_queue;
-    friend bool operator==(const lwip_addr &a,
-                           const lwip_addr &b);
-    friend bool operator!=(const lwip_addr &a,
-                           const lwip_addr &b);
-    friend bool operator<(const lwip_addr &a,
-                          const lwip_addr &b);
+    friend bool operator==(const lwip_addr &a, const lwip_addr &b);
+    friend bool operator!=(const lwip_addr &a, const lwip_addr &b);
+    friend bool operator<(const lwip_addr &a, const lwip_addr &b);
+    friend std::ostream& operator<<(std::ostream &os, const lwip_addr &a);
 };
 
 class lwip_4tuple {
@@ -42,12 +41,10 @@ private:
     lwip_addr src_addr;
     lwip_addr dst_addr;
     friend class lwip_queue;
-    friend bool operator==(const lwip_4tuple &a,
-                           const lwip_4tuple &b);
-    friend bool operator!=(const lwip_4tuple &a,
-                           const lwip_4tuple &b);
-    friend bool operator<(const lwip_4tuple &a,
-                          const lwip_4tuple &b);
+    friend bool operator==(const lwip_4tuple &a, const lwip_4tuple &b);
+    friend bool operator!=(const lwip_4tuple &a, const lwip_4tuple &b);
+    friend bool operator<(const lwip_4tuple &a, const lwip_4tuple &b);
+    friend std::ostream& operator<<(std::ostream &os, const lwip_4tuple &t);
 };
 
 namespace dmtr {

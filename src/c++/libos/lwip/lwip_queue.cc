@@ -21,7 +21,6 @@
 #include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/sga.h>
-#include <iostream>
 #include <dmtr/libos/mem.h>
 #include <dmtr/libos/raii_guard.hh>
 #include <netinet/in.h>
@@ -168,6 +167,11 @@ operator<(const lwip_addr &a,
     return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) < 0);
 }
 
+std::ostream&
+operator<<(std::ostream &os, const lwip_addr &a) {
+    return os << inet_ntoa(a.addr.sin_addr) << ":" << htons(a.addr.sin_port);
+}
+
 lwip_4tuple::lwip_4tuple(const lwip_addr &src_addr,
                          const lwip_addr &dst_addr)
     : src_addr(src_addr), dst_addr(dst_addr) {}
@@ -197,6 +201,11 @@ operator<(const lwip_4tuple &a,
           const lwip_4tuple &b)
 {
     return (a.src_addr < b.src_addr || a.dst_addr < b.dst_addr);
+}
+
+std::ostream&
+operator<<(std::ostream &os, const lwip_4tuple &t) {
+    return os << t.src_addr << " : " << t.dst_addr;
 }
 
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
