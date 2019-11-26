@@ -776,7 +776,8 @@ int dmtr::lwip_queue::close() {
         DMTR_NOTNULL(EINVAL, my_push_thread);
         dmtr_sgarray_t sga;
         sga.sga_numsegs = 0xdeadbeef;
-        dmtr_qtoken_t token;
+        // We don't have access to the io queue api anymore, but need a token
+        dmtr_qtoken_t token = static_cast<uint64_t>(0xdeadbeef) | (static_cast<uint64_t>(qd()) << 32);
         DMTR_OK(new_task(token, DMTR_OPC_PUSH, sga));
         my_push_thread->enqueue(token);
 
