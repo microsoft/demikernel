@@ -68,7 +68,7 @@ class ClientRequest {
     public: uint32_t id; /** Request id */
 
     public: ClientRequest(char * const req, size_t req_size, uint32_t id): req(req), req_size(req_size), id(id) {}
-    public: ~ClientRequest() { free(req); }
+    //public: ~ClientRequest() { free(req); }
 };
 
 #if defined(DMTR_TRACE) || defined(LEGACY_PROFILING)
@@ -130,7 +130,6 @@ static inline bool validate_response(std::string &resp_str, bool check_content_l
     log_debug("Invalid response received: %s", resp_str.c_str());
     return false;
 }
-
 
 static inline void read_uris(std::vector<std::string> &requests_str, std::string &uri_list) {
     if (!uri_list.empty()) {
