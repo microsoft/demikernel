@@ -168,7 +168,8 @@ int main (int argc, char *argv[]) {
         rcv_requests++;
     }
 
-    /* Now listen for the number of pending requests */
+    /* Now take 2 seconds to get pending requests */
+    boost::chrono::seconds grace_tp(duration+2);
     for (uint16_t i = 0; i < pipeline - 1; ++i) {
         int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get());
         if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) {
@@ -178,6 +179,9 @@ int main (int argc, char *argv[]) {
             break;
         }
         rcv_requests++;
+        if (take_time() - start_time > grace_tp) {
+            break;
+        }
     }
 
     DMTR_OK(su.ioqapi.close(qfd));
