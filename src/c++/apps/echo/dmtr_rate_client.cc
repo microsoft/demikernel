@@ -200,9 +200,11 @@ int log_responses(uint32_t total_requests, int log_memq,
 #ifdef OP_DEBUG
     dump_pql(workers_pql[my_idx], log_dir, label);
 #endif
+#ifdef DMTR_TRACE
     if (f) {
         fclose(f);
     }
+#endif
 
     if (!expired) {
         log_info("Log thread %d exiting after having logged %d requests (%d invalid).",
