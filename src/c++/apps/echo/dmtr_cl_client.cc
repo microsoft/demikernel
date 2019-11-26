@@ -54,6 +54,7 @@ std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::st
 #ifdef DMTR_TRACE
     cr->reading = take_time();
 #endif
+    free(cr->req);
     return std::move(cr);
 }
 
