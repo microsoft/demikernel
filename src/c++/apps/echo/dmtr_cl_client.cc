@@ -64,7 +64,7 @@ int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr,
     /* Wait for an answer */
     su.ioqapi.pop(token, qfd);
 #ifdef DMTR_TRACE
-    cr.pop_token = token;
+    cr->pop_token = token;
 #endif
     dmtr_qresult_t qr;
     int wait_rtn;
@@ -74,13 +74,16 @@ int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr,
     assert(DMTR_OPC_POP == qr.qr_opcode);
     assert(qr.qr_value.sga.sga_numsegs == 1);
 #ifdef DMTR_TRACE
-    cr.completed = take_time();
+    cr->completed = take_time();
 #endif
     dmtr_free_mbuf(&qr.qr_value.sga);
     return wait_rtn;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
+#ifdef DMTR_TRACE
+    log_info("Starting Closed Loop client with DMTR_TRACE on");
+#endif
     /* Parse options */
     int duration;
     uint16_t pipeline;

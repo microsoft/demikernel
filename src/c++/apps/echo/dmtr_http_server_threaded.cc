@@ -107,9 +107,9 @@ static void file_work(char *url, char **response, int *response_len, uint32_t re
     char mime_type[MAX_MIME_TYPE];
     if (status != 0 || S_ISDIR(st.st_mode)) {
         if (status != 0) {
-            fprintf(stderr, "Failed to get status of requested file %s\n", filepath);
+            log_warn("Failed to get status of requested file %s\n", filepath);
         } else {
-            fprintf(stderr, "Directory requested (%s). Returning 404.\n", filepath);
+            log_warn("Directory requested (%s). Returning 404.\n", filepath);
         }
         strncpy(mime_type, "text/html", MAX_MIME_TYPE);
     } else {
@@ -915,6 +915,9 @@ std::shared_ptr<Worker> no_pthread_work_setup(Psp &psp) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef DMTR_TRACE
+    log_info("Starting HTTP application with DMTR_TRACE on");
+#endif
     bool no_pthread, no_split;
     bool split = true;
     std::string net_dispatch_pol;
