@@ -619,9 +619,7 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
              * (Likely counter example: the connection was closed by the client)
              */
             if (clients_in_waiting[req->net_qd] == false) {
-                /* Otherwise ignore this message and fetch the next one */
-                DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
-                tokens.push_back(token);
+                /* Otherwise ignore this message */
                 log_warn("Dropping obsolete message aimed towards closed connection");
                 free(wait_out.qr_value.sga.sga_segs[0].sgaseg_buf);
                 wait_out.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
