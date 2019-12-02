@@ -76,6 +76,7 @@ void default_onfail(int error_arg, const char *expr_arg,
         if (n < 1) {
             DMTR_PANIC("fprintf() failed.");
         }
+        dmtr_panic("Aborting the program.", filen_arg, lineno_arg);
     } else {
         n = fprintf(stderr, "[%d] FAIL (%d => %s) in %s, at %s, line %d: %s\n", tid, error_arg, err_msg,
                 fnn_arg, filen_arg, lineno_arg, expr_arg);
