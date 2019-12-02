@@ -1581,7 +1581,6 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         default:
             DMTR_FAIL(ret);
         case EAGAIN:
-        case ECONNABORTED: //FIXME: how are the co-routines stopped?
         case 0:
             break;
     }
