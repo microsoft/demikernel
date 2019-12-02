@@ -402,8 +402,6 @@ static void *http_worker(void *args) {
             if (me->psp_su->ioqapi.pop(token, me->shared_qfd)) {
                 log_info("POP FAILED");
             }
-        } else {
-            log_debug("dmtr_wait returned status %d", status);
         }
     }
     log_info("HTTP worker %d set to terminate", me->whoami);
@@ -445,6 +443,14 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
         tokens.push_back(token);
         log_debug("Accepted a new connection (%d) on %d", wait_out.qr_value.ares.qd, lqd);
     } else {
+        //FIXME for now this only works for push to HTTP shared queue (not net client queues)
+        if (wait_out.qr_opcode == DMTR_OPC_PUSH) {
+            /* Enable reading from HTTP result queue */
+            DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
+            tokens.push_back(token);
+            return 0;
+        }
+
         assert(DMTR_OPC_POP == wait_out.qr_opcode);
 
         auto it = std::find(
@@ -563,21 +569,10 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 /** Set Request obj last due to release */
                 req_sga.sga_segs[1].sgaseg_buf = reinterpret_cast<void *>(req.release());
 
-                log_debug("Scheduling request %d/%lu for send", *ridp, token);
+                //log_debug("Scheduling request %d/%lu for send", *ridp, token);
                 DMTR_OK(me->psp_su->ioqapi.push(token, dest_qfd, req_sga));
-                //FIXME we don't need to wait here.
-                int status;
-                while ((status = me->psp_su->wait(NULL, token)) == EAGAIN) {
-                    if (me->terminate) {
-                        return 0;
-                    }
-                    continue;
-                }
-                DMTR_TRUE(EINVAL, status == 0);
-
-                /* Enable reading from HTTP result queue */
-                DMTR_OK(me->psp_su->ioqapi.pop(token, dest_qfd));
                 tokens.push_back(token);
+
                 /* Re-enable NET queue for reading */
                 DMTR_OK(me->psp_su->ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
@@ -734,6 +729,14 @@ static void *net_worker(void *args) {
             if (clients_in_waiting[wait_out.qr_qd]) {
                 log_debug("Removing closed client connection from answerable list");
                 clients_in_waiting[wait_out.qr_qd] = false;
+                uint64_t qd = wait_out.qr_qd;
+                tokens.erase(
+                    std::remove_if(
+                        tokens.begin(), tokens.end(),
+                        [qd](dmtr_qtoken_t &t) -> bool { return (t >> 32) == qd; }
+                    ),
+                    tokens.end()
+                );
             }
             log_info("closing pseudo connection on %d", wait_out.qr_qd);
             me->psp_su->ioqapi.close(wait_out.qr_qd);
