@@ -523,7 +523,7 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                             break;
                     }
                 } else if (me->args.dispatch_p == ONE_TO_ONE) {
-                    dest_worker = psp.workers[me->whoami];
+                    dest_worker = psp.http_workers[me->whoami];
                 } else {
                     log_error("Non implemented network dispatch policy, falling back to RR");
                     dest_worker = psp.http_workers[me->num_rcvd % psp.http_workers.size()];
@@ -1012,6 +1012,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Set network dispatch policy */
+    log_info("HTTP server started with %s dispatch policy", net_dispatch_pol.c_str());
     if (net_dispatch_pol == "RR") {
         psp.net_dispatch_policy = RR;
     } else if (net_dispatch_pol == "HTTP_REQ_TYPE") {
@@ -1019,6 +1020,9 @@ int main(int argc, char *argv[]) {
         psp.net_dispatch_f = psp_get_req_type;
     } else if (net_dispatch_pol == "ONE_TO_ONE") {
         psp.net_dispatch_policy = ONE_TO_ONE;
+    } else {
+        log_error("Unknown dispatch policy.");
+        exit(1);
     }
 
     sigset_t mask, oldmask;

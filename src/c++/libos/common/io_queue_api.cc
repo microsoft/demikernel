@@ -276,6 +276,7 @@ int dmtr::io_queue_api::close(int qd) {
 
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
+
     int ret;
     ret = q->close();
     DMTR_OK(remove_queue(qd));
