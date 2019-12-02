@@ -355,6 +355,32 @@ void inline dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::s
         log_error("Failed to open %s for dumping traces: %s", filename, strerror(errno));
     }
 }
+
+template <typename T>
+void sample_into(std::vector<T> &from, std::vector<T>&to,
+                 bool(*lat_compare)(const T&, const T&),
+                 bool(*time_compare)(const T&, const T&),
+                 int n) {
+    std::sort(from.begin(), from.end(), lat_compare);
+    int spacing = from.size() / n;
+    if (spacing == 0) {
+        spacing = 1;
+    }
+    to.push_back(std::move(from[0]));
+    for (unsigned int i = spacing; i < from.size() - 1; i+=spacing) {
+        to.push_back(std::move(from[i]));
+    }
+    to.push_back(std::move(from[from.size() - 1]));
+    std::sort(to.begin(), to.end(), time_compare);
+}
+
+bool req_latency_sorter(const std::unique_ptr<ClientRequest> &a, const std::unique_ptr<ClientRequest> &b) {
+    return (a->completed - a->sending) < (b->completed - b->sending);
+}
+
+bool req_time_sorter(const std::unique_ptr<ClientRequest> &a, const std::unique_ptr<ClientRequest> &b) {
+    return a->sending < b->sending;
+}
 #endif
 
 #endif // APPS_H_

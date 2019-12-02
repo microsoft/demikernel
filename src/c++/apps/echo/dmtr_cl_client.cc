@@ -9,6 +9,8 @@
 
 #include "app.hh"
 
+#define DOWNSAMPLE
+
 /*
  * This client sends requests in a closed loop.
  * It takes a list of URI from the command line, and will loop over it until $duration expires
@@ -139,7 +141,7 @@ int main(int argc, char *argv[]) {
     log_info("Running for %lu", duration_tp.count());
 
     std::vector<std::unique_ptr<ClientRequest> > requests;
-    requests.reserve(1000000); //XXX
+    requests.reserve(10000000); //XXX
     int resp_idx = 0;
 
     uint32_t sent_requests = 0;
@@ -194,7 +196,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+#ifdef DOWNSAMPLE
+    std::vector<std::unique_ptr<ClientRequest>> filtered_reqs;
+    sample_into(requests, filtered_reqs, req_latency_sorter, req_time_sorter, 100000);
+    for (auto &req: filtered_reqs) {
+#else
     for (auto &req: requests) {
+#endif
         fprintf(
             f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
             req->id,
