@@ -44,7 +44,7 @@ int PspServiceUnit::wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *rea
 #endif
             int ret = ioqapi.poll(qr_out, qts[i]);
             if (ret != EAGAIN) {
-                if (ret == 0 || ret == ECONNABORTED) {
+                if (ret == 0 || ret == ECONNABORTED || ret == ECONNRESET) {
                     DMTR_OK(ioqapi.drop(qts[i]));
 #if DMTR_PROFILE
                     auto now = take_time();
