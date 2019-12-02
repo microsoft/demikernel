@@ -61,6 +61,7 @@ class lwip_queue : public io_queue {
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
+    private: static std::map<lwip_4tuple, int> our_4tuple_to_qd;
     private: static std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct rte_ether_addr> our_ip_to_mac_table;

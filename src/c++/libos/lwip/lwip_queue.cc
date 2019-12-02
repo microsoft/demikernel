@@ -621,6 +621,7 @@ int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
     return 0;
 }
 
+std::map<lwip_4tuple, int> dmtr::lwip_queue::our_4tuple_to_qd;
 int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EINVAL, good());
     DMTR_TRUE(EINVAL, my_listening_flag);
@@ -641,9 +642,9 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         DMTR_NOTNULL(EINVAL, new_lq);
 
         while (my_recv_queue.empty()) {
-            if (service_incoming_packets() == EAGAIN ||
-                my_recv_queue.empty())
+            if (service_incoming_packets() == EAGAIN || my_recv_queue.empty()) {
                 yield();
+            }
         }
 
         dmtr_sgarray_t &sga = my_recv_queue.front();
@@ -652,12 +653,14 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         lwip_4tuple tup = lwip_4tuple(lwip_addr(src), lwip_addr(boost::get(my_bound_src)));
 
         /* In some cases, e.g. when the first packets are received in batch by rte_eth_rx_burst()
-         * the accept queue will be filled with multiple packets from the same source */
-        auto it = our_recv_queues.find(tup);
-        if (it != our_recv_queues.end()) {
-            it->second->push(sga);
+         * the accept queue will be filled with multiple packets from the same source. */
+        if (insert_recv_queue(tup, sga)) {
+            // If this mapping exist, we must have the following one
+            int qd = our_4tuple_to_qd.find(tup)->second;
+            DMTR_OK(t->complete(0, qd, src, sizeof(src)));
             my_recv_queue.pop();
-            return 0;
+            std::cout << "Received 'connect' packet on an already accepted tuple " << std::endl;
+            continue;
         }
 
         new_lq->my_bound_src = my_bound_src;
@@ -669,6 +672,7 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         new_lq->start_threads();
         DMTR_OK(t->complete(0, new_lq->qd(), src, sizeof(src)));
         my_recv_queue.pop();
+        our_4tuple_to_qd.insert(std::pair<lwip_4tuple, int>(tup, new_lq->qd()));
         yield();
     }
 
@@ -1338,7 +1342,6 @@ dmtr::lwip_queue::service_incoming_packets() {
         // check the packet header
 
         bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
-        //rte_pktmbuf_free(pkts[i]);
 
         if (valid_packet) {
             lwip_4tuple packet_tuple = lwip_4tuple(lwip_addr(src), lwip_addr(dst));
