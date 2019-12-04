@@ -60,14 +60,12 @@ std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::st
     return std::move(cr);
 }
 
-int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr,
+int recv_request(PspServiceUnit &su, int qfd,
+                 std::unordered_map<uint32_t, std::unique_ptr<ClientRequest> > &requests,
                  hr_clock::time_point start_time, boost::chrono::seconds exp_t) {
     dmtr_qtoken_t token;
     /* Wait for an answer */
     su.ioqapi.pop(token, qfd);
-#ifdef DMTR_TRACE
-    cr->pop_token = token;
-#endif
     dmtr_qresult_t qr;
     int wait_rtn;
     while ((wait_rtn = su.wait(&qr, token)) == EAGAIN) {
@@ -75,8 +73,14 @@ int recv_request(PspServiceUnit &su, int qfd, ClientRequest *cr,
     }
     assert(DMTR_OPC_POP == qr.qr_opcode);
     assert(qr.qr_value.sga.sga_numsegs == 1);
+    uint32_t * const ridp = static_cast<uint32_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf);
+    auto cr = requests.find(*ridp);
+    if (cr == requests.end()) {
+        log_error("Received response to unregistered request!!");
+    }
 #ifdef DMTR_TRACE
-    cr->completed = take_time();
+    cr->second->pop_token = token;
+    cr->second->completed = take_time();
 #endif
     dmtr_free_mbuf(&qr.qr_value.sga);
     return wait_rtn;
@@ -140,30 +144,25 @@ int main(int argc, char *argv[]) {
     boost::chrono::seconds duration_tp(duration);
     log_info("Running for %lu", duration_tp.count());
 
-    std::vector<std::unique_ptr<ClientRequest> > requests;
+    std::unordered_map<uint32_t, std::unique_ptr<ClientRequest> > requests;
     requests.reserve(10000000); //XXX
-    int resp_idx = 0;
 
     uint32_t sent_requests = 0;
     uint32_t rcv_requests = 0;
     for (int i = 0; i < pipeline - 1; i++) {
         std::string request_str = requests_str[sent_requests % requests_str.size()];
-        requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
+        requests[sent_requests] = std::move(send_request(su, qfd, request_str, sent_requests));
         sent_requests++;
     }
 
-    //FIXME this assumes that we always receive the request we just sent $pipeline ago
-    dmtr_qtoken_t token;
-    dmtr_sgarray_t sga;
-    dmtr_qresult_t qr;
     hr_clock::time_point start_time = take_time();
     while (take_time() - start_time < duration_tp) {
         /* Pick a request, craft it, prepare the SGA */
         std::string request_str = requests_str[sent_requests % requests_str.size()];
-        requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
+        requests[sent_requests] = std::move(send_request(su, qfd, request_str, sent_requests));
         sent_requests++;
 
-        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get(), start_time, duration_tp);
+        int wait_rtn = recv_request(su, qfd, requests, start_time, duration_tp);
         if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
             break;
         }
@@ -175,7 +174,7 @@ int main(int argc, char *argv[]) {
     /* Now take 2 seconds to get pending requests */
     boost::chrono::seconds grace_tp(duration+2);
     for (uint16_t i = 0; (i < pipeline - 1) && (take_time() - start_time <= grace_tp); ++i) {
-        int wait_rtn = recv_request(su, qfd, requests[resp_idx++].get(), start_time, grace_tp);
+        int wait_rtn = recv_request(su, qfd, requests, start_time, grace_tp);
         if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
             break;
         }
@@ -197,6 +196,7 @@ int main(int argc, char *argv[]) {
     }
 
 #ifdef DOWNSAMPLE
+    //FIXME: this is not updated to support new unordered map
     std::vector<std::unique_ptr<ClientRequest>> filtered_reqs;
     sample_into(requests, filtered_reqs, req_latency_sorter, req_time_sorter, 100000);
     for (auto &req: filtered_reqs) {
@@ -205,12 +205,12 @@ int main(int argc, char *argv[]) {
 #endif
         fprintf(
             f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\n",
-            req->id,
-            since_epoch(req->sending),
-            since_epoch(req->reading),
-            since_epoch(req->completed),
-            req->push_token,
-            req->pop_token
+            req.second->id,
+            since_epoch(req.second->sending),
+            since_epoch(req.second->reading),
+            since_epoch(req.second->completed),
+            req.second->push_token,
+            req.second->pop_token
         );
     }
 
