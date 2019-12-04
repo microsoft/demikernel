@@ -12,12 +12,12 @@
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 #include <iostream>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <unistd.h>

@@ -3,10 +3,10 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 #include <dmtr/annot.h>
-#include <dmtr/libos/io_queue.hh>
-#include <dmtr/libos/memory_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
+#include <dmtr/libos/io/memory_queue.hh>
 #include "posix_queue.hh"
 
 int PspServiceUnit::init(int argc, char *argv[]) {

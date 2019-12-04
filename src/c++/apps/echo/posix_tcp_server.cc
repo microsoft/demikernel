@@ -14,7 +14,7 @@
 #include <dmtr/latency.h>
 #include <fcntl.h>
 #include <iostream>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>

@@ -3,11 +3,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include <dmtr/libos/rdma/rdmacm_router.hh>
+#include <dmtr/libos/io/rdma/rdmacm_router.hh>
 
 #include <dmtr/annot.h>
-#include <dmtr/libos/io_queue.hh>
-#include <dmtr/libos/raii_guard.hh>
+#include <dmtr/libos/io/io_queue.hh>
+#include <dmtr/raii_guard.hh>
 #include <iostream>
 
 dmtr::rdmacm_router::rdmacm_router(struct rdma_event_channel &channel) :

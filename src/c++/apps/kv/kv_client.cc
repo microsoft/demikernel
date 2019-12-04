@@ -10,8 +10,8 @@
 #include <boost/program_options.hpp>
 
 #include <dmtr/time.hh>
-#include <dmtr/libos/persephone.hh>
-#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/io/persephone.hh>
+#include <dmtr/libos/io/io_queue.hh>
 
 #include "common.hh"
 #include "logging.h"
@@ -185,7 +185,6 @@ int main (int argc, char *argv[]) {
         requests.push_back(std::move(send_request(su, qfd, request_str, sent_requests)));
         sent_requests++;
     }
-
 
     dmtr_qtoken_t token;
     dmtr_qresult_t qr;

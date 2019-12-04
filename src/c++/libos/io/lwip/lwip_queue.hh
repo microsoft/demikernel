@@ -5,7 +5,7 @@
 #define DMTR_LIBOS_LWIP_QUEUE_HH_IS_INCLUDED
 
 #include <boost/optional.hpp>
-#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
 #include <memory>
 #include <netinet/in.h>
 #include <queue>

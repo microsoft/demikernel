@@ -7,11 +7,11 @@
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
 #include <dmtr/sga.h>
-#include <dmtr/libos/io_queue_api.hh>
+#include <dmtr/libos/io/io_queue_api.hh>
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
-#include <dmtr/libos/mem.h>
-#include <dmtr/libos/raii_guard.hh>
+#include <dmtr/mem.h>
+#include <dmtr/raii_guard.hh>
 #include <cassert>
 #include <cerrno>
 #include <climits>

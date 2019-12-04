@@ -12,7 +12,7 @@
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
 #include <dmtr/annot.h>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <string.h>
 #include <stdio.h>
 #include <yaml-cpp/yaml.h>

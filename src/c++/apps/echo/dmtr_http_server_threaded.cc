@@ -27,9 +27,9 @@
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
-#include <dmtr/libos/mem.h>
-#include <dmtr/libos/io_queue.hh>
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/mem.h>
+#include <dmtr/libos/io/io_queue.hh>
+#include <dmtr/libos/io/persephone.hh>
 
 #define MAX_CLIENTS 64
 

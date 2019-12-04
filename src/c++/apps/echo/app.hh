@@ -9,7 +9,7 @@
 #include <memory>
 #include <fstream>
 
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 
 #define MAX_REQ_STATES 10000000
 #define MAX_REQUEST_SIZE 4192

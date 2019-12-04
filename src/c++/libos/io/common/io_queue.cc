@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
 
 #include <cerrno>
 #include <dmtr/annot.h>

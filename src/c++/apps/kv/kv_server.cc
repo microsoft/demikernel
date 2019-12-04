@@ -9,7 +9,7 @@
 #include <boost/program_options.hpp>
 
 #include <dmtr/libos.h>
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 
 #include "PspWorker.hh"
 #include "common.hh"
@@ -42,7 +42,7 @@ bool time_cmp(const RequestTimes &a, const RequestTimes &b) {
     return (a.entry) < (b.entry);
 }
 
-void to_request_times(std::vector<hr_clock::time_point> entries, 
+void to_request_times(std::vector<hr_clock::time_point> entries,
                       std::vector<hr_clock::time_point> exits,
                       std::vector<RequestTimes> out) {
     std::vector<RequestTimes> tmp;

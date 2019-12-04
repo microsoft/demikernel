@@ -6,7 +6,7 @@
 #ifndef DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 #define DMTR_LIBOS_POSIX_QUEUE_HH_IS_INCLUDED
 
-#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
 #include <memory>
 #include <queue>
 #include <sys/socket.h>

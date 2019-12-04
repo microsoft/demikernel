@@ -14,7 +14,7 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>

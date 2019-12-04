@@ -21,8 +21,8 @@
 #include <dmtr/time.hh>
 #include <dmtr/libos.h>
 #include <dmtr/sga.h>
-#include <dmtr/libos/mem.h>
-#include <dmtr/libos/raii_guard.hh>
+#include <dmtr/mem.h>
+#include <dmtr/raii_guard.hh>
 #include <netinet/in.h>
 #include <rte_ether.h>
 #include <rte_common.h>

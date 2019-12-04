@@ -7,8 +7,8 @@
 #define DMTR_LIBOS_RDMA_QUEUE_HH_IS_INCLUDED
 
 #include <boost/chrono.hpp>
-#include <dmtr/libos/io_queue.hh>
-#include <dmtr/libos/rdma/rdmacm_router.hh>
+#include <dmtr/libos/io/io_queue.hh>
+#include <dmtr/libos/io/rdma/rdmacm_router.hh>
 #include <memory>
 #include <queue>
 #include <rdma/rdma_cma.h>

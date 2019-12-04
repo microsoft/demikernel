@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include <dmtr/libos/io_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
 
 #include "app.hh"
 

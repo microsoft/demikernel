@@ -11,7 +11,7 @@
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
 #include <dmtr/libos.h>
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 
 #define WAIT_MAX_ITER 10000
 

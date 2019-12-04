@@ -10,7 +10,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/types.h>
 #include <dmtr/latency.h>
-#include <dmtr/libos/user_thread.hh>
+#include <dmtr/libos/io/user_thread.hh>
 #include <memory>
 #include <iostream>
 #include <sys/socket.h>

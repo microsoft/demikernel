@@ -3,10 +3,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include <dmtr/libos/memory_queue.hh>
+#include <dmtr/libos/io/memory_queue.hh>
 
 #include <dmtr/annot.h>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <iostream>
 
 dmtr::memory_queue::memory_queue(int qd) :

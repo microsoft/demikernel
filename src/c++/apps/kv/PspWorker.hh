@@ -1,7 +1,7 @@
 #ifndef PSP_WORKER_H_
 #define PSP_WORKER_H_
 
-#include <dmtr/libos/persephone.hh>
+#include <dmtr/libos/io/persephone.hh>
 #include <thread>
 
 class PspWorker {

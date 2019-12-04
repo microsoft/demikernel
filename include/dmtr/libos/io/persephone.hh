@@ -4,10 +4,10 @@
 #include <dmtr/annot.h>
 #include <dmtr/fail.h>
 #include <dmtr/sys/gcc.h>
-#include <dmtr/libos/io_queue_api.hh>
+#include <dmtr/libos/io/io_queue_api.hh>
 #include <dmtr/libos.h>
-#include <dmtr/libos/io_queue.hh>
-#include <dmtr/libos/shared_queue.hh>
+#include <dmtr/libos/io/io_queue.hh>
+#include <dmtr/libos/io/shared_queue.hh>
 
 class PspServiceUnit {
     public: dmtr::io_queue_api ioqapi;

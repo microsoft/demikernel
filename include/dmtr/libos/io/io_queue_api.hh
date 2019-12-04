@@ -8,7 +8,7 @@
 
 #include "io_queue.hh"
 #include "io_queue_factory.hh"
-#include <dmtr/libos/shared_queue.hh>
+#include <dmtr/libos/io/shared_queue.hh>
 #include <boost/atomic.hpp>
 #include <dmtr/annot.h>
 #include <mutex>

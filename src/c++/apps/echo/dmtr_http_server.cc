@@ -9,7 +9,7 @@
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
 #include <iostream>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <unistd.h>

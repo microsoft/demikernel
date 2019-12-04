@@ -3,10 +3,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include <dmtr/libos/shared_queue.hh>
+#include <dmtr/libos/io/shared_queue.hh>
 
 #include <dmtr/annot.h>
-#include <dmtr/libos/mem.h>
+#include <dmtr/mem.h>
 #include <iostream>
 
 dmtr::shared_queue::shared_queue(int qd) :

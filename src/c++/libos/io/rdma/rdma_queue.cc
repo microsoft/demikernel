@@ -15,8 +15,8 @@
 #include <dmtr/sga.h>
 #include <hoard/zeusrdma.h>
 #include <iostream>
-#include <dmtr/libos/mem.h>
-#include <dmtr/libos/raii_guard.hh>
+#include <dmtr/mem.h>
+#include <dmtr/raii_guard.hh>
 #include <netinet/tcp.h>
 #include <rdma/rdma_verbs.h>
 #include <sys/uio.h>
