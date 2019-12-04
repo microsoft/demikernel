@@ -688,6 +688,7 @@ static void *net_worker(void *args) {
     struct sockaddr_in saddr = me->args.saddr;
     if (me->psp_su->ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr))) {
         log_error("Binding failed");
+        exit(1);
     }
     me->psp_su->ioqapi.listen(lqd, 100);
     me->psp_su->ioqapi.accept(token, lqd);
