@@ -485,18 +485,18 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                 log_info("received: %d requests\n", me->num_rcvd);
             }
             */
+            std::string req_str(reinterpret_cast<const char *>(
+                wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
+            ) +  sizeof(uint32_t));
+            req->type = me->args.dispatch_f(req_str);
             if (me->args.split) {
                 /* Load balance incoming requests among HTTP workers */
                 std::shared_ptr<Worker> dest_worker;
                 if (me->args.dispatch_p == RR) {
                     dest_worker = psp.http_workers[me->num_rcvd % psp.http_workers.size()];
                 } else if (me->args.dispatch_p == HTTP_REQ_TYPE) {
-                    std::string req_str(reinterpret_cast<const char *>(
-                        wait_out.qr_value.sga.sga_segs[0].sgaseg_buf
-                    ) +  sizeof(uint32_t));
-                    enum req_type type = me->args.dispatch_f(req_str);
                     size_t index;
-                    switch (type) {
+                    switch (req->type) {
                         default:
                         case ALL:
                         case UNKNOWN:
@@ -504,30 +504,27 @@ int net_work(std::vector<int> &http_q_pending, std::vector<bool> &clients_in_wai
                             log_error("Unknown request type");
                             break;
                         case REGEX:
-                            check_availability(type, psp.regex_workers);
-                            index = me->type_counts[REGEX] % psp.regex_workers.size();
+                            check_availability(req->type, psp.regex_workers);
+                            index = me->type_counts[req->type] % psp.regex_workers.size();
                             dest_worker = psp.regex_workers[index];
-                            me->type_counts[REGEX]++;
                             break;
                         case PAGE:
-                            check_availability(type, psp.page_workers);
-                            index = me->type_counts[PAGE] % psp.page_workers.size();
+                            check_availability(req->type, psp.page_workers);
+                            index = me->type_counts[req->type] % psp.page_workers.size();
                             dest_worker = psp.page_workers[index];
-                            me->type_counts[PAGE]++;
                             break;
                         case POPULAR_PAGE:
-                            check_availability(type, psp.popular_page_workers);
-                            index = me->type_counts[POPULAR_PAGE] % psp.popular_page_workers.size();
+                            check_availability(req->type, psp.popular_page_workers);
+                            index = me->type_counts[req->type] % psp.popular_page_workers.size();
                             dest_worker = psp.popular_page_workers[index];
-                            me->type_counts[POPULAR_PAGE]++;
                             break;
                         case UNPOPULAR_PAGE:
-                            check_availability(type, psp.unpopular_page_workers);
-                            index = me->type_counts[UNPOPULAR_PAGE] % psp.unpopular_page_workers.size();
+                            check_availability(req->type, psp.unpopular_page_workers);
+                            index = me->type_counts[req->type] % psp.unpopular_page_workers.size();
                             dest_worker = psp.unpopular_page_workers[index];
-                            me->type_counts[UNPOPULAR_PAGE]++;
                             break;
                     }
+                    me->type_counts[req->type]++;
                 } else if (me->args.dispatch_p == ONE_TO_ONE) {
                     dest_worker = psp.http_workers[me->whoami];
                 } else {
@@ -1016,11 +1013,11 @@ int main(int argc, char *argv[]) {
 
     /* Set network dispatch policy */
     log_info("HTTP server started with %s dispatch policy", net_dispatch_pol.c_str());
+    psp.net_dispatch_f = psp_get_req_type;
     if (net_dispatch_pol == "RR") {
         psp.net_dispatch_policy = RR;
     } else if (net_dispatch_pol == "HTTP_REQ_TYPE") {
         psp.net_dispatch_policy = HTTP_REQ_TYPE;
-        psp.net_dispatch_f = psp_get_req_type;
     } else if (net_dispatch_pol == "ONE_TO_ONE") {
         psp.net_dispatch_policy = ONE_TO_ONE;
     } else {

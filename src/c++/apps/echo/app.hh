@@ -21,12 +21,21 @@
  *****************************************************************/
 
 enum req_type {
-    UNKNOWN,
+    UNKNOWN = 0,
     ALL,
     REGEX,
     PAGE,
     POPULAR_PAGE,
     UNPOPULAR_PAGE,
+};
+
+const char *req_type_str[] = {
+    "UNKNOWN",
+    "ALL",
+    "REGEX",
+    "PAGE",
+    "POPULAR_PAGE",
+    "UNPOPULAR_PAGE"
 };
 
 enum dispatch_policy { RR, HTTP_REQ_TYPE, ONE_TO_ONE };
@@ -135,6 +144,7 @@ static inline void read_uris(std::vector<std::string> &requests_str, std::string
     if (!uri_list.empty()) {
         /* Loop-over URI file to create requests */
         std::ifstream urifile(uri_list.c_str());
+        //FIXME: this does not complain when we give a directory, rather than a file
         if (urifile.bad() || !urifile.is_open()) {
             log_error("Failed to open uri list file");
             exit(1);
@@ -337,12 +347,12 @@ void inline dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::s
     if (f) {
         fprintf(
             f,
-            "REQ_ID\tNET_RECEIVE\tHTTP_DISPATCH\tSTART_HTTP\tEND_HTTP\tHTTP_DONE\tNET_SEND\tPUSH_TOKEN\tPOP_TOKEN\n"
+            "REQ_ID\tREQ_TYPE\tNET_RECEIVE\tHTTP_DISPATCH\tSTART_HTTP\tEND_HTTP\tHTTP_DONE\tNET_SEND\tPUSH_TOKEN\tPOP_TOKEN\n"
         );
         for (auto &r: w->req_states) {
             fprintf(
-                f, "%d\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
-                r->id,
+                f, "%d\t%s\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%lu\n",
+                r->id, req_type_str[r->type],
                 since_epoch(r->net_receive), since_epoch(r->http_dispatch),
                 since_epoch(r->start_http), since_epoch(r->end_http),
                 since_epoch(r->http_done), since_epoch(r->net_send),
