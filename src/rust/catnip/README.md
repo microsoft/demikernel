@@ -1,5 +1,3 @@
-[![alt text](./astrocat-small.jpg "Astro-cat")](https://io9.gizmodo.com/my-god-its-full-of-cats-the-very-best-artwork-of-cats-1676879337?utm_campaign=socialflow_io9_facebook&utm_source=io9_facebook&utm_medium=socialflow)
-
 catnip
 =======
 

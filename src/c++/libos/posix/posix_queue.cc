@@ -39,6 +39,7 @@ dmtr::posix_queue::posix_queue(int qd, io_queue::category_id cid) :
     my_peer_saddr(NULL)
 {}
 
+#if DMTR_PROFILE
 int dmtr::posix_queue::alloc_latency()
 {
     if (NULL == read_latency) {
@@ -60,6 +61,7 @@ int dmtr::posix_queue::alloc_latency()
     }
     return 0;
 }
+#endif
 
 int dmtr::posix_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
 #if DMTR_PROFILE
