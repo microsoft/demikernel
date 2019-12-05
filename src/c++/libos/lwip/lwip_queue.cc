@@ -320,7 +320,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
 
     bpo::variables_map vm;
-    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+    bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
     bpo::notify(vm);
 
     if (vm.count("help")) {
