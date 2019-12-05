@@ -63,7 +63,7 @@ class dpdk_catnip_queue : public io_queue {
     private: static int init_dpdk(int argc, char *argv[]);
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
-    private: static int print_ether_addr(FILE *f, struct ether_addr &eth_addr);
+    private: static int print_ether_addr(FILE *f, struct rte_ether_addr &eth_addr);
     private: static int print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link = NULL);
     private: static int wait_for_link_status_up(uint16_t port_id);
     private: static int init_catnip();
@@ -101,7 +101,7 @@ class dpdk_catnip_queue : public io_queue {
     private: static int log_packet(const uint8_t *bytes, size_t length, const struct timeval &tv);
     private: static void signal_handler(int signo);
 
-    private: static int rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr);
+    private: static int rte_eth_macaddr_get(uint16_t port_id, struct rte_ether_addr &mac_addr);
     private: static int rte_eth_rx_burst(size_t &count_out, uint16_t port_id, uint16_t queue_id, struct rte_mbuf **rx_pkts, const uint16_t nb_pkts);
     private: static int rte_eth_tx_burst(size_t &count_out, uint16_t port_id,uint16_t queue_id, struct rte_mbuf **tx_pkts, uint16_t nb_pkts);
     private: static int rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_mempool * const mp);
