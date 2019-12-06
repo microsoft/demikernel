@@ -275,7 +275,7 @@ class Worker {
 #endif
 };
 
-class Psp {
+class PspApp {
     public: std::unordered_map<
                 enum req_type,
                 std::pair<std::vector<std::shared_ptr<Worker> > *, uint16_t>
@@ -301,7 +301,7 @@ class Psp {
 };
 
 //TODO this should be a class member function of Psp
-std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index,
+std::shared_ptr<Worker> create_http_worker(PspApp &psp, bool typed, enum req_type type, uint16_t index,
                                            dmtr::shared_item *producer_si, dmtr::shared_item *consumer_si);
 
 /***********************************
@@ -309,7 +309,7 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
  ***********************************/
 
 #ifdef LEGACY_PROFILING
-void inline dump_latencies(Worker &worker, std::string &log_dir, std::string &label) {
+void inline dump_latencies(Worker &worker, std::string &label) {
     log_debug("Dumping latencies for worker %d on core %d\n", worker.whoami, worker.core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;
@@ -336,7 +336,7 @@ void inline dump_latencies(Worker &worker, std::string &log_dir, std::string &la
 #endif
 
 #ifdef DMTR_TRACE
-void inline dump_traces(std::shared_ptr<Worker > w, std::string &log_dir, std::string &label) {
+void inline dump_traces(std::shared_ptr<Worker > w, std::string &label) {
     log_debug("Dumping traces for worker %d on core %d", w->whoami, w->core_id);
     char filename[MAX_FILE_PATH_LEN];
     FILE *f = NULL;

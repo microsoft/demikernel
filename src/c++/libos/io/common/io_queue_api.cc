@@ -9,6 +9,7 @@
 #include <dmtr/libos.h>
 #include <dmtr/libos/io/memory_queue.hh>
 #include <dmtr/libos/io/shared_queue.hh>
+#include <dmtr/libos/persephone.hh>
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
@@ -22,25 +23,21 @@ dmtr::io_queue_api::io_queue_api() :
 dmtr::io_queue_api::~io_queue_api()
 {}
 
-std::string dmtr_log_directory;
-
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
     DMTR_NULL(EINVAL, newobj_out);
 
     newobj_out = new io_queue_api();
 
     if (argc > 0) {
-        std::string log_directory;
         namespace po = boost::program_options;
         po::options_description desc{"IO queue API options"};
         desc.add_options()
-            ("log-dir,L", po::value<std::string>(&log_directory)->default_value("./"), "Log directory");
+            ("log-dir,L", po::value<std::string>(&log_dir)->default_value("./"), "Log directory");
         po::variables_map vm;
         po::parsed_options parsed =
             po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
         po::store(parsed, vm);
         po::notify(vm);
-        dmtr_log_directory = log_directory;
     }
 
     return 0;

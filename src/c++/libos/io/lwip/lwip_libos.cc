@@ -12,11 +12,38 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <rte_mempool.h>
 #include <rte_mbuf.h>
+#include <rte_ether.h>
 
 #include <memory>
 
 static std::unique_ptr<dmtr::io_queue_api> ioq_api;
+
+
+int dmtr_net_init(const char *app_cfg)
+{
+    DMTR_OK(dmtr::lwip_queue::net_init(app_cfg));
+    return 0;
+}
+
+int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uint32_t n_rx_rings)
+{
+    if (!::rte_eth_dev_is_valid_port(port_id)) {
+        std::cerr << "Network interface " << port_id << " is not valid for this program." << std::endl;
+        return 1;
+    }
+    DMTR_OK(dmtr::lwip_queue::init_dpdk_port(
+        port_id, *static_cast<struct rte_mempool *>(mempool), n_tx_rings, n_rx_rings)
+    );
+    return 0;
+}
+
+int dmtr_net_mempool_init(void **mempool_out, uint8_t numa_socket_id)
+{
+    DMTR_OK(dmtr::lwip_queue::net_mempool_init(*mempool_out, numa_socket_id));
+    return 0;
+}
 
 int dmtr_init(int argc, char *argv[])
 {

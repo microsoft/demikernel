@@ -687,9 +687,9 @@ int main(int argc, char **argv) {
     std::string log_file;
     std::string store_log_file;
     if (opts.record_latencies)
-        log_file = opts.common.log_dir + "/net_traces";
+        log_file = log_dir + "/net_traces";
     if (opts.record_store_latencies)
-        store_log_file = opts.common.log_dir + "/store_traces";
+        store_log_file = log_dir + "/store_traces";
 
     NetWorker n = NetWorker(addr, choice_fn, log_file, argc, argv);
 

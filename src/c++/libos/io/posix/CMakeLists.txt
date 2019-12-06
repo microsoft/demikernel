@@ -16,6 +16,6 @@ endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 # `dmtr_queue` get exported from the resulting shared object. object
 # files are normally culled if none of their symbols are referenced.
 # todo: is this still necessary?
-target_link_libraries(dmtr-libos-posix "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
+target_link_libraries(dmtr-libos-posix "-Wl,--whole-archive" dmtr-libos-io-common "-Wl,--no-whole-archive")
 
 target_link_libraries(dmtr-libos-posix boost_context dmtr-latency)

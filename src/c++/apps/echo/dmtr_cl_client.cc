@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     /* Parse options */
     int duration;
     uint16_t pipeline;
-    std::string uri_list, label, log_dir, remote_host;
+    std::string uri_list, label, remote_host;
     namespace po = boost::program_options;
     po::options_description desc{"Rate client options"};
     desc.add_options()
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
              sent_requests, rcv_requests, sent_requests - rcv_requests);
 
 #ifdef DMTR_TRACE
-    FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
+    FILE *f = fopen(generate_log_file_path(label, "traces").c_str(), "w");
     if (f) {
         fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
     } else {

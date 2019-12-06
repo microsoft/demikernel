@@ -30,6 +30,7 @@
 #include <dmtr/mem.h>
 #include <dmtr/libos/io/io_queue.hh>
 #include <dmtr/libos/io/persephone.hh>
+#include <dmtr/libos/persephone.hh>
 
 #define MAX_CLIENTS 64
 
@@ -41,11 +42,11 @@ uint16_t cpu_offset = 4;
 bool no_op;
 uint32_t no_op_time;
 
-std::string label, log_dir;
+std::string label;
 std::string uris_list;
 std::unordered_map<std::string, std::vector<char>> uri_store;
 
-Psp psp;
+PspApp psp;
 
 void sig_handler(int signo) {
     printf("Entering signal handler\n");
@@ -766,7 +767,7 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-int work_setup(Psp &psp, bool split) {
+int work_setup(PspApp &psp, bool split) {
     /* Aggregate types map */
     psp.types_map[REGEX] = std::pair(&psp.regex_workers, psp.n_regex_workers);
     psp.types_map[PAGE] = std::pair(&psp.page_workers, psp.n_page_workers);
@@ -856,7 +857,7 @@ int work_setup(Psp &psp, bool split) {
     return 0;
 }
 
-std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type type, uint16_t index,
+std::shared_ptr<Worker> create_http_worker(PspApp &psp, bool typed, enum req_type type, uint16_t index,
                                            dmtr::shared_item *producer_si, dmtr::shared_item *consumer_si) {
     std::shared_ptr<Worker> worker(new Worker());
     worker->type = HTTP;
@@ -884,7 +885,7 @@ std::shared_ptr<Worker> create_http_worker(Psp &psp, bool typed, enum req_type t
     return worker;
 }
 
-std::shared_ptr<Worker> no_pthread_work_setup(Psp &psp) {
+std::shared_ptr<Worker> no_pthread_work_setup(PspApp &psp) {
     std::shared_ptr<Worker> worker(new Worker());
     worker->whoami = 0;
     worker->args.split = false;
@@ -937,7 +938,6 @@ int main(int argc, char *argv[]) {
         ("net-dispatch-policy", value<std::string>(&net_dispatch_pol)->default_value("RR"), "dispatch policy used by the network component")
         ("uris-list", value<std::string>(&uris_list)->default_value(""), "URIs to load in memory");
     parse_args(argc, argv, true, desc);
-    dmtr_log_directory = log_dir;
 
     g_argc = argc;
     g_argv = argv;
@@ -1062,14 +1062,14 @@ int main(int argc, char *argv[]) {
             }
             log_debug("Joined worker %d", w->whoami);
 #ifdef LEGACY_PROFILING
-            dump_latencies(*w, log_dir, label);
+            dump_latencies(*w, label);
 #endif
 #ifdef OP_DEBUG
-            dump_pql(&w->pql, log_dir, label);
+            dump_pql(&w->pql, label);
 #endif
 #ifdef DMTR_TRACE
             if (w->type == NET) {
-                dump_traces(w, log_dir, label);
+                dump_traces(w, label);
             }
 #endif
             //TODO: release shared items
@@ -1078,7 +1078,7 @@ int main(int argc, char *argv[]) {
     } else {
         std::shared_ptr<Worker> w = no_pthread_work_setup(psp);
 #ifdef DMTR_TRACE
-        dump_traces(w, log_dir, label);
+        dump_traces(w, label);
 #endif
     }
 

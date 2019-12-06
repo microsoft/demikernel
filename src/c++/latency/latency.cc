@@ -3,6 +3,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#include <dmtr/libos/persephone.hh>
 #include <dmtr/latency.h>
 
 #include <algorithm>
@@ -324,12 +325,11 @@ int dmtr_delete_latency(dmtr_latency_t **latency) {
 int dmtr_register_latencies(const char *label,
                             std::unordered_map<pthread_t, latency_ptr_type> &latencies) {
     char log_filename[MAX_LOG_FILENAME_LEN];
-    const char *log_dir = dmtr_log_directory.c_str();
     pthread_t me = pthread_self();
 
     auto it = latencies.find(me);
     DMTR_TRUE(EINVAL, it == latencies.end());
-    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-latencies", log_dir, me, label);
+    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%ld-%s-latencies", log_dir.c_str(), me, label);
     dmtr_latency_t *l;
     DMTR_OK(dmtr_new_latency(&l, label));
     latency_ptr_type latency =

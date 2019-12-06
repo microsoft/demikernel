@@ -31,8 +31,10 @@ set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 set(THREADED_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_echo_threaded.cc)
 set(PSP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/psp_echo_threaded.cc)
+set(PSP_TEST_SOURCES ${ECHO_APPS_DIR}/psp_test_server.cc)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DIR}/config.yaml COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/psp_cfg.yaml ${CMAKE_CURRENT_BINARY_DIR}/psp_cfg.yaml COPYONLY)
 
 # POSIX HTTP server threaded
 #add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
@@ -44,17 +46,17 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DI
 
 # LWIP HTTP server threaded
 add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-http-server-threaded dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
+target_link_libraries(dmtr-lwip-http-server-threaded psp-libos-common dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
 target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
 
 # LWIP HTTP rate client
 add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
+target_link_libraries(dmtr-lwip-http-rate-client psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
 target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # LWIP HTTP closed loop client
 add_executable(dmtr-lwip-http-cl-client ${HTTP_CL_CLIENT_SOURCES})
-target_link_libraries(dmtr-lwip-http-cl-client dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-http-cl-client psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # RDMA HTTP server threaded
@@ -67,62 +69,64 @@ target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})
-target_link_libraries(dmtr-posix-http-server dmtr-libos-posix pcre yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-http-server psp-libos-common dmtr-libos-posix pcre yaml-cpp boost_program_options)
 
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-server psp-libos-common dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client
 add_executable(dmtr-posix-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-posix-client dmtr-libos-posix yaml-cpp boost_program_options)
+target_link_libraries(dmtr-posix-client psp-libos-common dmtr-libos-posix yaml-cpp boost_program_options)
 
 # POSIX TCP client & server
 add_custom_target(dmtr-posix-echo)
-add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
+add_dependencies(dmtr-posix-echo psp-libos-common dmtr-posix-server dmtr-posix-client)
 
 # Threaded echo server
 add_executable(dmtr-lwip-threaded-echo ${THREADED_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-threaded-echo dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-threaded-echo psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 add_executable(psp-lwip-threaded-echo ${PSP_ECHO_SERVER_SOURCES})
-target_link_libraries(psp-lwip-threaded-echo dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(psp-lwip-threaded-echo psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 
+add_executable(psp-lwip-test ${PSP_TEST_SOURCES})
+target_link_libraries(psp-lwip-test psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-server dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-server psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP TCP client
 add_executable(dmtr-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-lwip-client dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-client psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP TCP client & server
 add_custom_target(dmtr-lwip-echo)
-add_dependencies(dmtr-lwip-echo dmtr-lwip-server dmtr-lwip-client)
+add_dependencies(dmtr-lwip-echo psp-libos-common dmtr-lwip-server dmtr-lwip-client)
 
 # POSIX "raw" non-demeter server
 add_executable(posix-server ${RAW_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-server dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
+target_link_libraries(posix-server psp-libos-common dmtr-latency dmtr-libos-io-common yaml-cpp boost_program_options)
 
 # POSIX "raw" non-demeter client
 add_executable(posix-client ${RAW_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-client dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
+target_link_libraries(posix-client psp-libos-common dmtr-latency dmtr-libos-io-common yaml-cpp boost_program_options)
 
 # POSIX "raw" client & server
 add_custom_target(posix-echo)
-add_dependencies(posix-echo posix-server posix-client)
+add_dependencies(posix-echo psp-libos-common posix-server posix-client)
 
 # RDMA server
 add_executable(dmtr-rdma-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-rdma-server dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-server psp-libos-common dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client
 add_executable(dmtr-rdma-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-client psp-libos-common dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
 
 # RDMA client & server
 add_custom_target(dmtr-rdma-echo)
-add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
+add_dependencies(dmtr-rdma-echo psp-libos-common dmtr-rdma-server dmtr-rdma-client)
 
 #add_custom_target(echo)
-#add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)
+#add_dependencies(echo posix-echo psp-libos-common dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)

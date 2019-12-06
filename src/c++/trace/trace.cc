@@ -5,9 +5,9 @@
 
 #include <stdio.h>
 
+#include <dmtr/libos/persephone.hh>
 #include <dmtr/trace.hh>
 #include <dmtr/annot.h>
-#include <dmtr/latency.h> //FIXME: for the log_directory
 
 // The maximum number of entries we will record in a trace
 #define MAX_TRACES 10000000
@@ -56,9 +56,8 @@ int dmtr_delete_trace(dmtr_trace_t **trace) {
 
 int dmtr_register_trace(const char *label, trace_ptr_type &traces) {
     char log_filename[MAX_LOG_FILENAME_LEN];
-    const char *log_dir = dmtr_log_directory.c_str();
 
-    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%s-traces", log_dir, label);
+    snprintf(log_filename, MAX_LOG_FILENAME_LEN, "%s/%s-traces", log_dir.c_str(), label);
     dmtr_trace_t *t;
     DMTR_OK(dmtr_new_trace(&t, label));
     traces =

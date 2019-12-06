@@ -13,6 +13,7 @@
 #include <dmtr/time.hh>
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
+#include <dmtr/libos/persephone.hh>
 #include <string.h>
 #include <stdio.h>
 #include <yaml-cpp/yaml.h>
@@ -96,7 +97,7 @@ struct log_data {
     char filename[MAX_FILE_PATH_LEN];
 };
 
-inline int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, std::string label) {
+inline int dump_logs(std::vector<struct log_data> &logs, std::string label) {
     for (auto &log: logs) {
         DMTR_OK(dmtr_dump_latency_to_file(reinterpret_cast<const char *>(log.filename), log.l));
         DMTR_OK(dmtr_delete_latency(&log.l));
@@ -104,8 +105,7 @@ inline int dump_logs(std::vector<struct log_data> &logs, std::string log_dir, st
     return 0;
 }
 
-static std::string generate_log_file_path(std::string log_dir,
-                                          std::string exp_label,
+static std::string generate_log_file_path(std::string exp_label,
                                           char const *log_label) {
     char pathname[MAX_FILE_PATH_LEN];
     snprintf(pathname, MAX_FILE_PATH_LEN, "%s/%s_%s",
@@ -131,9 +131,9 @@ inline void update_pql(size_t n_tokens, struct poll_q_len *s) {
     s->n_tokens.push_back(n_tokens);
 }
 
-inline void dump_pql(struct poll_q_len *s, std::string log_dir, std::string label) {
+inline void dump_pql(struct poll_q_len *s, std::string label) {
     char filename[MAX_FILE_PATH_LEN];
-    strncpy(filename, generate_log_file_path(log_dir, label, "pql").c_str(), MAX_FILE_PATH_LEN);
+    strncpy(filename, generate_log_file_path(label, "pql").c_str(), MAX_FILE_PATH_LEN);
     FILE *f = fopen(filename, "w");
     fprintf(f, "TIME\tVALUE\n");
     size_t n_points = s->n_tokens.size();
@@ -156,7 +156,6 @@ uint32_t iterations;
 int dmtr_argc = 0;
 char **dmtr_argv = NULL;
 const char FILL_CHAR = 'a';
-static std::string log_directory;
 boost::optional<std::string> file;
 std::string config_path;
 std::string ip;

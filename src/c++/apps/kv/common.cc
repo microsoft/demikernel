@@ -7,7 +7,7 @@ int parse_args(int argc, char **argv, bpo::options_description &opts, CommonOpti
     opts.add_options()
                 ("help", "produce help message")
                 ("log-dir,L",
-                    bpo::value<std::string>(&common.log_dir)->default_value("."),
+                    bpo::value<std::string>(&log_dir)->default_value("."),
                     "Log directory")
                 ("config-path,c",
                     bpo::value<std::string>(&common.config_path)->default_value("./config.yaml"),

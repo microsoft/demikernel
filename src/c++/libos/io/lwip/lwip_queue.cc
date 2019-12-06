@@ -314,8 +314,6 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
     return ECONNREFUSED;
 }
 
-
-
 #ifdef USE_GSO
 #define GSO_OFFLOADS (DEV_TX_OFFLOAD_TCP_TSO )
 #else
@@ -334,15 +332,83 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 #define REQUESTED_DEV_TX_OFFLOADS \
     ( GSO_OFFLOADS | IP_OFFLOADS | REQUIRED_OFFLOADS )
 
+/**
+ * Initialize EAL
+ */
+int dmtr::lwip_queue::net_init(const char *app_cfg) {
+    std::string config_path(app_cfg);
+    std::vector<std::string> init_args;
+    YAML::Node config = YAML::LoadFile(config_path);
+    YAML::Node node = config["network"]["eal_init"];
+    if (YAML::NodeType::Sequence == node.Type()) {
+        init_args = node.as<std::vector<std::string>>();
+    }
+    std::cerr << "eal_init: [";
+    std::vector<char *> init_cargs;
+    for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
+        if (i != init_args.cbegin()) {
+            std::cerr << ", ";
+        }
+        std::cerr << "\"" << *i << "\"";
+        init_cargs.push_back(const_cast<char *>(i->c_str()));
+    }
+    std::cerr << "]" << std::endl;
+    node = config["dpdk"]["known_hosts"];
+    if (YAML::NodeType::Map == node.Type()) {
+        for (auto i = node.begin(); i != node.end(); ++i) {
+            auto mac = i->first.as<std::string>();
+            auto ip = i->second.as<std::string>();
+            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+        }
+    }
+
+    int unused = -1;
+    DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
+    const uint16_t nb_ports = rte_eth_dev_count_avail();
+    DMTR_TRUE(ENOENT, nb_ports > 0);
+    std::cout << "DPDK reports that " << nb_ports;
+    std::cout << " ports (interfaces) are available for the application." << std::endl;
+
+    return 0;
+}
+
+int dmtr::lwip_queue::net_mempool_init(void *&mempool_out, uint8_t numa_socket_id) {
+    // create pool of memory for ring buffers.
+    struct rte_mempool *mp = static_cast<struct rte_mempool *>(mempool_out);
+    DMTR_OK(rte_pktmbuf_pool_create(
+        mp,
+        "default_mbuf_pool",
+        NUM_MBUFS * rte_eth_dev_count_avail(),
+        MBUF_CACHE_SIZE,
+        0,
+        MBUF_DATA_SIZE,
+        numa_socket_id
+    ));
+    mempool_out = mp;
+    return 0;
+}
+
+/*
+int dmtr::lwip_queue::net_port_init() {
+    uint16_t i = 0;
+    uint16_t port_id = 0;
+    RTE_ETH_FOREACH_DEV(i) {
+        DMTR_OK(init_dpdk_port(i, *mbuf_pool));
+        port_id = i;
+    }
+}
+*/
+
 /*
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
  */
-int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool) {
+int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool,
+                                     uint32_t n_tx_rings, uint32_t n_rx_rings) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
-    const uint16_t rx_rings = 1;
-    const uint16_t tx_rings = 1;
+    const uint16_t rx_rings = n_rx_rings;
+    const uint16_t tx_rings = n_tx_rings;
     const uint16_t nb_rxd = RX_RING_SIZE;
     const uint16_t nb_txd = TX_RING_SIZE;
 
@@ -380,7 +446,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
 */
 
     // todo: this call fails and i don't understand why.
-    int socket_id = 0;
+    int socket_id = 0; //FIXME make the NUMA node configurable
     int ret = rte_eth_dev_socket_id(socket_id, port_id);
     if (0 != ret) {
         fprintf(stderr, "WARNING: Failed to get the NUMA socket ID for port %d.\n", port_id);
@@ -499,7 +565,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         MBUF_CACHE_SIZE,
         0,
         MBUF_DATA_SIZE,
-        rte_socket_id()
+        rte_socket_id() //FIXME: this might be called from a different CPU that will be using the mempool
     ));
 
     // initialize all ports.
@@ -813,7 +879,6 @@ int dmtr::lwip_queue::close() {
             stats.obytes);
     printf("RX-error: %" PRIu64 " TX-error: %" PRIu64 " RX-mbuf-fail: %" PRIu64 "\n",
             stats.ierrors, stats.oerrors, stats.rx_nombuf);
-
 
     return 0;
 }
@@ -1857,7 +1922,7 @@ int dmtr::lwip_queue::setup_rx_queue_ip_frag_tbl(uint32_t queue) {
 
     our_ip_frag_tbl = rte_ip_frag_table_create(
         max_flow_num, IP_FRAG_TBL_BUCKET_ENTRIES, MAX_FRAG_NUM,
-        frag_cycles, socket
+        frag_cycles, socket //FIXME: this is the NUMA socket, not the interface!
     );
     DMTR_NOTNULL(EINVAL, our_ip_frag_tbl);
 

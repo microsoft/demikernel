@@ -46,8 +46,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     std::cerr << "Connected." << std::endl;
 
-    dmtr_log_directory = log_directory.c_str();
-    std::cout << argc << dmtr_log_directory << "IS LOG" << std::endl;
+    std::cout << argc << log_dir.c_str() << "IS LOG" << std::endl;
     dmtr_register_latencies("end-to-end", e2e_latencies);
     pthread_t me = pthread_self();
     dmtr_latency_t *latency = e2e_latencies.find(me)->second.get();

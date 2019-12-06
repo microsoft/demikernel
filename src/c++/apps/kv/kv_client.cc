@@ -120,7 +120,7 @@ std::unique_ptr<ClientRequest> send_request(PspServiceUnit &su, int qfd, std::st
 int main (int argc, char *argv[]) {
     /* Parse options */
     int duration;
-    std::string uri_list, label, log_dir, remote_host;
+    std::string uri_list, label, remote_host;
     namespace po = boost::program_options;
     ClientOpts opts;
     if (parse_client_args(argc, argv, opts)) {
@@ -225,7 +225,7 @@ int main (int argc, char *argv[]) {
     log_info("Done with all of %d requests", sent_requests);
 
 #ifdef DMTR_TRACE
-    std::string trace_file = opts.common.log_dir + "/traces";
+    std::string trace_file = log_dir + "/traces";
     FILE *f = fopen(trace_file.c_str(), "w");
     if (f) {
         fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");

@@ -2,9 +2,9 @@
 #define KV_COMMON_H_
 #include <string>
 #include <boost/program_options.hpp>
+#include <dmtr/libos/persephone.hh>
 
 struct CommonOptions {
-    std::string log_dir;
     std::string config_path;
 };
 

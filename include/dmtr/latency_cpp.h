@@ -9,9 +9,6 @@
 #include "types.h"
 
 // The maximum lenth for the log URI
-#define MAX_LOG_FILENAME_LEN 128
-
-extern std::string dmtr_log_directory;
 
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)> > latency_ptr_type;
 int dmtr_register_latencies(const char *label,

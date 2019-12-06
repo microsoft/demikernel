@@ -104,10 +104,15 @@ class lwip_queue : public io_queue {
     public: int pop(dmtr_qtoken_t qt);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
+    // dpdk device functions
+    public: static int net_init(const char *app_cfg);
+    public: static int net_mempool_init(void *&mempool_out, uint8_t numa_socket_id);
     public: static int init_dpdk(int argc, char *argv[]);
+    public: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool,
+                                       uint32_t n_tx_rings = 1, uint32_t n_rx_rings = 1);
+
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
-    private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
     private: static int print_ether_addr(FILE *f, struct rte_ether_addr &eth_addr);
     private: static int print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link = NULL);
     private: static int wait_for_link_status_up(uint16_t port_id);

@@ -101,7 +101,7 @@ std::vector<poll_q_len *> workers_pql;
  */
 int log_responses(uint32_t total_requests, int log_memq,
                   hr_clock::time_point *time_end,
-                  std::string log_dir, std::string label,
+                  std::string label,
                   int my_idx) {
 
 #ifdef LEGACY_PROFILING
@@ -116,7 +116,7 @@ int log_responses(uint32_t total_requests, int log_memq,
         struct log_data l;
         l.l = NULL; l.name = name; l.fh = NULL;
         strncpy(l.filename,
-                generate_log_file_path(log_dir, label, name).c_str(),
+                generate_log_file_path(label, name).c_str(),
                 MAX_FILE_PATH_LEN
         );
         DMTR_OK(dmtr_new_latency(&l.l, name));
@@ -124,7 +124,7 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 #endif
 #ifdef DMTR_TRACE
-    FILE *f = fopen(generate_log_file_path(log_dir, label, "traces").c_str(), "w");
+    FILE *f = fopen(generate_log_file_path(label, "traces").c_str(), "w");
     if (f) {
         fprintf(f, "REQ_ID\tSENDING\tREADING\tCOMPLETED\tPUSH_TOKEN\tPOP_TOKEN\n");
     } else {
@@ -195,10 +195,10 @@ int log_responses(uint32_t total_requests, int log_memq,
     }
 
 #ifdef LEGACY_PROFILING
-    dump_logs(logs, log_dir, label);
+    dump_logs(logs, label);
 #endif
 #ifdef OP_DEBUG
-    dump_pql(workers_pql[my_idx], log_dir, label);
+    dump_pql(workers_pql[my_idx], label);
 #endif
 #ifdef DMTR_TRACE
     if (f) {
@@ -730,7 +730,7 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
  */
 int main(int argc, char **argv) {
     int rate, duration, n_threads;
-    std::string url, uri_list, label, log_dir;
+    std::string url, uri_list, label;
     namespace po = boost::program_options;
     bool short_lived, debug_duration_flag, flag_type;
     po::options_description desc{"Rate client options"};
@@ -888,7 +888,7 @@ int main(int argc, char **argv) {
         st->log = new std::thread(
             log_responses,
             req_per_thread, log_memq, &time_end_log,
-            log_dir, label, i
+            label, i
         );
         pin_thread(st->log->native_handle(), i+8);
         if (long_lived) {
