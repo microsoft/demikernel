@@ -138,7 +138,7 @@ int dmtr::lwip_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_
 
 int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct rte_ether_addr &mac)
 {
-    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
+    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), RTE_ETHER_ADDR_LEN);
     auto it = our_mac_to_ip_table.find(mac_s);
     DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != it);
     ip_out = it->second;
@@ -180,8 +180,8 @@ int dmtr::lwip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len
 int dmtr::lwip_queue::print_ether_addr(FILE *f, struct rte_ether_addr &eth_addr) {
     DMTR_NOTNULL(EINVAL, f);
 
-    char buf[ETHER_ADDR_FMT_SIZE];
-    ether_format_addr(buf, ETHER_ADDR_FMT_SIZE, &eth_addr);
+    char buf[RTE_ETHER_ADDR_FMT_SIZE];
+    rte_ether_format_addr(buf, RTE_ETHER_ADDR_FMT_SIZE, &eth_addr);
     fputs(buf, f);
     return 0;
 }
@@ -243,7 +243,7 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
     struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
+    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
@@ -674,11 +674,11 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
         // ...
 
         // First, compute the offset of each header.  We will later fill them in, in reverse order.
-        auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
+        auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
         p += sizeof(*eth_hdr);
-        auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
+        auto * const ip_hdr = reinterpret_cast<struct ::rte_ipv4_hdr *>(p);
         p += sizeof(*ip_hdr);
-        auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
+        auto * const udp_hdr = reinterpret_cast<struct ::rte_udp_hdr *>(p);
         p += sizeof(*udp_hdr);
 
         uint32_t total_len = 0; // Length of data written so far.
@@ -765,7 +765,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
             DMTR_OK(ip_to_mac(/* out */ eth_hdr->d_addr, saddr->sin_addr));
             rte_eth_macaddr_get(dpdk_port_id, /* out */ eth_hdr->s_addr);
-            eth_hdr->ether_type = htons(ETHER_TYPE_IPv4);
+            eth_hdr->ether_type = htons(RTE_ETHER_TYPE_IPV4);
 
             total_len += sizeof(*eth_hdr);
         }
@@ -945,7 +945,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     auto *p = rte_pktmbuf_mtod(pkt, uint8_t *);
 
     // check ethernet header
-    auto * const eth_hdr = reinterpret_cast<struct ::ether_hdr *>(p);
+    auto * const eth_hdr = reinterpret_cast<struct ::rte_ether_hdr *>(p);
     p += sizeof(*eth_hdr);
     auto eth_type = ntohs(eth_hdr->ether_type);
 
@@ -964,14 +964,14 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     struct rte_ether_addr mac_addr = {};
 
     DMTR_OK(rte_eth_macaddr_get(boost::get(our_dpdk_port_id), mac_addr));
-    if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
+    if (!rte_is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !rte_is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
 #if DMTR_DEBUG
         printf("recv: dropped (wrong eth addr)!\n");
 #endif
         return false;
     }
 
-    if (ETHER_TYPE_IPv4 != eth_type) {
+    if (RTE_ETHER_TYPE_IPV4 != eth_type) {
 #if DMTR_DEBUG
         printf("recv: dropped (wrong eth type)!\n");
 #endif
@@ -979,7 +979,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     }
 
     // check ip header
-    auto * const ip_hdr = reinterpret_cast<struct ::ipv4_hdr *>(p);
+    auto * const ip_hdr = reinterpret_cast<struct ::rte_ipv4_hdr *>(p);
     p += sizeof(*ip_hdr);
 
     // In network byte order.
@@ -1001,7 +1001,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_addr.s_addr = ipv4_dst_addr;
 
     // check udp header
-    auto * const udp_hdr = reinterpret_cast<struct ::udp_hdr *>(p);
+    auto * const udp_hdr = reinterpret_cast<struct ::rte_udp_hdr *>(p);
     p += sizeof(*udp_hdr);
 
     // In network byte order.
@@ -1310,8 +1310,8 @@ int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_l
 }
 
 int dmtr::lwip_queue::learn_addrs(const struct rte_ether_addr &mac, const struct in_addr &ip) {
-    DMTR_TRUE(EINVAL, !is_same_ether_addr(&mac, &ether_broadcast));
-    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
+    DMTR_TRUE(EINVAL, !rte_is_same_ether_addr(&mac, &ether_broadcast));
+    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), RTE_ETHER_ADDR_LEN);
     DMTR_TRUE(EEXIST, our_mac_to_ip_table.find(mac_s) == our_mac_to_ip_table.cend());
     DMTR_TRUE(EEXIST, our_ip_to_mac_table.find(ip.s_addr) == our_ip_to_mac_table.cend());
 
@@ -1337,15 +1337,15 @@ int dmtr::lwip_queue::learn_addrs(const char *mac_s, const char *ip_s) {
 }
 
 int dmtr::lwip_queue::parse_ether_addr(struct rte_ether_addr &mac_out, const char *s) {
-    static_assert(ETHER_ADDR_LEN == 6);
+    static_assert(RTE_ETHER_ADDR_LEN == 6);
     DMTR_NOTNULL(EINVAL, s);
 
-    unsigned int values[ETHER_ADDR_LEN];
+    unsigned int values[RTE_ETHER_ADDR_LEN];
     if (6 != sscanf(s, "%2x:%2x:%2x:%2x:%2x:%2x%*c", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5])) {
         return EINVAL;
     }
 
-    for (size_t i = 0; i < ETHER_ADDR_LEN; ++i) {
+    for (size_t i = 0; i < RTE_ETHER_ADDR_LEN; ++i) {
         DMTR_OK(dmtr_utou8(&mac_out.addr_bytes[i], values[i]));
     }
 
