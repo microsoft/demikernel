@@ -78,7 +78,7 @@ static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
 
-const struct ether_addr dmtr::lwip_queue::ether_broadcast = {
+const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 };
 
@@ -126,9 +126,9 @@ bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<lwip_addr, std::queue<dmtr_sgarray_t> *> dmtr::lwip_queue::our_recv_queues;
 std::unordered_map<std::string, struct in_addr> dmtr::lwip_queue::our_mac_to_ip_table;
-std::unordered_map<in_addr_t, struct ether_addr> dmtr::lwip_queue::our_ip_to_mac_table;
+std::unordered_map<in_addr_t, struct rte_ether_addr> dmtr::lwip_queue::our_ip_to_mac_table;
 
-int dmtr::lwip_queue::ip_to_mac(struct ether_addr &mac_out, const struct in_addr &ip)
+int dmtr::lwip_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_addr &ip)
 {
     auto it = our_ip_to_mac_table.find(ip.s_addr);
     DMTR_TRUE(ENOENT, our_ip_to_mac_table.cend() != it);
@@ -136,7 +136,7 @@ int dmtr::lwip_queue::ip_to_mac(struct ether_addr &mac_out, const struct in_addr
     return 0;
 }
 
-int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct ether_addr &mac)
+int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct rte_ether_addr &mac)
 {
     std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
     auto it = our_mac_to_ip_table.find(mac_s);
@@ -177,7 +177,7 @@ int dmtr::lwip_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len
     return 0;
 }
 
-int dmtr::lwip_queue::print_ether_addr(FILE *f, struct ether_addr &eth_addr) {
+int dmtr::lwip_queue::print_ether_addr(FILE *f, struct rte_ether_addr &eth_addr) {
     DMTR_NOTNULL(EINVAL, f);
 
     char buf[ETHER_ADDR_FMT_SIZE];
@@ -541,7 +541,7 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     // only one socket can be bound to an address at a time
     const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
 
-    struct ether_addr mac = {};
+    struct rte_ether_addr mac = {};
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct in_addr ip;
     DMTR_OK(mac_to_ip(ip, mac));
@@ -582,7 +582,7 @@ int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 
     // give the connection the local ip;
-    struct ether_addr mac;
+    struct rte_ether_addr mac;
     DMTR_OK(rte_eth_macaddr_get(dpdk_port_id, mac));
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
@@ -961,7 +961,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     printf("recv: eth type: %x\n", eth_type);
 #endif
 
-    struct ether_addr mac_addr = {};
+    struct rte_ether_addr mac_addr = {};
 
     DMTR_OK(rte_eth_macaddr_get(boost::get(our_dpdk_port_id), mac_addr));
     if (!is_same_ether_addr(&mac_addr, &eth_hdr->d_addr) && !is_same_ether_addr(&ether_broadcast, &eth_hdr->d_addr)) {
@@ -1096,7 +1096,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     return t->poll(qr_out);
 }
 
-int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
+int dmtr::lwip_queue::rte_eth_macaddr_get(uint16_t port_id, struct rte_ether_addr &mac_addr) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     // todo: how to detect invalid port ids?
@@ -1309,7 +1309,7 @@ int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_l
     return 0;
 }
 
-int dmtr::lwip_queue::learn_addrs(const struct ether_addr &mac, const struct in_addr &ip) {
+int dmtr::lwip_queue::learn_addrs(const struct rte_ether_addr &mac, const struct in_addr &ip) {
     DMTR_TRUE(EINVAL, !is_same_ether_addr(&mac, &ether_broadcast));
     std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), ETHER_ADDR_LEN);
     DMTR_TRUE(EEXIST, our_mac_to_ip_table.find(mac_s) == our_mac_to_ip_table.cend());
@@ -1324,7 +1324,7 @@ int dmtr::lwip_queue::learn_addrs(const char *mac_s, const char *ip_s) {
     DMTR_NOTNULL(EINVAL, mac_s);
     DMTR_NOTNULL(EINVAL, ip_s);
 
-    struct ether_addr mac;
+    struct rte_ether_addr mac;
     DMTR_OK(parse_ether_addr(mac, mac_s));
 
     struct in_addr ip = {};
@@ -1336,7 +1336,7 @@ int dmtr::lwip_queue::learn_addrs(const char *mac_s, const char *ip_s) {
     return 0;
 }
 
-int dmtr::lwip_queue::parse_ether_addr(struct ether_addr &mac_out, const char *s) {
+int dmtr::lwip_queue::parse_ether_addr(struct rte_ether_addr &mac_out, const char *s) {
     static_assert(ETHER_ADDR_LEN == 6);
     DMTR_NOTNULL(EINVAL, s);
 
