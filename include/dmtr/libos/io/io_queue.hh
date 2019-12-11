@@ -89,6 +89,7 @@ class io_queue
 
     // general control plane functions.
     public: virtual int close();
+    public: virtual int set_my_context(void *context);
 
     // data plane functions
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) = 0;

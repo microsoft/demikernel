@@ -23,6 +23,14 @@ dmtr::io_queue_api::io_queue_api() :
 dmtr::io_queue_api::~io_queue_api()
 {}
 
+int dmtr::io_queue_api::set_io_ctx(int &qd, void *context) {
+    DMTR_TRUE(EINVAL, qd != 0);
+    io_queue *q = NULL;
+    DMTR_OK(get_queue(q, qd));
+    DMTR_OK(q->set_my_context(context));
+    return 0;
+}
+
 int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) {
     DMTR_NULL(EINVAL, newobj_out);
 

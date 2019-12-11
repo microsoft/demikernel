@@ -29,7 +29,6 @@
 #include <dmtr/wait.h>
 #include <dmtr/mem.h>
 #include <dmtr/libos/io/io_queue.hh>
-#include <dmtr/libos/io/persephone.hh>
 #include <dmtr/libos/persephone.hh>
 
 #define MAX_CLIENTS 64
@@ -784,11 +783,7 @@ int work_setup(PspApp &psp, bool split) {
         worker->args.dispatch_f = psp.net_dispatch_f;
 
         /* Setup PspServiceUnit */
-        worker->psp_su = new PspServiceUnit(
-            worker->whoami,
-            dmtr::io_queue::category_id::NETWORK_Q,
-            g_argc, g_argv
-        );
+        worker->psp_su = new PspServiceUnit(worker->whoami);
 
         /* Define which NIC this thread will be using */
         struct sockaddr_in saddr = {};
@@ -866,7 +861,7 @@ std::shared_ptr<Worker> create_http_worker(PspApp &psp, bool typed, enum req_typ
     worker->whoami = index;
     // create the shared queue, set the shared item given as parameter
     worker->psp_su =
-        new PspServiceUnit(worker->whoami, dmtr::io_queue::category_id::MEMORY_Q, 0, nullptr);
+        new PspServiceUnit(worker->whoami);
     if (worker->psp_su->ioqapi.shared_queue(worker->shared_qfd, producer_si, consumer_si) != 0) {
         log_error("Could not create shared queue for http worker %d", worker->whoami);
     }

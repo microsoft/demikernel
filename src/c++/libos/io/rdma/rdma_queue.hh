@@ -57,6 +57,7 @@ class rdma_queue : public io_queue {
 
     public: virtual ~rdma_queue();
 
+    public: int set_my_context(void *context);
     // network functions
     public: int socket(int domain, int type, int protocol);
     public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);

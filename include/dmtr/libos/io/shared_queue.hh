@@ -43,6 +43,7 @@ class shared_queue : public io_queue {
     public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
     public: virtual int drop(dmtr_qtoken_t qt);
     public: virtual int close();
+    public: virtual int set_my_context(void *context);
 
     private: std::unordered_map<dmtr_qtoken_t, dmtr_sgarray_t> push_queue;
     private: std::unordered_set<dmtr_qtoken_t> pop_set;

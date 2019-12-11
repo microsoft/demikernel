@@ -808,3 +808,7 @@ void dmtr::posix_queue::start_threads() {
         }));
     }
 }
+
+int dmtr::posix_queue::set_my_context(void *context) {
+    return ENOTSUP;
+}

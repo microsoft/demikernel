@@ -146,3 +146,7 @@ void dmtr::memory_queue::start_threads() {
         return pop_thread(yield, tq);
     }));
 }
+
+int dmtr::memory_queue::set_my_context(void *context) {
+    return ENOTSUP;
+}

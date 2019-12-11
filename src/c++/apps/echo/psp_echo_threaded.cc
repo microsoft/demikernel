@@ -12,7 +12,7 @@
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
 #include <dmtr/wait.h>
-#include <dmtr/libos/io/persephone.hh>
+#include <dmtr/libos/persephone.hh>
 #include <iostream>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -109,7 +109,7 @@ int main_work(PspServiceUnit &psu, int lqd, int n_threads) {
     std::vector<dmtr::shared_item> shared_items(n_threads);
 
     for (int i=0; i < n_threads; i++) {
-        service_units.push_back(new PspServiceUnit(i, dmtr::io_queue::MEMORY_Q, 0, nullptr));
+        service_units.push_back(new PspServiceUnit(i));
         int producer_i = i;
         int consumer_i = (i == n_threads - 1) ? 0 : i + 1;
         DMTR_OK(service_units[i]->ioqapi.shared_queue(memory_qds[i],
@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
     //DMTR_OK(dmtr_init(argc, argv));
 
     int lqd;
-    PspServiceUnit psu(42, dmtr::io_queue::NETWORK_Q, argc, argv);
+    PspServiceUnit psu(42);
     DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
     DMTR_OK(psu.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
     DMTR_OK(psu.ioqapi.listen(lqd, 3));

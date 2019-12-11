@@ -10,7 +10,7 @@
 #include <boost/program_options.hpp>
 
 #include <dmtr/time.hh>
-#include <dmtr/libos/io/persephone.hh>
+#include <dmtr/libos/persephone.hh>
 #include <dmtr/libos/io/io_queue.hh>
 
 #include "common.hh"
@@ -152,7 +152,7 @@ int main (int argc, char *argv[]) {
     input_file.close();
 
     /* Init Persephone ServiceUnit */
-    PspServiceUnit su(0, dmtr::io_queue::category_id::NETWORK_Q, argc, argv);
+    PspServiceUnit su(0);
 
     pin_thread(pthread_self(), 4);
     /* Configure socket */

@@ -111,7 +111,7 @@ int PspWorker::launch() {
 }
 
 PspWorker::PspWorker(int id, dmtr::io_queue::category_id q_type, int argc, char **argv) :
-        psu(id, q_type, argc, argv), worker_id(id) {
+        psu(id), worker_id(id) {
     if (all_workers.find(id) != all_workers.end()) {
         PSP_WARN("Worker with id " << worker_id << "already exists");
     }

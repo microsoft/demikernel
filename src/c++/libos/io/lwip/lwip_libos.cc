@@ -20,10 +20,24 @@
 
 static std::unique_ptr<dmtr::io_queue_api> ioq_api;
 
+int _dmtr_select_ioq_api(dmtr::io_queue_api *&p)
+{
+    if (p == NULL) {
+        DMTR_NOTNULL(EINVAL, ioq_api.get());
+        p = ioq_api.get();
+    }
+    return 0;
+}
 
 int dmtr_net_init(const char *app_cfg)
 {
     DMTR_OK(dmtr::lwip_queue::net_init(app_cfg));
+    return 0;
+}
+
+int dmtr_init_net_context(void **out_context)
+{
+    DMTR_OK(dmtr::lwip_queue::generate_context(out_context));
     return 0;
 }
 
@@ -42,6 +56,16 @@ int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uin
 int dmtr_net_mempool_init(void **mempool_out, uint8_t numa_socket_id)
 {
     DMTR_OK(dmtr::lwip_queue::net_mempool_init(*mempool_out, numa_socket_id));
+    return 0;
+}
+
+int dmtr_init_ctors(void *r_ioq_api)
+{
+    dmtr::io_queue_api *p = static_cast<dmtr::io_queue_api *>(r_ioq_api);
+    DMTR_OK(_dmtr_select_ioq_api(p));
+    p->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
+    p->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::lwip_queue::new_object);
+    p->register_queue_ctor(dmtr::io_queue::SHARED_Q, dmtr::shared_queue::new_object);
     return 0;
 }
 

@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
     read_uris(requests_str, uri_list);
 
     /* Init Persephone ServiceUnit */
-    PspServiceUnit su(0, dmtr::io_queue::category_id::NETWORK_Q, argc, argv);
+    PspServiceUnit su(0);
 
     pin_thread(pthread_self(), 4);
 

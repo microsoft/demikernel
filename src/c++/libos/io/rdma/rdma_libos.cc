@@ -14,6 +14,20 @@
 
 static std::unique_ptr<dmtr::io_queue_api> ioq_api;
 
+int dmtr_init_ctors(void *r_ioq_api)
+{
+    dmtr::io_queue_api *p = NULL;
+    if (r_ioq_api == NULL) {
+        DMTR_NOTNULL(EINVAL, ioq_api.get());
+        p = ioq_api.get();
+    } else {
+        p = static_cast<dmtr::io_queue_api *>(r_ioq_api);
+    }
+    p->register_queue_ctor(dmtr::io_queue::MEMORY_Q, dmtr::memory_queue::new_object);
+    p->register_queue_ctor(dmtr::io_queue::NETWORK_Q, dmtr::rdma_queue::new_object);
+    return 0;
+}
+
 int dmtr_init(int argc, char *argv[])
 {
     DMTR_NULL(EPERM, ioq_api.get());
@@ -147,4 +161,24 @@ int dmtr_free_mbuf(dmtr_sgarray_t *sga)
     free(sga->sga_buf);
 
     return 0;
+}
+
+int dmtr_net_init(const char *app_cfg)
+{
+    return ENOTSUP;
+}
+
+int dmtr_init_net_context(void **out_context)
+{
+    return ENOTSUP;
+}
+
+int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uint32_t n_rx_rings)
+{
+    return ENOTSUP;
+}
+
+int dmtr_net_mempool_init(void **mempool_out, uint8_t numa_socket_id)
+{
+    return ENOTSUP;
 }

@@ -50,6 +50,21 @@ private:
 namespace dmtr {
 
 class lwip_queue : public io_queue {
+
+    struct context {
+        std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
+    };
+    private: struct context *my_context;
+    public: static int generate_context(void **out_context) {
+        context *ctx = new context();
+        *out_context = static_cast<void *>(ctx);
+        //TODO maybe reserve container elements in the context
+        return 0;
+    }
+    public: int set_my_context(void *context);
+
+    private: bool my_context_init_flag = false;
+
     private: static const struct rte_ether_addr ether_broadcast;
     private: static const size_t our_max_queue_depth;
     private: static struct rte_gso_ctx our_gso_ctx; /** << used for egress segmentation */

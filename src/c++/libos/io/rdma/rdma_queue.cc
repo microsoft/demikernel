@@ -1009,3 +1009,7 @@ void dmtr::rdma_queue::start_threads() {
         }));
     }
 }
+
+int dmtr::rdma_queue::set_my_context(void *context) {
+    return ENOTSUP;
+}

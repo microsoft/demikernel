@@ -208,6 +208,12 @@ operator<<(std::ostream &os, const lwip_4tuple &t) {
     return os << t.src_addr << " : " << t.dst_addr;
 }
 
+int dmtr::lwip_queue::set_my_context(void *ctx) {
+    my_context = static_cast<dmtr::lwip_queue::context *>(ctx);
+    my_context_init_flag = true;
+    return 0;
+}
+
 struct rte_mempool *dmtr::lwip_queue::our_mbuf_pool = NULL;
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept

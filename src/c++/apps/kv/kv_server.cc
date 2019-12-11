@@ -9,7 +9,7 @@
 #include <boost/program_options.hpp>
 
 #include <dmtr/libos.h>
-#include <dmtr/libos/io/persephone.hh>
+#include <dmtr/libos/persephone.hh>
 
 #include "PspWorker.hh"
 #include "common.hh"

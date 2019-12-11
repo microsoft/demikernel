@@ -91,6 +91,10 @@ dmtr::io_queue::~io_queue()
     }
 }
 
+int dmtr::io_queue::set_my_context(void *context) {
+    return ENOTSUP;
+}
+
 int dmtr::io_queue::socket(int domain, int type, int protocol) {
     return ENOTSUP;
 }

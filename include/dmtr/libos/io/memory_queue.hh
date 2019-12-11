@@ -28,6 +28,7 @@ class memory_queue : public io_queue
     private: memory_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
+    public: virtual int set_my_context(void *context);
     public: virtual int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: virtual int pop(dmtr_qtoken_t qt);
     public: virtual int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);

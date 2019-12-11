@@ -17,7 +17,6 @@
 
 namespace dmtr {
 
-
 class io_queue_api {
     private: int my_qd_counter;
     private: boost::atomic<uint32_t> my_qt_counter;
@@ -47,6 +46,7 @@ class io_queue_api {
     // Generic interfaces to libOS syscalls
     // ================================================
 
+    public: int set_io_ctx(int &qd, void *context);
     public: int socket(int &qd_out, int domain, int type, int protocol);
     public: int getsockname(int qd, struct sockaddr * const saddr, socklen_t * const size);
     public: int bind(int qd, const struct sockaddr * const saddr, socklen_t size);

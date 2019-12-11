@@ -95,3 +95,7 @@ int dmtr::shared_queue::close() {
     my_good_flag = false;
     return 0;
 }
+
+int dmtr::shared_queue::set_my_context(void *context) {
+    return ENOTSUP;
+}

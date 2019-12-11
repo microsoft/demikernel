@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 DMTR_EXPORT int dmtr_init(int argc, char *argv[]);
+DMTR_EXPORT int dmtr_init_ctors(void *r_ioq_api);
 
 DMTR_EXPORT int dmtr_queue(int *qd_out);
 
@@ -40,6 +41,7 @@ DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 
 DMTR_EXPORT int dmtr_free_mbuf(dmtr_sgarray_t *sga);
 
+DMTR_EXPORT int dmtr_init_net_context(void **context);
 DMTR_EXPORT int dmtr_net_init(const char *app_cfg);
 DMTR_EXPORT int dmtr_net_port_init(uint16_t port_id, void * mempool,
                                    uint32_t n_tx_rings, uint32_t n_rx_rings);
