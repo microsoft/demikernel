@@ -12,15 +12,16 @@ static std::string log_dir;
 
 /************** Service Units ************/
 class PspServiceUnit {
+    uint32_t my_id;
     struct io_context { /* << The various contexts used by io queues */
         void *net_context; /* << The context used to setup network queues */
     };
-    public: struct io_context *io_ctx;
+    public: struct io_context io_ctx;
     public: dmtr::io_queue_api ioqapi;
-    uint32_t my_id;
     dmtr::io_queue::category_id my_type;
 
     public: PspServiceUnit(uint32_t id) : my_id(id) {
+        io_ctx.net_context = NULL;
         dmtr_init_ctors(static_cast<void *>(&ioqapi));
     };
 
@@ -46,10 +47,9 @@ class Psp {
 
     private: struct net_context {
         void * net_mempool;
-        void * frag_ctx;
     };
     private: struct net_context net_ctx; /* << The global network context */
-    public: std::vector<std::shared_ptr<PspServiceUnit> > service_units;
+    public: std::unordered_map<uint32_t, std::shared_ptr<PspServiceUnit> > service_units;
 };
 
 #endif // PERSEPHONE_H_

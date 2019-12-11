@@ -14,7 +14,7 @@ network:
 
 #'device': This is the order given to EAL (or all the devices listed by dpdk-devbind.py if none given
 service_units:
-    - name: dummy1
+    - name: net_worker_1
       io:
           - type: 'NETWORK_Q'
             device_id: 0
@@ -28,3 +28,5 @@ service_units:
       io:
           - type: 'NETWORK_Q'
             device_id: 1
+
+log_dir: '/home/maxdml/experiments_run/test/'

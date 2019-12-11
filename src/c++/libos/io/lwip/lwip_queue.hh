@@ -52,13 +52,38 @@ namespace dmtr {
 class lwip_queue : public io_queue {
 
     struct context {
-        std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
+        struct rte_gso_ctx gso_ctx; /** << used for egress segmentation */
+
+        //FIXME: this should be part of a ring context, rather than a port context
+        struct rte_ip_frag_tbl *ip_frag_tbl; /** used for IP reassembly */
+        struct rte_ip_frag_death_row death_row; /** used for IP reassembly */
+        struct rte_mempool *ip_frag_mbuf_pool; /** used for IP reassembly */
+
+        //TODO: define ports range by service unit
+        uint16_t port_range_hi = 65535;
+        uint16_t port_range_lo = 32768;
+        uint16_t port_counter = 0;
+
+        std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> recv_queues;
+        boost::optional<uint16_t> dpdk_port_id;
     };
     private: struct context *my_context;
-    public: static int generate_context(void **out_context) {
-        context *ctx = new context();
-        *out_context = static_cast<void *>(ctx);
+
+    private: static int init_gso_ctx(struct rte_gso_ctx &gso_ctx);
+    private: static int init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag_tbl,
+                                                             struct rte_mempool *&ip_frag_mbuf_pool,
+                                                             uint16_t port_id);
+    public: static int generate_context(void *&out_context, int port_id) {
         //TODO maybe reserve container elements in the context
+        context *ctx = new context();
+        ctx->dpdk_port_id = port_id;
+
+        /* setup GSO context */
+        DMTR_OK(init_gso_ctx(ctx->gso_ctx));
+        /* setup ip fragmentation context */
+        DMTR_OK(init_rx_queue_ip_frag_tbl(ctx->ip_frag_tbl, ctx->ip_frag_mbuf_pool, port_id));
+
+        out_context = static_cast<void *>(ctx);
         return 0;
     }
     public: int set_my_context(void *context);
@@ -68,16 +93,13 @@ class lwip_queue : public io_queue {
     private: static const struct rte_ether_addr ether_broadcast;
     private: static const size_t our_max_queue_depth;
     private: static struct rte_gso_ctx our_gso_ctx; /** << used for egress segmentation */
-    private: static struct rte_ip_frag_tbl *our_ip_frag_tbl; /** used for IP reassembly */
-    private: static struct rte_ip_frag_death_row our_death_row; /** used for IP reassembly */
-    private: static struct rte_mempool *our_ip_frag_mbuf_pool; /** used for IP reassembly */
+
 
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
     private: static std::map<lwip_4tuple, int> our_4tuple_to_qd;
-    private: static std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> our_recv_queues;
     private: static std::unordered_map<std::string, struct in_addr> our_mac_to_ip_table;
     private: static std::unordered_map<in_addr_t, struct rte_ether_addr> our_ip_to_mac_table;
 
@@ -86,9 +108,6 @@ class lwip_queue : public io_queue {
     // TODO: Some mechanic for unregistering ports from the application?
     private: static std::unordered_set<uint16_t> my_app_ports;
 
-    private: static uint16_t my_port_range_lo;
-    private: static uint16_t my_port_range_hi;
-    private: static uint16_t my_port_counter;
     private: lwip_4tuple my_tuple;
     private: uint16_t gen_src_port();
 
@@ -149,7 +168,7 @@ class lwip_queue : public io_queue {
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: static bool insert_recv_queue(const lwip_4tuple &tup, const dmtr_sgarray_t &sga);
+    private: bool insert_recv_queue(const lwip_4tuple &tup, const dmtr_sgarray_t &sga);
     private: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     private: int service_incoming_packets();
     private: bool parse_packet(struct sockaddr_in &src, struct sockaddr_in &dst, dmtr_sgarray_t &sga, struct rte_mbuf *pkt);
@@ -174,7 +193,7 @@ class lwip_queue : public io_queue {
     private: static int rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
-    private: static int setup_rx_queue_ip_frag_tbl(uint32_t queue);
+    private: int setup_rx_queue_ip_frag_tbl(uint32_t queue);
 };
 
 } // namespace dmtr

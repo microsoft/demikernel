@@ -43,7 +43,7 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
 }
 
 struct suqd {
-    PspServiceUnit *psu;
+    std::shared_ptr<PspServiceUnit> psu;
     int qd;
 };
 
@@ -103,26 +103,27 @@ void *main_worker_entry(void *vargs) {
     return NULL;
 }
 
-int main_work(PspServiceUnit &psu, int lqd, int n_threads) {
-    std::vector<PspServiceUnit*> service_units;
+int main_work(Psp &psp, int lqd, int n_threads) {
     int memory_qds[n_threads];
     std::vector<dmtr::shared_item> shared_items(n_threads);
 
-    for (int i=0; i < n_threads; i++) {
-        service_units.push_back(new PspServiceUnit(i));
+    for (int i = 1; i < n_threads + 1; i++) {
         int producer_i = i;
-        int consumer_i = (i == n_threads - 1) ? 0 : i + 1;
-        DMTR_OK(service_units[i]->ioqapi.shared_queue(memory_qds[i],
-                                                              &shared_items[producer_i],
-                                                              &shared_items[consumer_i]));
+        int consumer_i = (i == n_threads) ? 0 : i + 1;
+        DMTR_OK(psp.service_units[i]->ioqapi.shared_queue(
+            memory_qds[i],
+            &shared_items[producer_i],
+            &shared_items[consumer_i]
+        ));
     }
 
+    std::shared_ptr<PspServiceUnit> psu = psp.service_units[0];
     dmtr_qtoken_t token;
-    DMTR_OK(psu.ioqapi.accept(token, lqd));
+    DMTR_OK(psu->ioqapi.accept(token, lqd));
 
     dmtr_qresult_t wait_out;
     int status;
-    while ( (status = psu.wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
+    while ( (status = psu->wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
     if (status != 0) {
         DMTR_OK(status /*dmtr_wait*/);
         return -1;
@@ -134,16 +135,16 @@ int main_work(PspServiceUnit &psu, int lqd, int n_threads) {
         pthread_t pthreads[n_threads];
         struct worker_args thread_args[n_threads];
 
-        for (int i=0; i < n_threads; i++) {
+        for (int i = 1; i < n_threads + 1; i++) {
             struct worker_args *args = &thread_args[i];
-            args->cpu_id = 3 + i;
-            args->client.psu = &psu;
+            args->cpu_id = 2 + i;
+            args->client.psu = psu;
             args->client.qd = client_qd;
-            args->in.psu = service_units[i];
+            args->in.psu = psp.service_units[i];
             args->in.qd = memory_qds[i];
-            //args->in.psu = (i == 0) ? service_units[n_threads - 1] :service_units[i-1];
+            //args->in.psu = (i == 0) ? psp.service_units[n_threads - 1] :service_units[i-1];
             //args->in.qd = (i == 0) ? memory_qds[n_threads - 1]: memory_qds[i-1];
-            args->out.psu  = service_units[i];
+            args->out.psu  = psp.service_units[i];
             args->out.qd = memory_qds[i];
 
             if (pthread_create(&pthreads[i], NULL, (i == 0) ? main_worker_entry : worker_entry, args)) {
@@ -159,20 +160,19 @@ int main_work(PspServiceUnit &psu, int lqd, int n_threads) {
     return 0;
 }
 
-int main(int argc, char *argv[])
-{
-    std::string ip;
-    std::string log_out;
+int main(int argc, char *argv[]) {
+    std::string ip, cfg_file;
     uint16_t port;
     uint16_t n_threads;
 
-    options_description desc{"Threaded echo server"};
+    options_description desc{"Threaded Persephone echo server"};
     desc.add_options()
         ("help", "produce help message")
         ("ip", value<std::string>(&ip), "server ip address")
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
-        ("threads", value<uint16_t>(&n_threads), "number of threads");
-        //("out,O", value<std::string>(&log_out), "log directory");
+        ("threads", value<uint16_t>(&n_threads)->default_value(1), "number of threads")
+        ("config-path,c", value<std::string>(&cfg_file)->required(), "path to configuration file")
+        ("out,O", value<std::string>(&log_dir), "log directory");
 
     variables_map vm;
     try {
@@ -191,6 +191,14 @@ int main(int argc, char *argv[])
     }
     parse_args(argc, argv, true);
 
+    /* Init the libraryOS */
+    Psp psp(cfg_file);
+
+    /* Retrieve the first service unit */
+    auto it = psp.service_units.find(0);
+    assert(it != psp.service_units.end());
+    std::shared_ptr<PspServiceUnit> psu = it->second;
+
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
 
@@ -203,18 +211,13 @@ int main(int argc, char *argv[])
 
     saddr.sin_port = htons(port);
 
-    //DMTR_OK(dmtr_init(argc, argv));
-
     int lqd;
-    PspServiceUnit psu(42);
-    DMTR_OK(psu.ioqapi.socket(lqd, AF_INET, SOCK_STREAM, 0));
-    DMTR_OK(psu.ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-    DMTR_OK(psu.ioqapi.listen(lqd, 3));
+    DMTR_OK(psu->socket(lqd, AF_INET, SOCK_STREAM, 0));
+    DMTR_OK(psu->ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    DMTR_OK(psu->ioqapi.listen(lqd, 3));
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
-    return main_work(psu, lqd, n_threads);
+    return main_work(psp, lqd, n_threads);
 }
-
-

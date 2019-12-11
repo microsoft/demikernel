@@ -35,9 +35,9 @@ int dmtr_net_init(const char *app_cfg)
     return 0;
 }
 
-int dmtr_init_net_context(void **out_context)
+int dmtr_init_net_context(void **out_context, uint16_t port_id)
 {
-    DMTR_OK(dmtr::lwip_queue::generate_context(out_context));
+    DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, port_id));
     return 0;
 }
 
@@ -72,8 +72,6 @@ int dmtr_init_ctors(void *r_ioq_api)
 int dmtr_init(int argc, char *argv[])
 {
     DMTR_NULL(EINVAL, ioq_api.get());
-
-    DMTR_OK(dmtr::lwip_queue::init_dpdk(argc, argv));
 
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));

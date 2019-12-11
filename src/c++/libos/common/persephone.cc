@@ -15,9 +15,6 @@ Psp::Psp(std::string &app_cfg) {
     net_ctx.net_mempool = NULL;
     dmtr_net_mempool_init(&net_ctx.net_mempool, 0);
 
-    /* Setup the fragmentation context */
-    //TODO
-
     /* Parse the configuration */
     std::unordered_map<uint16_t, uint32_t> devices_to_sus;
     try {
@@ -41,16 +38,19 @@ Psp::Psp(std::string &app_cfg) {
                                 } else {
                                     devices_to_sus[dev_id]++;
                                 }
-                                dmtr_init_net_context(&service_unit->io_ctx->net_context);
+                                /* Get a new network context for the service unit */
+                                dmtr_init_net_context(&service_unit->io_ctx.net_context, dev_id);
                             }
                         }
                     }
                 }
             }
-            service_units.push_back(service_unit);
+            service_units[i] = service_unit;
         }
-        YAML::Node cfg_log_dir = config["log_dir"];
-        log_dir = cfg_log_dir.as<std::string>();
+        if (config["log_dir"].IsDefined()) {
+            log_dir = config["log_dir"].as<std::string>();
+            std::cout << "libOS log directory set to " << log_dir << std::endl;
+        }
     } catch (YAML::ParserException& e) {
         std::cout << "Failed to parse config: " << e.what() << std::endl;
         exit(1);
@@ -68,7 +68,7 @@ Psp::Psp(std::string &app_cfg) {
 int PspServiceUnit::socket(int &qd, int domain, int type, int protocol) {
 
     DMTR_OK(ioqapi.socket(qd, domain, type, protocol));
-    DMTR_OK(ioqapi.set_io_ctx(qd, io_ctx->net_context));
+    DMTR_OK(ioqapi.set_io_ctx(qd, io_ctx.net_context));
 
     return 0;
 }

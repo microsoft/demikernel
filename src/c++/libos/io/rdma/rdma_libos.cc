@@ -168,7 +168,7 @@ int dmtr_net_init(const char *app_cfg)
     return ENOTSUP;
 }
 
-int dmtr_init_net_context(void **out_context)
+int dmtr_init_net_context(void **out_context, uint16_t port_id)
 {
     return ENOTSUP;
 }
