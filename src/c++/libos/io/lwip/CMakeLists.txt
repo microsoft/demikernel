@@ -18,7 +18,7 @@ target_link_libraries(dmtr-libos-lwip ${DPDK_LIB_DIR}/librte_pdump.a)
 # the `--whole-archive` option is needed to ensure that symbols such as
 # `zeus_queue` get exported from the resulting shared object. object
 # files are normally culled if none of their symbols are referenced.
-target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive" dmtr-libos-io-common "-Wl,--no-whole-archive")
+target_link_libraries(dmtr-libos-lwip dmtr-libos-io-common)
 
 # todo: these options should not be passed directly to
 # `target_link_libraries()`. we should use `find_library()` instead.

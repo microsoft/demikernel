@@ -37,21 +37,21 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.yaml ${CMAKE_CURRENT_BINARY_DI
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/psp_cfg.yaml ${CMAKE_CURRENT_BINARY_DIR}/psp_cfg.yaml COPYONLY)
 
 # POSIX HTTP server threaded
-#add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-#target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml-cpp boost_program_options Threads::Threads)
+add_executable(dmtr-posix-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-posix-http-server-threaded dmtr-libos-posix pcre yaml-cpp Threads::Threads)
 
 # POSIX HTTP rate client
-#add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-#target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
+add_executable(dmtr-posix-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 
 # LWIP HTTP server threaded
-#add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-#target_link_libraries(dmtr-lwip-http-server-threaded psp-libos-common dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
-#target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
+add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-lwip-http-server-threaded dmtr-libos-lwip pcre yaml-cpp Threads::Threads)
+target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
 
 # LWIP HTTP rate client
 add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-target_link_libraries(dmtr-lwip-http-rate-client psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options Threads::Threads)
+target_link_libraries(dmtr-lwip-http-rate-client dmtr-libos-lwip yaml-cpp Threads::Threads)
 target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # LWIP HTTP closed loop client
@@ -60,12 +60,12 @@ target_link_libraries(dmtr-lwip-http-cl-client psp-libos-common dmtr-libos-lwip 
 target_add_hoard(dmtr-lwip-http-rate-client hoard-vanilla)
 
 # RDMA HTTP server threaded
-#add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-#target_link_libraries(dmtr-rdma-http-server-threaded dmtr-libos-rdma rdmacm ibverbs pcre yaml-cpp yaml-cpp boost_program_options Threads::Threads)
+add_executable(dmtr-rdma-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+target_link_libraries(dmtr-rdma-http-server-threaded dmtr-libos-rdma rdmacm ibverbs pcre yaml-cpp yaml-cpp boost_program_options Threads::Threads)
 
 # RDMA HTTP rate client
-#add_executable(dmtr-rdma-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
-#target_link_libraries(dmtr-rdma-http-rate-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options Threads::Threads)
+add_executable(dmtr-rdma-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
+target_link_libraries(dmtr-rdma-http-rate-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options Threads::Threads)
 
 # POSIX HTTP server
 add_executable(dmtr-posix-http-server ${HTTP_SERVER_SOURCES})
@@ -123,11 +123,8 @@ target_link_libraries(dmtr-rdma-server dmtr-libos-rdma yaml-cpp)
 
 # RDMA client
 add_executable(dmtr-rdma-client ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-rdma-client psp-libos-common dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-client dmtr-libos-rdma yaml-cpp)
 
 # RDMA client & server
 add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo psp-libos-common dmtr-rdma-server dmtr-rdma-client)
-
-#add_custom_target(echo)
-#add_dependencies(echo posix-echo psp-libos-common dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo)

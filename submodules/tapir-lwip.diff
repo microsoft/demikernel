@@ -1,17 +1,34 @@
+diff --git a/Makefile b/Makefile
+index f269c90..88d0fee 100644
+--- a/Makefile
++++ b/Makefile
+@@ -37,7 +37,7 @@ CFLAGS += $(RDMA_CFLAGS)
+ LDFLAGS += $(RDMA_LDFLAGS)
+ 
+ DMTR_CFLAGS := -I$(DEMETER_INCLUDE)
+-DMTR_LDFLAGS := -L$(dir $(DEMETER_LIBOS_SO)) -Wl,-rpath,$(dir $(DEMETER_LIBOS_SO)) -L$(dir $(DEMETER_LATENCY_A)) -L$(dir $(DEMETER_COMMON_A)) -L$(dir $(MALLOC)) -Wl,-rpath,$(dir $(MALLOC)) -l:$(notdir $(DEMETER_LIBOS_SO)) -l:$(notdir $(DEMETER_LATENCY_A)) -l:$(notdir $(DEMETER_COMMON_A)) -lboost_chrono -lboost_system -lstdc++
++DMTR_LDFLAGS := -L$(dir $(PSP_COMMON_A)) -Wl,-rpath,$(dir $(PSP_COMMON_A)) -L$(dir $(DEMETER_COMMON_A)) -Wl,-rpath,$(dir $(DEMETER_COMMON_A)) -L$(dir $(DEMETER_LIBOS_SO)) -Wl,-rpath,$(dir $(DEMETER_LIBOS_SO)) -L$(dir $(DEMETER_LATENCY_A)) -L$(dir $(MALLOC)) -Wl,-rpath,$(dir $(MALLOC)) -l:$(notdir $(PSP_COMMON_A)) -l:$(notdir $(DEMETER_LIBOS_SO)) -l:$(notdir $(DEMETER_COMMON_A)) -l:$(notdir $(DEMETER_LATENCY_A)) -lboost_chrono -lboost_system -lboost_program_options -lyaml-cpp -lstdc++
+ CFLAGS += $(DMTR_CFLAGS)
+ LDFLAGS += $(DMTR_LDFLAGS)
+ 
 diff --git a/lib/dmtransport.cc b/lib/dmtransport.cc
-index 4ba120b..2f0d2ff 100644
+index 4ba120b..c2b05c0 100644
 --- a/lib/dmtransport.cc
 +++ b/lib/dmtransport.cc
-@@ -421,10 +421,11 @@ DmTransport::Run()
-         return;
-     }
-     tokens.push_back(token);
-+    int start_idx = 0;
+@@ -409,6 +409,7 @@ DmTransport::Run()
+ {
+     dmtr_qtoken_t token;
+     int status;
++    int start_offset = 0;
+     stopLoop = false;
+     // check timer on clients
+     if (replicaIdx == -1) {
+@@ -424,7 +425,7 @@ DmTransport::Run()
      while (!stopLoop) {
          dmtr_qresult wait_out;
          int ready_idx;
 -        int status = dmtr_wait_any(&wait_out, &ready_idx, tokens.data(), tokens.size());
-+        int status = dmtr_wait_any(&wait_out, &start_idx, &ready_idx, tokens.data(), tokens.size());
++        int status = dmtr_wait_any(&wait_out, &start_offset, &ready_idx, tokens.data(), tokens.size());
  
          // if we got an EOK back from wait
          if (status == 0) {
