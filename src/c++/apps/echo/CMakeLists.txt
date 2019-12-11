@@ -45,9 +45,9 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/psp_cfg.yaml ${CMAKE_CURRENT_BINARY_D
 #target_link_libraries(dmtr-posix-http-rate-client dmtr-libos-posix yaml-cpp boost_program_options Threads::Threads)
 
 # LWIP HTTP server threaded
-add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-http-server-threaded psp-libos-common dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
-target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
+#add_executable(dmtr-lwip-http-server-threaded ${HTTP_THREADED_SERVER_SOURCES})
+#target_link_libraries(dmtr-lwip-http-server-threaded psp-libos-common dmtr-libos-lwip pcre yaml-cpp boost_program_options Threads::Threads)
+#target_add_hoard(dmtr-lwip-http-server-threaded hoard-vanilla)
 
 # LWIP HTTP rate client
 add_executable(dmtr-lwip-http-rate-client ${HTTP_RATE_CLIENT_SOURCES})
@@ -86,11 +86,12 @@ add_dependencies(dmtr-posix-echo psp-libos-common dmtr-posix-server dmtr-posix-c
 # Threaded echo server
 add_executable(dmtr-lwip-threaded-echo ${THREADED_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-lwip-threaded-echo psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
+
 add_executable(psp-lwip-threaded-echo ${PSP_ECHO_SERVER_SOURCES})
-target_link_libraries(psp-lwip-threaded-echo psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(psp-lwip-threaded-echo psp-libos-common dmtr-libos-lwip yaml-cpp)
 
 add_executable(psp-lwip-test ${PSP_TEST_SOURCES})
-target_link_libraries(psp-lwip-test psp-libos-common dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(psp-lwip-test psp-libos-common dmtr-libos-lwip yaml-cpp)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
@@ -118,7 +119,7 @@ add_dependencies(posix-echo psp-libos-common posix-server posix-client)
 
 # RDMA server
 add_executable(dmtr-rdma-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-rdma-server psp-libos-common dmtr-libos-rdma rdmacm ibverbs yaml-cpp boost_program_options)
+target_link_libraries(dmtr-rdma-server dmtr-libos-rdma yaml-cpp)
 
 # RDMA client
 add_executable(dmtr-rdma-client ${TCP_ECHO_CLIENT_SOURCES})

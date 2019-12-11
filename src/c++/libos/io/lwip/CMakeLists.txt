@@ -25,4 +25,4 @@ target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive" dmtr-libos-io-common
 target_link_libraries(dmtr-libos-lwip "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
 
 # `boost_context` and `boost_coroutine` must follow `dmtr-libos-io-common`
-target_link_libraries(dmtr-libos-lwip boost_context boost_coroutine dmtr-latency dmtr-trace)
+target_link_libraries(dmtr-libos-lwip boost_context boost_coroutine boost_program_options dmtr-latency dmtr-trace)
