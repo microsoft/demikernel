@@ -42,124 +42,6 @@ void pin_thread(pthread_t thread, u_int16_t cpu) {
     }
 }
 
-struct suqd {
-    std::shared_ptr<PspServiceUnit> psu;
-    int qd;
-};
-
-int worker_iteration(struct suqd *in, struct suqd *out) {
-    dmtr_qtoken_t token;
-    DMTR_OK(in->psu->ioqapi.pop(token, in->qd));
-    dmtr_qresult_t wait_out;
-    int status;
-    while ( (status = in->psu->wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
-    if (status != 0) {
-        exit_signal = true;
-        fprintf(stderr, "dmtr_wait returned %d\n", status);
-        return status;
-    }
-    DMTR_OK(out->psu->ioqapi.push(token, out->qd, wait_out.qr_value.sga));
-    DMTR_OK(out->psu->wait(&wait_out, token));
-    return 0;
-}
-
-int worker_loop(uint16_t cpu_id, struct suqd *in_queue, struct suqd *out_queue) {
-    pin_thread(pthread_self(), cpu_id);
-
-    while (!exit_signal) {
-        DMTR_OK(worker_iteration(in_queue, out_queue));
-    }
-    return 0;
-}
-
-int main_worker_loop(uint16_t cpu_id, struct suqd *client_queue, struct suqd *in_queue, struct suqd *out_queue) {
-    pin_thread(pthread_self(), cpu_id);
-
-    while (!exit_signal) {
-        DMTR_OK(worker_iteration(client_queue, out_queue));
-        DMTR_OK(worker_iteration(in_queue, client_queue));
-    }
-    return 0;
-}
-
-
-struct worker_args {
-    int cpu_id;
-    struct suqd client;
-    struct suqd in;
-    struct suqd out;
-};
-
-void* worker_entry(void *vargs) {
-    struct worker_args *args = (struct worker_args *)vargs;
-    worker_loop(args->cpu_id, &args->in,  &args->out);
-    return NULL;
-}
-
-void *main_worker_entry(void *vargs) {
-    struct worker_args *args = (struct worker_args *)vargs;
-    main_worker_loop(args->cpu_id, &args->client, &args->in, &args->out);
-    exit_signal = true;
-    return NULL;
-}
-
-int main_work(Psp &psp, int lqd, int n_threads) {
-    int memory_qds[n_threads];
-    std::vector<dmtr::shared_item> shared_items(n_threads);
-
-    for (int i = 1; i < n_threads + 1; i++) {
-        int producer_i = i;
-        int consumer_i = (i == n_threads) ? 0 : i + 1;
-        DMTR_OK(psp.service_units[i]->ioqapi.shared_queue(
-            memory_qds[i],
-            &shared_items[producer_i],
-            &shared_items[consumer_i]
-        ));
-    }
-
-    std::shared_ptr<PspServiceUnit> psu = psp.service_units[0];
-    dmtr_qtoken_t token;
-    DMTR_OK(psu->ioqapi.accept(token, lqd));
-
-    dmtr_qresult_t wait_out;
-    int status;
-    while ( (status = psu->wait(&wait_out, token)) == EAGAIN && !exit_signal) {}
-    if (status != 0) {
-        DMTR_OK(status /*dmtr_wait*/);
-        return -1;
-    } else {
-        printf("Accepted connection!\n");
-
-        int client_qd = wait_out.qr_value.ares.qd;
-
-        pthread_t pthreads[n_threads];
-        struct worker_args thread_args[n_threads];
-
-        for (int i = 1; i < n_threads + 1; i++) {
-            struct worker_args *args = &thread_args[i];
-            args->cpu_id = 2 + i;
-            args->client.psu = psu;
-            args->client.qd = client_qd;
-            args->in.psu = psp.service_units[i];
-            args->in.qd = memory_qds[i];
-            //args->in.psu = (i == 0) ? psp.service_units[n_threads - 1] :service_units[i-1];
-            //args->in.qd = (i == 0) ? memory_qds[n_threads - 1]: memory_qds[i-1];
-            args->out.psu  = psp.service_units[i];
-            args->out.qd = memory_qds[i];
-
-            if (pthread_create(&pthreads[i], NULL, (i == 0) ? main_worker_entry : worker_entry, args)) {
-                perror("pthread_create");
-                exit_signal = true;
-            }
-        }
-
-        for (int i=0; i < n_threads; i++) {
-            pthread_join(pthreads[i], NULL);
-        }
-    }
-    return 0;
-}
-
 int main(int argc, char *argv[]) {
     std::string ip, cfg_file;
     uint16_t port;
@@ -211,13 +93,58 @@ int main(int argc, char *argv[]) {
 
     saddr.sin_port = htons(port);
 
+    std::vector<dmtr_qtoken_t> tokens;
+    tokens.reserve(100);
+    dmtr_qtoken_t token;
+
     int lqd;
     DMTR_OK(psu->socket(lqd, AF_INET, SOCK_STREAM, 0));
     DMTR_OK(psu->ioqapi.bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-    DMTR_OK(psu->ioqapi.listen(lqd, 3));
+    DMTR_OK(psu->ioqapi.listen(lqd, 10));
+    DMTR_OK(psu->ioqapi.accept(token, lqd));
+    tokens.push_back(token);
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
 
-    return main_work(psp, lqd, n_threads);
+    int start_offset = 0;
+    while (!exit_signal) {
+        dmtr_qresult wait_out;
+        int idx;
+        int status = psu->wait_any(&wait_out, &start_offset, &idx, tokens.data(), tokens.size());
+        token = tokens[idx];
+        tokens.erase(tokens.begin()+idx);
+        if (status == 0) {
+            if (wait_out.qr_qd == lqd) {
+                /* Schedule reading on the accepted queue */
+                DMTR_OK(psu->ioqapi.pop(token, wait_out.qr_value.ares.qd));
+                tokens.push_back(token);
+                /* Re-enable accepting on the listen queue */
+                DMTR_OK(psu->ioqapi.accept(token, lqd));
+                tokens.push_back(token);
+            } else if (DMTR_OPC_POP == wait_out.qr_opcode) {
+                assert(wait_out.qr_value.sga.sga_numsegs == 1);
+                DMTR_OK(psu->ioqapi.push(token, wait_out.qr_qd, wait_out.qr_value.sga));
+                int rtn2;
+                while ((rtn2 = psu->wait(NULL, token)) == EAGAIN && !exit_signal) {};
+                DMTR_OK(rtn2);
+                DMTR_OK(psu->ioqapi.pop(token, wait_out.qr_qd));
+                tokens.push_back(token);
+            } else if (DMTR_OPC_PUSH == wait_out.qr_opcode) {
+                DMTR_OK(psu->ioqapi.pop(token, wait_out.qr_qd));
+                dmtr_free_mbuf(&wait_out.qr_value.sga);
+            } else {
+                DMTR_UNREACHABLE();
+            }
+        } else {
+            if (wait_out.qr_qd == lqd) {
+                std::cout << "Error on listening fd! Exiting" << std::endl;
+                exit(0);
+            }
+            assert(status == ECONNRESET || status == ECONNABORTED);
+            psu->ioqapi.close(wait_out.qr_qd);
+        }
+    }
+
+    return 0;
 }

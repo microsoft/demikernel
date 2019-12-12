@@ -1704,7 +1704,7 @@ int dmtr::lwip_queue::rte_eth_dev_configure(uint16_t port_id, uint16_t nb_rx_que
 int dmtr::lwip_queue::rte_eth_rx_queue_setup(uint16_t port_id, uint16_t rx_queue_id, uint16_t nb_rx_desc, unsigned int socket_id, const struct rte_eth_rxconf &rx_conf, struct rte_mempool &mb_pool) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
-    std::cout << "configuring rx queue " << rx_queue_id <<;
+    std::cout << "configuring rx queue " << rx_queue_id;
     std::cout << " on port " << port_id << " with " << nb_rx_desc << " rx rings" << std::endl;
     int ret = ::rte_eth_rx_queue_setup(port_id, rx_queue_id, nb_rx_desc, socket_id, &rx_conf, &mb_pool);
     if (0 == ret) {
