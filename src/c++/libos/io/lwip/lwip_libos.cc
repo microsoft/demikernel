@@ -35,9 +35,10 @@ int dmtr_net_init(const char *app_cfg)
     return 0;
 }
 
-int dmtr_init_net_context(void **out_context, uint16_t port_id)
+int dmtr_init_net_context(void **out_context, void *in_context,
+                          uint16_t port_id, uint32_t ring_pair_id)
 {
-    DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, port_id));
+    DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, in_context, port_id, ring_pair_id));
     return 0;
 }
 

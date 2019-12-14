@@ -7,6 +7,8 @@
 #include <dmtr/annot.h>
 
 /********** CONTROL PLANE ******************/
+//TODO:
+// - don't create network context for SU that specify a non existing device
 Psp::Psp(std::string &app_cfg) {
     /* Let network libOS init its specific EAL */
     dmtr_net_init(app_cfg.c_str());
@@ -39,7 +41,11 @@ Psp::Psp(std::string &app_cfg) {
                                     devices_to_sus[dev_id]++;
                                 }
                                 /* Get a new network context for the service unit */
-                                dmtr_init_net_context(&service_unit->io_ctx.net_context, dev_id);
+                                dmtr_init_net_context(
+                                    &service_unit->io_ctx.net_context,
+                                    net_ctx.net_mempool,
+                                    dev_id, devices_to_sus[dev_id]-1
+                                );
                             }
                         }
                     }
@@ -88,7 +94,8 @@ int PspServiceUnit::wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     return ret;
 }
 
-int PspServiceUnit::wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {    uint16_t iter = 0;
+int PspServiceUnit::wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
+    uint16_t iter = 0;
     while (1) {
         for (int i = start_offset? *start_offset : 0; i < num_qts; i++) {
             int ret = ioqapi.poll(qr_out, qts[i]);

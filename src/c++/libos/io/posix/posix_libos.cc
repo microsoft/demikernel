@@ -188,7 +188,8 @@ int dmtr_net_init(const char *app_cfg)
     return ENOTSUP;
 }
 
-int dmtr_init_net_context(void **out_context, uint16_t port_id)
+int dmtr_init_net_context(void **out_context, void *in_context,
+                          uint16_t port_id, uint32_t ring_pair_id)
 {
     return ENOTSUP;
 }
