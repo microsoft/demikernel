@@ -50,9 +50,8 @@ Psp::Psp(std::string &app_cfg) {
                             }
                             /* Retrieve the default IP for the service unit */
                             struct in_addr ip;
-                            std::cout << ioq["ip"] << std::endl;
-                            const std::string ip_s = ioq["ip"].as<std::string>();
-                            inet_aton(ip_s.c_str(), &ip);
+                            service_unit->ip = ioq["ip"].as<std::string>();
+                            inet_aton(service_unit->ip.c_str(), &ip);
                             /* Set a new network context for the service unit */
                             int rtn = dmtr_init_net_context(
                                 &service_unit->io_ctx.net_context,
@@ -65,6 +64,9 @@ Psp::Psp(std::string &app_cfg) {
                                 std::cerr << " net context" << std::endl;
                                 exit(1);
                             }
+                            /* Retrieve the port */
+                            std::cout << ioq["port"] << std::endl;
+                            service_unit->port = ioq["port"].as<uint16_t>();
                             service_unit->net_context_init_flag = true;
                         }
                     }

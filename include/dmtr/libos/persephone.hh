@@ -12,14 +12,14 @@ static std::string log_dir;
 
 /************** Service Units ************/
 class PspServiceUnit {
-    uint32_t my_id;
-    struct io_context { /* << The various contexts used by io queues */
+    /* IO related variables and functions */
+    public: uint32_t my_id;
+    private: struct io_context { /* << The various contexts used by io queues */
         void *net_context; /* << The context used to setup network queues */
     };
     public: struct io_context io_ctx;
     public: bool net_context_init_flag = false;
     public: dmtr::io_queue_api ioqapi;
-    dmtr::io_queue::category_id my_type;
 
     public: PspServiceUnit(uint32_t id) : my_id(id) {
         io_ctx.net_context = NULL;
@@ -32,14 +32,13 @@ class PspServiceUnit {
     //public: shared_queue(int shared_qfd, dmtr::shared_item *consumer_si, dmtr::shared_item *producer_si);
     public: int socket(int &qd, int domain, int type, int protocol);
 
-    private: DMTR_EXPORT int init(int argc, char *argv[]);
+    //Convenient way to store which ip:port to connect/bind to
+    public: std::string ip;
+    public: uint16_t port;
 
-    // delete copy ctor
-    /*
     public: ~PspServiceUnit() {
-        delete io_ctx->net_context; //FIXME this should be a call to smth like dmtr_del_net_context(void *context)
+        dmtr_del_net_context(io_ctx.net_context);
     }
-    */
 };
 
 /************** Control Plane class ************/

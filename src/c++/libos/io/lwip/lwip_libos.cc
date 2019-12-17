@@ -36,6 +36,12 @@ int dmtr_net_init(const char *app_cfg)
     return 0;
 }
 
+int dmtr_del_net_context(void *context)
+{
+    DMTR_OK(dmtr::lwip_queue::del_context(context));
+    return 0;
+}
+
 int dmtr_init_net_context(void **out_context, void *in_context,
                           uint16_t port_id, uint16_t ring_pair_id,
                           struct in_addr ip)

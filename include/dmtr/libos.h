@@ -41,6 +41,7 @@ DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 
 DMTR_EXPORT int dmtr_free_mbuf(dmtr_sgarray_t *sga);
 
+DMTR_EXPORT int dmtr_del_net_context(void *context);
 DMTR_EXPORT int dmtr_init_net_context(void **context, void *in_context,
                                       uint16_t port_id, uint16_t ring_pair_id, struct in_addr ip);
 DMTR_EXPORT int dmtr_net_init(const char *app_cfg);

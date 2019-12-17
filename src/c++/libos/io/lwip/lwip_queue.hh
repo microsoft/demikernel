@@ -82,6 +82,13 @@ class lwip_queue : public io_queue {
     private: static int init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag_tbl,
                                                              struct rte_mempool *&ip_frag_mbuf_pool,
                                                              uint16_t port_id, uint16_t ring_pair_id);
+    public: static int del_context(void *context) {
+                //FIXME: this should probably delete the sga queues (in my_context->recv_queues)
+                DMTR_NOTNULL(EINVAL, context);
+                struct context *ctx = static_cast<struct context *>(context);
+                delete ctx;
+            }
+
     public: static int generate_context(void *&out_context, void *in_context,
                                         uint16_t port_id, uint16_t ring_pair_id,
                                         struct in_addr &ip) {

@@ -6,14 +6,12 @@
 #include <iomanip>
 
 namespace dmtr_log {
+    using log_clock = std::chrono::system_clock;
+    static const auto log_start = log_clock::now();
 
-using log_clock = std::chrono::system_clock;
-static const auto log_start = log_clock::now();
-
-static double elapsed_time() {
-    return std::chrono::duration<double>(log_clock::now() - log_start).count();
-}
-
+    static double elapsed_time() {
+        return std::chrono::duration<double>(log_clock::now() - log_start).count();
+    }
 }
 
 /* For coloring log output  */
