@@ -1,9 +1,11 @@
 #include <iostream>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <yaml-cpp/yaml.h>
+
 #include <dmtr/libos.h>
 #include <dmtr/libos/persephone.hh>
-
 #include <dmtr/annot.h>
 
 /********** CONTROL PLANE ******************/
@@ -26,27 +28,44 @@ Psp::Psp(std::string &app_cfg) {
             std::shared_ptr<PspServiceUnit> service_unit = std::make_shared<PspServiceUnit>(i);
             for (auto su = sus[i].begin(); su != sus[i].end(); ++su) {
                 auto key = su->first.as<std::string>();
+                auto value = su->second;
                 if (key == "io") {
-                    for (size_t j = 0; j < su->second.size(); ++j) {
-                        for (auto ioq = su->second[j].begin(); ioq != su->second[j].end(); ++ioq) {
-                            auto ioq_key = ioq->first.as<std::string>();
-                            if (ioq_key == "type" && ioq->second.as<std::string>() == "NETWORK_Q") {
-                                auto dev_id = su->second[j]["device_id"].as<uint16_t>();
-                                auto it = devices_to_sus.find(dev_id);
-                                if (it == devices_to_sus.end()) {
-                                    devices_to_sus.insert(
-                                        std::pair<uint16_t, uint32_t>(dev_id, 1)
-                                    );
-                                } else {
-                                    devices_to_sus[dev_id]++;
-                                }
-                                /* Get a new network context for the service unit */
-                                dmtr_init_net_context(
-                                    &service_unit->io_ctx.net_context,
-                                    net_ctx.net_mempool,
-                                    dev_id, devices_to_sus[dev_id]-1
-                                );
+                    // Iterate through all the queue types for this SU
+                    for (size_t j = 0; j < value.size(); ++j) {
+                        auto ioq = value[j];
+                        //std::cout << ioq << std::endl;
+                        if (ioq["type"].as<std::string>() == "NETWORK") {
+                            if (service_unit->net_context_init_flag) {
+                                std::cerr << "Service unit's net context already initialized" << std::endl;
+                                continue;
                             }
+                            auto dev_id = ioq["device_id"].as<uint16_t>();
+                            auto it = devices_to_sus.find(dev_id);
+                            if (it == devices_to_sus.end()) {
+                                devices_to_sus.insert(
+                                    std::pair<uint16_t, uint32_t>(dev_id, 1)
+                                );
+                            } else {
+                                devices_to_sus[dev_id]++;
+                            }
+                            /* Retrieve the default IP for the service unit */
+                            struct in_addr ip;
+                            std::cout << ioq["ip"] << std::endl;
+                            const std::string ip_s = ioq["ip"].as<std::string>();
+                            inet_aton(ip_s.c_str(), &ip);
+                            /* Set a new network context for the service unit */
+                            int rtn = dmtr_init_net_context(
+                                &service_unit->io_ctx.net_context,
+                                net_ctx.net_mempool,
+                                dev_id, devices_to_sus[dev_id]-1,
+                                ip
+                            );
+                            if (rtn != 0) {
+                                std::cerr << "Error setting up service unit " << i;
+                                std::cerr << " net context" << std::endl;
+                                exit(1);
+                            }
+                            service_unit->net_context_init_flag = true;
                         }
                     }
                 }
@@ -66,7 +85,16 @@ Psp::Psp(std::string &app_cfg) {
      * (with as many rx/tx queue than we have service units using the device)
      */
     for (auto &d: devices_to_sus) {
-        dmtr_net_port_init(d.first, net_ctx.net_mempool, d.second, d.second);
+        if (dmtr_net_port_init(d.first, net_ctx.net_mempool, d.second, d.second) != 0) {
+            exit(1);
+        }
+    }
+
+    /* Configure flow steering */
+    for (auto &su: service_units) {
+        if (dmtr_set_fdir(su.second->io_ctx.net_context) != 0) {
+            exit(1);
+        }
     }
 }
 

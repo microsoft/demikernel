@@ -32,6 +32,7 @@
 #include <rte_lcore.h>
 #include <rte_memcpy.h>
 #include <rte_udp.h>
+#include <rte_flow.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
@@ -80,7 +81,13 @@ namespace bpo = boost::program_options;
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-//#define DMTR_DEBUG 1
+
+/** RSS & Flow direction */
+#define MAX_PATTERN_NUM     3
+#define MAX_ACTION_NUM      2
+
+/** Log and debugging */
+#define DMTR_DEBUG 1
 // TODO: This should be defined in a more global place so we don't have to
 // uncomment it in multiple places
 #define DMTR_TRACE 1
@@ -216,30 +223,35 @@ int dmtr::lwip_queue::set_my_context(void *ctx) {
 
 bool dmtr::lwip_queue::our_dpdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
-std::unordered_map<std::string, struct in_addr> dmtr::lwip_queue::our_mac_to_ip_table;
-std::unordered_map<in_addr_t, struct rte_ether_addr> dmtr::lwip_queue::our_ip_to_mac_table;
+std::unordered_map<std::string, std::vector<struct in_addr>> dmtr::lwip_queue::our_mac_to_ip_table;
+std::unordered_map<in_addr_t, std::vector<struct rte_ether_addr>> dmtr::lwip_queue::our_ip_to_mac_table;
 
 int dmtr::lwip_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_addr &ip)
 {
     auto it = our_ip_to_mac_table.find(ip.s_addr);
     DMTR_TRUE(ENOENT, our_ip_to_mac_table.cend() != it);
-    mac_out = it->second;
+    mac_out = it->second.front(); // There should be only one entry in this map
     return 0;
 }
 
-int dmtr::lwip_queue::mac_to_ip(struct in_addr &ip_out, const struct rte_ether_addr &mac)
+bool dmtr::lwip_queue::is_valid_ip(struct in_addr &addr, struct rte_ether_addr &mac)
 {
     std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), RTE_ETHER_ADDR_LEN);
-    auto it = our_mac_to_ip_table.find(mac_s);
-    DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != it);
-    ip_out = it->second;
-    return 0;
+    auto mac_it = our_mac_to_ip_table.find(mac_s);
+    DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != mac_it);
+    for (auto &a: mac_it->second) {
+        if (0 == memcmp(&a, &addr, sizeof(addr))) {
+            return true;
+        }
+    }
+    return ENOENT;
 }
 
 bool
 dmtr::lwip_queue::insert_recv_queue(const lwip_4tuple &tup,
                                     const dmtr_sgarray_t &sga)
 {
+    DMTR_TRUE(EPERM, my_context_init_flag);
     auto it = my_context->recv_queues.find(tup);
     if (it == my_context->recv_queues.end()) {
         return false;
@@ -330,12 +342,6 @@ int dmtr::lwip_queue::wait_for_link_status_up(uint16_t port_id)
 #define IP_OFFLOADS 0
 #endif
 
-// TODO IMP: Haven't worked out how to get this working without multi seg offload
-#define REQUIRED_OFFLOADS (DEV_TX_OFFLOAD_MULTI_SEGS)
-
-#define REQUESTED_DEV_TX_OFFLOADS \
-    ( GSO_OFFLOADS | IP_OFFLOADS | REQUIRED_OFFLOADS )
-
 /**
  * Initialize EAL
  */
@@ -361,8 +367,15 @@ int dmtr::lwip_queue::net_init(const char *app_cfg) {
     if (YAML::NodeType::Map == node.Type()) {
         for (auto i = node.begin(); i != node.end(); ++i) {
             auto mac = i->first.as<std::string>();
-            auto ip = i->second.as<std::string>();
-            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+            if (YAML::NodeType::Sequence == i->second.Type()) {
+                std::vector<std::string> ips = i->second.as<std::vector<std::string>>();
+                for (auto &ip: ips) {
+                    DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+                }
+            } else {
+                auto ip = i->second.as<std::string>();
+                DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+            }
         }
     }
 
@@ -398,7 +411,7 @@ int dmtr::lwip_queue::net_mempool_init(void *&mempool_out, uint8_t numa_socket_i
 
 /* Per network-context GSO pool */
 int dmtr::lwip_queue::init_gso_ctx(struct rte_gso_ctx &gso_ctx,
-                                   uint16_t port_id, uint32_t ring_pair_id) {
+                                   uint16_t port_id, uint16_t ring_pair_id) {
     /* Initialize GSO indirect memory pool */
     struct rte_mempool *gso_mbuf_pool = NULL;
     char buf[RTE_MEMPOOL_NAMESIZE*2]; //RTE_MEMZONE_NAMESIZE is less than 32B
@@ -430,7 +443,7 @@ int dmtr::lwip_queue::init_gso_ctx(struct rte_gso_ctx &gso_ctx,
 
 int dmtr::lwip_queue::init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag_tbl,
                                                 struct rte_mempool *&ip_frag_mbuf_pool,
-                                                uint16_t port_id, uint32_t ring_pair_id) {
+                                                uint16_t port_id, uint16_t ring_pair_id) {
     uint32_t nb_mbuf;
     uint64_t frag_cycles;
     char buf[RTE_MEMPOOL_NAMESIZE];
@@ -466,25 +479,36 @@ int dmtr::lwip_queue::init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag
  * Initializes a given port using global settings and with the RX buffers
  * coming from the mbuf_pool passed as a parameter.
  */
+std::unordered_map<uint16_t, uint16_t> dmtr::lwip_queue::port_rx_rings;
+std::unordered_map<uint16_t, uint16_t> dmtr::lwip_queue::port_tx_rings;
 int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool,
                                      uint32_t n_tx_rings, uint32_t n_rx_rings) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     const uint16_t rx_rings = n_rx_rings;
     const uint16_t tx_rings = n_tx_rings;
-    const uint16_t nb_rxd = RX_RING_SIZE;
-    const uint16_t nb_txd = TX_RING_SIZE;
+    uint16_t nb_rxd = RX_RING_SIZE;
+    uint16_t nb_txd = TX_RING_SIZE;
 
     struct ::rte_eth_dev_info dev_info = {};
     DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
     struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
+    // RX
+    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN; // 1518 Bytes
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
+    // TX
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-    // TODO IMP: check (and store) availability of offloads
-    port_conf.txmode.offloads = REQUESTED_DEV_TX_OFFLOADS;
+    if (dev_info.tx_offload_capa & GSO_OFFLOADS)
+        port_conf.txmode.offloads |= GSO_OFFLOADS;
+    if (dev_info.tx_offload_capa & IP_OFFLOADS)
+        port_conf.txmode.offloads |= IP_OFFLOADS;
+    if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MULTI_SEGS)
+        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MULTI_SEGS;
+
+    //if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE)
+    // port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
 
     struct ::rte_eth_rxconf rx_conf = {};
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
@@ -500,13 +524,12 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     // configure the ethernet device.
     DMTR_OK(rte_eth_dev_configure(port_id, rx_rings, tx_rings, port_conf));
 
-    // todo: what does this do?
-/*
-    retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
+    // Check that numbers of Rx and Tx descriptors satisfy descriptors limits from the ethernet
+    // device information, otherwise adjust them to boundaries.
+    int retval = rte_eth_dev_adjust_nb_rx_tx_desc(port_id, &nb_rxd, &nb_txd);
     if (retval != 0) {
         return retval;
     }
-*/
 
     // todo: this call fails and i don't understand why.
     int socket_id = 0; //FIXME make the NUMA node configurable
@@ -516,12 +539,12 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
         socket_id = 0;
     }
 
-    // allocate and set up 1 RX queue per Ethernet port.
+    // allocate and set up RX queues
     for (uint16_t i = 0; i < rx_rings; ++i) {
         DMTR_OK(rte_eth_rx_queue_setup(port_id, i, nb_rxd, socket_id, rx_conf, mbuf_pool));
     }
 
-    // allocate and set up 1 TX queue per Ethernet port.
+    // allocate and set up TX queues
     for (uint16_t i = 0; i < tx_rings; ++i) {
         DMTR_OK(rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, tx_conf));
     }
@@ -529,22 +552,25 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     // start the ethernet port.
     DMTR_OK(rte_eth_dev_start(port_id));
     std::cout << "Started Network port " << port_id;
-    std::cout << " with " << rx_rings << " rx rings and " << tx_rings << " tx rings" << std::endl;
+    std::cout << " rx rings: " << rx_rings << ", tx rings: " << tx_rings << std::endl;
 
     //DMTR_OK(rte_eth_promiscuous_enable(port_id));
 
     // disable the rx/tx flow control
     // todo: why?
+    /*
     struct ::rte_eth_fc_conf fc_conf = {};
     DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
     fc_conf.mode = RTE_FC_NONE;
     DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
     DMTR_OK(wait_for_link_status_up(port_id));
+    */
+    port_rx_rings[port_id] = rx_rings;
+    port_tx_rings[port_id] = tx_rings;
+    DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
     return 0;
 }
-
-std::unordered_set<uint16_t> dmtr::lwip_queue::my_app_ports;
 
 const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
 
@@ -573,6 +599,7 @@ dmtr::lwip_queue::~lwip_queue()
 
 //FIXME: this assumes that ports are freed faster than they are consumed
 uint16_t dmtr::lwip_queue::gen_src_port() {
+    DMTR_TRUE(EPERM, my_context_init_flag);
     return my_context->port_range_lo
            + (my_context->port_counter++
               % (my_context->port_range_hi - my_context->port_range_lo));
@@ -604,10 +631,12 @@ int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
 {
     q_out = NULL;
     DMTR_TRUE(EPERM, my_listening_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_NOTNULL(EINVAL, my_accept_thread);
 
     auto * const q = new lwip_queue(new_qd);
     q->my_context = my_context;
+    q->my_context_init_flag = true;
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
@@ -621,6 +650,7 @@ int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
 int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EINVAL, good());
     DMTR_TRUE(EINVAL, my_listening_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
 
     while (good()) {
         while (tq.empty()) {
@@ -692,28 +722,26 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     DMTR_TRUE(EINVAL, !is_bound());
     DMTR_NOTNULL(EINVAL, saddr);
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     // only one socket can be bound to an address at a time
     const uint16_t port_id = boost::get(my_context->port_id);
-
-    struct rte_ether_addr mac = {};
-    DMTR_OK(rte_eth_macaddr_get(port_id, mac));
-    struct in_addr ip;
-    DMTR_OK(mac_to_ip(ip, mac));
 
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
 
     if (INADDR_ANY == saddr_copy.sin_addr.s_addr) {
-        saddr_copy.sin_addr = ip;
+        saddr_copy.sin_addr = my_context->default_addr;
     } else {
         // we cannot deviate from associations found in `config.yaml`.
-        DMTR_TRUE(EPERM, 0 == memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
+        struct rte_ether_addr mac = {};
+        DMTR_OK(rte_eth_macaddr_get(port_id, mac));
+        DMTR_TRUE(EPERM, is_valid_ip(saddr_copy.sin_addr, mac));
     }
 
     my_bound_src = saddr_copy;
-    my_app_ports.insert(ntohs(saddr_copy.sin_port));
+    my_context->app_ports.insert(ntohs(saddr_copy.sin_port));
 
     struct sockaddr_in generic_src = {};
     generic_src.sin_family = AF_INET;
@@ -735,13 +763,14 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     DMTR_TRUE(EINVAL, sizeof(struct sockaddr_in) == size);
     DMTR_TRUE(EPERM, !is_bound());
     DMTR_TRUE(EPERM, !is_connected());
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     const uint16_t port_id = boost::get(my_context->port_id);
 
     struct sockaddr_in saddr_copy =
         *reinterpret_cast<const struct sockaddr_in *>(saddr);
     my_default_dst = saddr_copy;
-    my_app_ports.insert(ntohs(saddr_copy.sin_port));
+    my_context->app_ports.insert(ntohs(saddr_copy.sin_port));
 
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
@@ -753,7 +782,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
     struct sockaddr_in src = {};
     src.sin_family = AF_INET;
     src.sin_port = htons(gen_src_port());
-    DMTR_OK(mac_to_ip(src.sin_addr, mac));
+    src.sin_addr = my_context->default_addr;
     my_bound_src = src;
 
     my_tuple = lwip_4tuple(lwip_addr(saddr_copy), lwip_addr(src));
@@ -772,6 +801,7 @@ int dmtr::lwip_queue::connect(const struct sockaddr * const saddr, socklen_t siz
  */
 int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
 
     /** If we are at the "initiating side" of the close */
@@ -793,24 +823,34 @@ int dmtr::lwip_queue::close() {
 #if DMTR_DEBUG
         printf("size of my_context->recv_queues: %lu\n", my_context->recv_queues.size());
 #endif
-        return 0;
     }
 
     int ret;
     struct rte_eth_stats stats;
     const uint16_t port_id = boost::get(my_context->port_id);
 
-    ret = rte_eth_stats_get(port_id, &stats);
+    ret = ::rte_eth_stats_get(port_id, &stats);
     if (ret) {
         printf("dpdk: error getting eth stats");
     }
 
     auto now = take_time();
     printf("eth stats for port %d at time %" PRIu64 "\n", port_id, since_epoch(now));
-    printf("RX-packets: %" PRIu64 " RX-dropped: %" PRIu64 " RX-bytes: %" PRIu64 "\n",
-            stats.ipackets, stats.imissed, stats.ibytes);
-    printf("TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 "\n", stats.opackets,
-            stats.obytes);
+
+    printf("[port %u], RX-packets: %" PRIu64 " RX-dropped: %" PRIu64 " RX-bytes: %" PRIu64 "\n",
+            port_id, stats.ipackets, stats.imissed, stats.ibytes);
+    for (uint16_t i = 0; i < port_rx_rings[port_id]; ++i) {
+        printf("[RX queue %u] RX-packets: %" PRIu64 " RX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
+                i, stats.q_ipackets[i], stats.q_ibytes[i], stats.q_errors[i]);
+    }
+
+    printf("[port %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 "\n",
+            port_id, stats.opackets, stats.obytes);
+    for (uint16_t i = 0; i < port_tx_rings[port_id]; ++i) {
+        printf("[TX queue %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
+                i, stats.q_opackets[i], stats.q_obytes[i], stats.q_errors[i]);
+    }
+
     printf("RX-error: %" PRIu64 " TX-error: %" PRIu64 " RX-mbuf-fail: %" PRIu64 "\n",
             stats.ierrors, stats.oerrors, stats.rx_nombuf);
 
@@ -819,6 +859,7 @@ int dmtr::lwip_queue::close() {
 
 int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     DMTR_NOTNULL(EINVAL, my_push_thread);
 
@@ -830,6 +871,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
 int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     const uint16_t port_id = *my_context->port_id;
 #ifdef DMTR_PROFILE
@@ -959,14 +1001,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             uint16_t ip_len = 0; // In host byte order.
             DMTR_OK(dmtr_u32tou16(&ip_len, total_len + sizeof(*ip_hdr)));
 
-            struct in_addr src_ip;
-            // todo: need a way to get my own IP address even if `bind()` wasn't
-            // called.
-            if (is_bound()) {
-                src_ip = my_bound_src->sin_addr;
-            } else {
-                DMTR_OK(mac_to_ip(src_ip, eth_hdr->s_addr));
-            }
+            struct in_addr src_ip = is_bound()? my_bound_src->sin_addr : my_context->default_addr;
 
             ip_hdr->version_ihl = IP_VHL_DEF;
             ip_hdr->total_length = htons(ip_len);
@@ -1156,6 +1191,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
 
 int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     DMTR_NOTNULL(EINVAL, my_pop_thread);
 
@@ -1168,6 +1204,7 @@ int dmtr::lwip_queue::pop(dmtr_qtoken_t qt) {
 
 int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
 
     while (good()) {
@@ -1235,6 +1272,7 @@ T* pktmbuf_struct_read(const struct rte_mbuf *pkt, size_t offset, T& buf) {
 int
 dmtr::lwip_queue::service_incoming_packets() {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
     const uint16_t port_id = boost::get(my_context->port_id);
 
@@ -1475,13 +1513,13 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     in_port_t udp_src_port = udp_hdr->src_port;
     in_port_t udp_dst_port = udp_hdr->dst_port;
 
-    if (my_app_ports.find(ntohs(udp_hdr->dst_port)) == my_app_ports.end() &&
-            my_app_ports.find(ntohs(udp_hdr->src_port)) == my_app_ports.end()) {
+    if (my_context->app_ports.find(ntohs(udp_hdr->dst_port)) == my_context->app_ports.end() &&
+            my_context->app_ports.find(ntohs(udp_hdr->src_port)) == my_context->app_ports.end()) {
 #if DMTR_DEBUG
         std::cout << "Recv: dropped (dst port: " << ntohs(udp_hdr->dst_port) << \
                      ", src_port: " << ntohs(udp_hdr->src_port) << \
                      ". Expecting one of: ";
-        for (auto it = my_app_ports.begin(); it != my_app_ports.end(); it++) {
+        for (auto it = my_context->app_ports.begin(); it != my_context->app_ports.end(); it++) {
             std::cout << *it << ", ";
         }
 #endif
@@ -1815,14 +1853,26 @@ int dmtr::lwip_queue::rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_l
     return 0;
 }
 
+int dmtr::lwip_queue::rte_eth_dev_rss_reta_query(uint16_t port_id,
+                                                 struct rte_eth_rss_reta_entry64 *reta_conf,
+                                                 uint16_t reta_size) {
+    int ret = ::rte_eth_dev_rss_reta_query(port_id, reta_conf, reta_size);
+    if (ret == 0) {
+        return 0;
+    }
+
+    if (0 > ret) {
+        return (-ret);
+    }
+
+    DMTR_UNREACHABLE();
+}
+
 int dmtr::lwip_queue::learn_addrs(const struct rte_ether_addr &mac, const struct in_addr &ip) {
     DMTR_TRUE(EINVAL, !rte_is_same_ether_addr(&mac, &ether_broadcast));
     std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), RTE_ETHER_ADDR_LEN);
-    DMTR_TRUE(EEXIST, our_mac_to_ip_table.find(mac_s) == our_mac_to_ip_table.cend());
-    DMTR_TRUE(EEXIST, our_ip_to_mac_table.find(ip.s_addr) == our_ip_to_mac_table.cend());
-
-    our_mac_to_ip_table.insert(std::make_pair(mac_s, ip));
-    our_ip_to_mac_table.insert(std::make_pair(ip.s_addr, mac));
+    our_mac_to_ip_table[mac_s].push_back(ip);
+    our_ip_to_mac_table[ip.s_addr].push_back(mac);
     return 0;
 }
 
@@ -1856,6 +1906,91 @@ int dmtr::lwip_queue::parse_ether_addr(struct rte_ether_addr &mac_out, const cha
     }
 
     return 0;
+}
+
+int dmtr::lwip_queue::set_fdir(void *&context) {
+    struct context *net_ctx = reinterpret_cast<struct context *>(context);
+    DMTR_TRUE(EPERM, net_ctx->port_id != boost::none);
+    const uint16_t port_id = boost::get(net_ctx->port_id);
+
+    struct rte_flow_error error;
+    struct rte_flow *flow = generate_ipv4_flow(
+        port_id, net_ctx->ring_pair_id,
+        INADDR_ANY, 0, net_ctx->default_addr.s_addr, 0,
+        &error
+    );
+
+    if (!flow) {
+        printf("Flow can't be created %d message: %s\n",
+               error.type,
+               error.message ? error.message : "(no stated reason)");
+        return ENOTRECOVERABLE;
+    }
+
+    return 0;
+}
+
+struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_t rx_q,
+                                                       uint32_t src_ip, uint32_t src_mask,
+                                                       uint32_t dest_ip, uint32_t dest_mask,
+                                                       struct rte_flow_error *error) {
+    struct rte_flow_attr attr;
+    struct rte_flow_item pattern[MAX_PATTERN_NUM];
+    struct rte_flow_action action[MAX_ACTION_NUM];
+    struct rte_flow *flow = NULL;
+    struct rte_flow_action_queue queue = { .index = rx_q };
+    struct rte_flow_item_ipv4 ip_spec;
+    struct rte_flow_item_ipv4 ip_mask;
+    int res;
+
+    memset(pattern, 0, sizeof(pattern));
+    memset(action, 0, sizeof(action));
+
+    /*
+     * set the rule attribute.
+     * in this case only ingress packets will be checked.
+     */
+    memset(&attr, 0, sizeof(struct rte_flow_attr));
+    attr.ingress = 1;
+
+    /*
+     * create the action sequence.
+     * one action only,  move packet to queue
+     */
+    action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
+    action[0].conf = &queue;
+    action[1].type = RTE_FLOW_ACTION_TYPE_END;
+
+    /*
+     * set the first level of the pattern (ETH).
+     * since in this example we just want to get the
+     * ipv4 we set this level to allow all.
+     */
+    pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+
+    /*
+     * setting the second level of the pattern (IP).
+     * in this example this is the level we care about
+     * so we set it according to the parameters.
+     */
+    memset(&ip_spec, 0, sizeof(struct rte_flow_item_ipv4));
+    memset(&ip_mask, 0, sizeof(struct rte_flow_item_ipv4));
+    ip_spec.hdr.dst_addr = htonl(dest_ip);
+    ip_mask.hdr.dst_addr = dest_mask;
+    ip_spec.hdr.src_addr = htonl(src_ip);
+    ip_mask.hdr.src_addr = src_mask;
+    pattern[1].type = RTE_FLOW_ITEM_TYPE_IPV4;
+    pattern[1].spec = &ip_spec;
+    pattern[1].mask = &ip_mask;
+
+    /* the final level must be always type end */
+    pattern[2].type = RTE_FLOW_ITEM_TYPE_END;
+
+    res = rte_flow_validate(port_id, &attr, pattern, action, error);
+    if (!res)
+        flow = rte_flow_create(port_id, &attr, pattern, action, error);
+
+    return flow;
 }
 
 void dmtr::lwip_queue::start_threads() {

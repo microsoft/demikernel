@@ -17,6 +17,7 @@ class PspServiceUnit {
         void *net_context; /* << The context used to setup network queues */
     };
     public: struct io_context io_ctx;
+    public: bool net_context_init_flag = false;
     public: dmtr::io_queue_api ioqapi;
     dmtr::io_queue::category_id my_type;
 

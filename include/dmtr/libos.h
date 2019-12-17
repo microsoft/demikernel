@@ -42,11 +42,12 @@ DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 DMTR_EXPORT int dmtr_free_mbuf(dmtr_sgarray_t *sga);
 
 DMTR_EXPORT int dmtr_init_net_context(void **context, void *in_context,
-                                      uint16_t port_id, uint32_t ring_pair_id);
+                                      uint16_t port_id, uint16_t ring_pair_id, struct in_addr ip);
 DMTR_EXPORT int dmtr_net_init(const char *app_cfg);
 DMTR_EXPORT int dmtr_net_port_init(uint16_t port_id, void * mempool,
                                    uint32_t n_tx_rings, uint32_t n_rx_rings);
 DMTR_EXPORT int dmtr_net_mempool_init(void **mempool_out, uint8_t numa_socket_id);
+DMTR_EXPORT int dmtr_set_fdir(void *net_context);
 
 #ifdef __cplusplus
 }
