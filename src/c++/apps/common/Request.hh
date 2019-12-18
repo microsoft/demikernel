@@ -21,7 +21,7 @@ class ClientRequest : public Request {
     public: dmtr_qtoken_t pop_token;
 #endif
     public: bool valid; /** Whether the response was valid */
-    public: char * req; /** The actual request */
+    public: char * const req; /** The actual request */
     public: size_t req_size; /** Number of Bytes in the request */
     public: int conn_qd; /** The connection's queue descriptor */
 

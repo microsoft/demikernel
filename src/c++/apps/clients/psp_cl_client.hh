@@ -15,6 +15,8 @@ class CLClientWorker : public PspWorker {
     private: boost::chrono::seconds duration_tp;
     private: std::vector<std::string> requests_str;
     private: uint16_t pipeline = 1;
+    private: std::string remote_host;
+    private: uint16_t remote_port;
 
     private: hr_clock::time_point start_time;
     private: int connfd = -1;
@@ -23,8 +25,10 @@ class CLClientWorker : public PspWorker {
     public: std::unordered_map<uint32_t, std::unique_ptr<ClientRequest> > requests;
 
     public: CLClientWorker(int id, std::shared_ptr<PspServiceUnit> &su, int duration,
-                           std::vector<std::string> requests, uint16_t ppl) :
-                PspWorker(id, su), duration_tp(duration), requests_str(requests), pipeline(ppl)
+                           std::vector<std::string> requests, uint16_t ppl,
+                           std::string rhost, uint16_t rport) :
+                PspWorker(id, su), duration_tp(duration), requests_str(requests), pipeline(ppl),
+                remote_host(rhost), remote_port(rport)
                 {
                     requests.reserve(10000000); //XXX
                 }
@@ -41,14 +45,14 @@ class CLClientWorker : public PspWorker {
                 //configure socket
                 struct sockaddr_in saddr = {};
                 saddr.sin_family = AF_INET;
-                if (inet_pton(AF_INET, psu->ip.c_str(), &saddr.sin_addr) != 1) {
+                if (inet_pton(AF_INET, remote_host.c_str(), &saddr.sin_addr) != 1) {
                     log_error("Unable to parse host address: %s", strerror(errno));
                     return 1;
                 }
-                saddr.sin_port = psu->port;
+                saddr.sin_port = htons(remote_port);
                 log_info(
                     "Closed loop client worker set to send requests to %s:%d for %lu",
-                    inet_ntoa(saddr.sin_addr), psu->port, duration_tp.count()
+                    inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port), duration_tp.count()
                 );
                 DMTR_OK(psu->socket(connfd, AF_INET, SOCK_STREAM, 0));
                 //connect
@@ -76,6 +80,11 @@ class CLClientWorker : public PspWorker {
                         DMTR_OK(wait_rtn);
                     }
                     terminate = true;
+                    log_info(
+                        "[W_%d] Sent: %d Rcvd: %d Missing: %d",
+                        worker_id, sent_requests, recv_requests, sent_requests - recv_requests
+                    );
+                    psu->ioqapi.close(connfd);
                     return EAGAIN;
                 }
                 //Send request
@@ -83,11 +92,19 @@ class CLClientWorker : public PspWorker {
                 send_request(request_str);
                 //Receive response
                 int wait_rtn = recv_request();
-                if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
-                    terminate = true;
-                    return EAGAIN;
+                switch (wait_rtn) {
+                    case ECONNABORTED:
+                    case ECONNRESET:
+                        log_info("Connection severed on worker %d", worker_id);
+                        return EAGAIN;
+                    case ETIME:
+                        log_info("Time's up for worker %d", worker_id);
+                        return EAGAIN;
+                    case 0:
+                        return 0;
+                    default:
+                        DMTR_UNREACHABLE();
                 }
-                return 0;
             }
     private: int work(int status, dmtr_qresult_t &dequeued) {
                  DMTR_OK(status);

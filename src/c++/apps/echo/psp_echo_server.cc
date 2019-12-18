@@ -132,11 +132,9 @@ int main(int argc, char *argv[]) {
                 int rtn2;
                 while ((rtn2 = psu->wait(NULL, token)) == EAGAIN && running);
                 DMTR_OK(rtn2);
+                dmtr_free_mbuf(&wait_out.qr_value.sga);
                 DMTR_OK(psu->ioqapi.pop(token, wait_out.qr_qd));
                 tokens.push_back(token);
-            } else if (DMTR_OPC_PUSH == wait_out.qr_opcode) {
-                DMTR_OK(psu->ioqapi.pop(token, wait_out.qr_qd));
-                dmtr_free_mbuf(&wait_out.qr_value.sga);
             } else {
                 std::cout << "Got return " << status << " for OPC " << wait_out.qr_opcode << std::endl;
                 DMTR_UNREACHABLE();

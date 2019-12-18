@@ -59,6 +59,7 @@ Psp::Psp(std::string &app_cfg) {
                                 dev_id, devices_to_sus[dev_id]-1,
                                 ip
                             );
+                            assert(service_unit->io_ctx.net_context != NULL);
                             if (rtn != 0) {
                                 std::cerr << "Error setting up service unit " << i;
                                 std::cerr << " net context" << std::endl;

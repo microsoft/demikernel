@@ -87,6 +87,7 @@ class lwip_queue : public io_queue {
                 DMTR_NOTNULL(EINVAL, context);
                 struct context *ctx = static_cast<struct context *>(context);
                 delete ctx;
+                return 0;
             }
 
     public: static int generate_context(void *&out_context, void *in_context,

@@ -14,7 +14,7 @@
 
 int CLClientWorker::send_request(std::string request_str) {
     dmtr_sgarray_t sga;
-    std::unique_ptr<ClientRequest> cr(ClientRequest::format_request(sent_requests++, request_str, psu->ip));
+    std::unique_ptr<ClientRequest> cr(ClientRequest::format_request(sent_requests, request_str, psu->ip));
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = cr->req_size;
     sga.sga_segs[0].sgaseg_buf = static_cast<void *>(cr->req);
@@ -36,7 +36,7 @@ int CLClientWorker::send_request(std::string request_str) {
     cr->reading = take_time();
 #endif
     free(cr->req);
-    requests[sent_requests] = std::move(cr);
+    requests[sent_requests++] = std::move(cr);
     return 0;
 }
 
@@ -72,12 +72,14 @@ int main(int argc, char *argv[]) {
 #endif
     /* Parse options */
     int duration;
-    uint16_t pipeline;
-    std::string uri_list, label, cfg_file;
+    uint16_t pipeline, remote_port;
+    std::string uri_list, label, cfg_file, remote_host;
     namespace po = boost::program_options;
     po::options_description desc{"Closed loop client options"};
     desc.add_options()
         ("help", "produce help message")
+        ("ip,I", po::value<std::string>(&remote_host)->required(), "server's IP")
+        ("port,P", po::value<uint16_t>(&remote_port)->default_value(12345), "server's port")
         ("duration,d", po::value<int>(&duration)->default_value(10), "running duration")
         ("uri-list,u", po::value<std::string>(&uri_list)->required(), "uri list")
         ("label,l", po::value<std::string>(&label), "experiment label")
@@ -119,7 +121,9 @@ int main(int argc, char *argv[]) {
     /*  Create a worker per service unit */
     std::vector<CLClientWorker *> client_workers;
     for (auto &su: psp.service_units) {
-        CLClientWorker *w = new CLClientWorker(su.second->my_id, su.second, duration, requests_str, pipeline);
+        CLClientWorker *w = new CLClientWorker(
+            su.second->my_id, su.second, duration, requests_str, pipeline, remote_host, remote_port
+        );
         client_workers.push_back(w);
         if (w->launch() != 0) {
             PspWorker::stop_all();

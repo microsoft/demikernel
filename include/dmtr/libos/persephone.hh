@@ -37,7 +37,9 @@ class PspServiceUnit {
     public: uint16_t port;
 
     public: ~PspServiceUnit() {
-        dmtr_del_net_context(io_ctx.net_context);
+        if (io_ctx.net_context != NULL) { //if (net_context_init_flag) ?
+            dmtr_del_net_context(io_ctx.net_context);
+        }
     }
 };
 

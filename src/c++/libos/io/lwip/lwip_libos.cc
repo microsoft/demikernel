@@ -38,6 +38,7 @@ int dmtr_net_init(const char *app_cfg)
 
 int dmtr_del_net_context(void *context)
 {
+    DMTR_NOTNULL(EINVAL, context);
     DMTR_OK(dmtr::lwip_queue::del_context(context));
     return 0;
 }
@@ -46,12 +47,14 @@ int dmtr_init_net_context(void **out_context, void *in_context,
                           uint16_t port_id, uint16_t ring_pair_id,
                           struct in_addr ip)
 {
+    DMTR_NOTNULL(EINVAL, in_context);
     DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, in_context, port_id, ring_pair_id, ip));
     return 0;
 }
 
 int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uint32_t n_rx_rings)
 {
+    DMTR_NOTNULL(EINVAL, mempool);
     if (!::rte_eth_dev_is_valid_port(port_id)) {
         std::cerr << "Network interface " << port_id << " is not valid for this program." << std::endl;
         return 1;
@@ -70,6 +73,7 @@ int dmtr_net_mempool_init(void **mempool_out, uint8_t numa_socket_id)
 
 int dmtr_set_fdir(void *net_context)
 {
+    DMTR_NOTNULL(EINVAL, net_context);
     DMTR_OK(dmtr::lwip_queue::set_fdir(net_context));
     return 0;
 }
