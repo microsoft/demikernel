@@ -269,9 +269,10 @@ int dmtr_new_latency(dmtr_latency_t **latency_out, const char *name) {
 
 int dmtr_record_latency(dmtr_latency_t *latency, uint64_t ns) {
     DMTR_NOTNULL(EINVAL, latency);
-    DMTR_NONZERO(EINVAL, ns);
-
-    LatencyAdd(latency, '=', ns);
+    //DMTR_NONZERO(EINVAL, ns);
+    if (ns != 0) {
+	LatencyAdd(latency, '=', ns);
+    }
     return 0;
 }
 
