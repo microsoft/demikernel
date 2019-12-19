@@ -207,8 +207,10 @@ class lwip_queue : public io_queue {
                                                          uint32_t src_ip, uint32_t src_mask,
                                                          uint32_t dest_ip, uint32_t dest_mask,
                                                          struct rte_flow_error *error);
+    private: static int print_device_stats(const uint16_t port_id);
 
     private: static int rte_eth_dev_rss_reta_query(uint16_t port_id, struct rte_eth_rss_reta_entry64 *reta_conf, uint16_t reta_size);
+
 };
 
 } // namespace dmtr

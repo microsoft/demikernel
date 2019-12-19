@@ -33,6 +33,7 @@
 #include <rte_memcpy.h>
 #include <rte_udp.h>
 #include <rte_flow.h>
+#include <rte_bbdev.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
@@ -61,7 +62,7 @@ namespace bpo = boost::program_options;
     (GSO_MBUFS_PER_CORE * GSO_MBUF_CACHE_SIZE)
 
 #define IP_FRAG_TBL_BUCKET_ENTRIES  2 /** Should be power of two. */
-#define MAX_FLOW_NUM    UINT16_MAX /** FIXME could probably be lowered */
+#define MAX_FLOW_NUM    2048 //UINT16_MAX /** FIXME could probably be lowered */
 #define MAX_FRAG_NUM RTE_LIBRTE_IP_FRAG_MAX_FRAG
 
 /** Memory pool and rings related variables */
@@ -530,6 +531,12 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     if (retval != 0) {
         return retval;
     }
+    if (nb_rxd != RX_RING_SIZE) {
+        printf("Adjusted number of RX descriptors per queue from %d to %u", RX_RING_SIZE, nb_rxd);
+    }
+    if (nb_txd != TX_RING_SIZE) {
+        printf("Adjusted number of TX descriptors per queue from %d to %u", TX_RING_SIZE, nb_txd);
+    }
 
     // todo: this call fails and i don't understand why.
     int socket_id = 0; //FIXME make the NUMA node configurable
@@ -825,35 +832,8 @@ int dmtr::lwip_queue::close() {
 #endif
     }
 
-    int ret;
-    struct rte_eth_stats stats;
     const uint16_t port_id = boost::get(my_context->port_id);
-
-    ret = ::rte_eth_stats_get(port_id, &stats);
-    if (ret) {
-        printf("dpdk: error getting eth stats");
-    }
-
-    auto now = take_time();
-    printf("eth stats for port %d at time %" PRIu64 "\n", port_id, since_epoch(now));
-
-    printf("[port %u], RX-packets: %" PRIu64 " RX-dropped: %" PRIu64 " RX-bytes: %" PRIu64 "\n",
-            port_id, stats.ipackets, stats.imissed, stats.ibytes);
-    for (uint16_t i = 0; i < port_rx_rings[port_id]; ++i) {
-        printf("[RX queue %u] RX-packets: %" PRIu64 " RX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
-                i, stats.q_ipackets[i], stats.q_ibytes[i], stats.q_errors[i]);
-    }
-
-    printf("[port %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 "\n",
-            port_id, stats.opackets, stats.obytes);
-    for (uint16_t i = 0; i < port_tx_rings[port_id]; ++i) {
-        printf("[TX queue %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
-                i, stats.q_opackets[i], stats.q_obytes[i], stats.q_errors[i]);
-    }
-
-    printf("RX-error: %" PRIu64 " TX-error: %" PRIu64 " RX-mbuf-fail: %" PRIu64 "\n",
-            stats.ierrors, stats.oerrors, stats.rx_nombuf);
-
+    DMTR_OK(print_device_stats(port_id));
     return 0;
 }
 
@@ -1567,7 +1547,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
             sga.mbuf = NULL;
         }
 
-        char *offset_buf = static_cast<char*>(sga.sga_buf);
+        char *offset_buf = static_cast<char *>(sga.sga_buf);
         for (size_t i = 0; i < sga.sga_numsegs; ++i) {
             uint32_t seg_len = ntohl(*reinterpret_cast<uint32_t*>(offset_buf));
             offset_buf += sizeof(seg_len);
@@ -1687,7 +1667,6 @@ int dmtr::lwip_queue::rte_pktmbuf_alloc(struct rte_mbuf *&pkt_out, struct rte_me
     pkt_out = pkt;
     return 0;
 }
-
 
 int dmtr::lwip_queue::rte_eal_init(int &count_out, int argc, char *argv[]) {
     count_out = -1;
@@ -1908,6 +1887,118 @@ int dmtr::lwip_queue::parse_ether_addr(struct rte_ether_addr &mac_out, const cha
     return 0;
 }
 
+int dmtr::lwip_queue::print_device_stats(const uint16_t port_id) {
+    int ret;
+
+    /* Print basic stats */
+    struct rte_eth_stats stats;
+    ret = ::rte_eth_stats_get(port_id, &stats);
+    if (ret) {
+        printf("dpdk: error getting eth stats");
+    }
+    auto now = take_time();
+
+    printf("eth stats for port %d at time %" PRIu64 "\n", port_id, since_epoch(now));
+
+    printf("[port %u], RX-packets: %" PRIu64 " RX-dropped: %" PRIu64 " RX-bytes: %" PRIu64 "\n",
+            port_id, stats.ipackets, stats.imissed, stats.ibytes);
+    for (uint16_t i = 0; i < port_rx_rings[port_id]; ++i) {
+        printf("[RX queue %u] RX-packets: %" PRIu64 " RX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
+                i, stats.q_ipackets[i], stats.q_ibytes[i], stats.q_errors[i]);
+    }
+
+    printf("[port %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 "\n",
+            port_id, stats.opackets, stats.obytes);
+    for (uint16_t i = 0; i < port_tx_rings[port_id]; ++i) {
+        printf("[TX queue %u] TX-packets: %" PRIu64 " TX-bytes: %" PRIu64 " errors: %" PRIu64 "\n",
+                i, stats.q_opackets[i], stats.q_obytes[i], stats.q_errors[i]);
+    }
+
+    printf("RX-error: %" PRIu64 " TX-error: %" PRIu64 " RX-mbuf-fail: %" PRIu64 "\n",
+            stats.ierrors, stats.oerrors, stats.rx_nombuf);
+
+    /* Print extended stats */
+    int len;
+    struct rte_eth_xstat *xstats;
+    struct rte_eth_xstat_name *xstats_names;
+    static const char *stats_border = "_______";
+
+    printf("EXTENDED PORT STATISTICS:\n================\n");
+    // Trick to retrieve number of stats
+    len = ::rte_eth_xstats_get(port_id, NULL, 0);
+    if (len < 0) {
+        printf("rte_eth_xstats_get(%u) failed: %d", port_id, len);
+        return 1;
+    }
+
+    xstats = static_cast<rte_eth_xstat *>(calloc(len, sizeof(*xstats)));
+    if (xstats == NULL) {
+        printf("Failed to calloc memory for xstats");
+        return 1;
+    }
+
+    ret = ::rte_eth_xstats_get(port_id, xstats, len);
+    if (ret < 0 || ret > len) {
+        free(xstats);
+        printf("rte_eth_xstats_get(%u) len%i failed: %d", port_id, len, ret);
+        return 1;
+    }
+
+    xstats_names = static_cast<rte_eth_xstat_name *>(calloc(len, sizeof(*xstats_names)));
+    if (xstats_names == NULL) {
+        free(xstats);
+        printf("Failed to calloc memory for xstats_names");
+        return 1;
+    }
+
+    ret = rte_eth_xstats_get_names(port_id, xstats_names, len);
+    if (ret < 0 || ret > len) {
+        free(xstats);
+        free(xstats_names);
+        printf("rte_eth_xstats_get_names(%u) len%i failed: %d", port_id, len, ret);
+        return 1;
+    }
+    for (int i = 0; i < len; i++) {
+        if (xstats[i].value > 0) {
+            printf("Port %u: %s %s:\t\t%" PRIu64 "\n",
+                    port_id, stats_border,
+                    xstats_names[i].name,
+                    xstats[i].value);
+        }
+    }
+
+/*
+    struct rte_bbdev_stats bbstats;
+    int bbdev_id = port_id; //XXX is this correct?
+    ret = rte_bbdev_stats_get(bbdev_id, &bbstats);
+    if (ret < 0) {
+        free(xstats);
+        free(xstats_names);
+        printf("ERROR(%d): Failure to get BBDEV %u statistics\n", ret, bbdev_id);
+        return 1;
+    }
+
+    printf("\nBBDEV STATISTICS:\n=================\n");
+    printf("BBDEV %u: %s enqueue count:\t\t%" PRIu64 "\n",
+            bbdev_id, stats_border,
+            bbstats.enqueued_count);
+    printf("BBDEV %u: %s dequeue count:\t\t%" PRIu64 "\n",
+            bbdev_id, stats_border,
+            bbstats.dequeued_count);
+    printf("BBDEV %u: %s enqueue error count:\t\t%" PRIu64 "\n",
+            bbdev_id, stats_border,
+            bbstats.enqueue_err_count);
+    printf("BBDEV %u: %s dequeue error count:\t\t%" PRIu64 "\n\n",
+            bbdev_id, stats_border,
+            bbstats.dequeue_err_count);
+*/
+
+    free(xstats);
+    free(xstats_names);
+
+    return 0;
+}
+
 int dmtr::lwip_queue::set_fdir(void *&context) {
     struct context *net_ctx = reinterpret_cast<struct context *>(context);
     DMTR_TRUE(EPERM, net_ctx->port_id != boost::none);
@@ -1970,8 +2061,6 @@ struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_
 
     /*
      * setting the second level of the pattern (IP).
-     * in this example this is the level we care about
-     * so we set it according to the parameters.
      */
     memset(&ip_spec, 0, sizeof(struct rte_flow_item_ipv4));
     memset(&ip_mask, 0, sizeof(struct rte_flow_item_ipv4));
@@ -1989,6 +2078,13 @@ struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_
     res = rte_flow_validate(port_id, &attr, pattern, action, error);
     if (!res)
         flow = rte_flow_create(port_id, &attr, pattern, action, error);
+
+    struct in_addr src_addr, dest_addr;
+    src_addr.s_addr = src_ip;
+    dest_addr.s_addr = dest_ip;
+    printf("Registering new ingress rule: src %s ", inet_ntoa(src_addr));
+    printf("dst %s ", inet_ntoa(dest_addr));
+    printf("-> rxq %d\n", rx_q);
 
     return flow;
 }
