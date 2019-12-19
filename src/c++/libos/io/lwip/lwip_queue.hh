@@ -51,7 +51,7 @@ namespace dmtr {
 
 class lwip_queue : public io_queue {
     /* Context variables. One context is shared by a set of queues. */
-    struct context {
+    private: struct context {
         uint16_t ring_pair_id;
         struct rte_gso_ctx gso_ctx; /** << used for egress segmentation */
 
@@ -71,7 +71,7 @@ class lwip_queue : public io_queue {
         // TODO: Some mechanic for unregistering ports from the application?
         boost::optional<uint16_t> port_id;
 
-        struct rte_mempool *mbuf_pool;
+        struct rte_mempool *mbuf_pool = NULL;
 
         struct in_addr default_addr; /** The default IP assigned to this set of queues */
 
@@ -90,18 +90,16 @@ class lwip_queue : public io_queue {
                 return 0;
             }
 
-    public: static int generate_context(void *&out_context, void *in_context,
+    public: static int generate_context(void *&out_context, void *mempool,
                                         uint16_t port_id, uint16_t ring_pair_id,
                                         struct in_addr &ip) {
         //TODO maybe reserve container elements in the context
         context *ctx = new context();
         ctx->port_id = port_id;
         ctx->ring_pair_id = ring_pair_id;
-        // the in_context only has the mempool so far
-        ctx->mbuf_pool = static_cast<struct rte_mempool *>(in_context);
-
         ctx->default_addr = ip;
-
+        /* Set the mempool */
+        ctx->mbuf_pool = static_cast<struct rte_mempool *>(mempool);
         /* setup GSO context */
         DMTR_OK(init_gso_ctx(ctx->gso_ctx, port_id, ring_pair_id));
         /* setup ip fragmentation context */
@@ -166,7 +164,7 @@ class lwip_queue : public io_queue {
     public: static int net_mempool_init(void *&mempool_out, uint8_t numa_socket_id);
     public: static int init_dpdk(int argc, char *argv[]);
     public: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool,
-                                      uint32_t n_tx_rings = 1, uint32_t n_rx_rings = 1);
+                                      uint16_t n_tx_rings = 1, uint16_t n_rx_rings = 1);
     public: static int set_fdir(void *&context);
 
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);

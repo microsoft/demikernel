@@ -396,10 +396,10 @@ int dmtr::lwip_queue::net_init(const char *app_cfg) {
 int dmtr::lwip_queue::net_mempool_init(void *&mempool_out, uint8_t numa_socket_id) {
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
     // create pool of memory for ring buffers.
-    struct rte_mempool *mp = static_cast<struct rte_mempool *>(mempool_out);
+    struct rte_mempool *mp;
     DMTR_OK(rte_pktmbuf_pool_create(
         mp,
-        "default_mbuf_pool",
+        "global_mbuf_pool",
         NUM_MBUFS * rte_eth_dev_count_avail(),
         MBUF_CACHE_SIZE,
         0,
@@ -407,6 +407,10 @@ int dmtr::lwip_queue::net_mempool_init(void *&mempool_out, uint8_t numa_socket_i
         numa_socket_id
     ));
     mempool_out = mp;
+    DMTR_NOTNULL(EPERM, mempool_out);
+    printf("Created global_mbuf_pool of size (%d * %d) * (%d)  = %d Bytes\n",
+            NUM_MBUFS, rte_eth_dev_count_avail(), MBUF_DATA_SIZE,
+            NUM_MBUFS * rte_eth_dev_count_avail() * MBUF_DATA_SIZE);
     return 0;
 }
 
@@ -483,7 +487,7 @@ int dmtr::lwip_queue::init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag
 std::unordered_map<uint16_t, uint16_t> dmtr::lwip_queue::port_rx_rings;
 std::unordered_map<uint16_t, uint16_t> dmtr::lwip_queue::port_tx_rings;
 int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool,
-                                     uint32_t n_tx_rings, uint32_t n_rx_rings) {
+                                     uint16_t n_tx_rings, uint16_t n_rx_rings) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     const uint16_t rx_rings = n_rx_rings;
@@ -2046,7 +2050,7 @@ struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_
 
     /*
      * create the action sequence.
-     * one action only,  move packet to queue
+     * one action only, move packet to queue
      */
     action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
     action[0].conf = &queue;

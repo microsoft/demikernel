@@ -10,14 +10,14 @@
 
 /********** CONTROL PLANE ******************/
 //TODO:
-// - don't create network context for SU that specify a non existing device
+// - don't create network context for SU that specify an invalid device
 Psp::Psp(std::string &app_cfg) {
     /* Let network libOS init its specific EAL */
     dmtr_net_init(app_cfg.c_str());
 
     /* Allocate a mempool for the network */
-    net_ctx.net_mempool = NULL;
-    dmtr_net_mempool_init(&net_ctx.net_mempool, 0);
+    net_mempool = NULL;
+    dmtr_net_mempool_init(&net_mempool, 0);
 
     /* Parse the configuration */
     std::unordered_map<uint16_t, uint32_t> devices_to_sus;
@@ -26,6 +26,7 @@ Psp::Psp(std::string &app_cfg) {
         YAML::Node sus = config["service_units"];
         for (size_t i = 0; i < sus.size(); ++i) {
             std::shared_ptr<PspServiceUnit> service_unit = std::make_shared<PspServiceUnit>(i);
+            std::cout << "--------- Setting up service unit " << i << " ---------" << std::endl;
             for (auto su = sus[i].begin(); su != sus[i].end(); ++su) {
                 auto key = su->first.as<std::string>();
                 auto value = su->second;
@@ -54,10 +55,8 @@ Psp::Psp(std::string &app_cfg) {
                             inet_aton(service_unit->ip.c_str(), &ip);
                             /* Set a new network context for the service unit */
                             int rtn = dmtr_init_net_context(
-                                &service_unit->io_ctx.net_context,
-                                net_ctx.net_mempool,
-                                dev_id, devices_to_sus[dev_id]-1,
-                                ip
+                                &service_unit->io_ctx.net_context, net_mempool,
+                                dev_id, devices_to_sus[dev_id] - 1, ip
                             );
                             assert(service_unit->io_ctx.net_context != NULL);
                             if (rtn != 0) {
@@ -66,7 +65,6 @@ Psp::Psp(std::string &app_cfg) {
                                 exit(1);
                             }
                             /* Retrieve the port */
-                            std::cout << ioq["port"] << std::endl;
                             service_unit->port = ioq["port"].as<uint16_t>();
                             service_unit->net_context_init_flag = true;
                         }
@@ -88,7 +86,7 @@ Psp::Psp(std::string &app_cfg) {
      * (with as many rx/tx queue than we have service units using the device)
      */
     for (auto &d: devices_to_sus) {
-        if (dmtr_net_port_init(d.first, net_ctx.net_mempool, d.second, d.second) != 0) {
+        if (dmtr_net_port_init(d.first, net_mempool, d.second, d.second) != 0) {
             exit(1);
         }
     }

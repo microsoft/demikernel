@@ -9,6 +9,7 @@
 // Logging
 static std::string log_dir;
 #define MAX_LOG_FILENAME_LEN 128
+#define MAX_SUS 8
 
 /************** Service Units ************/
 class PspServiceUnit {
@@ -39,18 +40,15 @@ class PspServiceUnit {
     public: ~PspServiceUnit() {
         if (io_ctx.net_context != NULL) { //if (net_context_init_flag) ?
             dmtr_del_net_context(io_ctx.net_context);
+            //TODO we should de-register the flow for this SU, through rte_flow_destroy()
         }
     }
 };
 
 /************** Control Plane class ************/
 class Psp {
+    private: void *net_mempool; /* << The global network mempool */
     public: Psp(std::string &app_cfg);
-
-    private: struct net_context {
-        void * net_mempool;
-    };
-    private: struct net_context net_ctx; /* << The global network context */
     public: std::unordered_map<uint32_t, std::shared_ptr<PspServiceUnit> > service_units;
 };
 

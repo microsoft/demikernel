@@ -43,16 +43,15 @@ int dmtr_del_net_context(void *context)
     return 0;
 }
 
-int dmtr_init_net_context(void **out_context, void *in_context,
-                          uint16_t port_id, uint16_t ring_pair_id,
-                          struct in_addr ip)
+int dmtr_init_net_context(void **out_context, void *mempool,
+                          uint16_t port_id, uint16_t ring_pair_id, struct in_addr ip)
 {
-    DMTR_NOTNULL(EINVAL, in_context);
-    DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, in_context, port_id, ring_pair_id, ip));
+    DMTR_NOTNULL(EINVAL, mempool);
+    DMTR_OK(dmtr::lwip_queue::generate_context(*out_context, mempool, port_id, ring_pair_id, ip));
     return 0;
 }
 
-int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uint32_t n_rx_rings)
+int dmtr_net_port_init(uint16_t port_id, void *mempool, uint16_t n_tx_rings, uint16_t n_rx_rings)
 {
     DMTR_NOTNULL(EINVAL, mempool);
     if (!::rte_eth_dev_is_valid_port(port_id)) {

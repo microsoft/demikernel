@@ -204,7 +204,8 @@ int dmtr_init_net_context(void **out_context, void *in_context,
     return ENOTSUP;
 }
 
-int dmtr_net_port_init(uint16_t port_id, void *mempool, uint32_t n_tx_rings, uint32_t n_rx_rings)
+int dmtr_net_port_init(uint16_t port_id, void *net_contexts,
+                       uint16_t n_tx_rings, uint16_t n_rx_rings)
 {
     return ENOTSUP;
 }
