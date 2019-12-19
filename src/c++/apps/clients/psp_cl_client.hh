@@ -101,7 +101,8 @@ class CLClientWorker : public PspWorker {
                         log_info("Time's up for worker %d", worker_id);
                         return EAGAIN;
                     case 0:
-                        return 0;
+                    case EAGAIN:
+                        return wait_rtn;
                     default:
                         DMTR_UNREACHABLE();
                 }

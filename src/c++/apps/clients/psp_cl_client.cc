@@ -28,8 +28,8 @@ int CLClientWorker::send_request(std::string request_str) {
     cr->push_token = token;
 #endif
     dmtr_qresult_t qr;
-    while (psu->wait(&qr, token) == EAGAIN) {
-        if (terminate) { break; }
+    while (psu->wait(&qr, token) == EAGAIN && !terminate) {
+        if (terminate) { return 0; }
     } //XXX should we check for severed connection here?
     assert(DMTR_OPC_PUSH == qr.qr_opcode);
 #ifdef TRACE
@@ -48,8 +48,9 @@ int CLClientWorker::recv_request() {
     int wait_rtn;
     while ((wait_rtn = psu->wait(&qr, token)) == EAGAIN) {
         if (take_time() - start_time > duration_tp) { return ETIME; }
-        if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) { return wait_rtn; }
+        if (terminate) { return wait_rtn; }
     }
+    if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET) { return wait_rtn; }
     assert(DMTR_OPC_POP == qr.qr_opcode);
     assert(qr.qr_value.sga.sga_numsegs == 1);
     uint32_t * const ridp = static_cast<uint32_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf);
