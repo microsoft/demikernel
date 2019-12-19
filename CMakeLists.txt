@@ -16,12 +16,17 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 set(RELEASE_CFLAGS "-O3 -mtune=intel -DNDEBUG" CACHE STRING "C compiler options for release builds")
-set(CMAKE_C_FLAGS_DEBUG "-Og")
+#set(DEBUG_CFLAGS "-ggdb -O0 -frecord-gcc-switches -lasan -fsanitize=address " CACHE STRING "C compiler options for debug builds")
+set(DEBUG_CFLAGS "-ggdb -O0" CACHE STRING "C compiler options for debug builds")
+set(CMAKE_C_FLAGS_DEBUG ${DEBUG_CFLAGS})
+set(CMAKE_CXX_FLAGS_DEBUG ${DEBUG_CFLAGS})
 set(CMAKE_C_FLAGS_RELEASE ${RELEASE_CFLAGS})
 set(CMAKE_CXX_FLAGS_RELEASE ${RELEASE_CFLAGS})
 
+#set(CMAKE_VERBOSE_MAKEFILE ON)
+
 # default CFLAGS
-set(COMMON_CFLAGS "-g3 -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs -fvisibility=hidden -I/usr/include/boost") # -lasan -fsanitize=address")
+set(COMMON_CFLAGS "-ggdb -fstack-protector -fPIC -Wall -Wextra -Wno-uninitialized -Wno-unused-parameter -Wl,-zdefs -fvisibility=hidden -I/usr/include/boost")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_CFLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_CFLAGS} -std=c++17 -D__STDC_LIMIT_MACROS")
 
