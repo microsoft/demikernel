@@ -9,6 +9,10 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 - Run 'mlxnofed_install --upstream-libs --dpdk' for dpdk support
 - on a clean Ubuntu install, you may have to run 'apt-get install libnl-3-dev' or 'libnl-route-3-dev'to get the Mellanox script to complete because it seems to not be updated with all dependencies
 - The mlxnofed script should install the RDMA library headers that are needed.  DO NOT install the RDMA ibverbs libraries from Ubuntu.
+
+## Checking out the code
+- Remember to use 'git clone --recursive' to check out the necessary submodules to build the Demikernel, including DPDK and Hoard.
+
 ## Building
 
 - On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
