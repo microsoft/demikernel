@@ -24,7 +24,7 @@ class CLClientWorker : public PspWorker {
     private: uint32_t recv_requests = 0;
     public: std::unordered_map<uint32_t, std::unique_ptr<ClientRequest> > requests;
 
-    public: CLClientWorker(int id, std::shared_ptr<PspServiceUnit> &su, int duration,
+    public: CLClientWorker(int id, PspServiceUnit *su, int duration,
                            std::vector<std::string> requests, uint16_t ppl,
                            std::string rhost, uint16_t rport) :
                 PspWorker(id, su), duration_tp(duration), requests_str(requests), pipeline(ppl),

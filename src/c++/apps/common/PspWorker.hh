@@ -43,7 +43,7 @@ private:
     virtual int work(int status, dmtr_qresult_t &result) = 0;
 
 protected:
-    std::shared_ptr<PspServiceUnit> psu;
+    PspServiceUnit *psu;
     std::vector<int> peer_ids;
 
     int get_peer_qd(int peer_id);
@@ -61,7 +61,7 @@ public:
     bool has_exited() { return exited; }
     void stop() { terminate = true; }
 
-    PspWorker(int id, std::shared_ptr<PspServiceUnit> &psu);
+    PspWorker(int id, PspServiceUnit *psu);
     virtual ~PspWorker();
 
 };

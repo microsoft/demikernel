@@ -83,9 +83,9 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 
-/** RSS & Flow direction */
+/** RSS & F->flow direction */
 #define MAX_PATTERN_NUM     3
-#define MAX_ACTION_NUM      2
+#define MAX_ACTION_NUM      3
 
 /** Log and debugging */
 #define DMTR_DEBUG 1
@@ -835,9 +835,6 @@ int dmtr::lwip_queue::close() {
         printf("size of my_context->recv_queues: %lu\n", my_context->recv_queues.size());
 #endif
     }
-
-    const uint16_t port_id = boost::get(my_context->port_id);
-    DMTR_OK(print_device_stats(port_id));
     return 0;
 }
 

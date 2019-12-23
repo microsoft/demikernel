@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
     std::vector<CLClientWorker *> client_workers;
     for (auto &su: psp.service_units) {
         CLClientWorker *w = new CLClientWorker(
-            su.second->my_id, su.second, duration, requests_str, pipeline, remote_host, remote_port
+            su.second->my_id, su.second.get(), duration, requests_str, pipeline, remote_host, remote_port
         );
         client_workers.push_back(w);
         if (w->launch() != 0) {

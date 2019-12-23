@@ -110,7 +110,7 @@ int PspWorker::launch() {
     return 0;
 }
 
-PspWorker::PspWorker(int id, std::shared_ptr<PspServiceUnit> &psu) : psu(psu), worker_id(id) {
+PspWorker::PspWorker(int id, PspServiceUnit *psu) : psu(psu), worker_id(id) {
     if (all_workers.find(id) != all_workers.end()) {
         PSP_WARN("Worker with id " << worker_id << "already exists");
     }
