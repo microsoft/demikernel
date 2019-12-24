@@ -60,7 +60,6 @@ class lwip_queue : public io_queue {
         struct rte_ip_frag_death_row death_row; /** used for IP reassembly */
         struct rte_mempool *ip_frag_mbuf_pool; /** used for IP reassembly */
 
-        //TODO: define ports range by service unit
         uint16_t port_range_hi = 65535;
         uint16_t port_range_lo = 32768;
         uint16_t port_counter = 0;
@@ -70,11 +69,11 @@ class lwip_queue : public io_queue {
         std::map<lwip_4tuple, std::queue<dmtr_sgarray_t> *> recv_queues;
         // TODO: Some mechanic for unregistering ports from the application?
         boost::optional<uint16_t> port_id;
+        std::vector<struct rte_flow *> flows; /** rte_flow used by this context */
 
         struct rte_mempool *mbuf_pool = NULL;
 
         struct in_addr default_addr; /** The default IP assigned to this set of queues */
-
     };
     private: struct context *my_context;
 
@@ -82,10 +81,38 @@ class lwip_queue : public io_queue {
     private: static int init_rx_queue_ip_frag_tbl(struct rte_ip_frag_tbl *&ip_frag_tbl,
                                                              struct rte_mempool *&ip_frag_mbuf_pool,
                                                              uint16_t port_id, uint16_t ring_pair_id);
-    public: static int del_context(void *context) {
-                //FIXME: this should probably delete the sga queues (in my_context->recv_queues)
+    public: static int del_context(void *&context) {
+                //FIXME: this should probably cleanup queue instances variable if context is
+                //destroyed before them? e.g. my_recv_queues from ctx->recv_queues
                 DMTR_NOTNULL(EINVAL, context);
                 struct context *ctx = static_cast<struct context *>(context);
+                const uint16_t port_id = boost::get(ctx->port_id);
+
+                DMTR_OK(print_device_stats(port_id));
+
+                for (auto &flow: ctx->flows) {
+                    struct rte_flow_error e;
+                    struct rte_flow_action action[2];
+                    struct rte_flow_query_count count;
+                    count.reset = 1;
+                    memset(static_cast<void *>(&count), '\0', sizeof(struct rte_flow_query_count));
+                    struct rte_flow_action count_action = { RTE_FLOW_ACTION_TYPE_COUNT, &count};
+                    action[0] = count_action;
+                    action[1].type = RTE_FLOW_ACTION_TYPE_END;
+                    int rtn = rte_flow_query(port_id, flow, action, static_cast<void *>(&count), &e);
+                    if (rtn) {
+                       printf("Flow can't be queried %d message: %s\n",
+                              e.type, e.message ? e.message : "(no stated reason)");
+                    }
+                    if (count.hits_set && count.bytes_set) {
+                        printf("Rule for ctx was hit %ld times and %ld bytes flew through it\n",
+                                count.hits, count.bytes);
+                    } else {
+                        printf("No flow stats available\n");
+                    }
+                    DMTR_OK(rte_flow_destroy(port_id, flow, &e));
+                }
+
                 delete ctx;
                 return 0;
             }

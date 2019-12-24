@@ -1995,19 +1995,31 @@ int dmtr::lwip_queue::set_fdir(void *&context) {
     DMTR_TRUE(EPERM, net_ctx->port_id != boost::none);
     const uint16_t port_id = boost::get(net_ctx->port_id);
 
+    struct in_addr saddr;
+    const char *subnet = "0.0.0.0";
+    inet_aton(subnet, &saddr);
+    uint32_t src_mask, dst_mask;
+    src_mask = 0x0;
+    dst_mask = 0xfffffff;
     struct rte_flow_error error;
+    /* Generate an ingress rule for the context's rx queue */
     struct rte_flow *flow = generate_ipv4_flow(
         port_id, net_ctx->ring_pair_id,
-        INADDR_ANY, 0, net_ctx->default_addr.s_addr, 0,
+        saddr.s_addr, src_mask, net_ctx->default_addr.s_addr, dst_mask,
         &error
     );
-
     if (!flow) {
         printf("Flow can't be created %d message: %s\n",
-               error.type,
-               error.message ? error.message : "(no stated reason)");
+               error.type, error.message ? error.message : "(no stated reason)");
         return ENOTRECOVERABLE;
     }
+    net_ctx->flows.push_back(flow);
+
+    uint8_t src_mask_bits = ceil(log(src_mask) / log(2));
+    uint8_t dst_mask_bits = ceil(log(dst_mask) / log(2));
+    printf("Registered new ingress rule: src %s/%d ", inet_ntoa(saddr), src_mask_bits);
+    printf("dst %s/%d -> rxq %d\n",
+            inet_ntoa(net_ctx->default_addr), dst_mask_bits, net_ctx->ring_pair_id);
 
     return 0;
 }
@@ -2021,6 +2033,11 @@ struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_
     struct rte_flow_action action[MAX_ACTION_NUM];
     struct rte_flow *flow = NULL;
     struct rte_flow_action_queue queue = { .index = rx_q };
+    struct rte_flow_action_count count;
+    count.shared = 0;
+    count.id = rx_q;
+    struct rte_flow_action count_action = { RTE_FLOW_ACTION_TYPE_COUNT, &count};
+    struct rte_flow_action queue_action = { RTE_FLOW_ACTION_TYPE_QUEUE, &queue};
     struct rte_flow_item_ipv4 ip_spec;
     struct rte_flow_item_ipv4 ip_mask;
     int res;
@@ -2028,54 +2045,35 @@ struct rte_flow * dmtr::lwip_queue::generate_ipv4_flow(uint16_t port_id, uint16_
     memset(pattern, 0, sizeof(pattern));
     memset(action, 0, sizeof(action));
 
-    /*
-     * set the rule attribute.
-     * in this case only ingress packets will be checked.
-     */
+    /* Match only ingress packets */
     memset(&attr, 0, sizeof(struct rte_flow_attr));
     attr.ingress = 1;
 
-    /*
-     * create the action sequence.
-     * one action only, move packet to queue
-     */
-    action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
-    action[0].conf = &queue;
-    action[1].type = RTE_FLOW_ACTION_TYPE_END;
+    /* Create the action sequence: count matching packets and move it to queue */
+    action[0] = count_action;
+    action[1] = queue_action;
+    action[2].type = RTE_FLOW_ACTION_TYPE_END;
 
-    /*
-     * set the first level of the pattern (ETH).
-     * since in this example we just want to get the
-     * ipv4 we set this level to allow all.
-     */
+    /* ETH / IPV4 / END */
     pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
 
-    /*
-     * setting the second level of the pattern (IP).
-     */
+    // IPV4
     memset(&ip_spec, 0, sizeof(struct rte_flow_item_ipv4));
     memset(&ip_mask, 0, sizeof(struct rte_flow_item_ipv4));
-    ip_spec.hdr.dst_addr = htonl(dest_ip);
+    ip_spec.hdr.dst_addr = dest_ip;
     ip_mask.hdr.dst_addr = dest_mask;
-    ip_spec.hdr.src_addr = htonl(src_ip);
+    ip_spec.hdr.src_addr = src_ip;
     ip_mask.hdr.src_addr = src_mask;
     pattern[1].type = RTE_FLOW_ITEM_TYPE_IPV4;
     pattern[1].spec = &ip_spec;
     pattern[1].mask = &ip_mask;
 
-    /* the final level must be always type end */
+    // END
     pattern[2].type = RTE_FLOW_ITEM_TYPE_END;
 
     res = rte_flow_validate(port_id, &attr, pattern, action, error);
     if (!res)
         flow = rte_flow_create(port_id, &attr, pattern, action, error);
-
-    struct in_addr src_addr, dest_addr;
-    src_addr.s_addr = src_ip;
-    dest_addr.s_addr = dest_ip;
-    printf("Registering new ingress rule: src %s ", inet_ntoa(src_addr));
-    printf("dst %s ", inet_ntoa(dest_addr));
-    printf("-> rxq %d\n", rx_q);
 
     return flow;
 }
