@@ -73,10 +73,13 @@ Psp::Psp(std::string &app_cfg) {
             }
             service_units[i] = service_unit;
         }
+
         if (config["log_dir"].IsDefined()) {
             log_dir = config["log_dir"].as<std::string>();
-            std::cout << "libOS log directory set to " << log_dir << std::endl;
+        } else {
+            log_dir = "./";
         }
+        std::cout << "libOS log directory set to " << log_dir << std::endl;
     } catch (YAML::ParserException& e) {
         std::cout << "Failed to parse config: " << e.what() << std::endl;
         exit(1);
