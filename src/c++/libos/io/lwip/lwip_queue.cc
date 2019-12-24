@@ -652,6 +652,7 @@ int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
     return 0;
 }
 
+//FIXME this is leaking queue objects during batched receival, as we don't use the pre-created queue.
 int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
     DMTR_TRUE(EINVAL, good());
     DMTR_TRUE(EINVAL, my_listening_flag);
@@ -690,16 +691,15 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
             int qd = my_context->t4_to_qd.find(tup)->second;
             DMTR_OK(t->complete(0, qd, src, sizeof(src)));
             my_recv_queue.pop();
-            std::cout << "Received 'connect' packet on an already accepted tuple " << std::endl;
+            printf("Received 'connect' packet on an already accepted tuple (queue %d)\n", qd);
             continue;
         }
-
-        std::cout << "Accepted new tuple " << tup << std::endl;
 
         new_lq->my_bound_src = my_bound_src;
         new_lq->my_default_dst = src;
         new_lq->my_tuple = tup;
         my_context->recv_queues[tup] = &new_lq->my_recv_queue;
+        std::cout << "Accepted new queue " << new_lq->qd() << " (" << tup << ")" << std::endl;
         // add the packet as the first to the new queue
         new_lq->my_recv_queue.push(sga);
         new_lq->start_threads();
@@ -809,6 +809,7 @@ int dmtr::lwip_queue::close() {
     DMTR_TRUE(EPERM, my_context_init_flag);
     DMTR_TRUE(EPERM, my_context->port_id != boost::none);
 
+    my_context->recv_queues.erase(my_tuple);
     /** If we are at the "initiating side" of the close */
     if (is_connected()) {
         std::cout << "Closing connection on ioqueue " << qd() << std::endl;
@@ -819,14 +820,13 @@ int dmtr::lwip_queue::close() {
         dmtr_qtoken_t token = static_cast<uint64_t>(0xdeadbeef) | (static_cast<uint64_t>(qd()) << 32);
         DMTR_OK(new_task(token, DMTR_OPC_PUSH, sga));
         my_push_thread->enqueue(token);
-
         my_push_thread->service();
 
-        my_default_dst = boost::none;
-        my_bound_src = boost::none;
-        my_context->recv_queues.erase(my_tuple);
+        my_default_dst = boost::none; //"disconnect"
 #if DMTR_DEBUG
         printf("size of my_context->recv_queues: %lu\n", my_context->recv_queues.size());
+    } else {
+        printf("called close(%d) on non connected queue\n", qd());
 #endif
     }
     return 0;
@@ -1211,13 +1211,10 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         // Closing our fac-simile connection
         if (sga.sga_numsegs == 0xdeadbeef) {
             DMTR_TRUE(EPERM, our_dpdk_init_flag);
-            my_default_dst = boost::none;
-            my_bound_src = boost::none;
-            my_context->recv_queues.erase(my_tuple);
-            std::cout << "Closed tuple " << my_tuple << std::endl;
+            my_default_dst = boost::none; //"disconnect" -- application will call close()
+            std::cout << "Closing " << qd() << " (" << my_tuple << ") upon request " << std::endl;
 #if DMTR_DEBUG
-            printf("Received connection closing magic\n");
-            printf("size of my_context->recv_queues: %lu\n", my_context->recv_queues.size());
+            printf("Remaining queues in my context: %lu\n", my_context->recv_queues.size());
 #endif
             DMTR_OK(t->complete(ECONNABORTED));
         } else {
@@ -1363,7 +1360,6 @@ dmtr::lwip_queue::service_incoming_packets() {
         // check the packet header
 
         bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
-
         if (valid_packet) {
             lwip_4tuple packet_tuple = lwip_4tuple(lwip_addr(src), lwip_addr(dst));
             // found valid packet, try to place in queue based on src

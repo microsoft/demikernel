@@ -145,10 +145,19 @@ int main(int argc, char *argv[]) {
                 exit(0);
             }
             assert(status == ECONNRESET || status == ECONNABORTED);
-            psu->ioqapi.close(wait_out.qr_qd);
+            uint64_t qd = wait_out.qr_qd;
+            //XXX the following is made to remove accept tokens that were created when batched
+            //packets arrived for a new 'connection'
+            tokens.erase(
+                std::remove_if(
+                    tokens.begin(), tokens.end(),
+                    [qd](dmtr_qtoken_t &t) -> bool { return (t >> 32) == qd; }
+                ),
+                tokens.end()
+            );
+            psu->ioqapi.close(qd);
         }
     }
     DMTR_OK(psu->ioqapi.close(lqd));
-
     return 0;
 }
