@@ -96,8 +96,10 @@ Psp::Psp(std::string &app_cfg) {
 
     /* Configure flow steering */
     for (auto &su: service_units) {
-        if (dmtr_set_fdir(su.second->io_ctx.net_context) != 0) {
-            exit(1);
+        if (su.second->io_ctx.net_context) {
+            if (dmtr_set_fdir(su.second->io_ctx.net_context) != 0) {
+                exit(1);
+            }
         }
     }
 }
