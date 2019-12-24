@@ -501,27 +501,21 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     struct ::rte_eth_conf port_conf = {};
     // RX
     port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN; // 1518 Bytes
-    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
+    port_conf.rxmode.mq_mode = ETH_MQ_RX_NONE;
+    port_conf.rxmode.offloads = dev_info.rx_offload_capa;
+    //port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+    //port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     // TX
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-    if (dev_info.tx_offload_capa & GSO_OFFLOADS)
-        port_conf.txmode.offloads |= GSO_OFFLOADS;
-    if (dev_info.tx_offload_capa & IP_OFFLOADS)
-        port_conf.txmode.offloads |= IP_OFFLOADS;
-    if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MULTI_SEGS)
-        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MULTI_SEGS;
+    port_conf.txmode.offloads = dev_info.tx_offload_capa;
 
-    //if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE)
-    // port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
-
-    struct ::rte_eth_rxconf rx_conf = {};
+    struct ::rte_eth_rxconf rx_conf = dev_info.default_rxconf;
     rx_conf.rx_thresh.pthresh = RX_PTHRESH;
     rx_conf.rx_thresh.hthresh = RX_HTHRESH;
     rx_conf.rx_thresh.wthresh = RX_WTHRESH;
     rx_conf.rx_free_thresh = 32;
 
-    struct ::rte_eth_txconf tx_conf = {};
+    struct ::rte_eth_txconf tx_conf = dev_info.default_txconf;
     tx_conf.tx_thresh.pthresh = TX_PTHRESH;
     tx_conf.tx_thresh.hthresh = TX_HTHRESH;
     tx_conf.tx_thresh.wthresh = TX_WTHRESH;
