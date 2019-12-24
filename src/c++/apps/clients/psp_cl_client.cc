@@ -7,9 +7,9 @@
 #include <csignal>
 
 #include <dmtr/libos/io/io_queue.hh>
-#include "../common/PspWorker.hh"
 #include "../common/Request.hh"
 #include "../common/common.hh"
+#include "../common/PspWorker.hh"
 #include "psp_cl_client.hh"
 
 int CLClientWorker::send_request(std::string request_str) {

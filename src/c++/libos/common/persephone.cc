@@ -69,6 +69,8 @@ Psp::Psp(std::string &app_cfg) {
                             service_unit->net_context_init_flag = true;
                         }
                     }
+                } else if (key == "type") {
+                    service_unit->type = value.as<std::string>();
                 }
             }
             service_units[i] = service_unit;

@@ -5,6 +5,7 @@ add_subdirectory(echo)
 add_subdirectory(kv)
 add_subdirectory(nc)
 add_subdirectory(clients)
+add_subdirectory(http)
 
 #add_redis(redis-posix dmtr-libos-posix psp-libos-common ${CMAKE_SOURCE_DIR}/submodules/redis-posix)
 #add_redis(redis-rdma dmtr-libos-rdma psp-libos-common ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)

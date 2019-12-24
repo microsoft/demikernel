@@ -16,6 +16,7 @@
 #include <dmtr/annot.h>
 #include <dmtr/mem.h>
 #include <dmtr/libos/persephone.hh>
+#include <dmtr/libos.h>
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>

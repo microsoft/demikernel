@@ -1,0 +1,33 @@
+? &MAX_EAL [
+        "-n", "2",
+        "-w", "17:00.0",
+        "-l", "0",
+        "--file-prefix", "maxdml"]
+
+network:
+    eal_init: *MAX_EAL
+    known_hosts:
+        "b8:59:9f:b4:41:9c": [192.168.1.11, 192.168.1.13, 192.168.1.15, 192.168.1.17]
+        "b8:59:9f:b4:41:14": [192.168.1.10, 192.168.1.12, 192.168.1.14, 192.168.1.16]
+        "b8:59:9f:b4:41:9d": 192.168.2.11
+        "b8:59:9f:b4:41:15": 192.168.2.10
+
+#'device': This is the order given to EAL (or all the devices listed by dpdk-devbind.py if none given
+service_units:
+    - name: net_worker_1
+      type: 'network'
+      io:
+          - type: 'NETWORK'
+            device_id: 0
+            ip: 192.168.1.12
+            port: 6789
+          - type: 'SHARED_MEM'
+            buff_size: 1024
+    - name: http_worker_1
+      type: 'http'
+    - name: http_worker_2
+      type: 'http'
+
+dispatch_policy: 'RR'
+log_dir: '/home/maxdml/experiments_run/test/'
+uri_list: '/home/maxdml/nfs/maxdml/codeZ/demikernel/src/python/benchmarking_utils/uri_files/lt128bfiles_srv'

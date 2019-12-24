@@ -22,11 +22,6 @@ class PspServiceUnit {
     public: bool net_context_init_flag = false;
     public: dmtr::io_queue_api ioqapi;
 
-    public: PspServiceUnit(uint32_t id) : my_id(id) {
-        io_ctx.net_context = NULL;
-        dmtr_init_ctors(static_cast<void *>(&ioqapi));
-    };
-
     public: int wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
     public: int wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, dmtr_qtoken_t qts[], int num_qts);
 
@@ -36,6 +31,15 @@ class PspServiceUnit {
     //Convenient way to store which ip:port to connect/bind to
     public: std::string ip;
     public: uint16_t port;
+
+    /* Application related parameters */
+    std::string type;
+
+    /* ctor, dtor */
+    public: PspServiceUnit(uint32_t id) : my_id(id) {
+        io_ctx.net_context = NULL;
+        dmtr_init_ctors(static_cast<void *>(&ioqapi));
+    };
 
     public: ~PspServiceUnit() {
         if (io_ctx.net_context != NULL) { //if (net_context_init_flag) ?

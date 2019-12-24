@@ -1,12 +1,8 @@
 #ifndef PSP_CL_CLIENT_H
 #define PSP_CL_CLIENT_H
 
-#include <pthread.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#include <dmtr/libos.h>
-#include <dmtr/libos/persephone.hh>
 
 #include "../common/common.hh"
 #include "../common/Request.hh"
