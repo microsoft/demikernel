@@ -36,7 +36,6 @@ class CLClientWorker : public PspWorker {
                log_info("Sent: %d, Received: %d (missing: %d) ",
                         sent_requests, recv_requests, sent_requests - recv_requests);
 
-                psu->ioqapi.close(connfd);
             }
     private: int send_request(std::string request_str);
     private: int recv_request();
@@ -74,6 +73,17 @@ class CLClientWorker : public PspWorker {
                     duration_tp += boost::chrono::seconds(2);
                     for (uint16_t i = 0; (i < pipeline - 1) && (take_time() - start_time <= duration_tp); ++i) {
                         int wait_rtn = recv_request();
+                        switch (wait_rtn) {
+                            case ECONNABORTED:
+                                log_info("ECONNABORTED while waiting for ppl req\n");
+                                break;
+                            case ECONNRESET:
+                                log_info("ECONNRESET while waiting for ppl req\n");
+                                break;
+                            case ETIME:
+                                log_info("ETIME while waiting for ppl req\n");
+                                break;
+                        }
                         if (wait_rtn == ECONNABORTED || wait_rtn == ECONNRESET || wait_rtn == ETIME) {
                             break;
                         }
