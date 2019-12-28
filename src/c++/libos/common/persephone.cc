@@ -132,6 +132,10 @@ int PspServiceUnit::wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
 
 int PspServiceUnit::wait_any(dmtr_qresult_t *qr_out, int *start_offset, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
     uint16_t iter = 0;
+    if (num_qts == 0) {
+        std::cout << "wait_any called with 0 tokens" << std::endl;
+        return EAGAIN;
+    }
     while (1) {
         for (int i = start_offset? *start_offset : 0; i < num_qts; i++) {
             int ret = ioqapi.poll(qr_out, qts[i]);
