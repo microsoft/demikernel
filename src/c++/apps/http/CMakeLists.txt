@@ -21,3 +21,4 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/psp_srv_cfg.yaml ${CMAKE_CURRENT_BINA
 # LWIP HTTP SERVER
 add_executable(psp-lwip-http-server ${PSP_HTTP_SOURCES})
 target_link_libraries(psp-lwip-http-server psp-libos-common dmtr-libos-lwip pcre yaml-cpp)
+target_add_hoard(psp-lwip-http-server hoard-vanilla)
