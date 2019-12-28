@@ -57,7 +57,7 @@ static int body_callback(http_parser *parser,
     strncpy(&state->body[state->body_len], at, length);
     state->body[state->body_len + length] = '\0';
     state->body_len += length;
-    //printf("Got body: %s\n", state->body);
+    //printf("Got body: %s of len %zu\n", state->body, state->body_len);
     return 0;
 }
 
@@ -73,10 +73,6 @@ void init_parser_state(struct parser_state *state) {
 
     http_parser_init(&state->parser, HTTP_REQUEST);
     state->parser.data = (void*)state;
-}
-
-void clear_parser_state(struct parser_state *state) {
-    memset(state, 0, sizeof(*state));
 }
 
 enum parser_status parse_http(struct parser_state *state, char *buf, size_t bytes) {

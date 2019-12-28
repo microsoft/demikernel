@@ -22,6 +22,17 @@ class HttpWorker : public PspWorker {
                        std::unordered_map<std::string, std::vector<char>> * const store)
                        : PspWorker(id, psu), uri_store(store) {}
 
+    private: static inline void clean_state(struct parser_state *state) {
+                 if (state->url) {
+                     free(state->url);
+                     state->url = NULL;
+                 }
+                 if (state->body) {
+                     free(state->body);
+                     state->body = NULL;
+                 }
+             }
+
     private: static inline void regex_work(char *url, char **response, int *response_len, uint32_t req_id) {
                  char *body = NULL;
                  int body_len = 0;
@@ -135,11 +146,15 @@ class HttpWorker : public PspWorker {
                  uint32_t * const req_id = reinterpret_cast<uint32_t *>(req->data);
                  req->id = *req_id;
                  req->req  = req->data + sizeof(uint32_t);
-                 PSP_DEBUG("HTTP worker poped req " << req->id << ": " << req->req);
                  req->req_size = req->data_len - sizeof(uint32_t);
+                 log_debug(
+                     "HTTP worker received request %u: %s\n",
+                     reinterpret_cast<uint32_t>(req->id),
+                     *reinterpret_cast<uint32_t *>(req->data)
+                 );
 
                  /* Parse HTTP content */
-                 clear_parser_state(state); //FIXME: do we even need this?
+                 init_parser_state(state);
                  enum parser_status pstatus = parse_http(state, req->req, req->req_size);
                  switch (pstatus) {
                      case REQ_COMPLETE:
@@ -149,7 +164,7 @@ class HttpWorker : public PspWorker {
                      case REQ_ERROR:
                          log_warn("HTTP worker got incomplete or malformed request: %.*s",
                                   (int) req->req_size, req->req);
-                         clear_parser_state(state); //FIXME: do we even need this?
+                         clean_state(state);
 
                          /* Free original request's sga */
                          dmtr_free_mbuf(&req->sga);
@@ -200,7 +215,7 @@ class HttpWorker : public PspWorker {
                  } else {
                      log_debug("NetWorker pushed to peer on %d", dequeued.qr_qd);
                  }
-
+                 clean_state(state);
                  return 0;
              }
 };
