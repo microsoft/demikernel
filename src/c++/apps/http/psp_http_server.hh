@@ -338,6 +338,10 @@ class NetWorker : public PspWorker {
                  if (dequeued.qr_qd == lqd) {
                      assert(DMTR_OPC_ACCEPT == dequeued.qr_opcode);
                      DMTR_OK(psu->ioqapi.pop(token, dequeued.qr_value.ares.qd));
+                     log_debug(
+                         "Accepted a new connection %d on %d",
+                         dequeued.qr_value.ares.qd, lqd
+                     );
                      tokens.push_back(token);
                      DMTR_OK(psu->ioqapi.accept(token, lqd));
                      tokens.push_back(token);
@@ -355,14 +359,18 @@ class NetWorker : public PspWorker {
                          /* This must be an HTTP worker, so we schedule a pop on it */
                          DMTR_OK(psu->ioqapi.pop(token, dequeued.qr_qd));
                          tokens.push_back(token);
-                         return 0;
                      }
+                     return 0;
                  }
 
                  assert(DMTR_OPC_POP == dequeued.qr_opcode);
                  if (dequeued_id == -1) {
                      //FIXME make this a unique ptr?
                      ServerRequest *req = new ServerRequest(dequeued.qr_qd, dequeued.qr_value.sga);
+                     log_debug(
+                         "Net worker received request %u\n",
+                         *reinterpret_cast<uint32_t *>(req->data)
+                     );
                      int peer_id = choose_worker(*req);
                      int qd = get_peer_qd(peer_id);
                      if (qd == -1) {
@@ -390,7 +398,6 @@ class NetWorker : public PspWorker {
                      DMTR_OK(psu->ioqapi.push(token, req->conn_qd, req->sga));
                      tokens.push_back(token);
                  }
-
                  return 0;
              }
 };
