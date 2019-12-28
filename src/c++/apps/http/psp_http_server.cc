@@ -17,10 +17,6 @@ int main (int argc, char *argv[]) {
         if (su.second->type == "network") {
             NetWorker *w = new NetWorker(su.second->my_id, su.second.get(), server.dispatch_policy);
             server.net_workers.push_back(w);
-            if (w->launch() != 0) {
-                PspWorker::stop_all();
-                break; //TODO cleanup and exit
-            }
         } else if (su.second->type == "http") {
             HttpWorker *w = new HttpWorker(su.second->my_id, su.second.get(), &server.uri_store);
             server.http_workers.push_back(w);
@@ -32,10 +28,6 @@ int main (int argc, char *argv[]) {
                     w->my_req_type = REGEX;
                     server.regex_workers.push_back(w);
                 }
-            }
-            if (w->launch() != 0) {
-                PspWorker::stop_all();
-                break; //TODO cleanup and exit
             }
         } else {
             PSP_ERROR("Non supported service unit type: " << su.second->type);
@@ -58,6 +50,20 @@ int main (int argc, char *argv[]) {
                     PSP_WARN("Unsupported type " << server.http_workers[j]->my_req_type);
                     break;
             }
+        }
+    }
+
+    /* Start all workers */
+    for (auto &w: server.net_workers) {
+        if (w->launch() != 0) {
+            PspWorker::stop_all();
+            break;
+        }
+    }
+    for (auto &w: server.http_workers) {
+        if (w->launch() != 0) {
+            PspWorker::stop_all();
+            break;
         }
     }
 
