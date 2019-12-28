@@ -104,6 +104,7 @@ class HttpWorker : public PspWorker {
                  dmtr_qtoken_t token;
                  for (auto &p: peer_ids) {
                      DMTR_OK(psu->ioqapi.pop(token, get_peer_qd(p)));
+                     tokens.push_back(token);
                  }
 
                  return 0;
@@ -164,7 +165,7 @@ class HttpWorker : public PspWorker {
                          ) + sizeof(uint32_t);
 
                          /* Push back the ServerRequest to the net worker */
-                         if (blocking_push_to_peer(dequeued.qr_qd, dequeued.qr_value.sga) == -1) {
+                         if (blocking_push_to_peer(dequeued.qr_value.sga, dequeued.qr_qd) == -1) {
                              log_warn("Could not push to net worker on %d", dequeued.qr_qd);
                          } else {
                              log_debug("NetWorker pushed to peer on %d", dequeued.qr_qd);
@@ -194,7 +195,7 @@ class HttpWorker : public PspWorker {
                  req->data = response;
                  req->sga.sga_segs[0].sgaseg_len = response_size;
                  /* Push back the ServerRequest to the net worker */
-                 if (blocking_push_to_peer(dequeued.qr_qd, dequeued.qr_value.sga) == -1) {
+                 if (blocking_push_to_peer(dequeued.qr_value.sga, dequeued.qr_qd) == -1) {
                      log_warn("Could not push to net worker on %d", dequeued.qr_qd);
                  } else {
                      log_debug("NetWorker pushed to peer on %d", dequeued.qr_qd);
@@ -207,6 +208,10 @@ class HttpWorker : public PspWorker {
 class NetWorker : public PspWorker {
     public: NetWorker(int id, PspServiceUnit *psu, std::string &dp)
                        : PspWorker(id, psu), dispatch_policy(dp) {}
+
+    private: ~NetWorker() {
+                 psu->ioqapi.close(lqd);
+             }
 
     /* Scheduling */
     public: std::vector<HttpWorker*> regex_workers;
@@ -267,13 +272,6 @@ class NetWorker : public PspWorker {
                  DMTR_OK(psu->ioqapi.accept(token, lqd));
                  tokens.push_back(token);
 
-                 /* we should schedule a pop only if we scheduled a write
-                 for (int peer_id : peer_ids) {
-                     DMTR_OK(pop_from_peer(peer_id, token));
-                     tokens.push_back(token);
-                 }
-                 */
-
                  clients_in_waiting.reserve(MAX_CLIENTS);
                  return 0;
              }
@@ -311,20 +309,21 @@ class NetWorker : public PspWorker {
 
     private: int choose_worker(ServerRequest &req) {
                  if (dispatch_policy == "RR") {
-                     return num_rcvd % peer_ids.size();
+                     return peer_ids[num_rcvd++ % peer_ids.size()];
                  } else if (dispatch_policy == "FILTER") {
                      /* Retrieve request type */
                      std::string req_str(req.data + sizeof(uint32_t));
                      req.type = net_dispatch_f(req_str);
                      /* Apply a round robin policy across worker types  */
+                     uint64_t count = type_counts[req.type];
                      switch (req.type) {
                          default:
                              PSP_ERROR("Unknown request type");
                              break;
                          case REGEX:
-                             return type_counts[REGEX]++ % regex_workers.size();
+                             return regex_workers[count % regex_workers.size()]->worker_id;
                          case PAGE:
-                             return type_counts[PAGE]++ % file_workers.size();
+                             return file_workers[count % file_workers.size()]->worker_id;
                      }
                  } else {
                      PSP_ERROR("Unknown dispatching policy " << dispatch_policy);
@@ -342,12 +341,13 @@ class NetWorker : public PspWorker {
                      tokens.push_back(token);
                      DMTR_OK(psu->ioqapi.accept(token, lqd));
                      tokens.push_back(token);
+                     return 0;
                  }
 
                  int dequeued_id = get_peer_id(dequeued.qr_qd);
                  /* Handle notification that we pushed to worker */
                  if (dequeued.qr_opcode == DMTR_OPC_PUSH) {
-                     if (int peer_id = get_peer_qd(peer_id) == -1) {
+                     if (dequeued_id == -1) {
                          /* This must be a client worker */
                          free(dequeued.qr_value.sga.sga_segs[0].sgaseg_buf);
                          dequeued.qr_value.sga.sga_segs[0].sgaseg_buf = NULL;
