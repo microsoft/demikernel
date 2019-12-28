@@ -26,5 +26,5 @@ ClientRequest * ClientRequest::format_request(uint32_t id, std::string &req_uri,
         REQ_STR, uri.c_str(), host.c_str(), req_type.c_str()
     );
     req_size += sizeof(uint32_t);
-    return new ClientRequest(req, req_size, id);
+    return new ClientRequest(id, req, req_size);
 }

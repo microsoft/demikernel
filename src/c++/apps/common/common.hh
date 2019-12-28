@@ -212,4 +212,11 @@ static inline void read_uris(std::vector<std::string> &requests_str, std::string
     }
 }
 
+template <typename T>
+static void as_sga(T &from, dmtr_sgarray_t &sga) {
+    sga.sga_buf = nullptr;
+    sga.sga_numsegs = 1;
+    sga.sga_segs[0].sgaseg_buf = &from;
+    sga.sga_segs[0].sgaseg_len = sizeof(from);
+}
 #endif

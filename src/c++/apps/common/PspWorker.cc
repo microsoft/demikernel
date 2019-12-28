@@ -29,6 +29,7 @@ int PspWorker::register_peer(PspWorker &peer,
     return 0;
 }
 
+//TODO enable the main_loop to call a clean-up function
 int PspWorker::main_loop() {
     if (setup()) {
         PSP_ERROR("Worker thread " << worker_id << " failed to initialize")
@@ -64,6 +65,13 @@ int PspWorker::get_peer_id(int peer_qd) {
         return -1;
     }
     return it->second;
+}
+
+int PspWorker::blocking_push_to_peer(const dmtr_sgarray_t &sga, int qd) {
+    dmtr_qtoken_t token;
+    DMTR_OK(psu->ioqapi.push(token, qd, sga));
+    while (psu->wait(NULL, token) == EAGAIN) {};
+    return 0;
 }
 
 int PspWorker::blocking_push_to_peer(int peer_id, const dmtr_sgarray_t &sga) {

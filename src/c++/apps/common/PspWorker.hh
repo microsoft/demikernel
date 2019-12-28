@@ -50,6 +50,7 @@ protected:
     int get_peer_id(int peer_qd);
 
     int blocking_push_to_peer(int peer_id, const dmtr_sgarray_t &sga);
+    int blocking_push_to_peer(const dmtr_sgarray_t &sga, int qd);
     int pop_from_peer(int peer_id, dmtr_qtoken_t &token);
 
     bool terminate = false;

@@ -28,6 +28,9 @@ service_units:
     - name: http_worker_2
       type: 'http'
 
+
+n_regex_workers: 1
+n_file_workers: 1
 dispatch_policy: 'RR'
 log_dir: '/home/maxdml/experiments_run/test/'
 uri_list: '/home/maxdml/nfs/maxdml/codeZ/demikernel/src/python/benchmarking_utils/uri_files/lt128bfiles_srv'
