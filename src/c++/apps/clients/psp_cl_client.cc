@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     desc.add_options()
         ("help", "produce help message")
         ("ip,I", po::value<std::string>(&remote_host)->required(), "server's IP")
-        ("port,P", po::value<uint16_t>(&remote_port)->default_value(12345), "server's port")
+        ("port,P", po::value<uint16_t>(&remote_port)->default_value(6789), "server's port")
         ("duration,d", po::value<int>(&duration)->default_value(10), "running duration")
         ("uri-list,u", po::value<std::string>(&uri_list)->required(), "uri list")
         ("label,l", po::value<std::string>(&label), "experiment label")
