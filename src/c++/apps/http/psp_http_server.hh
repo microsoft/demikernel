@@ -148,9 +148,8 @@ class HttpWorker : public PspWorker {
                  req->req  = req->data + sizeof(uint32_t);
                  req->req_size = req->data_len - sizeof(uint32_t);
                  log_debug(
-                     "HTTP worker received request %u: %s\n",
-                     reinterpret_cast<uint32_t>(req->id),
-                     *reinterpret_cast<uint32_t *>(req->data)
+                     "HTTP worker received request %d: %s\n",
+                     reinterpret_cast<uint32_t>(req->id), req->data
                  );
 
                  /* Parse HTTP content */

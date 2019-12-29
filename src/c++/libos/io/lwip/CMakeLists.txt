@@ -10,7 +10,7 @@ target_add_hoard(dmtr-libos-lwip hoard-vanilla)
 target_add_dpdk(dmtr-libos-lwip)
 target_include_directories(dmtr-libos-lwip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/liblwip ${DPDK_INCLUDE_DIR})
 
-target_link_libraries(dmtr-libos-lwip Threads::Threads yaml-cpp boost_program_options)
+target_link_libraries(dmtr-libos-lwip Threads::Threads boost_program_options)
 
 # todo: teach Isaac and Max how this is supposed to work, because we have no idea what we're doing
 target_link_libraries(dmtr-libos-lwip ${DPDK_LIB_DIR}/librte_pdump.a)

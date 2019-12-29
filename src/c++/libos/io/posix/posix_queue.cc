@@ -3,6 +3,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#include <dmtr/libos/persephone.hh>
 #include "posix_queue.hh"
 #include <dmtr/latency.h>
 #include <dmtr/time.hh>
@@ -412,7 +413,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         if (it != write_latencies.end()) {
             DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         } else {
-            DMTR_OK(dmtr_register_latencies("write", write_latencies));
+            DMTR_OK(dmtr_register_latencies("write", log_dir, write_latencies));
             it = write_latencies.find(me);
             DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         }
@@ -613,7 +614,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
             if (it != read_latencies.end()) {
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
-                DMTR_OK(dmtr_register_latencies("read", read_latencies));
+                DMTR_OK(dmtr_register_latencies("read", log_dir, read_latencies));
                 it = read_latencies.find(me);
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }

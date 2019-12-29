@@ -322,7 +322,7 @@ int dmtr_delete_latency(dmtr_latency_t **latency) {
     return 0;
 }
 
-int dmtr_register_latencies(const char *label,
+int dmtr_register_latencies(const char *label, std::string log_dir,
                             std::unordered_map<pthread_t, latency_ptr_type> &latencies) {
     char log_filename[MAX_LOG_FILENAME_LEN];
     pthread_t me = pthread_self();

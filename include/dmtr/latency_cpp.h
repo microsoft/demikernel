@@ -11,7 +11,7 @@
 // The maximum lenth for the log URI
 
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)> > latency_ptr_type;
-int dmtr_register_latencies(const char *label,
+int dmtr_register_latencies(const char *label, std::string log_dir,
                             std::unordered_map<pthread_t, latency_ptr_type> &latencies);
 
 #if DMTR_PROFILING

@@ -592,8 +592,8 @@ int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     DMTR_NOTNULL(ENOMEM, q_out);
 
 #ifdef DMTR_TRACE
-    DMTR_OK(dmtr_register_trace("POP", pop_token_traces));
-    DMTR_OK(dmtr_register_trace("PUSH", push_token_traces));
+    DMTR_OK(dmtr_register_trace("POP", log_dir, pop_token_traces));
+    DMTR_OK(dmtr_register_trace("PUSH", log_dir, push_token_traces));
 #endif
 
     return 0;
@@ -1141,7 +1141,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
             if (it != write_latencies.end()) {
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             } else {
-                DMTR_OK(dmtr_register_latencies("write", write_latencies));
+                DMTR_OK(dmtr_register_latencies("write", log_dir, write_latencies));
                 it = write_latencies.find(me); //Not ideal but happens only once
                 DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
             }
@@ -1342,7 +1342,7 @@ dmtr::lwip_queue::service_incoming_packets() {
         if (it != read_latencies.end()) {
             DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         } else {
-            DMTR_OK(dmtr_register_latencies("read", read_latencies));
+            DMTR_OK(dmtr_register_latencies("read", log_dir, read_latencies));
             it = read_latencies.find(me);
             DMTR_OK(dmtr_record_timed_latency(it->second.get(), since_epoch(now), dt.count()));
         }
@@ -2000,7 +2000,7 @@ int dmtr::lwip_queue::set_fdir(void *&context) {
     inet_aton(subnet, &saddr);
     uint32_t src_mask, dst_mask;
     src_mask = 0x0;
-    dst_mask = 0xfffffff;
+    dst_mask = 0xffffffff;
     struct rte_flow_error error;
     /* Generate an ingress rule for the context's rx queue */
     struct rte_flow *flow = generate_ipv4_flow(

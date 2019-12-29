@@ -7,7 +7,7 @@
 
 /*************** Gloval variables **************/
 // Logging
-static std::string log_dir;
+extern std::string log_dir;
 #define MAX_LOG_FILENAME_LEN 128
 #define MAX_SUS 8
 

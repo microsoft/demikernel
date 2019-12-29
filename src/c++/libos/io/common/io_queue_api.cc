@@ -36,18 +36,6 @@ int dmtr::io_queue_api::init(io_queue_api *&newobj_out, int argc, char *argv[]) 
 
     newobj_out = new io_queue_api();
 
-    if (argc > 0) {
-        namespace po = boost::program_options;
-        po::options_description desc{"IO queue API options"};
-        desc.add_options()
-            ("log-dir,L", po::value<std::string>(&log_dir)->default_value("./"), "Log directory");
-        po::variables_map vm;
-        po::parsed_options parsed =
-            po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
-        po::store(parsed, vm);
-        po::notify(vm);
-    }
-
     return 0;
 }
 

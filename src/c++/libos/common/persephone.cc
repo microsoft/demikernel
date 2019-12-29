@@ -11,6 +11,7 @@
 /********** CONTROL PLANE ******************/
 //TODO:
 // - don't create network context for SU that specify an invalid device
+std::string log_dir = "./";
 Psp::Psp(std::string &app_cfg) {
     /* Let network libOS init its specific EAL */
     dmtr_net_init(app_cfg.c_str());
@@ -78,8 +79,6 @@ Psp::Psp(std::string &app_cfg) {
 
         if (config["log_dir"].IsDefined()) {
             log_dir = config["log_dir"].as<std::string>();
-        } else {
-            log_dir = "./";
         }
         std::cout << "libOS log directory set to " << log_dir << std::endl;
     } catch (YAML::ParserException& e) {

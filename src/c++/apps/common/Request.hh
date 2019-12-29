@@ -38,10 +38,6 @@ class ClientRequest : public Request {
 
     public: static ClientRequest* format_request(uint32_t id, std::string &req_uri, std::string &host);
 
-    /*
-    public: ClientRequest(char * const req, size_t req_size, uint32_t id) :
-                Request(id, req, req_size) {}
-    */
     using Request::Request;
 };
 

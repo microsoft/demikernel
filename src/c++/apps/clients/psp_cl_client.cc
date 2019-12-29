@@ -83,10 +83,9 @@ int main(int argc, char *argv[]) {
         ("port,P", po::value<uint16_t>(&remote_port)->default_value(6789), "server's port")
         ("duration,d", po::value<int>(&duration)->default_value(10), "running duration")
         ("uri-list,u", po::value<std::string>(&uri_list)->required(), "uri list")
-        ("label,l", po::value<std::string>(&label), "experiment label")
+        ("label,l", po::value<std::string>(&label)->default_value("clclient"), "experiment label")
         ("pipeline,p", po::value<uint16_t>(&pipeline)->default_value(1), "pipeline width")
-        ("config-path,c", po::value<std::string>(&cfg_file)->required(), "path to configuration file")
-        ("out,O", po::value<std::string>(&log_dir), "log directory");
+        ("config-path,c", po::value<std::string>(&cfg_file)->required(), "path to configuration file");
 
     po::variables_map vm;
     try {
