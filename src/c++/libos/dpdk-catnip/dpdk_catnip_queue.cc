@@ -89,6 +89,7 @@ namespace bpo = boost::program_options;
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
 static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
+static latency_ptr_type catnip_latency;
 static latency_ptr_type catnip_read_latency;
 static latency_ptr_type catnip_write_latency;
 static latency_ptr_type catnip_peek_latency;
@@ -392,6 +393,33 @@ int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd
         dmtr_latency_t *l;
         DMTR_OK(dmtr_new_latency(&l, "catnip"));
         catnip_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip read"));
+        catnip_read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip write"));
+        catnip_write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_peek_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip peek"));
+        catnip_peek_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
             dmtr_dump_latency(stderr, latency);
             dmtr_delete_latency(&latency);
         });
@@ -704,7 +732,10 @@ int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
 int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
     const uint32_t number_of_segments = htonl(sga.sga_numsegs);
-    NIPX_LATENCY(catnip_write_latency,
+#if DMTR_PROFILE
+    auto t0 = boost::chrono::steady_clock::now();
+#endif
+
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
@@ -713,6 +744,10 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
     }
+#if DMTR_PROFILE
+    auto dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(catnip_write_latency.get(), dt.count()));
+#endif
 
     return 0;
 }
@@ -826,7 +861,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     struct timeval tv = {};
     DMTR_OK(gettimeofday(tv));
 #if DMTR_PROFILE
-    auto t0 = boost::chrono::steady_clock::now();
+    t0 = boost::chrono::steady_clock::now();
 #endif
 
     for (size_t i = 0; i < count; ++i) {
@@ -848,7 +883,7 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
         rte_pktmbuf_free(packet);
     }
 #if DMTR_PROFILE
-    auto dt = boost::chrono::steady_clock::now() - t0;
+    dt = boost::chrono::steady_clock::now() - t0;
     DMTR_OK(dmtr_record_latency(catnip_read_latency.get(), dt.count()));
 #endif
 
