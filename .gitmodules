@@ -54,3 +54,6 @@
 	path = submodules/tapir-lwip
 	url = https://github.com/UWSysLab/tapir.git
         branch = io-queue
+[submodule "submodules/Shremote"]
+	path = submodules/Shremote
+	url = git@github.com:isaac-ped/Shremote.git
