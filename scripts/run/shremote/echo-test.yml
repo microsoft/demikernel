@@ -1,0 +1,46 @@
+log_dir: /h/irene/proj/demikernel/logs
+
+build_dir: /h/irene/proj/demikernel/build
+
+exec_dir: /h/irene/proj/demikernel/build/src/c++/apps/echo
+
+liboses: lwip
+
+iterations: 1000
+
+size: 64
+
+hosts:
+    server:
+        addr: prometheus1
+
+    client:
+        addr: prometheus2
+
+programs:
+    start_server:
+        start: sudo {0.exec_dir}/dmtr-{libos}-server --config-path={0.build_dir}/config.yaml --file={0.log_dir}/server.log
+        hosts: server
+        stop: sudo kill {pid}
+        min_duration: 10
+        # Host can be specified in either a program, or a command
+
+    start_client:
+        start: sudo {0.exec_dir}/dmtr-{libos}-client -i {0.iterations} -s {0.size} --config-path={0.build_dir}/config.yaml --file={0.log_dir}/client.log
+        hosts: client
+        min_duration: 3
+
+#files:
+#    config:
+#        src: "{0.build_dir}/config.yaml"
+#        dst: /config.yaml
+#        hosts: [server, client]
+ 
+commands:
+    - program: start_server
+      libos: lwip
+      begin: 0
+
+    - program: start_client
+      libos: lwip
+      begin: 3
