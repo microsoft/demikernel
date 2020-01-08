@@ -4,9 +4,9 @@ build_dir: /h/irene/proj/demikernel/build
 
 exec_dir: /h/irene/proj/demikernel/build/src/c++/apps/echo
 
-liboses: lwip
+os: rdma
 
-iterations: 1000
+iterations: 1000000
 
 size: 64
 
@@ -14,21 +14,36 @@ hosts:
     server:
         addr: prometheus1
 
-    client:
+    client1:
         addr: prometheus2
+    client2:
+        addr: prometheus3
+    client3:
+        addr: prometheus4
+    client4:
+        addr: prometheus5
+    client5:
+        addr: prometheus7
+    client6:
+        addr: prometheus8
 
 programs:
     start_server:
-        start: sudo {0.exec_dir}/dmtr-{libos}-server --config-path={0.build_dir}/config.yaml --file={0.log_dir}/server.log
+        start: sudo {0.exec_dir}/dmtr-{libos}-server --config-path={0.build_dir}/config.yaml
         hosts: server
-        stop: sudo kill {pid}
-        min_duration: 10
+        log:
+            out: "{log_dir}/server.log"
+            err: "{log_dir}/server.err.log"       
+        stop: sudo kill -s INT {pid}
+        max_duration: 30
         # Host can be specified in either a program, or a command
 
     start_client:
-        start: sudo {0.exec_dir}/dmtr-{libos}-client -i {0.iterations} -s {0.size} --config-path={0.build_dir}/config.yaml --file={0.log_dir}/client.log
-        hosts: client
-        min_duration: 3
+        start: sudo {0.exec_dir}/dmtr-{libos}-client -i {0.iterations} -s {0.size} --config-path={0.build_dir}/config.yaml
+        hosts: [client1, client2]
+        log:
+            out: "{log_dir}/client.{host_idx}.log"
+            err: "{log_dir}/client.{host_idx}.err.log"
 
 #files:
 #    config:
@@ -38,9 +53,9 @@ programs:
  
 commands:
     - program: start_server
-      libos: lwip
+      libos: "{0.os}"
       begin: 0
 
     - program: start_client
-      libos: lwip
+      libos: "{0.os}"
       begin: 3
