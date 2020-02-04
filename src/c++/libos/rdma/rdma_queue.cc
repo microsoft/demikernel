@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 //#define DMTR_PIN_MEMORY 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
@@ -378,7 +378,7 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
     struct rdma_conn_param params = {};
     params.initiator_depth = 1;
     params.responder_resources = 1;
-    params.rnr_retry_count = 1;
+    params.rnr_retry_count = 10;
     DMTR_OK(rdma_connect(my_rdma_id, &params));
     ret = EAGAIN;
     while (0 != ret) {

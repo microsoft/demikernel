@@ -20,11 +20,17 @@ class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
 
-    private: static const size_t recv_buf_count;
-    private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
     private: static const duration_type event_polling_period;
 
+    // my local receive buffer count and size 
+    private: size_t my_recv_buf_count = 1;
+    private: size_t my_recv_buf_size = 256;
+    // the expected receive buffer count and size on the other end of the connection
+    // used for flow control
+    private: size_t other_end_recv_buf_count = 1;
+    private: size_t other_end_recv_buf_size = 256;
+    
     private: struct metadata {
         dmtr_header_t header;
         uint32_t lengths[];

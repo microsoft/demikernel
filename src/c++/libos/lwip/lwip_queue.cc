@@ -44,7 +44,7 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
 
 /*
