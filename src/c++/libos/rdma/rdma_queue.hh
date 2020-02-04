@@ -25,11 +25,11 @@ class rdma_queue : public io_queue {
 
     // my local receive buffer count and size 
     private: size_t my_recv_buf_count = 1;
-    private: size_t my_recv_buf_size = 256;
+    private: size_t my_recv_buf_size = 1080;
     // the expected receive buffer count and size on the other end of the connection
     // used for flow control
     private: size_t other_end_recv_buf_count = 1;
-    private: size_t other_end_recv_buf_size = 256;
+    private: size_t other_end_recv_buf_size = 1080;
     
     private: struct metadata {
         dmtr_header_t header;
@@ -58,6 +58,7 @@ class rdma_queue : public io_queue {
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
     private: int on_work_completed(const struct ibv_wc &wc);
     private: int setup_rdma_qp();
+    private: int submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
 
     private: rdma_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);

@@ -12,8 +12,7 @@ dmtr::io_queue::task::task() :
     my_qr{},
     my_error(EAGAIN),
     my_sga_arg{},
-    my_queue_arg(nullptr),
-    my_state(UNSUBMITTED)
+    my_queue_arg(nullptr)
 {}
 
 int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {

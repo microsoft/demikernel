@@ -25,12 +25,6 @@ class io_queue
         FILE_Q,
     };
 
-    public: enum state_id {
-        UNSUBMITTED,
-        PENDING,
-        DONE
-    };
-
     protected: class task {
         public: typedef user_thread<dmtr_qtoken_t> thread_type;
 
@@ -38,8 +32,6 @@ class io_queue
         private: int my_error;
         private: dmtr_sgarray_t my_sga_arg;
         private: io_queue *my_queue_arg;
-        // state progress: UNSUBMITTED -> PENDING -> DONE
-        private: state_id my_state;
 
         public: task();
         public: int initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode);

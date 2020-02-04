@@ -4,7 +4,7 @@ proj_dir: /h/irene/proj/demikernel
 
 exec_dir: /h/irene/proj/demikernel/build/src/c++/apps/echo
 
-os: lwip
+os: rdma
 
 iterations: 1000000
 
