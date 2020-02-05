@@ -40,7 +40,7 @@ programs:
 
     start_client:
         start: sudo {0.exec_dir}/dmtr-{libos}-client -i {0.iterations} -s {0.size} --config-path={0.proj_dir}/config.yaml
-        hosts: [client1, client2, client3, client4, client5, client6, client7]
+        hosts: [client1]#, client2, client3, client4, client5, client6, client7]
         log:
             out: client.{host_idx}.log
             err: client.{host_idx}.err.log

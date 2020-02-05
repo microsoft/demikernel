@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 //#define DMTR_PIN_MEMORY 1
-//#define DMTR_PROFILE 1
+#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
@@ -101,12 +101,12 @@ int dmtr::rdma_queue::setup_rdma_qp()
     qp_attr.qp_type = IBV_QPT_RC;
     // qp_attr.send_cq = cq;
     // qp_attr.recv_cq = cq;
-    qp_attr.cap.max_send_wr = 2;
-    qp_attr.cap.max_recv_wr = 2;
+    qp_attr.cap.max_send_wr = 10;
+    qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;
-    qp_attr.cap.max_inline_data = 256;
-    qp_attr.sq_sig_all = 1;
+    qp_attr.cap.max_inline_data = 128;
+    qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
     // my_rdma_id->send_cq = cq;
     // my_rdma_id->recv_cq = cq;
@@ -125,7 +125,11 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
             void *buf = reinterpret_cast<void *>(wc.wr_id);
             size_t byte_len = wc.byte_len;
             my_pending_recvs.push(std::make_pair(buf, byte_len));
-            DMTR_OK(new_recv_buf());
+            my_recv_buf_count--;
+            if (my_recv_buf_count == 0) {
+                DMTR_OK(new_recv_bufs(my_recv_buf_max));
+                my_recv_buf_count = my_recv_buf_max;
+            }
             other_end_recv_buf_count++;
             return 0;
         }
@@ -488,10 +492,11 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     wr.opcode = IBV_WR_SEND;
     // warning: if you don't set the send flag, it will not
     // give a meaningful error.
-    //wr.send_flags = IBV_SEND_SIGNALED;
-    if (header_len + total_len < 256) {
-        wr.send_flags = IBV_SEND_INLINE;
-    }
+    wr.send_flags = 0;
+    //if (my_recv_buf_count == 1) 
+    wr.send_flags |= IBV_SEND_SIGNALED;
+    if (header_len + total_len < 128)
+        wr.send_flags |= IBV_SEND_INLINE;
     wr.wr_id = qt;
     wr.sg_list = sge;
     wr.num_sge = num_sge;
@@ -628,12 +633,6 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         raii_guard rg0(std::bind(Zeus::RDMA::Hoard::unpin, buf));
 #endif
 
-        const auto key = reinterpret_cast<uintptr_t>(buf);
-        auto it = my_recv_bufs.find(key);
-        DMTR_TRUE(ENOTSUP, it != my_recv_bufs.cend());
-        auto ubuf = std::move(it->second);
-        my_recv_bufs.erase(it);
-
         if (sz_buf < sizeof(dmtr_header_t)) {
             return EPROTO;
         }
@@ -663,7 +662,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 
         sga.sga_buf = buf;
         DMTR_OK(t->complete(0, sga));
-        ubuf.release();
+
     }
 
     return 0;
@@ -700,9 +699,8 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             ret = my_accept_thread->service();
             break;
         case DMTR_OPC_PUSH:
-            ret = my_push_thread->service();
-            break;
         case DMTR_OPC_POP:
+            ret = my_push_thread->service();
             ret = my_pop_thread->service();
             break;
         case DMTR_OPC_CONNECT:
@@ -978,35 +976,36 @@ int dmtr::rdma_queue::ibv_post_recv(struct ibv_recv_wr *&bad_wr_out, struct ibv_
     return ::ibv_post_recv(qp, wr, &bad_wr_out);
 }
 
-int dmtr::rdma_queue::new_recv_buf() {
+int dmtr::rdma_queue::new_recv_bufs(size_t n) {
     // todo: it looks like we can't receive anything larger than
     // `recv_buf_size`,
-    void *buf = NULL;
-    DMTR_OK(dmtr_malloc(&buf, my_recv_buf_size));
-    const auto key = reinterpret_cast<uintptr_t>(buf);
-    DMTR_TRUE(ENOTSUP, my_recv_bufs.find(key) == my_recv_bufs.cend());
-    my_recv_bufs.insert(std::make_pair(key, std::unique_ptr<uint8_t>(reinterpret_cast<uint8_t *>(buf))));
-#if DMTR_PIN_MEMORY
-    Zeus::RDMA::Hoard::pin(buf);
-#endif
-
-    struct ibv_pd *pd = NULL;
-    DMTR_OK(get_pd(pd));
-    struct ibv_mr *mr = NULL;
-    DMTR_OK(get_rdma_mr(mr, buf));
-    struct ibv_sge sge = {};
-    sge.addr = reinterpret_cast<uintptr_t>(buf);
-    sge.length = my_recv_buf_size;
-    sge.lkey = mr->lkey;
-    struct ibv_recv_wr wr = {};
-    wr.wr_id = reinterpret_cast<uintptr_t>(buf);
-    wr.sg_list = &sge;
-    wr.next = NULL;
-    wr.num_sge = 1;
+    struct ibv_sge sge[n];
+    struct ibv_recv_wr wr[n];
     struct ibv_recv_wr *bad_wr = NULL;
-    DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, &wr));
-    //fprintf(stderr, "Done posting receive buffer: %lx %d\n", buf, recv_buf_size);
+    
+    for (unsigned int i = 0; i < n; i++) {
+        void * buf = NULL;
+        DMTR_OK(dmtr_malloc(&buf, my_recv_buf_size));
+        struct ibv_pd *pd = NULL;
+        DMTR_OK(get_pd(pd));
+        struct ibv_mr *mr = NULL;
+        DMTR_OK(get_rdma_mr(mr, buf));
 
+        auto addr = reinterpret_cast<uintptr_t>(buf);
+        sge[i].addr = addr;
+        sge[i].length = my_recv_buf_size;
+        sge[i].lkey = mr->lkey;
+        wr[i].wr_id = addr;
+        wr[i].sg_list = &sge[i];
+        if (i < n - 1) 
+            wr[i].next = &wr[i+1];
+        else
+            wr[i].next = NULL;
+        wr[i].num_sge = 1;
+    }
+    DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, wr));
+    //fprintf(stderr, "Done posting receive buffer: %llx %u\n", buf, n);
+    my_recv_buf_count += n;
     return 0;
 }
 
@@ -1024,10 +1023,8 @@ int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
 }
 
 int dmtr::rdma_queue::setup_recv_queue() {
-    for (size_t i = 0; i < my_recv_buf_count; ++i) {
-        DMTR_OK(new_recv_buf());
-    }
-
+    DMTR_OK(new_recv_bufs(my_recv_buf_max));
+    my_recv_buf_count = my_recv_buf_max;
     return 0;
 }
 
