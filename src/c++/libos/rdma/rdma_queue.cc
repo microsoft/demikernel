@@ -34,11 +34,9 @@ static latency_ptr_type write_latency;
 struct ibv_pd *dmtr::rdma_queue::our_pd = NULL;
 std::unique_ptr<dmtr::rdmacm_router> dmtr::rdma_queue::our_rdmacm_router;
 const size_t dmtr::rdma_queue::max_num_sge = DMTR_SGARRAY_MAXSIZE + 1;
-const dmtr::rdma_queue::duration_type dmtr::rdma_queue::event_polling_period = duration_type(1000);
 
 dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
-    my_last_event_channel_poll(clock_type::now()),
     my_rdma_id(NULL),
     my_listening_flag(false)
 {}
@@ -91,15 +89,10 @@ int dmtr::rdma_queue::setup_rdma_qp()
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
-    // struct ibv_cq *cq = ibv_create_cq(my_rdma_id->verbs,
-    //                                  2,
-    //                                  NULL,
-    //                                  my_rdma_id->send_cq_channel,
-    //                                  0);
-    // set up connection queue pairs
+    //struct ibv_cq *cq = get_cq();
     struct ibv_qp_init_attr qp_attr = {};
     qp_attr.qp_type = IBV_QPT_RC;
-    // qp_attr.send_cq = cq;
+    //qp_attr.send_cq = cq;
     // qp_attr.recv_cq = cq;
     qp_attr.cap.max_send_wr = 10;
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
@@ -505,17 +498,18 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     pin(sga);
 #if DMTR_PROFILE
     boost::chrono::duration<uint64_t, boost::nano> dt(0);
-    auto t0 = boost::chrono::steady_clock::now();
+    auto t0 = clock_type::now();
 #endif
 
     DMTR_OK(ibv_post_send(bad_wr, my_rdma_id->qp, &wr));
 
 #if DMTR_PROFILE
-    dt += (boost::chrono::steady_clock::now() - t0);
+    dt += (clock_type::now() - t0);
     DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
 #endif
     other_end_recv_buf_count--;
     md.release();
+    
     return 0;
 }
 
@@ -594,14 +588,14 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         DMTR_OK(get_task(t, qt));
 
 #if DMTR_PROFILE
-        boost::chrono::steady_clock::time_point t0;
+        clock_type::time_point t0;
         boost::chrono::duration<uint64_t, boost::nano> dt(0);
 #endif
         void *buf = NULL;
         size_t sz_buf = 0;
         while (NULL == buf) {
 #if DMTR_PROFILE
-            t0 = boost::chrono::steady_clock::now();
+            t0 = clock_type::now();
 #endif
             DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
             int ret = service_recv_queue(buf, sz_buf);
@@ -609,13 +603,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
                 default:
                     DMTR_FAIL(ret);
                 case EAGAIN:
-#if DMTR_PROFILE
-                    dt += (boost::chrono::steady_clock::now() - t0);
-#endif
                     yield();
-#if DMTR_PROFILE
-                    t0 = boost::chrono::steady_clock::now();
-#endif
                     buf = NULL;
                     continue;
                 case 0:
@@ -625,7 +613,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         }
 
 #if DMTR_PROFILE
-        dt += (boost::chrono::steady_clock::now() - t0);
+        dt += (clock_type::now() - t0);
         DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
@@ -672,9 +660,11 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EINVAL, good());
 
-    const auto now = clock_type::now();
-    if (now - my_last_event_channel_poll > event_polling_period) {
+    static int poll_count = 0;
+    poll_count++;
+    if (poll_count > 10000) {
         int ret = service_event_channel();
+        poll_count = 0;
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
@@ -684,8 +674,6 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             case ECONNABORTED:
                 return ret;
         }
-
-        my_last_event_channel_poll = now;
     }
 
     task *t;
@@ -795,7 +783,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event = {};
-    auto t0 = clock_type::now();
+    int retry_times = 0;
     int ret = EAGAIN;
     while (0 != ret) {
         ret = our_rdmacm_router->poll(event, id);
@@ -803,9 +791,9 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
             default:
                 DMTR_FAIL(ret);
             case EAGAIN: {
-                auto dt = clock_type::now() - t0;
-                if (dt <= timeout) {
-                    continue;
+                if (retry_times <= 1000000) {
+                    retry_times++;
+                    continue;                    
                 } else {
                     return EAGAIN;
                 }

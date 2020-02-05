@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
                     DMTR_OK(dmtr_push(&token, fqd, &wait_out.qr_value.sga));
-                    DMTR_OK(dmtr_wait(NULL, token));
+                    //DMTR_OK(dmtr_wait(NULL, token));
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }

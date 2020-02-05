@@ -82,7 +82,9 @@ bool dmtr::io_queue::task::arg(io_queue *&arg_out) const {
 dmtr::io_queue::io_queue(enum category_id cid, int qd) :
     my_cid(cid),
     my_qd(qd)
-{}
+{
+    my_tasks.reserve(5);
+}
 
 dmtr::io_queue::~io_queue()
 {
