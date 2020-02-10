@@ -1,9 +1,7 @@
 # Starter pipeline
-- task: ComponentGovernanceComponentDetection@0
+- task: CredScan@2
   inputs:
-    scanType: 'Register'
-    verbosity: 'Verbose'
-    alertWarningLevel: 'High'
+    toolMajorVersion: 'V1'
 # Start with a minimal pipeline that you can customize to build and deploy your code.
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
