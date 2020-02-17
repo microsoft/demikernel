@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 //#define DMTR_PIN_MEMORY 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
