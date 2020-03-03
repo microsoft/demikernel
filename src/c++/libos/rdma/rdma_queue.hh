@@ -23,12 +23,18 @@ class rdma_queue : public io_queue {
 
     // my local receive buffer count and size
     private: const size_t my_recv_buf_max = 100;
-    private: size_t my_recv_buf_count = 0;
+    private: size_t my_recv_window = 0;
     private: size_t my_recv_buf_size = 256;
     // the expected receive buffer count and size on the other end of the connection
     // used for flow control
-    private: size_t other_end_recv_buf_count = 1;
-    private: size_t other_end_recv_buf_size = 256;
+    private: size_t my_send_window = 0;
+    private: size_t send_buf_size = 0;
+
+    private: struct connection_data {
+        size_t *recv_buf_count;
+        ibv_mr recv_buf_rkey;
+        size_t recv_buf_size;
+    };
     
     private: struct metadata {
         dmtr_header_t header;
@@ -36,7 +42,7 @@ class rdma_queue : public io_queue {
     };
 
     // queued scatter gather arrays
-    private: std::queue<struct rdma_cm_id *> my_pending_accepts;
+    private: std::queue<struct rdma_cm_event> my_pending_accepts;
     private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
     private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
     private: clock_type::time_point my_last_event_channel_poll;
@@ -96,7 +102,7 @@ class rdma_queue : public io_queue {
 
     private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
 
-    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout);
+private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event *e = NULL);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
@@ -104,6 +110,7 @@ class rdma_queue : public io_queue {
     private: int new_recv_bufs(size_t n);
     private: int service_recv_queue(void *&buf_out, size_t &len_out);
     private: int setup_recv_queue();
+    private: int setup_recv_window(struct connection_data &cd);
     private: void start_threads();
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);

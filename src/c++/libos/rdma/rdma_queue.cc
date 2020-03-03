@@ -106,6 +106,23 @@ int dmtr::rdma_queue::setup_rdma_qp()
     return 0;
 }
 
+int dmtr::rdma_queue::setup_recv_window(struct connection_data &cd)
+{
+        // set up RDMA window variable
+    struct connection_data cd = {};
+    struct ibv_pd *pd;
+    DMTR_OK(get_pd(pd));
+    cd.recv_buf_count = &other_side_recv_buf_count;
+    cd.recv_buf_size = my_recv_buf_size;
+    cd.recv_buf_count_rkey = ibv_reg_mr(pd,
+                                        &other_end_recv_buf_count,
+                                        sizeof(size_t),
+                                        IBV_ACCESS_LOCAL_READ | IBV_ACCESS_REMOTE_WRITE);
+    
+    
+    return 0;
+}
+
 int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
 {
     DMTR_TRUE(ENOTSUP, IBV_WC_SUCCESS == wc.status);
@@ -175,7 +192,7 @@ int dmtr::rdma_queue::service_event_channel() {
             //fprintf(stderr, "An uninteresting event about recycling QP\n");
             return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_pending_accepts.push(event.id);
+            my_pending_accepts.push(event);
             //fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
@@ -189,7 +206,7 @@ int dmtr::rdma_queue::service_event_channel() {
     return 0;
 }
 
-int dmtr::rdma_queue::socket(int domain, int type, int protocol)
+shaint dmtr::rdma_queue::socket(int domain, int type, int protocol)
 {
     DMTR_NULL(EPERM, my_rdma_id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
@@ -271,26 +288,38 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
             }
         }
 
-        auto * const new_rdma_id = my_pending_accepts.front();
-        my_pending_accepts.pop();
-
+        struct rdma_cm_event &event = my_pending_accepts.front();
+        auto * const new_rdma_id = event.id;
+        struct connection_data *incoming_cd =
+            dynamic_cast<struct connection_data *>(event.private_data);
+        remote_buf_size = incoming_cd->recv_buf_size;
+        remote_recv_window_addr = incoming_cd->recv_buf_count;
+        remote_recv_window_rkey = incoming_cd->recv_buf_rkey;
+        
         new_rq->my_rdma_id = new_rdma_id;
         DMTR_OK(our_rdmacm_router->bind_id(new_rdma_id));
         DMTR_OK(new_rq->setup_rdma_qp());
         DMTR_OK(new_rq->setup_recv_queue());
         new_rq->start_threads();
 
+        struct connection_data cd;
+        DMTR_OK(setup_recv_window(cd));
+        
         // accept the connection
         struct rdma_conn_param params = {};
         params.initiator_depth = 1;
         params.responder_resources = 1;
         params.rnr_retry_count = 7;
+        params.private_data = &cd;
+        params.private_data_len = sizeof(struct connection_data);
         DMTR_OK(rdma_accept(new_rdma_id, &params));
 
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
         DMTR_OK(t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr)));
+        my_pending_accepts.pop();
+
     }
 
     return 0;
@@ -376,15 +405,21 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
     DMTR_OK(setup_rdma_qp());
     DMTR_OK(setup_recv_queue());
 
+    struct connection_data cd;
+    DMTR_OK(setup_recv_window(cd));
+    
     // Get channel
     struct rdma_conn_param params = {};
     params.initiator_depth = 1;
     params.responder_resources = 1;
     params.rnr_retry_count = 10;
+    params.private_data = &cd;
+    params.private_data_len = sizeof(struct connection_data);
     DMTR_OK(rdma_connect(my_rdma_id, &params));
     ret = EAGAIN;
+    struct rdma_cm_event event = {};
     while (0 != ret) {
-        ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout);
+        ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout, event);
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
@@ -397,6 +432,12 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
                 break;
         }
     }
+    
+    struct connection_data *incoming_cd =
+        dynamic_cast<struct connection_data *>(event.private_data);
+    remote_buf_size = incoming_cd->recv_buf_size;
+    remote_recv_window_addr = incoming_cd->recv_buf_count;
+    remote_recv_window_rkey = incoming_cd->recv_buf_rkey;
 
     start_threads();
     return 0;
@@ -778,15 +819,23 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
     }
 }
 
-int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout) {
+int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event *e = NULL) {
     DMTR_NOTNULL(EINVAL, id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event = {};
+    struct rdma_cm_event *e2;
+    
+    if (e == NULL) {
+        e2 = &event;
+    } else {
+        e2 = e;
+    }
+    
     int retry_times = 0;
     int ret = EAGAIN;
     while (0 != ret) {
-        ret = our_rdmacm_router->poll(event, id);
+        ret = our_rdmacm_router->poll(*e2, id);
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
@@ -803,7 +852,7 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
         }
     }
 
-    if (expected != event.event) {
+    if (expected != e2->event) {
         std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event.event << "." << std::endl;
         return err;
     }
@@ -994,6 +1043,14 @@ int dmtr::rdma_queue::new_recv_bufs(size_t n) {
     DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, wr));
     //fprintf(stderr, "Done posting receive buffer: %llx %u\n", buf, n);
     my_recv_buf_count += n;
+
+    //update the remote count
+    struct ibv_sge ssge;
+    struct ibv_send_wr swr;
+    ssge.addr = &my_recv_window;
+    ssge.length = sizeof(size_t);
+    ssge.lkey = 
+    
     return 0;
 }
 
