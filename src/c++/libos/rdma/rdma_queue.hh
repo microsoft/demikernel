@@ -22,7 +22,7 @@ class rdma_queue : public io_queue {
     private: static const size_t max_num_sge;
 
     // my local receive buffer count and size
-    private: const size_t my_recv_buf_max = 100;
+    private: const size_t my_recv_buf_max = 16;
     private: size_t my_recv_buf_count = 0;
     private: size_t my_recv_buf_size = 256;
     // the expected receive buffer count and size on the other end of the connection
