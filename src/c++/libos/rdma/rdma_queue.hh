@@ -25,15 +25,17 @@ class rdma_queue : public io_queue {
     private: const size_t my_recv_buf_max = 100;
     private: size_t my_recv_window = 0;
     private: size_t my_recv_buf_size = 256;
-    // the expected receive buffer count and size on the other end of the connection
-    // used for flow control
+    // how much can I send to the other side?
     private: size_t my_send_window = 0;
     private: size_t send_buf_size = 0;
+    // how to reach the window on the other end of the connection
+    private: uint64_t other_send_window_addr;
+    private: uint32_t other_send_window_rkey;
 
     private: struct connection_data {
-        size_t *recv_buf_count;
-        ibv_mr recv_buf_rkey;
-        size_t recv_buf_size;
+        uint64_t send_window_addr;
+        uint32_t send_window_rkey;
+        size_t send_buf_size;
     };
     
     private: struct metadata {
@@ -42,7 +44,7 @@ class rdma_queue : public io_queue {
     };
 
     // queued scatter gather arrays
-    private: std::queue<struct rdma_cm_event> my_pending_accepts;
+    private: std::queue<struct rdma_cm_event *> my_pending_accepts;
     private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
     private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
     private: clock_type::time_point my_last_event_channel_poll;
@@ -102,7 +104,7 @@ class rdma_queue : public io_queue {
 
     private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
 
-private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event *e = NULL);
+private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event **e = NULL);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
