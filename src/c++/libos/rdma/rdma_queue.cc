@@ -89,11 +89,11 @@ int dmtr::rdma_queue::setup_rdma_qp()
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
-    //struct ibv_cq *cq = get_cq();
+    struct ibv_cq *cq = ibv_create_cq(pd->context, 5, NULL, NULL, 0);
     struct ibv_qp_init_attr qp_attr = {};
     qp_attr.qp_type = IBV_QPT_RC;
-    //qp_attr.send_cq = cq;
-    // qp_attr.recv_cq = cq;
+    qp_attr.send_cq = cq;
+    qp_attr.recv_cq = cq;
     qp_attr.cap.max_send_wr = 256;
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
@@ -101,8 +101,8 @@ int dmtr::rdma_queue::setup_rdma_qp()
     qp_attr.cap.max_inline_data = 128;
     qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
-    // my_rdma_id->send_cq = cq;
-    // my_rdma_id->recv_cq = cq;
+    my_rdma_id->send_cq = cq;
+    my_rdma_id->recv_cq = cq;
     return 0;
 }
 
@@ -163,9 +163,6 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
         on_work_completed(wc[i]);
     }
     //fprintf(stderr, "Done draining completion queue\n");
-    if (my_recv_window < 2) {
-        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
-    }        
     return 0;
 }
 
@@ -593,10 +590,15 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     DMTR_NOTNULL(EINVAL, my_push_thread);
-
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));    
+    DMTR_NONZERO(EINVAL, my_send_window);
+    
+    int ret = submit_io(qt, sga);
+    if (0 != ret) {
+        return ret;
+    }
+    
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     my_push_thread->enqueue(qt);
-    my_push_thread->service();
     return 0;
 }
 
@@ -615,18 +617,8 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         DMTR_TRUE(EINVAL, t->arg(sga));
         //auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
-        // if we don't have an open send window (i.e., there is not a waiting recv buffer)
-        while (my_send_window == 0) {
-            yield();
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
-        }
-        int ret = submit_io(qt, *sga);
-        if (0 != ret) {
-            DMTR_OK(t->complete(ret, *sga));
-        }
-
-        while (true) {
-            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+         while (true) {
+            //DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
             if (my_completed_sends.cend() != it) {
                 my_completed_sends.erase(it);
@@ -673,12 +665,16 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #if DMTR_PROFILE
             t0 = clock_type::now();
 #endif
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
             int ret = service_recv_queue(buf, sz_buf);
             switch (ret) {
                 default:
                     DMTR_FAIL(ret);
                 case EAGAIN:
+                    // if no work, check on my receive window and see if it needs to be replenished 
+                    if (my_recv_window < 20) {
+                        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
+                    }
                     yield();
                     buf = NULL;
                     continue;
@@ -764,8 +760,10 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             break;
         case DMTR_OPC_PUSH:
         case DMTR_OPC_POP:
-            ret = my_push_thread->service();
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
             ret = my_pop_thread->service();
+            if (EAGAIN != ret) break;
+            ret = my_push_thread->service();
             break;
         case DMTR_OPC_CONNECT:
             ret = 0;
