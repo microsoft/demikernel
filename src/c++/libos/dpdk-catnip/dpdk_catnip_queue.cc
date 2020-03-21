@@ -94,6 +94,7 @@ static latency_ptr_type catnip_read_latency;
 static latency_ptr_type catnip_write_latency;
 static latency_ptr_type catnip_peek_latency;
 static latency_ptr_type copy_latency;
+boost::chrono:steady_clock::time_point t_write;
 #endif
 
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
@@ -733,7 +734,7 @@ int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
     const uint32_t number_of_segments = htonl(sga.sga_numsegs);
 #if DMTR_PROFILE
-    auto t0 = boost::chrono::steady_clock::now();
+    t_write = boost::chrono::steady_clock::now();
 #endif
 
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
@@ -744,11 +745,6 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
     }
-#if DMTR_PROFILE
-    auto dt = boost::chrono::steady_clock::now() - t0;
-    DMTR_OK(dmtr_record_latency(catnip_write_latency.get(), dt.count()));
-#endif
-
     return 0;
 }
 
@@ -797,6 +793,9 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
 int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
     sga_out = {};
     dmtr_sgarray_t sga = {};
+#if DMTR_PROFILE
+    t0 = boost::chrono::steady_clock::now();
+#endif
 
     int ret = tcp_read(sga.sga_numsegs, buffer, yield);
     // things can fail if the connection has been dropped, so we don't print
@@ -824,6 +823,10 @@ int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<ui
         DMTR_NOTNULL(EILSEQ, bytes);
         sga.sga_segs[i].sgaseg_buf = bytes;
     }
+#if DMTR_PROFILE
+    dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(catnip_read_latency.get(), dt.count()));
+#endif
 
     sga_out = sga;
     return 0;
@@ -882,11 +885,6 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 #endif
         rte_pktmbuf_free(packet);
     }
-#if DMTR_PROFILE
-    dt = boost::chrono::steady_clock::now() - t0;
-    DMTR_OK(dmtr_record_latency(catnip_read_latency.get(), dt.count()));
-#endif
-
     return 0;
 }
 
@@ -1197,6 +1195,11 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             return 0;
         }
         case NIP_TRANSMIT: {
+#if DMTR_PROFILE
+            auto dt = boost::chrono::steady_clock::now() - t_write;
+            DMTR_OK(dmtr_record_latency(catnip_write_latency.get(), dt.count()));
+#endif
+
             struct rte_mbuf *packet = nullptr;
             DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
             raii_guard pktmbuf_guard(std::bind(::rte_pktmbuf_free, packet));

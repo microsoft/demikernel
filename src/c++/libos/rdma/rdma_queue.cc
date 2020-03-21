@@ -89,20 +89,37 @@ int dmtr::rdma_queue::setup_rdma_qp()
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
-    //struct ibv_cq *cq = get_cq();
+    struct ibv_cq *cq = ibv_create_cq(pd->context, 5, NULL, NULL, 0);
     struct ibv_qp_init_attr qp_attr = {};
     qp_attr.qp_type = IBV_QPT_RC;
-    //qp_attr.send_cq = cq;
-    // qp_attr.recv_cq = cq;
-    qp_attr.cap.max_send_wr = 10;
+    qp_attr.send_cq = cq;
+    qp_attr.recv_cq = cq;
+    qp_attr.cap.max_send_wr = 256;
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;
     qp_attr.cap.max_inline_data = 128;
     qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
-    // my_rdma_id->send_cq = cq;
-    // my_rdma_id->recv_cq = cq;
+    my_rdma_id->send_cq = cq;
+    my_rdma_id->recv_cq = cq;
+    return 0;
+}
+
+int dmtr::rdma_queue::setup_recv_window(struct connection_data &cd)
+{
+    // set up RDMA window variable
+    struct ibv_pd *pd;
+    struct ibv_mr *mr;
+    DMTR_OK(get_pd(pd));
+    cd.send_window_addr = reinterpret_cast<uint64_t>(&my_send_window);
+    mr = ibv_reg_mr(pd,
+                    &my_send_window,
+                    sizeof(size_t),
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+    cd.send_window_rkey = mr->rkey;
+    //fprintf(stderr, "My rkey: 0x%u", cd.send_window_rkey);
+    cd.send_buf_size = my_recv_buf_size;
     return 0;
 }
 
@@ -111,26 +128,24 @@ int dmtr::rdma_queue::on_work_completed(const struct ibv_wc &wc)
     DMTR_TRUE(ENOTSUP, IBV_WC_SUCCESS == wc.status);
 
     switch (wc.opcode) {
-        default:
-            fprintf(stderr, "Unexpected WC opcode: 0x%x\n", wc.opcode);
-            return ENOTSUP;
-        case IBV_WC_RECV: {
-            void *buf = reinterpret_cast<void *>(wc.wr_id);
-            size_t byte_len = wc.byte_len;
-            my_pending_recvs.push(std::make_pair(buf, byte_len));
-            my_recv_buf_count--;
-            if (my_recv_buf_count == 0) {
-                DMTR_OK(new_recv_bufs(my_recv_buf_max));
-                my_recv_buf_count = my_recv_buf_max;
-            }
-            other_end_recv_buf_count++;
-            return 0;
-        }
-        case IBV_WC_SEND: {
-            dmtr_qtoken_t qt = wc.wr_id;
-            my_completed_sends.insert(qt);
-            return 0;
-        }
+    default:
+        fprintf(stderr, "Unexpected WC opcode: 0x%x\n", wc.opcode);
+        return ENOTSUP;
+    case IBV_WC_RDMA_WRITE:
+        // updated the sender's receive window
+        return 0;    
+    case IBV_WC_RECV: {
+        void *buf = reinterpret_cast<void *>(wc.wr_id);
+        size_t byte_len = wc.byte_len;
+        my_pending_recvs.push(std::make_pair(buf, byte_len));
+        my_recv_window--;
+        return 0;
+    }
+    case IBV_WC_SEND: {
+        dmtr_qtoken_t qt = wc.wr_id;
+        my_completed_sends.insert(qt);
+        return 0;
+    }
     }
 }
 
@@ -148,7 +163,6 @@ int dmtr::rdma_queue::service_completion_queue(struct ibv_cq * const cq, size_t 
         on_work_completed(wc[i]);
     }
     //fprintf(stderr, "Done draining completion queue\n");
-
     return 0;
 }
 
@@ -156,8 +170,8 @@ int dmtr::rdma_queue::service_event_channel() {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
-    struct rdma_cm_event event;
-    int ret = our_rdmacm_router->poll(event, my_rdma_id);
+    struct rdma_cm_event *event = NULL;
+    int ret = our_rdmacm_router->poll(&event, my_rdma_id);
     switch (ret) {
         default:
             DMTR_OK(ret);
@@ -167,18 +181,21 @@ int dmtr::rdma_queue::service_event_channel() {
             return EAGAIN;
     }
 
-    switch(event.event) {
+    switch(event->event) {
         default:
-            fprintf(stderr, "Unrecognized event: 0x%x\n", event.event);
+            fprintf(stderr, "Unrecognized event: 0x%x\n", event->event);
+            rdma_ack_cm_event(event);
             return ENOTSUP;
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
             //fprintf(stderr, "An uninteresting event about recycling QP\n");
+            rdma_ack_cm_event(event);
             return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
-            my_pending_accepts.push(event.id);
+            my_pending_accepts.push(event);
             //fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
+            rdma_ack_cm_event(event);
             //fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
             return ECONNABORTED; // client should call close
         case RDMA_CM_EVENT_ESTABLISHED:
@@ -271,26 +288,70 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
             }
         }
 
-        auto * const new_rdma_id = my_pending_accepts.front();
-        my_pending_accepts.pop();
-
+        struct rdma_cm_event *event = my_pending_accepts.front();
+        auto * const new_rdma_id = event->id;
         new_rq->my_rdma_id = new_rdma_id;
         DMTR_OK(our_rdmacm_router->bind_id(new_rdma_id));
         DMTR_OK(new_rq->setup_rdma_qp());
-        DMTR_OK(new_rq->setup_recv_queue());
-        new_rq->start_threads();
+        const struct connection_data *incoming_cd =
+            static_cast<const struct connection_data *>(event->param.conn.private_data);
+        new_rq->send_buf_size = incoming_cd->send_buf_size;
+        new_rq->other_send_window_addr = incoming_cd->send_window_addr;
+        new_rq->other_send_window_rkey = incoming_cd->send_window_rkey;
+        
+        struct connection_data cd = {};
+        // set up RDMA window variable
+        struct ibv_pd *pd;
+        struct ibv_mr *mr;
+        DMTR_OK(get_pd(pd));
+        cd.send_window_addr = reinterpret_cast<uint64_t>(&new_rq->my_send_window);
+        mr = ibv_reg_mr(pd,
+                        &new_rq->my_send_window,
+                        sizeof(size_t),
+                        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        cd.send_window_rkey = mr->rkey;
+        //fprintf(stderr, "My rkey: 0x%u", cd.send_window_rkey);
+        cd.send_buf_size = new_rq->my_recv_buf_size;
+
+        rdma_ack_cm_event(event);
+        my_pending_accepts.pop();
 
         // accept the connection
         struct rdma_conn_param params = {};
         params.initiator_depth = 1;
         params.responder_resources = 1;
         params.rnr_retry_count = 7;
+        params.private_data = &cd;
+        params.private_data_len = sizeof(struct connection_data);
         DMTR_OK(rdma_accept(new_rdma_id, &params));
+     
+        int ret = EAGAIN;
+        // give it 1 min to connect
+        auto timeout = duration_type(1000);
+        while (0 != ret) {
+            ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, new_rdma_id, timeout, &event);
+            switch (ret) {
+            default:
+                DMTR_FAIL(ret);
+            case ECONNREFUSED:
+                rdma_ack_cm_event(event);
+                return ret;
+            case 0:
+                break;
+            case EINVAL:
+                yield();
+                break;
+            }
+        }
+        rdma_ack_cm_event(event);
 
+        new_rq->start_threads();
+        DMTR_OK(new_rq->setup_recv_queue());
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
         DMTR_OK(t->complete(0, new_rq->qd(), *reinterpret_cast<sockaddr_in *>(saddr)));
+
     }
 
     return 0;
@@ -311,8 +372,8 @@ int dmtr::rdma_queue::listen(int backlog)
 int dmtr::rdma_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size)
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
-    // Spin for 10 seconds before giving up.
-    auto timeout = duration_type(1000 * 10);
+    // Spin for 1 second before giving up.
+    auto timeout = duration_type(1000);
 
     // Convert regular address into an rdma address
     int timeout_int = 0;
@@ -374,21 +435,26 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
     }
 
     DMTR_OK(setup_rdma_qp());
-    DMTR_OK(setup_recv_queue());
-
+    struct connection_data cd = {};
+    DMTR_OK(setup_recv_window(cd));
+    
     // Get channel
     struct rdma_conn_param params = {};
     params.initiator_depth = 1;
     params.responder_resources = 1;
     params.rnr_retry_count = 10;
+    params.private_data = &cd;
+    params.private_data_len = sizeof(struct connection_data);
     DMTR_OK(rdma_connect(my_rdma_id, &params));
     ret = EAGAIN;
+    struct rdma_cm_event *event;
     while (0 != ret) {
-        ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout);
+        ret = expect_rdma_cm_event(ECONNREFUSED, RDMA_CM_EVENT_ESTABLISHED, my_rdma_id, timeout, &event);
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
             case ECONNREFUSED:
+                rdma_ack_cm_event(event);
                 return ret;
             case 0:
                 break;
@@ -397,7 +463,14 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
                 break;
         }
     }
-
+    
+    const struct connection_data *incoming_cd =
+        static_cast<const struct connection_data *>(event->param.conn.private_data);
+    send_buf_size = incoming_cd->send_buf_size;
+    other_send_window_addr = incoming_cd->send_window_addr;
+    other_send_window_rkey = incoming_cd->send_window_rkey;
+    rdma_ack_cm_event(event);
+    DMTR_OK(setup_recv_queue());
     start_threads();
     return 0;
 }
@@ -480,13 +553,15 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     sge[0].length = sizeof(struct metadata) + sga.sga_numsegs * sizeof(uint32_t);
     sge[0].lkey = md_mr->lkey;
 
+    //DMTR_TRUE(ENOTSUP, header_len + total_len <= send_buf_size);
+    
     // set up RDMA work request.
     struct ibv_send_wr wr = {};
-    wr.opcode = IBV_WR_SEND;
     // warning: if you don't set the send flag, it will not
     // give a meaningful error.
+    wr.opcode = IBV_WR_SEND;
     wr.send_flags = 0;
-    //if (my_recv_buf_count == 1) 
+    //if (my_recv_window == 75) 
     wr.send_flags |= IBV_SEND_SIGNALED;
     if (header_len + total_len < 128)
         wr.send_flags |= IBV_SEND_INLINE;
@@ -507,7 +582,7 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     dt += (clock_type::now() - t0);
     DMTR_OK(dmtr_record_latency(write_latency.get(), dt.count()));
 #endif
-    other_end_recv_buf_count--;
+    my_send_window--;
     md.release();
     
     return 0;
@@ -517,10 +592,15 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     DMTR_NOTNULL(EINVAL, my_push_thread);
+    DMTR_NONZERO(EINVAL, my_send_window);
+    
+    int ret = submit_io(qt, sga);
+    if (0 != ret) {
+        return ret;
+    }
     
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     my_push_thread->enqueue(qt);
-
     return 0;
 }
 
@@ -539,18 +619,8 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         DMTR_TRUE(EINVAL, t->arg(sga));
         //auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
-        // if we have an open receive buffer
-        while (other_end_recv_buf_count == 0) {
-            yield();
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
-        }
-        int ret = submit_io(qt, *sga);
-        if (0 != ret) {
-            DMTR_OK(t->complete(ret, *sga));
-        }
-
-        while (true) {
-            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+         while (true) {
+            //DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
             if (my_completed_sends.cend() != it) {
                 my_completed_sends.erase(it);
@@ -597,12 +667,16 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #if DMTR_PROFILE
             t0 = clock_type::now();
 #endif
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
             int ret = service_recv_queue(buf, sz_buf);
             switch (ret) {
                 default:
                     DMTR_FAIL(ret);
                 case EAGAIN:
+                    // if no work, check on my receive window and see if it needs to be replenished 
+                    if (my_recv_window < 20) {
+                        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
+                    }
                     yield();
                     buf = NULL;
                     continue;
@@ -688,8 +762,10 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             break;
         case DMTR_OPC_PUSH:
         case DMTR_OPC_POP:
-            ret = my_push_thread->service();
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
             ret = my_pop_thread->service();
+            if (EAGAIN != ret) break;
+            ret = my_push_thread->service();
             break;
         case DMTR_OPC_CONNECT:
             ret = 0;
@@ -778,15 +854,17 @@ int dmtr::rdma_queue::rdma_resolve_addr(struct rdma_cm_id * const id, const stru
     }
 }
 
-int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout) {
+int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event **e) {
     DMTR_NOTNULL(EINVAL, id);
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
 
     struct rdma_cm_event event = {};
+    struct rdma_cm_event *e2;
+        
     int retry_times = 0;
     int ret = EAGAIN;
     while (0 != ret) {
-        ret = our_rdmacm_router->poll(event, id);
+        ret = our_rdmacm_router->poll(&e2, id);
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
@@ -803,10 +881,16 @@ int dmtr::rdma_queue::expect_rdma_cm_event(int err, enum rdma_cm_event_type expe
         }
     }
 
-    if (expected != event.event) {
+    if (expected != e2->event) {
         std::cerr << "dmtr::rdma_queue::expect_rdma_cm_event(): mismatch; expected " << expected << ", got " << event.event << "." << std::endl;
+        rdma_ack_cm_event(e2);
         return err;
     }
+
+    if (NULL != e)
+        *e = e2;
+    else
+        rdma_ack_cm_event(e2);
 
     return 0;
 }
@@ -992,8 +1076,23 @@ int dmtr::rdma_queue::new_recv_bufs(size_t n) {
         wr[i].num_sge = 1;
     }
     DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, wr));
-    //fprintf(stderr, "Done posting receive buffer: %llx %u\n", buf, n);
-    my_recv_buf_count += n;
+    my_recv_window += n;
+    //fprintf(stderr, "Done posting receive buffer: %lu\n", my_recv_window);
+
+    //update the remote send window now that our receive window has been updated
+    struct ibv_sge ssge;
+    struct ibv_send_wr swr = {};
+    struct ibv_send_wr *bad_swr = NULL;
+    ssge.addr = reinterpret_cast<uint64_t>(&my_recv_window);
+    ssge.length = sizeof(size_t);
+    swr.sg_list = &ssge;
+    swr.num_sge = 1;
+    swr.wr.rdma.remote_addr = other_send_window_addr;
+    swr.wr.rdma.rkey = other_send_window_rkey;
+    swr.opcode = IBV_WR_RDMA_WRITE;
+    swr.send_flags = IBV_SEND_INLINE;
+    DMTR_OK(ibv_post_send(bad_swr, my_rdma_id->qp, &swr));
+    
     return 0;
 }
 
@@ -1011,8 +1110,7 @@ int dmtr::rdma_queue::service_recv_queue(void *&buf_out, size_t &len_out) {
 }
 
 int dmtr::rdma_queue::setup_recv_queue() {
-    DMTR_OK(new_recv_bufs(my_recv_buf_max));
-    my_recv_buf_count = my_recv_buf_max;
+    DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
     return 0;
 }
 

@@ -63,7 +63,7 @@ int dmtr::rdmacm_router::bind_id(struct rdma_cm_id *id) {
     DMTR_TRUE(EEXIST, my_event_queues.cend() == my_event_queues.find(id));
     DMTR_TRUE(EINVAL, my_channel == id->channel);
 
-    my_event_queues[id] = std::queue<struct rdma_cm_event>();
+    my_event_queues[id] = std::queue<struct rdma_cm_event *>();
     return 0;
 }
 
@@ -81,13 +81,13 @@ int dmtr::rdmacm_router::destroy_id(struct rdma_cm_id *&id) {
 
 /* Gets the next rdma_cm_event for the given rdma_cm_id (socket) if there are any waiting
 */
-int dmtr::rdmacm_router::poll(struct rdma_cm_event &e_out, struct rdma_cm_id* id) {
+int dmtr::rdmacm_router::poll(struct rdma_cm_event **e_out, struct rdma_cm_id* id) {
     auto it = my_event_queues.find(id);
     DMTR_TRUE(ENOENT, it != my_event_queues.cend());
 
     auto *q = &it->second;
     if (!q->empty()) {
-        e_out = q->front();
+        *e_out = q->front();
         q->pop();
         return 0;
     }
@@ -109,7 +109,7 @@ int dmtr::rdmacm_router::poll(struct rdma_cm_event &e_out, struct rdma_cm_id* id
         return EAGAIN;
     }
 
-    e_out = q->front();
+    *e_out = q->front();
     q->pop();
     return 0;
 }
@@ -148,8 +148,9 @@ int dmtr::rdmacm_router::service_event_channel() {
         return EAGAIN;
     }
 
-    it->second.push(*e);
-    DMTR_OK(rdma_ack_cm_event(e));
+    it->second.push(e);
+    // I need to keep the event for the private data located in it for accepting connections
+    //DMTR_OK(rdma_ack_cm_event(e));
     return 0;
 }
 
