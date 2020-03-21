@@ -553,6 +553,8 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     sge[0].length = sizeof(struct metadata) + sga.sga_numsegs * sizeof(uint32_t);
     sge[0].lkey = md_mr->lkey;
 
+    //DMTR_TRUE(ENOTSUP, header_len + total_len <= send_buf_size);
+    
     // set up RDMA work request.
     struct ibv_send_wr wr = {};
     // warning: if you don't set the send flag, it will not
