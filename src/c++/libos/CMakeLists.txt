@@ -7,5 +7,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lwip)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/posix)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/rdma)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/rdmacm-common)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/spdk-dpdk)
 
 #add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libspdk)
