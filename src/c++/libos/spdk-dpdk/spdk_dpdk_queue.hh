@@ -53,12 +53,10 @@ class spdk_dpdk_queue : public io_queue {
     private: std::unique_ptr<task::thread_type> my_push_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;
 
-    private: spdk_dpdk_queue(int qd);
+    private: spdk_dpdk_queue(int qd, io_queue::category_id cid);
     private: static int alloc_latency();
     public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
     public: static int new_file_object(std::unique_ptr<io_queue> &q_out, int qd);
-
-    public: virtual ~spdk_dpdk_queue();
 
     // network functions
     public: int socket(int domain, int type, int protocol);
@@ -106,7 +104,7 @@ class spdk_dpdk_queue : public io_queue {
     private: int net_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
     private: int net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
     private: int file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
-    private: int file_pop(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    private: int file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
 
 
     private: static bool insert_recv_queue(const spdk_dpdk_addr &saddr, const dmtr_sgarray_t &sga);

@@ -513,7 +513,7 @@ int dmtr::spdk_dpdk_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_
     DMTR_TRUE(EPERM, my_listening_flag);
     DMTR_NOTNULL(EINVAL, my_accept_thread);
 
-    auto * const q = new spdk_dpdk_queue(new_qd);
+    auto * const q = new spdk_dpdk_queue(new_qd, NETWORK_Q);
     DMTR_TRUE(ENOMEM, q != NULL);
     auto qq = std::unique_ptr<io_queue>(q);
 
@@ -823,9 +823,10 @@ int dmtr::spdk_dpdk_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type
     return 0;
 }
 
-int dmtr::spdk_dpdk_queue::file_push(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq)
+int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
     //TODO
+    return 0;
 }
 
 int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
@@ -902,7 +903,7 @@ int dmtr::spdk_dpdk_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield
             yield();
     }
 
-    sga = my_recv_queue.front();
+    *sga = my_recv_queue.front();
     
     my_recv_queue.pop();
 
@@ -926,7 +927,7 @@ int dmtr::spdk_dpdk_queue::pop(dmtr_qtoken_t qt) {
     return 0;
 }
 
-int dmtr::posix_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
+int dmtr::spdk_dpdk_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
 #if DMTR_DEBUG
     std::cerr << "[" << qd() << "] pop thread started." << std::endl;
 #endif
