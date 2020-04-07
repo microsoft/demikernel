@@ -15,6 +15,9 @@
 #include <unordered_map>
 #include <map>
 
+#include "spdk/env.h"
+#include "spdk/nvme.h"
+
 class spdk_dpdk_addr {
 public:
     spdk_dpdk_addr();
@@ -38,6 +41,14 @@ class spdk_dpdk_queue : public io_queue {
     private: static const size_t our_max_queue_depth;
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
+    private: static bool our_spdk_init_flag;
+    private: struct spdk_nvme_ns *ns;
+    private: struct spdk_nvme_ctrlr *ctrlr;
+    private: struct spdk_nvme_qpair *qpair;
+    private: int namespaceSize;
+    private: int sectorSize;
+    private: int queuedOps;
+    private: std::string devAddress;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
     private: static std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;

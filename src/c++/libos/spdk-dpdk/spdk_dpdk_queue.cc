@@ -33,6 +33,11 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
+#include "spdk/env.h"
+#include "spdk/log.h"
+#include "spdk/nvme.h"
+#include "spdk/vmd.h"
+
 namespace bpo = boost::program_options;
 
 #define NUM_MBUFS               8191
@@ -71,6 +76,11 @@ namespace bpo = boost::program_options;
  */
 #define RTE_TEST_RX_DESC_DEFAULT    128
 #define RTE_TEST_TX_DESC_DEFAULT    128
+
+namespace {
+    static constexpr char kTrTypeString[] = "trtype=";
+    static constexpr char kTrAddrString[] = "traddr=";
+}
 
 #if DMTR_PROFILE
 typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> latency_ptr_type;
@@ -396,6 +406,124 @@ int dmtr::spdk_dpdk_queue::init_dpdk(int argc, char *argv[])
 const size_t dmtr::spdk_dpdk_queue::our_max_queue_depth = 64;
 boost::optional<uint16_t> dmtr::spdk_dpdk_queue::our_dpdk_port_id;
 
+//*****************************************************************************
+// SPDK functions
+
+// Right now only works for PCIe-based NVMe drives where the user specifies the
+// address of a single device.
+int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid) {
+  struct spdk_pci_addr pci_addr;
+  string trinfo = string(kTrTypeString) + transportType + " " + kTrAddrString +
+      devAddress;
+  memset(trid, 0, sizeof(*trid));
+  trid->trtype = SPDK_NVME_TRANSPORT_PCIE;
+  if (spdk_nvme_transport_id_parse(trid, trinfo.c_str()) < 0) {
+    SPDK_ERRLOG("Failed to parse transport type and device %s\n",
+        trinfo.c_str());
+    return -1;
+  }
+  if (trid->trtype != SPDK_NVME_TRANSPORT_PCIE) {
+    SPDK_ERRLOG("Unsupported transport type and device %s\n",
+        trinfo.c_str());
+    return -1;
+  }
+  if (spdk_pci_addr_parse(&pci_addr, trid->traddr) < 0) {
+    SPDK_ERRLOG("invalid device address %s\n", devAddress.c_str());
+    return -1;
+  }
+  spdk_pci_addr_fmt(trid->traddr, sizeof(trid->traddr), &pci_addr);
+  return 0;
+}
+
+int dmtr::spdk_dpdk_queue::init_spdk()
+{
+    static bool our_spdk_init_flag = false;
+    if (our_spdk_init_flag) {
+        return 0;
+    }
+
+    struct spdk_env_opts opts;
+    spdk_env_opts_init(&opts);
+    opts.name = "Demeter";
+    if (spdk_env_init(&opts) < 0) {
+        printf("Unable to initialize SPDK env\n");
+        return -1;
+    }
+
+    our_spdk_init_flag = true;
+
+    struct spdk_nvme_transport_id trid;
+    if (!parseTransportID(&trid)) {
+        return -1;
+    }
+
+    if (spdk_nvme_probe(&trid, this, probCb, attachCb, nullptr) != 0) {
+        printf("spdk_nvme_prob failed\n");
+        return -1;
+    }
+
+    our_spdk_init_flag = true;
+    return 0;
+
+}
+
+bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
+    struct spdk_nvme_ctrlr_opts *opts) {
+  // Always say that we would like to attach to the controller since we aren't
+  // really looking for anything specific.
+  return true;
+}
+
+void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
+    struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
+  struct spdk_nvme_io_qpair_opts qpopts;
+
+  if (cp->qpair != nullptr) {
+    SPDK_ERRLOG("Already attached to a qpair\n");
+    return;
+  }
+
+  ctrlr_opts = *opts;
+  ctrlr = cntrlr;
+  tr_id = *trid;
+
+  ns = spdk_nvme_ctrlr_get_ns(ctrlr, namespaceId);
+
+  if (ns == nullptr) {
+    SPDK_ERRLOG("Can't get namespace by id %d\n", namespaceId);
+    return;
+  }
+
+  if (!spdk_nvme_ns_is_active(ns)) {
+    SPDK_ERRLOG("Inactive namespace at id %d\n", namespaceId);
+    return;
+  }
+
+  spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &qpopts, sizeof(qpopts));
+  
+  qpopts.delay_pcie_doorbell = true;
+  
+  qpair = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &qpopts, sizeof(qpopts));
+  if (!qpair) {
+    SPDK_ERRLOG("Unable to allocate nvme qpair\n");
+    return;
+  }
+  namespaceSize = spdk_nvme_ns_get_size(ns);
+  if (namespaceSize <= 0) {
+    SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
+        cp->namespaceId);
+    return;
+  }
+  sectorSize = spdk_nvme_ns_get_sector_size(ns);
+}
+
+void opCb(void *cb_ctx, const struct spdk_nvme_cpl *cpl) {
+  if (spdk_nvme_cpl_is_error(cpl)) {
+    SPDK_NOTICELOG("write IO completed with error %s\n",
+        spdk_nvme_cpl_get_status_string(&cpl->status));
+  }
+}
+
 dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
     io_queue(cid, qd),
     my_listening_flag(false)
@@ -618,24 +746,24 @@ int dmtr::spdk_dpdk_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * con
 
 int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags)
 {
-    //TODO
-    //spdk_open(...);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
+    //TODO: do we need to do anything here? examples seem to say no...
     start_threads();
     return 0;
 }
 
 int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
 {
-    //TODO
-    //spdk_open(...);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
+    //TODO: do we need to do anything here? examples seem to say no...
     start_threads();
     return 0;
 }
 
 int dmtr::spdk_dpdk_queue::creat(const char *pathname, mode_t mode)
 {
-    //TODO
-    //spdk_creat(...);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
+    //TODO: do we need to do anything here? examples seem to say no...
     start_threads();
     return 0;
 }
@@ -825,7 +953,35 @@ int dmtr::spdk_dpdk_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type
 
 int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    //TODO
+    int rc;
+    void *payload;
+    uint32_t total_len = 0;
+    
+    // allocate payload for maximum size of sgarray
+    payload = malloc(sga->sga_numsegs * DMTR_SGARRAY_MAXSIZE);
+    assert(payload != nullptr);
+
+    void *p = payload;
+    
+    {
+        auto * const u32 = reinterpret_cast<uint32_t>(p);
+        *u32 = sga->sga_numsegs;
+        total_len += sizeof(*u32);
+        p += sizeof(*u32);
+    }
+
+    for (size_t i = 0; i < sga->sga_numsets; i++) {
+        auto * const u32 = reinterpret_cast<uint52_t *>(p);
+        const auto len = sga->sga_segs[i].sgaseg_len;
+        *u32 = len;
+        total_len += sizeof(*u32);
+        p += sizeof(*u32);
+        memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
+        total_len += len;
+        p += len;
+    }
+
+    rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, 0, total_len / sectorSize, nullptr, nullptr, 0);
     return 0;
 }
 
