@@ -42,13 +42,17 @@ class spdk_dpdk_queue : public io_queue {
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static bool our_spdk_init_flag;
-    private: struct spdk_nvme_ns *ns;
-    private: struct spdk_nvme_ctrlr *ctrlr;
-    private: struct spdk_nvme_qpair *qpair;
-    private: int namespaceSize;
-    private: int sectorSize;
-    private: int queuedOps;
-    private: std::string devAddress;
+    public: struct spdk_nvme_ns *ns;
+    public: struct spdk_nvme_ctrlr *ctrlr;
+    public: struct spdk_nvme_ctrlr_opts ctrlr_opts;
+    public: struct spdk_nvme_transport_id tr_id;
+    public: struct spdk_nvme_qpair *qpair;
+    public: std::string transportType;
+    public: std::string devAddress;
+    public: int namespaceId = 0;
+    public: int namespaceSize;
+    public: int sectorSize;
+    public: int queuedOps;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
     private: static std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
@@ -144,6 +148,11 @@ class spdk_dpdk_queue : public io_queue {
     private: static int rte_eth_dev_flow_ctrl_get(uint16_t port_id, struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_dev_flow_ctrl_set(uint16_t port_id, const struct rte_eth_fc_conf &fc_conf);
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
+
+    // spdk functions
+    private: int init_spdk();
+    private: int parseTransportId(spdk_nvme_transport_id *trid);
+
 };
 
 } // namespace dmtr

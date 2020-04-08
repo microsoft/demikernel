@@ -36,7 +36,6 @@
 #include "spdk/env.h"
 #include "spdk/log.h"
 #include "spdk/nvme.h"
-#include "spdk/vmd.h"
 
 namespace bpo = boost::program_options;
 
@@ -409,11 +408,58 @@ boost::optional<uint16_t> dmtr::spdk_dpdk_queue::our_dpdk_port_id;
 //*****************************************************************************
 // SPDK functions
 
+bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr_opts *opts) {
+  // Always say that we would like to attach to the controller since we aren't
+  // really looking for anything specific.
+  return true;
+}
+
+void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
+  dmtr::spdk_dpdk_queue *q = (dmtr::spdk_dpdk_queue*)cb_ctx;
+  struct spdk_nvme_io_qpair_opts qpopts;
+
+  if (q->qpair != nullptr) {
+    SPDK_ERRLOG("Already attached to a qpair\n");
+    return;
+  }
+
+  q->ctrlr_opts = *opts;
+  q->ctrlr = cntrlr;
+  q->tr_id = *trid;
+
+  q->ns = spdk_nvme_ctrlr_get_ns(q->ctrlr, q->namespaceId);
+
+  if (q->ns == nullptr) {
+    SPDK_ERRLOG("Can't get namespace by id %d\n", q->namespaceId);
+    return;
+  }
+
+  if (!spdk_nvme_ns_is_active(q->ns)) {
+    SPDK_ERRLOG("Inactive namespace at id %d\n", q->namespaceId);
+    return;
+  }
+
+  spdk_nvme_ctrlr_get_default_io_qpair_opts(q->ctrlr, &qpopts, sizeof(qpopts));
+  
+  q->qpair = spdk_nvme_ctrlr_alloc_io_qpair(q->ctrlr, &qpopts, sizeof(qpopts));
+  if (!q->qpair) {
+    SPDK_ERRLOG("Unable to allocate nvme qpair\n");
+    return;
+  }
+  q->namespaceSize = spdk_nvme_ns_get_size(q->ns);
+  if (q->namespaceSize <= 0) {
+    SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
+        q->namespaceId);
+    return;
+  }
+  q->sectorSize = spdk_nvme_ns_get_sector_size(q->ns);
+}
+
 // Right now only works for PCIe-based NVMe drives where the user specifies the
 // address of a single device.
 int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid) {
   struct spdk_pci_addr pci_addr;
-  string trinfo = string(kTrTypeString) + transportType + " " + kTrAddrString +
+  std::string trinfo = std::string(kTrTypeString) + transportType + " " + kTrAddrString +
       devAddress;
   memset(trid, 0, sizeof(*trid));
   trid->trtype = SPDK_NVME_TRANSPORT_PCIE;
@@ -450,78 +496,19 @@ int dmtr::spdk_dpdk_queue::init_spdk()
         return -1;
     }
 
-    our_spdk_init_flag = true;
-
     struct spdk_nvme_transport_id trid;
-    if (!parseTransportID(&trid)) {
+    if (!parseTransportId(&trid)) {
         return -1;
     }
 
-    if (spdk_nvme_probe(&trid, this, probCb, attachCb, nullptr) != 0) {
-        printf("spdk_nvme_prob failed\n");
+    if (spdk_nvme_probe(&trid, this, probeCb, attachCb, nullptr) != 0) {
+        printf("spdk_nvme_probe failed\n");
         return -1;
     }
 
     our_spdk_init_flag = true;
     return 0;
 
-}
-
-bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
-    struct spdk_nvme_ctrlr_opts *opts) {
-  // Always say that we would like to attach to the controller since we aren't
-  // really looking for anything specific.
-  return true;
-}
-
-void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
-    struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
-  struct spdk_nvme_io_qpair_opts qpopts;
-
-  if (cp->qpair != nullptr) {
-    SPDK_ERRLOG("Already attached to a qpair\n");
-    return;
-  }
-
-  ctrlr_opts = *opts;
-  ctrlr = cntrlr;
-  tr_id = *trid;
-
-  ns = spdk_nvme_ctrlr_get_ns(ctrlr, namespaceId);
-
-  if (ns == nullptr) {
-    SPDK_ERRLOG("Can't get namespace by id %d\n", namespaceId);
-    return;
-  }
-
-  if (!spdk_nvme_ns_is_active(ns)) {
-    SPDK_ERRLOG("Inactive namespace at id %d\n", namespaceId);
-    return;
-  }
-
-  spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &qpopts, sizeof(qpopts));
-  
-  qpopts.delay_pcie_doorbell = true;
-  
-  qpair = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &qpopts, sizeof(qpopts));
-  if (!qpair) {
-    SPDK_ERRLOG("Unable to allocate nvme qpair\n");
-    return;
-  }
-  namespaceSize = spdk_nvme_ns_get_size(ns);
-  if (namespaceSize <= 0) {
-    SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
-        cp->namespaceId);
-    return;
-  }
-  sectorSize = spdk_nvme_ns_get_sector_size(ns);
-}
-
-void opCb(void *cb_ctx, const struct spdk_nvme_cpl *cpl) {
-  if (spdk_nvme_cpl_is_error(cpl)) {
-    SPDK_NOTICELOG("write IO completed with error %s\n",
-        spdk_nvme_cpl_get_status_string(&cpl->status));
-  }
 }
 
 dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
@@ -964,14 +951,14 @@ int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_typ
     void *p = payload;
     
     {
-        auto * const u32 = reinterpret_cast<uint32_t>(p);
+        auto * const u32 = reinterpret_cast<uint32_t *>(p);
         *u32 = sga->sga_numsegs;
         total_len += sizeof(*u32);
         p += sizeof(*u32);
     }
 
-    for (size_t i = 0; i < sga->sga_numsets; i++) {
-        auto * const u32 = reinterpret_cast<uint52_t *>(p);
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {
+        auto * const u32 = reinterpret_cast<uint32_t *>(p);
         const auto len = sga->sga_segs[i].sgaseg_len;
         *u32 = len;
         total_len += sizeof(*u32);
