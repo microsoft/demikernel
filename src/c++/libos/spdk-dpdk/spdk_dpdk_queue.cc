@@ -132,6 +132,7 @@ operator<(const spdk_dpdk_addr &a,
 
 struct rte_mempool *dmtr::spdk_dpdk_queue::our_mbuf_pool = NULL;
 bool dmtr::spdk_dpdk_queue::our_dpdk_init_flag = false;
+bool dmtr::spdk_dpdk_queue::our_spdk_init_flag = false;
 // local ports bound for incoming connections, used to demultiplex incoming new messages for accept
 std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> dmtr::spdk_dpdk_queue::our_recv_queues;
 std::unordered_map<std::string, struct in_addr> dmtr::spdk_dpdk_queue::our_mac_to_ip_table;
@@ -483,7 +484,6 @@ int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid)
 
 int dmtr::spdk_dpdk_queue::init_spdk()
 {
-    static bool our_spdk_init_flag = false;
     if (our_spdk_init_flag) {
         return 0;
     }
@@ -968,7 +968,8 @@ int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_typ
         p += len;
     }
 
-    rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, 0, total_len / sectorSize, nullptr, nullptr, 0);
+    rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset, total_len / sectorSize, nullptr, nullptr, 0);
+    logOffset+= total_len / sectorSize;
     return 0;
 }
 

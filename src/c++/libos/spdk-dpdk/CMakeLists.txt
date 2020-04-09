@@ -8,7 +8,6 @@ file(GLOB ZEUS_LIBSPDKDPDK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 add_library(dmtr-libos-spdk-dpdk SHARED ${ZEUS_LIBSPDKDPDK_SOURCES})
 target_add_hoard(dmtr-libos-spdk-dpdk hoard-vanilla)
 target_add_spdk(dmtr-libos-spdk-dpdk)
-target_add_dpdk(dmtr-libos-spdk-dpdk)
 target_include_directories(dmtr-libos-spdk-dpdk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libspdk-dpdk ${DPDK_INCLUDE_DIR} ${SPDK_INCLUDE_DIR} )
 
 target_link_libraries(dmtr-libos-spdk-dpdk Threads::Threads yaml-cpp boost_program_options)

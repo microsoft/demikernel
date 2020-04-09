@@ -49,6 +49,7 @@ class spdk_dpdk_queue : public io_queue {
     public: struct spdk_nvme_qpair *qpair;
     public: std::string transportType;
     public: std::string devAddress;
+    public: int logOffset = 0;
     public: int namespaceId = 0;
     public: int namespaceSize;
     public: int sectorSize;
@@ -152,7 +153,6 @@ class spdk_dpdk_queue : public io_queue {
     // spdk functions
     private: int init_spdk();
     private: int parseTransportId(spdk_nvme_transport_id *trid);
-
 };
 
 } // namespace dmtr
