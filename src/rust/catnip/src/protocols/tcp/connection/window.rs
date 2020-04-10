@@ -153,6 +153,8 @@ impl TcpSendWindow {
         let last_segment_pushed_at = self.last_segment_pushed_at;
         self.last_segment_pushed_at = Some(now);
 
+        // if time hasn't advanced, then we use extend the current segment
+        // instead of starting a new one.
         if Some(now) == last_segment_pushed_at
             && !self.unsent_segments.is_empty()
         {

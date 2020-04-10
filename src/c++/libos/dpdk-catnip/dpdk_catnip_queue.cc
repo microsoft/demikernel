@@ -737,6 +737,7 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
     t_write = boost::chrono::steady_clock::now();
 #endif
 
+    DMTR_OK(nip_advance_clock(our_tcp_engine);
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
@@ -744,6 +745,7 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         const auto segment_length = htonl(segment->sgaseg_len);
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
+        DMTR_OK(nip_advance_clock(our_tcp_engine);
     }
     return 0;
 }
