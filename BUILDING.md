@@ -16,7 +16,8 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 ## Building
 
 - On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
-- Install Rust nightly. Run 'curl https://sh.rustup.rs -sSf | sh' and 'rustup default nightly'.
+- Install Rust nightly. Run 'curl https://sh.rustup.rs -sSf | sh'
+- You need to use a nightly build of Rust. Currently, the build is only tested to work with `nightly-2019-08-13`. You can install this by executing 'rustup default nightly' or running `rustup override set nightly-2019-08-13` from the `src/rust` directory.
 - Make a directory for the build. We suggest `$DATACENTEROS/build/debug` or `$DATACENTEROS/build/release`.
 - Run CMake from the build directory, passing the source directory in as an argument.
 - Set the `CMAKE_BUILD_TYPE` variable to `Release` if you want an optimized build. You can do this with the CLI (`ccmake`) or the GUI (`cmake-gui`).
