@@ -28,6 +28,7 @@
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
+#include <rte_ethdev_core.h>
 #include <rte_ip.h>
 #include <rte_lcore.h>
 #include <rte_memcpy.h>
@@ -90,7 +91,11 @@ typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> l
 static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 static latency_ptr_type catnip_latency;
+static latency_ptr_type catnip_read_latency;
+static latency_ptr_type catnip_write_latency;
+static latency_ptr_type catnip_peek_latency;
 static latency_ptr_type copy_latency;
+boost::chrono::steady_clock::time_point t_write;
 #endif
 
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
@@ -159,7 +164,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool
     DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
     struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
+    port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
@@ -336,7 +341,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
     }
 
-    struct rte_ether_addr mac = {};
+    struct ether_addr mac = {};
     DMTR_OK(rte_eth_macaddr_get(port_id, mac));
     DMTR_OK(nip_set_my_link_addr(mac.addr_bytes));
 
@@ -390,6 +395,33 @@ int dmtr::dpdk_catnip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd
         dmtr_latency_t *l;
         DMTR_OK(dmtr_new_latency(&l, "catnip"));
         catnip_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip read"));
+        catnip_read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip write"));
+        catnip_write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == catnip_peek_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "catnip peek"));
+        catnip_peek_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
             dmtr_dump_latency(stderr, latency);
             dmtr_delete_latency(&latency);
         });
@@ -702,6 +734,10 @@ int dmtr::dpdk_catnip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
 int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
     const uint32_t number_of_segments = htonl(sga.sga_numsegs);
+#if DMTR_PROFILE
+    t_write = boost::chrono::steady_clock::now();
+#endif
+
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
@@ -710,7 +746,6 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
     }
-
     return 0;
 }
 
@@ -759,6 +794,9 @@ int dmtr::dpdk_catnip_queue::pop_thread(task::thread_type::yield_type &yield, ta
 int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield) {
     sga_out = {};
     dmtr_sgarray_t sga = {};
+#if DMTR_PROFILE
+    auto t0 = boost::chrono::steady_clock::now();
+#endif
 
     int ret = tcp_read(sga.sga_numsegs, buffer, yield);
     // things can fail if the connection has been dropped, so we don't print
@@ -786,6 +824,10 @@ int dmtr::dpdk_catnip_queue::read_message(dmtr_sgarray_t &sga_out, std::deque<ui
         DMTR_NOTNULL(EILSEQ, bytes);
         sga.sga_segs[i].sgaseg_buf = bytes;
     }
+#if DMTR_PROFILE
+    auto dt = boost::chrono::steady_clock::now() - t0;
+    DMTR_OK(dmtr_record_latency(catnip_read_latency.get(), dt.count()));
+#endif
 
     sga_out = sga;
     return 0;
@@ -819,8 +861,13 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
 #endif
 
+
     struct timeval tv = {};
     DMTR_OK(gettimeofday(tv));
+#if DMTR_PROFILE
+    t0 = boost::chrono::steady_clock::now();
+#endif
+
     for (size_t i = 0; i < count; ++i) {
         struct rte_mbuf * const packet = packets[i];
         auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
@@ -839,7 +886,6 @@ dmtr::dpdk_catnip_queue::service_incoming_packets() {
 #endif
         rte_pktmbuf_free(packet);
     }
-
     return 0;
 }
 
@@ -892,7 +938,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     return t->poll(qr_out);
 }
 
-int dmtr::dpdk_catnip_queue::rte_eth_macaddr_get(uint16_t port_id, struct rte_ether_addr &mac_addr) {
+int dmtr::dpdk_catnip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     // todo: how to detect invalid port ids?
@@ -1150,6 +1196,11 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             return 0;
         }
         case NIP_TRANSMIT: {
+#if DMTR_PROFILE
+            auto dt = boost::chrono::steady_clock::now() - t_write;
+            DMTR_OK(dmtr_record_latency(catnip_write_latency.get(), dt.count()));
+#endif
+
             struct rte_mbuf *packet = nullptr;
             DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
             raii_guard pktmbuf_guard(std::bind(::rte_pktmbuf_free, packet));
@@ -1179,7 +1230,7 @@ int dmtr::dpdk_catnip_queue::tcp_peek(const uint8_t *&bytes_out, uintptr_t &leng
 
     int ret;
     while (1) {
-        NIPX_LATENCY(catnip_latency, ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle));
+        NIPX_LATENCY(catnip_peek_latency, ret = nip_tcp_peek(&bytes_out, &length_out, our_tcp_engine, my_tcp_connection_handle));
         if (EAGAIN != ret) {
             break;
         }
@@ -1254,7 +1305,7 @@ int dmtr::dpdk_catnip_queue::tcp_read(std::deque<uint8_t> &buffer, size_t length
             return ret;
         }
 
-        DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle));
+        NIPX_LATENCY(catnip_read_latency, DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle)));
     }
 
     return 0;

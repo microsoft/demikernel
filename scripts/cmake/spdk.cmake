@@ -10,7 +10,6 @@ include(dpdk)
 # SPDK
 set(SPDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/submodules/spdk)
 set(SPDK_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/ExternalProject/spdk)
-)
 
 ExternalProject_Add(spdk
   PREFIX ${SPDK_BINARY_DIR}

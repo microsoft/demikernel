@@ -1,7 +1,7 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = https://github.com/mlr-msft/spdk.git
-	branch = libos
+	branch = irene/18.10.x/clean
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
 	url = https://github.com/emeryberger/Heap-Layers
@@ -54,3 +54,7 @@
 	path = submodules/tapir-lwip
 	url = https://github.com/UWSysLab/tapir.git
         branch = io-queue
+[submodule "submodules/Shremote"]
+	path = submodules/Shremote
+	url = https://github.com/isaac-ped/Shremote.git
+	branch = master

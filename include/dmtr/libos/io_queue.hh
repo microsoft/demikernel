@@ -12,7 +12,7 @@
 #include <dmtr/libos/user_thread.hh>
 #include <memory>
 #include <sys/socket.h>
-#include <unordered_map>
+#include <boost/unordered_map.hpp>
 
 namespace dmtr {
 
@@ -55,7 +55,7 @@ class io_queue
         }
     };
 
-    private: std::unordered_map<dmtr_qtoken_t, task> my_tasks;
+    private: boost::unordered_map<dmtr_qtoken_t, task> my_tasks;
     protected: const category_id my_cid;
     protected: const int my_qd;
 

@@ -19,23 +19,35 @@ namespace dmtr {
 class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
-
-    private: static const size_t recv_buf_count;
-    private: static const size_t recv_buf_size;
     private: static const size_t max_num_sge;
-    private: static const duration_type event_polling_period;
 
+    // my local receive buffer count and size
+    private: const size_t my_recv_buf_max = 100;
+    private: size_t my_recv_window = 0;
+    private: size_t my_recv_buf_size = 1024;
+    // how much can I send to the other side?
+    private: size_t my_send_window = 0;
+    private: size_t send_buf_size = 0;
+    // how to reach the window on the other end of the connection
+    private: uint64_t other_send_window_addr;
+    private: uint32_t other_send_window_rkey;
+
+    private: struct connection_data {
+        uint64_t send_window_addr;
+        uint32_t send_window_rkey;
+        size_t send_buf_size;
+    };
+    
     private: struct metadata {
         dmtr_header_t header;
         uint32_t lengths[];
     };
 
     // queued scatter gather arrays
-    private: std::queue<struct rdma_cm_id *> my_pending_accepts;
+    private: std::queue<struct rdma_cm_event *> my_pending_accepts;
     private: std::queue<std::pair<void *, size_t>> my_pending_recvs;
     private: std::unordered_set<dmtr_qtoken_t> my_completed_sends;
     private: clock_type::time_point my_last_event_channel_poll;
-    private: std::unordered_map<uintptr_t, std::unique_ptr<uint8_t>> my_recv_bufs;
 
     // rdma data structures
     // connection manager for this connection queue
@@ -52,6 +64,7 @@ class rdma_queue : public io_queue {
     private: int service_completion_queue(struct ibv_cq * const cq, size_t quantity);
     private: int on_work_completed(const struct ibv_wc &wc);
     private: int setup_rdma_qp();
+    private: int submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
 
     private: rdma_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -91,14 +104,15 @@ class rdma_queue : public io_queue {
 
     private: static int getsockname(int sockfd, struct sockaddr *saddr, socklen_t &addrlen);
 
-    private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout);
+private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expected, struct rdma_cm_id * const id, duration_type timeout, struct rdma_cm_event **e = NULL);
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
-    private: int new_recv_buf();
+    private: int new_recv_bufs(size_t n);
     private: int service_recv_queue(void *&buf_out, size_t &len_out);
     private: int setup_recv_queue();
+    private: int setup_recv_window(struct connection_data &cd);
     private: void start_threads();
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);

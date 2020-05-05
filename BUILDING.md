@@ -9,10 +9,15 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 - Run 'mlxnofed_install --upstream-libs --dpdk' for dpdk support
 - on a clean Ubuntu install, you may have to run 'apt-get install libnl-3-dev' or 'libnl-route-3-dev'to get the Mellanox script to complete because it seems to not be updated with all dependencies
 - The mlxnofed script should install the RDMA library headers that are needed.  DO NOT install the RDMA ibverbs libraries from Ubuntu.
+
+## Checking out the code
+- Remember to use 'git clone --recursive' to check out the necessary submodules to build the Demikernel, including DPDK and Hoard.
+
 ## Building
 
 - On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
-- Install Rust nightly. Run 'curl https://sh.rustup.rs -sSf | sh' and 'rustup default nightly'.
+- Install Rust nightly. Run 'curl https://sh.rustup.rs -sSf | sh'
+- You need to use a nightly build of Rust. Currently, the build is only tested to work with `nightly-2019-08-13`. You can install this by executing 'rustup default nightly' or running `rustup override set nightly-2019-08-13` from the `src/rust` directory.
 - Make a directory for the build. We suggest `$DATACENTEROS/build/debug` or `$DATACENTEROS/build/release`.
 - Run CMake from the build directory, passing the source directory in as an argument.
 - Set the `CMAKE_BUILD_TYPE` variable to `Release` if you want an optimized build. You can do this with the CLI (`ccmake`) or the GUI (`cmake-gui`).
@@ -70,6 +75,11 @@ Receiver (`hightent.southcentralus.cloudapp.azure.com`):
 ```
 testpmd -l 0-3 -n 1 -w aa89:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=rxonly --eth-peer=1,00:0d:3a:70:25:75 --stats-period 1
 ```
+### Building Demikernel for Azure
+1. Install Azure packages by running `script/setup/ubuntu-azure.sh`.
+2. Turn on Azure support and compile CX5 drivers by running `ccmake ..` in your build directory. 
+3. Use config options from testpmd in the config.yaml file. Follow [these instructions](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk#configure-the-runtime-environment) for finding your mac address and PCI ID.
+4. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
 
 ### Resources
 
