@@ -1,7 +1,7 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
 	url = git@github.com:demikernel/spdk.git
-	branch = v19.10.x
+	branch = irene/v19.10.x
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
 	url = https://github.com/emeryberger/Heap-Layers
@@ -17,7 +17,7 @@
 [submodule "submodules/dpdk"]
 	path = submodules/dpdk
 	url = git@github.com:demikernel/dpdk.git
-	branch = v19.08.x
+	branch = irene/v19.08
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
