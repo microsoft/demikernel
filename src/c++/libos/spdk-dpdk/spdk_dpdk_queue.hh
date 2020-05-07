@@ -16,6 +16,7 @@
 #include <spdk/nvme.h>
 #include <unordered_map>
 #include <map>
+#include <yaml-cpp/yaml.h>
 
 class spdk_dpdk_addr {
 public:
@@ -41,22 +42,16 @@ class spdk_dpdk_queue : public io_queue {
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static bool our_spdk_init_flag;
-    public: struct spdk_nvme_ns *ns;
-    public: struct spdk_nvme_ctrlr *ctrlr;
-    public: struct spdk_nvme_ctrlr_opts ctrlr_opts;
-    public: struct spdk_nvme_transport_id tr_id;
-    public: struct spdk_nvme_qpair *qpair;
-    public: std::string transportType;
-    public: std::string devAddress;
+    public: static struct spdk_nvme_ns *ns;
+    public: static struct spdk_nvme_qpair *qpair;
     // Block offset into the log.
     public: unsigned int logOffset = 0;
-    // Namespace ids start at 1 and are numbered consequitively. If we want to
-    // support selecting a specific namespace or anything, we will need to parse
-    // args and update this number somewhere.
-    public: static const int namespaceId = 1;
-    public: unsigned int namespaceSize = 0;
-    public: unsigned int sectorSize = 0;
-    public: char *partialBlock = nullptr;
+    // Namespace ids start at 1 and are numbered consequitively.
+    public: static int namespaceId;
+    // Number of bytes in the namespace.
+    public: static unsigned int namespaceSize;
+    public: static unsigned int sectorSize;
+    public: static char *partialBlock;
     // How many bytes of data are in partialBlock.
     private: unsigned int partialBlockUsage = 0;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
@@ -156,8 +151,9 @@ class spdk_dpdk_queue : public io_queue {
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
 
     // spdk functions
-    private: int init_spdk();
-    private: int parseTransportId(spdk_nvme_transport_id *trid);
+    private: static int init_spdk(YAML::Node &config);
+    private: static int parseTransportId(spdk_nvme_transport_id *trid,
+                 std::string &transportType, std::string &devAddress);
 };
 
 } // namespace dmtr

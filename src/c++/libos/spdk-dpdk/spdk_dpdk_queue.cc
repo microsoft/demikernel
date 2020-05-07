@@ -34,7 +34,6 @@
 #include <spdk/log.h>
 #include <spdk/nvme.h>
 #include <unistd.h>
-#include <yaml-cpp/yaml.h>
 
 namespace bpo = boost::program_options;
 
@@ -136,6 +135,14 @@ bool dmtr::spdk_dpdk_queue::our_spdk_init_flag = false;
 std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> dmtr::spdk_dpdk_queue::our_recv_queues;
 std::unordered_map<std::string, struct in_addr> dmtr::spdk_dpdk_queue::our_mac_to_ip_table;
 std::unordered_map<in_addr_t, struct rte_ether_addr> dmtr::spdk_dpdk_queue::our_ip_to_mac_table;
+
+// Spdk static information.
+struct spdk_nvme_ns *ns = nullptr;
+struct spdk_nvme_qpair *qpair = nullptr;
+int namespaceId = 1;
+unsigned int namespaceSize = 0;
+unsigned int sectorSize = 0;
+char *partialBlock = nullptr;
 
 int dmtr::spdk_dpdk_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_addr &ip)
 {
@@ -415,60 +422,57 @@ bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spd
 }
 
 void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
-  dmtr::spdk_dpdk_queue *q = (dmtr::spdk_dpdk_queue*)cb_ctx;
   struct spdk_nvme_io_qpair_opts qpopts;
 
-  if (q->qpair != nullptr) {
+  if (qpair != nullptr) {
     SPDK_ERRLOG("Already attached to a qpair\n");
     return;
   }
 
-  q->ctrlr_opts = *opts;
-  q->ctrlr = cntrlr;
-  q->tr_id = *trid;
+  ns = spdk_nvme_ctrlr_get_ns(cntrlr, namespaceId);
 
-  q->ns = spdk_nvme_ctrlr_get_ns(q->ctrlr, q->namespaceId);
-
-  if (q->ns == nullptr) {
-    SPDK_ERRLOG("Can't get namespace by id %d\n", q->namespaceId);
+  if (ns == nullptr) {
+    SPDK_ERRLOG("Can't get namespace by id %d\n", namespaceId);
     return;
   }
 
-  if (!spdk_nvme_ns_is_active(q->ns)) {
-    SPDK_ERRLOG("Inactive namespace at id %d\n", q->namespaceId);
+  if (!spdk_nvme_ns_is_active(ns)) {
+    SPDK_ERRLOG("Inactive namespace at id %d\n", namespaceId);
     return;
   }
 
-  spdk_nvme_ctrlr_get_default_io_qpair_opts(q->ctrlr, &qpopts, sizeof(qpopts));
+  spdk_nvme_ctrlr_get_default_io_qpair_opts(cntrlr, &qpopts, sizeof(qpopts));
   // TODO(ashmrtnz): If we want to change queue options like delaying the
   // doorbell, changing the queue size, or anything like that, we need to do it
   // here.
   
-  q->qpair = spdk_nvme_ctrlr_alloc_io_qpair(q->ctrlr, &qpopts, sizeof(qpopts));
-  if (!q->qpair) {
+  qpair = spdk_nvme_ctrlr_alloc_io_qpair(cntrlr, &qpopts, sizeof(qpopts));
+  if (!qpair) {
     SPDK_ERRLOG("Unable to allocate nvme qpair\n");
     return;
   }
-  q->namespaceSize = spdk_nvme_ns_get_size(q->ns);
-  if (q->namespaceSize <= 0) {
+  namespaceSize = spdk_nvme_ns_get_size(ns);
+  if (namespaceSize <= 0) {
     SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
-        q->namespaceId);
+        namespaceId);
     return;
   }
-  q->sectorSize = spdk_nvme_ns_get_sector_size(q->ns);
+  sectorSize = spdk_nvme_ns_get_sector_size(ns);
   // Allocate a buffer for writes that fill a partial block so that we don't
   // have to do a read-copy-update in the write path.
-  q->partialBlock = (char *) malloc(q->sectorSize);
-  if (q->partialBlock == nullptr) {
+  partialBlock = (char *) malloc(sectorSize);
+  if (partialBlock == nullptr) {
       SPDK_ERRLOG("Unable to allocate the partial block of size %d\n",
-          q->sectorSize);
+          sectorSize);
       return;
   }
 }
 
 // Right now only works for PCIe-based NVMe drives where the user specifies the
 // address of a single device.
-int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid) {
+int dmtr::spdk_dpdk_queue::parseTransportId(
+    struct spdk_nvme_transport_id *trid, std::string &transportType,
+    std::string &devAddress) {
   struct spdk_pci_addr pci_addr;
   std::string trinfo = std::string(kTrTypeString) + transportType + " " + kTrAddrString +
       devAddress;
@@ -492,12 +496,26 @@ int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid)
   return 0;
 }
 
-// TODO(ashmrtnz): Call this somewhere and also provide the device we should be
-// looking for somehow.
-int dmtr::spdk_dpdk_queue::init_spdk()
+int dmtr::spdk_dpdk_queue::init_spdk(YAML::Node &config)
 {
     if (our_spdk_init_flag) {
         return 0;
+    }
+
+    std::string transportType;
+    std::string devAddress;
+    // Initialize spdk from YAML options.
+    YAML::Node node = config["spdk"]["transport"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        transportType = node.as<std::string>();
+    }
+    node = config["spdk"]["devAddr"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        devAddress = node.as<std::string>();
+    }
+    node = config["spdk"]["namespaceId"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        namespaceId = node.as<unsigned int>();
     }
 
     struct spdk_env_opts opts;
@@ -509,18 +527,17 @@ int dmtr::spdk_dpdk_queue::init_spdk()
     }
 
     struct spdk_nvme_transport_id trid;
-    if (!parseTransportId(&trid)) {
+    if (!parseTransportId(&trid, transportType, devAddress)) {
         return -1;
     }
 
-    if (spdk_nvme_probe(&trid, this, probeCb, attachCb, nullptr) != 0) {
+    if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
         printf("spdk_nvme_probe failed\n");
         return -1;
     }
 
     our_spdk_init_flag = true;
     return 0;
-
 }
 
 dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
