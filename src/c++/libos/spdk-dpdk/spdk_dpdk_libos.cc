@@ -18,7 +18,7 @@ int dmtr_init(int argc, char *argv[])
 {
     DMTR_NULL(EINVAL, ioq_api.get());
 
-    DMTR_OK(dmtr::spdk_dpdk_queue::init_dpdk(argc, argv));
+    DMTR_OK(dmtr::spdk_dpdk_queue::init_spdk_dpdk(argc, argv));
 
     dmtr::io_queue_api *p = NULL;
     DMTR_OK(dmtr::io_queue_api::init(p, argc, argv));

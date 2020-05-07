@@ -69,6 +69,7 @@ class spdk_dpdk_queue : public io_queue {
     private: std::unique_ptr<task::thread_type> my_push_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;
 
+    public: static int init_spdk_dpdk(int argc, char *argv[]);
     private: spdk_dpdk_queue(int qd, io_queue::category_id cid);
     private: static int alloc_latency();
     public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -92,7 +93,7 @@ class spdk_dpdk_queue : public io_queue {
     public: int pop(dmtr_qtoken_t qt, size_t count);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
-    public: static int init_dpdk(int argc, char *argv[]);
+    public: static int init_dpdk(YAML::Node &config);
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
     private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);

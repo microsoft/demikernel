@@ -321,8 +321,7 @@ int dmtr::spdk_dpdk_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &
     return 0;
 }
 
-int dmtr::spdk_dpdk_queue::init_dpdk(int argc, char *argv[])
-{
+int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     DMTR_TRUE(ERANGE, argc >= 0);
     if (argc > 0) {
         DMTR_NOTNULL(EINVAL, argv);
@@ -348,9 +347,17 @@ int dmtr::spdk_dpdk_queue::init_dpdk(int argc, char *argv[])
         std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
         return ENOENT;
     }
-
-    std::vector<std::string> init_args;
     YAML::Node config = YAML::LoadFile(config_path);
+
+    DMTR_OK(init_dpdk(config));
+    DMTR_OK(init_spdk(config));
+
+    return 0;
+}
+
+int dmtr::spdk_dpdk_queue::init_dpdk(YAML::Node &config)
+{
+    std::vector<std::string> init_args;
     YAML::Node node = config["dpdk"]["eal_init"];
     if (YAML::NodeType::Sequence == node.Type()) {
         init_args = node.as<std::vector<std::string>>();
