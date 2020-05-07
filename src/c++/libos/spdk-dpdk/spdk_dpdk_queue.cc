@@ -592,7 +592,7 @@ int dmtr::spdk_dpdk_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int 
 
 int dmtr::spdk_dpdk_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
 
 #if DMTR_PROFILE
     DMTR_OK(alloc_latency());
@@ -987,6 +987,7 @@ int dmtr::spdk_dpdk_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type
 // has DMA-able memory.
 int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
     uint32_t total_len = 0;
     
     // Allocate a DMA-able buffer that is rounded up to the nearest sector size
@@ -1042,8 +1043,8 @@ int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_typ
         ++numBlocks;
     }
 
-    int rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset,
-        numBlocks, nullptr, nullptr, 0);
+    int rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset, numBlocks,
+        nullptr, nullptr, 0);
     if (rc != 0) {
         return rc;
     }
