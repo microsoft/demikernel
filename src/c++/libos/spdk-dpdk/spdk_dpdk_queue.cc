@@ -30,12 +30,11 @@
 #include <rte_lcore.h>
 #include <rte_memcpy.h>
 #include <rte_udp.h>
+#include <spdk/env.h>
+#include <spdk/log.h>
+#include <spdk/nvme.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
-
-#include "spdk/env.h"
-#include "spdk/log.h"
-#include "spdk/nvme.h"
 
 namespace bpo = boost::program_options;
 
@@ -441,6 +440,9 @@ void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct sp
   }
 
   spdk_nvme_ctrlr_get_default_io_qpair_opts(q->ctrlr, &qpopts, sizeof(qpopts));
+  // TODO(ashmrtnz): If we want to change queue options like delaying the
+  // doorbell, changing the queue size, or anything like that, we need to do it
+  // here.
   
   q->qpair = spdk_nvme_ctrlr_alloc_io_qpair(q->ctrlr, &qpopts, sizeof(qpopts));
   if (!q->qpair) {
@@ -454,6 +456,14 @@ void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct sp
     return;
   }
   q->sectorSize = spdk_nvme_ns_get_sector_size(q->ns);
+  // Allocate a buffer for writes that fill a partial block so that we don't
+  // have to do a read-copy-update in the write path.
+  q->partialBlock = (char *) malloc(q->sectorSize);
+  if (q->partialBlock == nullptr) {
+      SPDK_ERRLOG("Unable to allocate the partial block of size %d\n",
+          q->sectorSize);
+      return;
+  }
 }
 
 // Right now only works for PCIe-based NVMe drives where the user specifies the
@@ -482,6 +492,8 @@ int dmtr::spdk_dpdk_queue::parseTransportId(struct spdk_nvme_transport_id *trid)
   return 0;
 }
 
+// TODO(ashmrtnz): Call this somewhere and also provide the device we should be
+// looking for somehow.
 int dmtr::spdk_dpdk_queue::init_spdk()
 {
     if (our_spdk_init_flag) {
@@ -734,7 +746,10 @@ int dmtr::spdk_dpdk_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * con
 int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags)
 {
     DMTR_TRUE(EPERM, our_spdk_init_flag);
-    //TODO: do we need to do anything here? examples seem to say no...
+    //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
+    // we choose to support multiple files we will need to so some sort of
+    // lookup or something here.
+    // TODO(ashmrtnz): O_TRUNC?
     start_threads();
     return 0;
 }
@@ -742,7 +757,10 @@ int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags)
 int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
 {
     DMTR_TRUE(EPERM, our_spdk_init_flag);
-    //TODO: do we need to do anything here? examples seem to say no...
+    //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
+    // we choose to support multiple files we will need to so some sort of
+    // lookup or something here. We can't support O_EXCL right now.
+    // TODO(ashmrtnz): O_TRUNC?
     start_threads();
     return 0;
 }
@@ -750,7 +768,10 @@ int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
 int dmtr::spdk_dpdk_queue::creat(const char *pathname, mode_t mode)
 {
     DMTR_TRUE(EPERM, our_spdk_init_flag);
-    //TODO: do we need to do anything here? examples seem to say no...
+    //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
+    // we choose to support multiple files we will need to so some sort of
+    // lookup or something here. We can't support O_EXCL right now.
+    // TODO(ashmrtnz): O_TRUNC? Should be implemented if we honor the flag.
     start_threads();
     return 0;
 }
@@ -938,39 +959,99 @@ int dmtr::spdk_dpdk_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type
     return 0;
 }
 
+// TODO(ashmrtnz): Update to use spdk scatter gather arrays if the sga parameter
+// has DMA-able memory.
 int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
 {
-    int rc;
-    void *payload;
     uint32_t total_len = 0;
     
-    // allocate payload for maximum size of sgarray
-    payload = malloc(sga->sga_numsegs * DMTR_SGARRAY_MAXSIZE);
+    // Allocate a DMA-able buffer that is rounded up to the nearest sector size
+    // and includes space for the sga metadata like the number of segments, each
+    // segment size, and any partial block data from the last write.
+    // Randomly pick 4k alignment.
+    const unsigned int size = (partialBlockUsage +
+        (sga->sga_numsegs * (DMTR_SGARRAY_MAXSIZE + sizeof(uint32_t))) +
+        sizeof(uint32_t) + sectorSize - 1) / sectorSize;
+    char *payload = (char *) spdk_malloc(size, 0x1000, NULL,
+        SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
     assert(payload != nullptr);
 
-    void *p = payload;
+    // See if we have a partial block left over from the last write. If we do,
+    // we need to insert it into the front of the buffer.
+    if (partialBlockUsage != 0) {
+        memcpy(payload, partialBlock, partialBlockUsage);
+        payload += partialBlockUsage;
+    }
     
     {
-        auto * const u32 = reinterpret_cast<uint32_t *>(p);
+        auto * const u32 = reinterpret_cast<uint32_t *>(payload);
         *u32 = sga->sga_numsegs;
         total_len += sizeof(*u32);
-        p += sizeof(*u32);
+        payload += sizeof(*u32);
     }
 
     for (size_t i = 0; i < sga->sga_numsegs; i++) {
-        auto * const u32 = reinterpret_cast<uint32_t *>(p);
+        auto * const u32 = reinterpret_cast<uint32_t *>(payload);
         const auto len = sga->sga_segs[i].sgaseg_len;
         *u32 = len;
         total_len += sizeof(*u32);
-        p += sizeof(*u32);
-        memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
+        payload += sizeof(*u32);
+        memcpy(payload, sga->sga_segs[i].sgaseg_buf, len);
         total_len += len;
-        p += len;
+        payload += len;
     }
 
-    rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset, total_len / sectorSize, nullptr, nullptr, 0);
-    logOffset+= total_len / sectorSize;
-    return 0;
+    // Not sure if this is strictly required or if the device will throw and
+    // error all by itself, but just to be safe.
+    if (logOffset * sectorSize + total_len > namespaceSize) {
+        return -ENOSPC;
+    }
+
+    unsigned int numBlocks = total_len / sectorSize;
+    partialBlockUsage = total_len - (numBlocks * sectorSize);
+
+    // Save any partial blocks we may have so we don't have to do a
+    // read-copy-update on the next write.
+    if (partialBlockUsage != 0) {
+        memcpy(partialBlock, payload + (total_len - partialBlockUsage),
+            partialBlockUsage);
+        ++numBlocks;
+    }
+
+    int rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset,
+        numBlocks, nullptr, nullptr, 0);
+    if (rc != 0) {
+        return rc;
+    }
+
+    logOffset += numBlocks;
+    if (partialBlockUsage != 0) {
+        // If we had a partial block, then we're going to rewrite it the next
+        // time we get data to write, so go back one LBA.
+        --logOffset;
+    }
+
+    // Wait for completion.
+#if DMTR_PROFILE
+    auto t0 = boost::chrono::steady_clock::now();
+    boost::chrono::duration<uint64_t, boost::nano> dt(0);
+#endif
+    do {
+        // TODO(ashmrtnz): Assumes that there is only 1 outstanding request at a
+        // time, since we're retrieving what we just queued above...
+        rc = spdk_nvme_qpair_process_completions(qpair, 1);
+        if (rc == 0) {
+#if DMTR_PROFILE
+            dt += boost::chrono::steady_clock::now() - t0;
+#endif
+            yield();
+#if DMTR_PROFILE
+            t0 = boost::chrono::steady_clock::now();
+#endif
+        }
+    } while (rc == 0);
+    spdk_free(payload);
+    return rc;
 }
 
 int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {

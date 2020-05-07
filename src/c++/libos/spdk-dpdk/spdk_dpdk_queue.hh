@@ -12,11 +12,10 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <spdk/env.h>
+#include <spdk/nvme.h>
 #include <unordered_map>
 #include <map>
-
-#include "spdk/env.h"
-#include "spdk/nvme.h"
 
 class spdk_dpdk_addr {
 public:
@@ -49,11 +48,17 @@ class spdk_dpdk_queue : public io_queue {
     public: struct spdk_nvme_qpair *qpair;
     public: std::string transportType;
     public: std::string devAddress;
-    public: int logOffset = 0;
-    public: int namespaceId = 0;
-    public: int namespaceSize;
-    public: int sectorSize;
-    public: int queuedOps;
+    // Block offset into the log.
+    public: unsigned int logOffset = 0;
+    // Namespace ids start at 1 and are numbered consequitively. If we want to
+    // support selecting a specific namespace or anything, we will need to parse
+    // args and update this number somewhere.
+    public: static const int namespaceId = 1;
+    public: unsigned int namespaceSize = 0;
+    public: unsigned int sectorSize = 0;
+    public: char *partialBlock = nullptr;
+    // How many bytes of data are in partialBlock.
+    private: unsigned int partialBlockUsage = 0;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
     private: static std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
