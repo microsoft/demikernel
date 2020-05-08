@@ -92,9 +92,9 @@ int dmtr::rdma_queue::setup_rdma_qp()
     struct ibv_cq *cq = ibv_create_cq(pd->context, 5, NULL, NULL, 0);
     struct ibv_qp_init_attr qp_attr = {};
     qp_attr.qp_type = IBV_QPT_RC;
-    qp_attr.send_cq = cq;
-    qp_attr.recv_cq = cq;
-    qp_attr.cap.max_send_wr = 256;
+    //qp_attr.send_cq = cq;
+    // qp_attr.recv_cq = cq;
+    qp_attr.cap.max_send_wr = 16;
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;

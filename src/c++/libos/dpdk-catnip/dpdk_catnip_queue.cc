@@ -95,7 +95,8 @@ static latency_ptr_type catnip_read_latency;
 static latency_ptr_type catnip_write_latency;
 static latency_ptr_type catnip_peek_latency;
 static latency_ptr_type copy_latency;
-boost::chrono::steady_clock::time_point t_write;
+
+static boost::chrono::time_point<boost::chrono::steady_clock> t_write;
 #endif
 
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
@@ -738,6 +739,7 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
     t_write = boost::chrono::steady_clock::now();
 #endif
 
+    DMTR_OK(nip_advance_clock(our_tcp_engine));
     DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &number_of_segments, sizeof(number_of_segments)));
 
     for (size_t i = 0; i < sga.sga_numsegs; ++i) {
@@ -745,6 +747,7 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         const auto segment_length = htonl(segment->sgaseg_len);
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
+        DMTR_OK(nip_advance_clock(our_tcp_engine));
     }
     return 0;
 }
@@ -1305,7 +1308,8 @@ int dmtr::dpdk_catnip_queue::tcp_read(std::deque<uint8_t> &buffer, size_t length
             return ret;
         }
 
-        NIPX_LATENCY(catnip_read_latency, DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle)));
+        //NIPX_LATENCY(catnip_read_latency, DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle)));
+        DMTR_OK(nip_tcp_read(our_tcp_engine, my_tcp_connection_handle));
     }
 
     return 0;
