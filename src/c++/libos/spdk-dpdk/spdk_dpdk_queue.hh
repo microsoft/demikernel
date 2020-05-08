@@ -12,11 +12,11 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <spdk/env.h>
+#include <spdk/nvme.h>
 #include <unordered_map>
 #include <map>
-
-#include "spdk/env.h"
-#include "spdk/nvme.h"
+#include <yaml-cpp/yaml.h>
 
 class spdk_dpdk_addr {
 public:
@@ -42,18 +42,18 @@ class spdk_dpdk_queue : public io_queue {
     private: static struct rte_mempool *our_mbuf_pool;
     private: static bool our_dpdk_init_flag;
     private: static bool our_spdk_init_flag;
-    public: struct spdk_nvme_ns *ns;
-    public: struct spdk_nvme_ctrlr *ctrlr;
-    public: struct spdk_nvme_ctrlr_opts ctrlr_opts;
-    public: struct spdk_nvme_transport_id tr_id;
-    public: struct spdk_nvme_qpair *qpair;
-    public: std::string transportType;
-    public: std::string devAddress;
-    public: int logOffset = 0;
-    public: int namespaceId = 0;
-    public: int namespaceSize;
-    public: int sectorSize;
-    public: int queuedOps;
+    public: static struct spdk_nvme_ns *ns;
+    public: static struct spdk_nvme_qpair *qpair;
+    // Block offset into the log.
+    public: unsigned int logOffset = 0;
+    // Namespace ids start at 1 and are numbered consequitively.
+    public: static int namespaceId;
+    // Number of bytes in the namespace.
+    public: static unsigned int namespaceSize;
+    public: static unsigned int sectorSize;
+    public: static char *partialBlock;
+    // How many bytes of data are in partialBlock.
+    private: unsigned int partialBlockUsage = 0;
     private: static boost::optional<uint16_t> our_dpdk_port_id;
     // demultiplexing incoming packets into queues
     private: static std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> our_recv_queues;
@@ -69,6 +69,7 @@ class spdk_dpdk_queue : public io_queue {
     private: std::unique_ptr<task::thread_type> my_push_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;
 
+    public: static int init_spdk_dpdk(int argc, char *argv[]);
     private: spdk_dpdk_queue(int qd, io_queue::category_id cid);
     private: static int alloc_latency();
     public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
@@ -92,7 +93,7 @@ class spdk_dpdk_queue : public io_queue {
     public: int pop(dmtr_qtoken_t qt, size_t count);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
-    public: static int init_dpdk(int argc, char *argv[]);
+    public: static int init_dpdk(YAML::Node &config);
     private: static int get_dpdk_port_id(uint16_t &id_out);
     private: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
     private: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
@@ -151,8 +152,9 @@ class spdk_dpdk_queue : public io_queue {
     private: static int rte_eth_link_get_nowait(uint16_t port_id, struct rte_eth_link &link);
 
     // spdk functions
-    private: int init_spdk();
-    private: int parseTransportId(spdk_nvme_transport_id *trid);
+    private: static int init_spdk(YAML::Node &config);
+    private: static int parseTransportId(spdk_nvme_transport_id *trid,
+                 std::string &transportType, std::string &devAddress);
 };
 
 } // namespace dmtr
