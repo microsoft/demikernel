@@ -323,6 +323,10 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         params.rnr_retry_count = 7;
         params.private_data = &cd;
         params.private_data_len = sizeof(struct connection_data);
+
+        new_rq->start_threads();
+        DMTR_OK(new_rq->setup_recv_queue());
+
         DMTR_OK(rdma_accept(new_rdma_id, &params));
      
         int ret = EAGAIN;
@@ -345,8 +349,6 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         }
         rdma_ack_cm_event(event);
 
-        new_rq->start_threads();
-        DMTR_OK(new_rq->setup_recv_queue());
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
@@ -584,7 +586,12 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 #endif
     my_send_window--;
     md.release();
-    
+
+    // good time to check my recv window
+    if (my_recv_window < 2) {
+        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
+    }
+              
     return 0;
 }
 
@@ -592,7 +599,7 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     DMTR_TRUE(ENOTSUP, !my_listening_flag);
     DMTR_NOTNULL(EINVAL, my_push_thread);
-    DMTR_NONZERO(EINVAL, my_send_window);
+    //DMTR_NONZERO(EINVAL, my_send_window);
     
     int ret = submit_io(qt, sga);
     if (0 != ret) {
@@ -620,7 +627,7 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         //auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
          while (true) {
-            //DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
             auto it = my_completed_sends.find(qt);
             if (my_completed_sends.cend() != it) {
                 my_completed_sends.erase(it);
@@ -673,10 +680,6 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
                 default:
                     DMTR_FAIL(ret);
                 case EAGAIN:
-                    // if no work, check on my receive window and see if it needs to be replenished 
-                    if (my_recv_window < 20) {
-                        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
-                    }
                     yield();
                     buf = NULL;
                     continue;

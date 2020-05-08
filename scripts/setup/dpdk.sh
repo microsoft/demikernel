@@ -10,7 +10,7 @@ mkdir /mnt/huge || true
 mount -t hugetlbfs nodev /mnt/huge
 modprobe ib_uverbs
 modprobe mlx4_ib
-#cpupower frequency-set --governor performance
+cpupower frequency-set --governor performance
 #sysctl -p
 #ethtool -K ens1 lro on
 #ifconfig ens1 txqueuelen 20000

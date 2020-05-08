@@ -144,6 +144,8 @@ LatencyFmtNS(uint64_t ns, char *buf)
 int
 Latency_Dump(FILE *f, dmtr_latency_t *l)
 {
+    return 0;
+    
     DMTR_NOTNULL(EINVAL, f);
     DMTR_NOTNULL(EINVAL, l);
 

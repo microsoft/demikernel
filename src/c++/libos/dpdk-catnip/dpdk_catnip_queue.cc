@@ -164,7 +164,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool
     DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
 
     struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = ETHER_MAX_LEN;
+    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
