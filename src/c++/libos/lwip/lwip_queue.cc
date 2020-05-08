@@ -44,7 +44,7 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-//#define DMTR_PROFILE 1
+#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
 
 /*
@@ -622,7 +622,7 @@ int dmtr::lwip_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     my_push_thread->enqueue(qt);
-
+    my_push_thread->service();
     return 0;
 }
 

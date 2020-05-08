@@ -56,4 +56,5 @@
         branch = io-queue
 [submodule "submodules/Shremote"]
 	path = submodules/Shremote
-	url = git@github.com:isaac-ped/Shremote.git
+	url = https://github.com/isaac-ped/Shremote.git
+	branch = master

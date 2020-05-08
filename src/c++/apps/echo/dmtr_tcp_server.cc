@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
 
     std::vector<dmtr_qtoken_t> tokens;
     std::unordered_map<dmtr_qtoken_t, boost::chrono::time_point<boost::chrono::steady_clock>> start_times;
-    dmtr_qtoken_t token;
+    dmtr_qtoken_t token, qt2;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
     std::cout << "listen qd: " << lqd << std::endl;
 
@@ -127,14 +127,13 @@ int main(int argc, char *argv[])
 #endif
 
                 auto t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_push(&token, wait_out.qr_qd, &wait_out.qr_value.sga));
+                DMTR_OK(dmtr_push(&qt2, wait_out.qr_qd, &wait_out.qr_value.sga));
                 auto push_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
-                t0 = boost::chrono::steady_clock::now();
-                DMTR_OK(dmtr_wait(NULL, token));
-                auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
-                DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
-                t0 = boost::chrono::steady_clock::now();
+                //t0 = boost::chrono::steady_clock::now();
+                //auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
+                //DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
+                //t0 = boost::chrono::steady_clock::now();
                 DMTR_OK(dmtr_pop(&token, wait_out.qr_qd));
                 start_times[token] = t0;
                 tokens[idx] = token;
