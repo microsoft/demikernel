@@ -15,3 +15,8 @@ cpupower frequency-set --governor performance
 #ethtool -K ens1 lro on
 #ifconfig ens1 txqueuelen 20000
 #systemctl stop irqbalance
+export MLX4_SINGLE_THREADED=1
+export MLX5_SINGLE_THREADED=1
+export MLX5_SHUT_UP_BF=0
+export MLX_QP_ALLOC_TYPE="HUGE"
+export MLX_CQ_ALLOC_TYPE="HUGE"
