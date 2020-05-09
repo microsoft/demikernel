@@ -22,9 +22,9 @@ class rdma_queue : public io_queue {
     private: static const size_t max_num_sge;
 
     // my local receive buffer count and size
-    private: const size_t my_recv_buf_max = 25;
+    private: const size_t my_recv_buf_max = 100;
     private: size_t my_recv_window = 0;
-    private: size_t my_recv_buf_size = 1024;
+    private: size_t my_recv_buf_size = 128;
     // how much can I send to the other side?
     private: size_t my_send_window = 0;
     private: size_t send_buf_size = 0;

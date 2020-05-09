@@ -89,11 +89,8 @@ int dmtr::rdma_queue::setup_rdma_qp()
     struct ibv_pd *pd = NULL;
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
-    struct ibv_cq *cq = ibv_create_cq(pd->context, 5, NULL, NULL, 0);
     struct ibv_qp_init_attr qp_attr = {};
     qp_attr.qp_type = IBV_QPT_RC;
-    //qp_attr.send_cq = cq;
-    // qp_attr.recv_cq = cq;
     qp_attr.cap.max_send_wr = 16;
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
@@ -101,8 +98,6 @@ int dmtr::rdma_queue::setup_rdma_qp()
     qp_attr.cap.max_inline_data = 128;
     qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
-    my_rdma_id->send_cq = cq;
-    my_rdma_id->recv_cq = cq;
     return 0;
 }
 
@@ -192,7 +187,7 @@ int dmtr::rdma_queue::service_event_channel() {
             return EAGAIN;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             my_pending_accepts.push(event);
-            //fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
+            fprintf(stderr, "Event: RDMA_CM_EVENT_CONNECT_REQUEST\n");
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
             rdma_ack_cm_event(event);
@@ -324,9 +319,6 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         params.private_data = &cd;
         params.private_data_len = sizeof(struct connection_data);
 
-        new_rq->start_threads();
-        DMTR_OK(new_rq->setup_recv_queue());
-
         DMTR_OK(rdma_accept(new_rdma_id, &params));
      
         int ret = EAGAIN;
@@ -349,6 +341,9 @@ int dmtr::rdma_queue::accept_thread(task::thread_type::yield_type &yield, task::
         }
         rdma_ack_cm_event(event);
 
+        new_rq->start_threads();
+        DMTR_OK(new_rq->setup_recv_queue());
+        
         // get the address
         sockaddr *saddr;
         DMTR_OK(rdma_get_peer_addr(saddr, new_rdma_id));
@@ -562,9 +557,7 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     // warning: if you don't set the send flag, it will not
     // give a meaningful error.
     wr.opcode = IBV_WR_SEND;
-    wr.send_flags = 0;
-    //if (my_recv_window == 75) 
-    wr.send_flags |= IBV_SEND_SIGNALED;
+    wr.send_flags = IBV_SEND_SIGNALED;
     if (header_len + total_len < 128)
         wr.send_flags |= IBV_SEND_INLINE;
     wr.wr_id = qt;
@@ -587,11 +580,6 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     my_send_window--;
     md.release();
 
-    // good time to check my recv window
-    if (my_recv_window < 2) {
-        DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
-    }
-              
     return 0;
 }
 
@@ -601,13 +589,9 @@ int dmtr::rdma_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
     DMTR_NOTNULL(EINVAL, my_push_thread);
     //DMTR_NONZERO(EINVAL, my_send_window);
     
-    int ret = submit_io(qt, sga);
-    if (0 != ret) {
-        return ret;
-    }
-    
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     my_push_thread->enqueue(qt);
+    my_push_thread->service();
     return 0;
 }
 
@@ -616,7 +600,7 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         while (tq.empty()) {
             yield();
         }
-
+        //      printf("push thread\n");
         auto qt = tq.front();
         tq.pop();
         task *t;
@@ -626,8 +610,23 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
         DMTR_TRUE(EINVAL, t->arg(sga));
         //auto buf = std::unique_ptr<metadata>(reinterpret_cast<metadata *>(sga->sga_buf));
 
-         while (true) {
-            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 1));
+        while (my_send_window == 0) {
+            yield();
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+        }
+        int ret = submit_io(qt, *sga);
+        if (0 != ret) {
+            DMTR_OK(t->complete(ret, *sga));
+            return ret;
+        }
+        
+        // good time to check my recv window
+        if (my_recv_window < 2) {
+            DMTR_OK(new_recv_bufs(my_recv_buf_max - my_recv_window));
+        }    
+        
+        while (true) {
+            DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 3));
             auto it = my_completed_sends.find(qt);
             if (my_completed_sends.cend() != it) {
                 my_completed_sends.erase(it);
@@ -674,7 +673,7 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #if DMTR_PROFILE
             t0 = clock_type::now();
 #endif
-            //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 1));
+            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
             int ret = service_recv_queue(buf, sz_buf);
             switch (ret) {
                 default:
@@ -765,7 +764,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             break;
         case DMTR_OPC_PUSH:
         case DMTR_OPC_POP:
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
+            //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
             ret = my_pop_thread->service();
             if (EAGAIN != ret) break;
             ret = my_push_thread->service();
@@ -1080,7 +1079,7 @@ int dmtr::rdma_queue::new_recv_bufs(size_t n) {
     }
     DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, wr));
     my_recv_window += n;
-    //fprintf(stderr, "Done posting receive buffer: %lu\n", my_recv_window);
+    fprintf(stderr, "Done posting receive buffer: %lu\n", my_recv_window);
 
     //update the remote send window now that our receive window has been updated
     struct ibv_sge ssge;

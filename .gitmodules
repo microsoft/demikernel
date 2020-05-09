@@ -35,6 +35,7 @@
 [submodule "submodules/PcapPlusPlus"]
 	path = submodules/PcapPlusPlus
 	url = https://github.com/mlr-msft/PcapPlusPlus.git
+        branch = msft/master
 [submodule "submodules/redis-dpdk-catnip"]
 	path = submodules/redis-dpdk-catnip
 	url = https://github.com/mlr-msft/redis.git

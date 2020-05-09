@@ -251,7 +251,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file")
         ("transcript,t", "produce a transcript file");
 
     bpo::variables_map vm;
@@ -342,7 +342,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
         printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
     }
 
-    struct ether_addr mac = {};
+    struct rte_ether_addr mac = {};
     DMTR_OK(rte_eth_macaddr_get(port_id, mac));
     DMTR_OK(nip_set_my_link_addr(mac.addr_bytes));
 
@@ -747,8 +747,9 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         const auto segment_length = htonl(segment->sgaseg_len);
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, &segment_length, sizeof(segment_length)));
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
-        DMTR_OK(nip_advance_clock(our_tcp_engine));
+        //  DMTR_OK(nip_advance_clock(our_tcp_engine));
     }
+    DMTR_OK(nip_advance_clock(our_tcp_engine));
     return 0;
 }
 
@@ -899,6 +900,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 
     DMTR_OK(service_incoming_packets());
     DMTR_OK(service_event_queue());
+    DMTR_OK(nip_advance_clock(our_tcp_engine));
     int ret = our_transmit_thread->service();
     if (EAGAIN != ret) {
         DMTR_OK(ret);
@@ -941,7 +943,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     return t->poll(qr_out);
 }
 
-int dmtr::dpdk_catnip_queue::rte_eth_macaddr_get(uint16_t port_id, struct ether_addr &mac_addr) {
+int dmtr::dpdk_catnip_queue::rte_eth_macaddr_get(uint16_t port_id, struct rte_ether_addr &mac_addr) {
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
 
     // todo: how to detect invalid port ids?

@@ -317,7 +317,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file");
 
     bpo::variables_map vm;
     bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
