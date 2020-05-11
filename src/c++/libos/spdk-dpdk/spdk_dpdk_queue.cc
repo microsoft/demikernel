@@ -137,12 +137,12 @@ std::unordered_map<std::string, struct in_addr> dmtr::spdk_dpdk_queue::our_mac_t
 std::unordered_map<in_addr_t, struct rte_ether_addr> dmtr::spdk_dpdk_queue::our_ip_to_mac_table;
 
 // Spdk static information.
-struct spdk_nvme_ns *ns = nullptr;
-struct spdk_nvme_qpair *qpair = nullptr;
-int namespaceId = 1;
-unsigned int namespaceSize = 0;
-unsigned int sectorSize = 0;
-char *partialBlock = nullptr;
+struct spdk_nvme_ns *dmtr::spdk_dpdk_queue::ns = nullptr;
+struct spdk_nvme_qpair *dmtr::spdk_dpdk_queue::qpair = nullptr;
+int dmtr::spdk_dpdk_queue::namespaceId = 1;
+unsigned int dmtr::spdk_dpdk_queue::namespaceSize = 0;
+unsigned int dmtr::spdk_dpdk_queue::sectorSize = 0;
+char *dmtr::spdk_dpdk_queue::partialBlock = nullptr;
 
 int dmtr::spdk_dpdk_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_addr &ip)
 {
@@ -349,41 +349,16 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     }
     YAML::Node config = YAML::LoadFile(config_path);
 
-    DMTR_OK(init_dpdk(config));
     DMTR_OK(init_spdk(config));
-
+    DMTR_OK(init_dpdk(config));
+ 
     return 0;
 }
 
 int dmtr::spdk_dpdk_queue::init_dpdk(YAML::Node &config)
 {
-    std::vector<std::string> init_args;
-    YAML::Node node = config["dpdk"]["eal_init"];
-    if (YAML::NodeType::Sequence == node.Type()) {
-        init_args = node.as<std::vector<std::string>>();
-    }
-    std::cerr << "eal_init: [";
-    std::vector<char *> init_cargs;
-    for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
-        if (i != init_args.cbegin()) {
-            std::cerr << ", ";
-        }
-        std::cerr << "\"" << *i << "\"";
-        init_cargs.push_back(const_cast<char *>(i->c_str()));
-    }
-    std::cerr << "]" << std::endl;
-    node = config["spdk_dpdk"]["known_hosts"];
-    if (YAML::NodeType::Map == node.Type()) {
-        for (auto i = node.begin(); i != node.end(); ++i) {
-            auto mac = i->first.as<std::string>();
-            auto ip = i->second.as<std::string>();
-            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
-        }
-    }
 
-    int unused = -1;
-    DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
-    const uint16_t nb_ports = rte_eth_dev_count_avail();
+        const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
     fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
 
@@ -431,20 +406,20 @@ bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spd
 void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
   struct spdk_nvme_io_qpair_opts qpopts;
 
-  if (qpair != nullptr) {
+  if (dmtr::spdk_dpdk_queue::qpair != nullptr) {
     SPDK_ERRLOG("Already attached to a qpair\n");
     return;
   }
 
-  ns = spdk_nvme_ctrlr_get_ns(cntrlr, namespaceId);
+  dmtr::spdk_dpdk_queue::ns = spdk_nvme_ctrlr_get_ns(cntrlr, dmtr::spdk_dpdk_queue::namespaceId);
 
-  if (ns == nullptr) {
-    SPDK_ERRLOG("Can't get namespace by id %d\n", namespaceId);
+  if (dmtr::spdk_dpdk_queue::ns == nullptr) {
+    SPDK_ERRLOG("Can't get namespace by id %d\n", dmtr::spdk_dpdk_queue::namespaceId);
     return;
   }
 
-  if (!spdk_nvme_ns_is_active(ns)) {
-    SPDK_ERRLOG("Inactive namespace at id %d\n", namespaceId);
+  if (!spdk_nvme_ns_is_active(dmtr::spdk_dpdk_queue::ns)) {
+    SPDK_ERRLOG("Inactive namespace at id %d\n", dmtr::spdk_dpdk_queue::namespaceId);
     return;
   }
 
@@ -453,24 +428,24 @@ void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct sp
   // doorbell, changing the queue size, or anything like that, we need to do it
   // here.
   
-  qpair = spdk_nvme_ctrlr_alloc_io_qpair(cntrlr, &qpopts, sizeof(qpopts));
-  if (!qpair) {
+  dmtr::spdk_dpdk_queue::qpair = spdk_nvme_ctrlr_alloc_io_qpair(cntrlr, &qpopts, sizeof(qpopts));
+  if (!dmtr::spdk_dpdk_queue::qpair) {
     SPDK_ERRLOG("Unable to allocate nvme qpair\n");
     return;
   }
-  namespaceSize = spdk_nvme_ns_get_size(ns);
-  if (namespaceSize <= 0) {
+  dmtr::spdk_dpdk_queue::namespaceSize = spdk_nvme_ns_get_size(dmtr::spdk_dpdk_queue::ns);
+  if (dmtr::spdk_dpdk_queue::namespaceSize <= 0) {
     SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
-        namespaceId);
+        dmtr::spdk_dpdk_queue::namespaceId);
     return;
   }
-  sectorSize = spdk_nvme_ns_get_sector_size(ns);
+  dmtr::spdk_dpdk_queue::sectorSize = spdk_nvme_ns_get_sector_size(dmtr::spdk_dpdk_queue::ns);
   // Allocate a buffer for writes that fill a partial block so that we don't
   // have to do a read-copy-update in the write path.
-  partialBlock = (char *) malloc(sectorSize);
-  if (partialBlock == nullptr) {
+  dmtr::spdk_dpdk_queue::partialBlock = (char *) malloc(dmtr::spdk_dpdk_queue::sectorSize);
+  if (dmtr::spdk_dpdk_queue::partialBlock == nullptr) {
       SPDK_ERRLOG("Unable to allocate the partial block of size %d\n",
-          sectorSize);
+          dmtr::spdk_dpdk_queue::sectorSize);
       return;
   }
 }
@@ -509,10 +484,37 @@ int dmtr::spdk_dpdk_queue::init_spdk(YAML::Node &config)
         return 0;
     }
 
+    std::vector<std::string> init_args;
+    YAML::Node node = config["dpdk"]["eal_init"];
+    if (YAML::NodeType::Sequence == node.Type()) {
+        init_args = node.as<std::vector<std::string>>();
+    }
+    std::cerr << "eal_init: [";
+    std::vector<char *> init_cargs;
+    for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
+        if (i != init_args.cbegin()) {
+            std::cerr << ", ";
+        }
+        std::cerr << "\"" << *i << "\"";
+        init_cargs.push_back(const_cast<char *>(i->c_str()));
+    }
+    std::cerr << "]" << std::endl;
+    node = config["spdk_dpdk"]["known_hosts"];
+    if (YAML::NodeType::Map == node.Type()) {
+        for (auto i = node.begin(); i != node.end(); ++i) {
+            auto mac = i->first.as<std::string>();
+            auto ip = i->second.as<std::string>();
+            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+        }
+    }
+
+    //int unused = -1;
+    //DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
+
     std::string transportType;
     std::string devAddress;
     // Initialize spdk from YAML options.
-    YAML::Node node = config["spdk"]["transport"];
+    node = config["spdk"]["transport"];
     if (YAML::NodeType::Scalar == node.Type()) {
         transportType = node.as<std::string>();
     }
@@ -528,6 +530,7 @@ int dmtr::spdk_dpdk_queue::init_spdk(YAML::Node &config)
     struct spdk_env_opts opts;
     spdk_env_opts_init(&opts);
     opts.name = "Demeter";
+    opts.env_context = init_cargs.data();
     if (spdk_env_init(&opts) < 0) {
         printf("Unable to initialize SPDK env\n");
         return -1;

@@ -143,6 +143,7 @@ int main(int argc, char *argv[])
             }
         } else {
             assert(status == ECONNRESET || status == ECONNABORTED);
+            fprintf(stderr, "closing connection");
             dmtr_close(wait_out.qr_qd);
             tokens.erase(tokens.begin()+idx);
         }

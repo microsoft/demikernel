@@ -191,7 +191,7 @@ int dmtr::rdma_queue::service_event_channel() {
             break;
         case RDMA_CM_EVENT_DISCONNECTED:
             rdma_ack_cm_event(event);
-            //fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
+            fprintf(stderr, "Event: RDMA_CM_EVENT_DISCONNECTED\n");
             return ECONNABORTED; // client should call close
         case RDMA_CM_EVENT_ESTABLISHED:
             //fprintf(stderr, "Event: RDMA_CM_EVENT_ESTABLISHED\n");
@@ -764,7 +764,6 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
             break;
         case DMTR_OPC_PUSH:
         case DMTR_OPC_POP:
-            //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
             ret = my_pop_thread->service();
             if (EAGAIN != ret) break;
             ret = my_push_thread->service();
@@ -1079,7 +1078,7 @@ int dmtr::rdma_queue::new_recv_bufs(size_t n) {
     }
     DMTR_OK(ibv_post_recv(bad_wr, my_rdma_id->qp, wr));
     my_recv_window += n;
-    fprintf(stderr, "Done posting receive buffer: %lu\n", my_recv_window);
+    //fprintf(stderr, "Done posting receive buffer: %lu\n", my_recv_window);
 
     //update the remote send window now that our receive window has been updated
     struct ibv_sge ssge;

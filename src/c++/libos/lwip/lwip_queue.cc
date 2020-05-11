@@ -372,7 +372,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         NUM_MBUFS * nb_ports,
         MBUF_CACHE_SIZE,
         0,
-        RTE_MBUF_DEFAULT_BUF_SIZE,
+	8192 + RTE_PKTMBUF_HEADROOM,
         rte_socket_id()));
 
     // initialize all ports.
