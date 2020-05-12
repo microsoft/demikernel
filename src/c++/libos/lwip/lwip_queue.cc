@@ -463,7 +463,8 @@ dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const s
     DMTR_TRUE(EINVAL, boost::none != my_bound_src);
 
     struct sockaddr_in *saddr_in = reinterpret_cast<struct sockaddr_in *>(saddr);
-    *saddr_in = *my_bound_src;
+    if (boost::none != my_bound_src)
+        *saddr_in = *my_bound_src;
     return 0;
 }
 
