@@ -48,7 +48,7 @@ class lwip_queue : public io_queue {
     protected: static std::unordered_map<in_addr_t, struct rte_ether_addr> our_ip_to_mac_table;
 
     protected: bool my_listening_flag;
-    protected: boost::optional<struct sockaddr_in> my_bound_src;
+    protected: static boost::optional<struct sockaddr_in> my_bound_src;
     protected: boost::optional<struct sockaddr_in> my_default_dst;
     protected: std::queue<dmtr_sgarray_t> my_recv_queue;
     protected: std::unique_ptr<task::thread_type> my_accept_thread;

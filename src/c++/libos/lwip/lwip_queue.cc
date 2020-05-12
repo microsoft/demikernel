@@ -1022,6 +1022,13 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     src.sin_family = AF_INET;
     dst.sin_family = AF_INET;
 
+    // if bound filter out other packets
+    if (boost::none != my_bound_src) {
+        if (ipv4_src_addr != my_bound_src->sin_addr.s_addr ||
+            udp_dst_port != my_bound_src->sin_port) {
+            return false;
+        }
+    }
     // segment count
     sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
     p += sizeof(uint32_t);
