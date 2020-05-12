@@ -309,41 +309,32 @@ int dmtr::spdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 {
     DMTR_TRUE(EPERM, our_spdk_init_flag);
     uint32_t total_len = 0;
-    
+
+    // find size
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {
+        total_len += sga->sga_segs[i].sgaseg_len;
+    }
     // Allocate a DMA-able buffer that is rounded up to the nearest sector size
     // and includes space for the sga metadata like the number of segments, each
     // segment size, and any partial block data from the last write.
     // Randomly pick 4k alignment.
-    const unsigned int size = (partialBlockUsage +
-        (sga->sga_numsegs * (DMTR_SGARRAY_MAXSIZE + sizeof(uint32_t))) +
-        sizeof(uint32_t) + sectorSize - 1) / sectorSize;
-    char *payload = (char *) spdk_malloc(size, 0x1000, NULL,
+    const size_t partial_block_size = (partialBlockUsage + total_len) % sectorSize;
+    const size_t num_blocks = (total_len + partialBlockUsage - partial_block_size) / sectorSize + 1;
+    uint8_t *buf = (uint8_t *) spdk_malloc(num_blocks * sectorSize, 0x1000, NULL,
         SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
-    assert(payload != nullptr);
+    uint8_t *p = buf; 
 
     // See if we have a partial block left over from the last write. If we do,
     // we need to insert it into the front of the buffer.
     if (partialBlockUsage != 0) {
-        memcpy(payload, partialBlock, partialBlockUsage);
-        payload += partialBlockUsage;
+        memcpy(p, partialBlock, partialBlockUsage);
+        p += partialBlockUsage;
     }
     
-    {
-        auto * const u32 = reinterpret_cast<uint32_t *>(payload);
-        *u32 = sga->sga_numsegs;
-        total_len += sizeof(*u32);
-        payload += sizeof(*u32);
-    }
-
-    for (size_t i = 0; i < sga->sga_numsegs; i++) {
-        auto * const u32 = reinterpret_cast<uint32_t *>(payload);
-        const auto len = sga->sga_segs[i].sgaseg_len;
-        *u32 = len;
-        total_len += sizeof(*u32);
-        payload += sizeof(*u32);
-        memcpy(payload, sga->sga_segs[i].sgaseg_buf, len);
-        total_len += len;
-        payload += len;
+    for (size_t i = 0; i < sga->sga_numsegs; i++) {\
+        const auto len = sga->sga_segs[i].sgaseg_len;    
+        memcpy(p, sga->sga_segs[i].sgaseg_buf, len);
+        p += len;
     }
 
     // Not sure if this is strictly required or if the device will throw and
@@ -352,24 +343,22 @@ int dmtr::spdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yi
         return -ENOSPC;
     }
 
-    unsigned int numBlocks = total_len / sectorSize;
-    partialBlockUsage = total_len - (numBlocks * sectorSize);
-
     // Save any partial blocks we may have so we don't have to do a
     // read-copy-update on the next write.
+    partialBlockUsage = partial_block_size;
     if (partialBlockUsage != 0) {
-        memcpy(partialBlock, payload + (total_len - partialBlockUsage),
+        memcpy(partialBlock, buf + (num_blocks - 1) * sectorSize,
             partialBlockUsage);
-        ++numBlocks;
     }
 
-    int rc = spdk_nvme_ns_cmd_write(ns, qpair, payload, logOffset, numBlocks,
+    int rc = spdk_nvme_ns_cmd_write(ns, qpair, buf, logOffset, num_blocks,
         nullptr, nullptr, 0);
+    
     if (rc != 0) {
         return rc;
     }
 
-    logOffset += numBlocks;
+    logOffset += num_blocks;
     if (partialBlockUsage != 0) {
         // If we had a partial block, then we're going to rewrite it the next
         // time we get data to write, so go back one LBA.
@@ -395,8 +384,8 @@ int dmtr::spdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
         }
     } while (rc == 0);
-    spdk_free(payload);
-    return rc;
+    spdk_free(buf);
+    return 0;
 }
 
 int dmtr::spdk_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) 

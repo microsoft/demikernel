@@ -30,7 +30,7 @@ ExternalProject_Add(spdk
   BUILD_COMMAND make -C ${SPDK_SOURCE_DIR}
   INSTALL_COMMAND echo "No install command for target `spdk`."
 )
-message("${DPDK_INSTALL_DIR}")
+
 add_dependencies(spdk dpdk)
 function(target_add_spdk TARGET)
   target_link_libraries(${TARGET} "-Wl,--whole-archive" ${SPDK_LIBS})

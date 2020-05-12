@@ -26,14 +26,17 @@
 #include <unistd.h>
 #include <vector>
 #include <yaml-cpp/yaml.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 int lqd = 0;
 dmtr_latency_t *pop_latency = NULL;
 dmtr_latency_t *push_latency = NULL;
 dmtr_latency_t *e2e_latency = NULL;
+dmtr_latency_t *file_log_latency = NULL;
 
 namespace po = boost::program_options;
-int lfd = 0, epoll_fd;
+int lfd = 0, epoll_fd, ffd;
 
 void sig_handler(int signo)
 {
@@ -111,6 +114,8 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_new_latency(&pop_latency, "server pop"));
     DMTR_OK(dmtr_new_latency(&push_latency, "server push"));
     DMTR_OK(dmtr_new_latency(&e2e_latency, "server end-to-end"));
+    DMTR_OK(dmtr_new_latency(&file_log_latency, "file log server"));
+
 
     lfd = socket(AF_INET, SOCK_STREAM, 0);
     std::cout << "listen qd: " << lfd << std::endl;
@@ -140,6 +145,11 @@ int main(int argc, char *argv[])
     event.events = EPOLLIN;
     event.data.fd = lfd;
     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, lfd, &event));
+    if (boost::none != file) {
+        // open a log file
+        ffd = open(boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP);
+    }
+
     while (1) {
         int event_count = epoll_wait(epoll_fd, events, 10, -1);
 
@@ -171,6 +181,13 @@ int main(int argc, char *argv[])
                 if (read_ret <= 0) {
                     free(buf);
                     continue;
+                }
+                if (0 != ffd) {
+                    // log to file
+                    auto t0 = boost::chrono::steady_clock::now();
+                    write(ffd, buf, packet_size);
+                    auto log_dt = boost::chrono::steady_clock::now() - t0;
+                    DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }
                 int write_ret = process_write(events[i].data.fd, buf);
                 if (write_ret <= 0) {
