@@ -59,133 +59,9 @@ unsigned int dmtr::spdk_dpdk_queue::sectorSize = 0;
 
 char *dmtr::spdk_dpdk_queue::partialBlock = nullptr;
 
-dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
-    lwip_queue(cid, qd),
-    my_listening_flag(false)
+dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, dmtr::io_queue::category_id cid) :
+    lwip_queue(qd)
 {}
-
-int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
-    DMTR_TRUE(ERANGE, argc >= 0);
-    if (argc > 0) {
-        DMTR_NOTNULL(EINVAL, argv);
-    }
-    DMTR_TRUE(EPERM, !our_dpdk_init_flag);
-
-    std::string config_path;
-    bpo::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
-
-    bpo::variables_map vm;
-    bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
-    bpo::notify(vm);
-
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
-    }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return ENOENT;
-    }
-    YAML::Node config = YAML::LoadFile(config_path);
-
-        if (our_spdk_init_flag) {
-        return 0;
-    }
-
-    std::string transportType;
-    std::string devAddress;
-    // Initialize spdk from YAML options.
-    YAML::Node node = config["spdk"]["transport"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        transportType = node.as<std::string>();
-    }
-    node = config["spdk"]["devAddr"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        devAddress = node.as<std::string>();
-    }
-    node = config["spdk"]["namespaceId"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        namespaceId = node.as<unsigned int>();
-    }
-
-    struct spdk_env_opts opts;
-    spdk_env_opts_init(&opts);
-    opts.name = "Demeter";
-    opts.mem_channel = 4;
-    opts.core_mask = "0x4";
-    struct spdk_pci_addr nic = {0,0x37,0, 0};
-    opts.pci_whitelist = &nic;
-    opts.num_pci_addr = 1;
-    std::string eal_args = "--proc-type=auto";
-    opts.env_context = (void*)eal_args.c_str();
-    if (spdk_env_init(&opts) < 0) {
-        printf("Unable to initialize SPDK env\n");
-        return -1;
-    }
-
-    struct spdk_nvme_transport_id trid;
-    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
-    sprintf((char*)&trid.traddr, "0000:12:00.0");
-    
-    //if (!parseTransportId(&trid, transportType, devAddress)) {
-    //    return -1;
-    // }
-
-    if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
-        printf("spdk_nvme_probe failed\n");
-        return -1;
-    }
-
-    our_spdk_init_flag = true;
-
-    node = config["lwip"]["known_hosts"];
-    if (YAML::NodeType::Map == node.Type()) {
-        for (auto i = node.begin(); i != node.end(); ++i) {
-            auto mac = i->first.as<std::string>();
-            auto ip = i->second.as<std::string>();
-            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
-        }
-    }
-
-    const uint16_t nb_ports = rte_eth_dev_count_avail();
-    DMTR_TRUE(ENOENT, nb_ports > 0);
-    fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
-
-    // create pool of memory for ring buffers.
-    struct rte_mempool *mbuf_pool = NULL;
-    DMTR_OK(rte_pktmbuf_pool_create(
-        mbuf_pool,
-        "default_mbuf_pool",
-        NUM_MBUFS * nb_ports,
-        MBUF_CACHE_SIZE,
-        0,
-        RTE_MBUF_DEFAULT_BUF_SIZE,
-        rte_socket_id()));
-
-    // initialize all ports.
-    uint16_t i = 0;
-    uint16_t port_id = 0;
-    RTE_ETH_FOREACH_DEV(i) {
-        DMTR_OK(init_dpdk_port(i, *mbuf_pool));
-        port_id = i;
-    }
-
-    if (rte_lcore_count() > 1) {
-        printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
-    }
-
-    our_dpdk_init_flag = true;
-    our_dpdk_port_id = port_id;
-    our_mbuf_pool = mbuf_pool;
-    return 0;
-}
-
-const size_t dmtr::spdk_dpdk_queue::our_max_queue_depth = 64;
-boost::optional<uint16_t> dmtr::spdk_dpdk_queue::our_dpdk_port_id;
 
 //*****************************************************************************
 // SPDK functions
@@ -272,6 +148,127 @@ int dmtr::spdk_dpdk_queue::parseTransportId(
 }
 
  
+int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
+    DMTR_TRUE(ERANGE, argc >= 0);
+    if (argc > 0) {
+        DMTR_NOTNULL(EINVAL, argv);
+    }
+    DMTR_TRUE(EPERM, !our_dpdk_init_flag);
+
+    std::string config_path;
+    bpo::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "display usage information")
+        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+
+    bpo::variables_map vm;
+    bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
+    bpo::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << desc << std::endl;
+        return 0;
+    }
+
+    if (access(config_path.c_str(), R_OK) == -1) {
+        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
+        return ENOENT;
+    }
+    YAML::Node config = YAML::LoadFile(config_path);
+
+        if (our_spdk_init_flag) {
+        return 0;
+    }
+
+    std::string transportType;
+    std::string devAddress;
+    // Initialize spdk from YAML options.
+    YAML::Node node = config["spdk"]["transport"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        transportType = node.as<std::string>();
+    }
+    node = config["spdk"]["devAddr"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        devAddress = node.as<std::string>();
+    }
+    node = config["spdk"]["namespaceId"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        namespaceId = node.as<unsigned int>();
+    }
+
+    struct spdk_env_opts opts;
+    spdk_env_opts_init(&opts);
+    opts.name = "Demeter";
+    opts.mem_channel = 4;
+    opts.core_mask = "0x4";
+    struct spdk_pci_addr nic = {0,0x37,0, 0};
+    opts.pci_whitelist = &nic;
+    opts.num_pci_addr = 1;
+    std::string eal_args = "--proc-type=auto";
+    opts.env_context = (void*)eal_args.c_str();
+    if (spdk_env_init(&opts) < 0) {
+        printf("Unable to initialize SPDK env\n");
+        return -1;
+    }
+
+    struct spdk_nvme_transport_id trid;
+    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
+    sprintf((char*)&trid.traddr, "0000:12:00.0");
+    
+    //if (!parseTransportId(&trid, transportType, devAddress)) {
+    //    return -1;
+    // }
+
+    if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
+        printf("spdk_nvme_probe failed\n");
+        return -1;
+    }
+
+    our_spdk_init_flag = true;
+    our_dpdk_init_flag = true;
+
+    node = config["lwip"]["known_hosts"];
+    if (YAML::NodeType::Map == node.Type()) {
+        for (auto i = node.begin(); i != node.end(); ++i) {
+            auto mac = i->first.as<std::string>();
+            auto ip = i->second.as<std::string>();
+            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+        }
+    }
+
+    const uint16_t nb_ports = rte_eth_dev_count_avail();
+    DMTR_TRUE(ENOENT, nb_ports > 0);
+    fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
+
+    // create pool of memory for ring buffers.
+    struct rte_mempool *mbuf_pool = NULL;
+    DMTR_OK(rte_pktmbuf_pool_create(
+        mbuf_pool,
+        "default_mbuf_pool",
+        NUM_MBUFS * nb_ports,
+        MBUF_CACHE_SIZE,
+        0,
+        RTE_MBUF_DEFAULT_BUF_SIZE,
+        rte_socket_id()));
+
+    // initialize all ports.
+    uint16_t i = 0;
+    uint16_t port_id = 0;
+    RTE_ETH_FOREACH_DEV(i) {
+        DMTR_OK(init_dpdk_port(i, *mbuf_pool));
+        port_id = i;
+    }
+
+    if (rte_lcore_count() > 1) {
+        printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
+    }
+
+    our_dpdk_init_flag = true;
+    our_dpdk_port_id = port_id;
+    our_mbuf_pool = mbuf_pool;
+    return 0;
+}
+
 #if DMTR_PROFILE
 int dmtr::spdk_dpdk_queue::alloc_latency()
 {
@@ -299,7 +296,7 @@ int dmtr::spdk_dpdk_queue::alloc_latency()
 
 int dmtr::spdk_dpdk_queue::new_net_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
 
 #if DMTR_PROFILE
     DMTR_OK(alloc_latency());
@@ -320,17 +317,6 @@ int dmtr::spdk_dpdk_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int
 
     q_out = std::unique_ptr<io_queue>(new spdk_dpdk_queue(qd, FILE_Q));
     DMTR_NOTNULL(ENOMEM, q_out);
-    return 0;
-}
-
-int dmtr::spdk_dpdk_queue::socket(int domain, int type, int protocol) {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-
-    // we don't currently support anything but UDP and faux-TCP.
-    if (type != SOCK_DGRAM && type != SOCK_STREAM) {
-        return ENOTSUP;
-    }
-
     return 0;
 }
 
@@ -367,20 +353,15 @@ int dmtr::spdk_dpdk_queue::creat(const char *pathname, mode_t mode)
     return 0;
 }
 
-int dmtr::spdk_dpdk_queue::close() {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    if (!is_connected()) {
-        return 0;
-    }
+int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
+{
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
+    DMTR_NOTNULL(EINVAL, my_push_thread);
 
-    my_default_dst = boost::none;
-    my_bound_src = boost::none;
+    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
+    my_push_thread->enqueue(qt);
+    my_push_thread->service();
     return 0;
-}
-
-
-int dmtr::spdk_dpdk_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield) {
-    return super->push(sga, yield);
 }
 
 // TODO(ashmrtnz): Update to use spdk scatter gather arrays if the sga parameter
@@ -479,82 +460,52 @@ int dmtr::spdk_dpdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_typ
     return rc;
 }
 
-int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    DMTR_NOTNULL(EINVAL, my_push_thread);
-
-    DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
-    my_push_thread->enqueue(qt);
-    my_push_thread->service();
-    return 0;
-}
-
 int dmtr::spdk_dpdk_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) 
 {
-    while (good()) {
-        while (tq.empty()) {
-            yield();
-        }
+    if (my_cid == NETWORK_Q) {
+        dmtr::lwip_queue::push_thread(yield, tq);
+    } else {
+        while (good()) {
+            while (tq.empty()) {
+                yield();
+            }
 
-        auto qt = tq.front();
-        tq.pop();
-        task *t;
-        DMTR_OK(get_task(t, qt));
-
-        const dmtr_sgarray_t *sga = NULL;
-        DMTR_TRUE(EINVAL, t->arg(sga));
+            auto qt = tq.front();
+            tq.pop();
+            task *t;
+            DMTR_OK(get_task(t, qt));
+            
+            const dmtr_sgarray_t *sga = NULL;
+            DMTR_TRUE(EINVAL, t->arg(sga));
 
 #if DMTR_DEBUG
-        std::cerr << "push(" << qt << "): preparing message." << std::endl;
+            std::cerr << "push(" << qt << "): preparing message." << std::endl;
 #endif
 
-        size_t sgalen = 0;
-        DMTR_OK(dmtr_sgalen(&sgalen, sga));
-        if (0 == sgalen) {
-            DMTR_OK(t->complete(ENOMSG));
-            // move onto the next task.
-            continue;
-        }
+            size_t sgalen = 0;
+            DMTR_OK(dmtr_sgalen(&sgalen, sga));
+            if (0 == sgalen) {
+                DMTR_OK(t->complete(ENOMSG));
+                // move onto the next task.
+                continue;
+            }
 
-        int ret = 0;
-        switch (my_cid) {
-        case NETWORK_Q:
-            ret = net_push(sga, yield);
-            break;
-        case FILE_Q:
+            int ret = 0;
             ret = file_push(sga, yield);
-            break;
-        default:
-            ret = ENOTSUP;
-            break;
-        }
 
-        if (0 != ret) {
-            DMTR_OK(t->complete(ret));
-            // move onto the next task.
-            continue;
+            if (0 != ret) {
+                DMTR_OK(t->complete(ret));
+                // move onto the next task.
+                continue;
+            }
+            DMTR_OK(t->complete(0, *sga));
         }
-        DMTR_OK(t->complete(0, *sga));
     }
     return 0;
 }
 
-
-int dmtr::spdk_dpdk_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield) 
-{
-    super->pop(sga, yield);
-}
-
-int dmtr::spdk_dpdk_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
-{
-    //TODO?
-    return 0;
-}
-
 int dmtr::spdk_dpdk_queue::pop(dmtr_qtoken_t qt) {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
     DMTR_NOTNULL(EINVAL, my_pop_thread);
 
     DMTR_OK(new_task(qt, DMTR_OPC_POP));
@@ -563,35 +514,33 @@ int dmtr::spdk_dpdk_queue::pop(dmtr_qtoken_t qt) {
     return 0;
 }
 
+int dmtr::spdk_dpdk_queue::file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield)
+{
+    //TODO?
+    return 0;
+}
+
 int dmtr::spdk_dpdk_queue::pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
 #if DMTR_DEBUG
     std::cerr << "[" << qd() << "] pop thread started." << std::endl;
 #endif
 
-    while (good()) {
-        while (tq.empty()) {
-            yield();
-        }
+    if (my_cid == NETWORK_Q) {
+        dmtr::lwip_queue::pop_thread(yield, tq);
+    } else {
+        while (good()) {
+            while (tq.empty()) {
+                yield();
+            }
 
-        auto qt = tq.front();
-        tq.pop();
-        task *t;
-        DMTR_OK(get_task(t, qt));
+            auto qt = tq.front();
+            tq.pop();
+            task *t;
+            DMTR_OK(get_task(t, qt));
 
-        dmtr_sgarray_t sga = {};
-        int ret = 0;
-        switch(my_cid) {
-        case NETWORK_Q:
-            ret = net_pop(&sga, yield);
-            break;
-        case FILE_Q:
+            dmtr_sgarray_t sga = {};
+            int ret = 0;
             ret = file_pop(&sga, yield);
-            break;
-        default:
-            ret = ENOTSUP;
-            break;
-        }
-
         if (EAGAIN == ret) {
             yield();
             continue;
@@ -606,69 +555,15 @@ int dmtr::spdk_dpdk_queue::pop_thread(task::thread_type::yield_type &yield, task
         std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         DMTR_OK(t->complete(0, sga));
     }
-
-    return 0;
-}
-
-
-int
-dmtr::spdk_dpdk_queue::service_incoming_packets() {
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
-    DMTR_TRUE(EPERM, our_dpdk_port_id != boost::none);
-    const uint16_t dpdk_port_id = boost::get(our_dpdk_port_id);
-
-    // poll DPDK NIC
-    struct rte_mbuf *pkts[our_max_queue_depth];
-    uint16_t depth = 0;
-    DMTR_OK(dmtr_sztou16(&depth, our_max_queue_depth));
-    size_t count = 0;
-#if DMTR_PROFILE
-    auto t0 = boost::chrono::steady_clock::now();
-#endif
-    int ret = rte_eth_rx_burst(count, dpdk_port_id, 0, pkts, depth);
-    switch (ret) {
-        default:
-            DMTR_FAIL(ret);
-        case 0:
-            break;
-        case EAGAIN:
-            return ret;
-    }
-
-#if DMTR_PROFILE
-    auto dt = boost::chrono::steady_clock::now() - t0;
-    DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
-#endif
-
-    for (size_t i = 0; i < count; ++i) {
-        struct sockaddr_in src, dst;
-        dmtr_sgarray_t sga;
-        // check the packet header
-
-        bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
-        rte_pktmbuf_free(pkts[i]);
-
-        if (valid_packet) {
-            // found valid packet, try to place in queue based on src
-            if (insert_recv_queue(spdk_dpdk_addr(src), sga)) {
-                // placed in appropriate queue, work is done
-#if DMTR_DEBUG
-                std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
-#endif
-                continue;
-            }
-            std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
-            // otherwise place in queue based on dst
-            insert_recv_queue(spdk_dpdk_addr(dst), sga);
-        }
     }
     return 0;
 }
+
 
 int dmtr::spdk_dpdk_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
-    DMTR_TRUE(EPERM, our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, our_spdk_init_flag);
     DMTR_TRUE(EINVAL, good());
 
     task *t;
@@ -679,7 +574,7 @@ int dmtr::spdk_dpdk_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
         default:
             return ENOTSUP;
         case DMTR_OPC_ACCEPT:
-            ret = my_accept_thread->service();
+            ret = dmtr::lwip_queue::my_accept_thread->service();
             break;
         case DMTR_OPC_PUSH:
             ret = my_push_thread->service();

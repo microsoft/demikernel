@@ -15,6 +15,9 @@
 #include <unordered_map>
 #include <map>
 
+#define NUM_MBUFS               8191
+#define MBUF_CACHE_SIZE         250
+
 class lwip_addr {
 public:
     lwip_addr();
@@ -93,8 +96,8 @@ class lwip_queue : public io_queue {
 
     protected: void start_threads();
     protected: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    protected: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    protected: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    protected: virtual int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    protected: virtual int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     protected: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
     protected: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     protected: static int service_incoming_packets();
