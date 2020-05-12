@@ -19,14 +19,15 @@ class lwip_addr {
 public:
     lwip_addr();
     lwip_addr(const struct sockaddr_in &addr);
-    bool operator==(const lwip_addr &a,
-                           const lwip_addr &b);
-    bool operator!=(const lwip_addr &a,
-                           const lwip_addr &b);
-    bool operator<(const lwip_addr &a,
-                          const lwip_addr &b);
 private:
     struct sockaddr_in addr;
+    friend class lwip_queue;
+    friend bool operator==(const lwip_addr &a,
+                           const lwip_addr &b);
+    friend bool operator!=(const lwip_addr &a,
+                           const lwip_addr &b);
+    friend bool operator<(const lwip_addr &a,
+                          const lwip_addr &b);
 };
 
 namespace dmtr {
