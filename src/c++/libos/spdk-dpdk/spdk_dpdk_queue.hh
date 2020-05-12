@@ -1,4 +1,4 @@
-2// Copyright (c) Microsoft Corporation.
+// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 #ifndef DMTR_LIBOS_SPDK_DPDK_QUEUE_HH_IS_INCLUDED
@@ -48,7 +48,7 @@ class spdk_dpdk_queue : public io_queue {
     // init functions
     public: static int init_spdk_dpdk(int argc, char *argv[]);
 
-    protected: spdk_dpdk_queue(int qd);
+protected: spdk_dpdk_queue(int qd, io_queue::category_id cid);
     public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
     public: static int new_file_object(std::unique_ptr<io_queue> &q_out, int qd);
 

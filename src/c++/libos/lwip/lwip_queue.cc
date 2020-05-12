@@ -31,7 +31,6 @@
 #include <rte_memcpy.h>
 #include <rte_udp.h>
 #include <unistd.h>
-#include <yaml-cpp/yaml.h>
 
 namespace bpo = boost::program_options;
 

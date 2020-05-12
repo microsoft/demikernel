@@ -42,7 +42,7 @@ class spdk_queue: public io_queue {
     public: int pop(dmtr_qtoken_t qt);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
-    private: void start_threads();
+    public: void start_threads();
     private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
 
@@ -54,7 +54,7 @@ class spdk_queue: public io_queue {
     private: static int parseTransportId(spdk_nvme_transport_id *trid,
                                      std::string &transportType, std::string &devAddress);
 
-    protected: spdk_queue(int qd);
+    public: spdk_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~spdk_queue() { };

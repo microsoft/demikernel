@@ -40,18 +40,13 @@ namespace bpo = boost::program_options;
 bool dmtr::spdk_dpdk_queue::our_init_flag = false;
 
 dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, dmtr::io_queue::category_id cid) :
-    io_queue(qd, cid)
+    io_queue(cid, qd)
 {
-    switch (cid) {
-    case NETWORK_Q:
-        lwip_queue::new_object(net_queue, qd);
-        break;
-    case FILE_Q:
-        spdk_queue::new_object(file_queue, qd);
-        break;
-    default:
-        DMTR_UNREACHABLE();
-    }
+    if (cid == NETWORK_Q)
+        net_queue = new lwip_queue(qd);
+    else
+        file_queue = new spdk_queue(qd);
+        
 }
  
 int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
@@ -59,7 +54,7 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     if (argc > 0) {
         DMTR_NOTNULL(EINVAL, argv);
     }
-    DMTR_TRUE(EPERM, !our_dpdk_init_flag);
+    DMTR_TRUE(EPERM, !our_init_flag);
 
     std::string config_path;
     bpo::options_description desc("Allowed options");
@@ -83,10 +78,7 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     YAML::Node config = YAML::LoadFile(config_path);
 
     struct spdk_env_opts opts;
-    spdk_env_opts_init(opts);
-    opts->name = "Demeter";
-    opts->mem_channel = 4;
-    opts->core_mask = "0x4";
+    spdk_env_opts_init(&opts);
     struct spdk_pci_addr nic = {0,0x37,0, 0};
     opts.pci_whitelist = &nic;
     opts.num_pci_addr = 1;
@@ -95,7 +87,7 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
 
     // use SPDK to init DPDK
     DMTR_OK(spdk_queue::init_spdk(config, &opts));
-    DMTR_OK(lwip_queue::finish_init_dpdk(config));
+    DMTR_OK(lwip_queue::finish_dpdk_init(config));
     our_init_flag = true;
     return 0;
 }
@@ -116,61 +108,68 @@ int dmtr::spdk_dpdk_queue::new_file_object(std::unique_ptr<io_queue> &q_out, int
     return 0;
 }
 
-int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+int dmtr::spdk_dpdk_queue::socket(int domain, int type, int protocol) {
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->socket(domain, type, protocol);
 }
 
 int
-dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+dmtr::spdk_dpdk_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->getsockname(saddr, size);
 }
 
-int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd)
+int dmtr::spdk_dpdk_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt, int new_qd)
 {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->accept(q_out, qt, new_qd);
 }
 
-int dmtr::lwip_queue::listen(int backlog)
+int dmtr::spdk_dpdk_queue::listen(int backlog)
 {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->listen(backlog);
 }
 
-int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+int dmtr::spdk_dpdk_queue::bind(const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->bind(saddr, size);
 }
 
-int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size) {
-    DMTR_TRUE(EPERM, our_dpdk_flag);
+int dmtr::spdk_dpdk_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size) {
+    DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(NETWORK_Q, my_cid);
     DMTR_NOTNULL(EINVAL, net_queue);
     return net_queue->connect(qt, saddr, size);
 }
 
-int dmtr::lwip_queue::close() {
-    if (my_cid == NETWORK_Q) return net_queue->close();
-    else return file_queue->close();
+int dmtr::spdk_dpdk_queue::close() {
+    int ret;
+    if (my_cid == NETWORK_Q) {
+        ret = net_queue->close();
+        delete net_queue;
+    } else {
+        ret = file_queue->close();
+        delete file_queue;
+    }
+    return ret;
 }
 
 int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags)
 {
     DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(FILE_Q, my_cid);
-    DMTR_NOTNULL(file_queue);
+    DMTR_NOTNULL(EINVAL, file_queue);
     //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
@@ -183,7 +182,7 @@ int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
 {
     DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(FILE_Q, my_cid);
-    DMTR_NOTNULL(file_queue);
+    DMTR_NOTNULL(EINVAL, file_queue);
     //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
@@ -196,7 +195,7 @@ int dmtr::spdk_dpdk_queue::creat(const char *pathname, mode_t mode)
 {
     DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(FILE_Q, my_cid);
-    DMTR_NOTNULL(file_queue);
+    DMTR_NOTNULL(EINVAL, file_queue);
     //TODO(ashmrtnz): Yay for only supporing a single file, so we do nothing! If
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
@@ -214,13 +213,13 @@ int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
 
 int dmtr::spdk_dpdk_queue::pop(dmtr_qtoken_t qt) {
     DMTR_TRUE(EPERM, our_init_flag);
-    if (my_cid == NETWORK_Q) return net_queue->pop(qt, sga);
-    else return file_queue->pop(qt, sga);    
+    if (my_cid == NETWORK_Q) return net_queue->pop(qt);
+    else return file_queue->pop(qt);    
 }
 
 int dmtr::spdk_dpdk_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 { 
     DMTR_TRUE(EPERM, our_init_flag);
-    if (my_cid == NETWORK_Q) return net_queue->poll(qt, sga);
-    else return file_queue->poll(qt, sga);    
+    if (my_cid == NETWORK_Q) return net_queue->poll(qr_out, qt);
+    else return file_queue->poll(qr_out, qt);    
 }
