@@ -37,7 +37,7 @@ class posix_queue : public io_queue {
     public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int new_qd);
     public: int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
     public: int open(const char *pathname, int flags);
-    public: int open(const char *pathname, int flags, mode_t mode);
+    public: int open2(const char *pathname, int flags, mode_t mode);
     public: int creat(const char *pathname, mode_t mode);
     public: int close();
 

@@ -174,11 +174,11 @@ int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags)
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
     // TODO(ashmrtnz): O_TRUNC?
-    file_queue->start_threads();
+    file_queue->open(pathname, flags);
     return 0;
 }
 
-int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
+int dmtr::spdk_dpdk_queue::open2(const char *pathname, int flags, mode_t mode)
 {
     DMTR_TRUE(EPERM, our_init_flag);
     DMTR_TRUE(FILE_Q, my_cid);
@@ -187,7 +187,7 @@ int dmtr::spdk_dpdk_queue::open(const char *pathname, int flags, mode_t mode)
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
     // TODO(ashmrtnz): O_TRUNC?
-    file_queue->start_threads();
+    file_queue->open2(pathname, flags, mode);
     return 0;
 }
 
@@ -200,7 +200,7 @@ int dmtr::spdk_dpdk_queue::creat(const char *pathname, mode_t mode)
     // we choose to support multiple files we will need to so some sort of
     // lookup or something here.
     // TODO(ashmrtnz): O_TRUNC?
-    file_queue->start_threads();
+    file_queue->creat(pathname, mode);
     return 0;
 }
 

@@ -76,6 +76,7 @@ typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> l
 static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
+sockaddr_in *dmtr::lwip_queue::my_bound_src = NULL;
 
 const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -443,6 +444,9 @@ dmtr::lwip_queue::~lwip_queue()
         msg << "Failed to close `lwip_queue` object (error " << ret << ")." << std::endl;
         DMTR_PANIC(msg.str().c_str());
     }
+    if (is_bound) {
+        free(my_bound_src);
+    }
 }
 
 int dmtr::lwip_queue::socket(int domain, int type, int protocol) {
@@ -460,11 +464,10 @@ int
 dmtr::lwip_queue::getsockname(struct sockaddr * const saddr, socklen_t * const size) {
     DMTR_NOTNULL(EINVAL, size);
     DMTR_TRUE(ENOMEM, *size >= sizeof(struct sockaddr_in));
-    DMTR_TRUE(EINVAL, boost::none != my_bound_src);
+    DMTR_TRUE(EINVAL, !is_bound());
 
     struct sockaddr_in *saddr_in = reinterpret_cast<struct sockaddr_in *>(saddr);
-    if (boost::none != my_bound_src)
-        *saddr_in = *my_bound_src;
+    *saddr_in = *my_bound_src;
     return 0;
 }
 
@@ -480,7 +483,10 @@ int dmtr::lwip_queue::accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qt,
 
     DMTR_OK(new_task(qt, DMTR_OPC_ACCEPT, q));
     my_accept_thread->enqueue(qt);
-
+#if DMTR_DEBUG
+    printf("waiting for accept: %u\n", qt);
+#endif
+    
     q_out = std::move(qq);
     return 0;
 }
@@ -515,7 +521,6 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         sockaddr_in &src = sga.sga_addr;
         lwip_addr addr = lwip_addr(src);
         DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
-        new_lq->my_bound_src = my_bound_src;
         new_lq->my_default_dst = src;
         our_recv_queues[addr] = &new_lq->my_recv_queue;
         // add the packet as the first to the new queue
@@ -563,7 +568,8 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
         DMTR_TRUE(EPERM, 0 == memcmp(&saddr_copy.sin_addr, &ip, sizeof(ip)));
     }
     DMTR_TRUE(EINVAL, our_recv_queues.find(lwip_addr(saddr_copy)) == our_recv_queues.end());
-    my_bound_src = saddr_copy;
+    my_bound_src = reinterpret_cast<sockaddr_in *>(malloc(size));
+    *my_bound_src = saddr_copy;
     our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
 #if DMTR_DEBUG
     std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
@@ -594,7 +600,8 @@ int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
     src.sin_family = AF_INET;
     src.sin_port = htons(12345);
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
-    my_bound_src = src;
+    my_bound_src = reinterpret_cast<sockaddr_in *>(malloc(size));
+    *my_bound_src = src;
 
     char src_ip_str[INET_ADDRSTRLEN], dst_ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(my_bound_src->sin_addr), src_ip_str, sizeof(src_ip_str));
@@ -617,7 +624,6 @@ int dmtr::lwip_queue::close() {
     }
 
     my_default_dst = boost::none;
-    my_bound_src = boost::none;
     return 0;
 }
 
@@ -1024,9 +1030,12 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_family = AF_INET;
 
     // if bound filter out other packets
-    if (boost::none != my_bound_src) {
-        if (ipv4_src_addr != my_bound_src->sin_addr.s_addr ||
+    if (is_bound()) {
+        if (ipv4_dst_addr != my_bound_src->sin_addr.s_addr ||
             udp_dst_port != my_bound_src->sin_port) {
+#if DMTR_DEBUG
+            printf("dropping because not for my bound address");
+#endif
             return false;
         }
     }
@@ -1057,7 +1066,7 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
         p += seg_len;
 
 #if DMTR_DEBUG
-        //printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
+        printf("recv: packet segment [%lu] contents: %s\n", i, reinterpret_cast<char *>(buf));
 #endif
     }
     sga.sga_addr.sin_family = AF_INET;

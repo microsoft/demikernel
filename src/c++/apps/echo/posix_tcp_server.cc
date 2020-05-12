@@ -51,42 +51,14 @@ void sig_handler(int signo)
 
 int process_read(int fd, char *buf)
 {
-    int bytes_read = 0, ret;
+    int ret;
     auto t0 = boost::chrono::steady_clock::now();
-    while (bytes_read < (int)packet_size) {
-        ret = read(fd,
-                   (void *)&(buf[bytes_read]),
-                   packet_size - bytes_read);
-        if (ret < 0) {
-            close(fd);
-            return ret;
-        }
-        bytes_read += ret;
-    }
-
+    ret = read(fd,
+               (void *)&(buf[0]),
+               packet_size);
     auto dt = boost::chrono::steady_clock::now() - t0;
     DMTR_OK(dmtr_record_latency(pop_latency, dt.count()));
-    return bytes_read;
-}
-
-int process_write(int fd, char *buf)
-{
-    int bytes_written = 0, ret;
-    auto t0 = boost::chrono::steady_clock::now();
-    while (bytes_written < (int)packet_size) {
-        ret = write(fd,
-                    (void *)&(buf[bytes_written]),
-                    packet_size - bytes_written);
-        if (ret < 0) {
-            close(fd);
-            return ret;
-        }
-        bytes_written += ret;
-    }
-
-    auto dt = boost::chrono::steady_clock::now() - t0;
-    DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
-    return bytes_written;
+    return ret;
 }
 
 
@@ -162,7 +134,7 @@ int main(int argc, char *argv[])
 
                 // Put it in non-blocking mode
                 // COMMENTED OUT FOR NOW TO SEE IF FIX BUG
-                //DMTR_OK(fcntl(newfd, F_SETFL, O_NONBLOCK, 1));
+                DMTR_OK(fcntl(newfd, F_SETFL, O_NONBLOCK, 1));
 
                 // Set TCP_NODELAY
                 int n = 1;
@@ -176,29 +148,41 @@ int main(int argc, char *argv[])
                 DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, newfd, &event));
             } else {
                 char *buf = (char *)malloc(packet_size);
-                auto t0 = boost::chrono::steady_clock::now();
                 int read_ret = process_read(events[i].data.fd, buf);
-                if (read_ret <= 0) {
+                if (read_ret < 0) {
                     free(buf);
+                    DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, &events[i]));
+                    close(events[i].data.fd);
                     continue;
                 }
                 if (0 != ffd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
-                    ssize_t written = 0;
+                    ssize_t total=0, written = 0;
                     do {
-                        written = write(ffd, &buf[written], packet_size - written);
+                        written = write(ffd, &buf[total], read_ret - total);
                         if (written < 0) return written;
-                    } while (written < packet_size);                    
+                        total += written;
+                    } while (total < read_ret);                    
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }
-                int write_ret = process_write(events[i].data.fd, buf);
-                if (write_ret <= 0) {
-                    free(buf);
-                    continue;
-                }
+                auto t0 = boost::chrono::steady_clock::now();
+                ssize_t total=0, write_ret = 0;
+                do {
+                    write_ret = write(events[i].data.fd,
+                                      (void *)&(buf[total]),
+                                      read_ret - total);
+                    if (write_ret < 0) {
+                        free(buf);
+                        DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, &events[i]));
+                        close(events[i].data.fd);
+                        continue;
+                    }
+                    total += write_ret;
+                } while (total < read_ret);
                 auto dt = boost::chrono::steady_clock::now() - t0;
+                DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
                 DMTR_OK(dmtr_record_latency(e2e_latency, dt.count()));
 
                 free(buf);

@@ -213,13 +213,13 @@ int dmtr::io_queue_api::open(int &qd_out, const char *pathname, int flags) {
     return 0;
 }
 
-int dmtr::io_queue_api::open(int &qd_out, const char *pathname, int flags, mode_t mode) {
+int dmtr::io_queue_api::open2(int &qd_out, const char *pathname, int flags, mode_t mode) {
     qd_out = 0;
 
     io_queue *q = NULL;
     DMTR_OK(new_queue(q, io_queue::FILE_Q));
 
-    int ret = q->open(pathname, flags, mode);
+    int ret = q->open2(pathname, flags, mode);
     if (ret != 0) {
         DMTR_OK(remove_queue(q->qd()));
         DMTR_FAIL(ret);

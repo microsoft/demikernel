@@ -309,7 +309,7 @@ int dmtr::posix_queue::open(const char *pathname, int flags)
     return 0;
 }
 
-int dmtr::posix_queue::open(const char *pathname, int flags, mode_t mode)
+int dmtr::posix_queue::open2(const char *pathname, int flags, mode_t mode)
 {
     int fd = ::open(pathname, flags, mode);
     if (fd == -1) {

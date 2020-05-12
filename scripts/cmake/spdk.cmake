@@ -18,6 +18,7 @@ set(SPDK_LIBS
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_sock_posix.a
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_thread.a
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_util.a
+ # ${DPD+++K_SOURCE_DIR}/build/lib/libspdk_rte_vhost.a
 )
 set(SPDK_LIBS2
   ${SPDK_SOURCE_DIR}/build/lib/libspdk_env_dpdk.a
@@ -26,7 +27,7 @@ set(SPDK_LIBS2
 ExternalProject_Add(spdk
   PREFIX ${SPDK_BINARY_DIR}
   SOURCE_DIR ${SPDK_SOURCE_DIR}
-  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_BINARY_DIR}
+  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_BINARY_DIR} --with-rdma
   BUILD_COMMAND make -C ${SPDK_SOURCE_DIR}
   INSTALL_COMMAND echo "No install command for target `spdk`."
 )

@@ -96,7 +96,7 @@ int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode)
     DMTR_NOTNULL(EINVAL, qd_out);
     DMTR_NOTNULL(EPERM, ioq_api.get());
 
-    return ioq_api->open(*qd_out, pathname, flags, mode);
+    return ioq_api->open2(*qd_out, pathname, flags, mode);
 }
 
 int dmtr_creat(int *qd_out, const char *pathname, mode_t mode)

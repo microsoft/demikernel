@@ -124,7 +124,7 @@ int dmtr::io_queue::open(const char *pathname, int flags) {
     return ENOTSUP;
 }
 
-int dmtr::io_queue::open(const char *pathname, int flags, mode_t mode) {
+int dmtr::io_queue::open2(const char *pathname, int flags, mode_t mode) {
     return ENOTSUP;
 }
 
@@ -196,8 +196,9 @@ int dmtr::io_queue::get_task(task *&t_out, dmtr_qtoken_t qt) {
 
 int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
     auto it = my_tasks.find(qt);
-    DMTR_TRUE(ENOENT, it != my_tasks.cend());
-    my_tasks.erase(it);
+    //DMTR_TRUE(ENOENT, it != my_tasks.cend());
+    if (it != my_tasks.cend())
+        my_tasks.erase(it);
     return 0;
 }
 
