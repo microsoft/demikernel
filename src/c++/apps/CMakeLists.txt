@@ -4,8 +4,8 @@
 add_subdirectory(echo)
 
 add_redis(redis-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/redis-posix)
-add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
-add_redis(redis-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/redis-lwip)
+add_redis(redis-rdma dmtr-libos-spdk-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
+add_redis(redis-lwip dmtr-libos-spdk-dpdk ${CMAKE_SOURCE_DIR}/submodules/redis-lwip)
 add_redis(redis-dpdk-catnip dmtr-libos-dpdk-catnip ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
 
 set(REDIS_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/redis-vanilla)
