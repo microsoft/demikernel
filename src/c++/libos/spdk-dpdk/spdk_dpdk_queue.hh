@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+2// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 #ifndef DMTR_LIBOS_SPDK_DPDK_QUEUE_HH_IS_INCLUDED
@@ -6,6 +6,7 @@
 
 #include <boost/optional.hpp>
 #include "../lwip/lwip_queue.hh"
+#include "../spdk/spdk_queue.hh"
 #include <memory>
 #include <netinet/in.h>
 #include <queue>
@@ -20,26 +21,21 @@
 
 namespace dmtr {
 
-class spdk_dpdk_queue : public lwip_queue {
-    private: static bool our_spdk_init_flag;
-    public: static struct spdk_nvme_ns *ns;
-    public: static struct spdk_nvme_qpair *qpair;
-    // Block offset into the log.
-    public: unsigned int logOffset = 0;
-    // Namespace ids start at 1 and are numbered consequitively.
-    public: static int namespaceId;
-    // Number of bytes in the namespace.
-    public: static unsigned int namespaceSize;
-    public: static unsigned int sectorSize;
-    public: static char *partialBlock;
-    // How many bytes of data are in partialBlock.
-    private: unsigned int partialBlockUsage = 0;
+class spdk_dpdk_queue : public io_queue {
+    private: static bool our_init_flag;
+    private: lwip_queue *net_queue;
+    private: spdk_queue *file_queue;
 
-    public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
-    public: static int new_file_object(std::unique_ptr<io_queue> &q_out, int qd);
+    // network functions
+    public: int socket(int domain, int type, int protocol);
+    public: int getsockname(struct sockaddr * const saddr, socklen_t * const size);
+    public: int listen(int backlog);
+    public: int bind(const struct sockaddr * const saddr, socklen_t size);
+    public: int accept(std::unique_ptr<io_queue> &q_out, dmtr_qtoken_t qtok, int newqd);
+    public: int connect(dmtr_qtoken_t qt, const struct sockaddr * const saddr, socklen_t size);
+    public: int close();
 
-    public: spdk_dpdk_queue(int qd, dmtr::io_queue::category_id cid);
-    public: virtual ~spdk_dpdk_queue();
+    // storage functions
     public: int open(const char* pathname, int flags);
     public: int open(const char* pathname, int flags, mode_t mode);
     public: int creat(const char* pahname, mode_t mode);
@@ -47,19 +43,16 @@ class spdk_dpdk_queue : public lwip_queue {
     // data path functions
     public: int push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
     public: int pop(dmtr_qtoken_t qt);
-    public: int pop(dmtr_qtoken_t qt, size_t count);
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
-    private: void start_threads();
-    private: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: int file_push(const dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
-    private: int file_pop(dmtr_sgarray_t *sga, task::thread_type::yield_type &yield);
+    // init functions
+    public: static int init_spdk_dpdk(int argc, char *argv[]);
 
-    // spdk functions
-public: static int init_spdk_dpdk(int argc, char *argv[]);
-    private: static int parseTransportId(spdk_nvme_transport_id *trid,
-                 std::string &transportType, std::string &devAddress);
+    protected: spdk_dpdk_queue(int qd);
+    public: static int new_net_object(std::unique_ptr<io_queue> &q_out, int qd);
+    public: static int new_file_object(std::unique_ptr<io_queue> &q_out, int qd);
+
+    public: virtual ~spdk_dpdk_queue() { };
 };
 
 } // namespace dmtr

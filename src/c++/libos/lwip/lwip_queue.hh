@@ -74,6 +74,7 @@ class lwip_queue : public io_queue {
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     public: static int init_dpdk(int argc, char *argv[]);
+    public: static int finish_init_dpdk(YAML::Node &config);
     protected: static int get_dpdk_port_id(uint16_t &id_out);
     protected: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
     protected: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
@@ -94,10 +95,10 @@ class lwip_queue : public io_queue {
         return is_bound() || is_connected();
     }
 
-    protected: void start_threads();
+    public: void start_threads();
     protected: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    protected: virtual int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    protected: virtual int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    protected: int push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
+    protected: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     protected: static bool insert_recv_queue(const lwip_addr &saddr, const dmtr_sgarray_t &sga);
     protected: int send_outgoing_packet(uint16_t dpdk_port_id, struct rte_mbuf *pkt);
     protected: static int service_incoming_packets();

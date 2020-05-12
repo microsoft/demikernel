@@ -349,7 +349,15 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         init_cargs.push_back(const_cast<char *>(i->c_str()));
     }
     std::cerr << "]" << std::endl;
-    node = config["lwip"]["known_hosts"];
+
+    int unused = -1;
+    DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
+    return finish_dpdk_init(config);
+}
+
+int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
+{
+    YAML::Node node = config["lwip"]["known_hosts"];
     if (YAML::NodeType::Map == node.Type()) {
         for (auto i = node.begin(); i != node.end(); ++i) {
             auto mac = i->first.as<std::string>();
@@ -358,8 +366,6 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
         }
     }
 
-    int unused = -1;
-    DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
     const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
     fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
@@ -367,13 +373,13 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     // create pool of memory for ring buffers.
     struct rte_mempool *mbuf_pool = NULL;
     DMTR_OK(rte_pktmbuf_pool_create(
-        mbuf_pool,
-        "default_mbuf_pool",
-        NUM_MBUFS * nb_ports,
-        MBUF_CACHE_SIZE,
-        0,
-	8192 + RTE_PKTMBUF_HEADROOM,
-        rte_socket_id()));
+                                    mbuf_pool,
+                                    "default_mbuf_pool",
+                                    NUM_MBUFS * nb_ports,
+                                    MBUF_CACHE_SIZE,
+                                    0,
+                                    8192 + RTE_PKTMBUF_HEADROOM,
+                                    rte_socket_id()));
 
     // initialize all ports.
     uint16_t i = 0;
