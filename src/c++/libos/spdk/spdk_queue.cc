@@ -49,92 +49,93 @@ unsigned int dmtr::spdk_queue::sectorSize = 0;
 
 char *dmtr::spdk_queue::partialBlock = nullptr;
 
-dmtr::spdk_queue::spdk_queue(int qd, dmtr::io_queue::category_id cid) :
-    lwip_queue(qd)
+dmtr::spdk_queue::spdk_queue(int qd) :
+        io_queue(FILE_Q, qd)
 {}
 
 //*****************************************************************************
 // SPDK functions
 
 bool probeCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr_opts *opts) {
-  // Always say that we would like to attach to the controller since we aren't
-  // really looking for anything specific.
-  return true;
+    // Always say that we would like to attach to the controller since we aren't
+    // really looking for anything specific.
+    return true;
 }
 
 void attachCb(void *cb_ctx, const struct spdk_nvme_transport_id *trid, struct spdk_nvme_ctrlr *cntrlr, const struct spdk_nvme_ctrlr_opts *opts) {
-  struct spdk_nvme_io_qpair_opts qpopts;
+    struct spdk_nvme_io_qpair_opts qpopts;
 
-  if (dmtr::spdk_queue::qpair != nullptr) {
-    SPDK_ERRLOG("Already attached to a qpair\n");
-    return;
-  }
+    if (dmtr::spdk_queue::qpair != nullptr) {
+        SPDK_ERRLOG("Already attached to a qpair\n");
+        return;
+    }
 
-  dmtr::spdk_queue::ns = spdk_nvme_ctrlr_get_ns(cntrlr, dmtr::spdk_queue::namespaceId);
+    dmtr::spdk_queue::ns = spdk_nvme_ctrlr_get_ns(cntrlr, dmtr::spdk_queue::namespaceId);
 
-  if (dmtr::spdk_queue::ns == nullptr) {
-    SPDK_ERRLOG("Can't get namespace by id %d\n", dmtr::spdk_queue::namespaceId);
-    return;
-  }
+    if (dmtr::spdk_queue::ns == nullptr) {
+        SPDK_ERRLOG("Can't get namespace by id %d\n", dmtr::spdk_queue::namespaceId);
+        return;
+    }
 
-  if (!spdk_nvme_ns_is_active(dmtr::spdk_queue::ns)) {
-    SPDK_ERRLOG("Inactive namespace at id %d\n", dmtr::spdk_queue::namespaceId);
-    return;
-  }
+    if (!spdk_nvme_ns_is_active(dmtr::spdk_queue::ns)) {
+        SPDK_ERRLOG("Inactive namespace at id %d\n", dmtr::spdk_queue::namespaceId);
+        return;
+    }
 
-  spdk_nvme_ctrlr_get_default_io_qpair_opts(cntrlr, &qpopts, sizeof(qpopts));
-  // TODO(ashmrtnz): If we want to change queue options like delaying the
-  // doorbell, changing the queue size, or anything like that, we need to do it
-  // here.
+    spdk_nvme_ctrlr_get_default_io_qpair_opts(cntrlr, &qpopts, sizeof(qpopts));
+    // TODO(ashmrtnz): If we want to change queue options like delaying the
+    // doorbell, changing the queue size, or anything like that, we need to do it
+    // here.
   
-  dmtr::spdk_queue::qpair = spdk_nvme_ctrlr_alloc_io_qpair(cntrlr, &qpopts, sizeof(qpopts));
-  if (!dmtr::spdk_queue::qpair) {
-    SPDK_ERRLOG("Unable to allocate nvme qpair\n");
-    return;
-  }
-  dmtr::spdk_queue::namespaceSize = spdk_nvme_ns_get_size(dmtr::spdk_queue::ns);
-  if (dmtr::spdk_queue::namespaceSize <= 0) {
-    SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
-        dmtr::spdk_queue::namespaceId);
-    return;
-  }
-  dmtr::spdk_queue::sectorSize = spdk_nvme_ns_get_sector_size(dmtr::spdk_queue::ns);
-  // Allocate a buffer for writes that fill a partial block so that we don't
-  // have to do a read-copy-update in the write path.
-  dmtr::spdk_queue::partialBlock = (char *) malloc(dmtr::spdk_queue::sectorSize);
-  if (dmtr::spdk_queue::partialBlock == nullptr) {
-      SPDK_ERRLOG("Unable to allocate the partial block of size %d\n",
-          dmtr::spdk_queue::sectorSize);
-      return;
-  }
+    dmtr::spdk_queue::qpair = spdk_nvme_ctrlr_alloc_io_qpair(cntrlr, &qpopts, sizeof(qpopts));
+    if (!dmtr::spdk_queue::qpair) {
+        SPDK_ERRLOG("Unable to allocate nvme qpair\n");
+        return;
+    }
+    dmtr::spdk_queue::namespaceSize = spdk_nvme_ns_get_size(dmtr::spdk_queue::ns);
+    if (dmtr::spdk_queue::namespaceSize <= 0) {
+        SPDK_ERRLOG("Unable to get namespace size for namespace %d\n",
+                    dmtr::spdk_queue::namespaceId);
+        return;
+    }
+    dmtr::spdk_queue::sectorSize = spdk_nvme_ns_get_sector_size(dmtr::spdk_queue::ns);
+    // Allocate a buffer for writes that fill a partial block so that we don't
+    // have to do a read-copy-update in the write path.
+    dmtr::spdk_queue::partialBlock = (char *) malloc(dmtr::spdk_queue::sectorSize);
+    if (dmtr::spdk_queue::partialBlock == nullptr) {
+        SPDK_ERRLOG("Unable to allocate the partial block of size %d\n",
+                    dmtr::spdk_queue::sectorSize);
+        return;
+    }
+    fprintf(stderr, "Finished initializing SPDK (sector size= %u)\n", dmtr::spdk_queue::sectorSize);
 }
 
 // Right now only works for PCIe-based NVMe drives where the user specifies the
 // address of a single device.
 int dmtr::spdk_queue::parseTransportId(
-    struct spdk_nvme_transport_id *trid, std::string &transportType,
-    std::string &devAddress) {
-  struct spdk_pci_addr pci_addr;
-  std::string trinfo = std::string(kTrTypeString) + transportType + " " + kTrAddrString +
-      devAddress;
-  memset(trid, 0, sizeof(*trid));
-  trid->trtype = SPDK_NVME_TRANSPORT_PCIE;
-  if (spdk_nvme_transport_id_parse(trid, trinfo.c_str()) < 0) {
-    SPDK_ERRLOG("Failed to parse transport type and device %s\n",
-        trinfo.c_str());
-    return -1;
-  }
-  if (trid->trtype != SPDK_NVME_TRANSPORT_PCIE) {
-    SPDK_ERRLOG("Unsupported transport type and device %s\n",
-        trinfo.c_str());
-    return -1;
-  }
-  if (spdk_pci_addr_parse(&pci_addr, trid->traddr) < 0) {
-    SPDK_ERRLOG("invalid device address %s\n", devAddress.c_str());
-    return -1;
-  }
-  spdk_pci_addr_fmt(trid->traddr, sizeof(trid->traddr), &pci_addr);
-  return 0;
+                                       struct spdk_nvme_transport_id *trid, std::string &transportType,
+                                       std::string &devAddress) {
+    struct spdk_pci_addr pci_addr;
+    std::string trinfo = std::string(kTrTypeString) + transportType + " " + kTrAddrString +
+        devAddress;
+    memset(trid, 0, sizeof(*trid));
+    trid->trtype = SPDK_NVME_TRANSPORT_PCIE;
+    if (spdk_nvme_transport_id_parse(trid, trinfo.c_str()) < 0) {
+        SPDK_ERRLOG("Failed to parse transport type and device %s\n",
+                    trinfo.c_str());
+        return -1;
+    }
+    if (trid->trtype != SPDK_NVME_TRANSPORT_PCIE) {
+        SPDK_ERRLOG("Unsupported transport type and device %s\n",
+                    trinfo.c_str());
+        return -1;
+    }
+    if (spdk_pci_addr_parse(&pci_addr, trid->traddr) < 0) {
+        SPDK_ERRLOG("invalid device address %s\n", devAddress.c_str());
+        return -1;
+    }
+    spdk_pci_addr_fmt(trid->traddr, sizeof(trid->traddr), &pci_addr);
+    return 0;
 }
 
  
@@ -143,7 +144,7 @@ int dmtr::spdk_queue::init_spdk(int argc, char *argv[]) {
     if (argc > 0) {
         DMTR_NOTNULL(EINVAL, argv);
     }
-    DMTR_TRUE(EPERM, !our_init_flag);
+    DMTR_TRUE(EPERM, !our_spdk_init_flag);
 
     std::string config_path;
     bpo::options_description desc("Allowed options");
@@ -165,13 +166,15 @@ int dmtr::spdk_queue::init_spdk(int argc, char *argv[]) {
         return ENOENT;
     }
     YAML::Node config = YAML::LoadFile(config_path);
+    struct spdk_env_opts opts;
+    return init_spdk(config, &opts);
+}
 
-    if (our_spdk_init_flag) {
-        return 0;
-    }
-
+int dmtr::spdk_queue::init_spdk(YAML::Node &config, spdk_env_opts *opts)
+{
     std::string transportType;
     std::string devAddress;
+
     // Initialize spdk from YAML options.
     YAML::Node node = config["spdk"]["transport"];
     if (YAML::NodeType::Scalar == node.Type()) {
@@ -185,13 +188,7 @@ int dmtr::spdk_queue::init_spdk(int argc, char *argv[]) {
     if (YAML::NodeType::Scalar == node.Type()) {
         namespaceId = node.as<unsigned int>();
     }
-
-    struct spdk_env_opts opts;
-    return init_spdk(spdk_env_opts &opts);
-}
-
-int dmtr::spdk_queue::init_spdk(spdk_env_opts *opts)
-{
+    
     spdk_env_opts_init(opts);
     opts->name = "Demeter";
     opts->mem_channel = 4;
@@ -202,18 +199,18 @@ int dmtr::spdk_queue::init_spdk(spdk_env_opts *opts)
     // std::string eal_args = "--proc-type=auto";
     // opts.env_context = (void*)eal_args.c_str();
 
-    if (spdk_env_init(&opts) < 0) {
+    if (spdk_env_init(opts) < 0) {
         printf("Unable to initialize SPDK env\n");
         return -1;
     }
 
-    //struct spdk_nvme_transport_id trid;
-    //trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
-    //sprintf((char*)&trid.traddr, "0000:12:00.0");
+    struct spdk_nvme_transport_id trid;
+    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
+    sprintf((char*)&trid.traddr, "0000:12:00.0");
     
-    if (!parseTransportId(&trid, transportType, devAddress)) {
-        return -1;
-    }
+    // if (!parseTransportId(&trid, transportType, devAddress)) {
+    //     return -1;
+    // }
 
     if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
         printf("spdk_nvme_probe failed\n");
@@ -221,7 +218,6 @@ int dmtr::spdk_queue::init_spdk(spdk_env_opts *opts)
     }
 
     our_spdk_init_flag = true;
-    our_init_flag = true;
     return 0;
 }
 
@@ -258,7 +254,7 @@ int dmtr::spdk_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     DMTR_OK(alloc_latency());
 #endif
 
-    q_out = std::unique_ptr<io_queue>(new spdk_queue(qd, FILE_Q));
+    q_out = std::unique_ptr<io_queue>(new spdk_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
 }
@@ -405,7 +401,7 @@ int dmtr::spdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 
 int dmtr::spdk_queue::push_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) 
 {
-    while (good()) {
+    while (true) {
         while (tq.empty()) {
             yield();
         }
@@ -463,8 +459,7 @@ int dmtr::spdk_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #if DMTR_DEBUG
     std::cerr << "[" << qd() << "] pop thread started." << std::endl;
 #endif
-
-    while (good()) {
+    while (true) {
         while (tq.empty()) {
             yield();
         }
@@ -499,7 +494,6 @@ int dmtr::spdk_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EPERM, our_spdk_init_flag);
-    DMTR_TRUE(EINVAL, good());
 
     task *t;
     DMTR_OK(get_task(t, qt));

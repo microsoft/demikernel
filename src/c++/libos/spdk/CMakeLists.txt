@@ -6,7 +6,7 @@ file(GLOB ZEUS_LIBSPDK_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 # note: the libos library has to be a shared object in order to
 # support the fact that we develop in C++ but need to also support
 # applications written in C.
-add_library(dmtr-libos-spdk SHARED ${ZEUS_LIBSPDKSOURCES})
+add_library(dmtr-libos-spdk SHARED ${ZEUS_LIBSPDK_SOURCES})
 target_add_hoard(dmtr-libos-spdk hoard-vanilla)
 target_add_spdk(dmtr-libos-spdk)
 target_include_directories(dmtr-libos-spdk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libspdk ${INCLUDE_DIR} ${SPDK_INCLUDE_DIR})

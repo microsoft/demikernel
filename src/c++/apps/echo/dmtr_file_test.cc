@@ -19,6 +19,10 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace po = boost::program_options;
 
@@ -43,21 +47,18 @@ int main(int argc, char *argv[])
     sga.sga_segs[0].sgaseg_buf = generate_packet();
 
     for (size_t i = 0; i < iterations; i++) {
-        dmtr_qtoken_t qt,qt2;
+        dmtr_qtoken_t token;
         auto t0 = boost::chrono::steady_clock::now();
-        DMTR_OK(dmtr_push(&qt, qd, &sga));
-                    // log to file
-        auto t0 = boost::chrono::steady_clock::now();
-        DMTR_OK(dmtr_push(&token, fqd, &wait_out.qr_value.sga));
+        DMTR_OK(dmtr_push(&token, fqd, &sga));
         DMTR_OK(dmtr_wait(NULL, token));
         auto log_dt = boost::chrono::steady_clock::now() - t0;
-        DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
+        DMTR_OK(dmtr_record_latency(latency, log_dt.count()));
             
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
     }
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));
-    DMTR_OK(dmtr_close(qd));
+    DMTR_OK(dmtr_close(fqd));
 
     return 0;
 }
