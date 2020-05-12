@@ -357,6 +357,27 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
 
 int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
 {
+    
+#if DMTR_PROFILE
+    if (NULL == read_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "read"));
+        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+
+    if (NULL == write_latency) {
+        dmtr_latency_t *l;
+        DMTR_OK(dmtr_new_latency(&l, "write"));
+        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
+            dmtr_dump_latency(stderr, latency);
+            dmtr_delete_latency(&latency);
+        });
+    }
+#endif
+
     YAML::Node node = config["lwip"]["known_hosts"];
     if (YAML::NodeType::Map == node.Type()) {
         for (auto i = node.begin(); i != node.end(); ++i) {
@@ -410,27 +431,6 @@ dmtr::lwip_queue::lwip_queue(int qd) :
 int dmtr::lwip_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     q_out = NULL;
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-
-#if DMTR_PROFILE
-    if (NULL == read_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "read"));
-        read_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-
-    if (NULL == write_latency) {
-        dmtr_latency_t *l;
-        DMTR_OK(dmtr_new_latency(&l, "write"));
-        write_latency = latency_ptr_type(l, [](dmtr_latency_t *latency) {
-            dmtr_dump_latency(stderr, latency);
-            dmtr_delete_latency(&latency);
-        });
-    }
-#endif
-
     q_out = std::unique_ptr<io_queue>(new lwip_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;
