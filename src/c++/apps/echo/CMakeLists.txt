@@ -36,7 +36,7 @@ add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-lwip-server dmtr-libos-lwip yaml-cpp boost_program_options)
+target_link_libraries(dmtr-lwip-server dmtr-libos-spdk-dpdk yaml-cpp boost_program_options)
 
 # LWIP TCP client
 add_executable(dmtr-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
@@ -48,7 +48,7 @@ add_dependencies(dmtr-lwip-echo dmtr-lwip-server dmtr-lwip-client)
 
 # SPDK LWIP TCP client
 add_executable(dmtr-spdk-lwip-client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-spdk-lwip-client dmtr-libos-spdk-dpdk yaml-cpp boost_program_options)
+target_link_libraries(dmtr-spdk-lwip-client dmtr-libos-lwip yaml-cpp boost_program_options)
 
 # LWIP SPDK TCP server
 add_executable(dmtr-spdk-lwip-server ${TCP_ECHO_SERVER_SOURCES})

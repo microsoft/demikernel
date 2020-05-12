@@ -37,43 +37,6 @@
 
 namespace bpo = boost::program_options;
 
-#define NUM_MBUFS               8191
-#define MBUF_CACHE_SIZE         250
-#define RX_RING_SIZE            128
-#define TX_RING_SIZE            512
-#define IP_DEFTTL  64   /* from RFC 1340. */
-#define IP_VERSION 0x40
-#define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
-#define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
-//#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
-#define TIME_ZEUS_LWIP		1
-
-/*
- * RX and TX Prefetch, Host, and Write-back threshold values should be
- * carefully set for optimal performance. Consult the network
- * controller's datasheet and supporting DPDK documentation for guidance
- * on how these parameters should be set.
- */
-#define RX_PTHRESH          0 /**< Default values of RX prefetch threshold reg. */
-#define RX_HTHRESH          0 /**< Default values of RX host threshold reg. */
-#define RX_WTHRESH          0 /**< Default values of RX write-back threshold reg. */
-
-/*
- * These default values are optimized for use with the Intel(R) 82599 10 GbE
- * Controller and the DPDK ixgbe PMD. Consider using other values for other
- * network controllers and/or network drivers.
- */
-#define TX_PTHRESH          0 /**< Default values of TX prefetch threshold reg. */
-#define TX_HTHRESH          0  /**< Default values of TX host threshold reg. */
-#define TX_WTHRESH          0  /**< Default values of TX write-back threshold reg. */
-
-/*
- * Configurable number of RX/TX ring descriptors
- */
-#define RTE_TEST_RX_DESC_DEFAULT    128
-#define RTE_TEST_TX_DESC_DEFAULT    128
-
 namespace {
     static constexpr char kTrTypeString[] = "trtype=";
     static constexpr char kTrAddrString[] = "traddr=";
@@ -85,56 +48,7 @@ static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
 
-const struct rte_ether_addr dmtr::spdk_dpdk_queue::ether_broadcast = {
-    .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-};
-
-
-spdk_dpdk_addr::spdk_dpdk_addr(const struct sockaddr_in &addr)
-    : addr(addr)
-{
-    this->addr.sin_family = AF_INET;
-    memset((void *)this->addr.sin_zero, 0, sizeof(addr.sin_zero));
-}
-
-spdk_dpdk_addr::spdk_dpdk_addr()
-{
-    memset((void *)&addr, 0, sizeof(addr));
-}
-
-bool
-operator==(const spdk_dpdk_addr &a,
-           const spdk_dpdk_addr &b)
-{
-    if (a.addr.sin_addr.s_addr == INADDR_ANY || b.addr.sin_addr.s_addr == INADDR_ANY) {
-        return true;
-    } else {
-        return (a.addr.sin_addr.s_addr == b.addr.sin_addr.s_addr) &&
-            (a.addr.sin_port == b.addr.sin_port);
-    }
-}
-
-bool
-operator!=(const spdk_dpdk_addr &a,
-           const spdk_dpdk_addr &b)
-{
-    return !(a == b);
-}
-
-bool
-operator<(const spdk_dpdk_addr &a,
-          const spdk_dpdk_addr &b)
-{
-    return (memcmp(&a.addr, &b.addr, sizeof(a.addr)) < 0);
-}
-
-struct rte_mempool *dmtr::spdk_dpdk_queue::our_mbuf_pool = NULL;
-bool dmtr::spdk_dpdk_queue::our_dpdk_init_flag = false;
 bool dmtr::spdk_dpdk_queue::our_spdk_init_flag = false;
-// local ports bound for incoming connections, used to demultiplex incoming new messages for accept
-std::map<spdk_dpdk_addr, std::queue<dmtr_sgarray_t> *> dmtr::spdk_dpdk_queue::our_recv_queues;
-std::unordered_map<std::string, struct in_addr> dmtr::spdk_dpdk_queue::our_mac_to_ip_table;
-std::unordered_map<in_addr_t, struct rte_ether_addr> dmtr::spdk_dpdk_queue::our_ip_to_mac_table;
 
 // Spdk static information.
 struct spdk_nvme_ns *dmtr::spdk_dpdk_queue::ns = nullptr;
@@ -142,184 +56,13 @@ struct spdk_nvme_qpair *dmtr::spdk_dpdk_queue::qpair = nullptr;
 int dmtr::spdk_dpdk_queue::namespaceId = 1;
 unsigned int dmtr::spdk_dpdk_queue::namespaceSize = 0;
 unsigned int dmtr::spdk_dpdk_queue::sectorSize = 0;
+
 char *dmtr::spdk_dpdk_queue::partialBlock = nullptr;
 
-int dmtr::spdk_dpdk_queue::ip_to_mac(struct rte_ether_addr &mac_out, const struct in_addr &ip)
-{
-    auto it = our_ip_to_mac_table.find(ip.s_addr);
-    DMTR_TRUE(ENOENT, our_ip_to_mac_table.cend() != it);
-    mac_out = it->second;
-    return 0;
-}
-
-int dmtr::spdk_dpdk_queue::mac_to_ip(struct in_addr &ip_out, const struct rte_ether_addr &mac)
-{
-    std::string mac_s(reinterpret_cast<const char *>(mac.addr_bytes), RTE_ETHER_ADDR_LEN);
-    auto it = our_mac_to_ip_table.find(mac_s);
-    DMTR_TRUE(ENOENT, our_mac_to_ip_table.cend() != it);
-    ip_out = it->second;
-    return 0;
-}
-
-bool
-dmtr::spdk_dpdk_queue::insert_recv_queue(const spdk_dpdk_addr &saddr,
-                                    const dmtr_sgarray_t &sga)
-{
-    auto it = our_recv_queues.find(spdk_dpdk_addr(saddr));
-    if (it == our_recv_queues.end()) {
-        return false;
-    }
-    it->second->push(sga);
-    return true;
-}
-
-int dmtr::spdk_dpdk_queue::ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len) {
-    DMTR_NOTNULL(EINVAL, hdr);
-    uint32_t sum = 0;
-
-    while (hdr_len > 1) {
-        sum += *hdr++;
-        if (sum & 0x80000000) {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-        hdr_len -= 2;
-    }
-
-    while (sum >> 16) {
-        sum = (sum & 0xFFFF) + (sum >> 16);
-    }
-
-    sum_out = ~sum;
-    return 0;
-}
-
-int dmtr::spdk_dpdk_queue::print_ether_addr(FILE *f, struct rte_ether_addr &eth_addr) {
-    DMTR_NOTNULL(EINVAL, f);
-
-    char buf[RTE_ETHER_ADDR_FMT_SIZE];
-    rte_ether_format_addr(buf, RTE_ETHER_ADDR_FMT_SIZE, &eth_addr);
-    fputs(buf, f);
-    return 0;
-}
-
-int dmtr::spdk_dpdk_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
-    DMTR_NOTNULL(EINVAL, f);
-    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-
-    struct rte_eth_link link2 = {};
-    if (NULL == link) {
-        DMTR_OK(rte_eth_link_get_nowait(port_id, link2));
-        link = &link2;
-    }
-    if (ETH_LINK_UP == link->link_status) {
-        const char * const duplex = ETH_LINK_FULL_DUPLEX == link->link_duplex ?  "full" : "half";
-        fprintf(f, "Port %d Link Up - speed %u " "Mbps - %s-duplex\n", port_id, link->link_speed, duplex);
-    } else {
-        printf("Port %d Link Down\n", port_id);
-    }
-
-    return 0;
-}
-
-int dmtr::spdk_dpdk_queue::wait_for_link_status_up(uint16_t port_id)
-{
-    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-
-    const size_t sleep_duration_ms = 100;
-    const size_t retry_count = 90;
-
-    struct rte_eth_link link = {};
-    for (size_t i = 0; i < retry_count; ++i) {
-        DMTR_OK(rte_eth_link_get_nowait(port_id, link));
-        if (ETH_LINK_UP == link.link_status) {
-            DMTR_OK(print_link_status(stderr, port_id, &link));
-            return 0;
-        }
-
-        rte_delay_ms(sleep_duration_ms);
-    }
-
-    DMTR_OK(print_link_status(stderr, port_id, &link));
-    return ECONNREFUSED;
-}
-
-/*
- * Initializes a given port using global settings and with the RX buffers
- * coming from the mbuf_pool passed as a parameter.
- */
-int dmtr::spdk_dpdk_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_pool) {
-    DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
-
-    const uint16_t rx_rings = 1;
-    const uint16_t tx_rings = 1;
-    const uint16_t nb_rxd = RX_RING_SIZE;
-    const uint16_t nb_txd = TX_RING_SIZE;
-
-    struct ::rte_eth_dev_info dev_info = {};
-    DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
-
-    struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
-//    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
-//    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
-    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-
-    struct ::rte_eth_rxconf rx_conf = {};
-    rx_conf.rx_thresh.pthresh = RX_PTHRESH;
-    rx_conf.rx_thresh.hthresh = RX_HTHRESH;
-    rx_conf.rx_thresh.wthresh = RX_WTHRESH;
-    rx_conf.rx_free_thresh = 32;
-
-    struct ::rte_eth_txconf tx_conf = {};
-    tx_conf.tx_thresh.pthresh = TX_PTHRESH;
-    tx_conf.tx_thresh.hthresh = TX_HTHRESH;
-    tx_conf.tx_thresh.wthresh = TX_WTHRESH;
-
-    // configure the ethernet device.
-    DMTR_OK(rte_eth_dev_configure(port_id, rx_rings, tx_rings, port_conf));
-
-    // todo: what does this do?
-/*
-    retval = rte_eth_dev_adjust_nb_rx_tx_desc(port, &nb_rxd, &nb_txd);
-    if (retval != 0) {
-        return retval;
-    }
-*/
-
-    // todo: this call fails and i don't understand why.
-    int socket_id = 0;
-    int ret = rte_eth_dev_socket_id(socket_id, port_id);
-    if (0 != ret) {
-        fprintf(stderr, "WARNING: Failed to get the NUMA socket ID for port %d.\n", port_id);
-        socket_id = 0;
-    }
-
-    // allocate and set up 1 RX queue per Ethernet port.
-    for (uint16_t i = 0; i < rx_rings; ++i) {
-        DMTR_OK(rte_eth_rx_queue_setup(port_id, i, nb_rxd, socket_id, rx_conf, mbuf_pool));
-    }
-
-    // allocate and set up 1 TX queue per Ethernet port.
-    for (uint16_t i = 0; i < tx_rings; ++i) {
-        DMTR_OK(rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, tx_conf));
-    }
-
-    // start the ethernet port.
-    DMTR_OK(rte_eth_dev_start(port_id));
-
-    //DMTR_OK(rte_eth_promiscuous_enable(port_id));
-
-    // disable the rx/tx flow control
-    // todo: why?
-    struct ::rte_eth_fc_conf fc_conf = {};
-    DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
-    fc_conf.mode = RTE_FC_NONE;
-    DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
-
-    DMTR_OK(wait_for_link_status_up(port_id));
-
-    return 0;
-}
+dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
+    lwip_queue(cid, qd),
+    my_listening_flag(false)
+{}
 
 int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     DMTR_TRUE(ERANGE, argc >= 0);
@@ -349,16 +92,66 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     }
     YAML::Node config = YAML::LoadFile(config_path);
 
-    DMTR_OK(init_spdk(config));
-    DMTR_OK(init_dpdk(config));
- 
-    return 0;
-}
+        if (our_spdk_init_flag) {
+        return 0;
+    }
 
-int dmtr::spdk_dpdk_queue::init_dpdk(YAML::Node &config)
-{
+    std::string transportType;
+    std::string devAddress;
+    // Initialize spdk from YAML options.
+    YAML::Node node = config["spdk"]["transport"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        transportType = node.as<std::string>();
+    }
+    node = config["spdk"]["devAddr"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        devAddress = node.as<std::string>();
+    }
+    node = config["spdk"]["namespaceId"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        namespaceId = node.as<unsigned int>();
+    }
 
-        const uint16_t nb_ports = rte_eth_dev_count_avail();
+    struct spdk_env_opts opts;
+    spdk_env_opts_init(&opts);
+    opts.name = "Demeter";
+    opts.mem_channel = 4;
+    opts.core_mask = "0x4";
+    struct spdk_pci_addr nic = {0,0x37,0, 0};
+    opts.pci_whitelist = &nic;
+    opts.num_pci_addr = 1;
+    std::string eal_args = "--proc-type=auto";
+    opts.env_context = (void*)eal_args.c_str();
+    if (spdk_env_init(&opts) < 0) {
+        printf("Unable to initialize SPDK env\n");
+        return -1;
+    }
+
+    struct spdk_nvme_transport_id trid;
+    trid.trtype = SPDK_NVME_TRANSPORT_PCIE;
+    sprintf((char*)&trid.traddr, "0000:12:00.0");
+    
+    //if (!parseTransportId(&trid, transportType, devAddress)) {
+    //    return -1;
+    // }
+
+    if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
+        printf("spdk_nvme_probe failed\n");
+        return -1;
+    }
+
+    our_spdk_init_flag = true;
+
+    node = config["lwip"]["known_hosts"];
+    if (YAML::NodeType::Map == node.Type()) {
+        for (auto i = node.begin(); i != node.end(); ++i) {
+            auto mac = i->first.as<std::string>();
+            auto ip = i->second.as<std::string>();
+            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
+        }
+    }
+
+    const uint16_t nb_ports = rte_eth_dev_count_avail();
     DMTR_TRUE(ENOENT, nb_ports > 0);
     fprintf(stderr, "DPDK reports that %d ports (interfaces) are available.\n", nb_ports);
 
@@ -478,83 +271,7 @@ int dmtr::spdk_dpdk_queue::parseTransportId(
   return 0;
 }
 
-int dmtr::spdk_dpdk_queue::init_spdk(YAML::Node &config)
-{
-    if (our_spdk_init_flag) {
-        return 0;
-    }
-
-    std::vector<std::string> init_args;
-    YAML::Node node = config["dpdk"]["eal_init"];
-    if (YAML::NodeType::Sequence == node.Type()) {
-        init_args = node.as<std::vector<std::string>>();
-    }
-    std::cerr << "eal_init: [";
-    std::vector<char *> init_cargs;
-    for (auto i = init_args.cbegin(); i != init_args.cend(); ++i) {
-        if (i != init_args.cbegin()) {
-            std::cerr << ", ";
-        }
-        std::cerr << "\"" << *i << "\"";
-        init_cargs.push_back(const_cast<char *>(i->c_str()));
-    }
-    std::cerr << "]" << std::endl;
-    node = config["spdk_dpdk"]["known_hosts"];
-    if (YAML::NodeType::Map == node.Type()) {
-        for (auto i = node.begin(); i != node.end(); ++i) {
-            auto mac = i->first.as<std::string>();
-            auto ip = i->second.as<std::string>();
-            DMTR_OK(learn_addrs(mac.c_str(), ip.c_str()));
-        }
-    }
-
-    //int unused = -1;
-    //DMTR_OK(rte_eal_init(unused, init_cargs.size(), init_cargs.data()));
-
-    std::string transportType;
-    std::string devAddress;
-    // Initialize spdk from YAML options.
-    node = config["spdk"]["transport"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        transportType = node.as<std::string>();
-    }
-    node = config["spdk"]["devAddr"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        devAddress = node.as<std::string>();
-    }
-    node = config["spdk"]["namespaceId"];
-    if (YAML::NodeType::Scalar == node.Type()) {
-        namespaceId = node.as<unsigned int>();
-    }
-
-    struct spdk_env_opts opts;
-    spdk_env_opts_init(&opts);
-    opts.name = "Demeter";
-    opts.env_context = init_cargs.data();
-    if (spdk_env_init(&opts) < 0) {
-        printf("Unable to initialize SPDK env\n");
-        return -1;
-    }
-
-    struct spdk_nvme_transport_id trid;
-    if (!parseTransportId(&trid, transportType, devAddress)) {
-        return -1;
-    }
-
-    if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
-        printf("spdk_nvme_probe failed\n");
-        return -1;
-    }
-
-    our_spdk_init_flag = true;
-    return 0;
-}
-
-dmtr::spdk_dpdk_queue::spdk_dpdk_queue(int qd, io_queue::category_id cid) :
-    io_queue(cid, qd),
-    my_listening_flag(false)
-{}
-
+ 
 #if DMTR_PROFILE
 int dmtr::spdk_dpdk_queue::alloc_latency()
 {
@@ -1089,7 +806,7 @@ int dmtr::spdk_dpdk_queue::push(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga) {
 
     DMTR_OK(new_task(qt, DMTR_OPC_PUSH, sga));
     my_push_thread->enqueue(qt);
-
+    my_push_thread->service();
     return 0;
 }
 
@@ -1220,7 +937,7 @@ int dmtr::spdk_dpdk_queue::pop_thread(task::thread_type::yield_type &yield, task
             continue;
         }
 
-        //std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
+        std::cerr << "pop(" << qt << "): sgarray received." << std::endl;
         DMTR_OK(t->complete(0, sga));
     }
 
@@ -1372,7 +1089,7 @@ dmtr::spdk_dpdk_queue::parse_packet(struct sockaddr_in &src,
     dst.sin_port = udp_dst_port;
     src.sin_family = AF_INET;
     dst.sin_family = AF_INET;
-
+        
     // segment count
     sga.sga_numsegs = ntohl(*reinterpret_cast<uint32_t *>(p));
     p += sizeof(uint32_t);

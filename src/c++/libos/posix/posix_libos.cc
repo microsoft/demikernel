@@ -3,8 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#define DMTR_OPEN2
-
 #include "posix_queue.hh"
 
 #include <dmtr/annot.h>

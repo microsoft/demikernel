@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define DMTR_OPEN2 1
+#define DMTR_OPEN2
 DMTR_EXPORT int dmtr_init(int argc, char *argv[]);
 
 DMTR_EXPORT int dmtr_queue(int *qd_out);
