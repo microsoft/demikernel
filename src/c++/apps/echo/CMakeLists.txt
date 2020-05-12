@@ -21,7 +21,7 @@ set(UDP_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_server.cc)
 set(UDP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_client.cc)
 set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
-
+set(STORE_TEST_SOURCES ${ECHO_APPS_DIR}/dmtr_file_test.cc)
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
@@ -33,6 +33,19 @@ target_link_libraries(dmtr-posix-client dmtr-libos-posix yaml-cpp boost_program_
 # POSIX TCP client & server
 add_custom_target(dmtr-posix-echo)
 add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
+
+# POSIX storage test client
+add_executable(dmtr-posix-storage ${STORE_TEST_SOURCES})
+target_link_libraries(dmtr-posix-storage dmtr-libos-posix yaml-cpp boost_program_options)
+
+# SPDK storage test client
+add_executable(dmtr-spdk-storage ${STORE_TEST_SOURCES})
+target_link_libraries(dmtr-spdk-storage dmtr-libos-spdk yaml-cpp boost_program_options)
+
+# POSIX & SPDK storage test clients
+# POSIX TCP client & server
+add_custom_target(dmtr-store-test)
+add_dependencies(dmtr-store-test  dmtr-posix-storage dmtr-spdk-storage)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
