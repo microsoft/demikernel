@@ -185,7 +185,11 @@ int main(int argc, char *argv[])
                 if (0 != ffd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
-                    write(ffd, buf, packet_size);
+                    ssize_t written = 0;
+                    do {
+                        written = write(ffd, &buf[written], packet_size - written);
+                        if (written < 0) return written;
+                    } while (written < packet_size);                    
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }
