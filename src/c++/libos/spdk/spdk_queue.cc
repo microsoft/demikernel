@@ -167,6 +167,7 @@ int dmtr::spdk_queue::init_spdk(int argc, char *argv[]) {
     }
     YAML::Node config = YAML::LoadFile(config_path);
     struct spdk_env_opts opts;
+    spdk_env_opts_init(&opts);
     return init_spdk(config, &opts);
 }
 
@@ -189,7 +190,6 @@ int dmtr::spdk_queue::init_spdk(YAML::Node &config, spdk_env_opts *opts)
         namespaceId = node.as<unsigned int>();
     }
     
-    spdk_env_opts_init(opts);
     opts->name = "Demeter";
     opts->mem_channel = 4;
     opts->core_mask = "0x4";

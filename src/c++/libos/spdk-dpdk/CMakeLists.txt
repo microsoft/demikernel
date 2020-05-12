@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-file(GLOB ZEUS_LIBSPDKDPDK_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/../lwip/lwip_queue.cc ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
+file(GLOB ZEUS_LIBSPDKDPDK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../lwip/lwip_queue.cc  ${CMAKE_CURRENT_SOURCE_DIR}/../spdk/spdk_queue.cc ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 
 # note: the libos library has to be a shared object in order to
 # support the fact that we develop in C++ but need to also support

@@ -14,6 +14,7 @@
 #include <rte_mbuf.h>
 #include <unordered_map>
 #include <map>
+#include <yaml-cpp/yaml.h>
 
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
@@ -54,7 +55,7 @@ class lwip_queue : public io_queue {
     protected: std::unique_ptr<task::thread_type> my_push_thread;
     protected: std::unique_ptr<task::thread_type> my_pop_thread;
 
-    protected: lwip_queue(int qd);
+    public: lwip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~lwip_queue();
@@ -74,7 +75,7 @@ class lwip_queue : public io_queue {
     public: int poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt);
 
     public: static int init_dpdk(int argc, char *argv[]);
-    public: static int finish_init_dpdk(YAML::Node &config);
+    public: static int finish_dpdk_init(YAML::Node &config);
     protected: static int get_dpdk_port_id(uint16_t &id_out);
     protected: static int ip_sum(uint16_t &sum_out, const uint16_t *hdr, int hdr_len);
     protected: static int init_dpdk_port(uint16_t port, struct rte_mempool &mbuf_pool);
