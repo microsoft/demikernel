@@ -37,7 +37,7 @@ class spdk_rdma_queue : public io_queue {
 
     // storage functions
     public: int open(const char* pathname, int flags);
-    public: int open(const char* pathname, int flags, mode_t mode);
+    public: int open2(const char* pathname, int flags, mode_t mode);
     public: int creat(const char* pahname, mode_t mode);
  
     // data path functions

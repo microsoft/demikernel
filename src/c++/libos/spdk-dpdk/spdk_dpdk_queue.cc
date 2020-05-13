@@ -56,38 +56,46 @@ int dmtr::spdk_dpdk_queue::init_spdk_dpdk(int argc, char *argv[]) {
     }
     DMTR_TRUE(EPERM, !our_init_flag);
 
-    std::string config_path;
-    bpo::options_description desc("Allowed options");
-    desc.add_options()
+    if (getenv("SPDK_OFF") != NULL) {
+        printf("Turning SPDK off\n");
+        // didn't find any devices, but turn on dpdk anyway
+        lwip_queue::init_dpdk(argc, argv);
+    } else {
+        std::string config_path;
+        bpo::options_description desc("Allowed options");
+        desc.add_options()
             ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
+            ("config-path,c", bpo::value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file");
     
-    bpo::variables_map vm;
-    bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
-    bpo::notify(vm);
+        bpo::variables_map vm;
+        bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
+        bpo::notify(vm);
         
-    if (vm.count("help")) {
-        std::cout << desc << std::endl;
-        return 0;
+        if (vm.count("help")) {
+            std::cout << desc << std::endl;
+            return 0;
+        }
+
+        if (access(config_path.c_str(), R_OK) == -1) {
+            std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
+            return ENOENT;
+        }
+        YAML::Node config = YAML::LoadFile(config_path);
+
+    
+        struct spdk_env_opts opts;
+        spdk_env_opts_init(&opts);
+        struct spdk_pci_addr nic = {0,0x37,0, 0};
+        opts.pci_whitelist = &nic;
+        opts.num_pci_addr = 1;
+        std::string eal_args = "--proc-type=auto";
+        opts.env_context = (void*)eal_args.c_str();
+
+        // use SPDK to init DPDK
+    
+        DMTR_OK(spdk_queue::init_spdk(config, &opts));
+        DMTR_OK(lwip_queue::finish_dpdk_init(config));
     }
-
-    if (access(config_path.c_str(), R_OK) == -1) {
-        std::cerr << "Unable to find config file at `" << config_path << "`." << std::endl;
-        return ENOENT;
-    }
-    YAML::Node config = YAML::LoadFile(config_path);
-
-    struct spdk_env_opts opts;
-    spdk_env_opts_init(&opts);
-    struct spdk_pci_addr nic = {0,0x37,0, 0};
-    opts.pci_whitelist = &nic;
-    opts.num_pci_addr = 1;
-    std::string eal_args = "--proc-type=auto";
-    opts.env_context = (void*)eal_args.c_str();
-
-    // use SPDK to init DPDK
-    DMTR_OK(spdk_queue::init_spdk(config, &opts));
-    DMTR_OK(lwip_queue::finish_dpdk_init(config));
     our_init_flag = true;
     return 0;
 }

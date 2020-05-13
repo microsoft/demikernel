@@ -59,3 +59,7 @@
 	path = submodules/Shremote
 	url = https://github.com/isaac-ped/Shremote.git
 	branch = master
+[submodule "submodules/spdk-rdma"]
+	path = submodules/spdk-rdma
+	url = git@github.com:demikernel/spdk.git
+	branch = irene/v19.10.x

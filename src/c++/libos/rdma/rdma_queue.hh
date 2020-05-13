@@ -24,7 +24,7 @@ class rdma_queue : public io_queue {
     // my local receive buffer count and size
     private: const size_t my_recv_buf_max = 100;
     private: size_t my_recv_window = 0;
-private: size_t my_recv_buf_size = 2048;
+private: size_t my_recv_buf_size = 256;
     // how much can I send to the other side?
     private: size_t my_send_window = 0;
     private: size_t send_buf_size = 0;
@@ -66,11 +66,11 @@ private: size_t my_recv_buf_size = 2048;
     private: int setup_rdma_qp();
     private: int submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga);
 
-    private: rdma_queue(int qd);
+    public: rdma_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 
     public: virtual ~rdma_queue();
-
+    public: static int init_rdma();
     // network functions
     public: virtual int socket(int domain, int type, int protocol);
     public: virtual int getsockname(struct sockaddr * const saddr, socklen_t * const size);

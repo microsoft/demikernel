@@ -94,6 +94,17 @@ target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp b
 add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
 
+# LWIP & SPDK client
+add_executable(dmtr-spdk-rdma-client  ${TCP_ECHO_CLIENT_SOURCES})
+target_link_libraries(dmtr-spdk-rdma-client dmtr-libos-rdma yaml-cpp boost_program_options)
+
+# LWIP & SPDK server
+add_executable(dmtr-spdk-rdma-server ${TCP_ECHO_SERVER_SOURCES})
+target_link_libraries(dmtr-spdk-rdma-server dmtr-libos-spdk-rdma yaml-cpp boost_program_options)
+
+add_custom_target(dmtr-spdk-rdma-echo)
+add_dependencies(dmtr-spdk-rdma-echo dmtr-spdk-rdma-server dmtr-spdk-rdma-client)
+
 add_custom_target(echo)
 add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo dmtr-dpdk-catnip-echo)
 

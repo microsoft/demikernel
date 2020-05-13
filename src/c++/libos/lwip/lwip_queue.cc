@@ -399,7 +399,7 @@ int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
                                     NUM_MBUFS * nb_ports,
                                     MBUF_CACHE_SIZE,
                                     0,
-                                    8192 + RTE_PKTMBUF_HEADROOM,
+                                    RTE_MBUF_DEFAULT_BUF_SIZE,
                                     rte_socket_id()));
 
     // initialize all ports.

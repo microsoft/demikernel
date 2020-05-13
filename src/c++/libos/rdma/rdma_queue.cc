@@ -39,13 +39,10 @@ dmtr::rdma_queue::rdma_queue(int qd) :
     io_queue(NETWORK_Q, qd),
     my_rdma_id(NULL),
     my_listening_flag(false)
-{}
+{
+}
 
-int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
-    if (NULL == our_rdmacm_router) {
-        DMTR_OK(rdmacm_router::new_object(our_rdmacm_router));
-    }
-
+int dmtr::rdma_queue::init_rdma() {
 #if DMTR_PROFILE
     if (NULL == read_latency) {
         dmtr_latency_t *l;
@@ -66,6 +63,14 @@ int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
     }
 #endif
 
+    if (NULL == our_rdmacm_router) {
+        DMTR_OK(rdmacm_router::new_object(our_rdmacm_router));
+    }
+    return 0;
+}
+
+int dmtr::rdma_queue::new_object(std::unique_ptr<io_queue> &q_out, int qd) {
+    DMTR_OK(init_rdma());
     q_out = std::unique_ptr<io_queue>(new rdma_queue(qd));
     DMTR_NOTNULL(ENOMEM, q_out);
     return 0;

@@ -67,16 +67,17 @@ int dmtr::spdk_rdma_queue::init_spdk_rdma(int argc, char *argv[]) {
     }
     YAML::Node config = YAML::LoadFile(config_path);
 
-    struct spdk_env_opts opts;
-    spdk_env_opts_init(&opts);
-    struct spdk_pci_addr nic = {0,0x37,0, 0};
-    opts.pci_whitelist = &nic;
-    opts.num_pci_addr = 1;
-    std::string eal_args = "--proc-type=auto";
-    opts.env_context = (void*)eal_args.c_str();
+    if (getenv("SPDK_OFF") == NULL) {
+        struct spdk_env_opts opts;
+        spdk_env_opts_init(&opts);
 
-    // init SPDK, no need to init RDMA
-    DMTR_OK(spdk_queue::init_spdk(config, &opts));
+        // init SPDK
+        DMTR_OK(spdk_queue::init_spdk(config, &opts));
+    } else {
+        printf("Turning SPDK off\n");
+    }  
+
+    DMTR_OK(rdma_queue::init_rdma());
     our_init_flag = true;
     return 0;
 }

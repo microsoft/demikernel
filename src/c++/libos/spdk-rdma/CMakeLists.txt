@@ -7,8 +7,8 @@ file(GLOB ZEUS_LIBSPDKRDMA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../rdma/rdma_queu
 # support the fact that we develop in C++ but need to also support
 # applications written in C.
 add_library(dmtr-libos-spdk-rdma SHARED ${ZEUS_LIBSPDKRDMA_SOURCES})
-target_add_hoard(dmtr-libos-spdk-rdma hoard-vanilla)
-target_add_spdk(dmtr-libos-spdk-rdma)
+target_add_hoard(dmtr-libos-spdk-rdma hoard-rdma)
+target_add_spdk_rdma(dmtr-libos-spdk-rdma)
 target_include_directories(dmtr-libos-spdk-rdma PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libspdk-rdma ${CMAKE_CURRENT_SOURCE_DIR}/../rdma/ ${RDMA_INCLUDE_DIR} ${SPDK_INCLUDE_DIR})
 
 target_link_libraries(dmtr-libos-spdk-rdma Threads::Threads yaml-cpp boost_program_options)
@@ -23,5 +23,5 @@ target_link_libraries(dmtr-libos-spdk-rdma "-Wl,--whole-archive" dmtr-libos-comm
 target_link_libraries(dmtr-libos-spdk-rdma "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
 
 # `boost_context` and `boost_coroutine` must follow `dmtr-libos-common`
-target_link_libraries(dmtr-libos-spdk-rdma boost_context boost_coroutine dmtr-latency)
+target_link_libraries(dmtr-libos-spdk-rdma dmtr-libos-rdmacm-common boost_context boost_coroutine dmtr-latency)
 

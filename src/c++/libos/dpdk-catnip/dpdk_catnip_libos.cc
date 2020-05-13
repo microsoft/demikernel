@@ -81,6 +81,30 @@ int dmtr_connect(dmtr_qtoken_t *qt_out, int qd, const struct sockaddr *saddr, so
     return ioq_api->connect(*qt_out, qd, saddr, size);
 }
 
+int dmtr_open(int *qd_out, const char *pathname, int flags)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->open(*qd_out, pathname, flags);
+}
+
+int dmtr_open2(int *qd_out, const char *pathname, int flags, mode_t mode)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->open2(*qd_out, pathname, flags, mode);
+}
+
+int dmtr_creat(int *qd_out, const char *pathname, mode_t mode)
+{
+    DMTR_NOTNULL(EINVAL, qd_out);
+    DMTR_NOTNULL(EPERM, ioq_api.get());
+
+    return ioq_api->creat(*qd_out, pathname, mode);
+}
+
 int dmtr_close(int qd)
 {
     DMTR_NOTNULL(EINVAL, ioq_api.get());

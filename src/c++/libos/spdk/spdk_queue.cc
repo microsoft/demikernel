@@ -213,9 +213,8 @@ int dmtr::spdk_queue::init_spdk(YAML::Node &config, spdk_env_opts *opts)
     // }
 
     if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
-        //printf("spdk_nvme_probe failed\n");
-        //return -1;
-        return 0;
+        printf("spdk_nvme_probe failed\n");
+        return -1;
     }
 
     our_spdk_init_flag = true;
@@ -322,8 +321,8 @@ int dmtr::spdk_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     const size_t partial_block_size = (partialBlockUsage + total_len) % sectorSize;
     const size_t num_blocks = (total_len + partialBlockUsage - partial_block_size) / sectorSize +
         (partial_block_size > 0) ? 1 : 0;
-    uint8_t *buf = (uint8_t *) spdk_malloc(num_blocks * sectorSize, 0x1000, NULL,
-        SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
+    uint8_t *buf = (uint8_t *) spdk_malloc(num_blocks * sectorSize, 0x200, NULL,
+        0, SPDK_MALLOC_DMA);
     uint8_t *p = buf; 
 
     // See if we have a partial block left over from the last write. If we do,
