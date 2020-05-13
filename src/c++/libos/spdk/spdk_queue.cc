@@ -213,8 +213,9 @@ int dmtr::spdk_queue::init_spdk(YAML::Node &config, spdk_env_opts *opts)
     // }
 
     if (spdk_nvme_probe(&trid, nullptr, probeCb, attachCb, nullptr) != 0) {
-        printf("spdk_nvme_probe failed\n");
-        return -1;
+        //printf("spdk_nvme_probe failed\n");
+        //return -1;
+        return 0;
     }
 
     our_spdk_init_flag = true;
