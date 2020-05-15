@@ -100,7 +100,7 @@ int dmtr::rdma_queue::setup_rdma_qp()
     qp_attr.cap.max_recv_wr = my_recv_buf_max;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;
-    qp_attr.cap.max_inline_data = 128;
+    qp_attr.cap.max_inline_data = 256;
     qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
     return 0;

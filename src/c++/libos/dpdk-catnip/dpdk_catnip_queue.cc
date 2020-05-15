@@ -44,7 +44,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 #   include <dmtr/latency.h>
@@ -77,7 +77,7 @@ namespace bpo = boost::program_options;
         DMTR_OK(dmtr_record_latency((Which).get(), dt.count())); \
     } while (0)
 #else
-#define NIPX_LATENCY(Which, Statement) (Statement)
+#define NIPX_LATENCY(Which, Statement) Statement
 #endif
 
 /*
@@ -1213,8 +1213,8 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
 
             const uint8_t *bytes = nullptr;
             size_t length = SIZE_MAX;
-            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
 
+            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
             // [$DPDK/examples/vhost/virtio_net.c](https://doc.dpdk.org/api/examples_2vhost_2virtio_net_8c-example.html#a20) demonstrates that you have to subtract `RTE_PKTMBUF_HEADROOM` from `struct rte_mbuf::buf_len` to get the maximum data length.
             DMTR_TRUE(ENOTSUP, length <= packet->buf_len - static_cast<size_t>(RTE_PKTMBUF_HEADROOM));
             NIPX_LATENCY(copy_latency, rte_memcpy(p, bytes, length));

@@ -16,6 +16,7 @@ uint16_t port = 12345;
 boost::optional<std::string> server_ip_addr;
 uint32_t packet_size = 64;
 uint32_t iterations = 10;
+uint32_t clients = 1;
 const char FILL_CHAR = 'a';
 boost::optional<std::string> file;
 
@@ -31,7 +32,8 @@ void parse_args(int argc, char **argv, bool server)
         ("port", value<uint16_t>(&port)->default_value(12345), "server port")
         ("size,s", value<uint32_t>(&packet_size)->default_value(64), "packet payload size")
         ("iterations,i", value<uint32_t>(&iterations)->default_value(10), "test iterations")
-        ("config-path", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
+        ("clients,c", value<uint32_t>(&clients)->default_value(1), "clients")
+        ("config-path,r", value<std::string>(&config_path)->default_value("./config.yaml"), "specify configuration file")
         ("file", value<std::string>(), "log file");
 
     variables_map vm;

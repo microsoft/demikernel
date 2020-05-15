@@ -41,19 +41,21 @@ int main(int argc, char *argv[])
     dmtr_latency_t *latency = NULL;
     DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    printf("client fd:\t%d\n", fd);
+    int fds[clients];
+    for (uint32_t i = 0; i < clients; i++) {
+        fds[i] = socket(AF_INET, SOCK_STREAM, 0);
+        // Set TCP_NODELAY
+        int n = 1;
+        if (setsockopt(fds[i], IPPROTO_TCP,
+                       TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
+            exit(-1);
+        }
 
-    // Set TCP_NODELAY
-    int n = 1;
-    if (setsockopt(fd, IPPROTO_TCP,
-                   TCP_NODELAY, (char *)&n, sizeof(n)) < 0) {
-        exit(-1);
+        printf("client fd:\t%d\n", fds[i]);
+        std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
+        DMTR_OK(connect(fds[i], reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+        std::cerr << "Connected." << std::endl;
     }
-
-    std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
-    DMTR_OK(connect(fd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-    std::cerr << "Connected." << std::endl;
 
     char buf[packet_size];
     memset(&buf, FILL_CHAR, packet_size);
@@ -61,31 +63,39 @@ int main(int argc, char *argv[])
 
     for (size_t i = 0; i < iterations; i++) {
         auto t0 = boost::chrono::steady_clock::now();
-        int bytes_written = 0, ret;
-        while (bytes_written < (int)packet_size) {
-            ret = write(fd,
-                  (void *)&(buf[bytes_written]),
-                  packet_size-bytes_written);
-            if (ret < 0) {
-	      fprintf(stderr, "write says bye\n");
-              exit(-1);
+        for (auto fd : fds) {
+            int bytes_written = 0, ret;
+        
+            while (bytes_written < (int)packet_size) {
+                ret = write(fds[i],
+                            (void *)&(buf[bytes_written]),
+                            packet_size-bytes_written);
+                if (ret < 0) {
+                    fprintf(stderr, "write says bye\n");
+                    exit(-1);
+                }
+                bytes_written += ret;
             }
-            bytes_written += ret;
         }
-        int bytes_read = 0;
-        while(bytes_read < (int)packet_size) {
-	    ret = read(fd, (void *)&(buf[bytes_read]), packet_size - bytes_read);
-            if (ret < 0) {
-	        fprintf(stderr, "read says bye\n");
-	        exit(-1);
-	    }
-            bytes_read += ret;
+
+        for (auto fd : fds) {
+            int bytes_read = 0;
+            while(bytes_read < (int)packet_size) {
+                ret = read(fd, (void *)&(buf[bytes_read]), packet_size - bytes_read);
+                if (ret < 0) {
+                    fprintf(stderr, "read says bye\n");
+                    exit(-1);
+                }
+                bytes_read += ret;
+            }
         }
         auto dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(latency, dt.count()));
-	buf[packet_size - 1] = '\0';
+        buf[packet_size - 1] = '\0';
     }
-    close(fd);
+    for (auto fd : fds) {
+        close(fd);
+    }
     DMTR_OK(dmtr_dump_latency(stderr, latency));
     return 0;
 }

@@ -45,7 +45,7 @@ namespace bpo = boost::program_options;
 //#define DMTR_DEBUG 1
 #define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
-
+#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
  * carefully set for optimal performance. Consult the network
@@ -399,7 +399,7 @@ int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
                                     NUM_MBUFS * nb_ports,
                                     MBUF_CACHE_SIZE,
                                     0,
-                                    RTE_MBUF_DEFAULT_BUF_SIZE,
+                                    MBUF_BUF_SIZE,
                                     rte_socket_id()));
 
     // initialize all ports.
