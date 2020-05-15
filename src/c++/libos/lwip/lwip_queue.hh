@@ -49,8 +49,9 @@ class lwip_queue : public io_queue {
 
     protected: bool my_listening_flag;
     protected: static struct sockaddr_in * my_bound_src;
+    protected: static struct sockaddr_in * default_src;
     protected: boost::optional<struct sockaddr_in> my_default_dst;
-    protected: std::queue<dmtr_sgarray_t> my_recv_queue;
+    protected: std::queue<dmtr_sgarray_t> *my_recv_queue;
     protected: std::unique_ptr<task::thread_type> my_accept_thread;
     protected: std::unique_ptr<task::thread_type> my_push_thread;
     protected: std::unique_ptr<task::thread_type> my_pop_thread;

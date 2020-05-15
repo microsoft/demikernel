@@ -35,8 +35,8 @@ void sig_handler(int signo)
   dmtr_dump_latency(stderr, push_latency);
   dmtr_dump_latency(stderr, push_wait_latency);
   dmtr_dump_latency(stderr, file_log_latency);
-  dmtr_close(lqd);
-  if (0 != fqd) dmtr_close(fqd);
+  //dmtr_close(lqd);
+  //if (0 != fqd) dmtr_close(fqd);
   exit(0);
 }
 
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
-    DMTR_OK(dmtr_listen(lqd, 3));
+    DMTR_OK(dmtr_listen(lqd, 10));
     DMTR_OK(dmtr_accept(&token, lqd));
     tokens.push_back(token);
 

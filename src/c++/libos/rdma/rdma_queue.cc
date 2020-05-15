@@ -184,8 +184,9 @@ int dmtr::rdma_queue::service_event_channel() {
     switch(event->event) {
         default:
             fprintf(stderr, "Unrecognized event: 0x%x\n", event->event);
+            //if (event->event == RDMA_CM_EVENT_ADDR_ERROR)
             rdma_ack_cm_event(event);
-            return ENOTSUP;
+            return EAGAIN;
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
             //fprintf(stderr, "An uninteresting event about recycling QP\n");
             rdma_ack_cm_event(event);
@@ -375,7 +376,7 @@ int dmtr::rdma_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
 {
     DMTR_NOTNULL(EPERM, my_rdma_id);
     // Spin for 1 second before giving up.
-    auto timeout = duration_type(1000);
+    auto timeout = duration_type(10000);
 
     // Convert regular address into an rdma address
     int timeout_int = 0;
@@ -414,7 +415,7 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
                 break;
         }
     }
-
+    printf("resolved address\n");
     // Find path to rdma address
     int timeout_int = 0;
     DMTR_OK(dmtr_u32toi(&timeout_int, timeout.count()));
@@ -435,7 +436,7 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
                 break;
         }
     }
-
+    printf("resolved route\n");
     DMTR_OK(setup_rdma_qp());
     struct connection_data cd = {};
     DMTR_OK(setup_recv_window(cd));
@@ -448,6 +449,7 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
     params.private_data = &cd;
     params.private_data_len = sizeof(struct connection_data);
     DMTR_OK(rdma_connect(my_rdma_id, &params));
+    printf("try to connect\n");
     ret = EAGAIN;
     struct rdma_cm_event *event;
     while (0 != ret) {
@@ -465,7 +467,7 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
                 break;
         }
     }
-    
+    printf("connection established\n");
     const struct connection_data *incoming_cd =
         static_cast<const struct connection_data *>(event->param.conn.private_data);
     send_buf_size = incoming_cd->send_buf_size;
@@ -749,6 +751,7 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         switch (ret) {
             default:
                 DMTR_FAIL(ret);
+                // just ignore other events
             case 0:
             case EAGAIN:
                 break;

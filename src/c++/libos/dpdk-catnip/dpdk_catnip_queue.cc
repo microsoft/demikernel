@@ -251,7 +251,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file")
+        ("config-path", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file")
         ("transcript,t", "produce a transcript file");
 
     bpo::variables_map vm;

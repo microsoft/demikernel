@@ -31,11 +31,10 @@ int main(int argc, char *argv[])
     dmtr_latency_t *latency = NULL;
     DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
 
-    int qds[clients];
-    for (uint32_t i; i < clients; i++) {
-        DMTR_OK(dmtr_socket(&qds[i], AF_INET, SOCK_STREAM, 0));
-        printf("client qd:\t%d\n", qds[i]);
-    }
+    int qd;
+    DMTR_OK(dmtr_socket(&qd, AF_INET, SOCK_STREAM, 0));
+    printf("client qd:\t%d\n", qd);
+    
     struct sockaddr_in saddr = {};
     saddr.sin_family = AF_INET;
     const char *server_ip = boost::get(server_ip_addr).c_str();
@@ -46,34 +45,31 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
-    dmtr_qtoken_t qts[clients];
-    for (uint32_t i = 0; i < clients; i++) {
-        DMTR_OK(dmtr_connect(&qts[i], qds[i], reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
-    }
-dmtr_qresult_t qr = {};
-    for (uint32_t i = 0; i < clients; i++) {
-        DMTR_OK(dmtr_wait(&qr, qts[i]));
-        std::cerr << "Connected." << std::endl;
-    }
+    dmtr_qtoken_t qt;
+    DMTR_OK(dmtr_connect(&qt, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+
+    dmtr_qresult_t qr = {};
+    DMTR_OK(dmtr_wait(&qr, qt));
+    std::cerr << "Connected." << std::endl;
+    
     dmtr_sgarray_t sga = {};
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = packet_size;
     sga.sga_segs[0].sgaseg_buf = generate_packet();
 
-    for (size_t i = 0; i < iterations; i++) {
+    
+    for (size_t i = 0; i < iterations/clients; i++) {
         auto t0 = boost::chrono::steady_clock::now();
         dmtr_qtoken_t qt2[clients];
         for (uint32_t c = 0; c < clients; c++) {
             dmtr_qtoken_t qt;
-            DMTR_OK(dmtr_push(&qt, qds[c], &sga));
+            DMTR_OK(dmtr_push(&qt, qd, &sga));
             //fprintf(stderr, "send complete.\n");
-            DMTR_OK(dmtr_pop(&qt2[c], qds[c]));
+            DMTR_OK(dmtr_pop(&qt2[c], qd));
         }
 
         for (uint32_t c = 0; c < clients; c++) {
             DMTR_OK(dmtr_wait(&qr, qt2[c]));
-            auto dt = boost::chrono::steady_clock::now() - t0;
-            DMTR_OK(dmtr_record_latency(latency, dt.count()));
             assert(DMTR_OPC_POP == qr.qr_opcode);
             assert(qr.qr_value.sga.sga_numsegs == 1);
             assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
@@ -83,12 +79,12 @@ dmtr_qresult_t qr = {};
 
             DMTR_OK(dmtr_sgafree(&qr.qr_value.sga));
         }
+        auto dt = boost::chrono::steady_clock::now() - t0;
+        DMTR_OK(dmtr_record_latency(latency, dt.count()));
     }
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));
-    for (auto q : qds) {
-        DMTR_OK(dmtr_close(q));
-    }
+    DMTR_OK(dmtr_close(qd));
 
     return 0;
 }
