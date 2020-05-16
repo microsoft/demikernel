@@ -487,6 +487,12 @@ int dmtr::rdma_queue::close()
         return 0;
     }
 
+    if (my_rdma_id->recv_cq != NULL) {
+        ibv_destroy_cq(my_rdma_id->recv_cq);
+    }
+    if (my_rdma_id->send_cq != NULL) {
+        ibv_destroy_cq(my_rdma_id->send_cq);
+    }
     // In RDMA, both client and server should be calling rdma_disconnect
     if (my_rdma_id->qp != NULL)
     {
@@ -502,10 +508,10 @@ int dmtr::rdma_queue::close()
     // Similarly destroying the id and the event channel will fail.
     //DMTR_OK(ibv_dealloc_pd(rdma_id->pd));
 
-    //rdma_event_channel *channel = rdma_id->channel;
-    //DMTR_OK(rdma_destroy_event_channel(channel));
+    rdma_event_channel *channel = rdma_id->channel;
+    rdma_destroy_event_channel(channel);
 
-    //DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
+    DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
     rdma_id->channel = NULL;
 
     return io_queue::close();
