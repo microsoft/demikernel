@@ -57,10 +57,9 @@ int main(int argc, char *argv[])
     sga.sga_segs[0].sgaseg_len = packet_size;
     sga.sga_segs[0].sgaseg_buf = generate_packet();
 
-    
+    dmtr_qtoken_t qt2[clients];    
     for (size_t i = 0; i < iterations/clients; i++) {
         auto t0 = boost::chrono::steady_clock::now();
-        dmtr_qtoken_t qt2[clients];
         for (uint32_t c = 0; c < clients; c++) {
             dmtr_qtoken_t qt;
             DMTR_OK(dmtr_push(&qt, qd, &sga));
@@ -70,17 +69,17 @@ int main(int argc, char *argv[])
 
         for (uint32_t c = 0; c < clients; c++) {
             DMTR_OK(dmtr_wait(&qr, qt2[c]));
-            assert(DMTR_OPC_POP == qr.qr_opcode);
-            assert(qr.qr_value.sga.sga_numsegs == 1);
-            assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
+            auto dt = boost::chrono::steady_clock::now() - t0;
+            DMTR_OK(dmtr_record_latency(latency, dt.count()));
+            //assert(DMTR_OPC_POP == qr.qr_opcode);
+            //assert(qr.qr_value.sga.sga_numsegs == 1);
+            //assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
             //DMTR_OK(dmtr_wait(NULL, qt));
         
         /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
-
+            
             DMTR_OK(dmtr_sgafree(&qr.qr_value.sga));
         }
-        auto dt = boost::chrono::steady_clock::now() - t0;
-        DMTR_OK(dmtr_record_latency(latency, dt.count()));
     }
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));
