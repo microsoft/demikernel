@@ -45,31 +45,33 @@ int main(int argc, char *argv[])
     saddr.sin_port = htons(port);
 
     std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
-    dmtr_qtoken_t qt;
-    DMTR_OK(dmtr_connect(&qt, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    dmtr_qtoken_t q;
+    DMTR_OK(dmtr_connect(&q, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
 
     dmtr_qresult_t qr = {};
-    DMTR_OK(dmtr_wait(&qr, qt));
+    DMTR_OK(dmtr_wait(&qr, q));
     std::cerr << "Connected." << std::endl;
     
     dmtr_sgarray_t sga = {};
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = packet_size;
     sga.sga_segs[0].sgaseg_buf = generate_packet();
+    
+    std::cerr << "Number of clients: " << clients << std::endl;
 
+    dmtr_qtoken_t qt[clients];
     dmtr_qtoken_t qt2[clients];    
     for (size_t i = 0; i < iterations/clients; i++) {
         auto t0 = boost::chrono::steady_clock::now();
         for (uint32_t c = 0; c < clients; c++) {
-            dmtr_qtoken_t qt;
-            DMTR_OK(dmtr_push(&qt, qd, &sga));
-            dmtr_drop(qt);
+            DMTR_OK(dmtr_push(&qt[c], qd, &sga));
             //fprintf(stderr, "send complete.\n");
             DMTR_OK(dmtr_pop(&qt2[c], qd));
         }
 
         for (uint32_t c = 0; c < clients; c++) {
             DMTR_OK(dmtr_wait(&qr, qt2[c]));
+            dmtr_drop(qt[c]);
             auto dt = boost::chrono::steady_clock::now() - t0;
             DMTR_OK(dmtr_record_latency(latency, dt.count()));
             //assert(DMTR_OPC_POP == qr.qr_opcode);
