@@ -22,7 +22,7 @@ impl Default for TcpOptions {
             handshake_timeout: Duration::from_secs(3),
             receive_window_size: 0xffff,
             retries2: 5,
-            trailing_ack_delay: Duration::from_micros(100),
+            trailing_ack_delay: Duration::from_micros(1),
         }
     }
 }

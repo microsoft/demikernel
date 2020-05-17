@@ -43,6 +43,7 @@ void sig_handler(int signo)
     dmtr_dump_latency(stderr, e2e_latency);
     dmtr_dump_latency(stderr, pop_latency);
     dmtr_dump_latency(stderr, push_latency);
+    dmtr_dump_latency(stderr, file_log_latency);
     close(lfd);
     close(epoll_fd);
     exit(0);
@@ -154,7 +155,7 @@ int main(int argc, char *argv[])
                     DMTR_OK(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, &events[i]));
                     close(events[i].data.fd);
                     continue;
-                }
+                } else if (read_ret == 0) continue;
                 if (0 != ffd) {
                     // log to file
                     auto t0 = boost::chrono::steady_clock::now();
@@ -163,7 +164,9 @@ int main(int argc, char *argv[])
                         written = write(ffd, &buf[total], read_ret - total);
                         if (written < 0) return written;
                         total += written;
-                    } while (total < read_ret);                    
+                    } while (total < read_ret);
+                    //int ret = fsync(ffd);
+                    //assert(ret == 0);
                     auto log_dt = boost::chrono::steady_clock::now() - t0;
                     DMTR_OK(dmtr_record_latency(file_log_latency, log_dt.count()));
                 }

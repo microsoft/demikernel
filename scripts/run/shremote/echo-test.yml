@@ -1,14 +1,12 @@
-log_dir: /h/irene/proj/demikernel/logs
+log_dir: /tmp/logs
 
 proj_dir: /h/irene/proj/demikernel
 
 exec_dir: /h/irene/proj/demikernel/build/src/c++/apps/echo
 
-os: rdma
-
 iterations: 1000000
 
-size: 64
+size: 1024
 
 hosts:
     server:
@@ -27,31 +25,35 @@ hosts:
     client6:
         addr: prometheus7
     client7:
-        addr: prometheus8
+        addr: prometheus9
+    client8:
+        addr: prometheus10
+
 programs:
     start_server:
-        start: sudo {0.exec_dir}/dmtr-{libos}-server --config-path={0.proj_dir}/config.yaml
+        start: sudo taskset 0x4 {0.exec_dir}/dmtr-{libos}-server --ip 198.19.200.1 --config-path=/demikernel/config.yaml
         hosts: server
         log:
             out: server.log
             err: server.err.log       
-        stop: sudo kill -s INT {pid}
+        stop: sudo kill -INT {pid}
         # Host can be specified in either a program, or a command
 
     start_client:
-        start: sudo {0.exec_dir}/dmtr-{libos}-client -i {0.iterations} -s {0.size} --config-path={0.proj_dir}/config.yaml
-        hosts: [client1]#, client2, client3, client4, client5, client6, client7]
+        start: sudo {0.exec_dir}/dmtr-{libos}-client -c {clients} -i {0.iterations} -s {0.size} --config-path=/demikernel/config.yaml
+        hosts: [client1, client2, client3, client4, client5, client6, client7, client8]
         log:
             out: client.{host_idx}.log
             err: client.{host_idx}.err.log
 
 commands:
     - program: start_server
-      libos: "{0.os}"
-#      max_duration: 30
+      libos: "{0.args.os}"
+      max_duration: 20s
       stop_after: start_client
       begin: 0
 
     - program: start_client
-      libos: "{0.os}"
+      libos: "{0.args.os}"
+      clients: "{0.args.clients}"
       begin: 3

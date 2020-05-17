@@ -4,7 +4,7 @@
 #include "dpdk_catnip_queue.hh"
 
 #include <arpa/inet.h>
-#include <boost/chrono.hpp>
+
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
@@ -44,7 +44,7 @@ namespace bpo = boost::program_options;
 #define RX_RING_SIZE            128
 #define TX_RING_SIZE            512
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 #   include <dmtr/latency.h>
@@ -77,7 +77,7 @@ namespace bpo = boost::program_options;
         DMTR_OK(dmtr_record_latency((Which).get(), dt.count())); \
     } while (0)
 #else
-#define NIPX_LATENCY(Which, Statement) (Statement)
+#define NIPX_LATENCY(Which, Statement) Statement
 #endif
 
 /*
@@ -96,7 +96,6 @@ static latency_ptr_type catnip_write_latency;
 static latency_ptr_type catnip_peek_latency;
 static latency_ptr_type copy_latency;
 
-static boost::chrono::time_point<boost::chrono::steady_clock> t_write;
 #endif
 
 struct rte_mempool *dmtr::dpdk_catnip_queue::our_mbuf_pool = NULL;
@@ -107,7 +106,7 @@ std::unique_ptr<dmtr::dpdk_catnip_queue::transmit_thread_type> dmtr::dpdk_catnip
 std::queue<nip_tcp_connection_handle_t> dmtr::dpdk_catnip_queue::our_incoming_connection_handles;
 std::unordered_map<nip_tcp_connection_handle_t, dmtr::dpdk_catnip_queue *> dmtr::dpdk_catnip_queue::our_known_connections;
 std::unique_ptr<pcpp::PcapNgFileWriterDevice> dmtr::dpdk_catnip_queue::our_transcript = nullptr;
-
+bool dmtr::dpdk_catnip_queue::pending_write = false;
 int dmtr::dpdk_catnip_queue::print_link_status(FILE *f, uint16_t port_id, const struct rte_eth_link *link) {
     DMTR_NOTNULL(EINVAL, f);
     DMTR_TRUE(ERANGE, ::rte_eth_dev_is_valid_port(port_id));
@@ -251,7 +250,7 @@ int dmtr::dpdk_catnip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file")
+        ("config-path", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file")
         ("transcript,t", "produce a transcript file");
 
     bpo::variables_map vm;
@@ -749,7 +748,8 @@ int dmtr::dpdk_catnip_queue::push(const dmtr_sgarray_t &sga) {
         DMTR_OK(nip_tcp_write(our_tcp_engine, my_tcp_connection_handle, segment->sgaseg_buf, segment->sgaseg_len));
         //  DMTR_OK(nip_advance_clock(our_tcp_engine));
     }
-    DMTR_OK(nip_advance_clock(our_tcp_engine));
+    //    DMTR_OK(nip_advance_clock(our_tcp_engine));
+    pending_write = true;
     return 0;
 }
 
@@ -897,10 +897,9 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 {
     DMTR_OK(task::initialize_result(qr_out, qd(), qt));
     DMTR_TRUE(EPERM, our_dpdk_init_flag);
-
+    DMTR_OK(nip_advance_clock(our_tcp_engine));
     DMTR_OK(service_incoming_packets());
     DMTR_OK(service_event_queue());
-    DMTR_OK(nip_advance_clock(our_tcp_engine));
     int ret = our_transmit_thread->service();
     if (EAGAIN != ret) {
         DMTR_OK(ret);
@@ -928,6 +927,7 @@ int dmtr::dpdk_catnip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     switch (ret) {
         default:
             DMTR_FAIL(ret);
+            exit(-1);
         case EAGAIN:
             break;
         case 0:
@@ -1162,7 +1162,7 @@ void dmtr::dpdk_catnip_queue::start_threads() {
 }
 
 int dmtr::dpdk_catnip_queue::service_event_queue() {
-    DMTR_OK(nip_advance_clock(our_tcp_engine));
+    //    DMTR_OK(nip_advance_clock(our_tcp_engine));
 
     nip_event_code_t event_code;
     int ret = -1;
@@ -1175,7 +1175,11 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
         case EAGAIN:
             return 0;
     }
-
+    if (pending_write) {
+        if (event_code != NIP_TRANSMIT) {
+            printf("Confused about why we aren't sending");
+        }
+    }
     raii_guard drop_guard(std::bind(nip_drop_event, our_tcp_engine));
     switch (event_code) {
         default:
@@ -1201,11 +1205,12 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
             return 0;
         }
         case NIP_TRANSMIT: {
+            //DMTR_TRUE(ENOTSUP, pending_write);
 #if DMTR_PROFILE
             auto dt = boost::chrono::steady_clock::now() - t_write;
             DMTR_OK(dmtr_record_latency(catnip_write_latency.get(), dt.count()));
 #endif
-
+            pending_write = false;
             struct rte_mbuf *packet = nullptr;
             DMTR_OK(rte_pktmbuf_alloc(packet, our_mbuf_pool));
             raii_guard pktmbuf_guard(std::bind(::rte_pktmbuf_free, packet));
@@ -1213,8 +1218,8 @@ int dmtr::dpdk_catnip_queue::service_event_queue() {
 
             const uint8_t *bytes = nullptr;
             size_t length = SIZE_MAX;
-            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
 
+            NIPX_LATENCY(catnip_latency, DMTR_OK(nip_get_transmit_event(&bytes, &length, our_tcp_engine)));
             // [$DPDK/examples/vhost/virtio_net.c](https://doc.dpdk.org/api/examples_2vhost_2virtio_net_8c-example.html#a20) demonstrates that you have to subtract `RTE_PKTMBUF_HEADROOM` from `struct rte_mbuf::buf_len` to get the maximum data length.
             DMTR_TRUE(ENOTSUP, length <= packet->buf_len - static_cast<size_t>(RTE_PKTMBUF_HEADROOM));
             NIPX_LATENCY(copy_latency, rte_memcpy(p, bytes, length));

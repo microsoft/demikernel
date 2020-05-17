@@ -16,7 +16,7 @@
 #include <rte_ether.h>
 #include <rte_mbuf.h>
 #include <unordered_map>
-
+#include <boost/chrono.hpp>
 namespace dmtr {
 
 class dpdk_catnip_queue : public io_queue {
@@ -81,6 +81,8 @@ class dpdk_catnip_queue : public io_queue {
     private: bool good() const {
         return is_bound() || is_connected();
     }
+private: static bool pending_write;
+private: static boost::chrono::time_point<boost::chrono::steady_clock> t_write;
 
     private: void start_threads();
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);

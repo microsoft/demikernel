@@ -43,9 +43,9 @@ namespace bpo = boost::program_options;
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
-#define DMTR_PROFILE 1
+//#define DMTR_PROFILE 1
 #define TIME_ZEUS_LWIP		1
-
+#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
  * carefully set for optimal performance. Consult the network
@@ -77,6 +77,7 @@ static latency_ptr_type read_latency;
 static latency_ptr_type write_latency;
 #endif
 sockaddr_in *dmtr::lwip_queue::my_bound_src = NULL;
+sockaddr_in *dmtr::lwip_queue::default_src = NULL;
 
 const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -86,8 +87,7 @@ const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
 lwip_addr::lwip_addr(const struct sockaddr_in &addr)
     : addr(addr)
 {
-    this->addr.sin_family = AF_INET;
-    memset((void *)this->addr.sin_zero, 0, sizeof(addr.sin_zero));
+    this->addr = addr;
 }
 
 lwip_addr::lwip_addr()
@@ -149,7 +149,7 @@ bool
 dmtr::lwip_queue::insert_recv_queue(const lwip_addr &saddr,
                                     const dmtr_sgarray_t &sga)
 {
-    auto it = our_recv_queues.find(lwip_addr(saddr));
+    auto it = our_recv_queues.find(saddr);
     if (it == our_recv_queues.end()) {
         return false;
     }
@@ -317,7 +317,7 @@ int dmtr::lwip_queue::init_dpdk(int argc, char *argv[])
     bpo::options_description desc("Allowed options");
     desc.add_options()
         ("help", "display usage information")
-        ("config-path,c", bpo::value<std::string>(&config_path)->default_value("/tmp/config.yaml"), "specify configuration file");
+        ("config-path", bpo::value<std::string>(&config_path)->default_value("/demikernel/config.yaml"), "specify configuration file");
 
     bpo::variables_map vm;
     bpo::store(bpo::command_line_parser(argc, argv).options(desc).allow_unregistered().run(), vm);
@@ -399,7 +399,7 @@ int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
                                     NUM_MBUFS * nb_ports,
                                     MBUF_CACHE_SIZE,
                                     0,
-                                    RTE_MBUF_DEFAULT_BUF_SIZE,
+                                    MBUF_BUF_SIZE,
                                     rte_socket_id()));
 
     // initialize all ports.
@@ -417,6 +417,19 @@ int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
     our_dpdk_init_flag = true;
     our_dpdk_port_id = port_id;
     our_mbuf_pool = mbuf_pool;
+
+    // set up a default address
+    node = config["catnip"]["my_ipv4_addr"];
+    if (YAML::NodeType::Scalar == node.Type()) {
+        auto ipv4_addr = node.as<std::string>();
+        struct in_addr in_addr = {};
+        if (inet_pton(AF_INET, ipv4_addr.c_str(), &in_addr) != 1) {
+            std::cerr << "Unable to parse IP address." << std::endl;
+            return EINVAL;
+        }
+        default_src = new struct sockaddr_in();
+        default_src->sin_addr.s_addr = in_addr.s_addr;
+    }
     return 0;
 }
 
@@ -510,24 +523,21 @@ int dmtr::lwip_queue::accept_thread(task::thread_type::yield_type &yield, task::
         auto * const new_lq = dynamic_cast<lwip_queue *>(new_q);
         DMTR_NOTNULL(EINVAL, new_lq);
 
-        while (my_recv_queue.empty()) {
+        while (my_recv_queue->empty()) {
             if (service_incoming_packets() == EAGAIN ||
-                my_recv_queue.empty())
+                my_recv_queue->empty())
                 yield();
         }
 
-        dmtr_sgarray_t &sga = my_recv_queue.front();
-        // todo: `my_recv_queue.pop()` should be called from a `raii_guard`.
+        dmtr_sgarray_t &sga = my_recv_queue->front();
+        // todo: `my_recv_queue->pop()` should be called from a `raii_guard`.
         sockaddr_in &src = sga.sga_addr;
         lwip_addr addr = lwip_addr(src);
-        DMTR_TRUE(EINVAL, our_recv_queues.find(addr) == our_recv_queues.end());
         new_lq->my_default_dst = src;
-        our_recv_queues[addr] = &new_lq->my_recv_queue;
-        // add the packet as the first to the new queue
-        new_lq->my_recv_queue.push(sga);
+        new_lq->my_recv_queue = our_recv_queues[addr];
         new_lq->start_threads();
+        my_recv_queue->pop();
         DMTR_OK(t->complete(0, new_lq->qd(), src));
-        my_recv_queue.pop();
     }
 
     return 0;
@@ -570,7 +580,9 @@ int dmtr::lwip_queue::bind(const struct sockaddr * const saddr, socklen_t size) 
     DMTR_TRUE(EINVAL, our_recv_queues.find(lwip_addr(saddr_copy)) == our_recv_queues.end());
     my_bound_src = reinterpret_cast<sockaddr_in *>(malloc(size));
     *my_bound_src = saddr_copy;
-    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
+    std::queue<dmtr_sgarray_t> *listening = new std::queue<dmtr_sgarray_t>();
+    our_recv_queues[lwip_addr(saddr_copy)] = listening;
+    my_recv_queue = listening;
 #if DMTR_DEBUG
     std::cout << "Binding to addr: " << saddr_copy.sin_addr.s_addr << ":" << saddr_copy.sin_port << std::endl;
 #endif
@@ -591,7 +603,9 @@ int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
     DMTR_NONZERO(EINVAL, saddr_copy.sin_port);
     DMTR_NONZERO(EINVAL, saddr_copy.sin_addr.s_addr);
     DMTR_TRUE(EINVAL, saddr_copy.sin_family == AF_INET);
-    our_recv_queues[lwip_addr(saddr_copy)] = &my_recv_queue;
+    std::queue<dmtr_sgarray_t> *q = new std::queue<dmtr_sgarray_t>();
+    our_recv_queues[lwip_addr(saddr_copy)] = q;
+    my_recv_queue = q;
 
     // give the connection the local ip;
     struct rte_ether_addr mac;
@@ -600,6 +614,9 @@ int dmtr::lwip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * const sa
     src.sin_family = AF_INET;
     src.sin_port = htons(12345);
     DMTR_OK(mac_to_ip(src.sin_addr, mac));
+    if (src.sin_addr.s_addr == 0) {
+        src.sin_addr.s_addr = default_src->sin_addr.s_addr;
+    }
     my_bound_src = reinterpret_cast<sockaddr_in *>(malloc(size));
     *my_bound_src = src;
 
@@ -624,6 +641,7 @@ int dmtr::lwip_queue::close() {
     }
 
     my_default_dst = boost::none;
+    delete my_recv_queue;
     return 0;
 }
 
@@ -869,16 +887,16 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         task *t;
         DMTR_OK(get_task(t, qt));
 
-        while (my_recv_queue.empty()) {
+        while (my_recv_queue->empty()) {
             if (service_incoming_packets() == EAGAIN ||
-                my_recv_queue.empty())
+                my_recv_queue->empty())
                 yield();
         }
 
-        dmtr_sgarray_t &sga = my_recv_queue.front();
+        dmtr_sgarray_t &sga = my_recv_queue->front();
         // todo: pop from queue in `raii_guard`.
         DMTR_OK(t->complete(0, sga));
-        my_recv_queue.pop();
+        my_recv_queue->pop();
     }
 
     return 0;
@@ -922,16 +940,21 @@ dmtr::lwip_queue::service_incoming_packets() {
         rte_pktmbuf_free(pkts[i]);
 
         if (valid_packet) {
+            lwip_addr src_lwip(src);
             // found valid packet, try to place in queue based on src
-            if (insert_recv_queue(lwip_addr(src), sga)) {
+            if (insert_recv_queue(src_lwip, sga)) {
                 // placed in appropriate queue, work is done
 #if DMTR_DEBUG
                 std::cout << "Found a connected receiver: " << src.sin_addr.s_addr << std::endl;
 #endif
                 continue;
             }
+            // create the new queue
+            our_recv_queues[src_lwip] = new std::queue<dmtr_sgarray_t>();
+            // put packet into queue
+            insert_recv_queue(src_lwip, sga);
             std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
-            // otherwise place in queue based on dst
+            // also place in accept queue
             insert_recv_queue(lwip_addr(dst), sga);
         }
     }
@@ -1090,12 +1113,18 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
             return ENOTSUP;
         case DMTR_OPC_ACCEPT:
             ret = my_accept_thread->service();
+            if (ret != EAGAIN && ret != 0)
+                printf("accept problem\n");
             break;
         case DMTR_OPC_PUSH:
             ret = my_push_thread->service();
+            if (ret != EAGAIN && ret != 0)
+                printf("push problem\n");
             break;
         case DMTR_OPC_POP:
             ret = my_pop_thread->service();
+            if (ret != EAGAIN && ret != 0)
+                printf("pop problem\n");
             break;
         case DMTR_OPC_CONNECT:
             ret = 0;
@@ -1105,6 +1134,7 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
     switch (ret) {
         default:
             DMTR_FAIL(ret);
+            exit(-1);
         case EAGAIN:
             break;
         case 0:

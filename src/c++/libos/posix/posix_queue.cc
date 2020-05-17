@@ -450,6 +450,7 @@ int dmtr::posix_queue::file_push(const dmtr_sgarray_t *sga, task::thread_type::y
         yield();
         ret = writev(bytes_written, my_fd, iov, iov_len);
     }
+    //ret = fsync(my_fd);
     return ret;
 }
 

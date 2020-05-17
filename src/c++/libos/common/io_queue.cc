@@ -8,7 +8,10 @@
 #include <fcntl.h>
 #include <sstream>
 
+
+
 dmtr::io_queue::task::task() :
+    valid(false),
     my_qr{},
     my_error(EAGAIN),
     my_sga_arg{},
@@ -18,17 +21,18 @@ dmtr::io_queue::task::task() :
 int dmtr::io_queue::task::initialize(io_queue &q,  dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
     DMTR_NONZERO(EINVAL, qt);
     DMTR_TRUE(EINVAL, DMTR_OPC_INVALID != opcode);
-
+    DMTR_TRUE(EINVAL, valid == false);
     DMTR_OK(initialize_result(my_qr, q.qd(), qt));
+    
     my_qr.qr_opcode = opcode;
     my_error = EAGAIN;
+    valid = true;
 
     return 0;
 }
 
 int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg) {
     DMTR_NONZERO(EINVAL, arg.sga_numsegs);
-
     DMTR_OK(initialize(q, qt, opcode));
     my_sga_arg = arg;
     return 0;
@@ -36,7 +40,6 @@ int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_
 
 int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg) {
     DMTR_NOTNULL(EINVAL, arg);
-
     DMTR_OK(initialize(q, qt, opcode));
     my_queue_arg = arg;
     return 0;
@@ -45,7 +48,7 @@ int dmtr::io_queue::task::initialize(io_queue &q, dmtr_qtoken_t qt, dmtr_opcode_
 int dmtr::io_queue::task::initialize_result(dmtr_qresult_t &qr_out, int qd, dmtr_qtoken_t qt) {
     DMTR_TRUE(EINVAL, qd > 0);
     DMTR_TRUE(EINVAL, qt != 0);
-
+    
     qr_out.qr_opcode = DMTR_OPC_INVALID;
     qr_out.qr_qd = qd;
     qr_out.qr_qt = qt;
@@ -83,7 +86,7 @@ dmtr::io_queue::io_queue(enum category_id cid, int qd) :
     my_cid(cid),
     my_qd(qd)
 {
-    my_tasks.reserve(5);
+    //my_tasks.reserve(5);
 }
 
 dmtr::io_queue::~io_queue()
@@ -158,47 +161,64 @@ int dmtr::io_queue::set_non_blocking(int fd) {
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
-    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
-
-    task t;
-    DMTR_OK(t.initialize(*this, qt, opcode));
-    my_tasks.insert(std::make_pair(qt, t));
+    DMTR_TRUE(EEXIST, !has_task(qt));
+    insert_task(qt);
+    DMTR_OK(get_task(qt)->initialize(*this, qt, opcode));
     return 0;
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg) {
-    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
-
-    task t;
-    DMTR_OK(t.initialize(*this, qt, opcode, arg));
-    my_tasks.insert(std::make_pair(qt, t));
+    DMTR_TRUE(EEXIST, !has_task(qt));
+    insert_task(qt);
+    DMTR_OK(get_task(qt)->initialize(*this, qt, opcode, arg));
     return 0;
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg) {
-    DMTR_TRUE(EEXIST, my_tasks.find(qt) == my_tasks.cend());
-
-    task t;
-    DMTR_OK(t.initialize(*this, qt, opcode, arg));
-    my_tasks.insert(std::make_pair(qt, t));
+    DMTR_TRUE(EEXIST, !has_task(qt));
+    insert_task(qt);
+    DMTR_OK(get_task(qt)->initialize(*this, qt, opcode, arg));
     return 0;
+}
+
+void dmtr::io_queue::insert_task(dmtr_qtoken_t qt) {
+#ifndef MAX_TASKS
+    my_tasks.insert(std::make_pair(qt, task()));
+#endif
+}
+
+bool dmtr::io_queue::has_task(dmtr_qtoken_t qt) {
+#ifdef MAX_TASKS
+    return get_task(qt)->is_valid();
+#else
+    auto it = my_tasks.find(qt);
+    return it != my_tasks.end();
+#endif
 }
 
 int dmtr::io_queue::get_task(task *&t_out, dmtr_qtoken_t qt) {
-    t_out = NULL;
-    auto it = my_tasks.find(qt);
-    DMTR_TRUE(ENOENT, it != my_tasks.cend());
-
-    t_out = &it->second;
+    DMTR_TRUE(ENOENT, has_task(qt));
+    t_out = get_task(qt);
     DMTR_NOTNULL(ENOTSUP, t_out);
+    
     return 0;
+    // if (my_tasks[qt % MAX_TASKS].valid) {
+    //     t_out = &my_tasks[qt % MAX_TASKS];
+    //     return 0;
+    // } else {
+    //     return -1;
+    // }
 }
 
+dmtr::io_queue::task * dmtr::io_queue::get_task(dmtr_qtoken_t qt) {
+#ifdef MAX_TASKS
+    return &my_tasks[qt % MAX_TASKS];
+#else
+    return &my_tasks.find(qt)->second;
+#endif
+}
 int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
-    auto it = my_tasks.find(qt);
-    //DMTR_TRUE(ENOENT, it != my_tasks.cend());
-    if (it != my_tasks.cend())
-        my_tasks.erase(it);
+    get_task(qt)->clear();
     return 0;
 }
 

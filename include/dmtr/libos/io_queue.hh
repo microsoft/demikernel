@@ -28,6 +28,7 @@ class io_queue
     protected: class task {
         public: typedef user_thread<dmtr_qtoken_t> thread_type;
 
+        private: bool valid = false;
         private: dmtr_qresult_t my_qr;
         private: int my_error;
         private: dmtr_sgarray_t my_sga_arg;
@@ -49,13 +50,23 @@ class io_queue
         public: bool done() const {
             return my_error != EAGAIN;
         }
-
+        public: bool is_valid() const {
+            return valid;
+        }
+        public: void clear() {
+            valid = false;
+        }
         public: dmtr_opcode_t opcode() const {
             return my_qr.qr_opcode;
         }
     };
+#define MAX_TASKS 256
 
-    private: boost::unordered_map<dmtr_qtoken_t, task> my_tasks;
+#ifdef MAX_TASKS
+    private: task my_tasks[MAX_TASKS];
+#else
+    private: boost::unordered_map<dmtr_qtoken_t,task> my_tasks;
+#endif
     protected: const category_id my_cid;
     protected: const int my_qd;
 
@@ -97,7 +108,10 @@ class io_queue
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, const dmtr_sgarray_t &arg);
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg);
+    protected: void insert_task(dmtr_qtoken_t qt);
     protected: int get_task(task *&t_out, dmtr_qtoken_t qt);
+    public: bool has_task(dmtr_qtoken_t qt);
+    private: task * get_task(dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
 };
 
