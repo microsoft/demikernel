@@ -8,6 +8,8 @@ iterations: 1000000
 
 size: 1024
 
+port: 12347
+
 hosts:
     server:
         addr: prometheus1
@@ -31,7 +33,7 @@ hosts:
 
 programs:
     start_server:
-        start: sudo taskset 0x4 {0.exec_dir}/dmtr-{libos}-server --ip 198.19.200.1 --config-path=/demikernel/config.yaml
+        start: sudo taskset 0x4 {0.exec_dir}/{libos}-server --ip 198.19.200.1 --port {0.port} --config-path=/demikernel/config.yaml -s {0.size}
         hosts: server
         log:
             out: server.log
@@ -40,7 +42,7 @@ programs:
         # Host can be specified in either a program, or a command
 
     start_client:
-        start: sudo {0.exec_dir}/dmtr-{libos}-client -c {clients} -i {0.iterations} -s {0.size} --config-path=/demikernel/config.yaml
+        start: sudo {0.exec_dir}/{libos}-client -c {clients} -i {0.iterations} -s {0.size} --ip 198.19.200.1 --port {0.port} --config-path=/demikernel/config.yaml
         hosts: [client1, client2, client3, client4, client5, client6, client7, client8]
         log:
             out: client.{host_idx}.log

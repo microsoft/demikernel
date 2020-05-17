@@ -17,7 +17,7 @@
 namespace dmtr {
 
 #define RECV_WINDOW 100
-#define RECV_BUF_SIZE 128
+#define RECV_BUF_SIZE 1100
 class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;

@@ -41,7 +41,7 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
     // }
 
     // q_out = it->second.get();
-    qout = my_queues[qd];
+    q_out = my_queues[qd].get();
     return 0;
 }
 

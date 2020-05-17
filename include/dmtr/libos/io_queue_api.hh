@@ -19,7 +19,7 @@ class io_queue_api
 {
     private: boost::atomic<int> my_qd_counter;
     private: boost::atomic<uint32_t> my_qt_counter;
-    private: std::unique_ptr<io_queue>> my_queues[256];
+    private: std::unique_ptr<io_queue> my_queues[256];
     private: io_queue_factory my_queue_factory;
 
     private: io_queue_api();
