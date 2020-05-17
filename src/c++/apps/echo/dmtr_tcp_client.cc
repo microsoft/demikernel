@@ -63,6 +63,7 @@ int main(int argc, char *argv[])
         for (uint32_t c = 0; c < clients; c++) {
             dmtr_qtoken_t qt;
             DMTR_OK(dmtr_push(&qt, qd, &sga));
+            dmtr_drop(qt);
             //fprintf(stderr, "send complete.\n");
             DMTR_OK(dmtr_pop(&qt2[c], qd));
         }

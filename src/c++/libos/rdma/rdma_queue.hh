@@ -16,26 +16,25 @@
 
 namespace dmtr {
 
+#define RECV_WINDOW 100
+#define RECV_BUF_SIZE 128
 class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
     private: static const size_t max_num_sge;
 
     // my local receive buffer count and size
-    private: const size_t my_recv_buf_max = 100;
     private: size_t my_recv_window = 0;
-    private: size_t my_recv_buf_size = 128;
     // how much can I send to the other side?
     private: size_t my_send_window = 0;
-    private: size_t send_buf_size = 0;
+    private: size_t my_send_window_unused = 0;
     // how to reach the window on the other end of the connection
-    private: uint64_t other_send_window_addr;
-    private: uint32_t other_send_window_rkey;
+    private: uint64_t their_send_window_addr;
+    private: uint32_t their_send_window_rkey;
 
     private: struct connection_data {
         uint64_t send_window_addr;
         uint32_t send_window_rkey;
-        size_t send_buf_size;
     };
     
     private: struct metadata {
@@ -108,8 +107,10 @@ private: static int expect_rdma_cm_event(int err, enum rdma_cm_event_type expect
     private: static int pin(const dmtr_sgarray_t &sga);
     private: static int unpin(const dmtr_sgarray_t &sga);
     private: int get_pd(struct ibv_pd *&pd_out);
+    private: static void close_pd();
     private: int get_rdma_mr(struct ibv_mr *&mr_out, const void * const p);
     private: int new_recv_bufs(size_t n);
+private: int update_remote_window(size_t n);
     private: int service_recv_queue(void *&buf_out, size_t &len_out);
     private: int setup_recv_queue();
     private: int setup_recv_window(struct connection_data &cd);

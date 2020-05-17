@@ -73,6 +73,7 @@ int main(int argc, char *argv[])
     DMTR_OK(dmtr_new_latency(&file_log_latency, "file log server"));
 #endif
     std::vector<dmtr_qtoken_t> tokens;
+    //std::vector<dmtr_qtoken_t> push_tokens;
     std::unordered_map<dmtr_qtoken_t, boost::chrono::time_point<boost::chrono::steady_clock>> start_times;
     dmtr_qtoken_t token, qt2;
     DMTR_OK(dmtr_socket(&lqd, AF_INET, SOCK_STREAM, 0));
@@ -161,8 +162,9 @@ int main(int argc, char *argv[])
                 start_times[token] = t0;
 #endif
                 tokens[idx] = token;
+                dmtr_drop(qt2);
                 //fprintf(stderr, "send complete.\n");
-
+                //  DMTR_OK(dmtr_wait(NULL, qt2));
                 DMTR_OK(dmtr_sgafree(&wait_out.qr_value.sga));
             }
         } else {
