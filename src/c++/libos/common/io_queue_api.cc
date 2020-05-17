@@ -33,14 +33,15 @@ int dmtr::io_queue_api::register_queue_ctor(enum io_queue::category_id cid, io_q
 }
 
 int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
-    q_out = NULL;
+    // q_out = NULL;
 
-    auto it = my_queues.find(qd);
-    if (my_queues.cend() == it) {
-        return ENOENT;
-    }
+    // auto it = my_queues.find(qd);
+    // if (my_queues.cend() == it) {
+    //     return ENOENT;
+    // }
 
-    q_out = it->second.get();
+    // q_out = it->second.get();
+    qout = my_queues[qd];
     return 0;
 }
 
@@ -58,7 +59,7 @@ int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
 
 int dmtr::io_queue_api::new_qd() {
     int qd = ++my_qd_counter;
-    if (0 > qd) {
+    if (qd > 256) {
         DMTR_PANIC("Queue descriptor overflow");
     }
 
@@ -82,23 +83,15 @@ int dmtr::io_queue_api::insert_queue(std::unique_ptr<io_queue> &q) {
     DMTR_NOTNULL(EINVAL, q);
 
     int qd = q->qd();
-    if (my_queues.find(qd) != my_queues.cend()) {
-        return EEXIST;
-    }
-
     my_queues[qd] = std::move(q);
     return 0;
 }
 
 int dmtr::io_queue_api::remove_queue(int qd) {
     DMTR_TRUE(EINVAL, qd != 0);
+    DMTR_NOTNULL(ENOENT, my_queues[qd]);
 
-    auto it = my_queues.find(qd);
-    if (my_queues.cend() == it) {
-        return ENOENT;
-    }
-
-    my_queues.erase(it);
+    my_queues[qd] = NULL;
     return 0;
 }
 
