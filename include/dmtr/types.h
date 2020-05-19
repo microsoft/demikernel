@@ -12,10 +12,12 @@
 extern "C" {
 #endif
 
-#define DMTR_SGARRAY_MAXSIZE 3
+#define DMTR_SGARRAY_MAXSIZE 1
 #define DMTR_HEADER_MAGIC 0x10102010
+#define QD_OFFSET 32ul
+    //#define QD_MASK 0xFFFFFFFFul << QD_OFFSET
 
-#define QT2QD(qtoken) ((qtoken) >> 32)
+#define QT2QD(qtoken) ((qtoken) >> QD_OFFSET)
 
 typedef uint64_t dmtr_qtoken_t;
 

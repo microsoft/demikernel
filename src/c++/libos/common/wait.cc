@@ -9,7 +9,7 @@
 #include <dmtr/fail.h>
 #include <dmtr/libos.h>
 
-#define DMTR_PROFILE 0
+//#define DMTR_PROFILE 1
 
 #if DMTR_PROFILE
 #   include <dmtr/latency.h>
@@ -40,25 +40,27 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
         });
     }
 #endif
+    // start where we last left off
+    int i = (ready_offset != NULL && *ready_offset + 1 < num_qts) ? *ready_offset + 1 : 0;
     while (1) {
-        for (int i = 0; i < num_qts; i++) {
 #if DMTR_PROFILE
-            auto t0 = boost::chrono::steady_clock::now();
+        auto t0 = boost::chrono::steady_clock::now();
 #endif
-            int ret = dmtr_poll(qr_out, qts[i]);
-            if (ret != EAGAIN) {
-                if (ret == 0) {
-                    DMTR_OK(dmtr_drop(qts[i]));
+        int ret = dmtr_poll(qr_out, qts[i]);
+        if (ret != EAGAIN) {
+            if (ret == 0) {
+                DMTR_OK(dmtr_drop(qts[i]));
 #if DMTR_PROFILE
-            auto dt = (boost::chrono::steady_clock::now() - t0);
-            DMTR_OK(dmtr_record_latency(success_poll_latency.get(), dt.count()));
+                auto dt = (boost::chrono::steady_clock::now() - t0);
+                DMTR_OK(dmtr_record_latency(success_poll_latency.get(), dt.count()));
 #endif
-                    if (ready_offset != NULL)
-                        *ready_offset = i;
-                    return ret;
-                }
+                if (ready_offset != NULL)
+                    *ready_offset = i;
+                return ret;
             }
         }
+        i++;
+        if (i == num_qts) i = 0;
     }
 
     DMTR_UNREACHABLE();

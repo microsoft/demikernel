@@ -13,8 +13,7 @@
 #include <unistd.h>
 
 dmtr::io_queue_api::io_queue_api() :
-    my_qd_counter(0),
-    my_qt_counter(0)
+    my_qd_counter(0)
 {}
 
 dmtr::io_queue_api::~io_queue_api()
@@ -42,18 +41,6 @@ int dmtr::io_queue_api::get_queue(io_queue *&q_out, int qd) const {
 
     // q_out = it->second.get();
     q_out = my_queues[qd].get();
-    return 0;
-}
-
-int dmtr::io_queue_api::new_qtoken(dmtr_qtoken_t &qt_out, int qd) {
-    DMTR_TRUE(EINVAL, qd != 0);
-
-    uint32_t u = ++my_qt_counter;
-    if (0 == u) {
-        DMTR_PANIC("Queue token overflow");
-    }
-
-    qt_out = static_cast<uint64_t>(u) | (static_cast<uint64_t>(qd) << 32);
     return 0;
 }
 
@@ -151,10 +138,8 @@ int dmtr::io_queue_api::accept(dmtr_qtoken_t &qtok_out, int sockqd) {
     int qd = new_qd();
     dmtr_qtoken_t qt = 0;
 
-    do {
-        DMTR_OK(new_qtoken(qt, sockqd));
-        //printf("accept: allocate a new q token%lu %lu\n", qt, qt % MAX_TASKS);
-    } while(sockq->has_task(qt));
+    DMTR_OK(sockq->new_qtoken(qt));
+    //printf("accept: allocate a new q token%lu %lu\n", qt, qt % MAX_TASKS);
     //printf("accept: done allocating\n");
     
     std::unique_ptr<io_queue> q;
@@ -180,10 +165,8 @@ int dmtr::io_queue_api::connect(dmtr_qtoken_t &qtok_out, int qd, const struct so
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     dmtr_qtoken_t qt = 0;
-    do {
-        DMTR_OK(new_qtoken(qt, qd));
-        //printf("connect: allocate a new q token:%lu %lu\n",qt,qt%MAX_TASKS);
-    } while(q->has_task(qt));
+    DMTR_OK(q->new_qtoken(qt));
+    //printf("connect: allocate a new q token:%lu %lu\n",qt,qt%MAX_TASKS);
     //printf("connect: done allocating\n");
     qtok_out = qt;
     int ret = q->connect(qt, saddr, size);
@@ -284,11 +267,9 @@ int dmtr::io_queue_api::push(dmtr_qtoken_t &qtok_out, int qd, const dmtr_sgarray
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     dmtr_qtoken_t qt;
-    do {
-        DMTR_OK(new_qtoken(qt, qd));
-        //printf("push: allocate a new q token: %lu %lu\n",qt, qt%MAX_TASKS);
-    } while(q->has_task(qt));
-    //printf("push: done allocating\n");
+    DMTR_OK(q->new_qtoken(qt));
+    //printf("push: allocate a new q token: %lu %lu\n",qt, qt%MAX_TASKS);
+     //printf("push: done allocating\n");
     DMTR_OK(q->push(qt, sga));
 
     qtok_out = qt;
@@ -302,10 +283,8 @@ int dmtr::io_queue_api::pop(dmtr_qtoken_t &qtok_out, int qd) {
     io_queue *q = NULL;
     DMTR_OK(get_queue(q, qd));
     dmtr_qtoken_t qt;
-    do {
-        DMTR_OK(new_qtoken(qt, qd));
-        //printf("pop: allocate a new q token: %lu %lu\n",qt, qt % MAX_TASKS);
-    } while(q->has_task(qt));
+    DMTR_OK(q->new_qtoken(qt));
+    //printf("pop: allocate a new q token: %lu %lu\n",qt, qt % MAX_TASKS);
     //printf("pop: done allocating\n");
     DMTR_OK(q->pop(qt));
 

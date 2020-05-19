@@ -36,15 +36,14 @@ namespace bpo = boost::program_options;
 
 #define NUM_MBUFS               8191
 #define MBUF_CACHE_SIZE         250
-#define RX_RING_SIZE            128
-#define TX_RING_SIZE            512
+#define RX_RING_SIZE            2048
+#define TX_RING_SIZE            2048
 #define IP_DEFTTL  64   /* from RFC 1340. */
 #define IP_VERSION 0x40
 #define IP_HDRLEN  0x05 /* default IP header length == five 32-bits words. */
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
 //#define DMTR_PROFILE 1
-#define TIME_ZEUS_LWIP		1
 #define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
@@ -52,8 +51,8 @@ namespace bpo = boost::program_options;
  * controller's datasheet and supporting DPDK documentation for guidance
  * on how these parameters should be set.
  */
-#define RX_PTHRESH          0 /**< Default values of RX prefetch threshold reg. */
-#define RX_HTHRESH          0 /**< Default values of RX host threshold reg. */
+#define RX_PTHRESH          8 /**< Default values of RX prefetch threshold reg. */
+#define RX_HTHRESH          8 /**< Default values of RX host threshold reg. */
 #define RX_WTHRESH          0 /**< Default values of RX write-back threshold reg. */
 
 /*
@@ -457,8 +456,19 @@ dmtr::lwip_queue::~lwip_queue()
         msg << "Failed to close `lwip_queue` object (error " << ret << ")." << std::endl;
         DMTR_PANIC(msg.str().c_str());
     }
-    if (is_bound) {
+    if (is_bound()) {
+        std::cerr << "Bound to addr: " << my_bound_src->sin_addr.s_addr << ":" << my_bound_src->sin_port << std::endl;
+
         free(my_bound_src);
+    }
+    if (is_connected()) {
+        std::cerr << "Connected to addr: " << my_default_dst.get().sin_addr.s_addr << ":" << my_default_dst.get().sin_port << std::endl;
+    }
+
+    rte_eth_stats stats{};
+    if (rte_eth_stats_get(our_dpdk_port_id.get(), &stats) == 0) {
+        fprintf(stderr, "DMTR STATS in=%lu out=%lu\n DPDK STATS: in=%lu out=%lu missed=%lu in_errors=%lu out_errors=%lu\n",
+                in_packets, out_packets, stats.ipackets, stats.opackets, stats.imissed, stats.ierrors, stats.oerrors);
     }
 }
 
@@ -639,7 +649,6 @@ int dmtr::lwip_queue::close() {
     if (!is_connected()) {
         return 0;
     }
-
     my_default_dst = boost::none;
     delete my_recv_queue;
     return 0;
@@ -837,6 +846,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     DMTR_FAIL(ret);
                 case 0:
                     DMTR_TRUE(ENOTSUP, 1 == pkts_sent);
+                    out_packets++;
                     continue;
                 case EAGAIN:
 #if DMTR_PROFILE
@@ -897,6 +907,8 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         // todo: pop from queue in `raii_guard`.
         DMTR_OK(t->complete(0, sga));
         my_recv_queue->pop();
+        in_packets++;
+
     }
 
     return 0;
@@ -925,7 +937,6 @@ dmtr::lwip_queue::service_incoming_packets() {
         case EAGAIN:
             return ret;
     }
-
 #if DMTR_PROFILE
     auto dt = boost::chrono::steady_clock::now() - t0;
     DMTR_OK(dmtr_record_latency(read_latency.get(), dt.count()));
@@ -1109,26 +1120,32 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 
     int ret;
     switch (t->opcode()) {
-        default:
-            return ENOTSUP;
-        case DMTR_OPC_ACCEPT:
+    default:
+        return ENOTSUP;
+    case DMTR_OPC_ACCEPT:
+        // run accept once every 10000 times
+        static int poll_count = 0;
+        poll_count++;
+        if (poll_count > 100000) {
+            poll_count = 0;
             ret = my_accept_thread->service();
             if (ret != EAGAIN && ret != 0)
                 printf("accept problem\n");
-            break;
-        case DMTR_OPC_PUSH:
-            ret = my_push_thread->service();
-            if (ret != EAGAIN && ret != 0)
-                printf("push problem\n");
-            break;
-        case DMTR_OPC_POP:
-            ret = my_pop_thread->service();
-            if (ret != EAGAIN && ret != 0)
-                printf("pop problem\n");
-            break;
-        case DMTR_OPC_CONNECT:
-            ret = 0;
-            break;
+        } else ret = EAGAIN;
+        break;
+    case DMTR_OPC_PUSH:
+        ret = my_push_thread->service();
+        if (ret != EAGAIN && ret != 0)
+            printf("push problem\n");
+        break;
+    case DMTR_OPC_POP:
+        ret = my_pop_thread->service();
+        if (ret != EAGAIN && ret != 0)
+            printf("pop problem\n");
+        break;
+    case DMTR_OPC_CONNECT:
+        ret = 0;
+        break;
     }
 
     switch (ret) {

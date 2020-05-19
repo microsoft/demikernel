@@ -7,6 +7,7 @@
 #include <dmtr/fail.h>
 #include <dmtr/types.h>
 #include <errno.h>
+#include <stdio.h>
 
 int dmtr_sgalen(size_t *len_out, const dmtr_sgarray_t *sga) {
     DMTR_NOTNULL(EINVAL, len_out);
@@ -32,10 +33,12 @@ int dmtr_sgafree(dmtr_sgarray_t *sga) {
 
     if (NULL == sga->sga_buf) {
         for (size_t i = 0; i < sga->sga_numsegs; ++i) {
+            //printf("freeing a scatter-gather array: %lx\n",sga->sga_segs[i].sgaseg_buf);
             free(sga->sga_segs[i].sgaseg_buf);
         }
     } else {
         free(sga->sga_buf);
+        //   printf("freeing a scatter-gather array: %lx\n", sga->sga_buf);
     }
 
     return 0;

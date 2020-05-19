@@ -20,12 +20,13 @@
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
+//#define DMTR_PROFILE
+
 namespace po = boost::program_options;
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     parse_args(argc, argv, false);
-
+    
     DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_latency_t *latency = NULL;
@@ -59,34 +60,52 @@ int main(int argc, char *argv[])
     
     std::cerr << "Number of clients: " << clients << std::endl;
 
-    dmtr_qtoken_t qt[clients];
-    dmtr_qtoken_t qt2[clients];    
-    for (size_t i = 0; i < iterations/clients; i++) {
-        auto t0 = boost::chrono::steady_clock::now();
-        for (uint32_t c = 0; c < clients; c++) {
-            DMTR_OK(dmtr_push(&qt[c], qd, &sga));
-            //fprintf(stderr, "send complete.\n");
-            DMTR_OK(dmtr_pop(&qt2[c], qd));
-        }
+    dmtr_qtoken_t push_tokens[clients];
+    dmtr_qtoken_t pop_tokens[clients];    
+    boost::chrono::time_point<boost::chrono::steady_clock> start_times[clients];
 
-        for (uint32_t c = 0; c < clients; c++) {
-            DMTR_OK(dmtr_wait(&qr, qt2[c]));
-            dmtr_drop(qt[c]);
-            auto dt = boost::chrono::steady_clock::now() - t0;
-            DMTR_OK(dmtr_record_latency(latency, dt.count()));
-            //assert(DMTR_OPC_POP == qr.qr_opcode);
-            //assert(qr.qr_value.sga.sga_numsegs == 1);
-            //assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
-            //DMTR_OK(dmtr_wait(NULL, qt));
-        
-        /*fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);*/
-            
-            DMTR_OK(dmtr_sgafree(&qr.qr_value.sga));
-        }
+    // start all the clients
+    for (uint32_t c = 0; c < clients; c++) {
+        // push message to server
+        DMTR_OK(dmtr_push(&push_tokens[c], qd, &sga));
+        // async pop
+        DMTR_OK(dmtr_pop(&pop_tokens[c], qd));
+        // record start time
+        start_times[c] = boost::chrono::steady_clock::now();
     }
+    
+    int idx = 0, ret;
+    dmtr_qresult_t wait_out;
+    iterations *= clients;
+    do {
+        // wait for a returned value
+        ret =  dmtr_wait_any(&wait_out, &idx, pop_tokens, clients);
+        // handle the returned value
+        //record the time
+        auto dt = boost::chrono::steady_clock::now() - start_times[idx];
+        DMTR_OK(dmtr_record_latency(latency, dt.count()));
+        // should be done by now
+        //DMTR_OK(dmtr_wait(NULL, push_tokens[idx]));
+        //assert(DMTR_OPC_POP == qr.qr_opcode);
+        //assert(qr.qr_value.sga.sga_numsegs == 1);
+        //assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
+        //DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_sgafree(&wait_out.qr_value.sga));
+
+        iterations--;
+        DMTR_OK(dmtr_drop(push_tokens[idx]));
+        // push back to the server
+        DMTR_OK(dmtr_push(&push_tokens[idx], qd, &sga));
+        // pop
+        DMTR_OK(dmtr_pop(&pop_tokens[idx], qd));
+        // restart the clock
+        start_times[idx] = boost::chrono::steady_clock::now();
+
+        // wait for response
+    } while (iterations > 0 && ret == 0);
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));
     DMTR_OK(dmtr_close(qd));
-
+    DMTR_OK(dmtr_sgafree(&sga));
     return 0;
 }

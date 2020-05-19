@@ -84,7 +84,8 @@ bool dmtr::io_queue::task::arg(io_queue *&arg_out) const {
 
 dmtr::io_queue::io_queue(enum category_id cid, int qd) :
     my_cid(cid),
-    my_qd(qd)
+    my_qd(qd),
+    my_qt_counter(0)
 {
     //my_tasks.reserve(5);
 }
@@ -146,7 +147,7 @@ int dmtr::io_queue::drop(dmtr_qtoken_t qt)
 }
 
 int dmtr::io_queue::set_non_blocking(int fd) {
-    //printf("Set non blocking\n");
+    ////printf("Set non blocking\n");
     int ret = fcntl(fd, F_GETFL);
     if (-1 == ret) {
         return errno;
@@ -158,6 +159,28 @@ int dmtr::io_queue::set_non_blocking(int fd) {
     }
 
     return 0;
+}
+
+
+int dmtr::io_queue::new_qtoken(dmtr_qtoken_t &qt_out) {
+    DMTR_TRUE(EINVAL, my_qd != 0);
+
+    uint32_t u = ++my_qt_counter;
+    if (u == UINT32_MAX) {
+        DMTR_PANIC("Queue token overflow");
+    }
+
+    while (has_task(u)) {
+        //printf("finding another task slot and token\n");
+        u = ++my_qt_counter;
+        if (u == UINT32_MAX) {
+            DMTR_PANIC("Queue token overflow");
+        }
+    }
+    qt_out = static_cast<uint64_t>(u) | (static_cast<uint64_t>(my_qd) << QD_OFFSET);
+    //printf("Allocating qtoken: %lu\n", qt_out);
+    return 0;
+    
 }
 
 int dmtr::io_queue::new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode) {
@@ -218,6 +241,7 @@ dmtr::io_queue::task * dmtr::io_queue::get_task(dmtr_qtoken_t qt) {
 #endif
 }
 int dmtr::io_queue::drop_task(dmtr_qtoken_t qt) {
+    //printf("Dropping task %lx\n", qt);
     get_task(qt)->clear();
     return 0;
 }

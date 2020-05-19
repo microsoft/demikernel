@@ -16,9 +16,6 @@
 #include <map>
 #include <yaml-cpp/yaml.h>
 
-#define NUM_MBUFS               8191
-#define MBUF_CACHE_SIZE         250
-
 class lwip_addr {
 public:
     lwip_addr();
@@ -56,6 +53,8 @@ class lwip_queue : public io_queue {
     protected: std::unique_ptr<task::thread_type> my_push_thread;
     protected: std::unique_ptr<task::thread_type> my_pop_thread;
 
+    private: uint64_t in_packets = 0;
+    private: uint64_t out_packets = 0;
     public: lwip_queue(int qd);
     public: static int new_object(std::unique_ptr<io_queue> &q_out, int qd);
 

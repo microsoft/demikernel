@@ -16,8 +16,10 @@
 
 namespace dmtr {
 
-#define RECV_WINDOW 100
-#define RECV_BUF_SIZE 1100
+#define RECV_WINDOW 1024
+#define RECV_WINDOW_BATCHES 2
+#define CQ_BATCH 10
+#define RECV_BUF_SIZE 1024
 class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
@@ -41,6 +43,9 @@ class rdma_queue : public io_queue {
         dmtr_header_t header;
         uint32_t lengths[];
     };
+
+    private: uint64_t in_packets = 0;
+    private: uint64_t out_packets = 0;
 
     // queued scatter gather arrays
     private: std::queue<struct rdma_cm_event *> my_pending_accepts;

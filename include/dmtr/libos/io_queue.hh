@@ -13,6 +13,7 @@
 #include <memory>
 #include <sys/socket.h>
 #include <boost/unordered_map.hpp>
+#include <boost/atomic.hpp>
 
 namespace dmtr {
 
@@ -24,10 +25,8 @@ class io_queue
         NETWORK_Q,
         FILE_Q,
     };
-
     protected: class task {
         public: typedef user_thread<dmtr_qtoken_t> thread_type;
-
         private: bool valid = false;
         private: dmtr_qresult_t my_qr;
         private: int my_error;
@@ -60,7 +59,7 @@ class io_queue
             return my_qr.qr_opcode;
         }
     };
-#define MAX_TASKS 256
+#define MAX_TASKS 1024
 
 #ifdef MAX_TASKS
     private: task my_tasks[MAX_TASKS];
@@ -69,7 +68,8 @@ class io_queue
 #endif
     protected: const category_id my_cid;
     protected: const int my_qd;
-
+    private: boost::atomic<uint32_t> my_qt_counter;
+ 
     protected: io_queue(enum category_id cid, int qd);
     public: virtual ~io_queue();
 
@@ -110,8 +110,9 @@ class io_queue
     protected: int new_task(dmtr_qtoken_t qt, dmtr_opcode_t opcode, io_queue *arg);
     protected: void insert_task(dmtr_qtoken_t qt);
     protected: int get_task(task *&t_out, dmtr_qtoken_t qt);
+    public: int new_qtoken(dmtr_qtoken_t &qt_out);
     public: bool has_task(dmtr_qtoken_t qt);
-    private: task * get_task(dmtr_qtoken_t qt);
+    protected: task * get_task(dmtr_qtoken_t qt);
     private: int drop_task(dmtr_qtoken_t qt);
 };
 
