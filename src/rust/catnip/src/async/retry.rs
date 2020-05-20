@@ -68,7 +68,7 @@ impl<'a> Iterator for Retry<'a> {
             return None;
         }
 
-        match Pin::new(self.gen.as_mut()).resume() {
+        match Pin::new(self.gen.as_mut()).resume(()) {
             GeneratorState::Yielded(duration) => Some(duration),
             GeneratorState::Complete(()) => {
                 self.completed = true;

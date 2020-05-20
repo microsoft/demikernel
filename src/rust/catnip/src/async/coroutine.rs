@@ -101,7 +101,7 @@ impl<'a> Coroutine<'a> {
                     panic!("attempt to resume a coroutine that isn't ready");
                 } else {
                     self.status = CoroutineStatus::Active;
-                    match Pin::new(self.gen.as_mut()).resume() {
+                    match Pin::new(self.gen.as_mut()).resume(()) {
                         GeneratorState::Yielded(duration) => {
                             // if `yield None` is used, then we schedule
                             // something for the next tick to prevent
