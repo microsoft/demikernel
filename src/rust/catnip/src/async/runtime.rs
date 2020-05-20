@@ -8,7 +8,7 @@ use super::{
     traits::Async,
 };
 use crate::prelude::*;
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashMap;
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -20,7 +20,6 @@ use std::{
 
 #[derive(Clone)]
 pub struct AsyncRuntime<'a> {
-    active_coroutines: Rc<RefCell<FxHashSet<CoroutineId>>>,
     inactive_coroutines: Rc<RefCell<FxHashMap<CoroutineId, Coroutine<'a>>>>,
     next_unused_id: Rc<Cell<u64>>,
     schedule: Rc<RefCell<Schedule>>,
@@ -29,7 +28,6 @@ pub struct AsyncRuntime<'a> {
 impl<'a> AsyncRuntime<'a> {
     pub fn new(now: Instant) -> Self {
         AsyncRuntime {
-            active_coroutines: Rc::new(RefCell::new(FxHashSet::default())),
             inactive_coroutines: Rc::new(RefCell::new(FxHashMap::default())),
             next_unused_id: Rc::new(Cell::new(0)),
             schedule: Rc::new(RefCell::new(Schedule::new(now))),
@@ -79,16 +77,11 @@ impl<'a> AsyncRuntime<'a> {
 
     pub fn coroutine_status(&self, cid: CoroutineId) -> CoroutineStatus {
         trace!("AsyncRuntime::coroutine_status({})", cid);
-        if self.active_coroutines.borrow().contains(&cid) {
-            CoroutineStatus::Active
-        } else {
-            self.inactive_coroutines
-                .borrow()
-                .get(&cid)
-                .unwrap()
-                .status()
-                .clone()
-        }
+        self.inactive_coroutines
+            .borrow()
+            .get(&cid)
+            .map(|co| co.status().clone())
+            .unwrap_or(CoroutineStatus::Active)
     }
 }
 
@@ -116,9 +109,7 @@ impl<'a> Async<CoroutineId> for AsyncRuntime<'a> {
                     // reasonable situation where the schedule would give us an
                     // ID that isn't in
                     // `self.inactive_coroutines`.
-                    let coroutine = inactive_coroutines.remove(&cid).unwrap();
-                    assert!(self.active_coroutines.borrow_mut().insert(cid));
-                    coroutine
+                    inactive_coroutines.remove(&cid).unwrap()
                 };
 
                 if !coroutine.resume(now) {
@@ -136,7 +127,6 @@ impl<'a> Async<CoroutineId> for AsyncRuntime<'a> {
                     .borrow_mut()
                     .insert(cid, coroutine)
                     .is_none());
-                assert!(self.active_coroutines.borrow_mut().remove(&cid));
                 Some(Ok(cid))
             }
             None => None,
