@@ -44,7 +44,11 @@ namespace bpo = boost::program_options;
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
 //#define DMTR_PROFILE 1
-#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
+//#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
+// default mbuf size is ->RTE_MBUF_DEFAULT_DATAROOM + RTE_PKTMBUF_HEADROOM
+#define MBUF_BUF_SIZE RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM
+#define RX_PACKET_LEN 9216
+//#define RX_PACKET_LEN RTE_ETHER_MAX_LEN  
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
  * carefully set for optimal performance. Consult the network
@@ -240,12 +244,17 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     const uint16_t tx_rings = 1;
     const uint16_t nb_rxd = RX_RING_SIZE;
     const uint16_t nb_txd = TX_RING_SIZE;
-
+    uint16_t mtu;
+    
     struct ::rte_eth_dev_info dev_info = {};
     DMTR_OK(rte_eth_dev_info_get(port_id, dev_info));
-
+    DMTR_OK(rte_eth_dev_set_mtu(port_id, RX_PACKET_LEN)); 
+    DMTR_OK(rte_eth_dev_get_mtu(port_id, &mtu));
+    std::cerr << "Dev info MTU: " << mtu << std::endl;
     struct ::rte_eth_conf port_conf = {};
-    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
+    port_conf.rxmode.max_rx_pkt_len = RX_PACKET_LEN;
+            
+    port_conf.rxmode.offloads = DEV_RX_OFFLOAD_JUMBO_FRAME;
 //    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
 //    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
@@ -435,7 +444,7 @@ int dmtr::lwip_queue::finish_dpdk_init(YAML::Node &config)
     return 0;
 }
 
-const size_t dmtr::lwip_queue::our_max_queue_depth = 64;
+const size_t dmtr::lwip_queue::our_max_queue_depth = 1024;
 boost::optional<uint16_t> dmtr::lwip_queue::our_dpdk_port_id;
 
 dmtr::lwip_queue::lwip_queue(int qd) :

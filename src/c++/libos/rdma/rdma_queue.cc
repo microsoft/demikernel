@@ -103,14 +103,14 @@ int dmtr::rdma_queue::setup_rdma_qp()
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
     struct ibv_qp_init_attr qp_attr = {};
-    my_cq = ibv_create_cq(pd->context, RECV_WINDOW * RECV_WINDOW_BATCHES + 20, pd->context, NULL, 0);
+    my_cq = ibv_create_cq(pd->context, RECV_WINDOW * RECV_WINDOW_BATCHES + 1000, pd->context, NULL, 0);
     qp_attr.qp_type = IBV_QPT_RC;
     // our send queue size has to be bigger than how often we want to
     // signal and our send window
-    qp_attr.cap.max_send_wr = SEND_SIGNAL_FREQ;
+    qp_attr.cap.max_send_wr = SEND_SIGNAL_FREQ + 10;
     // our number of posted receives has to be big enough to handle
     // the receive window and its batches
-    qp_attr.cap.max_recv_wr = RECV_WINDOW * RECV_WINDOW_BATCHES;
+    qp_attr.cap.max_recv_wr = RECV_WINDOW * RECV_WINDOW_BATCHES + 10;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;
     qp_attr.cap.max_inline_data = 128;

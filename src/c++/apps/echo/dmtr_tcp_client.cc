@@ -27,7 +27,8 @@ uint64_t sent = 0, recved = 0;
 dmtr_latency_t *latency = NULL;
 int qd;
 dmtr_sgarray_t sga = {};
-
+//#define TRAILING_REQUESTS 
+#define WAIT_FOR_ALL
 void finish() {
     std::cerr << "Sent: " << sent << "  Recved: " << recved << std::endl;
     dmtr_sgafree(&sga);
@@ -94,10 +95,42 @@ int main(int argc, char *argv[]) {
         start_times[c] = boost::chrono::steady_clock::now();
     }
     
-    int idx = 0, ret;
+    int ret;
     dmtr_qresult_t wait_out;
     //iterations *= clients;
     do {
+#ifdef WAIT_FOR_ALL
+        // wait for all the clients
+        for (uint32_t c = 0; c < clients; c++) {
+            ret = dmtr_wait(&wait_out, pop_tokens[c]);
+            recved++;
+            DMTR_OK(dmtr_drop(push_tokens[c]));
+            DMTR_OK(dmtr_sgafree(&wait_out.qr_value.sga));
+            // count the iteration
+            iterations--;
+        }
+        auto dt = boost::chrono::steady_clock::now() - start_times[0];
+        DMTR_OK(dmtr_record_latency(latency, dt.count()));
+        // restart the clock
+        start_times[0] = boost::chrono::steady_clock::now();
+        // send all again
+        for (uint32_t c = 0; c < clients; c++) {
+#ifndef TRAILING_REQUESTS        
+            // if there are fewer than clients left, then we just wait for the responses
+            if (iterations < clients) {
+                pop_tokens[c] = 0;
+                continue;
+            }
+#endif
+            // start again
+            // push back to the server
+            DMTR_OK(dmtr_push(&push_tokens[c], qd, &sga));
+            sent++;
+            // async pop
+            DMTR_OK(dmtr_pop(&pop_tokens[c], qd));
+        }
+#else
+        int idx = 0;
         // wait for a returned value
         ret =  dmtr_wait_any(&wait_out, &idx, pop_tokens, clients);
         // handle the returned value
@@ -122,20 +155,23 @@ int main(int argc, char *argv[]) {
             DMTR_OK(dmtr_drop(push_tokens[idx]));
             push_tokens[idx] = 0;
         }
-        
+
+#ifndef TRAILING_REQUESTS        
         // if there are fewer than clients left, then we just wait for the responses
-        //        if (iterations >= clients) {
-            // start again
-            // push back to the server
-            DMTR_OK(dmtr_push(&push_tokens[idx], qd, &sga));
-            sent++;
-            // async pop
-            DMTR_OK(dmtr_pop(&pop_tokens[idx], qd));
-            // restart the clock
-            start_times[idx] = boost::chrono::steady_clock::now();
-        // } else {
-        //     pop_tokens[idx] = 0;
-        // }
+        if (iterations < clients) {
+            pop_tokens[idx] = 0;
+            continue;
+        }
+#endif
+        // start again
+        // push back to the server
+        DMTR_OK(dmtr_push(&push_tokens[idx], qd, &sga));
+        sent++;
+        // async pop
+        DMTR_OK(dmtr_pop(&pop_tokens[idx], qd));
+        // restart the clock
+        start_times[idx] = boost::chrono::steady_clock::now();
+#endif
     } while (iterations > 0 && ret == 0);
 
     finish();

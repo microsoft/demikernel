@@ -18,13 +18,13 @@ namespace dmtr {
 
 // We don't support dynamically allocated packet sizes yet, so this is
 // our max packet size
-#define RECV_BUF_SIZE 1024
+#define RECV_BUF_SIZE 65536
 //we allocate receive windows in 2 batches so we always have some to
 // use while we re-allocate
 #define RECV_WINDOW 1024
 #define RECV_WINDOW_BATCHES 2
 // how many entries to pull when polling the single shared completion queue
-#define CQ_BATCH 100
+#define CQ_BATCH 5
 // how often we are going to send a send completion signal. Make sure
 // this is bigger than the receive window because we're going to use
 // it to set the send wr queue size!

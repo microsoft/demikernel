@@ -393,7 +393,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
     message_bytes += sizeof(header);
 
 #if DMTR_DEBUG
-    std::cerr << "push(" << qt << "): sending message (" << message_bytes << " bytes)." << std::endl;
+    std::cerr << "push: sending message (" << message_bytes << " bytes)." << std::endl;
 #endif
 
     size_t bytes_written = 0;
@@ -419,7 +419,7 @@ int dmtr::posix_queue::net_push(const dmtr_sgarray_t *sga, task::thread_type::yi
 #endif
 
 #if DMTR_DEBUG
-    std::cerr << "push(" << qt << "): sent message (" << bytes_written << " bytes)." << std::endl;
+    std::cerr << "push: sent message (" << bytes_written << " bytes)." << std::endl;
 #endif
 
     DMTR_TRUE(ENOTSUP, bytes_written == message_bytes);
@@ -532,7 +532,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         size_t remaining_bytes = sizeof(header) - header_bytes;
         size_t bytes_read = 0;
 #if DMTR_DEBUG
-        std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+        std::cerr << "pop: attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
         t0 = boost::chrono::steady_clock::now();
@@ -560,7 +560,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
 
 
 #if DMTR_DEBUG
-    std::cerr << "pop(" << qt << "): read " << header_bytes << " bytes for header." << std::endl;
+    std::cerr << "pop: read " << header_bytes << " bytes for header." << std::endl;
 #endif
 
     header.h_magic = ntohl(header.h_magic);
@@ -572,7 +572,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
     }
 
 #if DMTR_DEBUG
-    std::cerr << "pop(" << qt << "): header magic number is correct." << std::endl;
+    std::cerr << "pop: header magic number is correct." << std::endl;
 #endif
 
     // grab the rest of the message
@@ -585,7 +585,7 @@ int dmtr::posix_queue::net_pop(dmtr_sgarray_t *sga, task::thread_type::yield_typ
         size_t remaining_bytes = header.h_bytes - data_bytes;
         size_t bytes_read = 0;
 #if DMTR_DEBUG
-        std::cerr << "pop(" << qt << "): attempting to read " << remaining_bytes << " bytes..." << std::endl;
+        std::cerr << "pop: attempting to read " << remaining_bytes << " bytes..." << std::endl;
 #endif
 #if DMTR_PROFILE
         t0 = boost::chrono::steady_clock::now();
@@ -711,20 +711,20 @@ int dmtr::posix_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
 
     int ret;
     switch (t->opcode()) {
-        default:
-            return ENOTSUP;
-        case DMTR_OPC_ACCEPT:
-            ret = my_accept_thread->service();
-            break;
-        case DMTR_OPC_PUSH:
-            ret = my_push_thread->service();
-            break;
-        case DMTR_OPC_POP:
-            ret = my_pop_thread->service();
-            break;
-        case DMTR_OPC_CONNECT:
-            ret = 0;
-            break;
+    default:
+        return ENOTSUP;
+    case DMTR_OPC_ACCEPT:
+        ret = my_accept_thread->service();
+        break;
+    case DMTR_OPC_POP:
+    case DMTR_OPC_PUSH:
+        ret = my_pop_thread->service();
+        if (ret != EAGAIN) break;
+        ret = my_push_thread->service();
+        break;
+    case DMTR_OPC_CONNECT:
+        ret = 0;
+        break;
     }
 
     switch (ret) {
