@@ -16,10 +16,20 @@
 
 namespace dmtr {
 
+// We don't support dynamically allocated packet sizes yet, so this is
+// our max packet size
+#define RECV_BUF_SIZE 1024
+//we allocate receive windows in 2 batches so we always have some to
+// use while we re-allocate
 #define RECV_WINDOW 1024
 #define RECV_WINDOW_BATCHES 2
-#define CQ_BATCH 10
-#define RECV_BUF_SIZE 1024
+// how many entries to pull when polling the single shared completion queue
+#define CQ_BATCH 100
+// how often we are going to send a send completion signal. Make sure
+// this is bigger than the receive window because we're going to use
+// it to set the send wr queue size!
+#define SEND_SIGNAL_FREQ 4096
+
 class rdma_queue : public io_queue {
     public: typedef boost::chrono::steady_clock clock_type;
     public: typedef boost::chrono::duration<int32_t, boost::milli> duration_type;
@@ -43,7 +53,7 @@ class rdma_queue : public io_queue {
         dmtr_header_t header;
         uint32_t lengths[];
     };
-
+    
     private: uint64_t in_packets = 0;
     private: uint64_t out_packets = 0;
 
@@ -59,6 +69,7 @@ class rdma_queue : public io_queue {
     private: static std::unique_ptr<rdmacm_router> our_rdmacm_router;
     private: struct rdma_cm_id *my_rdma_id;
     private: bool my_listening_flag;
+    private: struct ibv_cq * my_cq = NULL;
     private: std::unique_ptr<task::thread_type> my_accept_thread;
     private: std::unique_ptr<task::thread_type> my_push_thread;
     private: std::unique_ptr<task::thread_type> my_pop_thread;

@@ -103,12 +103,19 @@ int dmtr::rdma_queue::setup_rdma_qp()
     DMTR_OK(get_pd(pd));
     my_rdma_id->pd = pd;
     struct ibv_qp_init_attr qp_attr = {};
+    my_cq = ibv_create_cq(pd->context, RECV_WINDOW * RECV_WINDOW_BATCHES + 20, pd->context, NULL, 0);
     qp_attr.qp_type = IBV_QPT_RC;
-    qp_attr.cap.max_send_wr = RECV_WINDOW * RECV_WINDOW_BATCHES + 10;
-    qp_attr.cap.max_recv_wr = RECV_WINDOW * RECV_WINDOW_BATCHES + 10;
+    // our send queue size has to be bigger than how often we want to
+    // signal and our send window
+    qp_attr.cap.max_send_wr = SEND_SIGNAL_FREQ;
+    // our number of posted receives has to be big enough to handle
+    // the receive window and its batches
+    qp_attr.cap.max_recv_wr = RECV_WINDOW * RECV_WINDOW_BATCHES;
     qp_attr.cap.max_send_sge = max_num_sge;
     qp_attr.cap.max_recv_sge = 1;
     qp_attr.cap.max_inline_data = 128;
+    qp_attr.send_cq = my_cq;
+    qp_attr.recv_cq = my_cq;
     qp_attr.sq_sig_all = 0;
     DMTR_OK(rdma_create_qp(my_rdma_id, pd, &qp_attr));
     return 0;
@@ -471,17 +478,14 @@ int dmtr::rdma_queue::connect(task::thread_type::yield_type &yield, dmtr_qtoken_
 int dmtr::rdma_queue::close()
 {
     DMTR_NOTNULL(EINVAL, our_rdmacm_router);
+    fprintf(stderr, "Closing rdma queue\n");
 
     if (NULL == my_rdma_id) {
         return 0;
     }
+    if (NULL != my_cq)
+        ibv_destroy_cq(my_cq);
 
-    if (my_rdma_id->recv_cq != NULL) {
-        ibv_destroy_cq(my_rdma_id->recv_cq);
-    }
-    if (my_rdma_id->send_cq != NULL) {
-        ibv_destroy_cq(my_rdma_id->send_cq);
-    }
     // In RDMA, both client and server should be calling rdma_disconnect
     if (my_rdma_id->qp != NULL)
     {
@@ -489,16 +493,15 @@ int dmtr::rdma_queue::close()
         DMTR_OK(rdma_destroy_qp(my_rdma_id));
         my_rdma_id->qp = NULL;
     }
-
+    
     struct rdma_cm_id *rdma_id = my_rdma_id;
     my_rdma_id = NULL;
-
-    rdma_event_channel *channel = rdma_id->channel;
-    rdma_destroy_event_channel(channel);
-
+    
+    //rdma_event_channel *channel = rdma_id->channel;
+    //rdma_destroy_event_channel(channel);
+    
     DMTR_OK(our_rdmacm_router->destroy_id(rdma_id));
-    rdma_id->channel = NULL;
-
+    //rdma_id->channel = NULL;
     fprintf(stderr, "Total sent=%lu recv=%lu\n", out_packets, in_packets);
     return io_queue::close();
 }
@@ -556,7 +559,9 @@ int dmtr::rdma_queue::submit_io(dmtr_qtoken_t qt, const dmtr_sgarray_t &sga)
     // warning: if you don't set the send flag, it will not
     // give a meaningful error.
     wr.opcode = IBV_WR_SEND;
-    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.send_flags = 0;
+    if (out_packets % SEND_SIGNAL_FREQ == 0)
+        wr.send_flags |= IBV_SEND_SIGNALED;
     if (header_len + total_len < 128)
         wr.send_flags |= IBV_SEND_INLINE;
     wr.wr_id = qt;
@@ -641,6 +646,10 @@ int dmtr::rdma_queue::push_thread(task::thread_type::yield_type &yield, task::th
             }
             DMTR_OK(update_remote_window(my_recv_window));
         }
+
+        // if (out_packets % SEND_CQ_POLL_FREQ) {
+        //     DMTR_OK(service_completion_queue(my_rdma_id->send_cq, 10));
+        // }
         
         
         // while (true) {
@@ -690,7 +699,6 @@ int dmtr::rdma_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
 #if DMTR_PROFILE
             t0 = clock_type::now();
 #endif
-            DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, CQ_BATCH));
             int ret = service_recv_queue(buf, sz_buf);
             switch (ret) {
                 default:
@@ -787,12 +795,11 @@ int dmtr::rdma_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt) {
         break;
     case DMTR_OPC_POP:
     case DMTR_OPC_PUSH:
-        DMTR_OK(service_completion_queue(my_rdma_id->send_cq, CQ_BATCH));
         // static volatile int i = 0;
         // for (int x = 0; x < 100; x++) {
         //     i = i*i;
         // }
-        //DMTR_OK(service_completion_queue(my_rdma_id->recv_cq, 3));
+        DMTR_OK(service_completion_queue(my_cq, CQ_BATCH));
         ret = my_pop_thread->service();
         if (EAGAIN != ret) break;
         ret = my_push_thread->service();
