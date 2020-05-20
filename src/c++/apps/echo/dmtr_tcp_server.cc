@@ -27,6 +27,8 @@
 // general file descriptors
 int lqd = 0;
 int fqd = 0;
+uint64_t sent = 0;
+uint64_t recved = 0;
 
 #ifdef DMTR_PROFILE
 dmtr_latency_t *pop_latency = NULL;
@@ -43,8 +45,10 @@ void sig_handler(int signo)
     dmtr_dump_latency(stderr, push_wait_latency);
     dmtr_dump_latency(stderr, file_log_latency);
 #endif
+    
     dmtr_close(lqd);
     if (0 != fqd) dmtr_close(fqd);
+    std::cerr << "Sent: " << sent << "  Recved: " << recved << std::endl;
     exit(0);
 }
 
@@ -79,7 +83,6 @@ int main(int argc, char *argv[])
   
 #endif
 
-    
     std::vector<dmtr_qtoken_t> tokens;
     dmtr_qtoken_t push_tokens[256];
     dmtr_sgarray_t popped_buffers[256];
@@ -136,9 +139,9 @@ int main(int argc, char *argv[])
                 tokens.push_back(qtemp);
                 DMTR_OK(dmtr_accept(&tokens[0], lqd));
             } else {
-                DMTR_TRUE(EINVAL, DMTR_OPC_POP == wait_out.qr_opcode);
-                DMTR_TRUE(EINVAL, wait_out.qr_value.sga.sga_numsegs == 1);
-
+                //DMTR_TRUE(EINVAL, DMTR_OPC_POP == wait_out.qr_opcode);
+                //DMTR_TRUE(EINVAL, wait_out.qr_value.sga.sga_numsegs == 1);
+                recved++;
 #ifdef DMTR_PROFILE
                 qtemp = tokens[idx];
                 auto pop_dt = boost::chrono::steady_clock::now() - start_times[qtemp];
@@ -171,16 +174,15 @@ int main(int argc, char *argv[])
                     DMTR_OK(dmtr_sgafree(&popped_buffers[idx]));
                     popped_buffers[idx] = wait_out.qr_value.sga;
                 }
-                
+                push_tokens[idx] = 0;
+                // push back to client
                 DMTR_OK(dmtr_push(&push_tokens[idx], wait_out.qr_qd, &wait_out.qr_value.sga));
+                sent++;
 #ifdef DMTR_PROFILE
                 auto push_dt = boost::chrono::steady_clock::now() - t0;
                 DMTR_OK(dmtr_record_latency(push_latency, push_dt.count()));
 #endif
-                //t0 = boost::chrono::steady_clock::now();
-                //auto push_wait_dt = boost::chrono::steady_clock::now() - t0;
-                //DMTR_OK(dmtr_record_latency(push_wait_latency, push_wait_dt.count()));
-                //t0 = boost::chrono::steady_clock::now();
+                // async pop to get next message
                 DMTR_OK(dmtr_pop(&tokens[idx], wait_out.qr_qd));
 #ifdef DMTR_PROFILE
                 start_times[tokens[idx]] = t0;
