@@ -8,10 +8,10 @@ use super::{
     traits::Async,
 };
 use crate::prelude::*;
+use fxhash::{FxHashMap, FxHashSet};
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
     fmt::Debug,
     ops::Generator,
     rc::Rc,
@@ -20,8 +20,8 @@ use std::{
 
 #[derive(Clone)]
 pub struct AsyncRuntime<'a> {
-    active_coroutines: Rc<RefCell<HashSet<CoroutineId>>>,
-    inactive_coroutines: Rc<RefCell<HashMap<CoroutineId, Coroutine<'a>>>>,
+    active_coroutines: Rc<RefCell<FxHashSet<CoroutineId>>>,
+    inactive_coroutines: Rc<RefCell<FxHashMap<CoroutineId, Coroutine<'a>>>>,
     next_unused_id: Rc<Cell<u64>>,
     schedule: Rc<RefCell<Schedule>>,
 }
@@ -29,8 +29,8 @@ pub struct AsyncRuntime<'a> {
 impl<'a> AsyncRuntime<'a> {
     pub fn new(now: Instant) -> Self {
         AsyncRuntime {
-            active_coroutines: Rc::new(RefCell::new(HashSet::new())),
-            inactive_coroutines: Rc::new(RefCell::new(HashMap::new())),
+            active_coroutines: Rc::new(RefCell::new(FxHashSet::default())),
+            inactive_coroutines: Rc::new(RefCell::new(FxHashMap::default())),
             next_unused_id: Rc::new(Cell::new(0)),
             schedule: Rc::new(RefCell::new(Schedule::new(now))),
         }

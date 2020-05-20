@@ -7,7 +7,11 @@ use crate::{
     protocols::{icmpv4, ip},
     test,
 };
-use std::time::{Duration, Instant};
+use fxhash::FxHashMap;
+use std::{
+    iter,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn unicast() {
@@ -19,14 +23,16 @@ fn unicast() {
     let now = Instant::now();
     let text = vec![0xffu8; 10];
     let alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let mut bob = test::new_bob(now);
-    bob.import_arp_cache(hashmap! {
-        *test::alice_ipv4_addr() => *test::alice_link_addr(),
-    });
+    bob.import_arp_cache(
+        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
     bob.open_udp_port(bob_port);
 
     let fut = alice.udp_cast(
@@ -78,14 +84,16 @@ fn destination_port_unreachable() {
     let now = Instant::now();
     let text = vec![0xffu8; 10];
     let mut alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let mut bob = test::new_bob(now);
-    bob.import_arp_cache(hashmap! {
-        *test::alice_ipv4_addr() => *test::alice_link_addr(),
-    });
+    bob.import_arp_cache(
+        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let fut = alice.udp_cast(
         *test::bob_ipv4_addr(),

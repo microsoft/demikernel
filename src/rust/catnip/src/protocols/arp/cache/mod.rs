@@ -8,8 +8,8 @@
 mod tests;
 
 use crate::{collections::HashTtlCache, protocols::ethernet2::MacAddress};
+use fxhash::FxHashMap;
 use std::{
-    collections::HashMap,
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
@@ -22,14 +22,14 @@ struct Record {
 
 pub struct ArpCache {
     cache: HashTtlCache<Ipv4Addr, Record>,
-    rmap: HashMap<MacAddress, Ipv4Addr>,
+    rmap: FxHashMap<MacAddress, Ipv4Addr>,
 }
 
 impl ArpCache {
     pub fn new(now: Instant, default_ttl: Option<Duration>) -> ArpCache {
         ArpCache {
             cache: HashTtlCache::new(now, default_ttl),
-            rmap: HashMap::new(),
+            rmap: FxHashMap::default(),
         }
     }
 
@@ -95,9 +95,9 @@ impl ArpCache {
     pub fn try_evict(
         &mut self,
         count: usize,
-    ) -> HashMap<Ipv4Addr, MacAddress> {
+    ) -> FxHashMap<Ipv4Addr, MacAddress> {
         let evicted = self.cache.try_evict(count);
-        let mut result = HashMap::new();
+        let mut result = FxHashMap::default();
         for (k, v) in &evicted {
             self.rmap.remove(&v.link_addr);
             assert!(result.insert(*k, v.link_addr).is_none());
@@ -111,8 +111,8 @@ impl ArpCache {
         self.rmap.clear();
     }
 
-    pub fn export(&self) -> HashMap<Ipv4Addr, MacAddress> {
-        let mut map = HashMap::new();
+    pub fn export(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
+        let mut map = FxHashMap::default();
         for (k, v) in self.cache.iter() {
             map.insert(*k, v.link_addr);
         }
@@ -120,7 +120,7 @@ impl ArpCache {
         map
     }
 
-    pub fn import(&mut self, cache: HashMap<Ipv4Addr, MacAddress>) {
+    pub fn import(&mut self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
         self.clear();
         for (k, v) in &cache {
             self.insert(k.clone(), v.clone());

@@ -2,11 +2,8 @@
 // Licensed under the MIT license.
 
 use super::coroutine::{Coroutine, CoroutineId, CoroutineStatus};
-use std::{
-    cmp::Ordering,
-    collections::{BinaryHeap, HashSet},
-    time::Instant,
-};
+use fxhash::FxHashSet;
+use std::{cmp::Ordering, collections::BinaryHeap, time::Instant};
 
 #[derive(PartialEq, Eq)]
 struct Record {
@@ -34,7 +31,7 @@ impl PartialOrd for Record {
 }
 
 pub struct Schedule {
-    ids: HashSet<CoroutineId>,
+    ids: FxHashSet<CoroutineId>,
     heap: BinaryHeap<Record>,
     clock: Instant,
 }
@@ -42,7 +39,7 @@ pub struct Schedule {
 impl Schedule {
     pub fn new(now: Instant) -> Schedule {
         Schedule {
-            ids: HashSet::new(),
+            ids: FxHashSet::default(),
             heap: BinaryHeap::new(),
             clock: now,
         }

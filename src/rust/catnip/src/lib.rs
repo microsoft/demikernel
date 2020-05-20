@@ -19,10 +19,6 @@ extern crate derive_more;
 #[macro_use]
 extern crate lazy_static;
 
-#[cfg(test)]
-#[macro_use]
-extern crate maplit;
-
 #[macro_use]
 pub mod r#async;
 
