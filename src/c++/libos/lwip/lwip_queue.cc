@@ -77,6 +77,9 @@ static latency_ptr_type write_latency;
 #endif
 sockaddr_in *dmtr::lwip_queue::my_bound_src = NULL;
 sockaddr_in *dmtr::lwip_queue::default_src = NULL;
+uint64_t dmtr::lwip_queue::in_packets = 0;
+uint64_t dmtr::lwip_queue::out_packets = 0;
+uint64_t dmtr::lwip_queue::invalid_packets = 0;
 
 const struct rte_ether_addr dmtr::lwip_queue::ether_broadcast = {
     .addr_bytes = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -467,8 +470,10 @@ dmtr::lwip_queue::~lwip_queue()
 
     rte_eth_stats stats{};
     if (rte_eth_stats_get(our_dpdk_port_id.get(), &stats) == 0) {
-        fprintf(stderr, "DMTR STATS in=%lu out=%lu\n DPDK STATS: in=%lu out=%lu missed=%lu in_errors=%lu out_errors=%lu\n",
-                in_packets, out_packets, stats.ipackets, stats.opackets, stats.imissed, stats.ierrors, stats.oerrors);
+        fprintf(stderr, "DMTR TOTAL STATS in=%lu out=%lu invalid=%lu\n DMTR QUEUE STATS in=%lu out=%lu\nDPDK STATS: in=%lu out=%lu missed=%lu in_errors=%lu out_errors=%lu\n",
+                in_packets, out_packets, invalid_packets,
+                q_in_packets, q_out_packets,
+                stats.ipackets, stats.opackets, stats.imissed, stats.ierrors, stats.oerrors);
     }
 }
 
@@ -846,7 +851,7 @@ int dmtr::lwip_queue::push_thread(task::thread_type::yield_type &yield, task::th
                     DMTR_FAIL(ret);
                 case 0:
                     DMTR_TRUE(ENOTSUP, 1 == pkts_sent);
-                    out_packets++;
+                    q_out_packets++;
                     continue;
                 case EAGAIN:
 #if DMTR_PROFILE
@@ -907,7 +912,7 @@ int dmtr::lwip_queue::pop_thread(task::thread_type::yield_type &yield, task::thr
         // todo: pop from queue in `raii_guard`.
         DMTR_OK(t->complete(0, sga));
         my_recv_queue->pop();
-        in_packets++;
+        q_in_packets++;
 
     }
 
@@ -949,7 +954,6 @@ dmtr::lwip_queue::service_incoming_packets() {
 
         bool valid_packet = parse_packet(src, dst, sga, pkts[i]);
         rte_pktmbuf_free(pkts[i]);
-
         if (valid_packet) {
             lwip_addr src_lwip(src);
             // found valid packet, try to place in queue based on src
@@ -967,6 +971,9 @@ dmtr::lwip_queue::service_incoming_packets() {
             std::cout << "Placing in accept queue: " << src.sin_addr.s_addr << std::endl;
             // also place in accept queue
             insert_recv_queue(lwip_addr(dst), sga);
+            in_packets++;
+        } else {
+            invalid_packets++;
         }
     }
     return 0;
@@ -1133,16 +1140,21 @@ int dmtr::lwip_queue::poll(dmtr_qresult_t &qr_out, dmtr_qtoken_t qt)
                 printf("accept problem\n");
         } else ret = EAGAIN;
         break;
-    case DMTR_OPC_PUSH:
-        ret = my_push_thread->service();
-        if (ret != EAGAIN && ret != 0)
-            printf("push problem\n");
-        break;
+    case DMTR_OPC_PUSH: 
     case DMTR_OPC_POP:
         ret = my_pop_thread->service();
-        if (ret != EAGAIN && ret != 0)
+        if (ret != EAGAIN && ret != 0) {
             printf("pop problem\n");
+            break;
+        }
+        if (ret == EAGAIN) {
+            ret = my_push_thread->service();
+            if (ret != EAGAIN && ret != 0)
+                printf("push problem\n");
+        }
         break;
+
+        
     case DMTR_OPC_CONNECT:
         ret = 0;
         break;
@@ -1203,6 +1215,7 @@ int dmtr::lwip_queue::rte_eth_tx_burst(size_t &count_out, uint16_t port_id, uint
         return EAGAIN;
     }
     count_out = count;
+    out_packets += count;
     return 0;
 }
 

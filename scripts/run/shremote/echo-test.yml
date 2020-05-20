@@ -4,7 +4,7 @@ proj_dir: /h/irene/proj/demikernel
 
 exec_dir: /h/irene/proj/demikernel/build/src/c++/apps/echo
 
-iterations: 1048576
+iterations: 2000000
 
 size: 1000
 
