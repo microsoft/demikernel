@@ -46,17 +46,20 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
 #if DMTR_PROFILE
         auto t0 = boost::chrono::steady_clock::now();
 #endif
-        int ret = dmtr_poll(qr_out, qts[i]);
-        if (ret != EAGAIN) {
-            if (ret == 0) {
-                DMTR_OK(dmtr_drop(qts[i]));
+        // just ignore zero tokens
+        if (qts[i] != 0) {
+            int ret = dmtr_poll(qr_out, qts[i]);
+            if (ret != EAGAIN) {
+                if (ret == 0) {
+                    DMTR_OK(dmtr_drop(qts[i]));
 #if DMTR_PROFILE
-                auto dt = (boost::chrono::steady_clock::now() - t0);
-                DMTR_OK(dmtr_record_latency(success_poll_latency.get(), dt.count()));
+                    auto dt = (boost::chrono::steady_clock::now() - t0);
+                    DMTR_OK(dmtr_record_latency(success_poll_latency.get(), dt.count()));
 #endif
-                if (ready_offset != NULL)
-                    *ready_offset = i;
-                return ret;
+                    if (ready_offset != NULL)
+                        *ready_offset = i;
+                    return ret;
+                }
             }
         }
         i++;
