@@ -44,3 +44,6 @@ pub use engine::Engine;
 pub use event::Event;
 pub use options::Options;
 pub use runtime::Runtime;
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
