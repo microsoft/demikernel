@@ -18,7 +18,7 @@ namespace dmtr {
 
 // We don't support dynamically allocated packet sizes yet, so this is
 // our max packet size
-#define RECV_BUF_SIZE 65536
+#define RECV_BUF_SIZE 524288
 //we allocate receive windows in 2 batches so we always have some to
 // use while we re-allocate
 #define RECV_WINDOW 1024

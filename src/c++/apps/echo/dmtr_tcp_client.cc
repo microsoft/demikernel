@@ -28,7 +28,7 @@ dmtr_latency_t *latency = NULL;
 int qd;
 dmtr_sgarray_t sga = {};
 //#define TRAILING_REQUESTS 
-#define WAIT_FOR_ALL
+//#define WAIT_FOR_ALL
 void finish() {
     std::cerr << "Sent: " << sent << "  Recved: " << recved << std::endl;
     dmtr_sgafree(&sga);
