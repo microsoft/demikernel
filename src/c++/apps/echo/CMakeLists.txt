@@ -22,6 +22,7 @@ set(UDP_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/dmtr_udp_client.cc)
 set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 set(STORE_TEST_SOURCES ${ECHO_APPS_DIR}/dmtr_file_test.cc)
+
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
@@ -30,22 +31,9 @@ target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_
 add_executable(dmtr-posix-client ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(dmtr-posix-client dmtr-libos-posix yaml-cpp boost_program_options)
 
-# POSIX TCP client & server
+# POSIX TCP client & server (works with storage too)
 add_custom_target(dmtr-posix-echo)
 add_dependencies(dmtr-posix-echo  dmtr-posix-server dmtr-posix-client)
-
-# POSIX storage test client
-add_executable(dmtr-posix-storage ${STORE_TEST_SOURCES})
-target_link_libraries(dmtr-posix-storage dmtr-libos-posix yaml-cpp boost_program_options)
-
-# SPDK storage test client
-add_executable(dmtr-spdk-storage ${STORE_TEST_SOURCES})
-target_link_libraries(dmtr-spdk-storage dmtr-libos-spdk yaml-cpp boost_program_options)
-
-# POSIX & SPDK storage test clients
-# POSIX TCP client & server
-add_custom_target(dmtr-store-test)
-add_dependencies(dmtr-store-test  dmtr-posix-storage dmtr-spdk-storage)
 
 # LWIP TCP server
 add_executable(dmtr-lwip-server ${TCP_ECHO_SERVER_SOURCES})
@@ -67,20 +55,9 @@ target_link_libraries(dmtr-spdk-lwip-client dmtr-libos-lwip yaml-cpp boost_progr
 add_executable(dmtr-spdk-lwip-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-spdk-lwip-server dmtr-libos-spdk-dpdk yaml-cpp boost_program_options)
 
+# LWIP & SPDK client & server
 add_custom_target(dmtr-spdk-lwip-echo)
 add_dependencies(dmtr-spdk-lwip-echo dmtr-spdk-lwip-server dmtr-spdk-lwip-client)
-
-# POSIX "raw" non-demeter server
-add_executable(posix-server ${RAW_ECHO_SERVER_SOURCES})
-target_link_libraries(posix-server dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
-
-# POSIX "raw" non-demeter client
-add_executable(posix-client ${RAW_ECHO_CLIENT_SOURCES})
-target_link_libraries(posix-client dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
-
-# POSIX "raw" client & server
-add_custom_target(posix-echo)
-add_dependencies(posix-echo posix-server posix-client)
 
 # RDMA server
 add_executable(dmtr-rdma-server ${TCP_ECHO_SERVER_SOURCES})
@@ -94,16 +71,30 @@ target_link_libraries(dmtr-rdma-client dmtr-libos-rdma rdmacm ibverbs yaml-cpp b
 add_custom_target(dmtr-rdma-echo)
 add_dependencies(dmtr-rdma-echo dmtr-rdma-server dmtr-rdma-client)
 
-# LWIP & SPDK client
+# RDMA & SPDK client
 add_executable(dmtr-spdk-rdma-client  ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(dmtr-spdk-rdma-client dmtr-libos-rdma yaml-cpp boost_program_options)
 
-# LWIP & SPDK server
+# RDMA & SPDK server
 add_executable(dmtr-spdk-rdma-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-spdk-rdma-server dmtr-libos-spdk-rdma yaml-cpp boost_program_options)
 
+# RDMA & SPDK client and server
 add_custom_target(dmtr-spdk-rdma-echo)
 add_dependencies(dmtr-spdk-rdma-echo dmtr-spdk-rdma-server dmtr-spdk-rdma-client)
+
+
+# POSIX "raw" non-demeter server
+add_executable(posix-server ${RAW_ECHO_SERVER_SOURCES})
+target_link_libraries(posix-server dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
+
+# POSIX "raw" non-demeter client
+add_executable(posix-client ${RAW_ECHO_CLIENT_SOURCES})
+target_link_libraries(posix-client dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
+
+# POSIX "raw" client & server
+add_custom_target(posix-echo)
+add_dependencies(posix-echo posix-server posix-client)
 
 add_custom_target(echo)
 add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo dmtr-dpdk-catnip-echo)
@@ -119,3 +110,9 @@ target_link_libraries(dmtr-dpdk-catnip-client dmtr-libos-dpdk-catnip yaml-cpp bo
 # DPDK+catnip TCP client & server
 add_custom_target(dmtr-dpdk-catnip-echo)
 add_dependencies(dmtr-dpdk-catnip-echo dmtr-dpdk-catnip-server dmtr-dpdk-catnip-client)
+
+# POSIX & SPDK storage test clients
+# POSIX TCP client & server
+add_custom_target(dmtr-echo-store)
+add_dependencies(dmtr-echo-store  dmtr-posix-echo dmtr-spdk-rdma-echo dmtr-spdk-lwip-echo posix-echo)
+
