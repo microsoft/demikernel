@@ -12,10 +12,10 @@ use crate::{
     r#async::WhenAny,
 };
 use byteorder::{NativeEndian, WriteBytesExt};
+use fxhash::FxHashSet;
 use rand::Rng;
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
     convert::TryFrom,
     io::Write,
     net::Ipv4Addr,
@@ -29,7 +29,7 @@ pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
     async_work: WhenAny<'a, ()>,
-    outstanding_requests: Rc<RefCell<HashSet<(u16, u16)>>>,
+    outstanding_requests: Rc<RefCell<FxHashSet<(u16, u16)>>>,
     ping_seq_num_counter: Rc<Cell<Wrapping<u16>>>,
 }
 
@@ -44,7 +44,7 @@ impl<'a> Icmpv4Peer<'a> {
             rt,
             arp,
             async_work: WhenAny::new(),
-            outstanding_requests: Rc::new(RefCell::new(HashSet::new())),
+            outstanding_requests: Rc::new(RefCell::new(FxHashSet::default())),
             ping_seq_num_counter: Rc::new(Cell::new(ping_seq_num_counter)),
         }
     }

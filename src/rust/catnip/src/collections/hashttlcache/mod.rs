@@ -6,9 +6,10 @@
 #[cfg(test)]
 mod tests;
 
+use fxhash::FxHashMap;
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry as HashMapEntry, BinaryHeap, HashMap},
+    collections::{hash_map::Entry as HashMapEntry, BinaryHeap},
     fmt::Debug,
     hash::Hash,
     time::{Duration, Instant},
@@ -82,7 +83,7 @@ pub struct HashTtlCache<K, V>
 where
     K: Eq + Hash,
 {
-    map: HashMap<K, Record<V>>,
+    map: FxHashMap<K, Record<V>>,
     graveyard: BinaryHeap<Tombstone<K>>,
     default_ttl: Option<Duration>,
     clock: Instant,
@@ -104,7 +105,7 @@ where
         }
 
         HashTtlCache {
-            map: HashMap::new(),
+            map: FxHashMap::default(),
             graveyard: BinaryHeap::new(),
             default_ttl,
             clock: now,
@@ -210,8 +211,8 @@ where
         self.clock = now;
     }
 
-    pub fn try_evict(&mut self, count: usize) -> HashMap<K, V> {
-        let mut evicted = HashMap::new();
+    pub fn try_evict(&mut self, count: usize) -> FxHashMap<K, V> {
+        let mut evicted = FxHashMap::default();
         let mut i = 0;
 
         loop {

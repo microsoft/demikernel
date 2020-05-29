@@ -10,8 +10,9 @@ mod parsers;
 
 use crate::prelude::*;
 use byteorder::{NetworkEndian, WriteBytesExt};
+use fxhash::FxHashMap;
 use num_traits::FromPrimitive;
-use std::{collections::HashMap, convert::TryFrom};
+use std::convert::TryFrom;
 
 pub const MIN_MSS: usize = 536;
 pub const MAX_MSS: usize = u16::max_value() as usize;
@@ -85,11 +86,11 @@ impl TcpOption {
 }
 
 #[derive(Clone, Debug)]
-pub struct TcpSegmentOptions(HashMap<TcpOptionKind, TcpOption>);
+pub struct TcpSegmentOptions(FxHashMap<TcpOptionKind, TcpOption>);
 
 impl TcpSegmentOptions {
     pub fn new() -> TcpSegmentOptions {
-        TcpSegmentOptions(HashMap::new())
+        TcpSegmentOptions(FxHashMap::default())
     }
 
     pub fn parse(bytes: &[u8]) -> Result<TcpSegmentOptions> {

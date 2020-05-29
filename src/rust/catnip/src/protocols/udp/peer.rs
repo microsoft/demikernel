@@ -7,15 +7,15 @@ use crate::{
     protocols::{arp, icmpv4, ip, ipv4},
     r#async::WhenAny,
 };
+use fxhash::FxHashSet;
 use std::{
-    cell::RefCell, collections::HashSet, convert::TryFrom, net::Ipv4Addr,
-    rc::Rc, time::Instant,
+    cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
 pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
-    open_ports: HashSet<ip::Port>,
+    open_ports: FxHashSet<ip::Port>,
     async_work: WhenAny<'a, ()>,
 }
 
@@ -24,7 +24,7 @@ impl<'a> UdpPeer<'a> {
         UdpPeer {
             rt,
             arp,
-            open_ports: HashSet::new(),
+            open_ports: FxHashSet::default(),
             async_work: WhenAny::new(),
         }
     }

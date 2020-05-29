@@ -3,7 +3,11 @@
 
 use super::*;
 use crate::test;
-use std::time::{Duration, Instant};
+use fxhash::FxHashMap;
+use std::{
+    iter,
+    time::{Duration, Instant},
+};
 
 #[test]
 fn serialization() {
@@ -28,14 +32,16 @@ fn ping() {
     let now = t0;
     let timeout = Duration::from_secs(1);
     let mut alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let mut bob = test::new_bob(now);
-    bob.import_arp_cache(hashmap! {
-        *test::alice_ipv4_addr() => *test::alice_link_addr(),
-    });
+    bob.import_arp_cache(
+        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
     assert!(fut.poll(now).is_none());
@@ -82,9 +88,10 @@ fn timeout() {
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
     let alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
     alice.advance_clock(now);

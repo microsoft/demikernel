@@ -15,11 +15,12 @@ use crate::{
     protocols::{arp, ip, ipv4},
     r#async::{Retry, WhenAny},
 };
+use fxhash::{FxHashMap, FxHashSet};
 use isn_generator::IsnGenerator;
 use rand::seq::SliceRandom;
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::VecDeque,
     convert::TryFrom,
     num::Wrapping,
     rc::Rc,
@@ -28,12 +29,13 @@ use std::{
 
 struct TcpPeerState<'a> {
     arp: arp::Peer<'a>,
-    assigned_handles: HashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
+    assigned_handles: FxHashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
     background_queue: Rc<RefCell<VecDeque<Future<'a, ()>>>>,
     background_work: Rc<RefCell<WhenAny<'a, ()>>>,
-    connections: HashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
+    connections:
+        FxHashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
     isn_generator: IsnGenerator,
-    open_ports: HashSet<ip::Port>,
+    open_ports: FxHashSet<ip::Port>,
     rt: Runtime<'a>,
     unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
     unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
@@ -67,12 +69,12 @@ impl<'a> TcpPeerState<'a> {
 
         TcpPeerState {
             arp,
-            assigned_handles: HashMap::new(),
+            assigned_handles: FxHashMap::default(),
             background_queue: Rc::new(RefCell::new(VecDeque::new())),
             background_work: Rc::new(RefCell::new(WhenAny::new())),
-            connections: HashMap::new(),
+            connections: FxHashMap::default(),
             isn_generator,
-            open_ports: HashSet::new(),
+            open_ports: FxHashSet::default(),
             rt,
             unassigned_connection_handles,
             unassigned_private_ports,

@@ -11,7 +11,8 @@ target_add_PcapPlusPlus(dmtr-libos-dpdk-catnip)
 
 target_include_directories(dmtr-libos-dpdk-catnip PUBLIC ${DPDK_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/src/rust/catnip/include)
 
-target_link_libraries(dmtr-libos-dpdk-catnip Threads::Threads yaml-cpp boost_program_options ${CMAKE_BINARY_DIR}/src/rust/catnip/lib/libcatnip.a)
+find_package(mimalloc 1.4 REQUIRED)
+target_link_libraries(dmtr-libos-dpdk-catnip mimalloc Threads::Threads yaml-cpp boost_program_options ${CMAKE_BINARY_DIR}/src/rust/catnip/lib/libcatnip.a)
 
 # the `--whole-archive` option is needed to ensure that symbols such as
 # `zeus_queue` get exported from the resulting shared object. object
