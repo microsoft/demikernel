@@ -15,9 +15,9 @@
 	url = https://github.com/mlr-msft/Hoard.git
 	branch = msft/rdma
 [submodule "submodules/dpdk"]
-	path = submodules/dpdk
-	url = git@github.com:demikernel/dpdk.git
-	branch = irene/v19.08
+    path = submodules/dpdk
+    url = https://github.com/mlr-msft/dpdk.git
+	branch = v19.08.1
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
 	url = https://github.com/mlr-msft/redis.git
@@ -60,6 +60,6 @@
 	url = https://github.com/isaac-ped/Shremote.git
 	branch = master
 [submodule "submodules/spdk-rdma"]
-	path = submodules/spdk-rdma
-	url = git@github.com:demikernel/spdk.git
+    path = submodules/spdk-rdma
+    url = https://github.com/demikernel/spdk.git
 	branch = irene/v19.10.x
