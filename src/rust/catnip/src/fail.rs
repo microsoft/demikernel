@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use custom_error::custom_error;
-use float_duration;
 use std::{
     cell::BorrowMutError, error::Error, io::Error as IoError,
     num::TryFromIntError, rc::Rc,

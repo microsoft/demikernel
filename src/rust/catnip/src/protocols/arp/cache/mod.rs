@@ -122,8 +122,8 @@ impl ArpCache {
 
     pub fn import(&mut self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.clear();
-        for (k, v) in &cache {
-            self.insert(k.clone(), v.clone());
+        for (&k, &v) in &cache {
+            self.insert(k, v);
         }
     }
 }

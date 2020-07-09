@@ -256,7 +256,7 @@ impl<'a> TcpPeerState<'a> {
                     remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
                 });
 
-                let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
+                let cxn = state.new_connection(cxnid, rt.clone())?;
                 {
                     let mut cxn = cxn.borrow_mut();
                     cxn.negotiate_mss(syn_segment.mss)?;

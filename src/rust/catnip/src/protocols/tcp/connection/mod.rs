@@ -157,7 +157,7 @@ impl<'a> TcpConnection<'a> {
         }
 
         if self.receive_window.is_window_advertisement_needed() {
-            return Some(self.window_advertisement().clone());
+            return Some(self.window_advertisement());
         }
 
         debug!(
@@ -353,7 +353,7 @@ impl<'a> TcpConnection<'a> {
         }
 
         if self.receive_window.window_size() == 0 {
-            let window_advertisement = self.window_advertisement().clone();
+            let window_advertisement = self.window_advertisement();
             self.transmit_queue.push_back(window_advertisement);
         }
 

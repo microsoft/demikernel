@@ -8,7 +8,6 @@ use crate::{
     shims::Mutex,
     Options,
 };
-use libc;
 use std::{
     net::Ipv4Addr,
     ptr::{null, null_mut},

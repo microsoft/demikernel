@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::prelude::*;
-use eui48;
 use serde::ser::{Serialize, Serializer};
 use std::fmt;
 

@@ -88,7 +88,7 @@ impl<'a> Icmpv4Peer<'a> {
                     });
                     Ok(())
                 }
-                Err(e) => Err(e.clone()),
+                Err(e) => Err(e),
             },
         }
     }

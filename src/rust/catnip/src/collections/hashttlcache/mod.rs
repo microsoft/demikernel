@@ -258,7 +258,7 @@ where
                         // the entry's expiry matches our tombstone; time to
                         // evict.
                         e.remove_entry();
-                        return Some((key.clone(), value));
+                        return Some((key, value));
                     } else {
                         // the entry hasn't expired yet; keep looking.
                         assert!(!record_expiry.has_expired(self.clock));
