@@ -8,7 +8,7 @@ named!(kind<u8>, call!(be_u8));
 named!(len<u8>, call!(be_u8));
 
 named!(
-    nop<(TcpOption)>,
+    nop<TcpOption>,
     map!(verify!(kind, |k| k == &1u8), |_| TcpOption::Nop)
 );
 named!(
