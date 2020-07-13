@@ -13,12 +13,13 @@ function(target_add_mimalloc TARGET)
   ExternalProject_Add(mimalloc
     PREFIX ${MIMALLOC_BINARY_DIR}
     SOURCE_DIR ${MIMALLOC_SOURCE_DIR}
-    CONFIGURE_COMMAND CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} CMAKE_BINARY_DIR=${MIMALLOC_BINARY_DIR}
+    BINARY_DIR ${MIMALLOC_BINARY_DIR}
+    CONFIGURE_COMMAND cmake ${MIMALLOC_SOURCE_DIR}
     BUILD_COMMAND make
     INSTALL_COMMAND echo "No install command for target `${HOARD_TARGET}`."
   )
 
-  set(MIMALLOC_LIBS ${MIMALLOC_BUILD_DIR}/libmimalloc.so)
+  set(MIMALLOC_LIBS ${MIMALLOC_BINARY_DIR}/libmimalloc.so)
   target_link_libraries(${TARGET} ${MIMALLOC_LIBS})
   target_include_directories(${TARGET} PUBLIC
     ${SOURCE_DIR}/src/include
