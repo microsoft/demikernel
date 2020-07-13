@@ -9,9 +9,10 @@ use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
+use fxhash::FxHashMap;
 use std::{
-    cell::RefCell, collections::HashMap, convert::TryFrom, mem::swap,
-    net::Ipv4Addr, rc::Rc, time::Instant,
+    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
+    time::Instant,
 };
 
 #[derive(Clone)]
@@ -162,11 +163,11 @@ impl<'a> ArpPeer<'a> {
         })
     }
 
-    pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+    pub fn export_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
         self.cache.borrow().export()
     }
 
-    pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
+    pub fn import_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
     }
 

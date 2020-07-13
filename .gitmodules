@@ -63,3 +63,7 @@
     path = submodules/spdk-rdma
     url = https://github.com/demikernel/spdk.git
 	branch = irene/v19.10.x
+[submodule "submodules/mimalloc"]
+	path = submodules/mimalloc
+	url = https://github.com/microsoft/mimalloc.git
+	branch = master

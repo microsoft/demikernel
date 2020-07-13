@@ -13,7 +13,9 @@ use crate::{
     r#async::Retry,
     test,
 };
+use fxhash::FxHashMap;
 use std::{
+    iter,
     num::Wrapping,
     time::{Duration, Instant},
 };
@@ -32,14 +34,16 @@ fn syn_to_closed_port() {
 
     let now = Instant::now();
     let mut alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let mut bob = test::new_bob(now);
-    bob.import_arp_cache(hashmap! {
-        *test::alice_ipv4_addr() => *test::alice_link_addr(),
-    });
+    bob.import_arp_cache(
+        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
@@ -92,14 +96,16 @@ fn establish_connection() -> EstablishedConnection<'static> {
 
     let now = Instant::now();
     let mut alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let mut bob = test::new_bob(now);
-    bob.import_arp_cache(hashmap! {
-        *test::alice_ipv4_addr() => *test::alice_link_addr(),
-    });
+    bob.import_arp_cache(
+        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     bob.tcp_listen(bob_port).unwrap();
 
@@ -533,9 +539,10 @@ fn syn_retry() {
 
     let mut now = Instant::now();
     let mut alice = test::new_alice(now);
-    alice.import_arp_cache(hashmap! {
-        *test::bob_ipv4_addr() => *test::bob_link_addr(),
-    });
+    alice.import_arp_cache(
+        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
+            .collect::<FxHashMap<_, _>>(),
+    );
 
     let options = alice.options();
     let retries = options.tcp.handshake_retries;

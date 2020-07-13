@@ -10,8 +10,8 @@ use crate::{
     },
     r#async,
 };
+use fxhash::FxHashMap;
 use std::{
-    collections::HashMap,
     net::Ipv4Addr,
     rc::Rc,
     time::{Duration, Instant},
@@ -69,11 +69,11 @@ impl<'a> Engine<'a> {
             .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 
-    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+    pub fn export_arp_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
         self.arp.export_cache()
     }
 
-    pub fn import_arp_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
+    pub fn import_arp_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
         self.arp.import_cache(cache)
     }
 
