@@ -71,6 +71,8 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 
 ### Single Sender & Receiver Test
 
+The testpmd executable can be found in your build directory: `build/ExternalProject/dpdk/bin/testpmd`
+
 Use the following on `cassance` and `hightent` to test DPDK with `testpmd`:
 
 Sender (`cassance.southcentralus.cloudapp.azure.com`):
