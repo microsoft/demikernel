@@ -45,7 +45,7 @@ In addition, some system-wide configuration needs to be performed before DPDK wi
 - Specify the number of pages for each node (e.g. `1024`).
 - Once at the menu, select *Exit Script* (option `33`).
 
-## Notes on Azure
+## Building on Azure
 
 ### VM Creation
 
@@ -60,7 +60,18 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 
 - Use the portal or the CLI tool to attach the NIC to the VM.
 
+### Building Demikernel for Azure
+1. Clone git repo with recurse-submodules flag.
+2. Install Azure packages by running `script/setup/ubuntu-azure.sh`.
+3. Create a build directory, I use 'demikernel/build'.
+4. Turn on Azure support and CX5 support by running `cmake -DAZURE_SUPPORT=ON -DDPDK_MLX5_SUPPORT=ON ..` in your build directory or using `ccmake ..` and setting the cmake flags manually. 
+5. Compile DPDK by running 'make dpdk' in the build directory. After this you should be able to run the testpmd single sender & receiver test below.
+6. Use config options from testpmd in the config.yaml file. The DPDK interface is usually the slave interface listed first by `ifconfig`.  Using that interface id, run `ethtool -i` to find your PCI ID.
+5. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
+
 ### Single Sender & Receiver Test
+
+The testpmd executable can be found in your build directory: `build/ExternalProject/dpdk/bin/testpmd`
 
 Use the following on `cassance` and `hightent` to test DPDK with `testpmd`:
 
@@ -75,11 +86,6 @@ Receiver (`hightent.southcentralus.cloudapp.azure.com`):
 ```
 testpmd -l 0-3 -n 1 -w aa89:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --port-topology=chained --nb-cores 1 --forward-mode=rxonly --eth-peer=1,00:0d:3a:70:25:75 --stats-period 1
 ```
-### Building Demikernel for Azure
-1. Install Azure packages by running `script/setup/ubuntu-azure.sh`.
-2. Turn on Azure support and compile CX5 drivers by running `ccmake ..` in your build directory. 
-3. Use config options from testpmd in the config.yaml file. Follow [these instructions](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk#configure-the-runtime-environment) for finding your mac address and PCI ID.
-4. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
 
 ### Resources
 
