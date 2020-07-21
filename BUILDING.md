@@ -63,8 +63,10 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 ### Building Demikernel for Azure
 1. Clone git repo with recurse-submodules flag.
 2. Install Azure packages by running `script/setup/ubuntu-azure.sh`.
-3. Turn on Azure support and compile CX5 drivers by running `ccmake ..` in your build directory. 
-4. Use config options from testpmd in the config.yaml file. Follow [these instructions](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk#configure-the-runtime-environment) for finding your mac address and PCI ID.
+3. Create a build directory, I use 'demikernel/build'.
+4. Turn on Azure support and CX5 support by running `cmake -DAZURE_SUPPORT=ON -DDPDK_MLX5_SUPPORT=ON ..` in your build directory or using `ccmake ..` and setting the cmake flags manually. 
+5. Compile DPDK by running 'make dpdk' in the build directory. After this you should be able to run the testpmd single sender & receiver test below.
+6. Use config options from testpmd in the config.yaml file. Follow [these instructions](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk#configure-the-runtime-environment) for finding your mac address and PCI ID.
 5. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
 
 ### Single Sender & Receiver Test
