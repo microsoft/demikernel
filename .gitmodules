@@ -1,6 +1,6 @@
 [submodule "submodules/spdk"]
 	path = submodules/spdk
-	url = git@github.com:demikernel/spdk.git
+	url = https://github.com/demikernel/spdk.git
 	branch = irene/v19.10.x
 [submodule "submodules/Heap-Layers"]
 	path = submodules/Heap-Layers
