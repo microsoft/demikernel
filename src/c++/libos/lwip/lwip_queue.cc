@@ -314,10 +314,10 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
 
     // disable the rx/tx flow control
     // todo: why?
-    struct ::rte_eth_fc_conf fc_conf = {};
-    DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
-    fc_conf.mode = RTE_FC_NONE;
-    DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
+    // struct ::rte_eth_fc_conf fc_conf = {};
+    // DMTR_OK(rte_eth_dev_flow_ctrl_get(port_id, fc_conf));
+    // fc_conf.mode = RTE_FC_NONE;
+    // DMTR_OK(rte_eth_dev_flow_ctrl_set(port_id, fc_conf));
 
     DMTR_OK(wait_for_link_status_up(port_id));
 
