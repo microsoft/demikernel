@@ -44,11 +44,17 @@ namespace bpo = boost::program_options;
 #define IP_VHL_DEF (IP_VERSION | IP_HDRLEN)
 //#define DMTR_DEBUG 1
 //#define DMTR_PROFILE 1
-//#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
-// default mbuf size is ->RTE_MBUF_DEFAULT_DATAROOM + RTE_PKTMBUF_HEADROOM
+
+#define JUMBO_FRAMES 0
+
+#if JUMBO_FRAMES
+#define RX_PACKET_LEN RTE_ETHER_MAX_JUMBO_FRAME_LEN
 #define MBUF_BUF_SIZE RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM
-#define RX_PACKET_LEN 9216
-//#define RX_PACKET_LEN RTE_ETHER_MAX_LEN  
+#else
+#define RX_PACKET_LEN RTE_ETHER_MAX_LEN
+#define MBUF_BUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE + RTE_PKTMBUF_HEADROOM
+#endif
+
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
  * carefully set for optimal performance. Consult the network
