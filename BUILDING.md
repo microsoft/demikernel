@@ -59,6 +59,7 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 ```
 
 - Use the portal or the CLI tool to attach the NIC to the VM.
+- Be sure to allow traffic on the ports that you are using!!
 
 ### Building Demikernel for Azure
 1. Clone git repo with recurse-submodules flag.
