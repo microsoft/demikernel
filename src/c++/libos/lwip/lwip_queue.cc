@@ -259,10 +259,12 @@ int dmtr::lwip_queue::init_dpdk_port(uint16_t port_id, struct rte_mempool &mbuf_
     std::cerr << "Dev info MTU: " << mtu << std::endl;
     struct ::rte_eth_conf port_conf = {};
     port_conf.rxmode.max_rx_pkt_len = RX_PACKET_LEN;
-            
+
+#if JUMBO_FRAMES
     port_conf.rxmode.offloads = DEV_RX_OFFLOAD_JUMBO_FRAME;
 //    port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
 //    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP | dev_info.flow_type_rss_offloads;
+#endif    
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
     struct ::rte_eth_rxconf rx_conf = {};
