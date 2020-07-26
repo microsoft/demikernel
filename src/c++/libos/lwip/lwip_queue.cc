@@ -1117,7 +1117,8 @@ dmtr::lwip_queue::parse_packet(struct sockaddr_in &src,
 
         void *buf = NULL;
         DMTR_OK(dmtr_malloc(&buf, seg_len));
-        sga.sga_buf = buf;
+        // for DPDK, pointers are scattered
+        sga.sga_buf = NULL;
         sga.sga_segs[i].sgaseg_buf = buf;
         // todo: remove copy if possible.
         rte_memcpy(buf, p, seg_len);
