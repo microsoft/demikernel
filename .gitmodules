@@ -16,19 +16,20 @@
 	branch = msft/rdma
 [submodule "submodules/dpdk"]
     path = submodules/dpdk
-    url = https://github.com/mlr-msft/dpdk.git
-	branch = v19.08.1
+    url = https://github.com/demikernel/dpdk.git
+	branch = irene/v19.08
 [submodule "submodules/redis-posix"]
 	path = submodules/redis-posix
-	url = https://github.com/mlr-msft/redis.git
-	branch = msft/4.0.9/mirobert
+	url = https://github.com/demikernel/redis.git
+	branch = demikernel-master
 [submodule "submodules/redis-rdma"]
 	path = submodules/redis-rdma
-	url = https://github.com/mlr-msft/redis.git
-	branch = msft/4.0.9/mirobert
+	url = https://github.com/demikernel/redis.git
+	branch = demikernel-master
 [submodule "submodules/redis-lwip"]
 	path = submodules/redis-lwip
-	url = https://github.com/mlr-msft/redis.git
+    url = https://github.com/demikernel/redis.git
+    branch = demikernel-master
 [submodule "submodules/redis-vanilla"]
 	path = submodules/redis-vanilla
 	url = https://github.com/mlr-msft/redis.git
@@ -38,7 +39,8 @@
         branch = msft/master
 [submodule "submodules/redis-dpdk-catnip"]
 	path = submodules/redis-dpdk-catnip
-	url = https://github.com/mlr-msft/redis.git
+    url = https://github.com/demikernel/redis.git
+    branch = demikernel-master
 [submodule "submodules/tapir-posix"]
 	path = submodules/tapir-posix
 	url = https://github.com/UWSysLab/tapir.git
