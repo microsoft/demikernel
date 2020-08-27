@@ -14,7 +14,7 @@ mod traits;
 use crate::prelude::*;
 use std::{any::Any, rc::Rc};
 
-pub use future::{Future, WhenAny};
+pub use future::Future;
 pub use retry::Retry;
 pub use runtime::AsyncRuntime as Runtime;
 pub use traits::Async;

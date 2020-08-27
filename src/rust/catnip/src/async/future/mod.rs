@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod when_any;
-
 use super::{
     coroutine::{CoroutineId, CoroutineStatus},
     runtime::AsyncRuntime,
@@ -13,8 +11,6 @@ use std::{
     fmt::{Debug, Formatter, Result as FmtResult},
     time::Instant,
 };
-
-pub use when_any::WhenAny;
 
 #[derive(Clone)]
 pub enum Future<'a, T>

@@ -77,10 +77,14 @@ impl<'a> Runtime<'a> {
     }
 
     pub fn wait(&self, _how_long: Duration) -> impl std::future::Future<Output = ()> {
-        async {}
+        async {
+            unimplemented!();
+        }
     }
 
     pub fn wait_until(&self, _when: Instant) -> impl std::future::Future<Output = ()> {
-        async {}
+        async {
+            unimplemented!();
+        }
     }
 }

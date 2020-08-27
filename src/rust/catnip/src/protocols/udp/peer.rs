@@ -5,7 +5,6 @@ use super::datagram::{UdpDatagram, UdpDatagramDecoder, UdpDatagramEncoder};
 use crate::{
     prelude::*,
     protocols::{arp, icmpv4, ip, ipv4},
-    r#async::WhenAny,
 };
 use fxhash::FxHashSet;
 use std::{
@@ -16,7 +15,6 @@ pub struct UdpPeer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
     open_ports: FxHashSet<ip::Port>,
-    async_work: WhenAny<'a, ()>,
 }
 
 impl<'a> UdpPeer<'a> {
@@ -25,7 +23,6 @@ impl<'a> UdpPeer<'a> {
             rt,
             arp,
             open_ports: FxHashSet::default(),
-            async_work: WhenAny::new(),
         }
     }
 
@@ -166,9 +163,7 @@ impl<'a> UdpPeer<'a> {
         let _ = fut;
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        if let Some(result) = self.async_work.poll(now) {
-            assert!(result.is_ok());
-        }
+    pub fn advance_clock(&self, _now: Instant) {
+        unimplemented!()
     }
 }

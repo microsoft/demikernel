@@ -13,7 +13,6 @@ use super::{
 use crate::{
     prelude::*,
     protocols::{arp, ip, ipv4},
-    r#async::WhenAny,
 };
 use fxhash::{FxHashMap, FxHashSet};
 use isn_generator::IsnGenerator;
@@ -30,8 +29,6 @@ use std::{
 struct TcpPeerState<'a> {
     arp: arp::Peer<'a>,
     assigned_handles: FxHashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
-    background_queue: Rc<RefCell<VecDeque<Future<'a, ()>>>>,
-    background_work: Rc<RefCell<WhenAny<'a, ()>>>,
     connections:
         FxHashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
     isn_generator: IsnGenerator,
@@ -70,8 +67,6 @@ impl<'a> TcpPeerState<'a> {
         TcpPeerState {
             arp,
             assigned_handles: FxHashMap::default(),
-            background_queue: Rc::new(RefCell::new(VecDeque::new())),
-            background_work: Rc::new(RefCell::new(WhenAny::new())),
             connections: FxHashMap::default(),
             isn_generator,
             open_ports: FxHashSet::default(),
@@ -622,25 +617,26 @@ impl<'a> TcpPeer<'a> {
         Ok(cxn.get_rto())
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        let background_work = self.state.borrow().background_work.clone();
-        let mut background_work = background_work.borrow_mut();
+    pub fn advance_clock(&self, _now: Instant) {
+        // let background_work = self.state.borrow().background_work.clone();
+        // let mut background_work = background_work.borrow_mut();
 
-        {
-            let background_queue =
-                self.state.borrow().background_queue.clone();
-            let mut background_queue = background_queue.borrow_mut();
-            while let Some(fut) = background_queue.pop_front() {
-                background_work.add(fut);
-            }
-        }
+        // {
+        //     let background_queue =
+        //         self.state.borrow().background_queue.clone();
+        //     let mut background_queue = background_queue.borrow_mut();
+        //     while let Some(fut) = background_queue.pop_front() {
+        //         background_work.add(fut);
+        //     }
+        // }
 
-        if let Some(result) = background_work.poll(now) {
-            match result {
-                Ok(_) => (),
-                Err(e) => warn!("background coroutine failed: {:?}", e),
-            }
-        }
+        // if let Some(result) = background_work.poll(now) {
+        //     match result {
+        //         Ok(_) => (),
+        //         Err(e) => warn!("background coroutine failed: {:?}", e),
+        //     }
+        // }
+        unimplemented!()
     }
 
     pub fn get_connection_id(

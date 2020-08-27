@@ -10,7 +10,6 @@ use futures::FutureExt;
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
-    r#async::WhenAny,
 };
 use byteorder::{NativeEndian, WriteBytesExt};
 use fxhash::FxHashSet;
@@ -29,7 +28,6 @@ use std::{
 pub struct Icmpv4Peer<'a> {
     rt: Runtime<'a>,
     arp: arp::Peer<'a>,
-    async_work: WhenAny<'a, ()>,
     outstanding_requests: Rc<RefCell<FxHashSet<(u16, u16)>>>,
     ping_seq_num_counter: Rc<Cell<Wrapping<u16>>>,
 }
@@ -44,7 +42,6 @@ impl<'a> Icmpv4Peer<'a> {
         Icmpv4Peer {
             rt,
             arp,
-            async_work: WhenAny::new(),
             outstanding_requests: Rc::new(RefCell::new(FxHashSet::default())),
             ping_seq_num_counter: Rc::new(Cell::new(ping_seq_num_counter)),
         }
@@ -194,9 +191,7 @@ impl<'a> Icmpv4Peer<'a> {
         seq_num.0
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        if let Some(result) = self.async_work.poll(now) {
-            assert!(result.is_ok());
-        }
+    pub fn advance_clock(&self, _now: Instant) {
+        unimplemented!();
     }
 }
