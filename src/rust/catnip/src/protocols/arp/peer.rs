@@ -129,22 +129,20 @@ impl<'a> ArpPeer<'a> {
             };
             let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
 
+            let arp_response = cache.borrow().wait_link_addr(ipv4_addr).fuse();
+            futures::pin_mut!(arp_response);
+
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
             for i in 0..options.arp.retry_count {
                 rt.emit_event(Event::Transmit(bytes.clone()));
-
-                // XXX: remove these boxes
-                // XXX: Can we hoist the ARP future outside of the loop?
-                let mut arp_response = cache.borrow().wait_link_addr(ipv4_addr).boxed_local().fuse();
-                let mut timeout = rt.wait(options.arp.request_timeout).boxed_local().fuse();
                 futures::select! {
                     link_addr = arp_response => {
                         debug!("ARP result available ({})", link_addr);
                         return Ok(link_addr);
                     },
-                    _ = timeout => {
+                    _ = rt.wait(options.arp.request_timeout).fuse() => {
                         warn!("ARP request timeout; attempt {}.", i + 1);
                     },
                 }
