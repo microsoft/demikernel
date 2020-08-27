@@ -60,7 +60,6 @@ impl<'a> Runtime<'a> {
         self.events.borrow().front().cloned()
     }
 
-
     pub fn pop_event(&self) -> Option<Rc<Event>> {
         let mut events = self.events.borrow_mut();
         if let Some(event) = events.pop_front() {

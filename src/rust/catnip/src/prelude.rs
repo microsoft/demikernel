@@ -6,7 +6,7 @@ pub use crate::{
     runtime::Runtime,
 };
 
-pub use crate::r#async::{Async, CoroutineOk, Future};
+pub use crate::r#async::Async;
 
 // `try_from()` and `try_into()` used so commonly, they seem like they should
 // be brought into scope by default.
