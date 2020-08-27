@@ -26,20 +26,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-struct TcpPeerState<'a> {
-    arp: arp::Peer<'a>,
+struct TcpPeerState {
+    arp: arp::Peer,
     assigned_handles: FxHashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
     connections:
-        FxHashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection<'a>>>>,
+        FxHashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection>>>,
     isn_generator: IsnGenerator,
     open_ports: FxHashSet<ip::Port>,
-    rt: Runtime<'a>,
+    rt: Runtime,
     unassigned_connection_handles: VecDeque<TcpConnectionHandle>,
     unassigned_private_ports: VecDeque<ip::Port>, // todo: shared state.
 }
 
-impl<'a> TcpPeerState<'a> {
-    fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Self {
+impl TcpPeerState {
+    fn new(rt: Runtime, arp: arp::Peer) -> Self {
         // initialize the pool of available private ports.
         let unassigned_private_ports = {
             let mut ports = Vec::new();
@@ -79,7 +79,7 @@ impl<'a> TcpPeerState<'a> {
     fn get_connection_given_handle(
         &self,
         handle: TcpConnectionHandle,
-    ) -> Result<&Rc<RefCell<TcpConnection<'a>>>> {
+    ) -> Result<&Rc<RefCell<TcpConnection>>> {
         if let Some(cxnid) = self.assigned_handles.get(&handle) {
             Ok(self.connections.get(cxnid).unwrap())
         } else {
@@ -122,8 +122,8 @@ impl<'a> TcpPeerState<'a> {
     fn new_connection(
         &mut self,
         cxnid: Rc<TcpConnectionId>,
-        rt: Runtime<'a>,
-    ) -> Result<Rc<RefCell<TcpConnection<'a>>>> {
+        rt: Runtime,
+    ) -> Result<Rc<RefCell<TcpConnection>>> {
         let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
         let local_isn = self.isn_generator.next(&*cxnid);
@@ -145,7 +145,7 @@ impl<'a> TcpPeerState<'a> {
         Ok(cxn)
     }
 
-    fn cast(state: Rc<RefCell<TcpPeerState<'a>>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> + 'a {
+    fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> {
         async move {
             let (arp, rt, remote_ipv4_addr) = {
                 let state = state.borrow();
@@ -172,7 +172,7 @@ impl<'a> TcpPeerState<'a> {
         }
     }
 
-    fn new_active_connection(state: Rc<RefCell<TcpPeerState<'a>>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> + 'a {
+    fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> {
         async move {
             trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
             let (cxn, rt) = {
@@ -207,7 +207,7 @@ impl<'a> TcpPeerState<'a> {
         }
     }
 
-    fn new_passive_connection(state: Rc<RefCell<TcpPeerState<'a>>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> + 'a {
+    fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> {
         async move {
             let (cxn, rt) = {
                 let mut state = state.borrow_mut();
@@ -257,8 +257,8 @@ impl<'a> TcpPeerState<'a> {
         }
     }
 
-    fn handshake(state: Rc<RefCell<TcpPeerState<'a>>>, cxn: Rc<RefCell<TcpConnection<'a>>>)
-                  -> impl std::future::Future<Output=Result<Rc<TcpSegment>>> + 'a
+    fn handshake(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>)
+                  -> impl std::future::Future<Output=Result<Rc<TcpSegment>>>
     {
         async move {
             trace!("TcpRuntime::handshake()");
@@ -290,11 +290,11 @@ impl<'a> TcpPeerState<'a> {
     }
 
     fn close_connection(
-        state: Rc<RefCell<TcpPeerState<'a>>>,
+        state: Rc<RefCell<TcpPeerState>>,
         cxnid: Rc<TcpConnectionId>,
         error: Option<Fail>,
         notify: bool,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a
+    ) -> impl std::future::Future<Output=Result<()>>
     {
         async move {
             let (rst_segment, cxn_handle, rt) = {
@@ -329,9 +329,9 @@ impl<'a> TcpPeerState<'a> {
     }
 
     pub fn on_connection_established(
-        state: Rc<RefCell<TcpPeerState<'a>>>,
-        cxn: Rc<RefCell<TcpConnection<'a>>>,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a
+        state: Rc<RefCell<TcpPeerState>>,
+        cxn: Rc<RefCell<TcpConnection>>,
+    ) -> impl std::future::Future<Output=Result<()>>
     {
         async move {
             trace!("TcpRuntime::on_connection_established(...)::coroutine",);
@@ -343,9 +343,9 @@ impl<'a> TcpPeerState<'a> {
     }
 
     pub fn main_connection_loop(
-        state: Rc<RefCell<TcpPeerState<'a>>>,
-        cxn: Rc<RefCell<TcpConnection<'a>>>,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+        state: Rc<RefCell<TcpPeerState>>,
+        cxn: Rc<RefCell<TcpConnection>>,
+    ) -> impl std::future::Future<Output=Result<()>> {
         async move {
             trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
@@ -419,12 +419,12 @@ impl<'a> TcpPeerState<'a> {
     }
 }
 
-pub struct TcpPeer<'a> {
-    state: Rc<RefCell<TcpPeerState<'a>>>,
+pub struct TcpPeer {
+    state: Rc<RefCell<TcpPeerState>>,
 }
 
-impl<'a> TcpPeer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Self {
+impl TcpPeer {
+    pub fn new(rt: Runtime, arp: arp::Peer) -> Self {
         TcpPeer {
             state: Rc::new(RefCell::new(TcpPeerState::new(rt, arp))),
         }
@@ -515,7 +515,7 @@ impl<'a> TcpPeer<'a> {
         Ok(())
     }
 
-    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> + 'a {
+    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> {
         trace!("TcpPeer::connect({:?})", remote_endpoint);
         let state = self.state.clone();
         async move {

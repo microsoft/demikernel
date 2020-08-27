@@ -17,14 +17,14 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct ArpPeer<'a> {
-    rt: Runtime<'a>,
+pub struct ArpPeer {
+    rt: Runtime,
     // todo: this should be shared state.
     cache: Rc<RefCell<ArpCache>>,
 }
 
-impl<'a> ArpPeer<'a> {
-    pub fn new(now: Instant, rt: Runtime<'a>) -> Result<ArpPeer<'a>> {
+impl<'a> ArpPeer {
+    pub fn new(now: Instant, rt: Runtime) -> Result<ArpPeer> {
         let options = rt.options();
         let cache = ArpCache::new(now, Some(options.arp.cache_ttl));
         Ok(ArpPeer {
@@ -112,7 +112,7 @@ impl<'a> ArpPeer<'a> {
         }
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
         async move {

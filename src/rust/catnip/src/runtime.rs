@@ -11,15 +11,15 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct Runtime<'a> {
+pub struct Runtime {
     events: Rc<RefCell<VecDeque<Rc<Event>>>>,
     options: Rc<Options>,
-    r#async: r#async::Runtime<'a>,
+    r#async: r#async::Runtime,
     rng: Rc<RefCell<Rng>>,
 }
 
-impl<'a> Runtime<'a> {
-    pub fn from_options(now: Instant, options: Options) -> Runtime<'a> {
+impl Runtime {
+    pub fn from_options(now: Instant, options: Options) -> Runtime {
         let rng = Rng::from_seed(options.rng_seed);
         Runtime {
             events: Rc::new(RefCell::new(VecDeque::new())),

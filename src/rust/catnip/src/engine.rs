@@ -16,14 +16,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Engine<'a> {
-    rt: Runtime<'a>,
-    arp: arp::Peer<'a>,
-    ipv4: ipv4::Peer<'a>,
+pub struct Engine {
+    rt: Runtime,
+    arp: arp::Peer,
+    ipv4: ipv4::Peer,
 }
 
-impl<'a> Engine<'a> {
-    pub fn from_options(now: Instant, options: Options) -> Result<Engine<'a>> {
+impl Engine {
+    pub fn from_options(now: Instant, options: Options) -> Result<Engine> {
         let rt = Runtime::from_options(now, options);
         let arp = arp::Peer::new(now, rt.clone())?;
         let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone());
@@ -53,7 +53,7 @@ impl<'a> Engine<'a> {
     pub fn arp_query(
         &self,
         ipv4_addr: Ipv4Addr,
-    ) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
+    ) -> impl std::future::Future<Output=Result<MacAddress>> {
         self.arp.query(ipv4_addr)
     }
 
@@ -63,7 +63,7 @@ impl<'a> Engine<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+    ) -> impl std::future::Future<Output=Result<()>> {
         self.ipv4
             .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
     }
@@ -76,7 +76,7 @@ impl<'a> Engine<'a> {
         self.arp.import_cache(cache)
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -92,7 +92,7 @@ impl<'a> Engine<'a> {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> + 'a {
+    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 

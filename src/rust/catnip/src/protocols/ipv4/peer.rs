@@ -13,15 +13,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Ipv4Peer<'a> {
-    rt: Runtime<'a>,
-    icmpv4: icmpv4::Peer<'a>,
-    tcp: tcp::Peer<'a>,
-    udp: udp::Peer<'a>,
+pub struct Ipv4Peer {
+    rt: Runtime,
+    icmpv4: icmpv4::Peer,
+    tcp: tcp::Peer,
+    udp: udp::Peer,
 }
 
-impl<'a> Ipv4Peer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Ipv4Peer<'a> {
+impl<'a> Ipv4Peer {
+    pub fn new(rt: Runtime, arp: arp::Peer) -> Ipv4Peer {
         let udp = udp::Peer::new(rt.clone(), arp.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
         let tcp = tcp::Peer::new(rt.clone(), arp);
@@ -55,7 +55,7 @@ impl<'a> Ipv4Peer<'a> {
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> impl std::future::Future<Output=Result<Duration>> + 'a {
+    ) -> impl std::future::Future<Output=Result<Duration>> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -77,14 +77,14 @@ impl<'a> Ipv4Peer<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+    ) -> impl std::future::Future<Output=Result<()>> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> + 'a {
+    ) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> {
         tcp::Peer::connect(&self.tcp, remote_endpoint)
     }
 

@@ -11,14 +11,14 @@ use std::{
     cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc, time::Instant,
 };
 
-pub struct UdpPeer<'a> {
-    rt: Runtime<'a>,
-    arp: arp::Peer<'a>,
+pub struct UdpPeer {
+    rt: Runtime,
+    arp: arp::Peer,
     open_ports: FxHashSet<ip::Port>,
 }
 
-impl<'a> UdpPeer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> UdpPeer<'a> {
+impl<'a> UdpPeer {
+    pub fn new(rt: Runtime, arp: arp::Peer) -> UdpPeer {
         UdpPeer {
             rt,
             arp,
@@ -89,7 +89,7 @@ impl<'a> UdpPeer<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+    ) -> impl std::future::Future<Output=Result<()>> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         async move {

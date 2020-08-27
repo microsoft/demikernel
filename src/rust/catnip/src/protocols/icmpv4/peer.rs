@@ -25,15 +25,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Icmpv4Peer<'a> {
-    rt: Runtime<'a>,
-    arp: arp::Peer<'a>,
+pub struct Icmpv4Peer {
+    rt: Runtime,
+    arp: arp::Peer,
     outstanding_requests: Rc<RefCell<FxHashSet<(u16, u16)>>>,
     ping_seq_num_counter: Rc<Cell<Wrapping<u16>>>,
 }
 
-impl<'a> Icmpv4Peer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Icmpv4Peer<'a> {
+impl<'a> Icmpv4Peer {
+    pub fn new(rt: Runtime, arp: arp::Peer) -> Icmpv4Peer {
         // from [TCP/IP Illustrated]():
         // > When a new instance of the ping program is run, the Sequence
         // > Number field starts with the value 0 and is increased by 1 every
@@ -91,7 +91,7 @@ impl<'a> Icmpv4Peer<'a> {
         }
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> {
         let arp = self.arp.clone();
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let rt = self.rt.clone();

@@ -44,27 +44,27 @@ impl Into<u16> for TcpConnectionHandle {
     }
 }
 
-pub struct TcpConnection<'a> {
+pub struct TcpConnection {
     handle: TcpConnectionHandle,
     id: Rc<TcpConnectionId>,
     receive_queue: VecDeque<TcpSegment>,
     transmit_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
     receive_window: TcpReceiveWindow,
-    retransmit_retry: Option<Retry<'a>>,
+    retransmit_retry: Option<Retry>,
     retransmit_timeout: Option<Duration>,
-    rt: Runtime<'a>,
+    rt: Runtime,
     send_window: TcpSendWindow,
     window_advertisement: Option<Rc<RefCell<Vec<u8>>>>,
     window_probe_needed_since: Option<Instant>,
 }
 
-impl<'a> TcpConnection<'a> {
+impl TcpConnection {
     pub fn new(
         id: Rc<TcpConnectionId>,
         handle: TcpConnectionHandle,
         local_isn: Wrapping<u32>,
         receive_window_size: usize,
-        rt: Runtime<'a>,
+        rt: Runtime,
     ) -> Self {
         let advertised_mss = rt.options().tcp.advertised_mss;
         TcpConnection {

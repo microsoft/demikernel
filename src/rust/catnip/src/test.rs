@@ -27,11 +27,11 @@ lazy_static! {
     static ref CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 }
 
-pub fn new_engine<'a>(
+pub fn new_engine(
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     now: Instant,
-) -> Engine<'a> {
+) -> Engine {
     logging::initialize();
     // we always want to use the same seed for our unit tests.
     let mut seed = Seed::default();
@@ -57,7 +57,7 @@ pub fn new_engine<'a>(
     .unwrap()
 }
 
-pub fn new_alice<'a>(now: Instant) -> Engine<'a> {
+pub fn new_alice(now: Instant) -> Engine {
     new_engine(*ALICE_MAC, *ALICE_IPV4, now)
 }
 
@@ -69,7 +69,7 @@ pub fn alice_link_addr() -> &'static MacAddress {
     &ALICE_MAC
 }
 
-pub fn new_bob<'a>(now: Instant) -> Engine<'a> {
+pub fn new_bob(now: Instant) -> Engine {
     new_engine(*BOB_MAC, *BOB_IPV4, now)
 }
 
@@ -81,7 +81,7 @@ pub fn bob_link_addr() -> &'static MacAddress {
     &BOB_MAC
 }
 
-pub fn new_carrie<'a>(now: Instant) -> Engine<'a> {
+pub fn new_carrie(now: Instant) -> Engine {
     new_engine(*CARRIE_MAC, *CARRIE_IPV4, now)
 }
 

@@ -24,10 +24,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-struct EstablishedConnection<'a> {
-    alice: Engine<'a>,
+struct EstablishedConnection {
+    alice: Engine,
     alice_cxn_handle: TcpConnectionHandle,
-    bob: Engine<'a>,
+    bob: Engine,
     bob_cxn_handle: TcpConnectionHandle,
     now: Instant,
 }
@@ -96,7 +96,7 @@ fn syn_to_closed_port() {
     }
 }
 
-fn establish_connection() -> EstablishedConnection<'static> {
+fn establish_connection() -> EstablishedConnection {
     let bob_port = ip::Port::try_from(12345).unwrap();
 
     let now = Instant::now();
