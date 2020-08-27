@@ -3,6 +3,10 @@
 
 use super::*;
 use crate::test;
+use std::future::Future;
+use std::task::Poll;
+use futures::FutureExt;
+use futures::task::{Context, noop_waker_ref};
 use fxhash::FxHashMap;
 use std::{
     iter,
@@ -43,8 +47,9 @@ fn ping() {
             .collect::<FxHashMap<_, _>>(),
     );
 
-    let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
-    assert!(fut.poll(now).is_none());
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout)).boxed_local();
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let ping_request = {
         alice.advance_clock(now);
@@ -78,7 +83,8 @@ fn ping() {
     info!("passing ICMPv4 ping reply back to alice...");
     let now = now + Duration::from_micros(1);
     alice.receive(&ping_reply).unwrap();
-    let _ = fut.poll(now).unwrap().unwrap();
+
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());
 }
 
 #[test]
@@ -93,7 +99,8 @@ fn timeout() {
             .collect::<FxHashMap<_, _>>(),
     );
 
-    let fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout));
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout)).boxed_local();
     alice.advance_clock(now);
     match &*alice.pop_event().unwrap() {
         Event::Transmit(bytes) => {
@@ -105,11 +112,11 @@ fn timeout() {
     }
 
     now += timeout;
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     now += Duration::from_micros(1);
-    match fut.poll(now).unwrap() {
-        Err(Fail::Timeout {}) => (),
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Err(Fail::Timeout {})) => (),
         x => panic!("expected `Fail::Timeout`, got `{:?}`", x),
     }
 }
