@@ -77,11 +77,7 @@ impl<'a> Engine<'a> {
         self.arp.import_cache(cache)
     }
 
-    pub fn ping(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        timeout: Option<Duration>,
-    ) -> r#async::Future<'a, Duration> {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 

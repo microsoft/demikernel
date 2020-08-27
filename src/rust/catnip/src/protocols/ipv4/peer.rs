@@ -55,7 +55,7 @@ impl<'a> Ipv4Peer<'a> {
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> Future<'a, Duration> {
+    ) -> impl std::future::Future<Output=Result<Duration>> + 'a {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 

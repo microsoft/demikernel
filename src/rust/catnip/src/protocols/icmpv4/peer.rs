@@ -94,7 +94,7 @@ impl<'a> Icmpv4Peer<'a> {
         }
     }
 
-    pub fn ping2(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
         let arp = self.arp.clone();
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let rt = self.rt.clone();
@@ -141,65 +141,6 @@ impl<'a> Icmpv4Peer<'a> {
                 _ = timeout => Err(Fail::Timeout {}),
             }
         }
-    }
-
-
-    pub fn ping(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        timeout: Option<Duration>,
-    ) -> Future<'a, Duration> {
-        let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        let outstanding_requests = self.outstanding_requests.clone();
-        let id = self.generate_ping_id();
-        let seq_num = self.generate_seq_num();
-        self.rt.start_coroutine(move || {
-            let t0 = rt.now();
-            let options = rt.options();
-            debug!("initiating ARP query");
-            let dest_link_addr =
-                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
-            debug!(
-                "ARP query complete ({} -> {})",
-                dest_ipv4_addr, dest_link_addr
-            );
-
-            let mut bytes = Icmpv4Echo::new_vec();
-            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
-            echo.r#type(Icmpv4EchoOp::Request);
-            echo.id(id);
-            echo.seq_num(seq_num);
-            let mut ipv4_header = echo.icmpv4().ipv4().header();
-            ipv4_header.src_addr(options.my_ipv4_addr);
-            ipv4_header.dest_addr(dest_ipv4_addr);
-            let mut frame_header = echo.icmpv4().ipv4().frame().header();
-            frame_header.dest_addr(dest_link_addr);
-            frame_header.src_addr(options.my_link_addr);
-            let _ = echo.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-
-            let key = (id, seq_num);
-            {
-                let mut outstanding_requests =
-                    outstanding_requests.borrow_mut();
-                assert!(outstanding_requests.insert(key));
-            }
-
-            if yield_until!(
-                {
-                    let outstanding_requests = outstanding_requests.borrow();
-                    !outstanding_requests.contains(&key)
-                },
-                rt.now(),
-                timeout
-            ) {
-                CoroutineOk(rt.now() - t0)
-            } else {
-                Err(Fail::Timeout {})
-            }
-        })
     }
 
     pub fn reply_to_ping2(&mut self, dest_ipv4_addr: Ipv4Addr, id: u16, seq_num: u16) {
