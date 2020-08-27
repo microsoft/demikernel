@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::future::Future;
+use std::raw::TraitObject;
 use futures::FutureExt;
+use std::task::Poll;
+use futures::task::{Context, noop_waker_ref};
 use std::pin::Pin;
 use crate::{
     logging,
@@ -13,7 +17,7 @@ use crate::{
 use libc;
 use std::{
     net::Ipv4Addr,
-    ptr::{null, null_mut},
+    ptr::null,
     slice,
     time::Instant,
 };
@@ -51,6 +55,32 @@ pub struct UdpDatagram {
     src_port: u16,
     dest_link_addr: [u8; 6],
     src_link_addr: [u8; 6],
+}
+
+#[repr(C)]
+pub struct nip_connect_future {
+    obj: TraitObject,
+}
+
+impl nip_connect_future {
+    unsafe fn pack(f: Pin<Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>>) -> Self {
+        let trait_obj = Pin::into_inner_unchecked(f);
+        let raw_obj = std::mem::transmute::<_, TraitObject>(trait_obj);
+        debug_assert!(!raw_obj.data.is_null() && !raw_obj.vtable.is_null());
+        Self { obj: raw_obj }
+    }
+
+    unsafe fn unpack_mut<'a>(&'a mut self) -> Pin<&'a mut dyn Future<Output=Result<tcp::ConnectionHandle>>> {
+        debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
+        let obj_ref = std::mem::transmute::<_, &mut dyn Future<Output=Result<tcp::ConnectionHandle>>>(self.obj);
+        Pin::new_unchecked(obj_ref)
+    }
+
+    unsafe fn unpack(self) -> Pin<Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>> {
+        debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
+        let obj = std::mem::transmute::<_, Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>>(self.obj);
+        Pin::new_unchecked(obj)
+    }
 }
 
 impl From<&Event> for EventCode {
@@ -526,21 +556,17 @@ pub extern "C" fn nip_tcp_listen(
 
 #[no_mangle]
 pub extern "C" fn nip_tcp_connect(
-    future_out: *mut *mut libc::c_void,
+    raw_future_out: *mut nip_connect_future,
     engine: *mut libc::c_void,
     remote_addr: u32,
     remote_port: u16,
 ) -> libc::c_int {
-    if future_out.is_null() {
+    if raw_future_out.is_null() {
         return libc::EINVAL;
     }
-
-    unsafe { *future_out = null_mut() };
-
     if engine.is_null() {
         return libc::EINVAL;
     }
-
     if remote_port == 0 {
         return libc::EINVAL;
     }
@@ -552,7 +578,7 @@ pub extern "C" fn nip_tcp_connect(
     let remote_endpoint = ipv4::Endpoint::new(remote_addr, remote_port);
     let future = engine.tcp_connect(remote_endpoint).boxed_local();
     unsafe {
-        *future_out = Box::into_raw(Pin::into_inner_unchecked(future)) as *mut libc::c_void
+        *raw_future_out = nip_connect_future::pack(future);
     };
     0
 }
@@ -560,31 +586,28 @@ pub extern "C" fn nip_tcp_connect(
 #[no_mangle]
 pub extern "C" fn nip_tcp_connected(
     handle_out: *mut u16,
-    future: *mut libc::c_void,
+    mut raw_future: nip_connect_future,
 ) -> libc::c_int {
     if handle_out.is_null() {
         return libc::EINVAL;
     }
-
     unsafe { *handle_out = 0 };
-
-    if future.is_null() {
-        return libc::EINVAL;
-    }
-
-    let future = unsafe {
-        &mut *(future as *mut Future<'static, tcp::ConnectionHandle>)
-    };
-    match future.poll(Instant::now()) {
-        None => libc::EAGAIN,
-        Some(result) => match result {
-            Ok(handle) => {
-                unsafe { *handle_out = handle.into() };
-                0
-            }
-            Err(fail) => fail_to_errno(&fail),
+    let mut future = unsafe { raw_future.unpack_mut() };
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    match Future::poll(future.as_mut(), &mut ctx) {
+        Poll::Pending => libc::EAGAIN,
+        Poll::Ready(Ok(handle)) => {
+            unsafe { *handle_out = handle.into() };
+            0
         },
+        Poll::Ready(Err(fail)) => fail_to_errno(&fail),
     }
+}
+
+// XXX: Call this in the layer above.
+#[no_mangle]
+pub extern "C" fn nip_tcp_connect_future_free(raw_future: nip_connect_future) {
+    let _ = unsafe { raw_future.unpack() };
 }
 
 #[no_mangle]

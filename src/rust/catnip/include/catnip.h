@@ -47,6 +47,11 @@ typedef struct nip_udp_datagram {
     uint8_t src_link_addr[NIP_LINK_ADDRESS_BYTES];
 } nip_udp_datagram_t;
 
+typedef struct nip_connect_future {
+    void *ptr;
+    void *vtable;
+} nip_connect_future_t;
+
 int nip_advance_clock(void *engine);
 int nip_drop_event(void *engine);
 int nip_get_icmpv4_error_event(nip_icmpv4_error_t *error_out, nip_engine_t engine);
@@ -60,8 +65,11 @@ int nip_receive_datagram(nip_engine_t engine, void *bytes, size_t length);
 int nip_set_my_ipv4_addr(uint32_t ipv4_addr);
 int nip_set_my_link_addr(uint8_t link_addr[6]);
 int nip_start_logger();
-int nip_tcp_connect(nip_future_t *future_out, nip_engine_t engine, uint32_t remote_addr, uint16_t remote_port);
-int nip_tcp_connected(nip_tcp_connection_handle_t *handle_out, nip_future_t future);
+
+int nip_tcp_connect(nip_connect_future_t *raw_future_out, nip_engine_t engine, uint32_t remote_addr, uint16_t remote_port);
+int nip_tcp_connected(nip_tcp_connection_handle_t *handle_out, nip_connect_future_t raw_future);
+void nip_tcp_connect_future_free(nip_connect_future_t raw_future);
+
 int nip_tcp_get_local_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_get_remote_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_listen(nip_engine_t engine, uint16_t port);

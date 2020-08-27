@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #![feature(generators, generator_trait)]
+#![feature(raw)]
 #![warn(clippy::all)]
 
 #[macro_use]
