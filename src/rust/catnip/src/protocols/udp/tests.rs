@@ -2,6 +2,10 @@
 // Licensed under the MIT license.
 
 use super::datagram::UdpDatagramDecoder;
+use std::future::Future;
+use futures::FutureExt;
+use futures::task::{Context, noop_waker_ref};
+use std::task::Poll;
 use crate::{
     prelude::*,
     protocols::{icmpv4, ip},
@@ -35,14 +39,18 @@ fn unicast() {
     );
     bob.open_udp_port(bob_port);
 
-    let fut = alice.udp_cast(
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.udp_cast(
         *test::bob_ipv4_addr(),
         bob_port,
         alice_port,
         text.clone(),
-    );
+    ).boxed_local();
     let now = now + Duration::from_micros(1);
-    fut.poll(now).unwrap().unwrap();
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(..) => (),
+        x => panic!("Unexpected result: {:?}", x),
+    }
 
     let udp_datagram = {
         alice.advance_clock(now);
@@ -95,14 +103,16 @@ fn destination_port_unreachable() {
             .collect::<FxHashMap<_, _>>(),
     );
 
-    let fut = alice.udp_cast(
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.udp_cast(
         *test::bob_ipv4_addr(),
         bob_port,
         alice_port,
         text.clone(),
-    );
+    ).boxed_local();
     let now = now + Duration::from_micros(1);
-    fut.poll(now).unwrap().unwrap();
+    bob.advance_clock(now);
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let udp_datagram = {
         alice.advance_clock(now);

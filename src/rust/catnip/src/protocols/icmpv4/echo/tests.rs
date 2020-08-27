@@ -82,6 +82,7 @@ fn ping() {
 
     info!("passing ICMPv4 ping reply back to alice...");
     let now = now + Duration::from_micros(1);
+    alice.advance_clock(now);
     alice.receive(&ping_reply).unwrap();
 
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());

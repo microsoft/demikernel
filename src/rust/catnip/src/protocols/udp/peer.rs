@@ -92,47 +92,6 @@ impl<'a> UdpPeer<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> Future<'a, ()> {
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        self.rt.start_coroutine(move || {
-            let options = rt.options();
-            debug!("initiating ARP query");
-            let dest_link_addr =
-                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
-            debug!(
-                "ARP query complete ({} -> {})",
-                dest_ipv4_addr, dest_link_addr
-            );
-
-            let mut bytes = UdpDatagramEncoder::new_vec(text.len());
-            let mut encoder = UdpDatagramEncoder::attach(&mut bytes);
-            // the text slice could end up being larger than what's
-            // requested because of the minimum ethernet frame size, so we need
-            // to trim what we get from `encoder.text()` to make it the same
-            // size as `text`.
-            encoder.text()[..text.len()].copy_from_slice(&text);
-            let mut udp_header = encoder.header();
-            udp_header.dest_port(dest_port);
-            udp_header.src_port(src_port);
-            let mut ipv4_header = encoder.ipv4().header();
-            ipv4_header.src_addr(options.my_ipv4_addr);
-            ipv4_header.dest_addr(dest_ipv4_addr);
-            let mut frame_header = encoder.ipv4().frame().header();
-            frame_header.dest_addr(dest_link_addr);
-            frame_header.src_addr(options.my_link_addr);
-            let _ = encoder.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-            CoroutineOk(())
-        })
-    }
-
-    pub fn cast2(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
-        src_port: ip::Port,
-        text: Vec<u8>,
     ) -> impl std::future::Future<Output=Result<()>> + 'a {
         let rt = self.rt.clone();
         let arp = self.arp.clone();

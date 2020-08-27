@@ -77,7 +77,7 @@ impl<'a> Ipv4Peer<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> Future<'a, ()> {
+    ) -> impl std::future::Future<Output=Result<()>> + 'a {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 

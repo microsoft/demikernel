@@ -8,7 +8,6 @@ use crate::{
         ethernet2::{self, MacAddress},
         ip, ipv4, tcp,
     },
-    r#async,
 };
 use fxhash::FxHashMap;
 use std::{
@@ -54,8 +53,8 @@ impl<'a> Engine<'a> {
     pub fn arp_query(
         &self,
         ipv4_addr: Ipv4Addr,
-    ) -> r#async::Future<'a, MacAddress> {
-        self.arp.query(ipv4_addr)
+    ) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
+        self.arp.query2(ipv4_addr)
     }
 
     pub fn udp_cast(
@@ -64,7 +63,7 @@ impl<'a> Engine<'a> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> r#async::Future<'a, ()> {
+    ) -> impl std::future::Future<Output=Result<()>> + 'a {
         self.ipv4
             .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
     }

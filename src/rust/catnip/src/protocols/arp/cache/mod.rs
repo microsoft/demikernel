@@ -84,7 +84,7 @@ impl ArpCache {
         result
     }
 
-    pub fn wait_link_addr(&self, link_addr: Ipv4Addr) -> impl std::future::Future<Output=MacAddress> {
+    pub fn wait_link_addr(&self, _link_addr: Ipv4Addr) -> impl std::future::Future<Output=MacAddress> {
         async {
             unimplemented!()
         }

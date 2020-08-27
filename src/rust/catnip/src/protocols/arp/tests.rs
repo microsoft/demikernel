@@ -2,6 +2,10 @@
 // Licensed under the MIT license.
 
 use super::pdu::{ArpOp, ArpPdu};
+use std::future::Future;
+use futures::FutureExt;
+use futures::task::{Context, noop_waker_ref};
+use std::task::Poll;
 use crate::{prelude::*, protocols::ethernet2, test};
 use serde_yaml;
 use std::{
@@ -21,9 +25,10 @@ fn immediate_reply() {
     let options = alice.options();
     assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
-    let fut = alice.arp_query(*test::carrie_ipv4_addr());
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
     let now = now + Duration::from_micros(1);
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     alice.advance_clock(now);
     let request = {
@@ -69,8 +74,11 @@ fn immediate_reply() {
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_micros(1);
-    let link_addr = fut.poll(now).unwrap().unwrap();
-    assert_eq!(*test::carrie_link_addr(), link_addr);
+    alice.advance_clock(now);
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Ok(link_addr)) => assert_eq!(*test::carrie_link_addr(), link_addr),
+        x => panic!("Unexpected result: {:?}", x),
+    }
 }
 
 #[test]
@@ -86,10 +94,11 @@ fn slow_reply() {
     assert!(options.arp.retry_count > 0);
     assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
-    let fut = alice.arp_query(*test::carrie_ipv4_addr());
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
     // move time forward enough to trigger a timeout.
     let now = now + Duration::from_secs(1);
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = {
         alice.advance_clock(now);
@@ -135,8 +144,11 @@ fn slow_reply() {
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
     let now = now + Duration::from_micros(1);
-    let link_addr = fut.poll(now).unwrap().unwrap();
-    assert_eq!(*test::carrie_link_addr(), link_addr);
+    alice.advance_clock(now);
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Ok(link_addr)) => assert_eq!(*test::carrie_link_addr(), link_addr),
+        x => panic!("Unexpected result: {:?}", x),
+    }
 }
 
 #[test]
@@ -149,7 +161,8 @@ fn no_reply() {
     assert_eq!(options.arp.retry_count, 2);
     assert_eq!(options.arp.request_timeout, Duration::from_secs(1));
 
-    let fut = alice.arp_query(*test::carrie_ipv4_addr());
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
 
     alice.advance_clock(now);
     match &*alice.pop_event().unwrap() {
@@ -164,7 +177,8 @@ fn no_reply() {
 
     for i in 0..options.arp.retry_count {
         now += options.arp.request_timeout;
-        assert!(fut.poll(now).is_none());
+
+        assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
         now += Duration::from_micros(1);
         alice.advance_clock(now);
@@ -183,10 +197,10 @@ fn no_reply() {
 
     // timeout
     now += options.arp.request_timeout;
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
     now += Duration::from_micros(1);
-    match fut.poll(now).unwrap() {
-        Err(Fail::Timeout {}) => (),
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Err(Fail::Timeout {})) => (),
         x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),
     }
 }

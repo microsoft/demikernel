@@ -222,8 +222,8 @@ impl<'a> TcpPeerState<'a> {
             };
 
             let options = rt.options();
-            let retries = options.tcp.handshake_retries;
-            let timeout = options.tcp.handshake_timeout;
+            let _retries = options.tcp.handshake_retries;
+            let _timeout = options.tcp.handshake_timeout;
 
             // XXX: Add retry combinator?
             // let retry = Retry::binary_exponential(timeout, retries)
@@ -296,7 +296,6 @@ impl<'a> TcpPeerState<'a> {
     }
 
     fn new_passive_connection2(state: Rc<RefCell<TcpPeerState<'a>>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> + 'a {
-        let rt = state.borrow().rt.clone();
         async move {
             let (cxn, rt) = {
                 let mut state = state.borrow_mut();
@@ -329,7 +328,7 @@ impl<'a> TcpPeerState<'a> {
 
             // XXX: Add retry combinator?
             // let retry = Retry::binary_exponential(timeout, retries)
-            let options = rt.options();
+            let _options = rt.options();
             let ack_segment = TcpPeerState::handshake2(state.clone(), cxn.clone()).await?;
 
             {
@@ -462,7 +461,6 @@ impl<'a> TcpPeerState<'a> {
     {
         async move {
             trace!("TcpRuntime::handshake()");
-            let rt = state.borrow().rt.clone();
             let (bytes, ack_was_sent, expected_ack_num) = {
                 let cxn = cxn.borrow();
                 let segment = TcpSegment::default()
@@ -546,7 +544,6 @@ impl<'a> TcpPeerState<'a> {
         notify: bool,
     ) -> impl std::future::Future<Output=Result<()>> + 'a
     {
-        let rt = state.borrow().rt.clone();
         async move {
             let (rst_segment, cxn_handle, rt) = {
                 let mut state = state.borrow_mut();
@@ -614,14 +611,9 @@ impl<'a> TcpPeerState<'a> {
         cxn: Rc<RefCell<TcpConnection<'a>>>,
     ) -> impl std::future::Future<Output=Result<()>> + 'a
     {
-        let rt = state.borrow().rt.clone();
         async move {
             trace!("TcpRuntime::on_connection_established(...)::coroutine",);
-
-            let (cxnid, rt) = {
-                let state = state.borrow();
-                (cxn.borrow().get_id().clone(), state.rt.clone())
-            };
+            let cxnid = cxn.borrow().get_id().clone();
             let error = TcpPeerState::main_connection_loop2(state.clone(), cxn.clone()).await.err();
             TcpPeerState::close_connection2(state, cxnid, error, true).await?;
             Ok(())
@@ -729,7 +721,6 @@ impl<'a> TcpPeerState<'a> {
         state: Rc<RefCell<TcpPeerState<'a>>>,
         cxn: Rc<RefCell<TcpConnection<'a>>>,
     ) -> impl std::future::Future<Output=Result<()>> + 'a {
-        let rt = state.borrow().rt.clone();
         async move {
             trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
