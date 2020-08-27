@@ -150,7 +150,7 @@ impl<'a> TcpPeerState<'a> {
         Ok(cxn)
     }
 
-    fn cast2(state: Rc<RefCell<TcpPeerState<'a>>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> + 'a {
+    fn cast(state: Rc<RefCell<TcpPeerState<'a>>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> + 'a {
         async move {
             let (arp, rt, remote_ipv4_addr) = {
                 let state = state.borrow();
@@ -161,7 +161,7 @@ impl<'a> TcpPeerState<'a> {
                 let decoder = encoder.unmut();
                 (state.arp.clone(), rt, decoder.ipv4().header().dest_addr())
             };
-            let remote_link_addr = arp.query2(remote_ipv4_addr).await?;
+            let remote_link_addr = arp.query(remote_ipv4_addr).await?;
             {
                 let options = rt.options();
                 let mut bytes = bytes.borrow_mut();
@@ -175,41 +175,6 @@ impl<'a> TcpPeerState<'a> {
             rt.emit_event(Event::Transmit(bytes));
             Ok(())
         }
-    }
-
-    fn cast(
-        state: Rc<RefCell<TcpPeerState<'a>>>,
-        bytes: Rc<RefCell<Vec<u8>>>,
-    ) -> Future<'a, ()> {
-        let rt = state.borrow().rt.clone();
-        rt.start_coroutine(move || {
-            let (arp, rt, remote_ipv4_addr) = {
-                let state = state.borrow();
-                let rt = state.rt.clone();
-                let mut bytes = bytes.borrow_mut();
-                let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
-                encoder.ipv4().header().src_addr(rt.options().my_ipv4_addr);
-                let decoder = encoder.unmut();
-                (state.arp.clone(), rt, decoder.ipv4().header().dest_addr())
-            };
-
-            let remote_link_addr =
-                r#await!(arp.query(remote_ipv4_addr), rt.now())?;
-
-            {
-                let options = rt.options();
-                let mut bytes = bytes.borrow_mut();
-                let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
-                encoder.ipv4().header().src_addr(options.my_ipv4_addr);
-                let mut frame_header = encoder.ipv4().frame().header();
-                frame_header.src_addr(options.my_link_addr);
-                frame_header.dest_addr(remote_link_addr);
-                let _ = encoder.seal()?;
-            }
-
-            rt.emit_event(Event::Transmit(bytes));
-            CoroutineOk(())
-        })
     }
 
     fn new_active_connection(state: Rc<RefCell<TcpPeerState<'a>>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> + 'a {
@@ -238,7 +203,7 @@ impl<'a> TcpPeerState<'a> {
                 let segment = TcpSegment::default().connection(&cxn);
                 (Rc::new(RefCell::new(segment.encode())), cxn.get_handle())
             };
-            TcpPeerState::cast2(state.clone(), bytes).await?;
+            TcpPeerState::cast(state.clone(), bytes).await?;
             info!(
                 "{}: connection established (handle = {})",
                 options.my_ipv4_addr, handle
@@ -313,7 +278,7 @@ impl<'a> TcpPeerState<'a> {
                 let bytes = Rc::new(RefCell::new(segment.encode()));
                 (bytes, ack_was_sent, expected_ack_num)
             };
-            TcpPeerState::cast2(state.clone(), bytes).await?;
+            TcpPeerState::cast(state.clone(), bytes).await?;
             loop {
                 let segment = cxn.borrow().pop_receive_queue().await;
                 if segment.rst {
@@ -362,7 +327,7 @@ impl<'a> TcpPeerState<'a> {
             }
             if had_error {
                 let bytes = Rc::new(RefCell::new(rst_segment.encode()));
-                let _ = TcpPeerState::cast2(state, bytes).await;
+                let _ = TcpPeerState::cast(state, bytes).await;
             }
             Ok(())
         }
@@ -429,7 +394,7 @@ impl<'a> TcpPeerState<'a> {
                 }
                 while let Some(s) = cxn.borrow_mut().try_get_next_transmittable_segment() {
                     ack_owed_since = None;
-                    TcpPeerState::cast2(state.clone(), s).await?;
+                    TcpPeerState::cast(state.clone(), s).await?;
                 }
                 if let Some(timestamp) = ack_owed_since {
                     debug!(
@@ -450,7 +415,7 @@ impl<'a> TcpPeerState<'a> {
                         );
                         let pure_ack = TcpSegment::default().connection(&cxn.borrow());
                         let bytes = Rc::new(RefCell::new(pure_ack.encode()));
-                        TcpPeerState::cast2(state.clone(), bytes).await?;
+                        TcpPeerState::cast(state.clone(), bytes).await?;
                         ack_owed_since = None;
                     }
                 }
@@ -548,10 +513,10 @@ impl<'a> TcpPeer<'a> {
             .ack(ack_num)
             .rst();
         let bytes = Rc::new(RefCell::new(segment.encode()));
-        let background_work = self.state.borrow().background_work.clone();
-        background_work
-            .borrow_mut()
-            .add(TcpPeerState::cast(self.state.clone(), bytes));
+
+        // XXX: Add to futures unordered
+        let _ = TcpPeerState::cast(self.state.clone(), bytes);
+
         Ok(())
     }
 

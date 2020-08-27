@@ -112,7 +112,7 @@ impl<'a> ArpPeer<'a> {
         }
     }
 
-    pub fn query2(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
         async move {
@@ -151,59 +151,6 @@ impl<'a> ArpPeer<'a> {
             }
             Err(Fail::Timeout {})
         }
-    }
-
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
-        {
-            if let Some(link_addr) =
-                self.cache.borrow().get_link_addr(ipv4_addr)
-            {
-                return Future::r#const(*link_addr);
-            }
-        }
-
-        let rt = self.rt.clone();
-        let cache = self.cache.clone();
-        self.rt.start_coroutine(move || {
-            let options = rt.options();
-            let arp = ArpPdu {
-                op: ArpOp::ArpRequest,
-                sender_link_addr: options.my_link_addr,
-                sender_ip_addr: options.my_ipv4_addr,
-                target_link_addr: MacAddress::nil(),
-                target_ip_addr: ipv4_addr,
-            };
-
-            let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
-            // from TCP/IP illustrated, chapter 4:
-            // > The frequency of the ARP request is very close to one per
-            // > second, the maximum suggested by [RFC1122].
-            let mut retries_remaining = options.arp.retry_count + 1;
-            while retries_remaining > 0 {
-                rt.emit_event(Event::Transmit(bytes.clone()));
-                retries_remaining -= 1;
-                if yield_until!(
-                    cache.borrow().get_link_addr(ipv4_addr).is_some(),
-                    rt.now(),
-                    options.arp.request_timeout
-                ) {
-                    let link_addr = cache
-                        .borrow()
-                        .get_link_addr(ipv4_addr)
-                        .copied()
-                        .unwrap();
-                    debug!("ARP result available ({})", link_addr);
-                    return CoroutineOk(link_addr);
-                }
-
-                warn!(
-                    "ARP request timeout; {} retries remain.",
-                    retries_remaining
-                );
-            }
-
-            Err(Fail::Timeout {})
-        })
     }
 
     pub fn export_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {

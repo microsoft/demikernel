@@ -3,19 +3,15 @@
 
 use super::{
     coroutine::{Coroutine, CoroutineId, CoroutineStatus},
-    future::Future,
     schedule::Schedule,
     traits::Async,
 };
 use crate::prelude::*;
 use fxhash::FxHashMap;
 use std::{
-    any::Any,
     cell::{Cell, RefCell},
-    fmt::Debug,
-    ops::Generator,
     rc::Rc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 #[derive(Clone)]
@@ -36,30 +32,6 @@ impl<'a> AsyncRuntime<'a> {
 
     pub fn clock(&self) -> Instant {
         self.schedule.borrow().clock()
-    }
-
-    pub fn start_coroutine<G, T>(&self, gen: G) -> Future<'a, T>
-    where
-        T: Any + Clone + Debug + 'static,
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
-            + 'a
-            + Unpin,
-    {
-        let cid = self.new_tid();
-        let co = Coroutine::new(cid, gen, self.clock());
-        self.schedule.borrow_mut().schedule(&co);
-        self.inactive_coroutines.borrow_mut().insert(cid, co);
-        let fut = Future::coroutine_result(self.clone(), cid);
-        let _ = fut.poll(self.clock());
-        fut
-    }
-
-    fn new_tid(&self) -> CoroutineId {
-        let n = self.next_unused_id.get();
-        let cid = CoroutineId::from(n);
-        // todo: we should deal with overflow.
-        self.next_unused_id.set(n + 1);
-        cid
     }
 
     fn poll_schedule(&self, now: Instant) -> Option<CoroutineId> {

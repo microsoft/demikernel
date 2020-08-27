@@ -627,7 +627,7 @@ fn retransmission_fail() {
     };
 
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let retries = cxn.alice.options().tcp.retries2;
+    let retries = cxn.alice.options().tcp.retries;
     let mut retry = Retry::binary_exponential(rto, retries);
     for i in 0..(retries - 1) {
         let timeout = retry.next().unwrap();
@@ -714,7 +714,7 @@ fn retransmission_ok() {
     info!("dropping data segments and attempting retransmission...");
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
     let mut retry =
-        Retry::binary_exponential(rto, cxn.alice.options().tcp.retries2);
+        Retry::binary_exponential(rto, cxn.alice.options().tcp.retries);
     let timeout = retry.next().unwrap();
     cxn.now += timeout - Duration::from_micros(1);
     cxn.alice.advance_clock(cxn.now);
@@ -923,7 +923,7 @@ fn flow_control() {
         "flow_control(): waiting for Alice to start sending window probes..."
     );
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let retries = cxn.alice.options().tcp.retries2;
+    let retries = cxn.alice.options().tcp.retries;
     let mut retry = Retry::binary_exponential(rto, retries);
     for i in 0..(retries - 1) {
         let timeout = retry.next().unwrap();

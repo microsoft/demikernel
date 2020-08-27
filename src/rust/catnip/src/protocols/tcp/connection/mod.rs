@@ -191,7 +191,7 @@ impl<'a> TcpConnection<'a> {
                     let rto = self.get_rto();
                     debug!("rto = {:?}", rto);
                     let mut retry =
-                        Retry::binary_exponential(rto, options.tcp.retries2);
+                        Retry::binary_exponential(rto, options.tcp.retries);
                     let timeout = retry.next().unwrap();
                     self.retransmit_retry = Some(retry);
                     self.retransmit_timeout = Some(timeout);

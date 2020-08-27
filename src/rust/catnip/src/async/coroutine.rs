@@ -65,21 +65,6 @@ pub struct Coroutine<'a> {
 }
 
 impl<'a> Coroutine<'a> {
-    pub fn new<G>(id: CoroutineId, gen: G, now: Instant) -> Coroutine<'a>
-    where
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
-            + 'a
-            + Unpin,
-    {
-        Coroutine {
-            id,
-            // initialize the coroutine with a status that will cause it to be
-            // awakened immediately.
-            status: CoroutineStatus::AsleepUntil(now),
-            gen: Box::new(gen),
-        }
-    }
-
     pub fn id(&self) -> CoroutineId {
         self.id
     }

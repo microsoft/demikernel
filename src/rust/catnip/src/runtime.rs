@@ -4,11 +4,8 @@
 use crate::{prelude::*, r#async, rand::Rng};
 use rand_core::SeedableRng;
 use std::{
-    any::Any,
     cell::{RefCell, RefMut},
     collections::VecDeque,
-    fmt::Debug,
-    ops::Generator,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -38,16 +35,6 @@ impl<'a> Runtime<'a> {
 
     pub fn now(&self) -> Instant {
         self.r#async.clock()
-    }
-
-    pub fn start_coroutine<G, T>(&self, gen: G) -> r#async::Future<'a, T>
-    where
-        T: Any + Clone + Debug + 'static,
-        G: Generator<Yield = Option<Duration>, Return = Result<Rc<dyn Any>>>
-            + 'a
-            + Unpin,
-    {
-        self.r#async.start_coroutine(gen)
     }
 
     pub fn emit_event(&self, event: Event) {

@@ -98,7 +98,7 @@ impl<'a> UdpPeer<'a> {
         async move {
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = arp.query2(dest_ipv4_addr).await.expect("XXX handle ARP failure");
+            let dest_link_addr = arp.query(dest_ipv4_addr).await.expect("XXX handle ARP failure");
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -137,7 +137,7 @@ impl<'a> UdpPeer<'a> {
             );
             let options = rt.options();
             debug!("initiating ARP query");
-            let dest_link_addr = arp.query2(dest_ipv4_addr).await.expect("XXX handle ARP failure");
+            let dest_link_addr = arp.query(dest_ipv4_addr).await.expect("XXX handle ARP failure");
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -160,7 +160,7 @@ impl<'a> UdpPeer<'a> {
             frame_header.dest_addr(dest_link_addr);
             let _ = error.seal()?;
             rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-            CoroutineOk(())
+            Ok::<_, Fail>(())
         };
         // XXX add this to a futures unordered.
         let _ = fut;

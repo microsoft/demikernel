@@ -54,7 +54,7 @@ impl<'a> Engine<'a> {
         &self,
         ipv4_addr: Ipv4Addr,
     ) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
-        self.arp.query2(ipv4_addr)
+        self.arp.query(ipv4_addr)
     }
 
     pub fn udp_cast(
