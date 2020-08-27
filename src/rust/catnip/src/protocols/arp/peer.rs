@@ -11,6 +11,7 @@ use crate::{
 };
 use futures::FutureExt;
 use fxhash::FxHashMap;
+use std::future::Future;
 use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
     time::Instant,
@@ -112,7 +113,7 @@ impl<'a> ArpPeer {
         }
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output=Result<MacAddress>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
         async move {

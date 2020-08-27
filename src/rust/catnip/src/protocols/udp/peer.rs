@@ -10,6 +10,7 @@ use fxhash::FxHashSet;
 use std::{
     cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc, time::Instant,
 };
+use std::future::Future;
 
 pub struct UdpPeer {
     rt: Runtime,
@@ -89,7 +90,7 @@ impl<'a> UdpPeer {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> {
+    ) -> impl Future<Output=Result<()>> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         async move {

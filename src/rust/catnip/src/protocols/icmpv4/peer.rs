@@ -14,6 +14,7 @@ use crate::{
 use byteorder::{NativeEndian, WriteBytesExt};
 use fxhash::FxHashSet;
 use rand::Rng;
+use std::future::Future;
 use std::{
     cell::{Cell, RefCell},
     convert::TryFrom,
@@ -91,7 +92,7 @@ impl<'a> Icmpv4Peer {
         }
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration>> {
         let arp = self.arp.clone();
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let rt = self.rt.clone();

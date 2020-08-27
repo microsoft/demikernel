@@ -6,6 +6,7 @@ use crate::{
     prelude::*,
     protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp, udp},
 };
+use std::future::Future;
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
@@ -55,7 +56,7 @@ impl<'a> Ipv4Peer {
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> impl std::future::Future<Output=Result<Duration>> {
+    ) -> impl Future<Output=Result<Duration>> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -77,14 +78,14 @@ impl<'a> Ipv4Peer {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> {
+    ) -> impl Future<Output=Result<()>> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> {
+    ) -> impl Future<Output=Result<tcp::ConnectionHandle>> {
         tcp::Peer::connect(&self.tcp, remote_endpoint)
     }
 

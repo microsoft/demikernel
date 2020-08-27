@@ -25,6 +25,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use std::future::Future;
 
 struct TcpPeerState {
     arp: arp::Peer,
@@ -145,7 +146,7 @@ impl TcpPeerState {
         Ok(cxn)
     }
 
-    fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> {
+    fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl Future<Output=Result<()>> {
         async move {
             let (arp, rt, remote_ipv4_addr) = {
                 let state = state.borrow();
@@ -172,7 +173,7 @@ impl TcpPeerState {
         }
     }
 
-    fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> {
+    fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> impl Future<Output=Result<()>> {
         async move {
             trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
             let (cxn, rt) = {
@@ -207,7 +208,7 @@ impl TcpPeerState {
         }
     }
 
-    fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> {
+    fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> impl Future<Output=Result<()>> {
         async move {
             let (cxn, rt) = {
                 let mut state = state.borrow_mut();
@@ -258,7 +259,7 @@ impl TcpPeerState {
     }
 
     fn handshake(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>)
-                  -> impl std::future::Future<Output=Result<Rc<TcpSegment>>>
+                  -> impl Future<Output=Result<Rc<TcpSegment>>>
     {
         async move {
             trace!("TcpRuntime::handshake()");
@@ -294,7 +295,7 @@ impl TcpPeerState {
         cxnid: Rc<TcpConnectionId>,
         error: Option<Fail>,
         notify: bool,
-    ) -> impl std::future::Future<Output=Result<()>>
+    ) -> impl Future<Output=Result<()>>
     {
         async move {
             let (rst_segment, cxn_handle, rt) = {
@@ -331,7 +332,7 @@ impl TcpPeerState {
     pub fn on_connection_established(
         state: Rc<RefCell<TcpPeerState>>,
         cxn: Rc<RefCell<TcpConnection>>,
-    ) -> impl std::future::Future<Output=Result<()>>
+    ) -> impl Future<Output=Result<()>>
     {
         async move {
             trace!("TcpRuntime::on_connection_established(...)::coroutine",);
@@ -345,7 +346,7 @@ impl TcpPeerState {
     pub fn main_connection_loop(
         state: Rc<RefCell<TcpPeerState>>,
         cxn: Rc<RefCell<TcpConnection>>,
-    ) -> impl std::future::Future<Output=Result<()>> {
+    ) -> impl Future<Output=Result<()>> {
         async move {
             trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
@@ -515,7 +516,7 @@ impl TcpPeer {
         Ok(())
     }
 
-    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> {
+    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<TcpConnectionHandle>> {
         trace!("TcpPeer::connect({:?})", remote_endpoint);
         let state = self.state.clone();
         async move {

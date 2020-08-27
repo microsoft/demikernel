@@ -3,6 +3,7 @@
 
 use crate::{prelude::*, r#async, rand::Rng};
 use rand_core::SeedableRng;
+use std::future::Future;
 use std::{
     cell::{RefCell, RefMut},
     collections::VecDeque,
@@ -75,13 +76,13 @@ impl Runtime {
         }
     }
 
-    pub fn wait(&self, _how_long: Duration) -> impl std::future::Future<Output = ()> {
+    pub fn wait(&self, _how_long: Duration) -> impl Future<Output = ()> {
         async {
             unimplemented!();
         }
     }
 
-    pub fn wait_until(&self, _when: Instant) -> impl std::future::Future<Output = ()> {
+    pub fn wait_until(&self, _when: Instant) -> impl Future<Output = ()> {
         async {
             unimplemented!();
         }

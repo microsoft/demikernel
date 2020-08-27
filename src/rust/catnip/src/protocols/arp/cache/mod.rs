@@ -9,6 +9,7 @@ mod tests;
 
 use crate::{collections::HashTtlCache, protocols::ethernet2::MacAddress};
 use fxhash::FxHashMap;
+use std::future::Future;
 use std::{
     net::Ipv4Addr,
     time::{Duration, Instant},
@@ -84,7 +85,7 @@ impl ArpCache {
         result
     }
 
-    pub fn wait_link_addr(&self, _link_addr: Ipv4Addr) -> impl std::future::Future<Output=MacAddress> {
+    pub fn wait_link_addr(&self, _link_addr: Ipv4Addr) -> impl Future<Output=MacAddress> {
         async {
             unimplemented!()
         }

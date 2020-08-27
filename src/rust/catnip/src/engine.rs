@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use fxhash::FxHashMap;
+use std::future::Future;
 use std::{
     net::Ipv4Addr,
     rc::Rc,
@@ -53,7 +54,7 @@ impl Engine {
     pub fn arp_query(
         &self,
         ipv4_addr: Ipv4Addr,
-    ) -> impl std::future::Future<Output=Result<MacAddress>> {
+    ) -> impl Future<Output=Result<MacAddress>> {
         self.arp.query(ipv4_addr)
     }
 
@@ -63,7 +64,7 @@ impl Engine {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl std::future::Future<Output=Result<()>> {
+    ) -> impl Future<Output=Result<()>> {
         self.ipv4
             .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
     }
@@ -76,7 +77,7 @@ impl Engine {
         self.arp.import_cache(cache)
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -92,7 +93,7 @@ impl Engine {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> {
+    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<tcp::ConnectionHandle>> {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 
