@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-
-use super::segment::{DEFAULT_MSS, MAX_MSS, MIN_MSS};
+use crate::protocols::tcp::constants::{
+    DEFAULT_MSS,
+    MAX_MSS,
+    MIN_MSS,
+};
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
@@ -10,7 +13,7 @@ pub struct TcpOptions {
     pub handshake_retries: usize,
     pub handshake_timeout: Duration,
     pub receive_window_size: usize,
-    pub retries2: usize,
+    pub retries: usize,
     pub trailing_ack_delay: Duration,
 }
 
@@ -21,7 +24,7 @@ impl Default for TcpOptions {
             handshake_retries: 5,
             handshake_timeout: Duration::from_secs(3),
             receive_window_size: 0xffff,
-            retries2: 5,
+            retries: 5,
             trailing_ack_delay: Duration::from_micros(1),
         }
     }
@@ -53,9 +56,9 @@ impl TcpOptions {
         self
     }
 
-    pub fn retries2(mut self, value: usize) -> Self {
+    pub fn retries(mut self, value: usize) -> Self {
         assert!(value > 0);
-        self.retries2 = value;
+        self.retries = value;
         self
     }
 

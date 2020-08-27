@@ -42,7 +42,6 @@ void sig_handler(int signo)
     exit(0);
 }
 
-
 int main(int argc, char *argv[]) {
     parse_args(argc, argv, false);
     

@@ -2,171 +2,153 @@
 // Licensed under the MIT license.
 
 use crate::{
-    prelude::*,
-    protocols::ethernet2::{self, MacAddress},
+    fail::Fail,
+    protocols::ethernet2::{
+        frame::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
+        MacAddress,
+    },
+    runtime::PacketBuf,
+    sync::Bytes,
 };
-use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use num_traits::FromPrimitive;
 use std::{
-    convert::TryFrom,
-    io::{Cursor, Read, Write},
+    cmp,
+    convert::TryInto,
     net::Ipv4Addr,
 };
 
-const HARD_TYPE_ETHER2: u16 = 1;
-const HARD_SIZE_ETHER2: u8 = 6;
-const PROT_TYPE_IPV4: u16 = 0x800;
-const PROT_SIZE_IPV4: u8 = 4;
+const HTYPE_ETHER2: u16 = 1;
+const HLEN_ETHER2: u8 = 1;
+const PTYPE_IPV4: u16 = 0x800;
+const PLEN_IPV4: u8 = 4;
+const ARP_MESSAGE_SIZE: usize = 28;
 
 #[repr(u16)]
 #[derive(FromPrimitive, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ArpOp {
-    ArpRequest = 1,
-    ArpReply = 2,
+pub enum ArpOperation {
+    Request = 1,
+    Reply = 2,
 }
 
-impl TryFrom<u16> for ArpOp {
-    type Error = Fail;
+#[derive(Clone, Debug)]
+pub struct ArpPdu {
+    // We only support Ethernet/Ipv4, so omit these fields.
+    // hardware_type: u16,
+    // protocol_type: u16,
+    // hardware_address_len: u8,
+    // protocol_address_len: u8,
+    pub operation: ArpOperation,
+    pub sender_hardware_addr: MacAddress,
+    pub sender_protocol_addr: Ipv4Addr,
+    pub target_hardware_addr: MacAddress,
+    pub target_protocol_addr: Ipv4Addr,
+}
 
-    fn try_from(n: u16) -> Result<ArpOp> {
-        match FromPrimitive::from_u16(n) {
-            Some(op) => Ok(op),
-            None => Err(Fail::Unsupported {
-                details: "ARP opcode must be REQUEST or REPLY",
-            }),
+#[derive(Clone)]
+pub struct ArpMessage {
+    pub ethernet2_hdr: Ethernet2Header,
+    pub arp_pdu: ArpPdu,
+}
+
+impl PacketBuf for ArpMessage {
+    fn compute_size(&self) -> usize {
+        let size = self.ethernet2_hdr.compute_size() + self.arp_pdu.compute_size();
+        cmp::max(size, MIN_PAYLOAD_SIZE)
+    }
+
+    fn serialize(&self, buf: &mut [u8]) {
+        let eth_hdr_size = self.ethernet2_hdr.compute_size();
+        let arp_pdu_size = self.arp_pdu.compute_size();
+        let mut cur_pos = 0;
+
+        self.ethernet2_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        cur_pos += eth_hdr_size;
+
+        self.arp_pdu
+            .serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
+        cur_pos += arp_pdu_size;
+
+        // Add Ethernet padding if needed.
+        for byte in &mut buf[cur_pos..] {
+            *byte = 0;
         }
     }
-}
-
-#[derive(Debug)]
-pub struct ArpPdu {
-    pub op: ArpOp,
-    pub sender_link_addr: MacAddress,
-    pub sender_ip_addr: Ipv4Addr,
-    pub target_link_addr: MacAddress,
-    pub target_ip_addr: Ipv4Addr,
 }
 
 impl ArpPdu {
-    pub fn read(reader: &mut dyn Read) -> Result<ArpPdu> {
-        trace!("ArpPdu::read(...)");
-        let hard_type = reader.read_u16::<NetworkEndian>()?;
-        if hard_type != HARD_TYPE_ETHER2 {
-            return Err(Fail::Unsupported {
-                details: "this ARP implementation only supports Ethernet II",
-            });
-        }
+    fn compute_size(&self) -> usize {
+        ARP_MESSAGE_SIZE
+    }
 
-        let prot_type = reader.read_u16::<NetworkEndian>()?;
-        if prot_type != PROT_TYPE_IPV4 {
-            return Err(Fail::Unsupported {
-                details: "this ARP implementation only supports IPv4",
-            });
-        }
-
-        let mut byte = [0; 1];
-        reader.read_exact(&mut byte)?;
-        let hard_size = byte[0];
-        if hard_size != HARD_SIZE_ETHER2 {
+    pub fn parse(buf: Bytes) -> Result<Self, Fail> {
+        if buf.len() < ARP_MESSAGE_SIZE {
             return Err(Fail::Malformed {
-                details: "ARP field HLEN contains an unexpected value",
+                details: "ARP message too short",
             });
         }
-
-        reader.read_exact(&mut byte)?;
-        let prot_size = byte[0];
-        if prot_size != PROT_SIZE_IPV4 {
+        let buf: &[u8; ARP_MESSAGE_SIZE] = &buf[..ARP_MESSAGE_SIZE].try_into().unwrap();
+        let hardware_type = NetworkEndian::read_u16(&buf[0..2]);
+        if hardware_type != HTYPE_ETHER2 {
             return Err(Fail::Unsupported {
-                details: "ARP field PLEN contains an unexpected value",
+                details: "Unsupported HTYPE",
             });
         }
-
-        let op = reader.read_u16::<NetworkEndian>()?;
-        let mut sender_link_addr = [0; 6];
-        reader.read_exact(&mut sender_link_addr)?;
-        let sender_ip_addr = reader.read_u32::<NetworkEndian>()?;
-        let mut target_link_addr = [0; 6];
-        reader.read_exact(&mut target_link_addr)?;
-        let target_ip_addr = reader.read_u32::<NetworkEndian>()?;
-
-        Ok(ArpPdu {
-            op: ArpOp::try_from(op)?,
-            sender_link_addr: MacAddress::new(sender_link_addr),
-            sender_ip_addr: From::from(sender_ip_addr),
-            target_link_addr: MacAddress::new(target_link_addr),
-            target_ip_addr: From::from(target_ip_addr),
-        })
-    }
-
-    pub fn write(&self, writer: &mut dyn Write) -> Result<()> {
-        writer.write_u16::<NetworkEndian>(HARD_TYPE_ETHER2)?;
-        writer.write_u16::<NetworkEndian>(PROT_TYPE_IPV4)?;
-        let byte = [HARD_SIZE_ETHER2; 1];
-        writer.write_all(&byte)?;
-        let byte = [PROT_SIZE_IPV4; 1];
-        writer.write_all(&byte)?;
-        writer.write_u16::<NetworkEndian>(self.op as u16)?;
-        writer.write_all(self.sender_link_addr.as_bytes())?;
-        writer.write_u32::<NetworkEndian>(self.sender_ip_addr.into())?;
-        writer.write_all(self.target_link_addr.as_bytes())?;
-        writer.write_u32::<NetworkEndian>(self.target_ip_addr.into())?;
-        Ok(())
-    }
-
-    pub fn size() -> usize {
-        28
-    }
-
-    pub fn to_datagram(&self) -> Result<Vec<u8>> {
-        trace!("ArpPdu::to_datagram()");
-        let dest_addr = match self.op {
-            ArpOp::ArpRequest => {
-                if MacAddress::nil() != self.target_link_addr {
-                    panic!(
-                        "the target link address of an ARP request must be \
-                         `MacAddress::nil()`"
-                    );
+        let protocol_type = NetworkEndian::read_u16(&buf[2..4]);
+        if protocol_type != PTYPE_IPV4 {
+            return Err(Fail::Unsupported {
+                details: "Unsupported PTYPE",
+            });
+        }
+        let hardware_address_len = buf[4];
+        if hardware_address_len != HLEN_ETHER2 {
+            return Err(Fail::Unsupported {
+                details: "Unsupported HLEN",
+            });
+        }
+        let protocol_address_len = buf[5];
+        if protocol_address_len != PLEN_IPV4 {
+            return Err(Fail::Unsupported {
+                details: "Unsupported PLEN",
+            });
+        }
+        let operation =
+            FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8])).ok_or_else(|| {
+                Fail::Unsupported {
+                    details: "Unsupported OPER",
                 }
-
-                MacAddress::broadcast()
-            }
-            ArpOp::ArpReply => {
-                if MacAddress::nil() == self.target_link_addr {
-                    panic!(
-                        "the target link address of an ARP reply must not be \
-                         `MacAddress::nil()`"
-                    );
-                }
-
-                if MacAddress::broadcast() == self.target_link_addr {
-                    panic!(
-                        "the target link address of an ARP reply must not be \
-                         `MacAddress::broadcast()`"
-                    );
-                }
-
-                self.target_link_addr
-            }
+            })?;
+        let sender_hardware_addr = MacAddress::from_bytes(&buf[8..14]);
+        let sender_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
+        let target_hardware_addr = MacAddress::from_bytes(&buf[18..24]);
+        let target_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[24..28]));
+        let pdu = Self {
+            operation,
+            sender_hardware_addr,
+            sender_protocol_addr,
+            target_hardware_addr,
+            target_protocol_addr,
         };
-
-        let mut bytes = ethernet2::Frame::new_vec(ArpPdu::size());
-        let mut frame = ethernet2::FrameMut::attach(&mut bytes);
-        self.write(&mut frame.text())?;
-        let mut header = frame.header();
-        header.dest_addr(dest_addr);
-        header.src_addr(self.sender_link_addr);
-        header.ether_type(ethernet2::EtherType::Arp);
-        debug!("ArpPdu::to_datagram() -> `{:?}`", bytes);
-        Ok(bytes)
+        Ok(pdu)
     }
-}
 
-impl TryFrom<&[u8]> for ArpPdu {
-    type Error = Fail;
-
-    fn try_from(bytes: &[u8]) -> Result<ArpPdu> {
-        trace!("ArpPdu::try_from({:?})", bytes);
-        let mut reader = Cursor::new(bytes);
-        ArpPdu::read(&mut reader)
+    pub fn serialize(&self, buf: &mut [u8]) {
+        let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut buf[..ARP_MESSAGE_SIZE]).try_into().unwrap();
+        NetworkEndian::write_u16(&mut buf[0..2], HTYPE_ETHER2);
+        NetworkEndian::write_u16(&mut buf[2..4], PTYPE_IPV4);
+        buf[4] = HLEN_ETHER2;
+        buf[5] = PLEN_IPV4;
+        NetworkEndian::write_u16(&mut buf[6..8], self.operation as u16);
+        buf[8..14].copy_from_slice(&self.sender_hardware_addr.octets());
+        buf[14..18].copy_from_slice(&self.sender_protocol_addr.octets());
+        buf[18..24].copy_from_slice(&self.target_hardware_addr.octets());
+        buf[24..28].copy_from_slice(&self.target_protocol_addr.octets());
     }
 }

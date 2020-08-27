@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
 {
     parse_args(argc, argv, false);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    DMTR_OK(dmtr_init(argc, argv));
 
     dmtr_latency_t *latency = NULL;
     DMTR_OK(dmtr_new_latency(&latency, "end-to-end"));
@@ -46,14 +46,23 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
+    struct sockaddr_in listen = {};
+    listen.sin_family = AF_INET;
+    listen.sin_port = htons(12345);
+
     dmtr_sgarray_t sga = {};
     sga.sga_numsegs = 1;
     sga.sga_segs[0].sgaseg_len = packet_size;
     sga.sga_segs[0].sgaseg_buf = generate_packet();
 
 #if USE_CONNECT
-    std::cerr << "Attempting to connect to `" << server_ip_addr << ":" << port << "`..." << std::endl;
-    DMTR_OK(dmtr_connect(qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    std::cerr << "Attempting to connect to `" << boost::get(server_ip_addr) << ":" << port << "`..." << std::endl;
+    dmtr_qtoken_t qt;
+    DMTR_OK(dmtr_connect(&qt, qd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    dmtr_qresult_t qr = {};
+    DMTR_OK(dmtr_wait(&qr, qt));
+
+    DMTR_OK(dmtr_bind(qd, reinterpret_cast<struct sockaddr *>(&listen), sizeof(listen)));
 #else
     sga.sga_addr = saddr;
     sga.sga_addrlen = sizeof(saddr);
@@ -63,7 +72,7 @@ int main(int argc, char *argv[])
         dmtr_qtoken_t qt;
         auto t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_push(&qt, qd, &sga));
-        DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_wait(&qr, qt));
         //fprintf(stderr, "send complete.\n");
 
         dmtr_qresult_t qr = {};
@@ -76,7 +85,7 @@ int main(int argc, char *argv[])
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
         //fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
-        free(qr.qr_value.sga.sga_buf);
+        dmtr_sgafree(&qr.qr_value.sga);
     }
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));

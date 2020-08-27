@@ -6,16 +6,22 @@
 #[cfg(test)]
 mod tests;
 
-use fxhash::FxHashMap;
+use hashbrown::{
+    hash_map::Entry as HashMapEntry,
+    HashMap,
+};
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry as HashMapEntry, BinaryHeap},
+    collections::BinaryHeap,
     fmt::Debug,
     hash::Hash,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Expiry(Instant);
 
 impl Expiry {
@@ -43,12 +49,13 @@ impl PartialOrd for Expiry {
     }
 }
 
+#[derive(Debug)]
 struct Record<V> {
     value: V,
     expiry: Option<Expiry>,
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Tombstone<K>
 where
     K: Eq,
@@ -78,12 +85,12 @@ where
 // todo: `HashMap<>` has an `S` parameter that i'd like to include but causes
 // problems with the inference engine. the workaround is to leave it out but
 // what am i doing wrong?
-
+#[derive(Debug)]
 pub struct HashTtlCache<K, V>
 where
     K: Eq + Hash,
 {
-    map: FxHashMap<K, Record<V>>,
+    map: HashMap<K, Record<V>>,
     graveyard: BinaryHeap<Tombstone<K>>,
     default_ttl: Option<Duration>,
     clock: Instant,
@@ -96,28 +103,20 @@ where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    pub fn new(
-        now: Instant,
-        default_ttl: Option<Duration>,
-    ) -> HashTtlCache<K, V> {
+    pub fn new(now: Instant, default_ttl: Option<Duration>) -> HashTtlCache<K, V> {
         if let Some(ttl) = default_ttl {
             assert!(ttl > Duration::new(0, 0));
         }
 
         HashTtlCache {
-            map: FxHashMap::default(),
+            map: HashMap::default(),
             graveyard: BinaryHeap::new(),
             default_ttl,
             clock: now,
         }
     }
 
-    pub fn insert_with_ttl(
-        &mut self,
-        key: K,
-        value: V,
-        ttl: Option<Duration>,
-    ) -> Option<V> {
+    pub fn insert_with_ttl(&mut self, key: K, value: V, ttl: Option<Duration>) -> Option<V> {
         if let Some(ttl) = ttl {
             assert!(ttl > Duration::new(0, 0));
         }
@@ -141,7 +140,7 @@ where
                 record.expiry = expiry.clone();
 
                 old_value
-            }
+            },
             HashMapEntry::Vacant(e) => {
                 e.insert(Record {
                     value,
@@ -149,7 +148,7 @@ where
                 });
 
                 None
-            }
+            },
         };
 
         if let Some(expiry) = expiry {
@@ -187,12 +186,12 @@ where
             None => {
                 debug!("key `{:?}` not present", key);
                 None
-            }
+            },
             Some(r) => match r.expiry.as_ref() {
                 None => {
                     // no expiration on entry.
                     Some(&r.value)
-                }
+                },
                 Some(e) => {
                     if e.has_expired(self.clock) {
                         debug!("key `{:?}` present but expired", key);
@@ -201,7 +200,7 @@ where
                         // present and not yet exipred.
                         Some(&r.value)
                     }
-                }
+                },
             },
         }
     }
@@ -211,15 +210,15 @@ where
         self.clock = now;
     }
 
-    pub fn try_evict(&mut self, count: usize) -> FxHashMap<K, V> {
-        let mut evicted = FxHashMap::default();
+    pub fn try_evict(&mut self, count: usize) -> HashMap<K, V> {
+        let mut evicted = HashMap::default();
         let mut i = 0;
 
         loop {
             match self.try_evict_once() {
                 Some((key, value)) => {
                     assert!(evicted.insert(key, value).is_none());
-                }
+                },
                 None => return evicted,
             }
 
@@ -238,7 +237,7 @@ where
                 // the graveyard is empty, so we cannot evict anything.
                 {
                     return None
-                }
+                },
             };
 
             // the next tombstone has time from the future; nothing to evict.
@@ -265,7 +264,7 @@ where
                         assert!(!record_expiry.has_expired(self.clock));
                         continue;
                     }
-                }
+                },
                 HashMapEntry::Vacant(_) => continue,
             }
         }

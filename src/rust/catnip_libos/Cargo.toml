@@ -1,0 +1,21 @@
+[package]
+name = "catnip_libos"
+version = "0.1.0"
+authors = ["Sujay Jayakar <sujayakar314@gmai.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.32"
+catnip = { path = "../catnip", features = ["threadunsafe"] }
+clap = "2.33.3"
+futures = "0.3"
+hashbrown = { version = "0.9", features = ["nightly"] }
+libc = "0.2.77"
+rand = { version = "0.7.3", features = ["small_rng"] }
+yaml-rust = "0.4.4"
+
+[build-dependencies]
+bindgen = "0.55.1"

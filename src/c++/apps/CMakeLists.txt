@@ -6,7 +6,8 @@ add_subdirectory(echo)
 add_redis(redis-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/redis-posix)
 add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
 add_redis(redis-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/redis-lwip)
-add_redis(redis-dpdk-catnip dmtr-libos-dpdk-catnip ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
+
+add_redis(redis-dpdk-catnip dmtr-catnip_libos ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
 
 set(REDIS_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/redis-vanilla)
 set(REDIS_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/redis-vanilla)
@@ -21,4 +22,5 @@ ExternalProject_Add(redis-vanilla
 add_tapir(tapir-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-posix)
 add_tapir(tapir-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/HoardRdma/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-rdma)
 add_tapir(tapir-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-lwip)
-add_tapir(tapir-dpdk-catnip dmtr-libos-dpdk-catnip ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-dpdk-catnip)
+
+add_tapir(tapir-dpdk-catnip dmtr-catnip_libos ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-dpdk-catnip)

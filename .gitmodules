@@ -69,3 +69,6 @@
 	path = submodules/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
 	branch = master
+[submodule "src/rust/rust_tracy_client"]
+	path = src/rust/rust_tracy_client
+	url = https://github.com/sujayakar/rust_tracy_client.git

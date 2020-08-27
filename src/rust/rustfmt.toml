@@ -1,13 +1,19 @@
-max_width = 79
+max_width = 100
 merge_derives = true
 reorder_modules = true
 use_field_init_shorthand = true
 use_try_shorthand = true
+reorder_imports = true
+match_block_trailing_comma = true
 
-# only supported on nightly
-comment_width = 79
+# Nightly only options:
+unstable_features = true
+comment_width = 100
 condense_wildcard_suffixes = true
 format_strings = true
 merge_imports = true
 reorder_impl_items = true
-wrap_comments = true
+empty_item_single_line = true
+imports_indent = "Block"
+imports_layout = "Vertical"
+indent_style = "Block"

@@ -4,19 +4,19 @@
 use crate::protocols::ip;
 use std::net::Ipv4Addr;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ipv4Endpoint {
-    address: Ipv4Addr,
-    port: ip::Port,
+    pub addr: Ipv4Addr,
+    pub port: ip::Port,
 }
 
 impl Ipv4Endpoint {
-    pub fn new(address: Ipv4Addr, port: ip::Port) -> Ipv4Endpoint {
-        Ipv4Endpoint { address, port }
+    pub fn new(addr: Ipv4Addr, port: ip::Port) -> Ipv4Endpoint {
+        Ipv4Endpoint { addr, port }
     }
 
     pub fn address(&self) -> Ipv4Addr {
-        self.address
+        self.addr
     }
 
     pub fn port(&self) -> ip::Port {

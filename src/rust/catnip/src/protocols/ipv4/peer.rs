@@ -1,30 +1,42 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::datagram::{Ipv4Datagram, Ipv4Protocol};
+use super::datagram::{
+    Ipv4Header,
+    Ipv4Protocol2,
+};
+#[cfg(test)]
+use crate::file_table::FileDescriptor;
 use crate::{
-    prelude::*,
-    protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp, udp},
+    fail::Fail,
+    file_table::FileTable,
+    protocols::{
+        arp,
+        icmpv4,
+        tcp,
+        udp,
+    },
+    runtime::Runtime,
+    sync::Bytes,
 };
 use std::{
-    convert::TryFrom,
+    future::Future,
     net::Ipv4Addr,
-    rc::Rc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-pub struct Ipv4Peer<'a> {
-    rt: Runtime<'a>,
-    icmpv4: icmpv4::Peer<'a>,
-    tcp: tcp::Peer<'a>,
-    udp: udp::Peer<'a>,
+pub struct Ipv4Peer<RT: Runtime> {
+    rt: RT,
+    icmpv4: icmpv4::Peer<RT>,
+    pub tcp: tcp::Peer<RT>,
+    pub udp: udp::Peer<RT>,
 }
 
-impl<'a> Ipv4Peer<'a> {
-    pub fn new(rt: Runtime<'a>, arp: arp::Peer<'a>) -> Ipv4Peer<'a> {
-        let udp = udp::Peer::new(rt.clone(), arp.clone());
+impl<RT: Runtime> Ipv4Peer<RT> {
+    pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Ipv4Peer<RT> {
+        let udp = udp::Peer::new(rt.clone(), arp.clone(), file_table.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
-        let tcp = tcp::Peer::new(rt.clone(), arp);
+        let tcp = tcp::Peer::new(rt.clone(), arp, file_table);
         Ipv4Peer {
             rt,
             udp,
@@ -33,21 +45,15 @@ impl<'a> Ipv4Peer<'a> {
         }
     }
 
-    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
-        trace!("Ipv4Peer::receive(...)");
-        let options = self.rt.options();
-        let datagram = Ipv4Datagram::try_from(frame)?;
-        let header = datagram.header();
-
-        let dst_addr = header.dest_addr();
-        if dst_addr != options.my_ipv4_addr && !dst_addr.is_broadcast() {
+    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
+        let (header, payload) = Ipv4Header::parse(buf)?;
+        if header.dst_addr != self.rt.local_ipv4_addr() && !header.dst_addr.is_broadcast() {
             return Err(Fail::Misdelivered {});
         }
-
-        match header.protocol()? {
-            Ipv4Protocol::Tcp => self.tcp.receive(datagram),
-            Ipv4Protocol::Udp => self.udp.receive(datagram),
-            Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
+        match header.protocol {
+            Ipv4Protocol2::Icmpv4 => self.icmpv4.receive(&header, payload),
+            Ipv4Protocol2::Tcp => self.tcp.receive(&header, payload),
+            Ipv4Protocol2::Udp => self.udp.receive(&header, payload),
         }
     }
 
@@ -55,83 +61,18 @@ impl<'a> Ipv4Peer<'a> {
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> Future<'a, Duration> {
+    ) -> impl Future<Output = Result<Duration, Fail>> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
+}
 
-    pub fn is_udp_port_open(&self, port: ip::Port) -> bool {
-        self.udp.is_port_open(port)
+#[cfg(test)]
+impl<RT: Runtime> Ipv4Peer<RT> {
+    pub fn tcp_mss(&self, fd: FileDescriptor) -> Result<usize, Fail> {
+        self.tcp.remote_mss(fd)
     }
 
-    pub fn open_udp_port(&mut self, port: ip::Port) {
-        self.udp.open_port(port);
-    }
-
-    pub fn close_udp_port(&mut self, port: ip::Port) {
-        self.udp.close_port(port);
-    }
-
-    pub fn udp_cast(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
-        src_port: ip::Port,
-        text: Vec<u8>,
-    ) -> Future<'a, ()> {
-        self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
-    }
-
-    pub fn tcp_connect(
-        &mut self,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, tcp::ConnectionHandle> {
-        tcp::Peer::connect(&self.tcp, remote_endpoint)
-    }
-
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
-        self.tcp.listen(port)
-    }
-
-    pub fn tcp_write(
-        &mut self,
-        handle: tcp::ConnectionHandle,
-        bytes: Vec<u8>,
-    ) -> Result<()> {
-        self.tcp.write(handle, bytes)
-    }
-
-    pub fn tcp_peek(
-        &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<Vec<u8>>> {
-        self.tcp.peek(handle)
-    }
-
-    pub fn tcp_read(
-        &mut self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<Vec<u8>>> {
-        self.tcp.read(handle)
-    }
-
-    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
-        self.tcp.get_mss(handle)
-    }
-
-    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
-        self.tcp.get_rto(handle)
-    }
-
-    pub fn advance_clock(&self, now: Instant) {
-        self.icmpv4.advance_clock(now);
-        self.udp.advance_clock(now);
-        self.tcp.advance_clock(now);
-    }
-
-    pub fn tcp_get_connection_id(
-        &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<tcp::ConnectionId>> {
-        self.tcp.get_connection_id(handle)
+    pub fn tcp_rto(&self, fd: FileDescriptor) -> Result<Duration, Fail> {
+        self.tcp.current_rto(fd)
     }
 }

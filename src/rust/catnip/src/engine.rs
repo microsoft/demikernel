@@ -1,161 +1,262 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use tracy_client::static_span;
 use crate::{
-    prelude::*,
+    fail::Fail,
+    file_table::{
+        File,
+        FileDescriptor,
+        FileTable,
+    },
+    operations::ResultFuture,
     protocols::{
         arp,
-        ethernet2::{self, MacAddress},
-        ip, ipv4, tcp,
+        ethernet2::frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        ipv4,
+        tcp::operations::{
+            AcceptFuture,
+            ConnectFuture,
+            PopFuture,
+            PushFuture,
+        },
+        udp::peer::{
+            PopFuture as UdpPopFuture,
+            UdpOperation,
+        },
     },
-    r#async,
+    runtime::Runtime,
+    scheduler::Operation,
+    sync::Bytes,
 };
-use fxhash::FxHashMap;
 use std::{
+    future::Future,
     net::Ipv4Addr,
-    rc::Rc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-pub struct Engine<'a> {
-    rt: Runtime<'a>,
-    arp: arp::Peer<'a>,
-    ipv4: ipv4::Peer<'a>,
+#[cfg(test)]
+use crate::protocols::ethernet2::MacAddress;
+#[cfg(test)]
+use hashbrown::HashMap;
+
+pub struct Engine<RT: Runtime> {
+    rt: RT,
+    arp: arp::Peer<RT>,
+    ipv4: ipv4::Peer<RT>,
+
+    file_table: FileTable,
 }
 
-impl<'a> Engine<'a> {
-    pub fn from_options(now: Instant, options: Options) -> Result<Engine<'a>> {
-        let rt = Runtime::from_options(now, options);
+pub enum Protocol {
+    Tcp,
+    Udp,
+}
+
+impl<RT: Runtime> Engine<RT> {
+    pub fn new(rt: RT) -> Result<Self, Fail> {
+        let now = rt.now();
+        let file_table = FileTable::new();
         let arp = arp::Peer::new(now, rt.clone())?;
-        let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone());
-        Ok(Engine { rt, arp, ipv4 })
+        let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone(), file_table.clone());
+        Ok(Engine {
+            rt,
+            arp,
+            ipv4,
+            file_table,
+        })
     }
 
-    pub fn options(&self) -> Rc<Options> {
-        self.rt.options()
+    pub fn rt(&self) -> &RT {
+        &self.rt
     }
 
-    pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        trace!("Engine::receive({:?})", bytes);
-        let frame = ethernet2::Frame::attach(&bytes)?;
-        let header = frame.header();
-        if self.rt.options().my_link_addr != header.dest_addr()
-            && !header.dest_addr().is_broadcast()
-        {
-            return Err(Fail::Misdelivered {});
+    pub fn receive(&mut self, bytes: Bytes) -> Result<(), Fail> {
+        let _s = static_span!();
+        let (header, payload) = Ethernet2Header::parse(bytes)?;
+        if self.rt.local_link_addr() != header.dst_addr && !header.dst_addr.is_broadcast() {
+            return Err(Fail::Ignored {
+                details: "Physical dst_addr mismatch",
+            });
         }
-
-        match header.ether_type()? {
-            ethernet2::EtherType::Arp => self.arp.receive(frame),
-            ethernet2::EtherType::Ipv4 => self.ipv4.receive(frame),
+        match header.ether_type {
+            EtherType2::Arp => self.arp.receive(payload),
+            EtherType2::Ipv4 => self.ipv4.receive(payload),
         }
-    }
-
-    pub fn arp_query(
-        &self,
-        ipv4_addr: Ipv4Addr,
-    ) -> r#async::Future<'a, MacAddress> {
-        self.arp.query(ipv4_addr)
-    }
-
-    pub fn udp_cast(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
-        src_port: ip::Port,
-        text: Vec<u8>,
-    ) -> r#async::Future<'a, ()> {
-        self.ipv4
-            .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
-    }
-
-    pub fn export_arp_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
-        self.arp.export_cache()
-    }
-
-    pub fn import_arp_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
-        self.arp.import_cache(cache)
     }
 
     pub fn ping(
         &self,
         dest_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
-    ) -> r#async::Future<'a, Duration> {
+    ) -> impl Future<Output = Result<Duration, Fail>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn is_udp_port_open(&self, port: ip::Port) -> bool {
-        self.ipv4.is_udp_port_open(port)
+    pub fn socket(&mut self, protocol: Protocol) -> FileDescriptor {
+        match protocol {
+            Protocol::Tcp => self.ipv4.tcp.socket(),
+            Protocol::Udp => self.ipv4.udp.socket(),
+        }
     }
 
-    pub fn open_udp_port(&mut self, port: ip::Port) {
-        self.ipv4.open_udp_port(port);
+    pub fn connect(
+        &mut self,
+        fd: FileDescriptor,
+        remote_endpoint: ipv4::Endpoint,
+    ) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.connect(fd, remote_endpoint)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Connect(fd, self.ipv4.udp.connect(fd, remote_endpoint));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
     }
 
-    pub fn close_udp_port(&mut self, port: ip::Port) {
-        self.ipv4.close_udp_port(port);
+    pub fn bind(&mut self, fd: FileDescriptor, endpoint: ipv4::Endpoint) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.bind(fd, endpoint),
+            Some(File::UdpSocket) => self.ipv4.udp.bind(fd, endpoint),
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn accept(&mut self, fd: FileDescriptor) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.accept(fd)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Accept(fd, self.ipv4.udp.accept());
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn listen(&mut self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
+            Some(File::UdpSocket) => Err(Fail::Malformed {
+                details: "Operation not supported",
+            }),
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn push(&mut self, fd: FileDescriptor, buf: Bytes) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.push(fd, buf)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Push(fd, self.ipv4.udp.push(fd, buf));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn pushto(&mut self, fd: FileDescriptor, buf: Bytes, to: ipv4::Endpoint) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Push(fd, self.ipv4.udp.pushto(fd, buf, to));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn udp_push(&mut self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+        self.ipv4.udp.push(fd, buf)
+    }
+
+    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture {
+        self.ipv4.udp.pop(fd)
+    }
+
+    pub fn pop(&mut self, fd: FileDescriptor) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.pop(fd)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Pop(ResultFuture::new(self.ipv4.udp.pop(fd)));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn close(&mut self, fd: FileDescriptor) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.close(fd),
+            Some(File::UdpSocket) => self.ipv4.udp.close(fd),
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn tcp_socket(&mut self) -> FileDescriptor {
+        self.ipv4.tcp.socket()
     }
 
     pub fn tcp_connect(
         &mut self,
+        socket_fd: FileDescriptor,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, tcp::ConnectionHandle> {
-        self.ipv4.tcp_connect(remote_endpoint)
+    ) -> ConnectFuture<RT> {
+        self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
-        self.ipv4.tcp_listen(port)
-    }
-
-    pub fn tcp_write(
+    pub fn tcp_bind(
         &mut self,
-        handle: tcp::ConnectionHandle,
-        bytes: Vec<u8>,
-    ) -> Result<()> {
-        self.ipv4.tcp_write(handle, bytes)
+        socket_fd: FileDescriptor,
+        endpoint: ipv4::Endpoint,
+    ) -> Result<(), Fail> {
+        self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_peek(
-        &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<Vec<u8>>> {
-        self.ipv4.tcp_peek(handle)
+    pub fn tcp_accept(&mut self, handle: FileDescriptor) -> AcceptFuture<RT> {
+        self.ipv4.tcp.accept(handle)
     }
 
-    pub fn tcp_read(
-        &mut self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<Vec<u8>>> {
-        self.ipv4.tcp_read(handle)
+    pub fn tcp_push(&mut self, socket_fd: FileDescriptor, buf: Bytes) -> PushFuture<RT> {
+        self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
+    pub fn tcp_pop(&mut self, socket_fd: FileDescriptor) -> PopFuture<RT> {
+        self.ipv4.tcp.pop(socket_fd)
+    }
+
+    pub fn tcp_close(&mut self, socket_fd: FileDescriptor) -> Result<(), Fail> {
+        self.ipv4.tcp.close(socket_fd)
+    }
+
+    pub fn tcp_listen(&mut self, socket_fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
+        self.ipv4.tcp.listen(socket_fd, backlog)
+    }
+
+    #[cfg(test)]
+    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
+        self.arp.query(ipv4_addr)
+    }
+
+    #[cfg(test)]
+    pub fn tcp_mss(&self, handle: FileDescriptor) -> Result<usize, Fail> {
         self.ipv4.tcp_mss(handle)
     }
 
-    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
+    #[cfg(test)]
+    pub fn tcp_rto(&self, handle: FileDescriptor) -> Result<Duration, Fail> {
         self.ipv4.tcp_rto(handle)
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        self.arp.advance_clock(now);
-        self.ipv4.advance_clock(now);
-        self.rt.advance_clock(now);
+    #[cfg(test)]
+    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
+        self.arp.export_cache()
     }
 
-    pub fn next_event(&self) -> Option<Rc<Event>> {
-        self.rt.next_event()
-    }
-
-    pub fn pop_event(&self) -> Option<Rc<Event>> {
-        self.rt.pop_event()
-    }
-
-    pub fn tcp_get_connection_id(
-        &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<tcp::ConnectionId>> {
-        self.ipv4.tcp_get_connection_id(handle)
+    #[cfg(test)]
+    pub fn import_arp_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
+        self.arp.import_cache(cache)
     }
 }

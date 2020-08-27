@@ -3,44 +3,83 @@
 
 use super::{
     cache::ArpCache,
-    pdu::{ArpOp, ArpPdu},
+    pdu::{
+        ArpMessage,
+        ArpOperation,
+        ArpPdu,
+    },
 };
 use crate::{
-    prelude::*,
-    protocols::ethernet2::{self, MacAddress},
+    fail::Fail,
+    protocols::ethernet2::{
+        frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        MacAddress,
+    },
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
+    sync::Bytes,
 };
-use fxhash::FxHashMap;
+use futures::FutureExt;
+use hashbrown::HashMap;
 use std::{
-    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
-    time::Instant,
+    cell::RefCell,
+    future::Future,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[derive(Clone)]
-pub struct ArpPeer<'a> {
-    rt: Runtime<'a>,
-    // todo: this should be shared state.
+pub struct ArpPeer<RT: Runtime> {
+    rt: RT,
+    // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
+    background: Rc<SchedulerHandle>,
 }
 
-impl<'a> ArpPeer<'a> {
-    pub fn new(now: Instant, rt: Runtime<'a>) -> Result<ArpPeer<'a>> {
-        let options = rt.options();
-        let cache = ArpCache::new(now, Some(options.arp.cache_ttl));
-        Ok(ArpPeer {
+impl<RT: Runtime> ArpPeer<RT> {
+    pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>, Fail> {
+        let options = rt.arp_options();
+        let cache = Rc::new(RefCell::new(ArpCache::new(now, Some(options.cache_ttl), options.disable_arp)));
+        let handle = rt.spawn(Self::background(rt.clone(), cache.clone()));
+        let peer = ArpPeer {
             rt,
-            cache: Rc::new(RefCell::new(cache)),
-        })
+            cache,
+            background: Rc::new(handle),
+        };
+        for (&link_addr, &ipv4_addr) in &options.initial_values {
+            peer.insert(ipv4_addr, link_addr);
+        }
+        Ok(peer)
     }
 
-    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
-        trace!("ArpPeer::receive(...)");
-        let options = self.rt.options();
+    async fn background(rt: RT, cache: Rc<RefCell<ArpCache>>) {
+        loop {
+            let current_time = rt.now();
+            {
+                let mut cache = cache.borrow_mut();
+                cache.advance_clock(current_time);
+                cache.try_evict(2);
+            }
+            // TODO: Make this more precise.
+            rt.wait(Duration::from_secs(1)).await;
+        }
+    }
+
+    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
-        let mut arp = ArpPdu::try_from(frame.text())?;
+        let pdu = ArpPdu::parse(buf)?;
+
         // from RFC 826:
         // > Merge_flag := false
         // > If the pair <protocol type, sender protocol address> is
@@ -49,16 +88,15 @@ impl<'a> ArpPeer<'a> {
         // > information in the packet and set Merge_flag to true.
         let merge_flag = {
             let mut cache = self.cache.borrow_mut();
-            if cache.get_link_addr(arp.sender_ip_addr).is_some() {
-                cache.insert(arp.sender_ip_addr, arp.sender_link_addr);
+            if cache.get_link_addr(pdu.sender_protocol_addr).is_some() {
+                cache.insert(pdu.sender_protocol_addr, pdu.sender_hardware_addr);
                 true
             } else {
                 false
             }
         };
-
         // from RFC 826: ?Am I the target protocol address?
-        if arp.target_ip_addr != options.my_ipv4_addr {
+        if pdu.target_protocol_addr != self.rt.local_ipv4_addr() {
             if merge_flag {
                 // we did do something.
                 return Ok(());
@@ -69,7 +107,6 @@ impl<'a> ArpPeer<'a> {
                 });
             }
         }
-
         // from RFC 826:
         // > If Merge_flag is false, add the triplet <protocol type,
         // > sender protocol address, sender hardware address> to
@@ -77,103 +114,102 @@ impl<'a> ArpPeer<'a> {
         if !merge_flag {
             self.cache
                 .borrow_mut()
-                .insert(arp.sender_ip_addr, arp.sender_link_addr);
+                .insert(pdu.sender_protocol_addr, pdu.sender_hardware_addr);
         }
 
-        match arp.op {
-            ArpOp::ArpRequest => {
-                debug!("request from `{}`", arp.sender_link_addr);
+        match pdu.operation {
+            ArpOperation::Request => {
                 // from RFC 826:
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
-                arp.target_link_addr = options.my_link_addr;
-                swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
-                swap(&mut arp.sender_link_addr, &mut arp.target_link_addr);
-                // > Set the ar$op field to ares_op$REPLY
-                arp.op = ArpOp::ArpReply;
-                // > Send the packet to the (new) target hardware address on
-                // > the same hardware on which the request was received.
-                let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
-                self.rt.emit_event(Event::Transmit(bytes));
+                let reply = ArpMessage {
+                    ethernet2_hdr: Ethernet2Header {
+                        dst_addr: pdu.sender_hardware_addr,
+                        src_addr: self.rt.local_link_addr(),
+                        ether_type: EtherType2::Arp,
+                    },
+                    arp_pdu: ArpPdu {
+                        operation: ArpOperation::Reply,
+                        sender_hardware_addr: self.rt.local_link_addr(),
+                        sender_protocol_addr: self.rt.local_ipv4_addr(),
+                        target_hardware_addr: pdu.sender_hardware_addr,
+                        target_protocol_addr: pdu.sender_protocol_addr,
+                    },
+                };
+                self.rt.transmit(reply);
                 Ok(())
-            }
-            ArpOp::ArpReply => {
+            },
+            ArpOperation::Reply => {
                 debug!(
                     "reply from `{}/{}`",
-                    arp.sender_ip_addr, arp.sender_link_addr
+                    pdu.sender_protocol_addr, pdu.sender_hardware_addr
                 );
                 self.cache
                     .borrow_mut()
-                    .insert(arp.sender_ip_addr, arp.sender_link_addr);
+                    .insert(pdu.sender_protocol_addr, pdu.sender_hardware_addr);
                 Ok(())
-            }
+            },
         }
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> Future<'a, MacAddress> {
-        {
-            if let Some(link_addr) =
-                self.cache.borrow().get_link_addr(ipv4_addr)
-            {
-                return Future::r#const(*link_addr);
-            }
-        }
+    pub fn try_query(&self, ipv4_addr: Ipv4Addr) -> Option<MacAddress> {
+        self.cache.borrow().get_link_addr(ipv4_addr).cloned()
+    }
 
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
-        self.rt.start_coroutine(move || {
-            let options = rt.options();
-            let arp = ArpPdu {
-                op: ArpOp::ArpRequest,
-                sender_link_addr: options.my_link_addr,
-                sender_ip_addr: options.my_ipv4_addr,
-                target_link_addr: MacAddress::nil(),
-                target_ip_addr: ipv4_addr,
+        async move {
+            if let Some(&link_addr) = cache.borrow().get_link_addr(ipv4_addr) {
+                return Ok(link_addr);
+            }
+            let msg = ArpMessage {
+                ethernet2_hdr: Ethernet2Header {
+                    dst_addr: MacAddress::broadcast(),
+                    src_addr: rt.local_link_addr(),
+                    ether_type: EtherType2::Arp,
+                },
+                arp_pdu: ArpPdu {
+                    operation: ArpOperation::Request,
+                    sender_hardware_addr: rt.local_link_addr(),
+                    sender_protocol_addr: rt.local_ipv4_addr(),
+                    target_hardware_addr: MacAddress::broadcast(),
+                    target_protocol_addr: ipv4_addr,
+                },
             };
+            let arp_response = cache.borrow_mut().wait_link_addr(ipv4_addr).fuse();
+            futures::pin_mut!(arp_response);
 
-            let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
-            let mut retries_remaining = options.arp.retry_count + 1;
-            while retries_remaining > 0 {
-                rt.emit_event(Event::Transmit(bytes.clone()));
-                retries_remaining -= 1;
-                if yield_until!(
-                    cache.borrow().get_link_addr(ipv4_addr).is_some(),
-                    rt.now(),
-                    options.arp.request_timeout
-                ) {
-                    let link_addr = cache
-                        .borrow()
-                        .get_link_addr(ipv4_addr)
-                        .copied()
-                        .unwrap();
-                    debug!("ARP result available ({})", link_addr);
-                    return CoroutineOk(link_addr);
+            let arp_options = rt.arp_options();
+
+            for i in 0..arp_options.retry_count + 1 {
+                rt.transmit(msg.clone());
+                futures::select! {
+                    link_addr = arp_response => {
+                        debug!("ARP result available ({})", link_addr);
+                        return Ok(link_addr);
+                    },
+                    _ = rt.wait(arp_options.request_timeout).fuse() => {
+                        warn!("ARP request timeout; attempt {}.", i + 1);
+                    },
                 }
-
-                warn!(
-                    "ARP request timeout; {} retries remain.",
-                    retries_remaining
-                );
             }
-
             Err(Fail::Timeout {})
-        })
+        }
     }
 
-    pub fn export_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
+    pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.cache.borrow().export()
     }
 
-    pub fn import_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
+    pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        let mut cache = self.cache.borrow_mut();
-        cache.advance_clock(now);
-        cache.try_evict(2);
+    pub fn insert(&self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) {
+        self.cache.borrow_mut().insert(ipv4_addr, link_addr);
     }
 }

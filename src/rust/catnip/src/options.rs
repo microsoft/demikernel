@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    protocols::{arp, ethernet2::MacAddress, tcp},
-    rand::Seed,
+use crate::protocols::{
+    arp,
+    ethernet2::MacAddress,
+    tcp,
 };
-use rand::{thread_rng, Rng};
+use rand::{
+    thread_rng,
+    Rng,
+};
 use std::net::Ipv4Addr;
 
 #[derive(Clone, Debug)]
@@ -13,13 +17,13 @@ pub struct Options {
     pub arp: arp::Options,
     pub my_ipv4_addr: Ipv4Addr,
     pub my_link_addr: MacAddress,
-    pub rng_seed: Seed,
+    pub rng_seed: [u8; 32],
     pub tcp: tcp::Options,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        let mut rng_seed = Seed::default();
+        let mut rng_seed = [0; 32];
         thread_rng().fill(rng_seed.as_mut());
         Options {
             arp: arp::Options::default(),
@@ -51,7 +55,7 @@ impl Options {
         self
     }
 
-    pub fn rng_seed(mut self, value: Seed) -> Self {
+    pub fn rng_seed(mut self, value: [u8; 32]) -> Self {
         self.rng_seed = value;
         self
     }
@@ -59,9 +63,5 @@ impl Options {
     pub fn tcp(mut self, value: tcp::Options) -> Self {
         self.tcp = value;
         self
-    }
-
-    pub fn randomize_rng_seed(&mut self) {
-        thread_rng().fill(self.rng_seed.as_mut());
     }
 }

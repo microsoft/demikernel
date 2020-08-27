@@ -1,17 +1,21 @@
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
-
-mod connection;
+mod active_open;
+pub mod constants;
+mod established;
+mod isn_generator;
+pub mod operations;
 mod options;
-mod peer;
-mod segment;
-
-pub use connection::{
-    TcpConnectionHandle as ConnectionHandle, TcpConnectionId as ConnectionId,
-};
-pub use options::TcpOptions as Options;
-pub use peer::TcpPeer as Peer;
-pub use segment::TcpSegment as Segment;
+mod passive_open;
+pub mod peer;
+pub mod segment;
 
 #[cfg(test)]
-pub use segment::MIN_MSS;
+mod tests;
+
+use std::num::Wrapping;
+
+pub type SeqNumber = Wrapping<u32>;
+
+pub use self::{
+    options::TcpOptions as Options,
+    peer::Peer,
+};

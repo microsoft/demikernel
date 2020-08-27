@@ -1,21 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::prelude::*;
 use eui48;
-use serde::ser::{Serialize, Serializer};
 use std::fmt;
+use crate::fail::Fail;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct MacAddress(eui48::MacAddress);
 
 impl MacAddress {
-    pub fn new(bytes: [u8; 6]) -> Self {
+    pub const fn new(bytes: [u8; 6]) -> Self {
         MacAddress(eui48::MacAddress::new(bytes))
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
         MacAddress(eui48::MacAddress::from_bytes(bytes).unwrap())
+    }
+
+    pub fn octets(&self) -> [u8; 6] {
+        self.0.to_array()
     }
 
     pub fn broadcast() -> MacAddress {
@@ -46,6 +49,9 @@ impl MacAddress {
         self.0.as_bytes()
     }
 
+    pub fn parse_str(s: &str) -> Result<Self, Fail> {
+        Ok(Self(eui48::MacAddress::parse_str(s)?))
+    }
     pub fn to_array(self) -> [u8; 6] {
         self.0.to_array()
     }
@@ -60,15 +66,5 @@ impl fmt::Display for MacAddress {
 impl fmt::Debug for MacAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "MacAddress({})", &self.to_canonical())
-    }
-}
-
-impl Serialize for MacAddress {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = self.0.to_canonical();
-        serializer.serialize_str(&s)
     }
 }

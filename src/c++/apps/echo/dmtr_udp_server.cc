@@ -60,7 +60,15 @@ int main(int argc, char *argv[])
     }
     saddr.sin_port = htons(port);
 
-    DMTR_OK(dmtr_init(dmtr_argc, dmtr_argv));
+    struct sockaddr_in connect = {};
+    connect.sin_family = AF_INET;
+    if (inet_pton(AF_INET, "198.19.200.2", &connect.sin_addr) != 1) {
+      std::cerr << "Unable to parse client IP address." << std::endl;
+      return -1;
+    }
+    connect.sin_port = htons(12345);
+
+    DMTR_OK(dmtr_init(argc, argv));
 
     DMTR_OK(dmtr_new_latency(&pop_latency, "pop"));
     DMTR_OK(dmtr_new_latency(&push_latency, "push"));
@@ -69,6 +77,10 @@ int main(int argc, char *argv[])
     printf("server qd:\t%d\n", lqd);
 
     DMTR_OK(dmtr_bind(lqd, reinterpret_cast<struct sockaddr *>(&saddr), sizeof(saddr)));
+    dmtr_qtoken_t qt;
+    DMTR_OK(dmtr_connect(&qt, lqd, reinterpret_cast<struct sockaddr *>(&connect), sizeof(connect)));
+    dmtr_qresult_t qr = {};
+    DMTR_OK(dmtr_wait(&qr, qt));
 
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         std::cout << "\ncan't catch SIGINT\n";
@@ -87,12 +99,12 @@ int main(int argc, char *argv[])
         //fprintf(stderr, "[%lu] server: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
         t0 = boost::chrono::steady_clock::now();
         DMTR_OK(dmtr_push(&qt, lqd, &qr.qr_value.sga));
-        DMTR_OK(dmtr_wait(NULL, qt));
+        DMTR_OK(dmtr_wait(&qr, qt));
         dt = boost::chrono::steady_clock::now() - t0;
         DMTR_OK(dmtr_record_latency(push_latency, dt.count()));
 
         //fprintf(stderr, "send complete.\n");
-        free(qr.qr_value.sga.sga_buf);
+        dmtr_sgafree(&qr.qr_value.sga);
     }
 
     return 0;
