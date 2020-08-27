@@ -126,53 +126,7 @@ impl<'a> UdpPeer<'a> {
         }
     }
 
-    fn send_icmpv4_error(
-        &mut self,
-        dest_ipv4_addr: Ipv4Addr,
-        datagram: Vec<u8>,
-    ) {
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        let fut = self.rt.start_coroutine(move || {
-            trace!(
-                "UdpPeer::send_icmpv4_error({:?}, {:?})",
-                dest_ipv4_addr,
-                datagram
-            );
-            let options = rt.options();
-            debug!("initiating ARP query");
-            let dest_link_addr =
-                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
-            debug!(
-                "ARP query complete ({} -> {})",
-                dest_ipv4_addr, dest_link_addr
-            );
-
-            // this datagram should have already been validated by the caller.
-            let datagram =
-                ipv4::Datagram::attach(datagram.as_slice()).unwrap();
-            let mut bytes = icmpv4::Error::new_vec(datagram);
-            let mut error = icmpv4::ErrorMut::attach(&mut bytes);
-            error.id(icmpv4::ErrorId::DestinationUnreachable(
-                icmpv4::DestinationUnreachable::DestinationPortUnreachable,
-            ));
-            let ipv4 = error.icmpv4().ipv4();
-            let mut ipv4_header = ipv4.header();
-            ipv4_header.src_addr(options.my_ipv4_addr);
-            ipv4_header.dest_addr(dest_ipv4_addr);
-            let frame = ipv4.frame();
-            let mut frame_header = frame.header();
-            frame_header.src_addr(options.my_link_addr);
-            frame_header.dest_addr(dest_link_addr);
-            let _ = error.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-            CoroutineOk(())
-        });
-
-        self.async_work.add(fut);
-    }
-
-    fn send_icmpv4_error2(&mut self, dest_ipv4_addr: Ipv4Addr, datagram: Vec<u8>) {
+    fn send_icmpv4_error(&mut self, dest_ipv4_addr: Ipv4Addr, datagram: Vec<u8>) {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         let fut = async move {

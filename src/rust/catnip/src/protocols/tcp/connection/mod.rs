@@ -291,10 +291,6 @@ impl<'a> TcpConnection<'a> {
         unimplemented!()
     }
 
-    pub fn receive_queue(&self) -> &VecDeque<TcpSegment> {
-        &self.receive_queue
-    }
-
     pub fn receive_queue_mut(&mut self) -> &mut VecDeque<TcpSegment> {
         &mut self.receive_queue
     }

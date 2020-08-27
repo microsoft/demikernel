@@ -143,7 +143,7 @@ impl<'a> Icmpv4Peer<'a> {
         }
     }
 
-    pub fn reply_to_ping2(&mut self, dest_ipv4_addr: Ipv4Addr, id: u16, seq_num: u16) {
+    pub fn reply_to_ping(&mut self, dest_ipv4_addr: Ipv4Addr, id: u16, seq_num: u16) {
         // XXX: Add a futures-unordered here?
         let rt = self.rt.clone();
         let arp = self.arp.clone();
@@ -172,45 +172,6 @@ impl<'a> Icmpv4Peer<'a> {
             rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
             Ok::<(), Fail>(())
         };
-    }
-
-    fn reply_to_ping(
-        &mut self,
-        dest_ipv4_addr: Ipv4Addr,
-        id: u16,
-        seq_num: u16,
-    ) {
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        let fut = self.rt.start_coroutine(move || {
-            let options = rt.options();
-            debug!("initiating ARP query");
-            let dest_link_addr =
-                r#await!(arp.query(dest_ipv4_addr), rt.now()).unwrap();
-            debug!(
-                "ARP query complete ({} -> {})",
-                dest_ipv4_addr, dest_link_addr
-            );
-            let mut bytes = Icmpv4Echo::new_vec();
-            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
-            echo.r#type(Icmpv4EchoOp::Reply);
-            echo.id(id);
-            echo.seq_num(seq_num);
-            let ipv4 = echo.icmpv4().ipv4();
-            let mut ipv4_header = ipv4.header();
-            ipv4_header.src_addr(options.my_ipv4_addr);
-            ipv4_header.dest_addr(dest_ipv4_addr);
-            let frame = ipv4.frame();
-            let mut frame_header = frame.header();
-            frame_header.src_addr(options.my_link_addr);
-            frame_header.dest_addr(dest_link_addr);
-            let _ = echo.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-
-            CoroutineOk(())
-        });
-
-        self.async_work.add(fut);
     }
 
     fn generate_ping_id(&self) -> u16 {
