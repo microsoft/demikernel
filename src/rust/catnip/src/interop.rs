@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use futures::FutureExt;
+use std::pin::Pin;
 use crate::{
     logging,
     prelude::*,
@@ -548,10 +550,9 @@ pub extern "C" fn nip_tcp_connect(
     let remote_port = ip::Port::try_from(u16::from_be(remote_port)).unwrap();
     let remote_addr = Ipv4Addr::from(u32::from_be(remote_addr));
     let remote_endpoint = ipv4::Endpoint::new(remote_addr, remote_port);
-    let future: Future<'static, tcp::ConnectionHandle> =
-        engine.tcp_connect(remote_endpoint);
+    let future = engine.tcp_connect(remote_endpoint).boxed_local();
     unsafe {
-        *future_out = Box::into_raw(Box::new(future)) as *mut libc::c_void
+        *future_out = Box::into_raw(Pin::into_inner_unchecked(future)) as *mut libc::c_void
     };
     0
 }

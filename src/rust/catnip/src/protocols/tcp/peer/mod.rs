@@ -212,7 +212,7 @@ impl<'a> TcpPeerState<'a> {
         })
     }
 
-    fn new_active_connection2(state: Rc<RefCell<TcpPeerState<'a>>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> + 'a {
+    fn new_active_connection(state: Rc<RefCell<TcpPeerState<'a>>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> + 'a {
         async move {
             trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
             let (cxn, rt) = {
@@ -245,54 +245,6 @@ impl<'a> TcpPeerState<'a> {
             );
             Ok(())
         }
-    }
-
-    fn new_active_connection(
-        state: Rc<RefCell<TcpPeerState<'a>>>,
-        cxnid: Rc<TcpConnectionId>,
-    ) -> Future<'a, ()> {
-        trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
-        let rt = state.borrow().rt.clone();
-        rt.start_coroutine(move || {
-            trace!(
-                "TcpRuntime::new_active_connection(.., {:?})::coroutine",
-                cxnid
-            );
-
-            let (cxn, rt) = {
-                let mut state = state.borrow_mut();
-                let rt = state.rt.clone();
-                (state.new_connection(cxnid.clone(), rt.clone())?, rt)
-            };
-
-            let options = rt.options();
-            let retries = options.tcp.handshake_retries;
-            let timeout = options.tcp.handshake_timeout;
-            let ack_segment = r#await!(
-                TcpPeerState::handshake(state.clone(), cxn.clone()),
-                rt.now(),
-                Retry::binary_exponential(timeout, retries)
-            )?;
-
-            let remote_isn = ack_segment.seq_num;
-
-            let (bytes, handle) = {
-                let mut cxn = cxn.borrow_mut();
-                cxn.set_remote_isn(remote_isn);
-                cxn.negotiate_mss(ack_segment.mss)?;
-                cxn.set_remote_receive_window_size(ack_segment.window_size)?;
-                cxn.incr_seq_num();
-                let segment = TcpSegment::default().connection(&cxn);
-                (Rc::new(RefCell::new(segment.encode())), cxn.get_handle())
-            };
-
-            r#await!(TcpPeerState::cast(state.clone(), bytes), rt.now())?;
-            info!(
-                "{}: connection established (handle = {})",
-                options.my_ipv4_addr, handle
-            );
-            CoroutineOk(())
-        })
     }
 
     fn new_passive_connection2(state: Rc<RefCell<TcpPeerState<'a>>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> + 'a {
@@ -896,77 +848,7 @@ impl<'a> TcpPeer<'a> {
         Ok(())
     }
 
-    pub fn connect(
-        &self,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, TcpConnectionHandle> {
-        trace!("TcpPeer::connect({:?})", remote_endpoint);
-        let state = self.state.clone();
-        let rt = state.borrow().rt.clone();
-        rt.start_coroutine(move || {
-            trace!("TcpPeer::connect({:?})::coroutine", remote_endpoint);
-            let (rt, cxnid) = {
-                let mut state = state.borrow_mut();
-                let rt = state.rt.clone();
-                let options = rt.options();
-                let cxnid = Rc::new(TcpConnectionId {
-                    local: ipv4::Endpoint::new(
-                        options.my_ipv4_addr,
-                        state.acquire_private_port()?,
-                    ),
-                    remote: remote_endpoint,
-                });
-
-                (rt, cxnid)
-            };
-
-            let error = match r#await!(
-                TcpPeerState::new_active_connection(
-                    state.clone(),
-                    cxnid.clone()
-                ),
-                rt.now()
-            ) {
-                Ok(()) => {
-                    let cxn = state
-                        .borrow_mut()
-                        .connections
-                        .get(&cxnid)
-                        .unwrap()
-                        .clone();
-                    let handle = cxn.borrow().get_handle();
-                    // we cannot insert a new future into `background_work`
-                    // because it may be borrowed already (e.g.
-                    // `advance_clock()`).
-                    let background_queue =
-                        state.borrow().background_queue.clone();
-                    background_queue.borrow_mut().push_back(
-                        TcpPeerState::on_connection_established(
-                            state.clone(),
-                            cxn,
-                        ),
-                    );
-
-                    return CoroutineOk(handle);
-                }
-                Err(e) => e,
-            };
-
-            let _ = r#await!(
-                TcpPeerState::close_connection(
-                    state.clone(),
-                    cxnid,
-                    Some(error.clone()),
-                    false
-                ),
-                rt.now()
-            );
-
-            Err(error)
-        })
-    }
-
-    pub fn connect2(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> + 'a {
+    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> + 'a {
         trace!("TcpPeer::connect({:?})", remote_endpoint);
         let state = self.state.clone();
         async move {
@@ -984,7 +866,7 @@ impl<'a> TcpPeer<'a> {
                 });
                 cxnid
             };
-            match TcpPeerState::new_active_connection2(state.clone(), cxnid.clone()).await {
+            match TcpPeerState::new_active_connection(state.clone(), cxnid.clone()).await {
                 Ok(()) => {
                     let cxn = state
                         .borrow_mut()

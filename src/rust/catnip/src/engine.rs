@@ -92,10 +92,7 @@ impl<'a> Engine<'a> {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(
-        &mut self,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, tcp::ConnectionHandle> {
+    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> + 'a {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 

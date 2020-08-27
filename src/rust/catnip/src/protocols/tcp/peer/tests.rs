@@ -7,6 +7,10 @@ use super::super::{
     connection::TcpConnectionHandle,
     segment::{TcpSegment, TcpSegmentDecoder},
 };
+use std::future::Future;
+use futures::FutureExt;
+use futures::task::{Context, noop_waker_ref};
+use std::task::Poll;
 use crate::{
     prelude::*,
     protocols::{ip, ipv4},
@@ -45,8 +49,8 @@ fn syn_to_closed_port() {
             .collect::<FxHashMap<_, _>>(),
     );
 
-    let fut = alice
-        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice.tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port)).boxed_local();
     let (tcp_syn, private_port) = {
         alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
@@ -83,10 +87,11 @@ fn syn_to_closed_port() {
     info!("passing TCP RST segment to alice...");
     let now = now + Duration::from_micros(1);
     alice.receive(&tcp_rst).unwrap();
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
     let now = now + Duration::from_micros(1);
-    match fut.poll(now).unwrap() {
-        Err(Fail::ConnectionRefused {}) => (),
+    alice.advance_clock(now);
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Err(Fail::ConnectionRefused {})) => (),
         _ => panic!("expected `Fail::ConnectionRefused {{}}`"),
     }
 }
@@ -109,8 +114,9 @@ fn establish_connection() -> EstablishedConnection<'static> {
 
     bob.tcp_listen(bob_port).unwrap();
 
-    let fut = alice
-        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port)).boxed_local();
     let (tcp_syn, private_port, alice_isn) = {
         alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
@@ -188,8 +194,10 @@ fn establish_connection() -> EstablishedConnection<'static> {
         e => panic!("got unanticipated event `{:?}`", e),
     };
 
-    let alice_cxn_handle = fut.poll(now).unwrap().unwrap();
-
+    let alice_cxn_handle = match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Ok(h)) => h,
+        x => panic!("Unexpected result: {:?}", x),
+    };
     info!(
         "connection established; alice isn = {:?}, bob isn = {:?}",
         alice_isn, bob_isn,
@@ -549,8 +557,10 @@ fn syn_retry() {
     let mut retry =
         Retry::binary_exponential(options.tcp.handshake_timeout, retries);
 
-    let fut = alice
-        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port));
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    let mut fut = alice
+        .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
+        .boxed_local();
     alice.advance_clock(now);
     let event = alice.pop_event().unwrap();
     match &*event {
@@ -565,7 +575,7 @@ fn syn_retry() {
     for i in 0..(retries - 1) {
         let timeout = retry.next().unwrap();
         now += timeout;
-        assert!(fut.poll(now).is_none());
+        assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("syn_retry(): retry #{}", i + 1);
         now += Duration::from_micros(1);
         alice.advance_clock(now);
@@ -582,10 +592,11 @@ fn syn_retry() {
 
     now += retry.next().unwrap();
     assert!(retry.next().is_none());
-    assert!(fut.poll(now).is_none());
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
     now += Duration::from_micros(1);
-    match fut.poll(now).unwrap() {
-        Err(Fail::Timeout {}) => (),
+    alice.advance_clock(now);
+    match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Err(Fail::Timeout {})) => (),
         _ => panic!("expected timeout"),
     }
 }

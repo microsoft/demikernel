@@ -84,7 +84,7 @@ impl<'a> Ipv4Peer<'a> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> Future<'a, tcp::ConnectionHandle> {
+    ) -> impl std::future::Future<Output=Result<tcp::ConnectionHandle>> + 'a {
         tcp::Peer::connect(&self.tcp, remote_endpoint)
     }
 
