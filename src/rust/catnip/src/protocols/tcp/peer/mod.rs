@@ -150,6 +150,33 @@ impl<'a> TcpPeerState<'a> {
         Ok(cxn)
     }
 
+    fn cast2(state: Rc<RefCell<TcpPeerState<'a>>>, bytes: Rc<RefCell<Vec<u8>>>) -> impl std::future::Future<Output=Result<()>> + 'a {
+        async move {
+            let (arp, rt, remote_ipv4_addr) = {
+                let state = state.borrow();
+                let rt = state.rt.clone();
+                let mut bytes = bytes.borrow_mut();
+                let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
+                encoder.ipv4().header().src_addr(rt.options().my_ipv4_addr);
+                let decoder = encoder.unmut();
+                (state.arp.clone(), rt, decoder.ipv4().header().dest_addr())
+            };
+            let remote_link_addr = arp.query2(remote_ipv4_addr).await?;
+            {
+                let options = rt.options();
+                let mut bytes = bytes.borrow_mut();
+                let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
+                encoder.ipv4().header().src_addr(options.my_ipv4_addr);
+                let mut frame_header = encoder.ipv4().frame().header();
+                frame_header.src_addr(options.my_link_addr);
+                frame_header.dest_addr(remote_link_addr);
+                let _ = encoder.seal()?;
+            }
+            rt.emit_event(Event::Transmit(bytes));
+            Ok(())
+        }
+    }
+
     fn cast(
         state: Rc<RefCell<TcpPeerState<'a>>>,
         bytes: Rc<RefCell<Vec<u8>>>,
@@ -183,6 +210,41 @@ impl<'a> TcpPeerState<'a> {
             rt.emit_event(Event::Transmit(bytes));
             CoroutineOk(())
         })
+    }
+
+    fn new_active_connection2(state: Rc<RefCell<TcpPeerState<'a>>>, cxnid: Rc<TcpConnectionId>) -> impl std::future::Future<Output=Result<()>> + 'a {
+        async move {
+            trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
+            let (cxn, rt) = {
+                let mut state = state.borrow_mut();
+                let rt = state.rt.clone();
+                (state.new_connection(cxnid.clone(), rt.clone())?, rt)
+            };
+
+            let options = rt.options();
+            let retries = options.tcp.handshake_retries;
+            let timeout = options.tcp.handshake_timeout;
+
+            // XXX: Add retry combinator?
+            // let retry = Retry::binary_exponential(timeout, retries)
+            let ack_segment = TcpPeerState::handshake2(state.clone(), cxn.clone()).await?;
+            let remote_isn = ack_segment.seq_num;
+            let (bytes, handle) = {
+                let mut cxn = cxn.borrow_mut();
+                cxn.set_remote_isn(remote_isn);
+                cxn.negotiate_mss(ack_segment.mss)?;
+                cxn.set_remote_receive_window_size(ack_segment.window_size)?;
+                cxn.incr_seq_num();
+                let segment = TcpSegment::default().connection(&cxn);
+                (Rc::new(RefCell::new(segment.encode())), cxn.get_handle())
+            };
+            TcpPeerState::cast2(state.clone(), bytes).await?;
+            info!(
+                "{}: connection established (handle = {})",
+                options.my_ipv4_addr, handle
+            );
+            Ok(())
+        }
     }
 
     fn new_active_connection(
@@ -231,6 +293,57 @@ impl<'a> TcpPeerState<'a> {
             );
             CoroutineOk(())
         })
+    }
+
+    fn new_passive_connection2(state: Rc<RefCell<TcpPeerState<'a>>>, syn_segment: TcpSegment) -> impl std::future::Future<Output=Result<()>> + 'a {
+        let rt = state.borrow().rt.clone();
+        async move {
+            let (cxn, rt) = {
+                let mut state = state.borrow_mut();
+                let rt = state.rt.clone();
+                let options = rt.options();
+
+                assert!(syn_segment.syn && !syn_segment.ack);
+                let local_port = syn_segment.dest_port.unwrap();
+                assert!(state.open_ports.contains(&local_port));
+
+                let remote_ipv4_addr = syn_segment.src_ipv4_addr.unwrap();
+                let remote_port = syn_segment.src_port.unwrap();
+                let cxnid = Rc::new(TcpConnectionId {
+                    local: ipv4::Endpoint::new(
+                        options.my_ipv4_addr,
+                        local_port,
+                    ),
+                    remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
+                });
+
+                let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
+                {
+                    let mut cxn = cxn.borrow_mut();
+                    cxn.negotiate_mss(syn_segment.mss)?;
+                    cxn.set_remote_isn(syn_segment.seq_num);
+                }
+
+                (cxn, rt)
+            };
+
+            // XXX: Add retry combinator?
+            // let retry = Retry::binary_exponential(timeout, retries)
+            let options = rt.options();
+            let ack_segment = TcpPeerState::handshake2(state.clone(), cxn.clone()).await?;
+
+            {
+                // SYN+ACK packet has been acknowledged; increment the sequence
+                // number and notify the caller.
+                let mut cxn = cxn.borrow_mut();
+                cxn.set_remote_receive_window_size(ack_segment.window_size)?;
+                cxn.incr_seq_num();
+                rt.emit_event(Event::IncomingTcpConnection(cxn.get_handle()));
+            }
+            TcpPeerState::on_connection_established2(state, cxn).await?;
+
+            Ok(())
+        }
     }
 
     fn new_passive_connection(
@@ -344,6 +457,39 @@ impl<'a> TcpPeerState<'a> {
         })
     }
 
+    fn handshake2(state: Rc<RefCell<TcpPeerState<'a>>>, cxn: Rc<RefCell<TcpConnection<'a>>>)
+                  -> impl std::future::Future<Output=Result<Rc<TcpSegment>>> + 'a
+    {
+        async move {
+            trace!("TcpRuntime::handshake()");
+            let rt = state.borrow().rt.clone();
+            let (bytes, ack_was_sent, expected_ack_num) = {
+                let cxn = cxn.borrow();
+                let segment = TcpSegment::default()
+                    .connection(&cxn)
+                    .mss(cxn.get_mss())
+                    .syn();
+                let ack_was_sent = segment.ack;
+                let expected_ack_num = segment.seq_num + Wrapping(1);
+                let bytes = Rc::new(RefCell::new(segment.encode()));
+                (bytes, ack_was_sent, expected_ack_num)
+            };
+            TcpPeerState::cast2(state.clone(), bytes).await?;
+            loop {
+                let segment = cxn.borrow().pop_receive_queue().await;
+                if segment.rst {
+                    return Err(Fail::ConnectionRefused {});
+                }
+                if segment.ack
+                    && ack_was_sent != segment.syn
+                    && segment.ack_num == expected_ack_num
+                {
+                    return Ok(Rc::new(segment));
+                }
+            }
+        }
+    }
+
     fn close_connection(
         state: Rc<RefCell<TcpPeerState<'a>>>,
         cxnid: Rc<TcpConnectionId>,
@@ -393,6 +539,46 @@ impl<'a> TcpPeerState<'a> {
         })
     }
 
+    fn close_connection2(
+        state: Rc<RefCell<TcpPeerState<'a>>>,
+        cxnid: Rc<TcpConnectionId>,
+        error: Option<Fail>,
+        notify: bool,
+    ) -> impl std::future::Future<Output=Result<()>> + 'a
+    {
+        let rt = state.borrow().rt.clone();
+        async move {
+            let (rst_segment, cxn_handle, rt) = {
+                let mut state = state.borrow_mut();
+                let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
+                    cxn
+                } else {
+                    return Err(Fail::ResourceNotFound {
+                        details: "unrecognized connection ID",
+                    });
+                };
+
+                let cxn = cxn.borrow();
+                let rst_segment = TcpSegment::default().connection(&cxn).rst();
+                let local_port = cxnid.local.port();
+                if local_port.is_private() {
+                    state.release_private_port(local_port)
+                }
+
+                (rst_segment, cxn.get_handle(), state.rt.clone())
+            };
+            let had_error = error.is_some();
+            if notify {
+                rt.emit_event(Event::TcpConnectionClosed { handle: cxn_handle, error });
+            }
+            if had_error {
+                let bytes = Rc::new(RefCell::new(rst_segment.encode()));
+                let _ = TcpPeerState::cast2(state, bytes).await;
+            }
+            Ok(())
+        }
+    }
+
     pub fn on_connection_established(
         state: Rc<RefCell<TcpPeerState<'a>>>,
         cxn: Rc<RefCell<TcpConnection<'a>>>,
@@ -421,6 +607,25 @@ impl<'a> TcpPeerState<'a> {
 
             CoroutineOk(())
         })
+    }
+
+    pub fn on_connection_established2(
+        state: Rc<RefCell<TcpPeerState<'a>>>,
+        cxn: Rc<RefCell<TcpConnection<'a>>>,
+    ) -> impl std::future::Future<Output=Result<()>> + 'a
+    {
+        let rt = state.borrow().rt.clone();
+        async move {
+            trace!("TcpRuntime::on_connection_established(...)::coroutine",);
+
+            let (cxnid, rt) = {
+                let state = state.borrow();
+                (cxn.borrow().get_id().clone(), state.rt.clone())
+            };
+            let error = TcpPeerState::main_connection_loop2(state.clone(), cxn.clone()).await.err();
+            TcpPeerState::close_connection2(state, cxnid, error, true).await?;
+            Ok(())
+        }
     }
 
     pub fn main_connection_loop(
@@ -518,6 +723,83 @@ impl<'a> TcpPeerState<'a> {
                 yield None;
             }
         })
+    }
+
+    pub fn main_connection_loop2(
+        state: Rc<RefCell<TcpPeerState<'a>>>,
+        cxn: Rc<RefCell<TcpConnection<'a>>>,
+    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+        let rt = state.borrow().rt.clone();
+        async move {
+            trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
+
+            let rt = state.borrow().rt.clone();
+            let options = rt.options();
+            let mut ack_owed_since = None;
+            loop {
+                {
+                    let mut cxn = cxn.borrow_mut();
+                    // XXX: Turn this into a stream.
+                    while let Some(segment) =
+                        cxn.receive_queue_mut().pop_front()
+                    {
+                        if segment.rst {
+                            return Err(Fail::ConnectionAborted {});
+                        }
+
+                        // if there's a payload, we need to acknowledge it at
+                        // some point. we set a timer if it hasn't already been
+                        // set.
+                        if ack_owed_since.is_none()
+                            && !segment.payload.is_empty()
+                        {
+                            ack_owed_since = Some(rt.now());
+                            /*debug!(
+                            "{}: ack_owed_since = {:?}",
+                            options.my_ipv4_addr, ack_owed_since
+                        );*/
+                        }
+
+                        match cxn.receive(segment) {
+                            Ok(()) => (),
+                            Err(Fail::Ignored { details }) => {
+                                warn!("TCP segment ignored: {}", details)
+                            }
+                            e => e?,
+                        }
+                    }
+
+                    cxn.enqueue_retransmissions()?;
+                }
+                while let Some(s) = cxn.borrow_mut().try_get_next_transmittable_segment() {
+                    ack_owed_since = None;
+                    TcpPeerState::cast2(state.clone(), s).await?;
+                }
+                if let Some(timestamp) = ack_owed_since {
+                    debug!(
+                        "{}: ack_owed_since = {:?} ({:?})",
+                        options.my_ipv4_addr,
+                        ack_owed_since,
+                        rt.now() - timestamp
+                    );
+                    debug!(
+                        "{}: options.tcp.trailing_ack_delay() = {:?}",
+                        options.my_ipv4_addr, options.tcp.trailing_ack_delay
+                    );
+                    if rt.now() - timestamp > options.tcp.trailing_ack_delay {
+                        debug!(
+                            "{}: delayed ACK timer has expired; sending pure \
+                             ACK...",
+                            options.my_ipv4_addr,
+                        );
+                        let pure_ack = TcpSegment::default().connection(&cxn.borrow());
+                        let bytes = Rc::new(RefCell::new(pure_ack.encode()));
+                        TcpPeerState::cast2(state.clone(), bytes).await?;
+                        ack_owed_since = None;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -692,6 +974,46 @@ impl<'a> TcpPeer<'a> {
             Err(error)
         })
     }
+
+    pub fn connect2(&self, remote_endpoint: ipv4::Endpoint) -> impl std::future::Future<Output=Result<TcpConnectionHandle>> + 'a {
+        trace!("TcpPeer::connect({:?})", remote_endpoint);
+        let state = self.state.clone();
+        async move {
+            trace!("TcpPeer::connect({:?})::coroutine", remote_endpoint);
+            let cxnid = {
+                let mut state = state.borrow_mut();
+                let rt = state.rt.clone();
+                let options = rt.options();
+                let cxnid = Rc::new(TcpConnectionId {
+                    local: ipv4::Endpoint::new(
+                        options.my_ipv4_addr,
+                        state.acquire_private_port()?,
+                    ),
+                    remote: remote_endpoint,
+                });
+                cxnid
+            };
+            match TcpPeerState::new_active_connection2(state.clone(), cxnid.clone()).await {
+                Ok(()) => {
+                    let cxn = state
+                        .borrow_mut()
+                        .connections
+                        .get(&cxnid)
+                        .unwrap()
+                        .clone();
+                    let handle = cxn.borrow().get_handle();
+                    // XXX: put this in a futures unordered.
+                    let _ = TcpPeerState::on_connection_established2(state.clone(), cxn);
+                    Ok(handle)
+                },
+                Err(e) => {
+                    let _ = TcpPeerState::close_connection2(state.clone(), cxnid, Some(e.clone()), false).await;
+                    Err(e)
+                },
+            }
+        }
+    }
+
 
     pub fn listen(&mut self, port: ip::Port) -> Result<()> {
         let mut state = self.state.borrow_mut();

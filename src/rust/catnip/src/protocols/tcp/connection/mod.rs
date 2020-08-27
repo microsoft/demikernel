@@ -287,6 +287,10 @@ impl<'a> TcpConnection<'a> {
         }
     }
 
+    pub async fn pop_receive_queue(&self) -> TcpSegment {
+        unimplemented!()
+    }
+
     pub fn receive_queue(&self) -> &VecDeque<TcpSegment> {
         &self.receive_queue
     }

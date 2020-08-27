@@ -127,6 +127,46 @@ impl<'a> UdpPeer<'a> {
         })
     }
 
+    pub fn cast2(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        dest_port: ip::Port,
+        src_port: ip::Port,
+        text: Vec<u8>,
+    ) -> impl std::future::Future<Output=Result<()>> + 'a {
+        let rt = self.rt.clone();
+        let arp = self.arp.clone();
+        async move {
+            let options = rt.options();
+            debug!("initiating ARP query");
+            let dest_link_addr = arp.query2(dest_ipv4_addr).await.expect("XXX handle ARP failure");
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
+
+            let mut bytes = UdpDatagramEncoder::new_vec(text.len());
+            let mut encoder = UdpDatagramEncoder::attach(&mut bytes);
+            // the text slice could end up being larger than what's
+            // requested because of the minimum ethernet frame size, so we need
+            // to trim what we get from `encoder.text()` to make it the same
+            // size as `text`.
+            encoder.text()[..text.len()].copy_from_slice(&text);
+            let mut udp_header = encoder.header();
+            udp_header.dest_port(dest_port);
+            udp_header.src_port(src_port);
+            let mut ipv4_header = encoder.ipv4().header();
+            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.dest_addr(dest_ipv4_addr);
+            let mut frame_header = encoder.ipv4().frame().header();
+            frame_header.dest_addr(dest_link_addr);
+            frame_header.src_addr(options.my_link_addr);
+            let _ = encoder.seal()?;
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+            Ok(())
+        }
+    }
+
     fn send_icmpv4_error(
         &mut self,
         dest_ipv4_addr: Ipv4Addr,
@@ -171,6 +211,46 @@ impl<'a> UdpPeer<'a> {
         });
 
         self.async_work.add(fut);
+    }
+
+    fn send_icmpv4_error2(&mut self, dest_ipv4_addr: Ipv4Addr, datagram: Vec<u8>) {
+        let rt = self.rt.clone();
+        let arp = self.arp.clone();
+        let fut = async move {
+            trace!(
+                "UdpPeer::send_icmpv4_error({:?}, {:?})",
+                dest_ipv4_addr,
+                datagram
+            );
+            let options = rt.options();
+            debug!("initiating ARP query");
+            let dest_link_addr = arp.query2(dest_ipv4_addr).await.expect("XXX handle ARP failure");
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
+            // this datagram should have already been validated by the caller.
+            let datagram =
+                ipv4::Datagram::attach(datagram.as_slice()).unwrap();
+            let mut bytes = icmpv4::Error::new_vec(datagram);
+            let mut error = icmpv4::ErrorMut::attach(&mut bytes);
+            error.id(icmpv4::ErrorId::DestinationUnreachable(
+                icmpv4::DestinationUnreachable::DestinationPortUnreachable,
+            ));
+            let ipv4 = error.icmpv4().ipv4();
+            let mut ipv4_header = ipv4.header();
+            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.dest_addr(dest_ipv4_addr);
+            let frame = ipv4.frame();
+            let mut frame_header = frame.header();
+            frame_header.src_addr(options.my_link_addr);
+            frame_header.dest_addr(dest_link_addr);
+            let _ = error.seal()?;
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+            CoroutineOk(())
+        };
+        // XXX add this to a futures unordered.
+        let _ = fut;
     }
 
     pub fn advance_clock(&self, now: Instant) {

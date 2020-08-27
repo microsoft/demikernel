@@ -9,6 +9,7 @@ use crate::{
     prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
+use futures::FutureExt;
 use fxhash::FxHashMap;
 use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
@@ -31,6 +32,7 @@ impl<'a> ArpPeer<'a> {
             cache: Rc::new(RefCell::new(cache)),
         })
     }
+
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
         trace!("ArpPeer::receive(...)");
@@ -107,6 +109,47 @@ impl<'a> ArpPeer<'a> {
                     .insert(arp.sender_ip_addr, arp.sender_link_addr);
                 Ok(())
             }
+        }
+    }
+
+    pub fn query2(&self, ipv4_addr: Ipv4Addr) -> impl std::future::Future<Output=Result<MacAddress>> + 'a {
+        let rt = self.rt.clone();
+        let cache = self.cache.clone();
+        async move {
+            if let Some(&link_addr) = cache.borrow().get_link_addr(ipv4_addr) {
+                return Ok(link_addr);
+            }
+            let options = rt.options();
+            let arp = ArpPdu {
+                op: ArpOp::ArpRequest,
+                sender_link_addr: options.my_link_addr,
+                sender_ip_addr: options.my_ipv4_addr,
+                target_link_addr: MacAddress::nil(),
+                target_ip_addr: ipv4_addr,
+            };
+            let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
+
+            // from TCP/IP illustrated, chapter 4:
+            // > The frequency of the ARP request is very close to one per
+            // > second, the maximum suggested by [RFC1122].
+            for i in 0..options.arp.retry_count {
+                rt.emit_event(Event::Transmit(bytes.clone()));
+
+                // XXX: remove these boxes
+                // XXX: Can we hoist the ARP future outside of the loop?
+                let mut arp_response = cache.borrow().wait_link_addr(ipv4_addr).boxed_local().fuse();
+                let mut timeout = rt.wait(options.arp.request_timeout).boxed_local().fuse();
+                futures::select! {
+                    link_addr = arp_response => {
+                        debug!("ARP result available ({})", link_addr);
+                        return Ok(link_addr);
+                    },
+                    _ = timeout => {
+                        warn!("ARP request timeout; attempt {}.", i + 1);
+                    },
+                }
+            }
+            Err(Fail::Timeout {})
         }
     }
 

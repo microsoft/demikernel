@@ -6,6 +6,7 @@ use super::{
     echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp},
     error::Icmpv4Error,
 };
+use futures::FutureExt;
 use crate::{
     prelude::*,
     protocols::{arp, ipv4},
@@ -93,6 +94,56 @@ impl<'a> Icmpv4Peer<'a> {
         }
     }
 
+    pub fn ping2(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl std::future::Future<Output=Result<Duration>> + 'a {
+        let arp = self.arp.clone();
+        let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
+        let rt = self.rt.clone();
+        let outstanding_requests = self.outstanding_requests.clone();
+        let id = self.generate_ping_id();
+        let seq_num = self.generate_seq_num();
+
+        async move {
+            let t0 = rt.now();
+            let options = rt.options();
+            debug!("initiating ARP query");
+            let dest_link_addr = arp.query2(dest_ipv4_addr).await?;
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
+
+            let mut bytes = Icmpv4Echo::new_vec();
+            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
+            echo.r#type(Icmpv4EchoOp::Request);
+            echo.id(id);
+            echo.seq_num(seq_num);
+            let mut ipv4_header = echo.icmpv4().ipv4().header();
+            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.dest_addr(dest_ipv4_addr);
+            let mut frame_header = echo.icmpv4().ipv4().frame().header();
+            frame_header.dest_addr(dest_link_addr);
+            frame_header.src_addr(options.my_link_addr);
+            let _ = echo.seal()?;
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+
+            let key = (id, seq_num);
+            {
+                let mut outstanding_requests =
+                    outstanding_requests.borrow_mut();
+                assert!(outstanding_requests.insert(key));
+            }
+
+            // XXX: We want something roughly like HashMap<(u16, u16), completion>?
+            let mut todo = futures::future::pending::<()>();
+            let mut timeout = rt.wait(timeout).boxed_local().fuse();
+            futures::select! {
+                _ = todo => Ok(rt.now() - t0),
+                _ = timeout => Err(Fail::Timeout {}),
+            }
+        }
+    }
+
+
     pub fn ping(
         &self,
         dest_ipv4_addr: Ipv4Addr,
@@ -149,6 +200,37 @@ impl<'a> Icmpv4Peer<'a> {
                 Err(Fail::Timeout {})
             }
         })
+    }
+
+    pub fn reply_to_ping2(&mut self, dest_ipv4_addr: Ipv4Addr, id: u16, seq_num: u16) {
+        // XXX: Add a futures-unordered here?
+        let rt = self.rt.clone();
+        let arp = self.arp.clone();
+        let _ = async move {
+            let options = rt.options();
+            debug!("initiating ARP query");
+            let dest_link_addr = arp.query2(dest_ipv4_addr).await?;
+            debug!(
+                "ARP query complete ({} -> {})",
+                dest_ipv4_addr, dest_link_addr
+            );
+            let mut bytes = Icmpv4Echo::new_vec();
+            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
+            echo.r#type(Icmpv4EchoOp::Reply);
+            echo.id(id);
+            echo.seq_num(seq_num);
+            let ipv4 = echo.icmpv4().ipv4();
+            let mut ipv4_header = ipv4.header();
+            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.dest_addr(dest_ipv4_addr);
+            let frame = ipv4.frame();
+            let mut frame_header = frame.header();
+            frame_header.src_addr(options.my_link_addr);
+            frame_header.dest_addr(dest_link_addr);
+            let _ = echo.seal()?;
+            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+            Ok::<(), Fail>(())
+        };
     }
 
     fn reply_to_ping(

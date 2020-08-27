@@ -73,6 +73,7 @@ impl<'a> Runtime<'a> {
         self.events.borrow().front().cloned()
     }
 
+
     pub fn pop_event(&self) -> Option<Rc<Event>> {
         let mut events = self.events.borrow_mut();
         if let Some(event) = events.pop_front() {
@@ -86,5 +87,13 @@ impl<'a> Runtime<'a> {
         } else {
             None
         }
+    }
+
+    pub fn wait(&self, _how_long: Duration) -> impl std::future::Future<Output = ()> {
+        async {}
+    }
+
+    pub fn wait_until(&self, _when: Instant) -> impl std::future::Future<Output = ()> {
+        async {}
     }
 }

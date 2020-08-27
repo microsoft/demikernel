@@ -84,6 +84,12 @@ impl ArpCache {
         result
     }
 
+    pub fn wait_link_addr(&self, link_addr: Ipv4Addr) -> impl std::future::Future<Output=MacAddress> {
+        async {
+            unimplemented!()
+        }
+    }
+
     pub fn get_ipv4_addr(&self, link_addr: MacAddress) -> Option<&Ipv4Addr> {
         self.rmap.get(&link_addr)
     }
