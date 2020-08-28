@@ -182,6 +182,35 @@ impl Runtime {
         let mut inner = self.inner.borrow_mut();
         inner.timer.wait_until(when)
     }
+
+    pub fn exponential_backoff<T, E, F>(
+        &self,
+        mut timeout: Duration,
+        max_attempts: usize,
+        mut f: impl FnMut() -> F,
+        mut discard_error: impl FnMut(E),
+    ) -> impl Future<Output=std::result::Result<T, E>>
+        where F: Future<Output=std::result::Result<T, E>>
+    {
+        let self_ = self.clone();
+        async move {
+            assert!(max_attempts > 0);
+            let mut err = None;
+            for _ in 0..max_attempts {
+                match f().await {
+                    Ok(r) => return Ok(r),
+                    Err(e) => {
+                        if let Some(old_err) = err.replace(e) {
+                            discard_error(old_err);
+                        }
+                        self_.wait(timeout).await;
+                        timeout *= 2;
+                    },
+                }
+            }
+            Err(err.unwrap())
+        }
+    }
 }
 
 impl Future for Runtime {

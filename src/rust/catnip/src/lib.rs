@@ -4,6 +4,7 @@
 #![feature(generators, generator_trait)]
 #![feature(never_type)]
 #![feature(raw)]
+#![feature(try_blocks)]
 #![warn(clippy::all)]
 
 #[macro_use]
@@ -21,9 +22,6 @@ extern crate derive_more;
 #[macro_use]
 extern crate lazy_static;
 
-#[macro_use]
-pub mod r#async;
-
 mod event;
 mod interop;
 mod logging;
@@ -31,6 +29,7 @@ mod options;
 mod prelude;
 mod protocols;
 mod rand;
+mod retry;
 
 pub mod collections;
 pub mod engine;

@@ -11,7 +11,7 @@ use std::{
     convert::TryFrom,
     net::Ipv4Addr,
     rc::Rc,
-    time::{Duration, Instant},
+    time::Duration, pin::Pin, task::{Poll, Context},
 };
 
 pub struct Ipv4Peer {
@@ -52,11 +52,7 @@ impl<'a> Ipv4Peer {
         }
     }
 
-    pub fn ping(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        timeout: Option<Duration>,
-    ) -> impl Future<Output=Result<Duration>> {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration>> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -123,16 +119,22 @@ impl<'a> Ipv4Peer {
         self.tcp.get_rto(handle)
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        self.icmpv4.advance_clock(now);
-        self.udp.advance_clock(now);
-        self.tcp.advance_clock(now);
-    }
-
     pub fn tcp_get_connection_id(
         &self,
         handle: tcp::ConnectionHandle,
     ) -> Result<Rc<tcp::ConnectionId>> {
         self.tcp.get_connection_id(handle)
+    }
+}
+
+impl Future for Ipv4Peer {
+    type Output = !;
+
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        let self_ = self.get_mut();
+        assert!(Future::poll(Pin::new(&mut self_.icmpv4), ctx).is_pending());
+        assert!(Future::poll(Pin::new(&mut self_.tcp), ctx).is_pending());
+        assert!(Future::poll(Pin::new(&mut self_.udp), ctx).is_pending());
+        Poll::Pending
     }
 }

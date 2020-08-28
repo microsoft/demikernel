@@ -9,6 +9,7 @@ use crate::{
         ip, ipv4, tcp,
     },
 };
+use futures::task::{Context, noop_waker_ref};
 use fxhash::FxHashMap;
 use std::future::Future;
 use std::{
@@ -16,6 +17,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use std::pin::Pin;
 
 pub struct Engine {
     rt: Runtime,
@@ -131,10 +133,14 @@ impl Engine {
         self.ipv4.tcp_rto(handle)
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        self.arp.advance_clock(now);
-        self.ipv4.advance_clock(now);
+    pub fn advance_clock(&mut self, now: Instant) {
         self.rt.advance_clock(now);
+
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        assert!(Future::poll(Pin::new(&mut self.rt), &mut ctx).is_pending());
+        self.arp.advance_clock(now);
+        assert!(Future::poll(Pin::new(&mut self.ipv4), &mut ctx).is_pending())
+
     }
 
     pub fn next_event(&self) -> Option<Rc<Event>> {

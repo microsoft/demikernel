@@ -94,7 +94,7 @@ fn timeout() {
 
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
-    let alice = test::new_alice(now);
+    let mut alice = test::new_alice(now);
     alice.import_arp_cache(
         iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
             .collect::<FxHashMap<_, _>>(),

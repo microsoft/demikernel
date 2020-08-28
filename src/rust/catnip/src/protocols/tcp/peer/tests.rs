@@ -3,6 +3,7 @@
 
 #![allow(clippy::cognitive_complexity)]
 
+use crate::retry::Retry;
 use super::super::{
     connection::TcpConnectionHandle,
     segment::{TcpSegment, TcpSegmentDecoder},
@@ -14,7 +15,6 @@ use std::task::Poll;
 use crate::{
     prelude::*,
     protocols::{ip, ipv4},
-    r#async::Retry,
     test,
 };
 use fxhash::FxHashMap;
@@ -554,8 +554,7 @@ fn syn_retry() {
 
     let options = alice.options();
     let retries = options.tcp.handshake_retries;
-    let mut retry =
-        Retry::binary_exponential(options.tcp.handshake_timeout, retries);
+    let mut retry = Retry::new(options.tcp.handshake_timeout, retries);
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice
@@ -573,7 +572,7 @@ fn syn_retry() {
     }
 
     for i in 0..(retries - 1) {
-        let timeout = retry.next().unwrap();
+        let timeout = retry.fail().unwrap();
         now += timeout;
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("syn_retry(): retry #{}", i + 1);
@@ -590,8 +589,8 @@ fn syn_retry() {
         }
     }
 
-    now += retry.next().unwrap();
-    assert!(retry.next().is_none());
+    now += retry.fail().unwrap();
+    assert!(retry.fail().is_none());
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
     now += Duration::from_micros(1);
     alice.advance_clock(now);
@@ -628,9 +627,9 @@ fn retransmission_fail() {
 
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
     let retries = cxn.alice.options().tcp.retries;
-    let mut retry = Retry::binary_exponential(rto, retries);
+    let mut retry = Retry::new(rto, retries);
     for i in 0..(retries - 1) {
-        let timeout = retry.next().unwrap();
+        let timeout = retry.fail().unwrap();
         cxn.now += timeout;
         cxn.alice.advance_clock(cxn.now);
         assert!(cxn.alice.pop_event().is_none());
@@ -650,8 +649,8 @@ fn retransmission_fail() {
         }
     }
 
-    cxn.now += retry.next().unwrap();
-    assert!(retry.next().is_none());
+    cxn.now += retry.fail().unwrap();
+    assert!(retry.fail().is_none());
     cxn.alice.advance_clock(cxn.now);
     assert!(cxn.alice.pop_event().is_none());
     cxn.now += Duration::from_micros(1);
@@ -713,9 +712,8 @@ fn retransmission_ok() {
 
     info!("dropping data segments and attempting retransmission...");
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
-    let mut retry =
-        Retry::binary_exponential(rto, cxn.alice.options().tcp.retries);
-    let timeout = retry.next().unwrap();
+    let mut retry = Retry::new(rto, cxn.alice.options().tcp.retries);
+    let timeout = retry.fail().unwrap();
     cxn.now += timeout - Duration::from_micros(1);
     cxn.alice.advance_clock(cxn.now);
     assert!(cxn.alice.pop_event().is_none());
@@ -924,9 +922,9 @@ fn flow_control() {
     );
     let rto = cxn.alice.tcp_rto(cxn.alice_cxn_handle).unwrap();
     let retries = cxn.alice.options().tcp.retries;
-    let mut retry = Retry::binary_exponential(rto, retries);
+    let mut retry = Retry::new(rto, retries);
     for i in 0..(retries - 1) {
-        let timeout = retry.next().unwrap();
+        let timeout = retry.fail().unwrap();
         cxn.now += timeout;
         cxn.alice.advance_clock(cxn.now);
         assert!(cxn.alice.pop_event().is_none());

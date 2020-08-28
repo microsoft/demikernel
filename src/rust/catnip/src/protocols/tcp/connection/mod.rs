@@ -5,7 +5,8 @@ mod rto;
 mod window;
 
 use super::segment::{TcpSegment, TcpSegmentEncoder};
-use crate::{prelude::*, protocols::ipv4, r#async::Retry};
+use crate::{prelude::*, protocols::ipv4};
+use crate::retry::Retry;
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -43,13 +44,13 @@ impl Into<u16> for TcpConnectionHandle {
         self.0.get()
     }
 }
-
 pub struct TcpConnection {
     handle: TcpConnectionHandle,
     id: Rc<TcpConnectionId>,
     receive_queue: VecDeque<TcpSegment>,
     transmit_queue: VecDeque<Rc<RefCell<Vec<u8>>>>,
     receive_window: TcpReceiveWindow,
+    // TODO: Pull this out into an explicit type.
     retransmit_retry: Option<Retry>,
     retransmit_timeout: Option<Duration>,
     rt: Runtime,
@@ -190,12 +191,11 @@ impl TcpConnection {
                     let options = self.rt.options();
                     let rto = self.get_rto();
                     debug!("rto = {:?}", rto);
-                    let mut retry =
-                        Retry::binary_exponential(rto, options.tcp.retries);
-                    let timeout = retry.next().unwrap();
-                    self.retransmit_retry = Some(retry);
-                    self.retransmit_timeout = Some(timeout);
-                    timeout
+
+                    // TODO: Is this right? Are we sleeping `rto` twice?
+                    self.retransmit_retry = Some(Retry::new(rto, options.tcp.retries));
+                    self.retransmit_timeout = Some(rto);
+                    rto
                 }
             };
 
@@ -218,9 +218,7 @@ impl TcpConnection {
             }
         }
 
-        if let Some(next_timeout) =
-            self.retransmit_retry.as_mut().unwrap().next()
-        {
+        if let Some(next_timeout) = self.retransmit_retry.as_mut().unwrap().fail() {
             self.retransmit_timeout = Some(next_timeout);
         } else {
             return Err(Fail::Timeout {});

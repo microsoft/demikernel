@@ -26,7 +26,7 @@ fn unicast() {
 
     let now = Instant::now();
     let text = vec![0xffu8; 10];
-    let alice = test::new_alice(now);
+    let mut alice = test::new_alice(now);
     alice.import_arp_cache(
         iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
             .collect::<FxHashMap<_, _>>(),

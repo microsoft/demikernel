@@ -155,7 +155,7 @@ fn slow_reply() {
 fn no_reply() {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
-    let alice = test::new_alice(now);
+    let mut alice = test::new_alice(now);
     let options = alice.options();
 
     assert_eq!(options.arp.retry_count, 2);
