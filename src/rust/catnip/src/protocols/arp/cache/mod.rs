@@ -14,6 +14,8 @@ use std::{
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
+use futures::channel::oneshot::{channel, Sender};
+use futures::FutureExt;
 
 #[derive(Debug, Clone)]
 struct Record {
@@ -24,6 +26,10 @@ struct Record {
 pub struct ArpCache {
     cache: HashTtlCache<Ipv4Addr, Record>,
     rmap: FxHashMap<MacAddress, Ipv4Addr>,
+
+    // TODO: Allow multiple waiters for the same address
+    // TODO: Deregister waiters here when the receiver goes away.
+    waiters: FxHashMap<Ipv4Addr, Sender<MacAddress>>,
 }
 
 impl ArpCache {
@@ -31,6 +37,7 @@ impl ArpCache {
         ArpCache {
             cache: HashTtlCache::new(now, default_ttl),
             rmap: FxHashMap::default(),
+            waiters: FxHashMap::default(),
         }
     }
 
@@ -85,10 +92,14 @@ impl ArpCache {
         result
     }
 
-    pub fn wait_link_addr(&self, _link_addr: Ipv4Addr) -> impl Future<Output=MacAddress> {
-        async {
-            unimplemented!()
+    pub fn wait_link_addr(&mut self, ipv4_addr: Ipv4Addr) -> impl Future<Output=MacAddress> {
+        let (tx, rx) = channel();
+        if let Some(r) = self.cache.get(&ipv4_addr) {
+            let _ = tx.send(r.link_addr);
+        } else {
+            assert!(self.waiters.insert(ipv4_addr, tx).is_none());
         }
+        rx.map(|r| r.expect("Dropped waiter?"))
     }
 
     pub fn get_ipv4_addr(&self, link_addr: MacAddress) -> Option<&Ipv4Addr> {

@@ -138,7 +138,7 @@ impl Engine {
 
         let mut ctx = Context::from_waker(noop_waker_ref());
         assert!(Future::poll(Pin::new(&mut self.rt), &mut ctx).is_pending());
-        self.arp.advance_clock(now);
+        assert!(Future::poll(Pin::new(&mut self.arp), &mut ctx).is_pending());
         assert!(Future::poll(Pin::new(&mut self.ipv4), &mut ctx).is_pending())
 
     }

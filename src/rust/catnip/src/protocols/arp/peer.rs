@@ -14,7 +14,7 @@ use fxhash::FxHashMap;
 use std::future::Future;
 use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
-    time::Instant,
+    time::Instant, pin::Pin, task::{Poll, Context},
 };
 
 #[derive(Clone)]
@@ -130,7 +130,7 @@ impl<'a> ArpPeer {
             };
             let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
 
-            let arp_response = cache.borrow().wait_link_addr(ipv4_addr).fuse();
+            let arp_response = cache.borrow_mut().wait_link_addr(ipv4_addr).fuse();
             futures::pin_mut!(arp_response);
 
             // from TCP/IP illustrated, chapter 4:
@@ -159,10 +159,18 @@ impl<'a> ArpPeer {
     pub fn import_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
     }
+}
 
-    pub fn advance_clock(&self, now: Instant) {
-        let mut cache = self.cache.borrow_mut();
-        cache.advance_clock(now);
+impl Future for ArpPeer {
+    type Output = !;
+
+    fn poll(self: Pin<&mut Self>, _ctx: &mut Context) -> Poll<!> {
+        // TODO: Make this more precise.
+        let self_ = self.get_mut();
+        let current_time = self_.rt.now();
+        let mut cache = self_.cache.borrow_mut();
+        cache.advance_clock(current_time);
         cache.try_evict(2);
+        Poll::Pending
     }
 }
