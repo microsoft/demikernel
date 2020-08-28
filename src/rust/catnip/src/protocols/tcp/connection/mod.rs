@@ -285,10 +285,6 @@ impl TcpConnection {
         }
     }
 
-    pub async fn pop_receive_queue(&self) -> TcpSegment {
-        unimplemented!()
-    }
-
     pub fn receive_queue_mut(&mut self) -> &mut VecDeque<TcpSegment> {
         &mut self.receive_queue
     }

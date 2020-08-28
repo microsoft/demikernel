@@ -284,7 +284,15 @@ impl TcpPeerState {
         };
         TcpPeerState::cast(state.clone(), bytes).await?;
         loop {
-            let segment = cxn.borrow().pop_receive_queue().await;
+            let segment = loop {
+                match cxn.borrow_mut().receive_queue_mut().pop_front() {
+                    Some(s) => break s,
+                    None => {
+                        // TODO: More precisely signal when this loop should resume.
+                        state.borrow().rt.wait(Duration::from_micros(10)).await;
+                    },
+                }
+            };
             if segment.rst {
                 return Err(Fail::ConnectionRefused {});
             }
