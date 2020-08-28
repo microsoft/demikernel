@@ -53,8 +53,9 @@ impl Runtime {
         self.rng.borrow_mut()
     }
 
-    pub fn advance_clock(&self, now: Instant) {
-        while self.r#async.poll(now).is_some() {}
+    pub fn advance_clock(&self, _now: Instant) {
+        // while self.r#async.poll(now).is_some() {}
+        unimplemented!()
     }
 
     pub fn next_event(&self) -> Option<Rc<Event>> {

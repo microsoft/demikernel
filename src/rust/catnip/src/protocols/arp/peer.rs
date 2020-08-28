@@ -20,7 +20,7 @@ use std::{
 #[derive(Clone)]
 pub struct ArpPeer {
     rt: Runtime,
-    // todo: this should be shared state.
+    // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
 }
 
