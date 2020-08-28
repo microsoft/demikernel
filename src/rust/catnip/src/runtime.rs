@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{prelude::*, r#async, rand::Rng};
+use crate::{prelude::*, rand::Rng};
 use rand_core::SeedableRng;
 use std::future::Future;
 use std::{
-    cell::{RefCell, RefMut},
+    cell::RefCell,
     collections::VecDeque,
     rc::Rc,
     time::{Duration, Instant},
@@ -16,8 +16,6 @@ use std::task::Waker;
 use std::pin::Pin;
 use std::task::{Poll, Context};
 use std::collections::binary_heap::PeekMut;
-use pin_cell::{PinCell, PinMut};
-use pin_project::pin_project;
 
 // TODO: Switch to unsync versions
 use futures::channel::oneshot::{channel, Sender};
@@ -61,7 +59,7 @@ impl Timer {
         Self { now, heap: BinaryHeap::new(), waker: None }
     }
 
-    fn timer(&mut self, when: Instant) -> impl Future<Output = ()> {
+    fn wait_until(&mut self, when: Instant) -> impl Future<Output = ()> {
         let (tx, rx) = channel();
         if when <= self.now {
             let _ = tx.send(());
@@ -71,7 +69,7 @@ impl Timer {
         rx.map(|_| ())
     }
 
-    fn advance_time(&mut self, now: Instant) {
+    fn advance_clock(&mut self, now: Instant) {
         assert!(now > self.now);
         if let Some(record) = self.heap.peek() {
             if record.when <= now {
@@ -103,71 +101,69 @@ impl Future for Timer {
 
 #[derive(Clone)]
 pub struct Runtime {
-    inner: Pin<Rc<Inner>>,
+    inner: Rc<RefCell<Inner>>,
 }
 
-#[pin_project]
 struct Inner {
-    events: RefCell<VecDeque<Rc<Event>>>,
+    events: VecDeque<Rc<Event>>,
     options: Options,
-    rng: RefCell<Rng>,
-
-    #[pin]
-    timer: PinCell<Timer>,
+    rng: Rng,
+    timer: Timer,
 }
 
 impl Runtime {
     pub fn from_options(now: Instant, options: Options) -> Self {
         let rng = Rng::from_seed(options.rng_seed);
         let inner = Inner {
-            events: RefCell::new(VecDeque::new()),
+            events: VecDeque::new(),
             options,
-            rng: RefCell::new(rng),
-            timer: PinCell::new(Timer::new(now)),
+            rng,
+            timer: Timer::new(now),
         };
-        Self { inner: Pin::new(Rc::new(inner)) }
+        Self { inner: Rc::new(RefCell::new(inner)) }
     }
 
     pub fn options(&self) -> Options {
-        self.inner.as_ref().options.clone()
+        self.inner.borrow().options.clone()
     }
 
     pub fn now(&self) -> Instant {
-        self.inner.as_ref().timer.borrow().now
+        self.inner.borrow().timer.now
     }
 
     pub fn emit_event(&self, event: Event) {
-        let mut events = self.inner.as_ref().events.borrow_mut();
+        let mut inner = self.inner.borrow_mut();
         info!(
             "event emitted for {} (len is now {}) => {:?}",
-            self.options().my_ipv4_addr,
-            events.len() + 1,
+            inner.options.my_ipv4_addr,
+            inner.events.len() + 1,
             event
         );
-        events.push_back(Rc::new(event));
+        inner.events.push_back(Rc::new(event));
     }
 
     pub fn with_rng<R>(&self, f: impl FnOnce(&mut Rng) -> R) -> R {
-        let mut rng = self.inner.as_ref().rng.borrow_mut();
-        f(&mut *rng)
+        let mut inner = self.inner.borrow_mut();
+        f(&mut inner.rng)
     }
 
-    pub fn advance_clock(&self, _now: Instant) {
-        // let mut timer_ref = PinCell::borrow_mut(self.inner.as_ref().project_ref().timer);
-        // let _: () = PinMut::as_mut(&mut timer_ref);
+    pub fn advance_clock(&self, now: Instant) {
+        let mut inner = self.inner.borrow_mut();
+        inner.timer.advance_clock(now)
     }
 
     pub fn next_event(&self) -> Option<Rc<Event>> {
-        self.inner.as_ref().events.borrow().front().cloned()
+        let inner = self.inner.borrow();
+        inner.events.front().cloned()
     }
 
     pub fn pop_event(&self) -> Option<Rc<Event>> {
-        let mut events = self.inner.as_ref().events.borrow_mut();
-        if let Some(event) = events.pop_front() {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(event) = inner.events.pop_front() {
             info!(
                 "event popped for {} (len is now {}) => {:?}",
-                self.options().my_ipv4_addr,
-                events.len(),
+                inner.options.my_ipv4_addr,
+                inner.events.len(),
                 event
             );
             Some(event)
@@ -176,16 +172,15 @@ impl Runtime {
         }
     }
 
-    pub fn wait(&self, _how_long: Duration) -> impl Future<Output = ()> {
-        async {
-            unimplemented!();
-        }
+    pub fn wait(&self, how_long: Duration) -> impl Future<Output = ()> {
+        let mut inner = self.inner.borrow_mut();
+        let when = inner.timer.now + how_long;
+        inner.timer.wait_until(when)
     }
 
-    pub fn wait_until(&self, _when: Instant) -> impl Future<Output = ()> {
-        async {
-            unimplemented!();
-        }
+    pub fn wait_until(&self, when: Instant) -> impl Future<Output = ()> {
+        let mut inner = self.inner.borrow_mut();
+        inner.timer.wait_until(when)
     }
 }
 
@@ -193,8 +188,7 @@ impl Future for Runtime {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        // XXX: This is a mouthful.
-        let mut timer_ref = PinCell::borrow_mut(self.into_ref().get_ref().inner.as_ref().project_ref().timer);
-        Future::poll(PinMut::as_mut(&mut timer_ref), ctx)
+        let mut inner = self.get_mut().inner.borrow_mut();
+        Future::poll(Pin::new(&mut inner.timer), ctx)
     }
 }

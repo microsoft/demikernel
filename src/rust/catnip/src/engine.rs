@@ -31,7 +31,7 @@ impl Engine {
         Ok(Engine { rt, arp, ipv4 })
     }
 
-    pub fn options(&self) -> Rc<Options> {
+    pub fn options(&self) -> Options {
         self.rt.options()
     }
 

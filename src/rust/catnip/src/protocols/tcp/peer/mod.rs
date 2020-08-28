@@ -47,8 +47,7 @@ impl TcpPeerState {
             for i in ip::Port::first_private_port().into()..65535 {
                 ports.push(ip::Port::try_from(i).unwrap());
             }
-            let mut rng = rt.rng_mut();
-            ports.shuffle(&mut *rng);
+            rt.with_rng(|rng| ports.shuffle(rng));
             VecDeque::from(ports)
         };
 
@@ -58,8 +57,7 @@ impl TcpPeerState {
             for i in 1..u16::max_value() {
                 handles.push(TcpConnectionHandle::try_from(i).unwrap());
             }
-            let mut rng = rt.rng_mut();
-            handles.shuffle(&mut *rng);
+            rt.with_rng(|rng| handles.shuffle(rng));
             VecDeque::from(handles)
         };
 
