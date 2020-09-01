@@ -31,7 +31,6 @@ fn serialization() {
 #[test]
 fn ping() {
     // ensures that a ICMPv4 ping exchange succeeds.
-
     let t0 = Instant::now();
     let now = t0;
     let timeout = Duration::from_secs(1);
@@ -91,7 +90,6 @@ fn ping() {
 #[test]
 fn timeout() {
     // ensures that a ICMPv4 ping exchange succeeds.
-
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
     let mut alice = test::new_alice(now);
@@ -102,7 +100,10 @@ fn timeout() {
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout)).boxed_local();
+
     alice.advance_clock(now);
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
+
     match &*alice.pop_event().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
@@ -113,9 +114,7 @@ fn timeout() {
     }
 
     now += timeout;
-    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
-
-    now += Duration::from_micros(1);
+    alice.advance_clock(now);
     match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Err(Fail::Timeout {})) => (),
         x => panic!("expected `Fail::Timeout`, got `{:?}`", x),
