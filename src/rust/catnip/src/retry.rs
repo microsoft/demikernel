@@ -14,6 +14,7 @@ impl Retry {
         if self.attempts_remaining == 0 {
             return None;
         }
+        self.attempts_remaining -= 1;
         let backoff = self.next_duration;
         self.next_duration *= 2;
         Some(backoff)

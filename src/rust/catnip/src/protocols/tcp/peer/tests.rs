@@ -117,8 +117,11 @@ fn establish_connection() -> EstablishedConnection {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port)).boxed_local();
+
+    alice.advance_clock(now);
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
+
     let (tcp_syn, private_port, alice_isn) = {
-        alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
         let bytes = match &*event {
             Event::Transmit(segment) => segment.borrow().to_vec(),
@@ -163,6 +166,10 @@ fn establish_connection() -> EstablishedConnection {
     let now = now + Duration::from_micros(1);
     alice.receive(&tcp_syn_ack).unwrap();
     alice.advance_clock(now);
+    let alice_cxn_handle = match Future::poll(fut.as_mut(), &mut ctx) {
+        Poll::Ready(Ok(h)) => h,
+        e => panic!("got unanticipated event `{:?}`", e),
+    };
     let event = alice.pop_event().unwrap();
     let tcp_ack = {
         let bytes = match &*event {
@@ -192,11 +199,6 @@ fn establish_connection() -> EstablishedConnection {
     let bob_cxn_handle = match &*event {
         Event::IncomingTcpConnection(h) => *h,
         e => panic!("got unanticipated event `{:?}`", e),
-    };
-
-    let alice_cxn_handle = match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Ok(h)) => h,
-        x => panic!("Unexpected result: {:?}", x),
     };
     info!(
         "connection established; alice isn = {:?}, bob isn = {:?}",
@@ -560,7 +562,11 @@ fn syn_retry() {
     let mut fut = alice
         .tcp_connect(ipv4::Endpoint::new(*test::bob_ipv4_addr(), bob_port))
         .boxed_local();
+
+    now += Duration::from_micros(10);
     alice.advance_clock(now);
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
+
     let event = alice.pop_event().unwrap();
     match &*event {
         Event::Transmit(bytes) => {
@@ -574,10 +580,9 @@ fn syn_retry() {
     for i in 0..(retries - 1) {
         let timeout = retry.fail().unwrap();
         now += timeout;
+        alice.advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("syn_retry(): retry #{}", i + 1);
-        now += Duration::from_micros(1);
-        alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
         match &*event {
             Event::Transmit(bytes) => {
