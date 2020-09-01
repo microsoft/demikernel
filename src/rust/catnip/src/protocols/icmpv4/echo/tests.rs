@@ -12,6 +12,7 @@ use std::{
     iter,
     time::{Duration, Instant},
 };
+use must_let::must_let;
 
 #[test]
 fn serialization() {
@@ -53,10 +54,8 @@ fn ping() {
     let ping_request = {
         alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
-        let bytes = match &*event {
-            Event::Transmit(bytes) => bytes.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        };
+        must_let!(let Event::Transmit(bytes) = &*event);
+        let bytes = bytes.borrow().to_vec();
 
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Request);
@@ -69,10 +68,8 @@ fn ping() {
     let ping_reply = {
         bob.advance_clock(now);
         let event = bob.pop_event().unwrap();
-        let bytes = match &*event {
-            Event::Transmit(bytes) => bytes.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        };
+        must_let!(let Event::Transmit(bytes) = &*event);
+        let bytes = bytes.borrow().to_vec();
 
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Reply);
@@ -104,19 +101,13 @@ fn timeout() {
     alice.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    match &*alice.pop_event().unwrap() {
-        Event::Transmit(bytes) => {
-            let bytes = bytes.borrow().to_vec();
-            let echo = Icmpv4Echo::attach(bytes.as_slice()).unwrap();
-            assert_eq!(echo.op(), Icmpv4EchoOp::Request);
-        }
-        e => panic!("got unanticipated event `{:?}`", e),
-    }
+    let event = alice.pop_event().unwrap();
+    must_let!(let Event::Transmit(bytes) = &*event);
+    let bytes = bytes.borrow().to_vec();
+    let echo = Icmpv4Echo::attach(bytes.as_slice()).unwrap();
+    assert_eq!(echo.op(), Icmpv4EchoOp::Request);
 
     now += timeout;
     alice.advance_clock(now);
-    match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Err(Fail::Timeout {})) => (),
-        x => panic!("expected `Fail::Timeout`, got `{:?}`", x),
-    }
+    must_let!(let Poll::Ready(Err(Fail::Timeout {})) = Future::poll(fut.as_mut(), &mut ctx));
 }

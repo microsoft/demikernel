@@ -16,6 +16,7 @@ use std::{
     iter,
     time::{Duration, Instant},
 };
+use must_let::must_let;
 
 #[test]
 fn unicast() {
@@ -47,19 +48,13 @@ fn unicast() {
         text.clone(),
     ).boxed_local();
     let now = now + Duration::from_micros(1);
-    match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(..) => (),
-        x => panic!("Unexpected result: {:?}", x),
-    }
+    must_let!(let Poll::Ready(..) = Future::poll(fut.as_mut(), &mut ctx));
 
     let udp_datagram = {
         alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
-        let bytes = match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        };
-
+        must_let!(let Event::Transmit(datagram) = &*event);
+        let bytes = datagram.borrow().to_vec();
         let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
     };
@@ -68,18 +63,14 @@ fn unicast() {
     bob.receive(&udp_datagram).unwrap();
     bob.advance_clock(now);
     let event = bob.pop_event().unwrap();
-    match &*event {
-        Event::UdpDatagramReceived(datagram) => {
-            assert_eq!(
-                datagram.src_ipv4_addr.unwrap(),
-                *test::alice_ipv4_addr()
-            );
-            assert_eq!(datagram.src_port.unwrap(), alice_port);
-            assert_eq!(datagram.dest_port.unwrap(), bob_port);
-            assert_eq!(text.as_slice(), &datagram.payload[..text.len()]);
-        }
-        e => panic!("got unanticipated event `{:?}`", e),
-    }
+    must_let!(let Event::UdpDatagramReceived(datagram) = &*event);
+    assert_eq!(
+        datagram.src_ipv4_addr.unwrap(),
+        *test::alice_ipv4_addr()
+    );
+    assert_eq!(datagram.src_port.unwrap(), alice_port);
+    assert_eq!(datagram.dest_port.unwrap(), bob_port);
+    assert_eq!(text.as_slice(), &datagram.payload[..text.len()]);
 }
 
 #[test]
@@ -113,11 +104,8 @@ fn destination_port_unreachable() {
     let udp_datagram = {
         alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
-        let bytes = match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        };
-
+        must_let!(let Event::Transmit(datagram) = &*event);
+        let bytes = datagram.borrow().to_vec();
         let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
     };
@@ -127,11 +115,8 @@ fn destination_port_unreachable() {
     bob.advance_clock(now);
     let event = bob.pop_event().unwrap();
     let icmpv4_datagram = {
-        let bytes = match &*event {
-            Event::Transmit(bytes) => bytes.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        };
-
+        must_let!(let Event::Transmit(bytes) = &*event);
+        let bytes = bytes.borrow().to_vec();
         let _ = icmpv4::Error::attach(&bytes).unwrap();
         bytes
     };
@@ -140,21 +125,13 @@ fn destination_port_unreachable() {
     alice.receive(&icmpv4_datagram).unwrap();
     alice.advance_clock(now);
     let event = alice.pop_event().unwrap();
-    match &*event {
-        Event::Icmpv4Error {
-            ref id,
-            ref next_hop_mtu,
-            ..
-        } => {
-            assert_eq!(
-                id,
-                &icmpv4::ErrorId::DestinationUnreachable(
-                    icmpv4::DestinationUnreachable::DestinationPortUnreachable
-                )
-            );
-            assert_eq!(next_hop_mtu, &0u16);
-            // todo: validate `context`
-        }
-        e => panic!("got unanticipated event `{:?}`", e),
-    }
+    must_let!(let Event::Icmpv4Error { ref id, ref next_hop_mtu, .. } = &*event);
+    assert_eq!(
+        id,
+        &icmpv4::ErrorId::DestinationUnreachable(
+            icmpv4::DestinationUnreachable::DestinationPortUnreachable
+        )
+    );
+    assert_eq!(next_hop_mtu, &0u16);
+    // todo: validate `context`
 }

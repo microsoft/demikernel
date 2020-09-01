@@ -12,6 +12,7 @@ use std::{
     io::Cursor,
     time::{Duration, Instant},
 };
+use must_let::must_let;
 
 #[test]
 fn immediate_reply() {
@@ -31,22 +32,15 @@ fn immediate_reply() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     alice.advance_clock(now);
-    let request = {
-        let event = alice.pop_event().unwrap();
-        match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        }
-    };
+    let event = alice.pop_event().unwrap();
+    must_let!(let Event::Transmit(datagram) = &*event);
+    let request = datagram.borrow().to_vec();
 
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    match bob.receive(&request) {
-        Err(Fail::Ignored { .. }) => (),
-        x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
-    }
+    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(&request));
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
@@ -59,13 +53,9 @@ fn immediate_reply() {
     );
 
     carrie.advance_clock(now);
-    let reply = {
-        let event = carrie.pop_event().unwrap();
-        match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        }
-    };
+    let event = carrie.pop_event().unwrap();
+    must_let!(let Event::Transmit(datagram) = &*event);
+    let reply = datagram.borrow().to_vec();
 
     info!("passing ARP reply back to alice...");
     alice.receive(&reply).unwrap();
@@ -75,10 +65,8 @@ fn immediate_reply() {
     );
     let now = now + Duration::from_micros(1);
     alice.advance_clock(now);
-    match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Ok(link_addr)) => assert_eq!(*test::carrie_link_addr(), link_addr),
-        x => panic!("Unexpected result: {:?}", x),
-    }
+    must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
+    assert_eq!(*test::carrie_link_addr(), link_addr);
 }
 
 #[test]
@@ -102,22 +90,17 @@ fn slow_reply() {
     alice.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    let request = {
-        let event = alice.pop_event().unwrap();
-        match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        }
-    };
+    let event = alice.pop_event().unwrap();
+    must_let!(let Event::Transmit(datagram) = &*event);
+    let request = datagram.borrow().to_vec();
+
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
     assert!(alice.pop_event().is_none());
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    match bob.receive(&request) {
-        Err(Fail::Ignored { .. }) => (),
-        x => panic!("expected Fail::Ignored {{}}, got `{:?}`", x),
-    }
+    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(&request));
+
     let cache = bob.export_arp_cache();
     assert!(cache.get(test::alice_ipv4_addr()).is_none());
 
@@ -128,14 +111,11 @@ fn slow_reply() {
         cache.get(test::alice_ipv4_addr()),
         Some(test::alice_link_addr())
     );
-    let reply = {
-        carrie.advance_clock(now);
-        let event = carrie.pop_event().unwrap();
-        match &*event {
-            Event::Transmit(datagram) => datagram.borrow().to_vec(),
-            e => panic!("got unanticipated event `{:?}`", e),
-        }
-    };
+
+    carrie.advance_clock(now);
+    let event = carrie.pop_event().unwrap();
+    must_let!(let Event::Transmit(datagram) = &*event);
+    let reply = datagram.borrow().to_vec();
 
     info!("passing ARP reply back to alice...");
     alice.receive(&reply).unwrap();
@@ -145,10 +125,8 @@ fn slow_reply() {
     );
     now += Duration::from_micros(1);
     alice.advance_clock(now);
-    match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Ok(link_addr)) => assert_eq!(*test::carrie_link_addr(), link_addr),
-        x => panic!("Unexpected result: {:?}", x),
-    }
+    must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
+    assert_eq!(*test::carrie_link_addr(), link_addr);
 }
 
 #[test]
@@ -164,40 +142,32 @@ fn no_reply() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
-
-    match &*alice.pop_event().unwrap() {
-        Event::Transmit(bytes) => {
-            let bytes = bytes.borrow().to_vec();
-            let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
-            let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
-            assert_eq!(arp.op, ArpOp::ArpRequest);
-        }
-        e => panic!("got unanticipated event `{:?}`", e),
-    }
+    let event = alice.pop_event().unwrap();
+    must_let!(let Event::Transmit(bytes) = &*event);
+    let bytes = bytes.borrow().to_vec();
+    let frame = ethernet2::Frame::attach(bytes.as_slice()).unwrap();
+    let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
+    assert_eq!(arp.op, ArpOp::ArpRequest);
 
     for i in 0..options.arp.retry_count {
         now += options.arp.request_timeout;
         alice.advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
-        match &*alice.pop_event().unwrap() {
-            Event::Transmit(bytes) => {
-                let bytes = bytes.borrow().to_vec();
-                let frame =
-                    ethernet2::Frame::attach(bytes.as_slice()).unwrap();
-                let arp =
-                    ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
-                assert_eq!(arp.op, ArpOp::ArpRequest);
-            }
-            e => panic!("got unanticipated event `{:?}`", e),
-        }
+        let event = alice.pop_event().unwrap();
+        must_let!(let Event::Transmit(bytes) = &*event);
+
+        let bytes = bytes.borrow().to_vec();
+        let frame =
+            ethernet2::Frame::attach(bytes.as_slice()).unwrap();
+        let arp =
+            ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
+        assert_eq!(arp.op, ArpOp::ArpRequest);
     }
 
     // timeout
     now += options.arp.request_timeout;
     alice.advance_clock(now);
-    match Future::poll(fut.as_mut(), &mut ctx) {
-        Poll::Ready(Err(Fail::Timeout {})) => (),
-        x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),
-    }
+
+    must_let!(let Poll::Ready(Err(Fail::Timeout {})) = Future::poll(fut.as_mut(), &mut ctx));
 }

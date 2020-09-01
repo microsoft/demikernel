@@ -33,3 +33,6 @@ serde_yaml = "0.8.12"
 spin = "0.5.2"
 fxhash = "0.2.1"
 mimalloc = { version = "0.1.19", default-features = false }
+
+[dev-dependencies]
+must-let = { git = "https://github.com/sujayakar/must-let" }
