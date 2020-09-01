@@ -161,7 +161,7 @@ impl TcpPeerState {
 
     async fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> Result<()> {
         let (arp, rt, remote_ipv4_addr) = {
-            let state = state.borrow(); info!("borrowing Line 163");
+            let state = state.borrow();
             let rt = state.rt.clone();
             let mut bytes = bytes.borrow_mut();
             let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
@@ -187,7 +187,7 @@ impl TcpPeerState {
     async fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> Result<()> {
         trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
         let (cxn, rt) = {
-            let mut state = state.borrow_mut(); info!("borrowing Line 189");
+            let mut state = state.borrow_mut();
             let rt = state.rt.clone();
             (state.new_connection(cxnid.clone(), rt.clone())?, rt)
         };
@@ -203,7 +203,7 @@ impl TcpPeerState {
 
         let remote_isn = ack_segment.seq_num;
         let (bytes, handle) = {
-            let mut cxn = cxn.borrow_mut(); info!("borrowing Line 206");
+            let mut cxn = cxn.borrow_mut();
             cxn.set_remote_isn(remote_isn);
             cxn.negotiate_mss(ack_segment.mss)?;
             cxn.set_remote_receive_window_size(ack_segment.window_size)?;
@@ -221,7 +221,7 @@ impl TcpPeerState {
 
     async fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> Result<()> {
         let (cxn, rt) = {
-            let mut state = state.borrow_mut(); info!("borrowing Line 224");
+            let mut state = state.borrow_mut();
             let rt = state.rt.clone();
             let options = rt.options();
 
@@ -241,7 +241,7 @@ impl TcpPeerState {
 
             let cxn = state.new_connection(cxnid.clone(), rt.clone())?;
             {
-                let mut cxn = cxn.borrow_mut(); info!("borrowing Line 244");
+                let mut cxn = cxn.borrow_mut();
                 cxn.negotiate_mss(syn_segment.mss)?;
                 cxn.set_remote_isn(syn_segment.seq_num);
             }
@@ -259,7 +259,7 @@ impl TcpPeerState {
         {
             // SYN+ACK packet has been acknowledged; increment the sequence
             // number and notify the caller.
-            let mut cxn = cxn.borrow_mut(); info!("borrowing Line 263");
+            let mut cxn = cxn.borrow_mut();
             cxn.set_remote_receive_window_size(ack_segment.window_size)?;
             cxn.incr_seq_num();
             rt.emit_event(Event::IncomingTcpConnection(cxn.get_handle()));
@@ -271,7 +271,7 @@ impl TcpPeerState {
     async fn handshake(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<Rc<TcpSegment>> {
         trace!("TcpRuntime::handshake()");
         let (bytes, ack_was_sent, expected_ack_num) = {
-            let cxn = cxn.borrow(); info!("borrowing Line 275");
+            let cxn = cxn.borrow();
             let segment = TcpSegment::default()
                 .connection(&cxn)
                 .mss(cxn.get_mss())
@@ -284,7 +284,7 @@ impl TcpPeerState {
         TcpPeerState::cast(state.clone(), bytes).await?;
         loop {
             let segment = loop {
-                info!("borrowing Line 288");
+
                 let r = { cxn.borrow_mut().receive_queue_mut().pop_front() };
                 match r {
                     Some(s) => break s,
@@ -315,7 +315,7 @@ impl TcpPeerState {
     ) -> Result<()>
     {
         let (rst_segment, cxn_handle, rt) = {
-            let mut state = state.borrow_mut(); info!("borrowing Line 317");
+            let mut state = state.borrow_mut();
             let cxn = if let Some(cxn) = state.connections.remove(&cxnid) {
                 cxn
             } else {
@@ -324,7 +324,7 @@ impl TcpPeerState {
                 });
             };
 
-            let cxn = cxn.borrow(); info!("borrowing Line 326");
+            let cxn = cxn.borrow();
             let rst_segment = TcpSegment::default().connection(&cxn).rst();
             let local_port = cxnid.local.port();
             if local_port.is_private() {
@@ -346,7 +346,7 @@ impl TcpPeerState {
 
     pub async fn on_connection_established(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<()> {
         trace!("TcpRuntime::on_connection_established(...)::coroutine",);
-        let cxnid = cxn.borrow().get_id().clone(); info!("borrowing Line 348");
+        let cxnid = cxn.borrow().get_id().clone();
         let error = TcpPeerState::main_connection_loop(state.clone(), cxn.clone()).await.err();
         TcpPeerState::close_connection(state, cxnid, error, true).await?;
         Ok(())
@@ -358,12 +358,12 @@ impl TcpPeerState {
     ) -> Result<()> {
         trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
-        let rt = state.borrow().rt.clone(); info!("borrowing Line 360");
+        let rt = state.borrow().rt.clone();
         let options = rt.options();
         let mut ack_owed_since = None;
         loop {
             {
-                let mut cxn = cxn.borrow_mut(); info!("borrowing Line 365");
+                let mut cxn = cxn.borrow_mut();
                 while let Some(segment) = cxn.receive_queue_mut().pop_front() {
                     if segment.rst {
                         return Err(Fail::ConnectionAborted {});
@@ -393,7 +393,7 @@ impl TcpPeerState {
 
                 cxn.enqueue_retransmissions()?;
             }
-            while let Some(s) = cxn.borrow_mut().try_get_next_transmittable_segment() { info!("borrowing Line 395");
+            while let Some(s) = cxn.borrow_mut().try_get_next_transmittable_segment() {
                 ack_owed_since = None;
                 TcpPeerState::cast(state.clone(), s).await?;
             }
@@ -414,7 +414,7 @@ impl TcpPeerState {
                          ACK...",
                         options.my_ipv4_addr,
                     );
-                    let pure_ack = TcpSegment::default().connection(&cxn.borrow()); info!("borrowing Line 416");
+                    let pure_ack = TcpSegment::default().connection(&cxn.borrow());
                     let bytes = Rc::new(RefCell::new(pure_ack.encode()));
                     TcpPeerState::cast(state.clone(), bytes).await?;
                     ack_owed_since = None;
@@ -446,7 +446,7 @@ impl TcpPeer {
             self.state.borrow().rt.options().my_ipv4_addr,
             segment
         );
-        info!("borrowing Line 445");
+
         let local_ipv4_addr = segment.dest_ipv4_addr.unwrap();
         // i haven't yet seen anything that explicitly disallows categories of
         // IP addresses but it seems sensible to drop datagrams where the
@@ -472,13 +472,13 @@ impl TcpPeer {
             details: "source port is zero",
         })?;
 
-        info!("borrowing Line 474");
+
         {
             let s = self.state.borrow_mut();
             if s.open_ports.contains(&local_port) {
                 if segment.syn && !segment.ack && !segment.rst {
                     let future = TcpPeerState::new_passive_connection(self.state.clone(), segment);
-                    s.add_background_work("new_passive_connection", future); info!("borrowing Line 476");
+                    s.add_background_work("new_passive_connection", future);
                     return Ok(());
                 }
 
@@ -487,10 +487,10 @@ impl TcpPeer {
                     remote: ipv4::Endpoint::new(remote_ipv4_addr, remote_port),
                 };
 
-                info!("borrowing Line 485");
+
                 if let Some(cxn) = s.connections.get(&cxnid)
                 {
-                    cxn.borrow_mut().receive_queue_mut().push_back(segment); info!("borrowing Line 488");
+                    cxn.borrow_mut().receive_queue_mut().push_back(segment);
                     return Ok(());
                 } else {
                     return Err(Fail::ResourceNotFound {
@@ -523,7 +523,7 @@ impl TcpPeer {
         let bytes = Rc::new(RefCell::new(segment.encode()));
 
         let future = TcpPeerState::cast(self.state.clone(), bytes);
-        self.state.borrow_mut().add_background_work("cast", future); info!("borrowing Line 520");
+        self.state.borrow_mut().add_background_work("cast", future);
 
         Ok(())
     }
@@ -534,7 +534,7 @@ impl TcpPeer {
         async move {
             trace!("TcpPeer::connect({:?})::coroutine", remote_endpoint);
             let cxnid = {
-                let mut state = state.borrow_mut(); info!("borrowing Line 531");
+                let mut state = state.borrow_mut();
                 let rt = state.rt.clone();
                 let options = rt.options();
                 let cxnid = Rc::new(TcpConnectionId {
@@ -548,9 +548,9 @@ impl TcpPeer {
             };
             match TcpPeerState::new_active_connection(state.clone(), cxnid.clone()).await {
                 Ok(()) => {
-                    let state_ = state.borrow_mut(); info!("borrowing Line 545");
+                    let state_ = state.borrow_mut();
                     let cxn = state_.connections.get(&cxnid).unwrap().clone();
-                    let handle = cxn.borrow().get_handle(); info!("borrowing Line 549");
+                    let handle = cxn.borrow().get_handle();
                     let future = TcpPeerState::on_connection_established(state.clone(), cxn);
                     state_.add_background_work("on_connection_established", future);
                     Ok(handle)
@@ -565,7 +565,7 @@ impl TcpPeer {
 
 
     pub fn listen(&mut self, port: ip::Port) -> Result<()> {
-        let mut state = self.state.borrow_mut(); info!("borrowing Line 562");
+        let mut state = self.state.borrow_mut();
         if state.open_ports.contains(&port) {
             return Err(Fail::ResourceBusy {
                 details: "port already in use",
@@ -581,15 +581,15 @@ impl TcpPeer {
         handle: TcpConnectionHandle,
         bytes: Vec<u8>,
     ) -> Result<()> {
-        let state = self.state.borrow(); info!("borrowing Line 580");
-        let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut(); info!("borrowing Line 579");
+        let state = self.state.borrow();
+        let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();
         cxn.write(bytes);
         Ok(())
     }
 
     pub fn peek(&self, handle: TcpConnectionHandle) -> Result<Rc<Vec<u8>>> {
-        let state = self.state.borrow(); info!("borrowing Line 587");
-        let cxn = state.get_connection_given_handle(handle)?.borrow(); info!("borrowing Line 588");
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
         if let Some(bytes) = cxn.peek() {
             Ok(bytes.clone())
         } else {
@@ -603,8 +603,8 @@ impl TcpPeer {
         &mut self,
         handle: TcpConnectionHandle,
     ) -> Result<Rc<Vec<u8>>> {
-        let state = self.state.borrow(); info!("borrowing Line 602");
-        let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut(); info!("borrowing Line 601");
+        let state = self.state.borrow();
+        let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();
         if let Some(bytes) = cxn.read() {
             Ok(bytes)
         } else {
@@ -615,14 +615,14 @@ impl TcpPeer {
     }
 
     pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
-        let state = self.state.borrow(); info!("borrowing Line 614");
-        let cxn = state.get_connection_given_handle(handle)?.borrow(); info!("borrowing Line 615");
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_mss())
     }
 
     pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
-        let state = self.state.borrow(); info!("borrowing Line 620");
-        let cxn = state.get_connection_given_handle(handle)?.borrow(); info!("borrowing Line 621");
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_rto())
     }
 
@@ -630,8 +630,8 @@ impl TcpPeer {
         &self,
         handle: TcpConnectionHandle,
     ) -> Result<Rc<TcpConnectionId>> {
-        let state = self.state.borrow(); info!("borrowing Line 629");
-        let cxn = state.get_connection_given_handle(handle)?.borrow(); info!("borrowing Line 630");
+        let state = self.state.borrow();
+        let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_id().clone())
     }
 }
@@ -640,7 +640,6 @@ impl Future for TcpPeer {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        info!("borrowing Line 637");
         let background_work = { self.get_mut().state.borrow().background_work.clone() };
         let mut background_work = background_work.borrow_mut();
         loop {
