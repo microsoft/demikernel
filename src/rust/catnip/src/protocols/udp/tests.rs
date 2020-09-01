@@ -104,15 +104,11 @@ fn destination_port_unreachable() {
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.udp_cast(
-        *test::bob_ipv4_addr(),
-        bob_port,
-        alice_port,
-        text.clone(),
-    ).boxed_local();
+    let mut fut = alice.udp_cast(*test::bob_ipv4_addr(), bob_port, alice_port, text.clone()).boxed_local();
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());
+
     let now = now + Duration::from_micros(1);
     bob.advance_clock(now);
-    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let udp_datagram = {
         alice.advance_clock(now);
