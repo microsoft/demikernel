@@ -84,7 +84,7 @@ fn immediate_reply() {
 #[test]
 fn slow_reply() {
     // tests to ensure that an are request results in a reply.
-    let now = Instant::now();
+    let mut now = Instant::now();
     let mut alice = test::new_alice(now);
     let mut bob = test::new_bob(now);
     let mut carrie = test::new_carrie(now);
@@ -96,21 +96,21 @@ fn slow_reply() {
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
+
     // move time forward enough to trigger a timeout.
-    let now = now + Duration::from_secs(1);
+    now += Duration::from_secs(1);
+    alice.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = {
-        alice.advance_clock(now);
         let event = alice.pop_event().unwrap();
         match &*event {
             Event::Transmit(datagram) => datagram.borrow().to_vec(),
             e => panic!("got unanticipated event `{:?}`", e),
         }
     };
-
-    debug!("???");
     assert!(request.len() >= ethernet2::MIN_PAYLOAD_SIZE);
+    assert!(alice.pop_event().is_none());
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
@@ -143,7 +143,7 @@ fn slow_reply() {
         "ARP cache contains: \n{}",
         serde_yaml::to_string(&alice.export_arp_cache()).unwrap()
     );
-    let now = now + Duration::from_micros(1);
+    now += Duration::from_micros(1);
     alice.advance_clock(now);
     match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Ok(link_addr)) => assert_eq!(*test::carrie_link_addr(), link_addr),
@@ -163,8 +163,8 @@ fn no_reply() {
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice.arp_query(*test::carrie_ipv4_addr()).boxed_local();
+    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    alice.advance_clock(now);
     match &*alice.pop_event().unwrap() {
         Event::Transmit(bytes) => {
             let bytes = bytes.borrow().to_vec();
@@ -177,11 +177,9 @@ fn no_reply() {
 
     for i in 0..options.arp.retry_count {
         now += options.arp.request_timeout;
-
+        alice.advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
-        now += Duration::from_micros(1);
-        alice.advance_clock(now);
         match &*alice.pop_event().unwrap() {
             Event::Transmit(bytes) => {
                 let bytes = bytes.borrow().to_vec();
@@ -197,8 +195,7 @@ fn no_reply() {
 
     // timeout
     now += options.arp.request_timeout;
-    assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
-    now += Duration::from_micros(1);
+    alice.advance_clock(now);
     match Future::poll(fut.as_mut(), &mut ctx) {
         Poll::Ready(Err(Fail::Timeout {})) => (),
         x => panic!("expected Fail::Timeout {{}}, got `{:?}`", x),

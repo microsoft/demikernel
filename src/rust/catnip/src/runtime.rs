@@ -70,7 +70,7 @@ impl Timer {
     }
 
     fn advance_clock(&mut self, now: Instant) {
-        assert!(now > self.now);
+        assert!(now >= self.now, "{:?} vs. {:?}", self.now, now);
         if let Some(record) = self.heap.peek() {
             if record.when <= now {
                 if let Some(w) = self.waker.take() {

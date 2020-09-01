@@ -57,6 +57,9 @@ impl ArpCache {
             .insert_with_ttl(ipv4_addr, record, ttl)
             .map(|r| r.link_addr);
         self.rmap.insert(link_addr, ipv4_addr);
+        if let Some(sender) = self.waiters.remove(&ipv4_addr) {
+            let _ = sender.send(link_addr);
+        }
         result
     }
 
@@ -69,7 +72,9 @@ impl ArpCache {
             ipv4_addr,
             link_addr,
         };
-
+        if let Some(sender) = self.waiters.remove(&ipv4_addr) {
+            let _ = sender.send(link_addr);
+        }
         let result = self.cache.insert(ipv4_addr, record).map(|r| r.link_addr);
         self.rmap.insert(link_addr, ipv4_addr);
         result

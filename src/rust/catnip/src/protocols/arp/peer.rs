@@ -136,7 +136,7 @@ impl<'a> ArpPeer {
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
-            for i in 0..options.arp.retry_count {
+            for i in 0..options.arp.retry_count + 1 {
                 rt.emit_event(Event::Transmit(bytes.clone()));
                 futures::select! {
                     link_addr = arp_response => {
