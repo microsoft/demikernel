@@ -18,7 +18,7 @@ eui48 = "1.0.0"
 flexi_logger = { version = "0.15.2", features = ["colors"] }
 float_duration = "0.3.3"
 futures = "0.3"
-futures-intrusive = "0.3"
+futures-intrusive = { git = "https://github.com/sujayakar/futures-intrusive", rev = "13b113fdc67594bd09912d78acc8f8212127537d" }
 lazy_static = "1.4.0"
 libc = "0.2.70"
 log = "0.4"
