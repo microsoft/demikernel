@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod rto;
+pub mod rto;
 mod window;
 
 use super::segment::{TcpSegment, TcpSegmentEncoder};

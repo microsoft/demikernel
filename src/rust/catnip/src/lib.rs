@@ -6,6 +6,7 @@
 #![feature(raw)]
 #![feature(try_blocks)]
 #![warn(clippy::all)]
+#![recursion_limit="512"]
 
 #[macro_use]
 extern crate num_derive;
