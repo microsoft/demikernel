@@ -74,7 +74,6 @@ impl<'a, T> Future for WatchFuture<'a, T> {
         let mut_self = unsafe { Pin::get_unchecked_mut(self) };
         let wait_node = &mut mut_self.wait_node;
 
-        // unsafe { channel.receive_or_register(&mut mut_self.wait_node, cx) };
         match wait_node.state {
             WatchState::Unregistered => {
                 wait_node.task = Some(cx.waker().clone());
