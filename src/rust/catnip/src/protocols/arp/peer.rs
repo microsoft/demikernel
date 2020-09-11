@@ -113,6 +113,10 @@ impl<'a> ArpPeer {
         }
     }
 
+    pub fn try_query(&self, ipv4_addr: Ipv4Addr) -> Option<MacAddress> {
+        self.cache.borrow().get_link_addr(ipv4_addr).cloned()
+    }
+
     pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output=Result<MacAddress>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();

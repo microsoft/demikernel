@@ -6,6 +6,7 @@
 // [ ] Options from https://man7.org/linux/man-pages/man7/tcp.7.html
 // [ ] Connection state machine
 
+use crate::protocols::tcp::segment::TcpSegment;
 use crate::collections::watched::WatchedValue;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -409,6 +410,69 @@ async fn acknowledger(receiver: Rc<Receiver>) -> ! {
         }
     }
 }
+
+async fn active_open() {
+    let handshake_timeout = Duration::from_secs(1);
+    let handshake_retries = 2;
+    let mss = 1024;
+
+    let syn_segment = TcpSegment::default()
+    // .connection(..)
+        .mss(mss)
+        .syn();
+
+    // Send a SYN packet, exponentially retrying
+    let syn_tx = async {
+        for i in 0..handshake_retries {
+            syn_segment.cast();
+            rt.timeout(handshake_timeout).await?;
+        }
+        Err(..)
+    };
+    // Await a SYN+ACK packet, discarding irrelevant ones.
+    let syn_ack_rx = async {
+        while let Some(segment) = incoming_segments.receive().await {
+            if segment.rst {
+                return Err(..);
+            }
+            if segment.ack && segment.syn == syn_segment.syn && segment.ack_num == syn_segment.seq_num + Wrapping(1) {
+                return Some(segment);
+            }
+        }
+        Err(..)
+    };
+
+    // Set remote isn
+    // Negotiate MSS (?)
+    // Set remote receive window size
+    // incr seq
+    // Send ACK packet
+    let segment = TcpSegment::default();
+
+    // Create ESTABLISHED state
+
+    // Process incoming segments (?) and feed them into the stack.
+    let mut sender = Some(sender);
+    let mut receiver = Some(receiver);
+
+    while let Some(segment) = incoming_segments.receive().await {
+        if segment.rst {
+        }
+    }
+}
+
+enum ConnectionState {
+    Closed,
+
+    Connecting { connect_future: () },
+    Established { sender: Sender, receiver: Receiver },
+
+    CloseWait { sender: Sender },
+    FinWait { receiver: Receiver },
+
+    TimeWait,
+}
+
 
 async fn connection() {
     let sender_st: Rc<Sender> = unimplemented!();

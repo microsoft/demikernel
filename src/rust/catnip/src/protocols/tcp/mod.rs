@@ -4,7 +4,7 @@
 mod connection;
 mod options;
 mod peer;
-mod segment;
+pub mod segment;
 
 pub use connection::{
     TcpConnectionHandle as ConnectionHandle, TcpConnectionId as ConnectionId,
@@ -16,4 +16,4 @@ pub use segment::TcpSegment as Segment;
 #[cfg(test)]
 pub use segment::MIN_MSS;
 
-mod tcp2;
+// mod tcp2;
