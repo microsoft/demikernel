@@ -5,6 +5,7 @@
 #![feature(never_type)]
 #![feature(raw)]
 #![feature(try_blocks)]
+#![feature(type_alias_impl_trait)]
 #![warn(clippy::all)]
 #![recursion_limit="512"]
 

@@ -455,6 +455,17 @@ async fn active_open() {
     let mut sender = Some(sender);
     let mut receiver = Some(receiver);
 
+    loop {
+        futures::select_biased! {
+            segment = incoming_segments.receive() => {
+
+            },
+            _ = retransmitter => (),
+            _ = sender => (),
+            _ = acknowledger => (),
+        }
+    }
+
     while let Some(segment) = incoming_segments.receive().await {
         if segment.rst {
         }
