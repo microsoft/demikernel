@@ -3,4 +3,7 @@
 mod peer;
 mod passive;
 mod active;
-mod rto;
+
+use std::num::Wrapping;
+
+pub type SeqNumber = Wrapping<u32>;
