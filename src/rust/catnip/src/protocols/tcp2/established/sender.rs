@@ -22,10 +22,10 @@ use futures::FutureExt;
 use futures::future::{self, Either};
 use super::receiver::ReceiverControlBlock;
 
-struct UnackedSegment {
-    bytes: Vec<u8>,
+pub struct UnackedSegment {
+    pub bytes: Vec<u8>,
     // Set to `None` on retransmission to implement Karn's algorithm.
-    initial_tx: Option<Instant>,
+    pub initial_tx: Option<Instant>,
 }
 
 pub struct SenderControlBlock {
