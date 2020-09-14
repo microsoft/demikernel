@@ -1,4 +1,5 @@
 use crate::protocols::{arp, ip, ipv4};
+use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
 use crate::event::Event;
@@ -15,8 +16,8 @@ use std::pin::Pin;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 
-use super::passive::PassiveSocket;
-use super::active::ActiveSocket;
+use super::passive_open::PassiveSocket;
+use super::established::ActiveSocket;
 
 pub struct PeerOuter {
     inner: Rc<RefCell<Peer>>,
@@ -32,7 +33,8 @@ impl PeerOuter {
         let fd = inner.alloc_fd();
 
         assert!(inner.sockets.insert(fd, port).is_none());
-        assert!(inner.passive.insert(port, PassiveSocket::new()).is_none());
+        unimplemented!();
+        // assert!(inner.passive.insert(port, PassiveSocket::new()).is_none());
 
         Ok(fd)
     }
@@ -43,24 +45,26 @@ impl PeerOuter {
         let inner = self.inner.clone();
         let future = async move {
             let r: Result<usize, Fail> = try {
-                let (fd_local_port, backlog_rx) = {
-                    let mut inner = inner.borrow_mut();
-                    let local_port = inner.sockets.get(&fd)
-                        .ok_or_else(|| Fail::ResourceNotFound { details: "Invalid FD" })?;
-                    let socket = inner.passive.get(local_port)
-                        .ok_or_else(|| Fail::Malformed { details: "Socket not listening for connections" })?;
-                    (*local_port, socket.backlog_rx.clone())
-                };
-                let (local_port, endpoint) = backlog_rx.receive().await
-                    .ok_or_else(|| Fail::ResourceNotFound { details: "Socket went away" })?;
-                assert_eq!(fd_local_port, local_port);
+                unimplemented!();
+                // let (fd_local_port, backlog_rx) = {
+                //     let mut inner = inner.borrow_mut();
+                //     let local_port = inner.sockets.get(&fd)
+                //         .ok_or_else(|| Fail::ResourceNotFound { details: "Invalid FD" })?;
+                //     let socket = inner.passive.get(local_port)
+                //         .ok_or_else(|| Fail::Malformed { details: "Socket not listening for connections" })?;
+                //     //(*local_port, socket.backlog_rx.clone())
+                // };
+                // let (local_port, endpoint) = backlog_rx.receive().await
+                //     .ok_or_else(|| Fail::ResourceNotFound { details: "Socket went away" })?;
+                // assert_eq!(fd_local_port, local_port);
 
-                let mut inner = inner.borrow_mut();
-                let socket = ActiveSocket::new();
-                let fd = inner.alloc_fd();
-                inner.sockets.insert(fd, local_port);
-                assert!(inner.active.insert((local_port, endpoint), socket).is_none());
-                fd
+                // let mut inner = inner.borrow_mut();
+                // let socket = ActiveSocket::new();
+                // let fd = inner.alloc_fd();
+                // inner.sockets.insert(fd, local_port);
+                // assert!(inner.active.insert((local_port, endpoint), socket).is_none());
+                // fd
+                inner.borrow_mut().alloc_fd()
             };
             let _ = tx.send(r);
         };
@@ -117,13 +121,16 @@ impl PeerOuter {
 
 pub struct Peer {
     arp: arp::Peer,
+    isn_generator: IsnGenerator,
 
     next_fd: usize,
 
     // FD -> local port
     sockets: HashMap<usize, ip::Port>,
 
+    // TODO: Change these to be (ipv4::Endpont, ipv4::Endpoint)
     passive: HashMap<ip::Port, PassiveSocket>,
+    connecting: HashMap<(ipv4::Endpoint, ipv4::Endpoint), ()>,
     active: HashMap<(ip::Port, ipv4::Endpoint), ActiveSocket>,
 
     requests: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,

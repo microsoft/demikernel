@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod isn_generator;
+pub mod isn_generator;
 
 #[cfg(test)]
 mod tests;

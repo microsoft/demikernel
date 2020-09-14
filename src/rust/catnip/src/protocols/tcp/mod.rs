@@ -3,7 +3,7 @@
 
 mod connection;
 mod options;
-mod peer;
+pub mod peer;
 pub mod segment;
 
 pub use connection::{
