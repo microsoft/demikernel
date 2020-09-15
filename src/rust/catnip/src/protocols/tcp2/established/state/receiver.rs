@@ -21,8 +21,15 @@ use super::rto::RtoCalculator;
 use futures::FutureExt;
 use futures::future::{self, Either};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReceiverState {
+    Open,
+    ReceivedFin,
+    AckdFin,
+}
+
 pub struct Receiver {
-    open: Cell<bool>,
+    pub state: WatchedValue<ReceiverState>,
 
     //                     |-----------------recv_window-------------------|
     //                base_seq_no             ack_seq_no             recv_seq_no
@@ -41,6 +48,19 @@ pub struct Receiver {
 }
 
 impl Receiver {
+    pub fn new(seq_no: SeqNumber, max_window_size: u32) -> Self {
+        Self {
+            state: WatchedValue::new(ReceiverState::Open),
+            base_seq_no: WatchedValue::new(seq_no),
+            recv_queue: RefCell::new(VecDeque::new()),
+            ack_seq_no: WatchedValue::new(seq_no),
+            recv_seq_no: WatchedValue::new(seq_no),
+            ack_deadline: WatchedValue::new(None),
+            max_window_size,
+
+        }
+    }
+
     pub fn window_size(&self) -> u32 {
         let Wrapping(bytes_outstanding) = self.recv_seq_no.get() - self.base_seq_no.get();
         self.max_window_size - bytes_outstanding
@@ -59,11 +79,10 @@ impl Receiver {
     }
 
     pub fn recv(&self) -> Result<Option<Vec<u8>>, Fail> {
-        if !self.open.get() {
-            return Err(Fail::ResourceNotFound { details: "Receiver closed" });
-        }
-
         if self.base_seq_no.get() == self.recv_seq_no.get() {
+            if self.state.get() != ReceiverState::Open {
+                return Err(Fail::ResourceNotFound { details: "Receiver closed" });
+            }
             return Ok(None);
         }
 
@@ -74,8 +93,17 @@ impl Receiver {
         Ok(Some(segment))
     }
 
+    pub fn queue_pure_ack(&self, when: Instant) {
+        self.ack_deadline.set(Some(when))
+    }
+
+    pub fn receive_fin(&self) {
+        // Even if we've already ACKd the FIN, we need to resend the ACK if we receive another FIN.
+        self.state.set(ReceiverState::ReceivedFin);
+    }
+
     pub fn receive_segment(&self, seq_no: SeqNumber, buf: Vec<u8>, now: Instant) -> Result<(), Fail> {
-        if !self.open.get() {
+        if self.state.get() != ReceiverState::Open {
             return Err(Fail::ResourceNotFound { details: "Receiver closed" });
         }
 

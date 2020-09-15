@@ -19,6 +19,13 @@ named!(
     )
 );
 named!(
+    wsc<TcpOption>,
+    map!(
+        tuple!(verify!(kind, |k| k == &3u8), len, call!(be_u8)),
+        |t| TcpOption::WindowScale(t.2)
+    )
+);
+named!(
     other<TcpOption>,
     map!(tuple!(verify!(kind, |k| k != &0u8), len), |t| {
         TcpOption::Other {

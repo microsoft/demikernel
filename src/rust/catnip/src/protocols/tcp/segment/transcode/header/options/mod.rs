@@ -29,6 +29,7 @@ pub enum TcpOptionKind {
     Eol = 0,
     Nop = 1,
     Mss = 2,
+    Wsc = 3,
 }
 
 impl TcpOptionKind {
@@ -37,6 +38,7 @@ impl TcpOptionKind {
             TcpOptionKind::Eol => 1,
             TcpOptionKind::Nop => 1,
             TcpOptionKind::Mss => 4,
+            TcpOptionKind::Wsc => 3,
         }
     }
 }
@@ -64,6 +66,7 @@ impl Into<u8> for TcpOptionKind {
 pub enum TcpOption {
     Nop,
     Mss(u16),
+    WindowScale(u8),
     Other { kind: u8, len: u8 },
 }
 
@@ -72,6 +75,7 @@ impl TcpOption {
         match self {
             TcpOption::Nop => Ok(TcpOptionKind::Nop),
             TcpOption::Mss(_) => Ok(TcpOptionKind::Mss),
+            TcpOption::WindowScale(_) => Ok(TcpOptionKind::Wsc),
             TcpOption::Other { kind, .. } => {
                 if &0u8 == kind {
                     Ok(TcpOptionKind::Eol)
@@ -102,6 +106,7 @@ impl TcpSegmentOptions {
                         TcpOptionKind::Eol => (),
                         TcpOptionKind::Nop => (),
                         TcpOptionKind::Mss => options.insert(o)?,
+                        TcpOptionKind::Wsc => options.insert(o)?,
                     }
                 }
 
@@ -125,9 +130,16 @@ impl TcpSegmentOptions {
                         details: "duplicate TCP option",
                     });
                 }
-
                 Ok(())
             }
+            TcpOptionKind::Wsc => {
+                if self.0.insert(kind, option).is_some() {
+                    return Err(Fail::Malformed {
+                        details: "duplicate TCP option",
+                    });
+                }
+                Ok(())
+            },
             _ => panic!(
                 "unexpected attempt to insert TCP option `{:?}` into \
                  `TcpSegmentOptions` struct",
@@ -170,6 +182,13 @@ impl TcpSegmentOptions {
         })
     }
 
+    pub fn get_window_scale(&self) -> Option<u8> {
+        self.0.get(&TcpOptionKind::Wsc).map(|o| match o {
+            TcpOption::WindowScale(n) => (*n).into(),
+            _ => unreachable!(),
+        })
+    }
+
     pub fn set_mss(&mut self, mss: usize) {
         assert!(mss >= MIN_MSS);
         assert!(mss <= MAX_MSS);
@@ -192,7 +211,7 @@ impl TcpSegmentOptions {
                 TcpOption::Mss(n) => {
                     bytes.write_u16::<NetworkEndian>(*n).unwrap()
                 }
-                _ => panic!(""),
+                e => panic!("Unsupported option: {:?}", e),
             };
 
             bytes_written += k.encoded_length();

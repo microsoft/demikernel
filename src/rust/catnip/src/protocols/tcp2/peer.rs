@@ -17,7 +17,6 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 
 use super::passive_open::PassiveSocket;
-use super::established::ActiveSocket;
 
 pub struct PeerOuter {
     inner: Rc<RefCell<Peer>>,
@@ -131,7 +130,7 @@ pub struct Peer {
     // TODO: Change these to be (ipv4::Endpont, ipv4::Endpoint)
     passive: HashMap<ip::Port, PassiveSocket>,
     connecting: HashMap<(ipv4::Endpoint, ipv4::Endpoint), ()>,
-    active: HashMap<(ip::Port, ipv4::Endpoint), ActiveSocket>,
+    // active: HashMap<(ip::Port, ipv4::Endpoint), ActiveSocket>,
 
     requests: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
 
@@ -162,9 +161,9 @@ impl Peer {
                 .ok_or_else(|| Fail::Malformed { details: "Missing source port" })?;
             let endpoint = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
 
-            if let Some(socket) = self.active.get_mut(&(local_port, endpoint)) {
-                return socket.receive_segment(segment)?;
-            }
+            // if let Some(socket) = self.active.get_mut(&(local_port, endpoint)) {
+            //     return socket.receive_segment(segment)?;
+            // }
             if let Some(socket) = self.passive.get_mut(&local_port) {
                 return socket.receive_segment(segment)?;
             }

@@ -1,12 +1,12 @@
 use std::rc::Rc;
 use std::cmp;
 use std::time::{Instant, Duration};
-use super::super::control::ControlBlock;
+use super::super::state::ControlBlock;
 use futures::future::{self, Either};
 use futures::FutureExt;
 use crate::fail::Fail;
 use std::num::Wrapping;
-use super::super::control::sender::UnackedSegment;
+use super::super::state::sender::UnackedSegment;
 
 pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     'top: loop {

@@ -104,7 +104,7 @@ impl PassiveSocket {
         let local_isn = unimplemented!();
         let max_window_size = unimplemented!();
 
-        // TODO: Support syncookies.
+        // TODO: Support syncookies and/or RFC 7413 fast open.
         async move {
             // Half of our process is sending out SYN+ACK packets, retrying every so often.
             let syn_ack_tx = async {

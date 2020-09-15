@@ -1,11 +1,5 @@
 mod background;
-mod sender;
-mod receiver;
-mod rto;
-mod control;
-
-use self::sender::SenderControlBlock;
-use self::receiver::ReceiverControlBlock;
+pub mod state;
 
 use crate::protocols::tcp2::SeqNumber;
 use crate::protocols::{arp, ip, ipv4};
@@ -31,75 +25,36 @@ use futures::FutureExt;
 use futures::future::{self, Either};
 use futures::StreamExt;
 
-pub struct ActiveSocket {
-    sender: Rc<SenderControlBlock>,
-    receiver: Rc<ReceiverControlBlock>,
+use self::state::ControlBlock;
+use self::background::{background, BackgroundFuture};
 
-    segments: mpsc::UnboundedSender<TcpSegment>,
+pub struct EstablishedSocket {
+    cb: Rc<ControlBlock>,
+    background_work: BackgroundFuture,
 }
 
-impl ActiveSocket {
-    pub fn new() -> Self {
-        unimplemented!();
+impl EstablishedSocket {
+    pub fn new(cb: ControlBlock) -> Self {
+        let cb = Rc::new(cb);
+        Self {
+            cb: cb.clone(),
+            background_work: background(cb),
+        }
     }
 
-    pub fn receive_segment(&self, segment: TcpSegment) -> Result<(), Fail> {
-        self.segments.unbounded_send(segment);
-        Ok(())
+    pub fn receive_segment(&self, segment: TcpSegment) {
+        self.cb.receive_segment(segment)
     }
 
     pub fn send(&self, buf: Vec<u8>) -> Result<(), Fail> {
-        self.sender.send(buf)
+        self.cb.sender.send(buf)
     }
 
     pub fn recv(&self) -> Result<Option<Vec<u8>>, Fail> {
-        self.receiver.recv()
+        self.cb.receiver.recv()
     }
 
-    async fn established(
-        sender: Rc<SenderControlBlock>,
-        receiver: Rc<ReceiverControlBlock>,
-        mut segments: mpsc::UnboundedReceiver<TcpSegment>,
-    ) {
-        // Now that the connection has been established, kick off our threads.
-        let acknowledger = ReceiverControlBlock::acknowledger(receiver.clone()).fuse();
-        futures::pin_mut!(acknowledger);
-
-        let retransmitter = SenderControlBlock::retransmitter(sender.clone()).fuse();
-        futures::pin_mut!(retransmitter);
-
-        let initial_sender = SenderControlBlock::initial_sender(sender.clone(), receiver.clone()).fuse();
-        futures::pin_mut!(initial_sender);
-
-        loop {
-            futures::select_biased! {
-                // These threads all never return, so we shouldn't ever expect them to
-                // finish. However, it's important that we still select on them so they get polled.
-                _ = acknowledger => unreachable!(),
-                _ = retransmitter => unreachable!(),
-                _ = initial_sender => unreachable!(),
-
-                segment = segments.next() => {
-                    let segment = segment.expect("TODO: Infinite stream");
-
-                    if segment.syn {
-                        unimplemented!();
-                    }
-                    if segment.rst {
-                        unimplemented!();
-                    }
-                    // TODO: Handle MSS?
-                    if segment.ack {
-                        sender.remote_ack(segment.ack_num);
-                    }
-                    // TODO: Fix window size type in segment.
-                    sender.update_remote_window(segment.window_size as u16);
-
-                    if segment.payload.len() > 0 {
-                        receiver.receive_segment(segment.seq_num, segment.payload.to_vec());
-                    }
-                },
-            }
-        }
+    pub fn close(&self) -> Result<(), Fail> {
+        self.cb.close()
     }
 }

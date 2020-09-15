@@ -27,8 +27,20 @@ pub struct UnackedSegment {
     pub initial_tx: Option<Instant>,
 }
 
+// TODO: Flesh out this half-closed state. The main idea here is to queue a single byte after
+// `unsent_seq_no` by setting the state to `Closed`, which also stops the user from sending any more
+// data. Then, we proceed as normal until `sent_seq == unsent_seq_no` and then send a FIN packet,
+// which can be directly acked.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SenderState {
+    Open,
+    Closed,
+    SentFin,
+    FinAckd,
+}
+
 pub struct Sender {
-    open: Cell<bool>,
+    pub state: WatchedValue<SenderState>,
 
     // TODO: Just use Figure 5 from RFC 793 here.
     //
@@ -56,8 +68,27 @@ pub struct Sender {
 }
 
 impl Sender {
+    pub fn new(seq_no: SeqNumber, window_size: u32, window_scale: u8, mss: usize) -> Self {
+        Self {
+            state: WatchedValue::new(SenderState::Open),
+
+            base_seq_no: WatchedValue::new(seq_no),
+            unacked_queue: RefCell::new(VecDeque::new()),
+            sent_seq_no: WatchedValue::new(seq_no),
+            unsent_queue: RefCell::new(VecDeque::new()),
+            unsent_seq_no: WatchedValue::new(seq_no),
+
+            window_size: WatchedValue::new(window_size),
+            window_scale,
+            mss,
+
+            retransmit_deadline: WatchedValue::new(None),
+            rto: RefCell::new(RtoCalculator::new()),
+        }
+    }
+
     pub fn send(&self, buf: Vec<u8>) -> Result<(), Fail> {
-        if !self.open.get() {
+        if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored { details: "Sender closed" });
         }
         let buf_len: u32 = buf.len().try_into()
@@ -67,13 +98,25 @@ impl Sender {
         Ok(())
     }
 
+    pub fn close(&self) -> Result<(), Fail> {
+        if self.state.get() != SenderState::Open {
+            return Err(Fail::Ignored { details: "Sender closed" });
+        }
+        self.state.set(SenderState::Closed);
+        Ok(())
+    }
+
     pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
-        if !self.open.get() {
-            return Err(Fail::Ignored { details: "Dropping remote ACK for closed sender" });
+        if self.state.get() == SenderState::SentFin {
+            assert_eq!(self.base_seq_no.get(), self.sent_seq_no.get());
+            assert_eq!(self.sent_seq_no.get(), self.unsent_seq_no.get());
+            self.state.set(SenderState::FinAckd);
+            return Ok(());
         }
 
         let base_seq_no = self.base_seq_no.get();
-        let sent_seq_no = self.sent_seq_no.get();
+        let mut sent_seq_no = self.sent_seq_no.get();
+        let unsent_seq_no = self.unsent_seq_no.get();
 
         let bytes_outstanding = sent_seq_no - base_seq_no;
         let bytes_acknowledged = ack_seq_no - base_seq_no;
@@ -145,12 +188,12 @@ impl Sender {
     }
 
     pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {
-        if !self.open.get() {
+        if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored { details: "Dropping remote window update for closed sender" });
         }
 
         // TODO: Is this the right check?
-        let window_size = (window_size_hdr as u32).checked_shl(window_size_hdr as u32)
+        let window_size = (window_size_hdr as u32).checked_shl(self.window_scale as u32)
             .ok_or_else(|| Fail::Ignored { details: "Window size overflow" })?;
         self.window_size.set(window_size);
 

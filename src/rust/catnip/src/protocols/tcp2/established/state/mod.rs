@@ -25,10 +25,9 @@ use crate::runtime::Runtime;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::time::{Instant, Duration};
-use super::rto::RtoCalculator;
+use self::rto::RtoCalculator;
 use futures::FutureExt;
 use futures::future::{self, Either};
-use super::receiver::ReceiverControlBlock;
 
 pub struct ControlBlock {
     pub local: ipv4::Endpoint,
@@ -41,6 +40,7 @@ pub struct ControlBlock {
     pub receiver: Receiver,
 }
 
+
 impl ControlBlock {
     pub fn receive_segment(&self, segment: TcpSegment) {
         if segment.syn {
@@ -49,14 +49,20 @@ impl ControlBlock {
         if segment.rst {
             unimplemented!();
         }
+        if segment.fin {
+            self.receiver.receive_fin();
+        }
         if segment.ack {
             self.sender.remote_ack(segment.ack_num, self.rt.now());
         }
-        // TODO: Handle MSS?
         self.sender.update_remote_window(segment.window_size as u16);
         if segment.payload.len() > 0 {
             self.receiver.receive_segment(segment.seq_num, segment.payload.to_vec(), self.rt.now());
         }
+    }
+
+    pub fn close(&self) -> Result<(), Fail> {
+        self.sender.close()
     }
 
     pub fn tcp_segment(&self) -> TcpSegment {

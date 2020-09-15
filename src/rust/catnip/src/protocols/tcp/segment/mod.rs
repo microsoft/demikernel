@@ -29,7 +29,9 @@ pub struct TcpSegment {
     pub syn: bool,
     pub ack: bool,
     pub rst: bool,
+    pub fin: bool,
     pub mss: Option<usize>,
+    pub window_scale: Option<u8>,
     pub payload: Rc<Vec<u8>>,
 }
 
@@ -84,6 +86,11 @@ impl TcpSegment {
 
     pub fn syn(mut self) -> TcpSegment {
         self.syn = true;
+        self
+    }
+
+    pub fn fin(mut self) -> TcpSegment {
+        self.fin = true;
         self
     }
 
@@ -195,9 +202,11 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
         let syn = tcp_header.syn();
         let ack = tcp_header.ack();
         let rst = tcp_header.rst();
+        let fin = tcp_header.fin();
         let options = tcp_header.options();
         let mss = options.get_mss();
         let window_size = usize::from(tcp_header.window_size());
+        let window_scale = options.get_window_scale();
 
         let ipv4_header = decoder.ipv4().header();
         let dest_ipv4_addr = ipv4_header.dest_addr();
@@ -222,7 +231,9 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
             ack,
             rst,
             mss,
+            fin,
             payload,
+            window_scale,
         })
     }
 }

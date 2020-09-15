@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use super::super::control::ControlBlock;
+use super::super::state::ControlBlock;
 use futures::future::{self, Either};
 use futures::FutureExt;
 use crate::fail::Fail;
