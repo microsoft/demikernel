@@ -25,12 +25,9 @@ use super::established::EstablishedSocket;
 use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
+use super::constants::FALLBACK_MSS;
 
 type BackgroundFuture = impl Future<Output = Result<EstablishedSocket, Fail>>;
-
-// from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch13.html):
-// > if no MSS option is provided, a default value of 536 bytes is used.
-pub const FALLBACK_MSS: usize = 536;
 
 pub struct ActiveOpenSocket {
     local_isn: SeqNumber,
@@ -46,6 +43,27 @@ pub struct ActiveOpenSocket {
 }
 
 impl ActiveOpenSocket {
+    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: Runtime, arp: arp::Peer) -> Self {
+        let future = Self::background(
+            local_isn,
+            local.clone(),
+            remote.clone(),
+            rt.clone(),
+            arp.clone(),
+        );
+        // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
+        Self {
+            local_isn,
+            local,
+            remote,
+            rt,
+            arp,
+
+            future,
+            result: None,
+        }
+    }
+
     pub fn receive_segment(&mut self, segment: TcpSegment) {
         if segment.rst {
             self.result = Some(Err(Fail::ConnectionRefused {}));
@@ -53,6 +71,27 @@ impl ActiveOpenSocket {
         }
         let expected_seq = self.local_isn + Wrapping(1);
         if segment.ack && segment.syn && segment.ack_num == expected_seq {
+            // Acknowledge the SYN+ACK segment.
+            let remote_link_addr = match self.arp.try_query(self.remote.address()) {
+                Some(r) => r,
+                None => panic!("TODO: Clean up ARP query control flow"),
+            };
+            let remote_seq_num = segment.seq_num + Wrapping(1);
+            let ack_segment = TcpSegment::default()
+                .src_ipv4_addr(self.local.address())
+                .src_port(self.local.port())
+                .dest_ipv4_addr(self.remote.address())
+                .dest_port(self.remote.port())
+                .ack(remote_seq_num);
+            let mut segment_buf = ack_segment.encode();
+            let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
+            encoder.ipv4().header().src_addr(self.rt.options().my_ipv4_addr);
+            let mut frame_header = encoder.ipv4().frame().header();
+            frame_header.src_addr(self.rt.options().my_link_addr);
+            frame_header.dest_addr(remote_link_addr);
+            let _ = encoder.seal().expect("TODO");
+            self.rt.emit_event(Event::Transmit(Rc::new(RefCell::new(segment_buf))));
+
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment.window_size.checked_shl(window_scale as u32)
                 .expect("TODO: Window size overflow")
@@ -72,14 +111,9 @@ impl ActiveOpenSocket {
                 mss,
             );
             let receiver = Receiver::new(
-                segment.seq_num + Wrapping(1),
+                remote_seq_num,
                 self.rt.options().tcp.receive_window_size as u32,
             );
-            // Queue a pure ACK immediately for the received SYN+ACK.
-            // TODO: It's a little sketch that we're completing the `connect` call before sending
-            // the third part of the handshake.
-            receiver.queue_pure_ack(self.rt.now());
-
             let cb = ControlBlock {
                 local: self.local.clone(),
                 remote: self.remote.clone(),
@@ -98,8 +132,8 @@ impl ActiveOpenSocket {
         local_isn: SeqNumber,
         local: ipv4::Endpoint,
         remote: ipv4::Endpoint,
-        arp: arp::Peer,
         rt: Runtime,
+        arp: arp::Peer,
     ) -> BackgroundFuture {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);

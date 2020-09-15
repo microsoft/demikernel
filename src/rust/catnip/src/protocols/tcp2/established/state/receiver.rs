@@ -93,10 +93,6 @@ impl Receiver {
         Ok(Some(segment))
     }
 
-    pub fn queue_pure_ack(&self, when: Instant) {
-        self.ack_deadline.set(Some(when))
-    }
-
     pub fn receive_fin(&self) {
         // Even if we've already ACKd the FIN, we need to resend the ACK if we receive another FIN.
         self.state.set(ReceiverState::ReceivedFin);

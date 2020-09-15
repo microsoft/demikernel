@@ -6,6 +6,8 @@ use crate::prelude::*;
 use crc::{crc32, Hasher32};
 use rand::Rng;
 use std::{hash::Hasher, num::Wrapping};
+use crate::protocols::ipv4;
+use crate::protocols::tcp2::SeqNumber;
 
 pub struct IsnGenerator {
     nonce: u32,
@@ -18,6 +20,19 @@ impl IsnGenerator {
             nonce: rt.with_rng(|rng| rng.gen()),
             counter: Wrapping(0),
         }
+    }
+
+    pub fn generate(&mut self, local: &ipv4::Endpoint, remote: &ipv4::Endpoint) -> SeqNumber {
+        let mut hash = crc32::Digest::new(crc32::IEEE);
+        hash.write_u32(remote.address().into());
+        hash.write_u16(remote.port().into());
+        hash.write_u32(local.address().into());
+        hash.write_u16(local.port().into());
+        hash.write_u32(self.nonce);
+        let hash = hash.sum32();
+        let isn = Wrapping(hash) + Wrapping(u32::from(self.counter.0));
+        self.counter += Wrapping(1);
+        isn
     }
 
     pub fn next(&mut self, cxn_id: &TcpConnectionId) -> Wrapping<u32> {
