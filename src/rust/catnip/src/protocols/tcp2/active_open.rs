@@ -3,8 +3,8 @@ use std::convert::TryInto;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::time::Duration;
+use crate::protocols::tcp2::peer::Runtime;
 use crate::event::Event;
-use crate::runtime::Runtime;
 use std::convert::TryFrom;
 use std::collections::HashMap;
 use std::num::Wrapping;
@@ -26,24 +26,26 @@ use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
+use std::pin::Pin;
 
-type BackgroundFuture = impl Future<Output = Result<EstablishedSocket, Fail>>;
+type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
 
-pub struct ActiveOpenSocket {
+pub struct ActiveOpenSocket<RT: Runtime> {
     local_isn: SeqNumber,
 
     local: ipv4::Endpoint,
     remote: ipv4::Endpoint,
 
-    rt: Runtime,
+    rt: RT,
     arp: arp::Peer,
 
-    future: BackgroundFuture,
-    result: Option<Result<EstablishedSocket, Fail>>,
+    future: BackgroundFuture<RT>,
+    pub result: Option<Result<EstablishedSocket<RT>, Fail>>,
 }
 
-impl ActiveOpenSocket {
-    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: Runtime, arp: arp::Peer) -> Self {
+
+impl<RT: Runtime> ActiveOpenSocket<RT> {
+    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: RT, arp: arp::Peer) -> Self {
         let future = Self::background(
             local_isn,
             local.clone(),
@@ -85,12 +87,12 @@ impl ActiveOpenSocket {
                 .ack(remote_seq_num);
             let mut segment_buf = ack_segment.encode();
             let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-            encoder.ipv4().header().src_addr(self.rt.options().my_ipv4_addr);
+            encoder.ipv4().header().src_addr(self.rt.local_ipv4_addr());
             let mut frame_header = encoder.ipv4().frame().header();
-            frame_header.src_addr(self.rt.options().my_link_addr);
+            frame_header.src_addr(self.rt.local_link_addr());
             frame_header.dest_addr(remote_link_addr);
             let _ = encoder.seal().expect("TODO");
-            self.rt.emit_event(Event::Transmit(Rc::new(RefCell::new(segment_buf))));
+            self.rt.transmit(&segment_buf);
 
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment.window_size.checked_shl(window_scale as u32)
@@ -112,7 +114,7 @@ impl ActiveOpenSocket {
             );
             let receiver = Receiver::new(
                 remote_seq_num,
-                self.rt.options().tcp.receive_window_size as u32,
+                self.rt.tcp_options().receive_window_size as u32,
             );
             let cb = ControlBlock {
                 local: self.local.clone(),
@@ -132,9 +134,9 @@ impl ActiveOpenSocket {
         local_isn: SeqNumber,
         local: ipv4::Endpoint,
         remote: ipv4::Endpoint,
-        rt: Runtime,
+        rt: RT,
         arp: arp::Peer,
-    ) -> BackgroundFuture {
+    ) -> BackgroundFuture<RT> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
         let max_window_size = 1024;
@@ -155,20 +157,38 @@ impl ActiveOpenSocket {
                     .dest_port(remote.port())
                     .seq_num(local_isn)
                     .window_size(max_window_size)
-                    .mss(rt.options().tcp.advertised_mss)
+                    .mss(rt.tcp_options().advertised_mss)
                     .syn();
                 let mut segment_buf = segment.encode();
                 let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-                encoder.ipv4().header().src_addr(rt.options().my_ipv4_addr);
+                encoder.ipv4().header().src_addr(rt.local_ipv4_addr());
                 let mut frame_header = encoder.ipv4().frame().header();
-                frame_header.src_addr(rt.options().my_link_addr);
+                frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(remote_link_addr);
                 let _ = encoder.seal().expect("TODO");
-                rt.emit_event(Event::Transmit(Rc::new(RefCell::new(segment_buf))));
+                rt.transmit(&segment_buf);
 
                 rt.wait(handshake_timeout).await;
             }
             Err(Fail::Timeout {})
         }
+    }
+}
+
+impl<RT: Runtime> Future for ActiveOpenSocket<RT> {
+    type Output = !;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        if self.result.is_some() {
+            return Poll::Pending;
+        }
+
+        let r = match Future::poll(unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.future) }, ctx) {
+            Poll::Ready(r) => r,
+            Poll::Pending => return Poll::Pending,
+        };
+
+        unsafe { self.as_mut().get_unchecked_mut().result = Some(r); }
+        Poll::Pending
     }
 }

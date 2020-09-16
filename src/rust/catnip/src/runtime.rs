@@ -48,18 +48,24 @@ impl PartialOrd for Record {
     }
 }
 
-struct Timer {
+pub type WaitFuture = impl Future<Output = ()>;
+
+pub struct Timer {
     now: Instant,
     heap: BinaryHeap<Record>,
     waker: Option<Waker>,
 }
 
 impl Timer {
-    fn new(now: Instant) -> Self {
+    pub fn new(now: Instant) -> Self {
         Self { now, heap: BinaryHeap::new(), waker: None }
     }
 
-    fn wait_until(&mut self, when: Instant) -> impl Future<Output = ()> {
+    pub fn now(&self) -> Instant {
+        self.now
+    }
+
+    pub fn wait_until(&mut self, when: Instant) -> WaitFuture {
         let (tx, rx) = channel();
         if when <= self.now {
             let _ = tx.send(());
@@ -69,7 +75,7 @@ impl Timer {
         rx.map(|_| ())
     }
 
-    fn advance_clock(&mut self, now: Instant) {
+    pub fn advance_clock(&mut self, now: Instant) {
         assert!(now >= self.now, "{:?} vs. {:?}", self.now, now);
         if let Some(record) = self.heap.peek() {
             if record.when <= now {

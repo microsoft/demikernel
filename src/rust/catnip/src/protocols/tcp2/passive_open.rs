@@ -4,7 +4,6 @@ use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEn
 use crate::fail::Fail;
 use std::time::Duration;
 use crate::event::Event;
-use crate::runtime::Runtime;
 use std::convert::TryFrom;
 use std::collections::{HashMap, HashSet};
 use std::num::Wrapping;
@@ -12,7 +11,7 @@ use futures_intrusive::channel::LocalChannel;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::future::Future;
-use std::pin;
+use std::pin::Pin;
 use std::task::{Poll, Context};
 use futures_intrusive::channel::shared;
 use futures_intrusive::NoopLock;
@@ -29,24 +28,25 @@ use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
+use crate::protocols::tcp2::peer::Runtime;
 
-type BackgroundFuture = impl Future<Output = Result<EstablishedSocket, Fail>>;
+type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
 
-struct InflightAccept {
+struct InflightAccept<RT: Runtime> {
     local_isn: SeqNumber,
     remote_isn: SeqNumber,
     window_size: u32,
     window_scale: u8,
     mss: usize,
 
-    future: BackgroundFuture,
+    future: BackgroundFuture<RT>,
 }
 
-pub struct PassiveSocket {
+pub struct PassiveSocket<RT: Runtime> {
     // TODO: Use a `FutureMap` abstraction here.
-    inflight: HashMap<ipv4::Endpoint, InflightAccept>,
+    inflight: HashMap<ipv4::Endpoint, InflightAccept<RT>>,
 
-    ready: VecDeque<Result<EstablishedSocket, Fail>>,
+    ready: VecDeque<Result<EstablishedSocket<RT>, Fail>>,
     ready_endpoints: HashSet<ipv4::Endpoint>,
 
     max_backlog: usize,
@@ -54,11 +54,38 @@ pub struct PassiveSocket {
     isn_generator: IsnGenerator,
 
     local: ipv4::Endpoint,
-    rt: Runtime,
+    rt: RT,
     arp: arp::Peer,
 }
 
-impl PassiveSocket {
+impl<RT: Runtime> PassiveSocket<RT> {
+    pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer) -> Self {
+        let nonce = rt.rng_gen_u32();
+        Self {
+            // TODO: This is mega unsound with pinning.
+            inflight: HashMap::with_capacity(128),
+            ready: VecDeque::new(),
+            ready_endpoints: HashSet::new(),
+            max_backlog,
+            isn_generator: IsnGenerator::new2(nonce),
+            local,
+            rt,
+            arp,
+        }
+    }
+
+    pub fn accept(&mut self) -> Result<Option<EstablishedSocket<RT>>, Fail> {
+        match self.ready.pop_front() {
+            None => Ok(None),
+            Some(Ok(s)) => {
+                assert!(self.ready_endpoints.remove(&s.cb.remote));
+                Ok(Some(s))
+            },
+            Some(Err(e)) => Err(e),
+        }
+    }
+
+
     pub fn receive_segment(&mut self, segment: TcpSegment) -> Result<(), Fail> {
         let local_port = segment.dest_port
             .ok_or_else(|| Fail::Malformed { details: "Missing destination port" })?;
@@ -99,7 +126,7 @@ impl PassiveSocket {
                 );
                 let receiver = Receiver::new(
                     remote_isn + Wrapping(1),
-                    self.rt.options().tcp.receive_window_size as u32,
+                    self.rt.tcp_options().receive_window_size as u32,
                 );
                 let (remote, _) = e.remove_entry();
                 let cb = ControlBlock {
@@ -164,9 +191,9 @@ impl PassiveSocket {
         remote_isn: SeqNumber,
         local: ipv4::Endpoint,
         remote: ipv4::Endpoint,
-        rt: Runtime,
+        rt: RT,
         arp: arp::Peer,
-    ) -> BackgroundFuture {
+    ) -> BackgroundFuture<RT> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
         let max_window_size = 1024;
@@ -187,21 +214,59 @@ impl PassiveSocket {
                     .dest_port(remote.port())
                     .seq_num(local_isn)
                     .window_size(max_window_size)
-                    .mss(rt.options().tcp.advertised_mss)
+                    .mss(rt.tcp_options().advertised_mss)
                     .syn()
                     .ack(remote_isn + Wrapping(1));
                 let mut segment_buf = segment.encode();
                 let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-                encoder.ipv4().header().src_addr(rt.options().my_ipv4_addr);
+                encoder.ipv4().header().src_addr(rt.local_ipv4_addr());
                 let mut frame_header = encoder.ipv4().frame().header();
-                frame_header.src_addr(rt.options().my_link_addr);
+                frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(remote_link_addr);
                 let _ = encoder.seal().expect("TODO");
-                rt.emit_event(Event::Transmit(Rc::new(RefCell::new(segment_buf))));
+                rt.transmit(&segment_buf);
 
                 rt.wait(handshake_timeout).await;
             }
             Err(Fail::Timeout {})
         }
+    }
+}
+
+impl<RT: Runtime> Future for PassiveSocket<RT> {
+    type Output = !;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        // if self.result.is_some() {
+        //     return Poll::Pending;
+        // }
+
+        // let r = match Future::poll(unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.future) }, ctx) {
+        //     Poll::Ready(r) => r,
+        //     Poll::Pending => return Poll::Pending,
+        // };
+
+        // unsafe { self.as_mut().get_unchecked_mut().result = Some(r); }
+        unsafe {
+            let self_ = self.get_unchecked_mut();
+            let mut done = vec![];
+
+            // TODO: Turn to retain.
+            for (k, v) in self_.inflight.iter_mut() {
+                match Future::poll(Pin::new_unchecked(&mut v.future), ctx) {
+                    Poll::Ready(r) => {
+                        self_.ready.push_back(r);
+                        assert!(self_.ready_endpoints.insert(k.clone()));
+                        done.push(k.clone());
+                    },
+                    Poll::Pending => continue,
+                }
+            }
+            for k in done {
+                self_.inflight.remove(&k);
+            }
+
+        }
+        Poll::Pending
     }
 }

@@ -3,8 +3,9 @@ use super::super::state::ControlBlock;
 use futures::future::{self, Either};
 use futures::FutureExt;
 use crate::fail::Fail;
+use crate::protocols::tcp2::peer::Runtime;
 
-pub async fn retransmitter(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (rtx_deadline, rtx_deadline_changed) = cb.sender.retransmit_deadline.watch();
         futures::pin_mut!(rtx_deadline_changed);

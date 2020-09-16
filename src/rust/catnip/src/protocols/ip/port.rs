@@ -6,7 +6,7 @@ use std::num::NonZeroU16;
 
 const FIRST_PRIVATE_PORT: u16 = 49152;
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display, Ord, PartialOrd)]
 pub struct Port(NonZeroU16);
 
 impl TryFrom<u16> for Port {

@@ -3,8 +3,9 @@ use super::super::state::ControlBlock;
 use futures::future::{self, Either};
 use futures::FutureExt;
 use crate::fail::Fail;
+use crate::protocols::tcp2::peer::Runtime;
 
-pub async fn acknowledger(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK

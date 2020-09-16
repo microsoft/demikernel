@@ -5,6 +5,7 @@ mod rto;
 use self::sender::Sender;
 use self::receiver::Receiver;
 
+use crate::protocols::tcp2::peer::Runtime;
 use crate::protocols::{arp, ip, ipv4};
 use crate::protocols::ethernet2::MacAddress;
 use crate::protocols::tcp2::SeqNumber;
@@ -21,7 +22,6 @@ use std::convert::TryFrom;
 use std::collections::HashMap;
 use std::num::Wrapping;
 use futures_intrusive::channel::LocalChannel;
-use crate::runtime::Runtime;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::time::{Instant, Duration};
@@ -29,11 +29,11 @@ use self::rto::RtoCalculator;
 use futures::FutureExt;
 use futures::future::{self, Either};
 
-pub struct ControlBlock {
+pub struct ControlBlock<RT: Runtime> {
     pub local: ipv4::Endpoint,
     pub remote: ipv4::Endpoint,
 
-    pub rt: Runtime,
+    pub rt: RT,
     pub arp: arp::Peer,
 
     pub sender: Sender,
@@ -41,10 +41,10 @@ pub struct ControlBlock {
 }
 
 
-impl ControlBlock {
+impl<RT: Runtime> ControlBlock<RT> {
     pub fn receive_segment(&self, segment: TcpSegment) {
         if segment.syn {
-            unimplemented!();
+            warn!("Ignoring duplicate SYN on established connection");
         }
         if segment.rst {
             unimplemented!();
@@ -85,14 +85,14 @@ impl ControlBlock {
 
         let mut segment_buf = segment.encode();
         let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-        encoder.ipv4().header().src_addr(self.rt.options().my_ipv4_addr);
+        encoder.ipv4().header().src_addr(self.rt.local_ipv4_addr());
 
         let mut frame_header = encoder.ipv4().frame().header();
-        frame_header.src_addr(self.rt.options().my_link_addr);
+        frame_header.src_addr(self.rt.local_link_addr());
         frame_header.dest_addr(remote_link_addr);
         let _ = encoder.seal().expect("TODO");
 
         // TODO: We should have backpressure here for emitting events.
-        self.rt.emit_event(Event::Transmit(Rc::new(RefCell::new(segment_buf))));
+        self.rt.transmit(&segment_buf);
     }
 }

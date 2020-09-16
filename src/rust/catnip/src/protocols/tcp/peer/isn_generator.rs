@@ -15,11 +15,15 @@ pub struct IsnGenerator {
 }
 
 impl IsnGenerator {
-    pub fn new<'a>(rt: &Runtime) -> IsnGenerator {
+    pub fn new(rt: &Runtime) -> IsnGenerator {
         IsnGenerator {
             nonce: rt.with_rng(|rng| rng.gen()),
             counter: Wrapping(0),
         }
+    }
+
+    pub fn new2(nonce: u32) -> Self {
+        Self { nonce, counter: Wrapping(0) }
     }
 
     pub fn generate(&mut self, local: &ipv4::Endpoint, remote: &ipv4::Endpoint) -> SeqNumber {

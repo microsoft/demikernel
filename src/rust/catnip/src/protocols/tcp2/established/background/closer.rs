@@ -6,8 +6,9 @@ use super::super::state::sender::SenderState;
 use super::super::state::receiver::ReceiverState;
 use std::future::Future;
 use futures::{future, FutureExt};
+use crate::protocols::tcp2::peer::Runtime;
 
-async fn rx_ack_sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (receiver_st, receiver_st_changed) = cb.receiver.state.watch();
         if receiver_st == ReceiverState::Open || receiver_st == ReceiverState::AckdFin {
@@ -33,7 +34,7 @@ async fn rx_ack_sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     }
 }
 
-async fn tx_fin_sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (sender_st, sender_st_changed) = cb.sender.state.watch();
         match sender_st {
@@ -61,11 +62,17 @@ async fn tx_fin_sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
 
                 cb.sender.state.set(SenderState::SentFin);
             },
+            SenderState::Reset => {
+                let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
+                let segment = cb.tcp_segment().rst();
+                cb.emit(segment, remote_link_addr);
+                panic!("Close connection here");
+            }
         }
     }
 }
 
-async fn close_wait(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+async fn close_wait<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (sender_st, sender_st_changed) = cb.sender.state.watch();
         if sender_st != SenderState::FinAckd {
@@ -84,7 +91,7 @@ async fn close_wait(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     }
 }
 
-pub async fn closer(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn closer<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     futures::select_biased! {
         r = rx_ack_sender(cb.clone()).fuse() => r,
         r = tx_fin_sender(cb.clone()).fuse() => r,

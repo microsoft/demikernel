@@ -27,16 +27,13 @@ pub struct UnackedSegment {
     pub initial_tx: Option<Instant>,
 }
 
-// TODO: Flesh out this half-closed state. The main idea here is to queue a single byte after
-// `unsent_seq_no` by setting the state to `Closed`, which also stops the user from sending any more
-// data. Then, we proceed as normal until `sent_seq == unsent_seq_no` and then send a FIN packet,
-// which can be directly acked.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SenderState {
     Open,
     Closed,
     SentFin,
     FinAckd,
+    Reset,
 }
 
 pub struct Sender {

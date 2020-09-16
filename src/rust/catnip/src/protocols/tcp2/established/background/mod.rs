@@ -12,15 +12,16 @@ use self::retransmitter::retransmitter;
 use self::closer::closer;
 use std::future::Future;
 use futures::FutureExt;
+use crate::protocols::tcp2::peer::Runtime;
 
 // TODO: This type is quite large. We may have to switch back to manual combinators?
 // 432:  acknowledger
 // 424:  retransmitter
 // 584:  sender
 // 1408: future total
-pub type BackgroundFuture = impl Future<Output = Result<!, Fail>>;
+pub type BackgroundFuture<RT> = impl Future<Output = Result<!, Fail>>;
 
-pub fn background(cb: Rc<ControlBlock>) -> BackgroundFuture {
+pub fn background<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> BackgroundFuture<RT> {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();
         futures::pin_mut!(acknowledger);

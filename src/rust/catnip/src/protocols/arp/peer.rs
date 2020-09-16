@@ -24,7 +24,7 @@ pub struct ArpPeer {
     cache: Rc<RefCell<ArpCache>>,
 }
 
-impl<'a> ArpPeer {
+impl ArpPeer {
     pub fn new(now: Instant, rt: Runtime) -> Result<ArpPeer> {
         let options = rt.options();
         let cache = ArpCache::new(now, Some(options.arp.cache_ttl));
@@ -162,6 +162,11 @@ impl<'a> ArpPeer {
 
     pub fn import_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
+    }
+
+    #[cfg(test)]
+    pub fn insert(&self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) {
+        self.cache.borrow_mut().insert(ipv4_addr, link_addr);
     }
 }
 

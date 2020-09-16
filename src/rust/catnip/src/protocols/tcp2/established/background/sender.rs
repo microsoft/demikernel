@@ -7,8 +7,9 @@ use futures::FutureExt;
 use crate::fail::Fail;
 use std::num::Wrapping;
 use super::super::state::sender::UnackedSegment;
+use crate::protocols::tcp2::peer::Runtime;
 
-pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         let (unsent_seq, unsent_seq_changed) = cb.sender.unsent_seq_no.watch();
