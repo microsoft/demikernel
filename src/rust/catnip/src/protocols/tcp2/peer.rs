@@ -23,21 +23,7 @@ use futures::FutureExt;
 use super::active_open::ActiveOpenSocket;
 use super::passive_open::PassiveSocket;
 use super::established::EstablishedSocket;
-
-pub trait Runtime: Clone {
-    fn transmit(&self, buf: &[u8]);
-
-    fn local_link_addr(&self) -> MacAddress;
-    fn local_ipv4_addr(&self) -> Ipv4Addr;
-    fn tcp_options(&self) -> tcp::Options;
-
-    type WaitFuture: Future<Output = ()>;
-    fn wait(&self, duration: Duration) -> Self::WaitFuture;
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture;
-    fn now(&self) -> Instant;
-
-    fn rng_gen_u32(&self) -> u32;
-}
+use super::runtime::Runtime;
 
 pub struct Peer<RT: Runtime> {
     inner: Rc<RefCell<Inner<RT>>>,

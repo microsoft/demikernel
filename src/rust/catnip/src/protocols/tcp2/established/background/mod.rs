@@ -12,7 +12,7 @@ use self::retransmitter::retransmitter;
 use self::closer::closer;
 use std::future::Future;
 use futures::FutureExt;
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 
 // TODO: This type is quite large. We may have to switch back to manual combinators?
 // 432:  acknowledger

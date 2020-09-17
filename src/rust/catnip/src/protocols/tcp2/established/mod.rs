@@ -24,7 +24,7 @@ use std::time::{Instant, Duration};
 use futures::FutureExt;
 use futures::future::{self, Either};
 use futures::StreamExt;
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 
 use self::state::ControlBlock;
 use self::background::{background, BackgroundFuture};

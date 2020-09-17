@@ -178,13 +178,13 @@ impl Runtime {
         }
     }
 
-    pub fn wait(&self, how_long: Duration) -> impl Future<Output = ()> {
+    pub fn wait(&self, how_long: Duration) -> WaitFuture {
         let mut inner = self.inner.borrow_mut();
         let when = inner.timer.now + how_long;
         inner.timer.wait_until(when)
     }
 
-    pub fn wait_until(&self, when: Instant) -> impl Future<Output = ()> {
+    pub fn wait_until(&self, when: Instant) -> WaitFuture {
         let mut inner = self.inner.borrow_mut();
         inner.timer.wait_until(when)
     }

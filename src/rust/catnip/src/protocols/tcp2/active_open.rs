@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::time::Duration;
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 use crate::event::Event;
 use std::convert::TryFrom;
 use std::collections::HashMap;

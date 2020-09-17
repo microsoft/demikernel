@@ -5,7 +5,7 @@ mod rto;
 use self::sender::Sender;
 use self::receiver::Receiver;
 
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 use crate::protocols::{arp, ip, ipv4};
 use crate::protocols::ethernet2::MacAddress;
 use crate::protocols::tcp2::SeqNumber;

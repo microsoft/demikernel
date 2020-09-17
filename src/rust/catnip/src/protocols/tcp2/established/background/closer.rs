@@ -6,7 +6,7 @@ use super::super::state::sender::SenderState;
 use super::super::state::receiver::ReceiverState;
 use std::future::Future;
 use futures::{future, FutureExt};
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 
 async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {

@@ -28,7 +28,7 @@ use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
-use crate::protocols::tcp2::peer::Runtime;
+use crate::protocols::tcp2::runtime::Runtime;
 
 type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
 
