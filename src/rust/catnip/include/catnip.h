@@ -15,7 +15,6 @@ extern "C" {
 
 typedef void * nip_engine_t;
 typedef uint16_t nip_tcp_connection_handle_t;
-typedef void * nip_future_t;
 
 #define NIP_LINK_ADDRESS_BYTES 6
 
@@ -72,7 +71,7 @@ void nip_tcp_connect_future_free(nip_connect_future_t raw_future);
 
 int nip_tcp_get_local_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_get_remote_endpoint(uint32_t *addr_out, uint16_t *port_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
-int nip_tcp_listen(nip_tcp_connection_handle_t *handle_out, nip_engine_t engine, uint16_t port);
+int nip_tcp_listen(nip_engine_t engine, uint16_t port);
 int nip_tcp_peek(const uint8_t **bytes_out, size_t *length_out, nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_read(nip_engine_t engine, nip_tcp_connection_handle_t handle);
 int nip_tcp_write(nip_engine_t engine, nip_tcp_connection_handle_t handle, const void *bytes, size_t length);

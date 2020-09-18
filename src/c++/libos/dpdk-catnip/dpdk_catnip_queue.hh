@@ -87,7 +87,7 @@ private: static boost::chrono::time_point<boost::chrono::steady_clock> t_write;
     private: void start_threads();
     private: int accept_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
     private: int pop_thread(task::thread_type::yield_type &yield, task::thread_type::queue_type &tq);
-    private: int connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_future_t future);
+    private: int connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_connect_future_t future);
     private: int read_message(dmtr_sgarray_t &sga_out, std::deque<uint8_t> &buffer, task::thread_type::yield_type &yield);
     private: static int transmit_thread(transmit_thread_type::yield_type &yield, transmit_thread_type::queue_type &tq);
     private: static int service_incoming_packets();

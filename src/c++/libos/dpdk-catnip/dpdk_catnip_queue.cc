@@ -658,7 +658,7 @@ int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * c
     my_bound_endpoint = local_endpoint;
     std::cout << "Connecting from " << local_endpoint.sin_addr.s_addr << " to " << saddr_in.sin_addr.s_addr << std::endl;
 
-    nip_future_t connect_future = {};
+    nip_connect_future_t connect_future = {};
     DMTR_OK(nip_tcp_connect(&connect_future, our_tcp_engine, saddr_in.sin_addr.s_addr, saddr_in.sin_port));
 
     my_connect_thread.reset(new task::thread_type([=](task::thread_type::yield_type &yield, task::thread_type::queue_type &tq) {
@@ -670,7 +670,7 @@ int dmtr::dpdk_catnip_queue::connect(dmtr_qtoken_t qt, const struct sockaddr * c
     return 0;
 }
 
-int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_future_t connect_future) {
+int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield, dmtr_qtoken_t qt, nip_connect_future_t connect_future) {
     DMTR_TRUE(ENOTSUP, 0 == my_tcp_connection_handle);
 
     int ret = -1;
@@ -681,6 +681,7 @@ int dmtr::dpdk_catnip_queue::connect_thread(task::thread_type::yield_type &yield
             default:
                 DMTR_FAIL(ret);
             case 0:
+                nip_tcp_connect_future_free(connect_future);
                 done = true;
                 break;
             case EAGAIN:
