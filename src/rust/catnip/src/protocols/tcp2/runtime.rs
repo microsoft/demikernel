@@ -1,27 +1,13 @@
-use crate::protocols::{arp, ip, ipv4, tcp};
+use crate::protocols::{tcp};
 use std::net::Ipv4Addr;
-use std::task::{Poll, Context};
-use std::collections::hash_map::Entry;
 use crate::protocols::ethernet2::MacAddress;
-use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
-use crate::fail::Fail;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::{VecDeque, HashMap};
-use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
 use std::rc::Rc;
 use std::cell::RefCell;
-use futures::channel::oneshot;
 use std::future::Future;
-use std::pin::Pin;
 use std::time::{Duration, Instant};
-use futures::stream::FuturesUnordered;
-use futures::FutureExt;
 use rand::Rng;
 
-pub trait Runtime: Clone {
+pub trait Runtime: Clone + Unpin {
     fn transmit(&self, buf: &[u8]);
 
     fn local_link_addr(&self) -> MacAddress;

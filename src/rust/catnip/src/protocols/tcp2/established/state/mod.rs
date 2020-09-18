@@ -6,28 +6,10 @@ use self::sender::Sender;
 use self::receiver::Receiver;
 
 use crate::protocols::tcp2::runtime::Runtime;
-use crate::protocols::{arp, ip, ipv4};
-use crate::protocols::ethernet2::MacAddress;
-use crate::protocols::tcp2::SeqNumber;
-use std::cmp;
-use std::convert::TryInto;
-use std::future::Future;
-use std::pin::Pin;
-use crate::collections::watched::WatchedValue;
-use std::collections::VecDeque;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
+use crate::protocols::{arp, ipv4};
 use crate::fail::Fail;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::HashMap;
-use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::time::{Instant, Duration};
-use self::rto::RtoCalculator;
-use futures::FutureExt;
-use futures::future::{self, Either};
+use crate::protocols::ethernet2::MacAddress;
+use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
 
 pub struct ControlBlock<RT: Runtime> {
     pub local: ipv4::Endpoint,
@@ -53,11 +35,17 @@ impl<RT: Runtime> ControlBlock<RT> {
             self.receiver.receive_fin();
         }
         if segment.ack {
-            self.sender.remote_ack(segment.ack_num, self.rt.now());
+            if let Err(e) = self.sender.remote_ack(segment.ack_num, self.rt.now()) {
+                warn!("Ignoring remote ack for {:?}: {:?}", segment, e);
+            }
         }
-        self.sender.update_remote_window(segment.window_size as u16);
+        if let Err(e) = self.sender.update_remote_window(segment.window_size as u16) {
+            warn!("Ignoring remote window size update for {:?}: {:?}", segment, e);
+        }
         if segment.payload.len() > 0 {
-            self.receiver.receive_segment(segment.seq_num, segment.payload.to_vec(), self.rt.now());
+            if let Err(e) = self.receiver.receive_segment(segment.seq_num, segment.payload.to_vec(), self.rt.now()) {
+                warn!("Ignoring remote data for {:?}: {:?}", segment, e);
+            }
         }
     }
 

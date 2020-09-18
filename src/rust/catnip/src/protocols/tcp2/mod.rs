@@ -1,7 +1,5 @@
-#![allow(unused)]
-
 pub mod constants;
-mod peer;
+pub mod peer;
 mod passive_open;
 mod established;
 mod active_open;

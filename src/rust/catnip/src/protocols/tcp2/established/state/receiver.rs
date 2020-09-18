@@ -1,25 +1,10 @@
-use crate::protocols::{arp, ip, ipv4};
 use crate::protocols::tcp2::SeqNumber;
-use std::cmp;
-use std::convert::TryInto;
-use std::future::Future;
-use std::pin::Pin;
 use crate::collections::watched::WatchedValue;
 use std::collections::VecDeque;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::HashMap;
 use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use crate::runtime::Runtime;
-use std::rc::Rc;
-use std::cell::{Cell, RefCell};
+use std::cell::{RefCell};
 use std::time::{Instant, Duration};
-use super::rto::RtoCalculator;
-use futures::FutureExt;
-use futures::future::{self, Either};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiverState {

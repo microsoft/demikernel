@@ -1,8 +1,7 @@
 use std::rc::Rc;
 use std::cmp;
-use std::time::{Instant, Duration};
+use std::time::{Duration};
 use super::super::state::ControlBlock;
-use futures::future::{self, Either};
 use futures::FutureExt;
 use crate::fail::Fail;
 use std::num::Wrapping;
@@ -82,9 +81,8 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
 
         // Form an outgoing packet.
-        // TODO: Do we need to include the header in MSS calculation?
         let max_size  = cmp::min((win_sz - sent_data) as usize, cb.sender.mss);
-        let mut segment_data = cb.sender.pop_unsent(max_size);
+        let segment_data = cb.sender.pop_unsent(max_size);
         let segment_data_len = segment_data.len();
         assert!(segment_data_len > 0);
 

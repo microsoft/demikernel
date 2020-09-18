@@ -2,13 +2,13 @@ use crate::protocols::{arp, tcp, ip, ipv4};
 
 use must_let::must_let;
 use std::pin::Pin;
-use std::task::{Poll, Context};
+use std::task::{Context};
 use std::future::Future;
 use futures::task::noop_waker_ref;
-use crate::protocols::tcp2::peer::{Peer, Runtime};
+use crate::protocols::tcp2::peer::Peer;
+use crate::protocols::tcp2::runtime::Runtime;
 use std::time::Instant;
 use crate::runtime::Timer;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder};
 use std::net::Ipv4Addr;
 use crate::protocols::ethernet2::MacAddress;
 use std::time::Duration;
@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 use std::convert::TryFrom;
 
 struct TestRuntime {
+    #[allow(unused)]
     name: &'static str,
     timer: Timer,
     rng: u32,
@@ -45,9 +46,6 @@ impl TestRuntime {
 
 impl Runtime for Rc<RefCell<TestRuntime>> {
     fn transmit(&self, buf: &[u8]) {
-        let datagram = ipv4::Datagram::attach(buf).unwrap();
-        let decoder = TcpSegmentDecoder::try_from(datagram).unwrap();
-        let segment = TcpSegment::try_from(decoder).unwrap();
         self.borrow_mut().outgoing.push_back(buf.to_owned());
     }
 
@@ -108,6 +106,7 @@ impl TestParticipant {
 }
 
 struct Test {
+    #[allow(unused)]
     arp: arp::Peer,
 
     alice: TestParticipant,

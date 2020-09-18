@@ -1,5 +1,5 @@
 - Correctness
-  [ ] Get rid of all unsafe code
+  [X] Get rid of all unsafe code
   [ ] RST handling
   [ ] 2*MSL wait on active close
 - Features
@@ -13,6 +13,14 @@
   [ ] TCP Timestamps
 - Performance
   [ ] Fast path for TCP receive
+  [ ] Fast path for TCP send
+  [ ] Remove Event indirection
+  [ ] Use `bytes` for buffer management
+  [ ] Use intrusive pairing heap for timers
+- Memory usage
+  [ ] Better data structure for open ports
+  [ ] Slim down TCP control block
+  [ ] Slim down TCP background workers
 - Testing
   [ ] Determinized hashmap
   [ ] Different scenarios

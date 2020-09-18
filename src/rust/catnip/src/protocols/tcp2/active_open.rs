@@ -1,25 +1,12 @@
-use crate::protocols::{arp, ip, ipv4};
+use crate::protocols::{arp, ipv4};
 use std::convert::TryInto;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
+use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::time::Duration;
 use crate::protocols::tcp2::runtime::Runtime;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::HashMap;
 use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::future::Future;
-use std::pin;
 use std::task::{Poll, Context};
-use futures_intrusive::channel::shared;
-use futures_intrusive::NoopLock;
-use futures_intrusive::buffer::GrowingHeapBuf;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt, SinkExt, future};
-use futures::channel::mpsc;
 use crate::protocols::tcp2::SeqNumber;
 use super::established::EstablishedSocket;
 use super::established::state::sender::Sender;
@@ -27,9 +14,11 @@ use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
 use std::pin::Pin;
+use pin_project::pin_project;
 
 type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
 
+#[pin_project]
 pub struct ActiveOpenSocket<RT: Runtime> {
     local_isn: SeqNumber,
 
@@ -39,10 +28,11 @@ pub struct ActiveOpenSocket<RT: Runtime> {
     rt: RT,
     arp: arp::Peer,
 
+    #[pin]
     future: BackgroundFuture<RT>,
-    pub result: Option<Result<EstablishedSocket<RT>, Fail>>,
-}
 
+    result: Option<Result<EstablishedSocket<RT>, Fail>>,
+}
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
     pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: RT, arp: arp::Peer) -> Self {
@@ -66,33 +56,39 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         }
     }
 
-    pub fn receive_segment(&mut self, segment: TcpSegment) {
+    pub fn take_result(self: Pin<&mut Self>) -> Option<Result<EstablishedSocket<RT>, Fail>> {
+        self.project().result.take()
+    }
+
+    pub fn receive_segment(self: Pin<&mut Self>, segment: TcpSegment) {
+        let self_ = self.project();
+
         if segment.rst {
-            self.result = Some(Err(Fail::ConnectionRefused {}));
+            self_.result.replace(Err(Fail::ConnectionRefused {}));
             return;
         }
-        let expected_seq = self.local_isn + Wrapping(1);
+        let expected_seq = *self_.local_isn + Wrapping(1);
         if segment.ack && segment.syn && segment.ack_num == expected_seq {
             // Acknowledge the SYN+ACK segment.
-            let remote_link_addr = match self.arp.try_query(self.remote.address()) {
+            let remote_link_addr = match self_.arp.try_query(self_.remote.address()) {
                 Some(r) => r,
                 None => panic!("TODO: Clean up ARP query control flow"),
             };
             let remote_seq_num = segment.seq_num + Wrapping(1);
             let ack_segment = TcpSegment::default()
-                .src_ipv4_addr(self.local.address())
-                .src_port(self.local.port())
-                .dest_ipv4_addr(self.remote.address())
-                .dest_port(self.remote.port())
+                .src_ipv4_addr(self_.local.address())
+                .src_port(self_.local.port())
+                .dest_ipv4_addr(self_.remote.address())
+                .dest_port(self_.remote.port())
                 .ack(remote_seq_num);
             let mut segment_buf = ack_segment.encode();
             let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-            encoder.ipv4().header().src_addr(self.rt.local_ipv4_addr());
+            encoder.ipv4().header().src_addr(self_.rt.local_ipv4_addr());
             let mut frame_header = encoder.ipv4().frame().header();
-            frame_header.src_addr(self.rt.local_link_addr());
+            frame_header.src_addr(self_.rt.local_link_addr());
             frame_header.dest_addr(remote_link_addr);
             let _ = encoder.seal().expect("TODO");
-            self.rt.transmit(&segment_buf);
+            self_.rt.transmit(&segment_buf);
 
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment.window_size.checked_shl(window_scale as u32)
@@ -114,17 +110,17 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             );
             let receiver = Receiver::new(
                 remote_seq_num,
-                self.rt.tcp_options().receive_window_size as u32,
+                self_.rt.tcp_options().receive_window_size as u32,
             );
             let cb = ControlBlock {
-                local: self.local.clone(),
-                remote: self.remote.clone(),
-                rt: self.rt.clone(),
-                arp: self.arp.clone(),
+                local: self_.local.clone(),
+                remote: self_.remote.clone(),
+                rt: self_.rt.clone(),
+                arp: self_.arp.clone(),
                 sender,
                 receiver,
             };
-            self.result = Some(Ok(EstablishedSocket::new(cb)));
+            self_.result.replace(Ok(EstablishedSocket::new(cb)));
             return;
         }
         // Otherwise, just drop the packet.
@@ -178,17 +174,16 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 impl<RT: Runtime> Future for ActiveOpenSocket<RT> {
     type Output = !;
 
-    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        if self.result.is_some() {
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        let self_ = self.project();
+        if self_.result.is_some() {
             return Poll::Pending;
         }
-
-        let r = match Future::poll(unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.future) }, ctx) {
+        let r = match Future::poll(self_.future, ctx) {
             Poll::Ready(r) => r,
             Poll::Pending => return Poll::Pending,
         };
-
-        unsafe { self.as_mut().get_unchecked_mut().result = Some(r); }
+        self_.result.replace(r);
         Poll::Pending
     }
 }

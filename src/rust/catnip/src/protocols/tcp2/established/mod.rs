@@ -2,35 +2,20 @@ mod background;
 pub mod state;
 
 use std::task::{Poll, Context};
-use crate::protocols::tcp2::SeqNumber;
-use crate::protocols::{arp, ip, ipv4};
-use std::cmp;
-use std::convert::TryInto;
 use std::future::Future;
 use std::pin::Pin;
-use crate::collections::watched::WatchedValue;
-use std::collections::VecDeque;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
+use crate::protocols::tcp::segment::{TcpSegment};
 use crate::fail::Fail;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::HashMap;
-use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use futures::channel::mpsc;
 use std::rc::Rc;
-use std::cell::RefCell;
-use std::time::{Instant, Duration};
-use futures::FutureExt;
-use futures::future::{self, Either};
-use futures::StreamExt;
 use crate::protocols::tcp2::runtime::Runtime;
-
 use self::state::ControlBlock;
 use self::background::{background, BackgroundFuture};
+use pin_project::pin_project;
 
+#[pin_project]
 pub struct EstablishedSocket<RT: Runtime> {
     pub cb: Rc<ControlBlock<RT>>,
+    #[pin]
     background_work: BackgroundFuture<RT>,
 }
 
@@ -63,11 +48,9 @@ impl<RT: Runtime> EstablishedSocket<RT> {
 impl<RT: Runtime> Future for EstablishedSocket<RT> {
     type Output = !;
 
-    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        unsafe {
-            let self_ = self.get_unchecked_mut();
-            assert!(Future::poll(Pin::new_unchecked(&mut self_.background_work), ctx).is_pending(), "TODO");
-            Poll::Pending
-        }
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        let self_ = self.project();
+        assert!(Future::poll(self_.background_work, ctx).is_pending(), "TODO: Connection close");
+        Poll::Pending
     }
 }

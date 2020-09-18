@@ -34,6 +34,10 @@ serde_yaml = "0.8.12"
 spin = "0.5.2"
 fxhash = "0.2.1"
 mimalloc = { version = "0.1.19", default-features = false }
+uniset = "0.2.0"
+unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "2c379b35d716df0091436ef38d011995a05fb4f9" }
+parking_lot = "0.11.0"
+pin-project = "0.4.23"
 
 [dev-dependencies]
 must-let = { git = "https://github.com/sujayakar/must-let" }

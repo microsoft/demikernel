@@ -1,25 +1,12 @@
-use crate::protocols::{arp, ip, ipv4};
 use crate::protocols::tcp2::SeqNumber;
-use std::cmp;
 use std::convert::TryInto;
-use std::future::Future;
-use std::pin::Pin;
 use crate::collections::watched::WatchedValue;
 use std::collections::VecDeque;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::HashMap;
 use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use crate::runtime::Runtime;
-use std::rc::Rc;
-use std::cell::{Cell, RefCell};
-use std::time::{Instant, Duration};
+use std::cell::{RefCell};
+use std::time::{Instant};
 use super::rto::RtoCalculator;
-use futures::FutureExt;
-use futures::future::{self, Either};
 
 pub struct UnackedSegment {
     pub bytes: Vec<u8>,
@@ -33,6 +20,8 @@ pub enum SenderState {
     Closed,
     SentFin,
     FinAckd,
+
+    #[allow(unused)]
     Reset,
 }
 
@@ -89,7 +78,7 @@ impl Sender {
             return Err(Fail::Ignored { details: "Sender closed" });
         }
         let buf_len: u32 = buf.len().try_into()
-            .map_err(|_| Fail::Ignored { details: "Buffer too large" })?;;
+            .map_err(|_| Fail::Ignored { details: "Buffer too large" })?;
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + Wrapping(buf_len));
         Ok(())
@@ -112,8 +101,7 @@ impl Sender {
         }
 
         let base_seq_no = self.base_seq_no.get();
-        let mut sent_seq_no = self.sent_seq_no.get();
-        let unsent_seq_no = self.unsent_seq_no.get();
+        let sent_seq_no = self.sent_seq_no.get();
 
         let bytes_outstanding = sent_seq_no - base_seq_no;
         let bytes_acknowledged = ack_seq_no - base_seq_no;

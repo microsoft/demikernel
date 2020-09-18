@@ -2,6 +2,8 @@
 // Licensed under the MIT license.
 
 #![feature(generators, generator_trait)]
+#![feature(min_const_generics)]
+#![feature(new_uninit)]
 #![feature(never_type)]
 #![feature(raw)]
 #![feature(try_blocks)]
@@ -29,7 +31,7 @@ mod interop;
 mod logging;
 mod options;
 mod prelude;
-mod protocols;
+pub mod protocols;
 mod rand;
 mod retry;
 

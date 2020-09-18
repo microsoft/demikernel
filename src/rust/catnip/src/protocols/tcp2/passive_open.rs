@@ -1,37 +1,27 @@
-use crate::protocols::{arp, ip, ipv4};
+use crate::protocols::{arp, ipv4};
 use std::convert::TryInto;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
+use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::time::Duration;
-use crate::event::Event;
-use std::convert::TryFrom;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Poll, Context};
-use futures_intrusive::channel::shared;
-use futures_intrusive::NoopLock;
-use futures_intrusive::buffer::GrowingHeapBuf;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt, SinkExt, future};
-use futures::channel::mpsc;
 use std::collections::VecDeque;
-use std::collections::hash_map::Entry;
 use crate::protocols::tcp2::SeqNumber;
 use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
-use super::established::EstablishedSocket;
 use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
 use crate::protocols::tcp2::runtime::Runtime;
+use pin_project::pin_project;
+use crate::collections::async_map::FutureMap;
 
-type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
+type BackgroundFuture<RT: Runtime> = impl Future<Output = Fail>;
 
+#[pin_project]
 struct InflightAccept<RT: Runtime> {
     local_isn: SeqNumber,
     remote_isn: SeqNumber,
@@ -39,14 +29,22 @@ struct InflightAccept<RT: Runtime> {
     window_scale: u8,
     mss: usize,
 
+    #[pin]
     future: BackgroundFuture<RT>,
 }
 
-pub struct PassiveSocket<RT: Runtime> {
-    // TODO: Use a `FutureMap` abstraction here.
-    inflight: HashMap<ipv4::Endpoint, InflightAccept<RT>>,
+impl<RT: Runtime> Future for InflightAccept<RT> {
+    type Output = Fail;
 
-    ready: VecDeque<Result<EstablishedSocket<RT>, Fail>>,
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Fail> {
+        Future::poll(self.project().future, ctx)
+    }
+}
+
+pub struct PassiveSocket<RT: Runtime> {
+    inflight: FutureMap<ipv4::Endpoint, InflightAccept<RT>>,
+
+    ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
     ready_endpoints: HashSet<ipv4::Endpoint>,
 
     max_backlog: usize,
@@ -62,8 +60,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
     pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer) -> Self {
         let nonce = rt.rng_gen_u32();
         Self {
-            // TODO: This is mega unsound with pinning.
-            inflight: HashMap::with_capacity(128),
+            inflight: FutureMap::new(),
             ready: VecDeque::new(),
             ready_endpoints: HashSet::new(),
             max_backlog,
@@ -74,12 +71,12 @@ impl<RT: Runtime> PassiveSocket<RT> {
         }
     }
 
-    pub fn accept(&mut self) -> Result<Option<EstablishedSocket<RT>>, Fail> {
+    pub fn accept(&mut self) -> Result<Option<ControlBlock<RT>>, Fail> {
         match self.ready.pop_front() {
             None => Ok(None),
-            Some(Ok(s)) => {
-                assert!(self.ready_endpoints.remove(&s.cb.remote));
-                Ok(Some(s))
+            Some(Ok(cb)) => {
+                assert!(self.ready_endpoints.remove(&cb.remote));
+                Ok(Some(cb))
             },
             Some(Err(e)) => Err(e),
         }
@@ -108,81 +105,82 @@ impl<RT: Runtime> PassiveSocket<RT> {
         }
 
         let inflight_len = self.inflight.len();
-        match self.inflight.entry(remote) {
-            // If the packet is for an inflight connection, route it there.
-            Entry::Occupied(mut e) => {
-                if !segment.ack {
-                    return Err(Fail::Malformed { details: "Invalid flags" });
-                }
-                let InflightAccept { local_isn, remote_isn, window_size, window_scale, mss, .. } = *e.get();
-                if segment.ack_num != local_isn + Wrapping(1) {
-                    return Err(Fail::Malformed { details: "Invalid SYN+ACK seq num" });
-                }
-                let sender = Sender::new(
-                    local_isn + Wrapping(1),
-                    window_size,
-                    window_scale,
-                    mss,
-                );
-                let receiver = Receiver::new(
-                    remote_isn + Wrapping(1),
-                    self.rt.tcp_options().receive_window_size as u32,
-                );
-                let (remote, _) = e.remove_entry();
-                let cb = ControlBlock {
-                    local: self.local.clone(),
-                    remote: remote.clone(),
-                    rt: self.rt.clone(),
-                    arp: self.arp.clone(),
-                    sender,
-                    receiver,
-                };
-                assert!(self.ready_endpoints.insert(remote));
-                self.ready.push_back(Ok(EstablishedSocket::new(cb)));
-            },
-            // Otherwise, start a new connection.
-            Entry::Vacant(e) => {
-                if !segment.syn || segment.ack || segment.rst {
-                    return Err(Fail::Malformed { details: "Invalid flags" });
-                }
-                if inflight_len + self.ready.len() >= self.max_backlog {
-                    // TODO: Should we send a RST here?
-                    return Err(Fail::ConnectionRefused {});
-                }
-                let remote = e.key().clone();
-                let local_isn = self.isn_generator.generate(&local, &remote);
-                let remote_isn = segment.seq_num;
-                let future = Self::background(
-                    local_isn,
-                    remote_isn,
-                    local,
-                    remote,
-                    self.rt.clone(),
-                    self.arp.clone(),
-                );
-                let window_scale = segment.window_scale.unwrap_or(1);
-                let window_size = segment.window_size.checked_shl(window_scale as u32)
-                    .expect("TODO: Window size overflow")
-                    .try_into()
-                    .expect("TODO: Window size overflow");
-                let mss = match segment.mss {
-                    Some(s) => s,
-                    None => {
-                        warn!("Falling back to MSS = {}", FALLBACK_MSS);
-                        FALLBACK_MSS
-                    },
-                };
-                let accept = InflightAccept {
-                    local_isn,
-                    remote_isn,
-                    window_size,
-                    window_scale,
-                    mss,
-                    future,
-                };
-                e.insert(accept);
-            },
+
+        // If the packet is for an inflight connection, route it there.
+        if self.inflight.contains_key(&remote) {
+            if !segment.ack {
+                return Err(Fail::Malformed { details: "Invalid flags" });
+            }
+
+            // TODO: Add entry API.
+            let &InflightAccept { local_isn, remote_isn, window_size, window_scale, mss, .. } = self.inflight.get(&remote).unwrap();
+            if segment.ack_num != local_isn + Wrapping(1) {
+                return Err(Fail::Malformed { details: "Invalid SYN+ACK seq num" });
+            }
+            let sender = Sender::new(
+                local_isn + Wrapping(1),
+                window_size,
+                window_scale,
+                mss,
+            );
+            let receiver = Receiver::new(
+                remote_isn + Wrapping(1),
+                self.rt.tcp_options().receive_window_size as u32,
+            );
+            self.inflight.remove(&remote);
+            let cb = ControlBlock {
+                local: self.local.clone(),
+                remote: remote.clone(),
+                rt: self.rt.clone(),
+                arp: self.arp.clone(),
+                sender,
+                receiver,
+            };
+            assert!(self.ready_endpoints.insert(remote));
+            self.ready.push_back(Ok(cb));
         }
+        // Otherwise, start a new connection.
+        else {
+            if !segment.syn || segment.ack || segment.rst {
+                return Err(Fail::Malformed { details: "Invalid flags" });
+            }
+            if inflight_len + self.ready.len() >= self.max_backlog {
+                // TODO: Should we send a RST here?
+                return Err(Fail::ConnectionRefused {});
+            }
+            let local_isn = self.isn_generator.generate(&local, &remote);
+            let remote_isn = segment.seq_num;
+            let future = Self::background(
+                local_isn,
+                remote_isn,
+                local,
+                remote.clone(),
+                self.rt.clone(),
+                self.arp.clone(),
+            );
+            let window_scale = segment.window_scale.unwrap_or(1);
+            let window_size = segment.window_size.checked_shl(window_scale as u32)
+                .expect("TODO: Window size overflow")
+                .try_into()
+                .expect("TODO: Window size overflow");
+            let mss = match segment.mss {
+                Some(s) => s,
+                None => {
+                    warn!("Falling back to MSS = {}", FALLBACK_MSS);
+                    FALLBACK_MSS
+                },
+            };
+            let accept = InflightAccept {
+                local_isn,
+                remote_isn,
+                window_size,
+                window_scale,
+                mss,
+                future,
+            };
+            self.inflight.insert(remote, accept);
+        }
+
         Ok(())
     }
 
@@ -228,7 +226,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
 
                 rt.wait(handshake_timeout).await;
             }
-            Err(Fail::Timeout {})
+            Fail::Timeout {}
         }
     }
 }
@@ -236,37 +234,16 @@ impl<RT: Runtime> PassiveSocket<RT> {
 impl<RT: Runtime> Future for PassiveSocket<RT> {
     type Output = !;
 
-    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        // if self.result.is_some() {
-        //     return Poll::Pending;
-        // }
-
-        // let r = match Future::poll(unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.future) }, ctx) {
-        //     Poll::Ready(r) => r,
-        //     Poll::Pending => return Poll::Pending,
-        // };
-
-        // unsafe { self.as_mut().get_unchecked_mut().result = Some(r); }
-        unsafe {
-            let self_ = self.get_unchecked_mut();
-            let mut done = vec![];
-
-            // TODO: Turn to retain.
-            for (k, v) in self_.inflight.iter_mut() {
-                match Future::poll(Pin::new_unchecked(&mut v.future), ctx) {
-                    Poll::Ready(r) => {
-                        self_.ready.push_back(r);
-                        assert!(self_.ready_endpoints.insert(k.clone()));
-                        done.push(k.clone());
-                    },
-                    Poll::Pending => continue,
-                }
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
+        let self_ = self.get_mut();
+        loop {
+            match FutureMap::poll(Pin::new(&mut self_.inflight), ctx) {
+                Poll::Ready((remote, r)) => {
+                    self_.ready.push_back(Err(r));
+                    assert!(self_.ready_endpoints.insert(remote));
+                },
+                Poll::Pending => return Poll::Pending,
             }
-            for k in done {
-                self_.inflight.remove(&k);
-            }
-
         }
-        Poll::Pending
     }
 }

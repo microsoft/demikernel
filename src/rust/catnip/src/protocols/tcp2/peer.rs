@@ -1,24 +1,15 @@
-use crate::protocols::{arp, ip, ipv4, tcp};
-use std::net::Ipv4Addr;
+use crate::protocols::{arp, ip, ipv4};
 use std::task::{Poll, Context};
-use std::collections::hash_map::Entry;
-use crate::protocols::ethernet2::MacAddress;
 use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
-use crate::event::Event;
 use std::convert::TryFrom;
 use std::collections::{VecDeque, HashMap};
-use std::num::Wrapping;
-use futures_intrusive::channel::LocalChannel;
-use std::rc::Rc;
 use std::cell::RefCell;
-use futures::channel::oneshot;
-use std::future::Future;
 use std::pin::Pin;
-use std::time::{Duration, Instant};
-use futures::stream::FuturesUnordered;
-use futures::FutureExt;
+use std::rc::Rc;
+use std::future::Future;
+use crate::collections::async_map::FutureMap;
 
 use super::active_open::ActiveOpenSocket;
 use super::passive_open::PassiveSocket;
@@ -59,18 +50,21 @@ impl<RT: Runtime> Peer<RT> {
 
     pub fn accept(&self, fd: usize) -> Result<Option<usize>, Fail> {
         let mut inner_ = self.inner.borrow_mut();
-        let mut inner = &mut *inner_;
+        let inner = &mut *inner_;
 
         let local = match inner.sockets.get(&fd) {
             Some((local, None)) => local,
             Some(..) => return Err(Fail::Malformed { details: "Socket not listening" }),
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
-        let passive = inner.passive.get_mut(local).expect("sockets/local inconsistency");
-        let established = match passive.accept()? {
+        let passive = inner.passive.get_pin_mut(local)
+            .expect("sockets/local inconsistency")
+            .get_mut();
+        let cb = match passive.accept()? {
             Some(e) => e,
             None => return Ok(None),
         };
+        let established = EstablishedSocket::new(cb);
 
         let fd = inner.alloc_fd();
         let key = (established.cb.local.clone(), established.cb.remote.clone());
@@ -105,22 +99,25 @@ impl<RT: Runtime> Peer<RT> {
 
     pub fn connect_finished(&self, fd: usize) -> Result<bool, Fail> {
         let mut inner_ = self.inner.borrow_mut();
-        let mut inner = &mut *inner_;
+        let inner = &mut *inner_;
 
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
             Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
-        let mut entry = match inner.connecting.entry(key.clone()) {
-            Entry::Occupied(e) => e,
-            Entry::Vacant(..) => return Err(Fail::Malformed { details: "Socket not connecting" }),
+
+        let result = {
+            let socket = match inner.connecting.get_pin_mut(&key) {
+                Some(s) => s,
+                None => return Err(Fail::Malformed { details: "Socket not connecting" }),
+            };
+            match socket.take_result() {
+                None => return Ok(false),
+                Some(r) => r,
+            }
         };
-        let result = match entry.get_mut().result.take() {
-            None => return Ok(false),
-            Some(r) => r,
-        };
-        entry.remove();
+        inner.connecting.remove(&key);
 
         let socket = result?;
         assert!(inner.established.insert(key, socket).is_none());
@@ -130,8 +127,7 @@ impl<RT: Runtime> Peer<RT> {
     }
 
     pub fn recv(&self, fd: usize) -> Result<Option<Vec<u8>>, Fail> {
-        let mut inner = self.inner.borrow_mut();
-
+        let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
             Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
@@ -144,8 +140,7 @@ impl<RT: Runtime> Peer<RT> {
     }
 
     pub fn send(&self, fd: usize, buf: Vec<u8>) -> Result<(), Fail> {
-        let mut inner = self.inner.borrow_mut();
-
+        let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
             Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
@@ -156,6 +151,25 @@ impl<RT: Runtime> Peer<RT> {
             None => return Err(Fail::Malformed { details: "Socket not established" }),
         }
     }
+
+    pub fn close(&self, fd: usize) -> Result<(), Fail> {
+        let inner = self.inner.borrow_mut();
+        match inner.sockets.get(&fd) {
+            Some((local, Some(remote))) => {
+                let key = (local.clone(), remote.clone());
+                match inner.established.get(&key) {
+                    Some(ref s) => s.close()?,
+                    None => return Err(Fail::Malformed { details: "Socket not established" }),
+                }
+            },
+            Some((_local, None)) => {
+                // TODO: Implement close for listening sockets.
+                unimplemented!();
+            },
+            None => return Err(Fail::Malformed { details: "Bad FD" }),
+        }
+        Ok(())
+    }
 }
 
 impl<RT: Runtime> Future for Peer<RT> {
@@ -164,22 +178,15 @@ impl<RT: Runtime> Future for Peer<RT> {
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<!> {
         let mut inner = self.inner.borrow_mut();
 
-        unsafe {
-            for socket in inner.connecting.values_mut() {
-                assert!(Future::poll(Pin::new_unchecked(socket), context).is_pending());
-            }
-            for socket in inner.passive.values_mut() {
-                assert!(Future::poll(Pin::new_unchecked(socket), context).is_pending());
-            }
-            for socket in inner.established.values_mut() {
-                assert!(Future::poll(Pin::new_unchecked(socket), context).is_pending());
-            }
-        }
+        // TODO: We never remove sockets from the map here.
+        assert!(FutureMap::poll(Pin::new(&mut inner.connecting), context).is_pending());
+        assert!(FutureMap::poll(Pin::new(&mut inner.passive), context).is_pending());
+        assert!(FutureMap::poll(Pin::new(&mut inner.established), context).is_pending());
+
         // TODO: Poll ARP cache.
         Poll::Pending
     }
 }
-
 
 pub struct Inner<RT: Runtime> {
     isn_generator: IsnGenerator,
@@ -190,10 +197,9 @@ pub struct Inner<RT: Runtime> {
     // FD -> local port
     sockets: HashMap<usize, (ipv4::Endpoint, Option<ipv4::Endpoint>)>,
 
-    // TODO: Move these to futures-maps.
-    passive: HashMap<ipv4::Endpoint, PassiveSocket<RT>>,
-    connecting: HashMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
-    established: HashMap<(ipv4::Endpoint, ipv4::Endpoint), EstablishedSocket<RT>>,
+    passive: FutureMap<ipv4::Endpoint, PassiveSocket<RT>>,
+    connecting: FutureMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
+    established: FutureMap<(ipv4::Endpoint, ipv4::Endpoint), EstablishedSocket<RT>>,
 
     rt: RT,
     arp: arp::Peer,
@@ -208,10 +214,9 @@ impl<RT: Runtime> Inner<RT> {
                 .map(|p| ip::Port::try_from(p).unwrap())
                 .collect(),
             sockets: HashMap::new(),
-            // TODO: This is hella unsafe.
-            passive: HashMap::with_capacity(1024),
-            connecting: HashMap::with_capacity(1024),
-            established: HashMap::with_capacity(1024),
+            passive: FutureMap::new(),
+            connecting: FutureMap::new(),
+            established: FutureMap::new(),
             rt,
             arp,
         }
@@ -246,12 +251,12 @@ impl<RT: Runtime> Inner<RT> {
             if let Some(s) = self.established.get(&key) {
                 return s.receive_segment(segment);
             }
-            if let Some(s) = self.connecting.get_mut(&key) {
+            if let Some(s) = self.connecting.get_pin_mut(&key) {
                 return s.receive_segment(segment);
             }
             let (local, _) = key;
-            if let Some(s) = self.passive.get_mut(&local) {
-                return s.receive_segment(segment)?;
+            if let Some(s) = self.passive.get_pin_mut(&local) {
+                return s.get_mut().receive_segment(segment)?;
             }
 
             // The packet isn't for an open port; send a RST segment.

@@ -4,8 +4,7 @@ use crate::fail::Fail;
 use super::super::state::ControlBlock;
 use super::super::state::sender::SenderState;
 use super::super::state::receiver::ReceiverState;
-use std::future::Future;
-use futures::{future, FutureExt};
+use futures::{FutureExt};
 use crate::protocols::tcp2::runtime::Runtime;
 
 async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
