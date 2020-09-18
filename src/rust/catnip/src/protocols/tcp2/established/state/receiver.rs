@@ -63,6 +63,21 @@ impl Receiver {
         self.ack_seq_no.set(seq_no);
     }
 
+    pub fn peek(&self) -> Result<Vec<u8>, Fail> {
+        if self.base_seq_no.get() == self.recv_seq_no.get() {
+            if self.state.get() != ReceiverState::Open {
+                return Err(Fail::ResourceNotFound { details: "Receiver closed" });
+            }
+            return Err(Fail::ResourceExhausted { details: "No available data" });
+        }
+
+        let segment = self.recv_queue.borrow_mut().front()
+            .expect("recv_seq > base_seq without data in queue?")
+            .clone();
+
+        Ok(segment)
+    }
+
     pub fn recv(&self) -> Result<Option<Vec<u8>>, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {

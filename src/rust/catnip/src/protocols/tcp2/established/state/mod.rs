@@ -4,7 +4,7 @@ mod rto;
 
 use self::sender::Sender;
 use self::receiver::Receiver;
-
+use std::time::Duration;
 use crate::protocols::tcp2::runtime::Runtime;
 use crate::protocols::{arp, ipv4};
 use crate::fail::Fail;
@@ -82,5 +82,13 @@ impl<RT: Runtime> ControlBlock<RT> {
 
         // TODO: We should have backpressure here for emitting events.
         self.rt.transmit(&segment_buf);
+    }
+
+    pub fn remote_mss(&self) -> usize {
+        self.sender.remote_mss()
+    }
+
+    pub fn current_rto(&self) -> Duration {
+        self.sender.current_rto()
     }
 }

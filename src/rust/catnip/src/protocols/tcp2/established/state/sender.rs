@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use crate::fail::Fail;
 use std::num::Wrapping;
 use std::cell::{RefCell};
-use std::time::{Instant};
+use std::time::{Instant, Duration};
 use super::rto::RtoCalculator;
 
 pub struct UnackedSegment {
@@ -183,5 +183,13 @@ impl Sender {
         self.window_size.set(window_size);
 
         Ok(())
+    }
+
+    pub fn remote_mss(&self) -> usize {
+        self.mss
+    }
+
+    pub fn current_rto(&self) -> Duration {
+        self.rto.borrow().estimate()
     }
 }

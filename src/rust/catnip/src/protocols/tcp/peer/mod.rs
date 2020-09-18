@@ -3,8 +3,8 @@
 
 pub mod isn_generator;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 use super::{
     connection::{TcpConnection, TcpConnectionHandle, TcpConnectionId},

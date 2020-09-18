@@ -2,9 +2,10 @@
 // Licensed under the MIT license.
 
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
+use crate::protocols::tcp2::peer::SocketDescriptor;
 use crate::{
     prelude::*,
-    protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp, udp},
+    protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp2, udp},
 };
 use std::future::Future;
 use std::{
@@ -17,7 +18,7 @@ use std::{
 pub struct Ipv4Peer {
     rt: Runtime,
     icmpv4: icmpv4::Peer,
-    tcp: tcp::Peer,
+    tcp: tcp2::Peer<Runtime>,
     udp: udp::Peer,
 }
 
@@ -25,7 +26,7 @@ impl<'a> Ipv4Peer {
     pub fn new(rt: Runtime, arp: arp::Peer) -> Ipv4Peer {
         let udp = udp::Peer::new(rt.clone(), arp.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
-        let tcp = tcp::Peer::new(rt.clone(), arp);
+        let tcp = tcp2::Peer::new(rt.clone(), arp);
         Ipv4Peer {
             rt,
             udp,
@@ -46,7 +47,10 @@ impl<'a> Ipv4Peer {
         }
 
         match header.protocol()? {
-            Ipv4Protocol::Tcp => self.tcp.receive(datagram),
+            Ipv4Protocol::Tcp => {
+                self.tcp.receive_datagram(datagram);
+                Ok(())
+            },
             Ipv4Protocol::Udp => self.udp.receive(datagram),
             Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
         }
@@ -81,49 +85,54 @@ impl<'a> Ipv4Peer {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> impl Future<Output=Result<tcp::ConnectionHandle>> {
-        tcp::Peer::connect(&self.tcp, remote_endpoint)
+    ) -> impl Future<Output=Result<SocketDescriptor>> {
+        self.tcp.connect(remote_endpoint)
     }
 
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
-        self.tcp.listen(port)
+    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<u16> {
+        let backlog = 256;
+        let endpoint = ipv4::Endpoint::new(self.rt.options().my_ipv4_addr, port);
+        self.tcp.listen(endpoint, backlog)
     }
 
     pub fn tcp_write(
         &mut self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
         bytes: Vec<u8>,
     ) -> Result<()> {
-        self.tcp.write(handle, bytes)
+        self.tcp.send(handle, bytes)
     }
 
     pub fn tcp_peek(
         &self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
     ) -> Result<Rc<Vec<u8>>> {
-        self.tcp.peek(handle)
+        Ok(Rc::new(self.tcp.peek(handle)?))
     }
 
     pub fn tcp_read(
         &mut self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
     ) -> Result<Rc<Vec<u8>>> {
-        self.tcp.read(handle)
+        match self.tcp.recv(handle)? {
+            Some(r) => Ok(Rc::new(r)),
+            None => Err(Fail::ResourceExhausted { details: "No available data" }),
+        }
     }
 
-    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
-        self.tcp.get_mss(handle)
+    pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize> {
+        self.tcp.remote_mss(handle)
     }
 
-    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
-        self.tcp.get_rto(handle)
+    pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration> {
+        self.tcp.current_rto(handle)
     }
 
     pub fn tcp_get_connection_id(
         &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<tcp::ConnectionId>> {
-        self.tcp.get_connection_id(handle)
+        handle: SocketDescriptor,
+    ) -> Result<(ipv4::Endpoint, ipv4::Endpoint)> {
+        self.tcp.endpoints(handle)
     }
 }
 

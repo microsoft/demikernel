@@ -6,9 +6,10 @@ use crate::{
     protocols::{
         arp,
         ethernet2::{self, MacAddress},
-        ip, ipv4, tcp,
+        ip, ipv4,
     },
 };
+use crate::protocols::tcp2::peer::SocketDescriptor;
 use futures::task::{Context, noop_waker_ref};
 use fxhash::FxHashMap;
 use std::future::Future;
@@ -95,17 +96,17 @@ impl Engine {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<tcp::ConnectionHandle>> {
+    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<SocketDescriptor>> {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
+    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<SocketDescriptor> {
         self.ipv4.tcp_listen(port)
     }
 
     pub fn tcp_write(
         &mut self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
         bytes: Vec<u8>,
     ) -> Result<()> {
         self.ipv4.tcp_write(handle, bytes)
@@ -113,23 +114,23 @@ impl Engine {
 
     pub fn tcp_peek(
         &self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
     ) -> Result<Rc<Vec<u8>>> {
         self.ipv4.tcp_peek(handle)
     }
 
     pub fn tcp_read(
         &mut self,
-        handle: tcp::ConnectionHandle,
+        handle: SocketDescriptor,
     ) -> Result<Rc<Vec<u8>>> {
         self.ipv4.tcp_read(handle)
     }
 
-    pub fn tcp_mss(&self, handle: tcp::ConnectionHandle) -> Result<usize> {
+    pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize> {
         self.ipv4.tcp_mss(handle)
     }
 
-    pub fn tcp_rto(&self, handle: tcp::ConnectionHandle) -> Result<Duration> {
+    pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration> {
         self.ipv4.tcp_rto(handle)
     }
 
@@ -153,8 +154,8 @@ impl Engine {
 
     pub fn tcp_get_connection_id(
         &self,
-        handle: tcp::ConnectionHandle,
-    ) -> Result<Rc<tcp::ConnectionId>> {
+        handle: SocketDescriptor,
+    ) -> Result<(ipv4::Endpoint, ipv4::Endpoint)> {
         self.ipv4.tcp_get_connection_id(handle)
     }
 }

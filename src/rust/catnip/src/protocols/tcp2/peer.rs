@@ -15,6 +15,9 @@ use super::active_open::ActiveOpenSocket;
 use super::passive_open::PassiveSocket;
 use super::established::EstablishedSocket;
 use super::runtime::Runtime;
+use std::time::Duration;
+
+pub type SocketDescriptor = u16;
 
 pub struct Peer<RT: Runtime> {
     inner: Rc<RefCell<Inner<RT>>>,
@@ -29,7 +32,7 @@ impl<RT: Runtime> Peer<RT> {
         self.inner.borrow_mut().receive_datagram(datagram)
     }
 
-    pub fn listen(&self, local: ipv4::Endpoint, max_backlog: usize) -> Result<usize, Fail> {
+    pub fn listen(&self, local: ipv4::Endpoint, max_backlog: usize) -> Result<SocketDescriptor, Fail> {
         let mut inner = self.inner.borrow_mut();
 
         if local.port() >= ip::Port::first_private_port() {
@@ -48,7 +51,7 @@ impl<RT: Runtime> Peer<RT> {
         Ok(fd)
     }
 
-    pub fn accept(&self, fd: usize) -> Result<Option<usize>, Fail> {
+    pub fn accept(&self, fd: SocketDescriptor) -> Result<Option<SocketDescriptor>, Fail> {
         let mut inner_ = self.inner.borrow_mut();
         let inner = &mut *inner_;
 
@@ -74,7 +77,7 @@ impl<RT: Runtime> Peer<RT> {
         Ok(Some(fd))
     }
 
-    pub fn connect(&self, remote: ipv4::Endpoint) -> impl Future<Output=Result<usize, Fail>> {
+    pub fn connect(&self, remote: ipv4::Endpoint) -> impl Future<Output=Result<SocketDescriptor, Fail>> {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -104,7 +107,20 @@ impl<RT: Runtime> Peer<RT> {
         ConnectFuture { state, inner: self.inner.clone() }
     }
 
-    pub fn recv(&self, fd: usize) -> Result<Option<Vec<u8>>, Fail> {
+    pub fn peek(&self, fd: SocketDescriptor) -> Result<Vec<u8>, Fail> {
+        let inner = self.inner.borrow_mut();
+        let key = match inner.sockets.get(&fd) {
+            Some((local, Some(remote))) => (local.clone(), remote.clone()),
+            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => return Err(Fail::Malformed { details: "Bad FD" }),
+        };
+        match inner.established.get(&key) {
+            Some(ref s) => s.peek(),
+            None => Err(Fail::Malformed { details: "Socket not established" }),
+        }
+    }
+
+    pub fn recv(&self, fd: SocketDescriptor) -> Result<Option<Vec<u8>>, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
@@ -117,7 +133,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn send(&self, fd: usize, buf: Vec<u8>) -> Result<(), Fail> {
+    pub fn send(&self, fd: SocketDescriptor, buf: Vec<u8>) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
@@ -130,7 +146,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn close(&self, fd: usize) -> Result<(), Fail> {
+    pub fn close(&self, fd: SocketDescriptor) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => {
@@ -147,6 +163,45 @@ impl<RT: Runtime> Peer<RT> {
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         }
         Ok(())
+    }
+
+    pub fn remote_mss(&self, fd: SocketDescriptor) -> Result<usize, Fail> {
+        let inner = self.inner.borrow();
+        let key = match inner.sockets.get(&fd) {
+            Some((local, Some(remote))) => (local.clone(), remote.clone()),
+            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => return Err(Fail::Malformed { details: "Bad FD" }),
+        };
+        match inner.established.get(&key) {
+            Some(ref s) => Ok(s.remote_mss()),
+            None => return Err(Fail::Malformed { details: "Socket not established" }),
+        }
+    }
+
+    pub fn current_rto(&self, fd: SocketDescriptor) -> Result<Duration, Fail> {
+        let inner = self.inner.borrow();
+        let key = match inner.sockets.get(&fd) {
+            Some((local, Some(remote))) => (local.clone(), remote.clone()),
+            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => return Err(Fail::Malformed { details: "Bad FD" }),
+        };
+        match inner.established.get(&key) {
+            Some(ref s) => Ok(s.current_rto()),
+            None => return Err(Fail::Malformed { details: "Socket not established" }),
+        }
+    }
+
+    pub fn endpoints(&self, fd: SocketDescriptor) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
+        let inner = self.inner.borrow();
+        let key = match inner.sockets.get(&fd) {
+            Some((local, Some(remote))) => (local.clone(), remote.clone()),
+            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => return Err(Fail::Malformed { details: "Bad FD" }),
+        };
+        match inner.established.get(&key) {
+            Some(ref s) => Ok(s.endpoints()),
+            None => return Err(Fail::Malformed { details: "Socket not established" }),
+        }
     }
 }
 
@@ -169,11 +224,11 @@ impl<RT: Runtime> Future for Peer<RT> {
 pub struct Inner<RT: Runtime> {
     isn_generator: IsnGenerator,
 
-    next_fd: usize,
+    next_fd: SocketDescriptor,
     unassigned_ports: VecDeque<ip::Port>,
 
     // FD -> local port
-    sockets: HashMap<usize, (ipv4::Endpoint, Option<ipv4::Endpoint>)>,
+    sockets: HashMap<SocketDescriptor, (ipv4::Endpoint, Option<ipv4::Endpoint>)>,
 
     passive: FutureMap<ipv4::Endpoint, PassiveSocket<RT>>,
     connecting: FutureMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
@@ -187,6 +242,7 @@ impl<RT: Runtime> Inner<RT> {
     fn new(rt: RT, arp: arp::Peer) -> Self {
         Self {
             isn_generator: IsnGenerator::new2(rt.rng_gen_u32()),
+            // TODO: Reuse old FDs.
             next_fd: 1,
             unassigned_ports: (ip::Port::first_private_port().into()..65535)
                 .map(|p| ip::Port::try_from(p).unwrap())
@@ -246,7 +302,7 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn alloc_fd(&mut self) -> usize {
+    fn alloc_fd(&mut self) -> SocketDescriptor {
         let fd = self.next_fd;
         self.next_fd += 1;
         fd
@@ -287,7 +343,7 @@ impl<RT: Runtime> Inner<RT> {
         Ok(())
     }
 
-    fn poll_connect_finished(&mut self, fd: usize, context: &mut Context) -> Poll<Result<usize, Fail>> {
+    fn poll_connect_finished(&mut self, fd: SocketDescriptor, context: &mut Context) -> Poll<Result<SocketDescriptor, Fail>> {
         let key = match self.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
             Some(..) => return Poll::Ready(Err(Fail::Malformed { details: "Socket not established" })),
@@ -316,7 +372,7 @@ impl<RT: Runtime> Inner<RT> {
 
 enum ConnectFutureState {
     Failed(Fail),
-    InProgress(usize),
+    InProgress(SocketDescriptor),
 }
 
 pub struct ConnectFuture<RT: Runtime> {
@@ -325,7 +381,7 @@ pub struct ConnectFuture<RT: Runtime> {
 }
 
 impl<RT: Runtime> Future for ConnectFuture<RT> {
-    type Output = Result<usize, Fail>;
+    type Output = Result<SocketDescriptor, Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();

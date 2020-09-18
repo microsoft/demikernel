@@ -23,6 +23,11 @@
   [ ] Slim down TCP background workers
 - Testing
   [ ] Determinized hashmap
-  [ ] Different scenarios
-  [ ] Randomized testing
+  [ ] Randomized testing scenarios
+    [ ] Random number of clients, connecting and disconnecting from each other randomly
+    [ ] Futzing for sending data, receiving data, half-closing, full-closing
+    [ ] Delay, drop, reorder, and duplicate packets randomly
+    [ ] Different MSS and TCP options
+    [ ] Invariant checks around resources getting freed
   [ ] Fuzzing (see goffrie@'s PR from h2)
+  [ ] Resource limit scenarios

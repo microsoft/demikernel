@@ -10,7 +10,7 @@ use std::pin::Pin;
 use crate::{
     logging,
     prelude::*,
-    protocols::{ethernet2, ip, ipv4, tcp},
+    protocols::{ethernet2, ip, ipv4},
     shims::Mutex,
     Options,
 };
@@ -63,22 +63,22 @@ pub struct nip_connect_future {
 }
 
 impl nip_connect_future {
-    unsafe fn pack(f: Pin<Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>>) -> Self {
+    unsafe fn pack(f: Pin<Box<dyn Future<Output=Result<u16>>>>) -> Self {
         let trait_obj = Pin::into_inner_unchecked(f);
         let raw_obj = std::mem::transmute::<_, TraitObject>(trait_obj);
         debug_assert!(!raw_obj.data.is_null() && !raw_obj.vtable.is_null());
         Self { obj: raw_obj }
     }
 
-    unsafe fn unpack_mut<'a>(&'a mut self) -> Pin<&'a mut dyn Future<Output=Result<tcp::ConnectionHandle>>> {
+    unsafe fn unpack_mut<'a>(&'a mut self) -> Pin<&'a mut dyn Future<Output=Result<u16>>> {
         debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
-        let obj_ref = std::mem::transmute::<_, &mut dyn Future<Output=Result<tcp::ConnectionHandle>>>(self.obj);
+        let obj_ref = std::mem::transmute::<_, &mut dyn Future<Output=Result<u16>>>(self.obj);
         Pin::new_unchecked(obj_ref)
     }
 
-    unsafe fn unpack(self) -> Pin<Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>> {
+    unsafe fn unpack(self) -> Pin<Box<dyn Future<Output=Result<u16>>>> {
         debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
-        let obj = std::mem::transmute::<_, Box<dyn Future<Output=Result<tcp::ConnectionHandle>>>>(self.obj);
+        let obj = std::mem::transmute::<_, Box<dyn Future<Output=Result<u16>>>>(self.obj);
         Pin::new_unchecked(obj)
     }
 }
@@ -458,8 +458,6 @@ pub extern "C" fn nip_tcp_write(
     }
 
     let bytes = unsafe { slice::from_raw_parts(bytes, length) };
-    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
-
     match engine.tcp_write(handle, bytes.to_vec()) {
         Ok(()) => 0,
         Err(fail) => fail_to_errno(&fail),
@@ -494,7 +492,6 @@ pub extern "C" fn nip_tcp_peek(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_peek(handle) {
         Ok(bytes) => {
             assert!(!bytes.is_empty());
@@ -525,7 +522,6 @@ pub extern "C" fn nip_tcp_read(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_read(handle) {
         Ok(_) => 0,
         Err(fail) => fail_to_errno(&fail),
@@ -534,10 +530,14 @@ pub extern "C" fn nip_tcp_read(
 
 #[no_mangle]
 pub extern "C" fn nip_tcp_listen(
+    handle_out: *mut u16,
     engine: *mut libc::c_void,
     port: u16,
 ) -> libc::c_int {
     if engine.is_null() {
+        return libc::EINVAL;
+    }
+    if handle_out.is_null() {
         return libc::EINVAL;
     }
 
@@ -549,7 +549,12 @@ pub extern "C" fn nip_tcp_listen(
     let engine = unsafe { &mut *(engine as *mut Engine) };
     let port = ip::Port::try_from(u16::from_be(port)).unwrap();
     match engine.tcp_listen(port) {
-        Ok(_) => 0,
+        Ok(h) => {
+            unsafe {
+                *handle_out = h;
+            }
+            0
+        },
         Err(fail) => fail_to_errno(&fail),
     }
 }
@@ -604,7 +609,7 @@ pub extern "C" fn nip_tcp_connected(
     }
 }
 
-// XXX: Call this in the layer above.
+// TODO: Call this in the layer above.
 #[no_mangle]
 pub extern "C" fn nip_tcp_connect_future_free(raw_future: nip_connect_future) {
     let _ = unsafe { raw_future.unpack() };
@@ -638,11 +643,10 @@ pub extern "C" fn nip_tcp_get_local_endpoint(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_get_connection_id(handle) {
-        Ok(cxnid) => {
-            let addr = u32::to_be(cxnid.local.address().into());
-            let port = u16::to_be(cxnid.local.port().into());
+        Ok((local, _)) => {
+            let addr = u32::to_be(local.address().into());
+            let port = u16::to_be(local.port().into());
             unsafe {
                 *addr_out = addr;
                 *port_out = port;
@@ -681,11 +685,10 @@ pub extern "C" fn nip_tcp_get_remote_endpoint(
     }
 
     let engine = unsafe { &mut *(engine as *mut Engine) };
-    let handle = tcp::ConnectionHandle::try_from(handle).unwrap();
     match engine.tcp_get_connection_id(handle) {
-        Ok(cxnid) => {
-            let addr = u32::to_be(cxnid.remote.address().into());
-            let port = u16::to_be(cxnid.remote.port().into());
+        Ok((_, remote)) => {
+            let addr = u32::to_be(remote.address().into());
+            let port = u16::to_be(remote.port().into());
             unsafe {
                 *addr_out = addr;
                 *port_out = port;

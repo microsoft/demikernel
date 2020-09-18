@@ -11,3 +11,5 @@ mod tests;
 use std::num::Wrapping;
 
 pub type SeqNumber = Wrapping<u32>;
+
+pub use self::peer::Peer;
