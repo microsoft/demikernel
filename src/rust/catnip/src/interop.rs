@@ -530,14 +530,10 @@ pub extern "C" fn nip_tcp_read(
 
 #[no_mangle]
 pub extern "C" fn nip_tcp_listen(
-    handle_out: *mut u16,
     engine: *mut libc::c_void,
     port: u16,
 ) -> libc::c_int {
     if engine.is_null() {
-        return libc::EINVAL;
-    }
-    if handle_out.is_null() {
         return libc::EINVAL;
     }
 
@@ -549,12 +545,7 @@ pub extern "C" fn nip_tcp_listen(
     let engine = unsafe { &mut *(engine as *mut Engine) };
     let port = ip::Port::try_from(u16::from_be(port)).unwrap();
     match engine.tcp_listen(port) {
-        Ok(h) => {
-            unsafe {
-                *handle_out = h;
-            }
-            0
-        },
+        Ok(..) => 0,
         Err(fail) => fail_to_errno(&fail),
     }
 }

@@ -1,6 +1,6 @@
 use crate::protocols::{arp, ip, ipv4};
 use std::task::{Poll, Context};
-use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
+use super::isn_generator::IsnGenerator;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::convert::TryFrom;
@@ -241,7 +241,7 @@ pub struct Inner<RT: Runtime> {
 impl<RT: Runtime> Inner<RT> {
     fn new(rt: RT, arp: arp::Peer) -> Self {
         Self {
-            isn_generator: IsnGenerator::new2(rt.rng_gen_u32()),
+            isn_generator: IsnGenerator::new(rt.rng_gen_u32()),
             // TODO: Reuse old FDs.
             next_fd: 1,
             unassigned_ports: (ip::Port::first_private_port().into()..65535)

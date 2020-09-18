@@ -10,7 +10,7 @@ use std::pin::Pin;
 use std::task::{Poll, Context};
 use std::collections::VecDeque;
 use crate::protocols::tcp2::SeqNumber;
-use crate::protocols::tcp::peer::isn_generator::IsnGenerator;
+use super::isn_generator::IsnGenerator;
 use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
@@ -64,7 +64,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
             ready: VecDeque::new(),
             ready_endpoints: HashSet::new(),
             max_backlog,
-            isn_generator: IsnGenerator::new2(nonce),
+            isn_generator: IsnGenerator::new(nonce),
             local,
             rt,
             arp,

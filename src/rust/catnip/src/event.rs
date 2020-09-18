@@ -10,6 +10,7 @@ use std::{
     fmt::{Debug, Formatter, Result as FmtResult},
     rc::Rc,
 };
+use crate::protocols::tcp2::peer::SocketDescriptor;
 
 pub enum Event {
     Transmit(Rc<RefCell<Vec<u8>>>),
@@ -19,7 +20,7 @@ pub enum Event {
         context: Vec<u8>,
     },
     UdpDatagramReceived(udp::Datagram),
-    IncomingTcpConnection(tcp::ConnectionHandle),
+    IncomingTcpConnection(SocketDescriptor),
     TcpBytesAvailable(tcp::ConnectionHandle),
     TcpConnectionClosed {
         handle: tcp::ConnectionHandle,

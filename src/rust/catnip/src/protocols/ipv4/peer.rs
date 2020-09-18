@@ -95,6 +95,10 @@ impl<'a> Ipv4Peer {
         self.tcp.listen(endpoint, backlog)
     }
 
+    pub fn tcp_accept(&mut self, fd: SocketDescriptor) -> Result<Option<SocketDescriptor>> {
+        self.tcp.accept(fd)
+    }
+
     pub fn tcp_write(
         &mut self,
         handle: SocketDescriptor,

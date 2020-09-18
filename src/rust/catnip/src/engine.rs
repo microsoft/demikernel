@@ -9,6 +9,7 @@ use crate::{
         ip, ipv4,
     },
 };
+use crate::event::Event;
 use crate::protocols::tcp2::peer::SocketDescriptor;
 use futures::task::{Context, noop_waker_ref};
 use fxhash::FxHashMap;
@@ -24,6 +25,9 @@ pub struct Engine {
     rt: Runtime,
     arp: arp::Peer,
     ipv4: ipv4::Peer,
+
+    // TODO: Hax to support upper layer not calling `accept`.
+    listening: Vec<SocketDescriptor>,
 }
 
 impl Engine {
@@ -31,7 +35,7 @@ impl Engine {
         let rt = Runtime::from_options(now, options);
         let arp = arp::Peer::new(now, rt.clone())?;
         let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone());
-        Ok(Engine { rt, arp, ipv4 })
+        Ok(Engine { rt, arp, ipv4, listening: vec![] })
     }
 
     pub fn options(&self) -> Options {
@@ -100,8 +104,9 @@ impl Engine {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<SocketDescriptor> {
-        self.ipv4.tcp_listen(port)
+    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
+        self.listening.push(self.ipv4.tcp_listen(port)?);
+        Ok(())
     }
 
     pub fn tcp_write(
@@ -140,8 +145,21 @@ impl Engine {
         let mut ctx = Context::from_waker(noop_waker_ref());
         assert!(Future::poll(Pin::new(&mut self.rt), &mut ctx).is_pending());
         assert!(Future::poll(Pin::new(&mut self.arp), &mut ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut self.ipv4), &mut ctx).is_pending())
+        assert!(Future::poll(Pin::new(&mut self.ipv4), &mut ctx).is_pending());
 
+        for &socket_fd in &self.listening {
+            loop {
+                match self.ipv4.tcp_accept(socket_fd) {
+                    Ok(Some(fd)) => {
+                        self.rt.emit_event(Event::IncomingTcpConnection(fd));
+                    },
+                    Ok(None) => break,
+                    Err(e) => {
+                        warn!("Accept failed on {:?}: {:?}", socket_fd, e);
+                    }
+                }
+            }
+        }
     }
 
     pub fn next_event(&self) -> Option<Rc<Event>> {
