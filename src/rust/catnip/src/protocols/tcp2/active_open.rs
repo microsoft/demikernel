@@ -8,15 +8,15 @@ use std::num::Wrapping;
 use std::future::Future;
 use std::task::{Poll, Context};
 use crate::protocols::tcp2::SeqNumber;
-use super::established::EstablishedSocket;
 use super::established::state::sender::Sender;
 use super::established::state::receiver::Receiver;
 use super::established::state::ControlBlock;
 use super::constants::FALLBACK_MSS;
 use std::pin::Pin;
+use std::task::Waker;
 use pin_project::pin_project;
 
-type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<EstablishedSocket<RT>, Fail>>;
+type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<ControlBlock<RT>, Fail>>;
 
 #[pin_project]
 pub struct ActiveOpenSocket<RT: Runtime> {
@@ -31,7 +31,8 @@ pub struct ActiveOpenSocket<RT: Runtime> {
     #[pin]
     future: BackgroundFuture<RT>,
 
-    result: Option<Result<EstablishedSocket<RT>, Fail>>,
+    waker: Option<Waker>,
+    result: Option<Result<ControlBlock<RT>, Fail>>,
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
@@ -52,18 +53,27 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             arp,
 
             future,
+            waker: None,
             result: None,
         }
     }
 
-    pub fn take_result(self: Pin<&mut Self>) -> Option<Result<EstablishedSocket<RT>, Fail>> {
-        self.project().result.take()
+    pub fn poll_result(self: Pin<&mut Self>, context: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+        let self_ = self.project();
+        match self_.result.take() {
+            None => {
+                self_.waker.replace(context.waker().clone());
+                Poll::Pending
+            },
+            Some(r) => Poll::Ready(r),
+        }
     }
 
     pub fn receive_segment(self: Pin<&mut Self>, segment: TcpSegment) {
         let self_ = self.project();
 
         if segment.rst {
+            self_.waker.take().map(|w| w.wake());
             self_.result.replace(Err(Fail::ConnectionRefused {}));
             return;
         }
@@ -120,7 +130,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 sender,
                 receiver,
             };
-            self_.result.replace(Ok(EstablishedSocket::new(cb)));
+            self_.waker.take().map(|w| w.wake());
+            self_.result.replace(Ok(cb));
             return;
         }
         // Otherwise, just drop the packet.
@@ -183,6 +194,7 @@ impl<RT: Runtime> Future for ActiveOpenSocket<RT> {
             Poll::Ready(r) => r,
             Poll::Pending => return Poll::Pending,
         };
+        self_.waker.take().map(|w| w.wake());
         self_.result.replace(r);
         Poll::Pending
     }

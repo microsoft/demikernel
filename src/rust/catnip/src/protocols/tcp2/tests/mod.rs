@@ -2,7 +2,7 @@ use crate::protocols::{arp, tcp, ip, ipv4};
 
 use must_let::must_let;
 use std::pin::Pin;
-use std::task::{Context};
+use std::task::{Context, Poll};
 use std::future::Future;
 use futures::task::noop_waker_ref;
 use crate::protocols::tcp2::peer::Peer;
@@ -151,12 +151,15 @@ impl Test {
 #[test]
 fn test_connect() {
     let mut test = Test::new();
+    let mut ctx = Context::from_waker(noop_waker_ref());
 
     let listen_port = ip::Port::try_from(80).unwrap();
     let listen_addr = ipv4::Endpoint::new(test.alice.addr, listen_port);
     let listen_fd = test.alice.peer.listen(listen_addr.clone(), 1).unwrap();
 
-    let bob_fd = test.bob.peer.connect(listen_addr).unwrap();
+    let mut bob_connect_future = test.bob.peer.connect(listen_addr);
+    assert!(Future::poll(Pin::new(&mut bob_connect_future), &mut ctx).is_pending());
+
     // Sending the SYN is background work.
     test.bob.poll();
     test.alice.push(test.bob.pop());
@@ -169,7 +172,7 @@ fn test_connect() {
     test.alice.push(test.bob.pop());
 
     must_let!(let Ok(Some(alice_fd)) = test.alice.peer.accept(listen_fd));
-    must_let!(let Ok(true) = test.bob.peer.connect_finished(bob_fd));
+    must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut bob_connect_future), &mut ctx));
 
     test.bob.peer.send(bob_fd, vec![1, 2, 3, 4]).unwrap();
     test.bob.poll();

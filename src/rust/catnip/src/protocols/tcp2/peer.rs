@@ -74,56 +74,34 @@ impl<RT: Runtime> Peer<RT> {
         Ok(Some(fd))
     }
 
-    pub fn connect(&self, remote: ipv4::Endpoint) -> Result<usize, Fail> {
+    pub fn connect(&self, remote: ipv4::Endpoint) -> impl Future<Output=Result<usize, Fail>> {
         let mut inner = self.inner.borrow_mut();
 
-        let local_port = inner.unassigned_ports.pop_front()
-            .ok_or_else(|| Fail::ResourceExhausted { details: "Out of private ports" })?;
-        let local = ipv4::Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
+        let r = try {
+            let local_port = inner.unassigned_ports.pop_front()
+                .ok_or_else(|| Fail::ResourceExhausted { details: "Out of private ports" })?;
+            let local = ipv4::Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
 
-        let fd = inner.alloc_fd();
-        assert!(inner.sockets.insert(fd, (local.clone(), Some(remote.clone()))).is_none());
+            let fd = inner.alloc_fd();
+            assert!(inner.sockets.insert(fd, (local.clone(), Some(remote.clone()))).is_none());
 
-        let local_isn = inner.isn_generator.generate(&local, &remote);
-        let key = (local.clone(), remote.clone());
-        let socket = ActiveOpenSocket::new(
-            local_isn,
-            local,
-            remote,
-            inner.rt.clone(),
-            inner.arp.clone(),
-        );
-        assert!(inner.connecting.insert(key, socket).is_none());
-        Ok(fd)
-    }
-
-    pub fn connect_finished(&self, fd: usize) -> Result<bool, Fail> {
-        let mut inner_ = self.inner.borrow_mut();
-        let inner = &mut *inner_;
-
-        let key = match inner.sockets.get(&fd) {
-            Some((local, Some(remote))) => (local.clone(), remote.clone()),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
+            let local_isn = inner.isn_generator.generate(&local, &remote);
+            let key = (local.clone(), remote.clone());
+            let socket = ActiveOpenSocket::new(
+                local_isn,
+                local,
+                remote,
+                inner.rt.clone(),
+                inner.arp.clone(),
+            );
+            assert!(inner.connecting.insert(key, socket).is_none());
+            fd
         };
-
-        let result = {
-            let socket = match inner.connecting.get_pin_mut(&key) {
-                Some(s) => s,
-                None => return Err(Fail::Malformed { details: "Socket not connecting" }),
-            };
-            match socket.take_result() {
-                None => return Ok(false),
-                Some(r) => r,
-            }
+        let state = match r {
+            Ok(fd) => ConnectFutureState::InProgress(fd),
+            Err(e) => ConnectFutureState::Failed(e),
         };
-        inner.connecting.remove(&key);
-
-        let socket = result?;
-        assert!(inner.established.insert(key, socket).is_none());
-
-        Ok(true)
-
+        ConnectFuture { state, inner: self.inner.clone() }
     }
 
     pub fn recv(&self, fd: usize) -> Result<Option<Vec<u8>>, Fail> {
@@ -307,5 +285,55 @@ impl<RT: Runtime> Inner<RT> {
         self.rt.transmit(&segment_buf);
 
         Ok(())
+    }
+
+    fn poll_connect_finished(&mut self, fd: usize, context: &mut Context) -> Poll<Result<usize, Fail>> {
+        let key = match self.sockets.get(&fd) {
+            Some((local, Some(remote))) => (local.clone(), remote.clone()),
+            Some(..) => return Poll::Ready(Err(Fail::Malformed { details: "Socket not established" })),
+            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+        };
+
+        let result = {
+            let socket = match self.connecting.get_pin_mut(&key) {
+                Some(s) => s,
+                None => return Poll::Ready(Err(Fail::Malformed { details: "Socket not connecting" })),
+            };
+            match socket.poll_result(context) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(r) => r,
+            }
+        };
+        self.connecting.remove(&key);
+
+        let cb = result?;
+        assert!(self.established.insert(key, EstablishedSocket::new(cb)).is_none());
+
+        Poll::Ready(Ok(fd))
+
+    }
+}
+
+enum ConnectFutureState {
+    Failed(Fail),
+    InProgress(usize),
+}
+
+pub struct ConnectFuture<RT: Runtime> {
+    state: ConnectFutureState,
+    inner: Rc<RefCell<Inner<RT>>>,
+}
+
+impl<RT: Runtime> Future for ConnectFuture<RT> {
+    type Output = Result<usize, Fail>;
+
+    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
+        let self_ = self.get_mut();
+        match self_.state {
+            ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
+            ConnectFutureState::InProgress(fd) => {
+                self_.inner.borrow_mut().poll_connect_finished(fd, context)
+            },
+        }
     }
 }
