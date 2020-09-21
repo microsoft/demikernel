@@ -164,7 +164,6 @@ impl ArpPeer {
         self.cache.borrow_mut().import(cache);
     }
 
-    #[cfg(test)]
     pub fn insert(&self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) {
         self.cache.borrow_mut().insert(ipv4_addr, link_addr);
     }

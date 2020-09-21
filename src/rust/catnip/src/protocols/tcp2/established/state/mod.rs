@@ -2,6 +2,8 @@ pub mod sender;
 pub mod receiver;
 mod rto;
 
+use std::rc::Rc;
+use std::cell::RefCell;
 use self::sender::Sender;
 use self::receiver::Receiver;
 use std::time::Duration;
@@ -81,7 +83,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let _ = encoder.seal().expect("TODO");
 
         // TODO: We should have backpressure here for emitting events.
-        self.rt.transmit(&segment_buf);
+        self.rt.transmit(Rc::new(RefCell::new(segment_buf)));
     }
 
     pub fn remote_mss(&self) -> usize {

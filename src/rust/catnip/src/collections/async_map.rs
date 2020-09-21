@@ -1,4 +1,3 @@
-use unicycle::{Unordered, Sentinel};
 use std::task::{Poll, Context};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -6,38 +5,40 @@ use std::pin::Pin;
 use std::borrow::Borrow;
 use std::future::Future;
 
-pub type FutureMap<K, F> = AsyncMap<K, F, unicycle::IndexedFutures>;
-
-pub struct AsyncMap<K: Clone + Hash + Eq + Unpin, F, S: Sentinel> {
-    map: HashMap<K, usize>,
-    backwards: HashMap<usize, K>,
-    unordered: Unordered<F, S>,
+pub struct FutureMap<K: Clone + Hash + Eq + Unpin, F: ?Sized> {
+    map: HashMap<K, Box<F>>,
 }
 
-impl<K: Clone + Hash + Eq + Unpin, F: Future> AsyncMap<K, F, unicycle::IndexedFutures> {
+impl<K: Clone + Hash + Eq + Unpin, F: Future + ?Sized> FutureMap<K, F> {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
-            backwards: HashMap::new(),
-            unordered: Unordered::<F, unicycle::IndexedFutures>::new()
         }
     }
 
     pub fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<(K, F::Output)> {
         let self_ = self.get_mut();
-        match unicycle::IndexedFuturesUnordered::poll_set(Pin::new(&mut self_.unordered), ctx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready((ix, result)) => {
-                let key = self_.backwards.remove(&ix).unwrap();
-                assert_eq!(self_.map.remove(&key), Some(ix));
-                Poll::Ready((key, result))
-            },
+        let mut to_remove = None;
+
+        for (k, v) in self_.map.iter_mut() {
+            let f: Pin<&mut F> = unsafe { Pin::new_unchecked(&mut *v) };
+            match Future::poll(f, ctx) {
+                Poll::Pending => continue,
+                Poll::Ready(val) => {
+                    to_remove = Some((k.clone(), val));
+                },
+            }
+        }
+        if let Some((k, val)) = to_remove {
+            self_.map.remove(&k);
+            Poll::Ready((k, val))
+        } else {
+            Poll::Pending
         }
     }
-
 }
 
-impl<K: Clone + Hash + Eq + Unpin, F, S: Sentinel> AsyncMap<K, F, S> {
+impl<K: Clone + Hash + Eq + Unpin, F> FutureMap<K, F> {
     pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
         where Q: Hash + Eq, K: Borrow<Q>
     {
@@ -49,36 +50,28 @@ impl<K: Clone + Hash + Eq + Unpin, F, S: Sentinel> AsyncMap<K, F, S> {
         if self.map.contains_key(&key) {
             return Some((key, val));
         }
-
-        assert!(!self.map.contains_key(&key));
-        let ix = self.unordered.push(val);
-        self.backwards.insert(ix, key.clone());
-        self.map.insert(key, ix);
+        self.map.insert(key, Box::new(val));
         None
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&F>
         where Q: Hash + Eq, K: Borrow<Q>
     {
-        let &ix = self.map.get(key)?;
-        self.unordered.get(ix)
+        Some(&self.map.get(key)?.as_ref())
     }
 
     pub fn get_pin_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<Pin<&mut F>>
         where Q: Hash + Eq, K: Borrow<Q>
     {
-        let &ix = self.map.get(key)?;
-        self.unordered.get_pin_mut(ix)
+        let f: &mut F = &mut *self.map.get_mut(key)?;
+        Some(unsafe { Pin::new_unchecked(f) })
     }
 
     pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> bool
         where Q: Hash + Eq, K: Borrow<Q>
     {
         match self.map.remove(key) {
-            Some(ix) => {
-                assert!(self.unordered.remove(ix));
-                true
-            },
+            Some(..) => true,
             None => false,
         }
     }

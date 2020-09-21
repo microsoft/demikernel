@@ -5,7 +5,7 @@ authors = ["Michael Lowell Roberts <mirobert@microsoft.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["dylib", "staticlib"]
+crate-type = ["dylib", "staticlib", "rlib"]
 
 [dependencies]
 bit-vec = "0.6.2"
@@ -40,4 +40,9 @@ parking_lot = "0.11.0"
 pin-project = "0.4.23"
 
 [dev-dependencies]
+criterion = "0.3.3"
 must-let = { git = "https://github.com/sujayakar/must-let" }
+
+[[bench]]
+name = "tcp_echo"
+harness = false

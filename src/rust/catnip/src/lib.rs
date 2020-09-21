@@ -26,13 +26,13 @@ extern crate derive_more;
 #[macro_use]
 extern crate lazy_static;
 
-mod event;
+pub mod event;
 mod interop;
 mod logging;
-mod options;
+pub mod options;
 mod prelude;
 pub mod protocols;
-mod rand;
+pub mod rand;
 
 pub mod collections;
 pub mod engine;

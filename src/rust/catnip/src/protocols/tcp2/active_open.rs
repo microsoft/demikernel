@@ -1,4 +1,6 @@
 use crate::protocols::{arp, ipv4};
+use std::rc::Rc;
+use std::cell::RefCell;
 use std::convert::TryInto;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
 use crate::fail::Fail;
@@ -98,7 +100,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             frame_header.src_addr(self_.rt.local_link_addr());
             frame_header.dest_addr(remote_link_addr);
             let _ = encoder.seal().expect("TODO");
-            self_.rt.transmit(&segment_buf);
+            self_.rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment.window_size.checked_shl(window_scale as u32)
@@ -173,7 +175,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(remote_link_addr);
                 let _ = encoder.seal().expect("TODO");
-                rt.transmit(&segment_buf);
+                rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
                 rt.wait(handshake_timeout).await;
             }

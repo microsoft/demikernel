@@ -46,8 +46,8 @@ impl TestRuntime {
 }
 
 impl Runtime for Rc<RefCell<TestRuntime>> {
-    fn transmit(&self, buf: &[u8]) {
-        self.borrow_mut().outgoing.push_back(buf.to_owned());
+    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
+        self.borrow_mut().outgoing.push_back(buf.borrow_mut().clone());
     }
 
     fn local_link_addr(&self) -> MacAddress {

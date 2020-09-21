@@ -339,7 +339,7 @@ impl<RT: Runtime> Inner<RT> {
         frame_header.dest_addr(remote_link_addr);
         let _ = encoder.seal()?;
 
-        self.rt.transmit(&segment_buf);
+        self.rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
         Ok(())
     }

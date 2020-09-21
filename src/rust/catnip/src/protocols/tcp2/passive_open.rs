@@ -1,5 +1,7 @@
 use crate::protocols::{arp, ipv4};
 use std::convert::TryInto;
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
 use crate::fail::Fail;
 use std::time::Duration;
@@ -222,7 +224,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(remote_link_addr);
                 let _ = encoder.seal().expect("TODO");
-                rt.transmit(&segment_buf);
+                rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
                 rt.wait(handshake_timeout).await;
             }

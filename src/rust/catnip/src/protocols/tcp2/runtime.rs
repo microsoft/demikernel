@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use rand::Rng;
 
 pub trait Runtime: Clone + Unpin {
-    fn transmit(&self, buf: &[u8]);
+    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>);
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;
@@ -23,8 +23,8 @@ pub trait Runtime: Clone + Unpin {
 }
 
 impl Runtime for crate::runtime::Runtime {
-    fn transmit(&self, buf: &[u8]) {
-        let event = crate::event::Event::Transmit(Rc::new(RefCell::new(buf.to_vec())));
+    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
+        let event = crate::event::Event::Transmit(buf);
         self.emit_event(event);
     }
 
