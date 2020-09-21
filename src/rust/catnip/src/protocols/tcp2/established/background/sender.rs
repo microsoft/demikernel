@@ -82,7 +82,8 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
 
         // Form an outgoing packet.
         let max_size  = cmp::min((win_sz - sent_data) as usize, cb.sender.mss);
-        let segment_data = cb.sender.pop_unsent(max_size);
+        let segment_data = cb.sender.pop_unsent(max_size)
+            .expect("No unsent data with sequence number gap?");
         let segment_data_len = segment_data.len();
         assert!(segment_data_len > 0);
 

@@ -33,7 +33,6 @@ mod options;
 mod prelude;
 pub mod protocols;
 mod rand;
-mod retry;
 
 pub mod collections;
 pub mod engine;

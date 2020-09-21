@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use crate::protocols::tcp2::SeqNumber;
 use std::convert::TryInto;
 use crate::collections::watched::WatchedValue;
@@ -9,7 +10,7 @@ use std::time::{Instant, Duration};
 use super::rto::RtoCalculator;
 
 pub struct UnackedSegment {
-    pub bytes: Vec<u8>,
+    pub bytes: Bytes,
     // Set to `None` on retransmission to implement Karn's algorithm.
     pub initial_tx: Option<Instant>,
 }
@@ -40,7 +41,7 @@ pub struct Sender {
     pub base_seq_no: WatchedValue<SeqNumber>,
     pub unacked_queue: RefCell<VecDeque<UnackedSegment>>,
     pub sent_seq_no: WatchedValue<SeqNumber>,
-    pub unsent_queue: RefCell<VecDeque<Vec<u8>>>,
+    pub unsent_queue: RefCell<VecDeque<Bytes>>,
     pub unsent_seq_no: WatchedValue<SeqNumber>,
 
     pub window_size: WatchedValue<u32>,
@@ -73,7 +74,7 @@ impl Sender {
         }
     }
 
-    pub fn send(&self, buf: Vec<u8>) -> Result<(), Fail> {
+    pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored { details: "Sender closed" });
         }
@@ -146,7 +147,7 @@ impl Sender {
         Ok(())
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Vec<u8>> {
+    pub fn pop_one_unsent_byte(&self) -> Option<Bytes> {
         let mut queue = self.unsent_queue.borrow_mut();
         let mut buf = queue.pop_front()?;
         let remainder = buf.split_off(1);
@@ -154,22 +155,15 @@ impl Sender {
         Some(buf)
     }
 
-    pub fn pop_unsent(&self, mut bytes_remaining: usize) -> Vec<u8> {
-        let mut segment_data = vec![];
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Bytes> {
+        // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        while bytes_remaining > 0 {
-            let mut buf = match unsent_queue.pop_front() {
-                Some(b) => b,
-                None => break,
-            };
-            if buf.len() > bytes_remaining {
-                let tail = buf.split_off(bytes_remaining);
-                unsent_queue.push_front(tail);
-            }
-            bytes_remaining -= buf.len();
-            segment_data.extend(buf);
+        let mut buf = unsent_queue.pop_front()?;
+        if buf.len() > max_bytes {
+            let tail = buf.split_off(max_bytes);
+            unsent_queue.push_front(tail);
         }
-        segment_data
+        Some(buf)
     }
 
     pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {

@@ -1,5 +1,6 @@
 use crate::protocols::{arp, tcp, ip, ipv4};
 
+use bytes::{Bytes, BytesMut};
 use must_let::must_let;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -154,6 +155,10 @@ impl Test {
     }
 }
 
+fn bytes(s: &[u8]) -> Bytes {
+    BytesMut::from(s).freeze()
+}
+
 #[test]
 fn test_connect() {
     let mut test = Test::new();
@@ -180,14 +185,14 @@ fn test_connect() {
     must_let!(let Ok(Some(alice_fd)) = test.alice.peer.accept(listen_fd));
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut bob_connect_future), &mut ctx));
 
-    test.bob.peer.send(bob_fd, vec![1, 2, 3, 4]).unwrap();
+    test.bob.peer.send(bob_fd, bytes(&[1u8, 2, 3, 4])).unwrap();
     test.bob.poll();
     test.alice.push(test.bob.pop());
 
     must_let!(let Ok(Some(buf)) = test.alice.peer.recv(alice_fd));
     assert_eq!(buf, vec![1, 2, 3, 4]);
 
-    test.alice.peer.send(alice_fd, vec![5]).unwrap();
+    test.alice.peer.send(alice_fd, bytes(&[5])).unwrap();
     test.alice.poll();
 
     test.bob.push(test.alice.pop());
@@ -195,7 +200,7 @@ fn test_connect() {
     assert_eq!(buf, vec![5]);
 
     // Send a segment from Bob to Alice but drop it, checking to see that it gets retransmitted.
-    test.bob.peer.send(bob_fd, vec![5, 6, 7, 8]).unwrap();
+    test.bob.peer.send(bob_fd, bytes(&[5, 6, 7, 8])).unwrap();
     test.bob.poll();
     let _ = test.bob.pop();
 

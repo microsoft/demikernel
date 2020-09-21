@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use bytes::Bytes;
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
 use crate::protocols::tcp2::peer::SocketDescriptor;
 use crate::{
@@ -102,7 +103,7 @@ impl<'a> Ipv4Peer {
     pub fn tcp_write(
         &mut self,
         handle: SocketDescriptor,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     ) -> Result<()> {
         self.tcp.send(handle, bytes)
     }

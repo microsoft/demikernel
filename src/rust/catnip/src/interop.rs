@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use bytes::BytesMut;
 use std::future::Future;
 use std::raw::TraitObject;
 use futures::FutureExt;
@@ -457,8 +458,9 @@ pub extern "C" fn nip_tcp_write(
         return 0;
     }
 
-    let bytes = unsafe { slice::from_raw_parts(bytes, length) };
-    match engine.tcp_write(handle, bytes.to_vec()) {
+    let slice = unsafe { slice::from_raw_parts(bytes, length) };
+    let bytes = BytesMut::from(slice).freeze();
+    match engine.tcp_write(handle, bytes) {
         Ok(()) => 0,
         Err(fail) => fail_to_errno(&fail),
     }

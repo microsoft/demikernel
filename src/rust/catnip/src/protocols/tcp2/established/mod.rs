@@ -1,6 +1,7 @@
 mod background;
 pub mod state;
 
+use bytes::Bytes;
 use std::task::{Poll, Context};
 use std::future::Future;
 use std::pin::Pin;
@@ -34,7 +35,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         self.cb.receive_segment(segment)
     }
 
-    pub fn send(&self, buf: Vec<u8>) -> Result<(), Fail> {
+    pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
         self.cb.sender.send(buf)
     }
 

@@ -10,6 +10,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::future::Future;
 use crate::collections::async_map::FutureMap;
+use bytes::Bytes;
 
 use super::active_open::ActiveOpenSocket;
 use super::passive_open::PassiveSocket;
@@ -133,7 +134,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn send(&self, fd: SocketDescriptor, buf: Vec<u8>) -> Result<(), Fail> {
+    pub fn send(&self, fd: SocketDescriptor, buf: Bytes) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),

@@ -3,12 +3,13 @@
 
 mod transcode;
 
-use super::connection::{TcpConnection, TcpConnectionId};
+use bytes::{Bytes, BytesMut};
+use super::connection::TcpConnectionId;
 use crate::{
     prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
-use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping, rc::Rc};
+use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
 
 pub use transcode::{
     TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
@@ -32,7 +33,7 @@ pub struct TcpSegment {
     pub fin: bool,
     pub mss: Option<usize>,
     pub window_scale: Option<u8>,
-    pub payload: Rc<Vec<u8>>,
+    pub payload: Bytes,
 }
 
 impl TcpSegment {
@@ -104,25 +105,9 @@ impl TcpSegment {
         self
     }
 
-    pub fn payload(mut self, bytes: Vec<u8>) -> TcpSegment {
-        self.payload = Rc::new(bytes);
+    pub fn payload(mut self, bytes: Bytes) -> TcpSegment {
+        self.payload = bytes;
         self
-    }
-
-    pub fn connection(self, cxn: &TcpConnection) -> TcpSegment {
-        let cxnid = cxn.get_id();
-        let mut segment = self
-            .src_ipv4_addr(cxnid.local.address())
-            .src_port(cxnid.local.port())
-            .dest_ipv4_addr(cxnid.remote.address())
-            .dest_port(cxnid.remote.port())
-            .seq_num(cxn.get_last_seq_num());
-        if let Some(ack_num) = cxn.try_get_ack_num() {
-            segment.window_size = cxn.get_local_receive_window_size();
-            segment.ack(ack_num)
-        } else {
-            segment
-        }
     }
 
     pub fn connection_id(self, cxnid: &TcpConnectionId) -> TcpSegment {
@@ -215,7 +200,7 @@ impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
         let frame_header = decoder.ipv4().frame().header();
         let src_link_addr = frame_header.src_addr();
         let dest_link_addr = frame_header.dest_addr();
-        let payload = Rc::new(decoder.text().to_vec());
+        let payload = BytesMut::from(decoder.text()).freeze();
 
         Ok(TcpSegment {
             dest_ipv4_addr: Some(dest_ipv4_addr),

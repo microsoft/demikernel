@@ -9,6 +9,7 @@ use crate::{
         ip, ipv4,
     },
 };
+use bytes::Bytes;
 use crate::event::Event;
 use crate::protocols::tcp2::peer::SocketDescriptor;
 use futures::task::{Context, noop_waker_ref};
@@ -112,7 +113,7 @@ impl Engine {
     pub fn tcp_write(
         &mut self,
         handle: SocketDescriptor,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     ) -> Result<()> {
         self.ipv4.tcp_write(handle, bytes)
     }
