@@ -121,14 +121,14 @@ impl Engine {
     pub fn tcp_peek(
         &self,
         handle: SocketDescriptor,
-    ) -> Result<Rc<Vec<u8>>> {
+    ) -> Result<Bytes> {
         self.ipv4.tcp_peek(handle)
     }
 
     pub fn tcp_read(
         &mut self,
         handle: SocketDescriptor,
-    ) -> Result<Rc<Vec<u8>>> {
+    ) -> Result<Bytes> {
         self.ipv4.tcp_read(handle)
     }
 

@@ -39,11 +39,11 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         self.cb.sender.send(buf)
     }
 
-    pub fn peek(&self) -> Result<Vec<u8>, Fail> {
+    pub fn peek(&self) -> Result<Bytes, Fail> {
         self.cb.receiver.peek()
     }
 
-    pub fn recv(&self) -> Result<Option<Vec<u8>>, Fail> {
+    pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
         self.cb.receiver.recv()
     }
 

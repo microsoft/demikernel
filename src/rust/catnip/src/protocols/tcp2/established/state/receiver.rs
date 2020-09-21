@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use crate::protocols::tcp2::SeqNumber;
 use crate::collections::watched::WatchedValue;
 use std::collections::VecDeque;
@@ -23,7 +24,7 @@ pub struct Receiver {
     //         received           acknowledged           unacknowledged
     //
     pub base_seq_no: WatchedValue<SeqNumber>,
-    pub recv_queue: RefCell<VecDeque<Vec<u8>>>,
+    pub recv_queue: RefCell<VecDeque<Bytes>>,
     pub ack_seq_no: WatchedValue<SeqNumber>,
     pub recv_seq_no: WatchedValue<SeqNumber>,
 
@@ -63,7 +64,7 @@ impl Receiver {
         self.ack_seq_no.set(seq_no);
     }
 
-    pub fn peek(&self) -> Result<Vec<u8>, Fail> {
+    pub fn peek(&self) -> Result<Bytes, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Err(Fail::ResourceNotFound { details: "Receiver closed" });
@@ -78,7 +79,7 @@ impl Receiver {
         Ok(segment)
     }
 
-    pub fn recv(&self) -> Result<Option<Vec<u8>>, Fail> {
+    pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Err(Fail::ResourceNotFound { details: "Receiver closed" });
@@ -98,7 +99,7 @@ impl Receiver {
         self.state.set(ReceiverState::ReceivedFin);
     }
 
-    pub fn receive_segment(&self, seq_no: SeqNumber, buf: Vec<u8>, now: Instant) -> Result<(), Fail> {
+    pub fn receive_segment(&self, seq_no: SeqNumber, buf: Bytes, now: Instant) -> Result<(), Fail> {
         if self.state.get() != ReceiverState::Open {
             return Err(Fail::ResourceNotFound { details: "Receiver closed" });
         }

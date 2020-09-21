@@ -12,7 +12,6 @@ use std::future::Future;
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
-    rc::Rc,
     time::Duration, pin::Pin, task::{Poll, Context},
 };
 
@@ -111,16 +110,16 @@ impl<'a> Ipv4Peer {
     pub fn tcp_peek(
         &self,
         handle: SocketDescriptor,
-    ) -> Result<Rc<Vec<u8>>> {
-        Ok(Rc::new(self.tcp.peek(handle)?))
+    ) -> Result<Bytes> {
+        self.tcp.peek(handle)
     }
 
     pub fn tcp_read(
         &mut self,
         handle: SocketDescriptor,
-    ) -> Result<Rc<Vec<u8>>> {
+    ) -> Result<Bytes> {
         match self.tcp.recv(handle)? {
-            Some(r) => Ok(Rc::new(r)),
+            Some(r) => Ok(r),
             None => Err(Fail::ResourceExhausted { details: "No available data" }),
         }
     }

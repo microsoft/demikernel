@@ -108,7 +108,7 @@ impl<RT: Runtime> Peer<RT> {
         ConnectFuture { state, inner: self.inner.clone() }
     }
 
-    pub fn peek(&self, fd: SocketDescriptor) -> Result<Vec<u8>, Fail> {
+    pub fn peek(&self, fd: SocketDescriptor) -> Result<Bytes, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),
@@ -121,7 +121,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn recv(&self, fd: SocketDescriptor) -> Result<Option<Vec<u8>>, Fail> {
+    pub fn recv(&self, fd: SocketDescriptor) -> Result<Option<Bytes>, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some((local, Some(remote))) => (local.clone(), remote.clone()),

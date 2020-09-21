@@ -43,7 +43,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             warn!("Ignoring remote window size update for {:?}: {:?}", segment, e);
         }
         if segment.payload.len() > 0 {
-            if let Err(e) = self.receiver.receive_segment(segment.seq_num, segment.payload.to_vec(), self.rt.now()) {
+            if let Err(e) = self.receiver.receive_segment(segment.seq_num, segment.payload.clone(), self.rt.now()) {
                 warn!("Ignoring remote data for {:?}: {:?}", segment, e);
             }
         }
