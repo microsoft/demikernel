@@ -95,5 +95,10 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
             initial_tx: Some(cb.rt.now()),
         };
         cb.sender.unacked_queue.borrow_mut().push_back(unacked_segment);
+
+        if cb.sender.retransmit_deadline.get().is_none() {
+            let rto = cb.sender.rto.borrow().estimate();
+            cb.sender.retransmit_deadline.set(Some(cb.rt.now() + rto));
+        }
     }
 }

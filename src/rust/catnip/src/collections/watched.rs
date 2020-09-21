@@ -9,7 +9,7 @@ use futures_intrusive::intrusive_double_linked_list::{LinkedList, ListNode};
 enum WatchState {
     Unregistered,
     Registered,
-    Completed,
+    Completed { polled: bool },
 }
 
 pub struct Inner<T> {
@@ -46,7 +46,7 @@ impl<T: Copy> WatchedValue<T> {
             if let Some(handle) = waiter.task.take() {
                 handle.wake();
             }
-            waiter.state = WatchState::Completed;
+            waiter.state = WatchState::Completed { polled: false };
         })
     }
 
@@ -90,7 +90,8 @@ impl<'a, T> Future for WatchFuture<'a, T> {
                 }
                 Poll::Pending
             },
-            WatchState::Completed => {
+            WatchState::Completed { ref mut polled } => {
+                *polled = true;
                 Poll::Ready(())
             },
         }
@@ -99,7 +100,7 @@ impl<'a, T> Future for WatchFuture<'a, T> {
 
 impl<'a, T> FusedFuture for WatchFuture<'a, T> {
     fn is_terminated(&self) -> bool {
-        self.wait_node.state == WatchState::Completed
+        self.wait_node.state == WatchState::Completed { polled: true }
     }
 }
 

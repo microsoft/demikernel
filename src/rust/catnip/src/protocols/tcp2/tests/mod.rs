@@ -90,6 +90,12 @@ struct TestParticipant {
 }
 
 impl TestParticipant {
+    fn advance(&mut self, duration: Duration) {
+        let mut rt = self.rt.borrow_mut();
+        let now = rt.timer.now();
+        rt.timer.advance_clock(now + duration);
+    }
+
     fn poll(&mut self) {
         let mut ctx = Context::from_waker(noop_waker_ref());
         assert!(Future::poll(Pin::new(&mut self.peer), &mut ctx).is_pending());
@@ -187,4 +193,23 @@ fn test_connect() {
     test.bob.push(test.alice.pop());
     must_let!(let Ok(Some(buf)) = test.bob.peer.recv(bob_fd));
     assert_eq!(buf, vec![5]);
+
+    // Send a segment from Bob to Alice but drop it, checking to see that it gets retransmitted.
+    test.bob.peer.send(bob_fd, vec![5, 6, 7, 8]).unwrap();
+    test.bob.poll();
+    let _ = test.bob.pop();
+
+    must_let!(let Ok(r) = test.alice.peer.recv(alice_fd));
+    assert!(r.is_none());
+
+    // Advance Bob's timer past the retransmit deadline
+    let rto = test.bob.peer.current_rto(bob_fd).unwrap();
+    test.bob.advance(rto);
+    test.bob.poll();
+
+    // Deliver the retransmitted segment to Alice.
+    test.alice.push(test.bob.pop());
+
+    must_let!(let Ok(Some(buf)) = test.alice.peer.recv(alice_fd));
+    assert_eq!(buf, vec![5, 6, 7, 8]);
 }
