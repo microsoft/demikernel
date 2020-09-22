@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use bytes::{Bytes, BytesMut};
 use std::task::Poll;
 use catnip::event::Event;
 use must_let::must_let;
@@ -11,10 +12,53 @@ use catnip::options::Options;
 use std::time::Instant;
 use catnip::rand::Seed;
 use catnip::protocols::{arp, tcp, ip, ipv4};
+use catnip::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 use futures::Future;
 use std::pin::Pin;
 use std::convert::TryFrom;
 use catnip::protocols::tcp2::peer::Peer;
+
+pub fn send_datagram<RT: RuntimeTrait>(src: &Runtime, dst: &Peer<RT>) {
+    must_let!(let Some(event) = src.pop_event());
+    must_let!(let Event::Transmit(ref buf) = &*event);
+    dst.receive_datagram(ipv4::Datagram::attach(&buf.borrow()).unwrap());
+}
+
+#[inline(never)]
+pub fn one_send_recv_round<RT: RuntimeTrait>(
+    ctx: &mut Context,
+    buf: Bytes,
+
+    alice_rt: &Runtime,
+    alice_peer: &mut Peer<RT>,
+    alice_fd: u16,
+
+    bob_rt: &Runtime,
+    bob_peer: &mut Peer<RT>,
+    bob_fd: u16,
+)
+{
+    let start = Instant::now();
+
+    // Send data from Alice to Bob
+    alice_peer.send(alice_fd, buf.clone()).unwrap();
+    assert!(Future::poll(Pin::new(alice_peer), ctx).is_pending());
+    send_datagram(&alice_rt, &bob_peer);
+
+    // Receive it on Bob's side.
+    must_let!(let Ok(Some(buf)) = bob_peer.recv(bob_fd));
+    // assert_eq!(buf.len(), size);
+
+    // Send data from Bob to Alice
+    bob_peer.send(bob_fd, buf.clone()).unwrap();
+    assert!(Future::poll(Pin::new(bob_peer), ctx).is_pending());
+    send_datagram(&bob_rt, &alice_peer);
+
+    // Receive it on Alice's side.
+    must_let!(let Ok(Some(buf)) = alice_peer.recv(alice_fd));
+    // assert_eq!(buf.len(), size);
+}
+
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut ctx = Context::from_waker(noop_waker_ref());
@@ -32,7 +76,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         rng_seed: Seed::default(),
         tcp: tcp::Options::default(),
     };
-    let mut alice_rt = Runtime::from_options(now, alice_options);
+    let alice_rt = Runtime::from_options(now, alice_options);
     let alice_arp = arp::Peer::new(now, alice_rt.clone()).unwrap();
     alice_arp.insert(bob_ipv4_addr, bob_link_addr);
     let mut alice_peer = Peer::new(alice_rt.clone(), alice_arp);
@@ -44,7 +88,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         rng_seed: Seed::default(),
         tcp: tcp::Options::default(),
     };
-    let mut bob_rt = Runtime::from_options(now, bob_options);
+    let bob_rt = Runtime::from_options(now, bob_options);
     let bob_arp = arp::Peer::new(now, bob_rt.clone()).unwrap();
     bob_arp.insert(alice_ipv4_addr, alice_link_addr);
     let mut bob_peer = Peer::new(bob_rt.clone(), bob_arp);
@@ -58,31 +102,42 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     // Send the SYN from Alice to Bob
     assert!(Future::poll(Pin::new(&mut alice_peer), &mut ctx).is_pending());
-    must_let!(let Some(event) = alice_rt.pop_event());
-    must_let!(let Event::Transmit(ref buf) = &*event);
-    bob_peer.receive_datagram(ipv4::Datagram::attach(&buf.borrow()).unwrap());
+    send_datagram(&alice_rt, &bob_peer);
 
     // Send the SYN+ACK from Bob to Alice
     assert!(Future::poll(Pin::new(&mut bob_peer), &mut ctx).is_pending());
-    must_let!(let Some(event) = bob_rt.pop_event());
-    must_let!(let Event::Transmit(ref buf) = &*event);
-    alice_peer.receive_datagram(ipv4::Datagram::attach(&buf.borrow()).unwrap());
+    send_datagram(&bob_rt, &alice_peer);
 
     // Send the ACK from Alice to Bob
-    must_let!(let Some(event) = alice_rt.pop_event());
-    must_let!(let Event::Transmit(ref buf) = &*event);
-    bob_peer.receive_datagram(ipv4::Datagram::attach(&buf.borrow()).unwrap());
+    send_datagram(&alice_rt, &bob_peer);
 
     must_let!(let Ok(Some(bob_fd)) = bob_peer.accept(listen_fd));
     must_let!(let Poll::Ready(Ok(alice_fd)) = Future::poll(Pin::new(&mut alice_connect_future), &mut ctx));
 
+    let size = 32;
+    let buf = BytesMut::from(&vec![0u8; size][..]).freeze();
 
+    // Send data from Alice to Bob
+    alice_peer.send(alice_fd, buf.clone()).unwrap();
+    assert!(Future::poll(Pin::new(&mut alice_peer), &mut ctx).is_pending());
+    send_datagram(&alice_rt, &bob_peer);
 
-    // let size = 1024;
-    // let buf = vec![0u8; size];
+    // Receive it on Bob's side.
+    must_let!(let Ok(Some(buf)) = bob_peer.recv(bob_fd));
+    assert_eq!(buf.len(), size);
 
-
-    // c.bench_function("fib 20", |b| b.iter(|| fibonacci(black_box(20))));
+    c.bench_function("send+recv", |b| b.iter(|| {
+        one_send_recv_round(
+            &mut ctx,
+            black_box(buf.clone()),
+            &alice_rt,
+            &mut alice_peer,
+            alice_fd,
+            &bob_rt,
+            &mut bob_peer,
+            bob_fd,
+        )
+    }));
 }
 
 criterion_group!(benches, criterion_benchmark);

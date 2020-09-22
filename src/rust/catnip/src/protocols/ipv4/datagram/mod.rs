@@ -165,6 +165,15 @@ impl<'a> Ipv4DatagramMut<'a> {
         Ipv4Datagram(self.0.unmut())
     }
 
+    pub fn write_checksum(mut self) {
+        let mut checksum = Ipv4Checksum::new();
+        let mut ipv4_header = self.header();
+        checksum.write_all(&ipv4_header.as_bytes()[..10]).unwrap();
+        checksum.write_u16::<NetworkEndian>(0u16).unwrap();
+        checksum.write_all(&ipv4_header.as_bytes()[12..]).unwrap();
+        ipv4_header.checksum(checksum.finish());
+    }
+
     pub fn seal(mut self) -> Result<Ipv4Datagram<'a>> {
         trace!("Ipv4DatagramMut::seal()");
         let mut checksum = Ipv4Checksum::new();

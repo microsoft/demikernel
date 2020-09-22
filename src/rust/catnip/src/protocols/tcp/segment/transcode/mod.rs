@@ -161,6 +161,13 @@ impl<'a> TcpSegmentEncoder<'a> {
         TcpSegmentDecoder(self.0.unmut())
     }
 
+    pub fn write_checksum(mut self) {
+        let checksum = self.unmut().checksum(ChecksumOp::Generate).unwrap();
+        let mut tcp_header = self.header();
+        tcp_header.checksum(checksum);
+        self.0.write_checksum();
+    }
+
     pub fn seal(mut self) -> Result<TcpSegmentDecoder<'a>> {
         trace!("TcpSegmentEncoder::seal()");
         let checksum = self.unmut().checksum(ChecksumOp::Generate).unwrap();

@@ -2,7 +2,7 @@ use crate::protocols::{arp, ipv4};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::convert::TryInto;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
+use crate::protocols::tcp::segment::TcpSegment;
 use crate::fail::Fail;
 use std::time::Duration;
 use crate::protocols::tcp2::runtime::Runtime;
@@ -87,19 +87,18 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 None => panic!("TODO: Clean up ARP query control flow"),
             };
             let remote_seq_num = segment.seq_num + Wrapping(1);
-            let ack_segment = TcpSegment::default()
+            let segment_buf = TcpSegment::default()
                 .src_ipv4_addr(self_.local.address())
                 .src_port(self_.local.port())
+                .src_link_addr(self_.rt.local_link_addr())
+
                 .dest_ipv4_addr(self_.remote.address())
                 .dest_port(self_.remote.port())
-                .ack(remote_seq_num);
-            let mut segment_buf = ack_segment.encode();
-            let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-            encoder.ipv4().header().src_addr(self_.rt.local_ipv4_addr());
-            let mut frame_header = encoder.ipv4().frame().header();
-            frame_header.src_addr(self_.rt.local_link_addr());
-            frame_header.dest_addr(remote_link_addr);
-            let _ = encoder.seal().expect("TODO");
+                .dest_link_addr(remote_link_addr)
+
+                .ack(remote_seq_num)
+                .encode();
+
             self_.rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
             let window_scale = segment.window_scale.unwrap_or(1);
@@ -159,22 +158,20 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                         continue;
                     },
                 };
-                let segment = TcpSegment::default()
+                let segment_buf = TcpSegment::default()
                     .src_ipv4_addr(local.address())
                     .src_port(local.port())
+                    .src_link_addr(rt.local_link_addr())
+
                     .dest_ipv4_addr(remote.address())
                     .dest_port(remote.port())
+                    .dest_link_addr(remote_link_addr)
+
                     .seq_num(local_isn)
                     .window_size(max_window_size)
                     .mss(rt.tcp_options().advertised_mss)
-                    .syn();
-                let mut segment_buf = segment.encode();
-                let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-                encoder.ipv4().header().src_addr(rt.local_ipv4_addr());
-                let mut frame_header = encoder.ipv4().frame().header();
-                frame_header.src_addr(rt.local_link_addr());
-                frame_header.dest_addr(remote_link_addr);
-                let _ = encoder.seal().expect("TODO");
+                    .syn()
+                    .encode();
                 rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
                 rt.wait(handshake_timeout).await;

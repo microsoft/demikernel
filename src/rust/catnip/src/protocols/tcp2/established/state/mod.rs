@@ -11,7 +11,7 @@ use crate::protocols::tcp2::runtime::Runtime;
 use crate::protocols::{arp, ipv4};
 use crate::fail::Fail;
 use crate::protocols::ethernet2::MacAddress;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentEncoder};
+use crate::protocols::tcp::segment::TcpSegment;
 
 pub struct ControlBlock<RT: Runtime> {
     pub local: ipv4::Endpoint,
@@ -59,6 +59,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         let mut segment = TcpSegment::default()
             .src_ipv4_addr(self.local.address())
             .src_port(self.local.port())
+            .src_link_addr(self.rt.local_link_addr())
             .dest_ipv4_addr(self.remote.address())
             .dest_port(self.remote.port())
             .window_size(self.receiver.window_size() as usize);
@@ -72,15 +73,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         if segment.ack {
             self.receiver.ack_sent(segment.ack_num);
         }
-
-        let mut segment_buf = segment.encode();
-        let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-        encoder.ipv4().header().src_addr(self.rt.local_ipv4_addr());
-
-        let mut frame_header = encoder.ipv4().frame().header();
-        frame_header.src_addr(self.rt.local_link_addr());
-        frame_header.dest_addr(remote_link_addr);
-        let _ = encoder.seal().expect("TODO");
+        let segment_buf = segment.dest_link_addr(remote_link_addr).encode();
 
         // TODO: We should have backpressure here for emitting events.
         self.rt.transmit(Rc::new(RefCell::new(segment_buf)));

@@ -3,7 +3,7 @@ pub mod peer;
 mod passive_open;
 mod established;
 mod active_open;
-mod runtime;
+pub mod runtime;
 mod isn_generator;
 
 #[cfg(test)]

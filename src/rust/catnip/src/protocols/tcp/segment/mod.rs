@@ -16,7 +16,7 @@ pub use transcode::{
     MAX_MSS, MIN_MSS,
 };
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct TcpSegment {
     pub dest_ipv4_addr: Option<Ipv4Addr>,
     pub dest_port: Option<ip::Port>,
@@ -47,7 +47,6 @@ impl TcpSegment {
         self
     }
 
-    #[allow(dead_code)]
     pub fn dest_link_addr(mut self, addr: MacAddress) -> TcpSegment {
         self.dest_link_addr = Some(addr);
         self
@@ -63,7 +62,6 @@ impl TcpSegment {
         self
     }
 
-    #[allow(dead_code)]
     pub fn src_link_addr(mut self, addr: MacAddress) -> TcpSegment {
         self.src_link_addr = Some(addr);
         self
@@ -170,6 +168,8 @@ impl TcpSegment {
         if let Some(src_link_addr) = self.src_link_addr {
             frame_header.src_addr(src_link_addr);
         }
+
+        encoder.write_checksum();
 
         bytes
     }
