@@ -82,7 +82,8 @@ pub fn one_send_recv_round<RT: RuntimeTrait>(
 }
 
 
-pub fn main() {
+#[test]
+fn send_recv_loop() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let now = Instant::now();
 
@@ -160,6 +161,4 @@ pub fn main() {
             bob_fd,
         );
     }
-    println!("done");
-
 }

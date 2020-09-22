@@ -38,6 +38,182 @@
 // use std::future::Future;
 // use futures::Stream;
 
+use bit_vec::BitVec;
+use std::slice;
+use std::ops::Deref;
+use std::ptr::{self, NonNull};
+use std::cell::Cell;
+use std::alloc::{AllocRef, Global, Layout};
+use std::mem::{self, MaybeUninit};
+
+struct Root<T> {
+    refcount: Cell<usize>,
+    ready: BitVec,
+    pages: Vec<PagePtr<T>>
+}
+
+impl<T> Root<T> {
+    fn new() -> RootPtr<T> {
+        let root = Self {
+            refcount: Cell::new(1),
+            ready: BitVec::new(),
+            pages: Vec::new(),
+        };
+        let ptr = Global.alloc(Layout::for_value(&root)).expect("Allocation failed").cast();
+        unsafe { ptr::write(ptr.as_ptr(), root) };
+        RootPtr { ptr }
+    }
+}
+
+
+struct RootPtr<T> {
+    ptr: NonNull<Root<T>>,
+}
+
+impl<T> Clone for RootPtr<T> {
+    fn clone(&self) -> Self {
+        let root = unsafe { self.ptr.as_ref() };
+        let refcount = root.refcount.get();
+        if refcount == 0 || refcount == usize::MAX {
+            panic!("Invalid refcount");
+        }
+        root.refcount.set(refcount + 1);
+        Self { ptr: self.ptr }
+    }
+}
+
+impl<T> Deref for RootPtr<T> {
+    type Target = Root<T>;
+
+    fn deref(&self) -> &Root<T> {
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl<T> Drop for RootPtr<T> {
+    fn drop(&mut self) {
+        let root = unsafe { self.ptr.as_ref() };
+        let refcount = root.refcount.get();
+        if refcount == 0 {
+            panic!("Invalid refcount");
+        }
+        // TODO: Subtract out page back pointers here.
+        if refcount == 1 {
+            unsafe {
+                Global.dealloc(self.ptr.cast(), Layout::for_value(self.ptr.as_ref()));
+            }
+        } else {
+            root.refcount.set(refcount - 1);
+        }
+    }
+}
+
+struct PageHeader<T> {
+    refcount: Cell<usize>,
+    root: RootPtr<T>,
+    allocated: u64,
+    ready: u64,
+}
+
+struct Page<T> {
+    header: PageHeader<T>,
+    // Actually an array of values (see Self::layout()).
+    values: MaybeUninit<T>,
+}
+
+struct PagePtr<T> {
+    ptr: NonNull<Page<T>>,
+}
+
+impl<T> Page<T> {
+    const fn layout() -> (Layout, usize) {
+        let page_size = 4096;
+        let header_layout = Layout::new::<PageHeader<T>>();
+
+        assert!(header_layout.align() <= page_size);
+
+        // No ZSTs here!
+        let value_layout = Layout::new::<T>();
+        assert!(value_layout.size() > 0);
+
+        let padding = header_layout.padding_needed_for(value_layout.align());
+
+        // Check that we have at least space for one value.
+        assert!(header_layout.size() + padding + value_layout.size() <= page_size);
+
+        let num_values = (page_size - (header_layout.size() + padding)) / value_layout.size();
+
+        // TODO: This alignment is too strict. For `n` values, we only need the pointer to be of
+        // alignment `n`: For element `i` we can hand out pointer `ptr as *mut u8 + i`.
+        (unsafe { Layout::from_size_align_unchecked(page_size, page_size) }, num_values)
+    }
+
+    pub fn new(root: RootPtr<T>) -> PagePtr<T> {
+        let page = Self {
+            header: PageHeader {
+                refcount: Cell::new(1),
+                root,
+                allocated: 0,
+                ready: 0,
+            },
+            values: MaybeUninit::uninit(),
+        };
+        let (layout, num_values) = Self::layout();
+        let ptr = Global.alloc(layout).expect("Allocation failed").cast();
+        unsafe { ptr::write(ptr.as_ptr(), page) };
+
+        let values: &mut [MaybeUninit<T>] = unsafe {
+            slice::from_raw_parts_mut(&mut (*ptr.as_ptr()).values as *mut _, num_values)
+        };
+        for v in values.iter_mut() {
+            *v = MaybeUninit::zeroed();
+        }
+        PagePtr { ptr }
+    }
+
+    pub fn alloc(&self, value: T) -> Result<usize, T> {
+        todo!();
+    }
+}
+
+impl<T> Clone for PagePtr<T> {
+    fn clone(&self) -> Self {
+        let root = unsafe { self.ptr.as_ref() };
+        let refcount = root.header.refcount.get();
+        if refcount == 0 || refcount == usize::MAX {
+            panic!("Invalid refcount");
+        }
+        root.header.refcount.set(refcount + 1);
+        Self { ptr: self.ptr }
+    }
+}
+
+impl<T> Deref for PagePtr<T> {
+    type Target = Page<T>;
+
+    fn deref(&self) -> &Page<T> {
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl<T> Drop for PagePtr<T> {
+    fn drop(&mut self) {
+        let root = unsafe { self.ptr.as_ref() };
+        let refcount = root.header.refcount.get();
+        if refcount == 0 {
+            panic!("Invalid refcount");
+        }
+        if refcount == 1 {
+            unsafe {
+                Global.dealloc(self.ptr.cast(), Layout::for_value(self.ptr.as_ref()));
+            }
+        } else {
+            root.header.refcount.set(refcount - 1);
+        }
+    }
+}
+
+
 // const PAGE_SIZE: usize = 32;
 
 // struct WakerState {
