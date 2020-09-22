@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::marker::PhantomData;
 use crate::{prelude::*, rand::Rng};
 use rand_core::SeedableRng;
 use std::future::Future;
@@ -10,18 +11,22 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
 use std::task::Waker;
 use std::pin::Pin;
 use std::task::{Poll, Context};
-use std::collections::binary_heap::PeekMut;
-
-// TODO: Switch to unsync versions
-use futures::channel::oneshot::{channel, Sender};
 use futures::FutureExt;
 use futures::future::FusedFuture;
 use futures_intrusive::intrusive_pairing_heap::{HeapNode, PairingHeap};
+
+pub trait TimerPtr: Sized {
+    fn timer(&self) -> &Timer<Self>;
+}
+
+impl TimerPtr for Runtime {
+    fn timer(&self) -> &Timer<Self> {
+        &self.inner.timer
+    }
+}
 
 enum PollState {
     Unregistered,
@@ -61,25 +66,26 @@ impl Ord for TimerQueueEntry {
     }
 }
 
-struct TimerInner2 {
+struct TimerInner {
     now: Instant,
     heap: PairingHeap<TimerQueueEntry>,
 }
 
-pub struct Timer2 {
-    inner: RefCell<TimerInner2>,
+pub struct Timer<P: TimerPtr> {
+    inner: RefCell<TimerInner>,
+    _marker: PhantomData<P>,
 }
 
-impl Timer2 {
-    fn new(now: Instant) -> Self {
-        let inner = TimerInner2 {
+impl<P: TimerPtr> Timer<P> {
+    pub fn new(now: Instant) -> Self {
+        let inner = TimerInner {
             now,
             heap: PairingHeap::new(),
         };
-        Self { inner: RefCell::new(inner) }
+        Self { inner: RefCell::new(inner), _marker: PhantomData }
     }
 
-    fn advance_clock(&self, now: Instant) {
+    pub fn advance_clock(&self, now: Instant) {
         let mut inner = self.inner.borrow_mut();
         assert!(inner.now <= now);
 
@@ -90,7 +96,6 @@ impl Timer2 {
                 if now < first_expiry {
                     break;
                 }
-
                 entry.state = PollState::Expired;
                 if let Some(task) = entry.task.take() {
                     task.wake();
@@ -98,39 +103,42 @@ impl Timer2 {
                 inner.heap.remove(entry);
             }
         }
+        inner.now = now;
     }
 
-    fn now(&self) -> Instant {
+    pub fn now(&self) -> Instant {
         self.inner.borrow().now
     }
 
-    fn wait_until(&self, rt: Rc<Inner>, expiry: Instant) -> WaitFuture2 {
+    pub fn wait_until(&self, ptr: P, expiry: Instant) -> WaitFuture<P> {
         let entry = TimerQueueEntry {
             expiry,
             task: None,
             state: PollState::Unregistered,
         };
-        WaitFuture2 {
-            rt: Some(rt),
+        WaitFuture {
+            ptr: Some(ptr),
             wait_node: HeapNode::new(entry),
         }
     }
 }
 
-pub struct WaitFuture2 {
-    rt: Option<Rc<Inner>>,
+pub type RuntimeWaitFuture = WaitFuture<Runtime>;
+
+pub struct WaitFuture<P: TimerPtr> {
+    ptr: Option<P>,
     wait_node: HeapNode<TimerQueueEntry>,
 }
 
-impl Future for WaitFuture2 {
+impl<P: TimerPtr> Future for WaitFuture<P> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let mut_self: &mut Self = unsafe { Pin::get_unchecked_mut(self) };
 
         let result = {
-            let rt = mut_self.rt.as_ref().expect("Polled future after completion");
-            let timer = &rt.timer;
+            let ptr = mut_self.ptr.as_ref().expect("Polled future after completion");
+            let timer = ptr.timer();
 
             let mut inner = timer.inner.borrow_mut();
             let wait_node = &mut mut_self.wait_node;
@@ -159,115 +167,29 @@ impl Future for WaitFuture2 {
             }
         };
         if result.is_ready() {
-            mut_self.rt = None;
+            mut_self.ptr = None;
         }
         result
     }
 }
 
-impl FusedFuture for WaitFuture2 {
+impl<P: TimerPtr> FusedFuture for WaitFuture<P> {
     fn is_terminated(&self) -> bool {
-        self.rt.is_none()
+        self.ptr.is_none()
     }
 }
 
-impl Drop for WaitFuture2 {
+impl<P: TimerPtr> Drop for WaitFuture<P> {
     fn drop(&mut self) {
         // If this TimerFuture has been polled and it was added to the
         // wait queue at the timer, it must be removed before dropping.
         // Otherwise the timer would access invalid memory.
-        if let Some(rt) = &self.rt {
+        if let Some(ptr) = &self.ptr {
             if let PollState::Registered = self.wait_node.state {
-                unsafe { rt.timer.inner.borrow_mut().heap.remove(&mut self.wait_node) };
+                unsafe { ptr.timer().inner.borrow_mut().heap.remove(&mut self.wait_node) };
                 self.wait_node.state = PollState::Unregistered;
             }
         }
-    }
-}
-
-
-
-struct Record {
-    when: Instant,
-    tx: Sender<()>,
-}
-
-impl PartialEq for Record {
-    fn eq(&self, other: &Self) -> bool {
-        self.when.eq(&other.when)
-    }
-}
-
-impl Eq for Record {
-}
-
-impl Ord for Record {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse the order since `BinaryHeap` is a max-heap
-        other.when.cmp(&self.when)
-    }
-}
-
-impl PartialOrd for Record {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-pub type WaitFuture = impl Future<Output = ()>;
-
-pub struct Timer {
-    now: Instant,
-    heap: BinaryHeap<Record>,
-    waker: Option<Waker>,
-}
-
-impl Timer {
-    pub fn new(now: Instant) -> Self {
-        Self { now, heap: BinaryHeap::new(), waker: None }
-    }
-
-    pub fn now(&self) -> Instant {
-        self.now
-    }
-
-    pub fn wait_until(&mut self, when: Instant) -> WaitFuture {
-        let (tx, rx) = channel();
-        if when <= self.now {
-            let _ = tx.send(());
-        } else {
-            self.heap.push(Record { when, tx });
-        }
-        rx.map(|_| ())
-    }
-
-    pub fn advance_clock(&mut self, now: Instant) {
-        assert!(now >= self.now, "{:?} vs. {:?}", self.now, now);
-        if let Some(record) = self.heap.peek() {
-            if record.when <= now {
-                if let Some(w) = self.waker.take() {
-                    w.wake();
-                }
-            }
-        }
-        self.now = now;
-    }
-}
-
-impl Future for Timer {
-    type Output = !;
-
-    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let now = self.now;
-        while let Some(record) = self.heap.peek_mut() {
-            if record.when > now {
-                break;
-            }
-            let record = PeekMut::pop(record);
-            let _ = record.tx.send(());
-        }
-        self.waker = Some(ctx.waker().clone());
-        Poll::Pending
     }
 }
 
@@ -280,7 +202,7 @@ struct Inner {
     events: RefCell<VecDeque<Rc<Event>>>,
     options: Options,
     rng: RefCell<Rng>,
-    timer: Timer2,
+    timer: Timer<Runtime>,
 }
 
 impl Runtime {
@@ -290,7 +212,7 @@ impl Runtime {
             events: RefCell::new(VecDeque::new()),
             options,
             rng: RefCell::new(rng),
-            timer: Timer2::new(now),
+            timer: Timer::new(now),
         };
         Self { inner: Rc::new(inner) }
     }
@@ -333,13 +255,13 @@ impl Runtime {
         }
     }
 
-    pub fn wait(&self, how_long: Duration) -> WaitFuture2 {
+    pub fn wait(&self, how_long: Duration) -> RuntimeWaitFuture {
         let when = self.inner.timer.now() + how_long;
-        self.inner.timer.wait_until(self.inner.clone(), when)
+        self.inner.timer.wait_until(self.clone(), when)
     }
 
-    pub fn wait_until(&self, when: Instant) -> WaitFuture2 {
-        self.inner.timer.wait_until(self.inner.clone(), when)
+    pub fn wait_until(&self, when: Instant) -> RuntimeWaitFuture {
+        self.inner.timer.wait_until(self.clone(), when)
     }
 
     pub fn exponential_retry<F: Future>(
@@ -364,5 +286,56 @@ impl Runtime {
             }
             Err(Fail::Timeout {})
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Runtime;
+    use crate::options::Options;
+    use std::time::{Duration, Instant};
+    use std::task::{Context};
+    use std::future::Future;
+    use futures::task::noop_waker_ref;
+    use std::pin::Pin;
+
+    #[test]
+    fn test_timer() {
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        let mut now = Instant::now();
+
+        let rt = Runtime::from_options(now, Options::default());
+
+        let wait_future1 = rt.wait(Duration::from_secs(2));
+        futures::pin_mut!(wait_future1);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+
+        now += Duration::from_millis(500);
+        rt.advance_clock(now);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        let wait_future2 = rt.wait(Duration::from_secs(1));
+        futures::pin_mut!(wait_future2);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending());
+
+        now += Duration::from_millis(500);
+        rt.advance_clock(now);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending());
+
+        now += Duration::from_millis(500);
+        rt.advance_clock(now);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_ready());
+
+        now += Duration::from_millis(750);
+        rt.advance_clock(now);
+
+        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_ready());
     }
 }

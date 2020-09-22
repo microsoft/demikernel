@@ -17,11 +17,21 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
+use crate::runtime::TimerPtr;
+
+#[derive(Clone)]
+struct TimerRc(Rc<Timer<TimerRc>>);
+
+impl TimerPtr for TimerRc {
+    fn timer(&self) -> &Timer<Self> {
+        &*self.0
+    }
+}
 
 struct TestRuntime {
     #[allow(unused)]
     name: &'static str,
-    timer: Timer,
+    timer: TimerRc,
     rng: u32,
     outgoing: VecDeque<Vec<u8>>,
 
@@ -34,7 +44,7 @@ impl TestRuntime {
     fn new(name: &'static str, now: Instant, link_addr: MacAddress, ipv4_addr: Ipv4Addr) -> Rc<RefCell<Self>> {
         let self_ = Self {
             name,
-            timer: Timer::new(now),
+            timer: TimerRc(Rc::new(Timer::new(now))),
             rng: 1,
             outgoing: VecDeque::new(),
             link_addr,
@@ -62,18 +72,19 @@ impl Runtime for Rc<RefCell<TestRuntime>> {
         self.borrow().tcp_options.clone()
     }
 
-    type WaitFuture = crate::runtime::WaitFuture;
+    type WaitFuture = crate::runtime::WaitFuture<TimerRc>;
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let mut self_ = self.borrow_mut();
-        let now = self_.timer.now();
-        self_.timer.wait_until(now + duration)
+        let self_ = self.borrow_mut();
+        let now = self_.timer.0.now();
+        self_.timer.0.wait_until(self_.timer.clone(), now + duration)
     }
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        self.borrow_mut().timer.wait_until(when)
+        let self_ = self.borrow_mut();
+        self_.timer.0.wait_until(self_.timer.clone(), when)
     }
 
     fn now(&self) -> Instant {
-        self.borrow().timer.now()
+        self.borrow().timer.0.now()
     }
 
     fn rng_gen_u32(&self) -> u32 {
@@ -92,9 +103,9 @@ struct TestParticipant {
 
 impl TestParticipant {
     fn advance(&mut self, duration: Duration) {
-        let mut rt = self.rt.borrow_mut();
-        let now = rt.timer.now();
-        rt.timer.advance_clock(now + duration);
+        let rt = self.rt.borrow_mut();
+        let now = rt.timer.0.now();
+        rt.timer.0.advance_clock(now + duration);
     }
 
     fn poll(&mut self) {

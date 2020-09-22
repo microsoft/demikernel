@@ -40,7 +40,7 @@ impl Runtime for crate::runtime::Runtime {
         self.options().tcp
     }
 
-    type WaitFuture = crate::runtime::WaitFuture2;
+    type WaitFuture = crate::runtime::RuntimeWaitFuture;
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         crate::runtime::Runtime::wait(self, duration)
     }

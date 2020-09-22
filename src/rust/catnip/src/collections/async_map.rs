@@ -1,5 +1,5 @@
 use std::task::{Poll, Context};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 use std::hash::Hash;
 use std::pin::Pin;
 use std::borrow::Borrow;

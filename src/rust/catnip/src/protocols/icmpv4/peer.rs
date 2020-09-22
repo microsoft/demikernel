@@ -25,7 +25,7 @@ use std::{
     time::Duration, pin::Pin, task::{Poll, Context},
 };
 use futures::{Stream, stream::FuturesUnordered};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 // TODO: Use unsync channel
 use futures::channel::oneshot::{channel, Sender};
 
