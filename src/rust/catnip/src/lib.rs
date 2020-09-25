@@ -31,8 +31,8 @@ extern crate derive_more;
 extern crate lazy_static;
 
 pub mod event;
-mod interop;
-mod logging;
+pub mod interop;
+pub mod logging;
 pub mod options;
 mod prelude;
 pub mod protocols;

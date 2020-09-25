@@ -1,0 +1,18 @@
+[package]
+name = "libos"
+version = "0.1.0"
+authors = ["Sujay Jayakar <sujayakar314@gmai.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+catnip = { path = "../catnip" }
+libc = "0.2.77"
+clap = "2.33.3"
+yaml-rust = "0.4.4"
+anyhow = "1.0.32"
+
+[build-dependencies]
+bindgen = "0.55.1"

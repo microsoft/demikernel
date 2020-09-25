@@ -110,6 +110,10 @@ impl Engine {
         Ok(())
     }
 
+    pub fn tcp_accept(&mut self, socket_fd: SocketDescriptor) -> Result<Option<SocketDescriptor>> {
+        self.ipv4.tcp_accept(socket_fd)
+    }
+
     pub fn tcp_write(
         &mut self,
         handle: SocketDescriptor,
