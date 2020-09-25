@@ -20,6 +20,7 @@ typedef std::unique_ptr<dmtr_latency_t, std::function<void(dmtr_latency_t *)>> l
 static latency_ptr_type success_poll_latency;
 #endif
 
+/*
 int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
     int ret = EAGAIN;
     while (EAGAIN == ret) {
@@ -68,3 +69,4 @@ int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[]
 
     DMTR_UNREACHABLE();
 }
+*/

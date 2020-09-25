@@ -1,11 +1,11 @@
 [package]
-name = "libos"
+name = "catnip_libos"
 version = "0.1.0"
 authors = ["Sujay Jayakar <sujayakar314@gmai.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 catnip = { path = "../catnip" }

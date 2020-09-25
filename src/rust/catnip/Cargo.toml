@@ -5,7 +5,7 @@ authors = ["Michael Lowell Roberts <mirobert@microsoft.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["dylib", "staticlib", "rlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 bit-vec = "0.6.2"
@@ -34,7 +34,7 @@ serde = "1.0.110"
 serde_yaml = "0.8.12"
 spin = "0.5.2"
 fxhash = "0.2.1"
-mimalloc = { version = "0.1.19", default-features = false }
+# mimalloc = { version = "0.1.19", default-features = false }
 uniset = "0.2.0"
 unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "2c379b35d716df0091436ef38d011995a05fb4f9" }
 parking_lot = "0.11.0"

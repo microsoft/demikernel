@@ -111,6 +111,18 @@ target_link_libraries(dmtr-dpdk-catnip-client dmtr-libos-dpdk-catnip yaml-cpp bo
 add_custom_target(dmtr-dpdk-catnip-echo)
 add_dependencies(dmtr-dpdk-catnip-echo dmtr-dpdk-catnip-server dmtr-dpdk-catnip-client)
 
+# Catnip libos TCP server
+add_executable(catnip-libos-server ${TCP_ECHO_SERVER_SOURCES})
+target_link_libraries(catnip-libos-server dmtr-catnip_libos)
+
+# Catnip libos TCP client
+add_executable(catnip-libos-client  ${TCP_ECHO_CLIENT_SOURCES})
+target_link_libraries(catnip-libos-client dmtr-catnip_libos)
+
+# Catnip libos TCP client & server
+add_custom_target(catnip-libos-echo)
+add_dependencies(catnip-libos-echo catnip-libos-server catnip-libos-client)
+
 # POSIX & SPDK storage test clients
 # POSIX TCP client & server
 add_custom_target(dmtr-echo-store)

@@ -139,6 +139,12 @@ fn with_engine<T>(f: impl FnOnce(&mut Engine) -> T) -> T {
     })
 }
 
+#[no_mangle]
+pub extern "C" fn catnip_libos_noop() {
+    println!("hey there!");
+}
+
+#[no_mangle]
 pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     let r: Result<_, Error> = try {
         if argc == 0 || argv.is_null() {
@@ -231,7 +237,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             while p < RTE_MAX_ETHPORTS as u16 {
                 // TODO: This is pretty hax, we clearly only support one port.
                 port_id = p;
-                init_dpdk_port(p, mbuf_pool);
+                init_dpdk_port(p, mbuf_pool)?;
                 p = unsafe { rte_eth_find_next_owned_by(p + 1, owner) as u16 };
             }
         }
@@ -378,64 +384,79 @@ fn init_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(), Error
     Ok(())
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_int, protocol: c_int) -> c_int {
     // Does nothing?
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
     // Sets some global shiz
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_connect(qt_out: *mut dmtr_qtoken_t, qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_push(qt_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_pop(qt_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     todo!()
 }
 
+#[no_mangle]
 pub extern "C" fn dmtr_wait_any(qr_out: *mut dmtr_qresult_t, ready_offset: *mut c_int, qts: *mut dmtr_qtoken_t, num_qts: c_int) -> c_int {
     todo!()
 }
 
+// #[no_mangle]
 // pub extern "C" fn dmtr_queue(qd_out: *mut c_int) -> c_int {
 //     unimplemented!()
 // }
 
+// #[no_mangle]
 // pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
 //     unimplemented!()
 // }
 
+// #[no_mangle]
 // pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
 //     unimplemented!();
 // }

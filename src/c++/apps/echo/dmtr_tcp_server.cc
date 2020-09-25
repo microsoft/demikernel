@@ -109,10 +109,12 @@ int main(int argc, char *argv[])
     
 #ifdef DMTR_OPEN2
     // open file if we are a logging server
+    /*
     if (boost::none != file) {
         // open a log file
         DMTR_OK(dmtr_open2(&fqd,  boost::get(file).c_str(), O_RDWR | O_CREAT | O_SYNC, S_IRWXU | S_IRGRP));
     }
+    */
 #endif
 
     dmtr_qresult_t wait_out;

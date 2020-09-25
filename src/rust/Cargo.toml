@@ -11,5 +11,5 @@ debug = true
 [workspace]
 members = [
     "catnip",
-    "libos",
+    "catnip_libos",
 ]
