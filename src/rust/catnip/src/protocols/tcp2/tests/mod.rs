@@ -38,6 +38,7 @@ struct TestRuntime {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     tcp_options: tcp::Options,
+    arp_options: arp::Options,
 }
 
 impl TestRuntime {
@@ -50,6 +51,7 @@ impl TestRuntime {
             link_addr,
             ipv4_addr,
             tcp_options: tcp::Options::default(),
+            arp_options: arp::Options::default(),
         };
         Rc::new(RefCell::new(self_))
     }
@@ -70,6 +72,14 @@ impl Runtime for Rc<RefCell<TestRuntime>> {
 
     fn tcp_options(&self) -> tcp::Options {
         self.borrow().tcp_options.clone()
+    }
+
+    fn arp_options(&self) -> arp::Options {
+        self.borrow().arp_options.clone()
+    }
+
+    fn advance_clock(&self, now: Instant) {
+        self.borrow_mut().timer.0.advance_clock(now);
     }
 
     type WaitFuture = crate::runtime::WaitFuture<TimerRc>;
@@ -125,7 +135,7 @@ impl TestParticipant {
 
 struct Test {
     #[allow(unused)]
-    arp: arp::Peer,
+    arp: arp::Peer<Rc<RefCell<TestRuntime>>>,
 
     alice: TestParticipant,
     bob: TestParticipant,
@@ -144,9 +154,7 @@ impl Test {
         let bob_ipv4 = Ipv4Addr::new(192, 168, 1, 2);
         let bob_rt = TestRuntime::new("bob", now, bob_mac, bob_ipv4);
 
-        // TODO: Remove this dependency on Runtime
-        let rt0 = crate::runtime::Runtime::from_options(now, crate::options::Options::default());
-        let arp = arp::Peer::new(now, rt0).unwrap();
+        let arp = arp::Peer::new(now, alice_rt.clone()).unwrap();
         arp.insert(alice_ipv4, alice_mac);
         arp.insert(bob_ipv4, bob_mac);
 

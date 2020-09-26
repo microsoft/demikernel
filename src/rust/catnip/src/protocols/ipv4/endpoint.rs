@@ -4,7 +4,7 @@
 use crate::protocols::ip;
 use std::net::Ipv4Addr;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ipv4Endpoint {
     address: Ipv4Addr,
     port: ip::Port,

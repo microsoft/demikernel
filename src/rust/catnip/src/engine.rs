@@ -21,17 +21,27 @@ use std::{
     time::{Duration, Instant},
 };
 use std::pin::Pin;
+use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 
-pub struct Engine {
-    rt: Runtime,
-    arp: arp::Peer,
-    ipv4: ipv4::Peer,
+pub type Engine = Engine2<Runtime>;
+
+pub struct Engine2<RT: RuntimeTrait> {
+    rt: RT,
+    arp: arp::Peer<RT>,
+    ipv4: ipv4::Peer<RT>,
 
     // TODO: Hax to support upper layer not calling `accept`.
     listening: Vec<SocketDescriptor>,
 }
 
-impl Engine {
+impl<RT: RuntimeTrait> Engine2<RT> {
+    pub fn new(rt: RT) -> Result<Self> {
+        let now = rt.now();
+        let arp = arp::Peer::new(now, rt.clone())?;
+        let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone());
+        Ok(Engine2 { rt, arp, ipv4, listening: vec![] })
+    }
+
     pub fn from_options(now: Instant, options: Options) -> Result<Engine> {
         let rt = Runtime::from_options(now, options);
         let arp = arp::Peer::new(now, rt.clone())?;
@@ -40,14 +50,15 @@ impl Engine {
     }
 
     pub fn options(&self) -> Options {
-        self.rt.options()
+        // self.rt.options()
+        todo!()
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
         trace!("Engine::receive({:?})", bytes);
         let frame = ethernet2::Frame::attach(&bytes)?;
         let header = frame.header();
-        if self.rt.options().my_link_addr != header.dest_addr()
+        if self.rt.local_link_addr() != header.dest_addr()
             && !header.dest_addr().is_broadcast()
         {
             return Err(Fail::Misdelivered {});
@@ -57,6 +68,10 @@ impl Engine {
             ethernet2::EtherType::Arp => self.arp.receive(frame),
             ethernet2::EtherType::Ipv4 => self.ipv4.receive(frame),
         }
+    }
+
+    pub fn tcp_socket(&mut self) -> SocketDescriptor {
+        self.ipv4.tcp_socket()
     }
 
     pub fn arp_query(
@@ -105,9 +120,21 @@ impl Engine {
         self.ipv4.tcp_connect(remote_endpoint)
     }
 
+    pub fn tcp_close(&mut self, socket_fd: SocketDescriptor) -> Result<()> {
+        self.ipv4.tcp_close(socket_fd)
+    }
+
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<()> {
         self.listening.push(self.ipv4.tcp_listen(port)?);
         Ok(())
+    }
+
+    pub fn tcp_listen2(&mut self, socket_fd: SocketDescriptor, backlog: usize) -> Result<()> {
+        self.ipv4.tcp_listen2(socket_fd, backlog)
+    }
+
+    pub fn tcp_bind(&mut self, socket_fd: SocketDescriptor, endpoint: ipv4::Endpoint) -> Result<()> {
+        self.ipv4.tcp_bind(socket_fd, endpoint)
     }
 
     pub fn tcp_accept(&mut self, socket_fd: SocketDescriptor) -> Result<Option<SocketDescriptor>> {
@@ -155,7 +182,8 @@ impl Engine {
             loop {
                 match self.ipv4.tcp_accept(socket_fd) {
                     Ok(Some(fd)) => {
-                        self.rt.emit_event(Event::IncomingTcpConnection(fd));
+                        // self.rt.emit_event(Event::IncomingTcpConnection(fd));
+                        todo!()
                     },
                     Ok(None) => break,
                     Err(e) => {
@@ -167,11 +195,13 @@ impl Engine {
     }
 
     pub fn next_event(&self) -> Option<Rc<Event>> {
-        self.rt.next_event()
+        // self.rt.next_event()
+        todo!()
     }
 
     pub fn pop_event(&self) -> Option<Rc<Event>> {
-        self.rt.pop_event()
+        // self.rt.pop_event()
+        todo!()
     }
 
     pub fn tcp_get_connection_id(

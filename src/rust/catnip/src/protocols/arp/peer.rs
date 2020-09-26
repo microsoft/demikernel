@@ -16,18 +16,19 @@ use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
     time::Instant, pin::Pin, task::{Poll, Context},
 };
+use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 
 #[derive(Clone)]
-pub struct ArpPeer {
-    rt: Runtime,
+pub struct ArpPeer<RT: RuntimeTrait> {
+    rt: RT,
     // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
 }
 
-impl ArpPeer {
-    pub fn new(now: Instant, rt: Runtime) -> Result<ArpPeer> {
-        let options = rt.options();
-        let cache = ArpCache::new(now, Some(options.arp.cache_ttl));
+impl<RT: RuntimeTrait> ArpPeer<RT> {
+    pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>> {
+        let options = rt.arp_options();
+        let cache = ArpCache::new(now, Some(options.cache_ttl));
         Ok(ArpPeer {
             rt,
             cache: Rc::new(RefCell::new(cache)),
@@ -37,7 +38,6 @@ impl ArpPeer {
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
         trace!("ArpPeer::receive(...)");
-        let options = self.rt.options();
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
@@ -61,7 +61,7 @@ impl ArpPeer {
         };
 
         // from RFC 826: ?Am I the target protocol address?
-        if arp.target_ip_addr != options.my_ipv4_addr {
+        if arp.target_ip_addr != self.rt.local_ipv4_addr() {
             if merge_flag {
                 // we did do something.
                 return Ok(());
@@ -89,7 +89,7 @@ impl ArpPeer {
                 // from RFC 826:
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
-                arp.target_link_addr = options.my_link_addr;
+                arp.target_link_addr = self.rt.local_link_addr();
                 swap(&mut arp.sender_ip_addr, &mut arp.target_ip_addr);
                 swap(&mut arp.sender_link_addr, &mut arp.target_link_addr);
                 // > Set the ar$op field to ares_op$REPLY
@@ -97,7 +97,7 @@ impl ArpPeer {
                 // > Send the packet to the (new) target hardware address on
                 // > the same hardware on which the request was received.
                 let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
-                self.rt.emit_event(Event::Transmit(bytes));
+                self.rt.transmit(bytes);
                 Ok(())
             }
             ArpOp::ArpReply => {
@@ -124,11 +124,10 @@ impl ArpPeer {
             if let Some(&link_addr) = cache.borrow().get_link_addr(ipv4_addr) {
                 return Ok(link_addr);
             }
-            let options = rt.options();
             let arp = ArpPdu {
                 op: ArpOp::ArpRequest,
-                sender_link_addr: options.my_link_addr,
-                sender_ip_addr: options.my_ipv4_addr,
+                sender_link_addr: rt.local_link_addr(),
+                sender_ip_addr: rt.local_ipv4_addr(),
                 target_link_addr: MacAddress::nil(),
                 target_ip_addr: ipv4_addr,
             };
@@ -140,14 +139,16 @@ impl ArpPeer {
             // from TCP/IP illustrated, chapter 4:
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
-            for i in 0..options.arp.retry_count + 1 {
-                rt.emit_event(Event::Transmit(bytes.clone()));
+            let arp_options = rt.arp_options();
+
+            for i in 0..arp_options.retry_count + 1 {
+                rt.transmit(bytes.clone());
                 futures::select! {
                     link_addr = arp_response => {
                         debug!("ARP result available ({})", link_addr);
                         return Ok(link_addr);
                     },
-                    _ = rt.wait(options.arp.request_timeout).fuse() => {
+                    _ = rt.wait(arp_options.request_timeout).fuse() => {
                         warn!("ARP request timeout; attempt {}.", i + 1);
                     },
                 }
@@ -169,7 +170,7 @@ impl ArpPeer {
     }
 }
 
-impl Future for ArpPeer {
+impl<RT: RuntimeTrait> Future for ArpPeer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, _ctx: &mut Context) -> Poll<!> {

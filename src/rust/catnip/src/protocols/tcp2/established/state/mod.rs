@@ -18,7 +18,7 @@ pub struct ControlBlock<RT: Runtime> {
     pub remote: ipv4::Endpoint,
 
     pub rt: RT,
-    pub arp: arp::Peer,
+    pub arp: arp::Peer<RT>,
 
     pub sender: Sender,
     pub receiver: Receiver,

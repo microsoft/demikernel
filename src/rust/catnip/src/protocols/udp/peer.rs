@@ -13,16 +13,17 @@ use std::{
 use std::{task::{Context, Poll}, future::Future, pin::Pin};
 use futures::stream::FuturesUnordered;
 use futures::{Stream, FutureExt};
+use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 
-pub struct UdpPeer {
-    rt: Runtime,
-    arp: arp::Peer,
+pub struct UdpPeer<RT: RuntimeTrait> {
+    rt: RT,
+    arp: arp::Peer<RT>,
     open_ports: FxHashSet<ip::Port>,
     background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
-impl<'a> UdpPeer {
-    pub fn new(rt: Runtime, arp: arp::Peer) -> UdpPeer {
+impl<RT: RuntimeTrait> UdpPeer<RT> {
+    pub fn new(rt: RT, arp: arp::Peer<RT>) -> UdpPeer<RT> {
         UdpPeer {
             rt,
             arp,
@@ -54,7 +55,8 @@ impl<'a> UdpPeer {
                 });
             }
 
-            self.rt.emit_event(Event::UdpDatagramReceived(udp_datagram));
+            //self.rt.emit_event(Event::UdpDatagramReceived(udp_datagram));
+            todo!();
             Ok(())
         } else {
             // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch08.html):
@@ -98,7 +100,6 @@ impl<'a> UdpPeer {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         async move {
-            let options = rt.options();
             debug!("initiating ARP query");
             let dest_link_addr = arp.query(dest_ipv4_addr).await.expect("TODO handle ARP failure");
             debug!(
@@ -117,13 +118,13 @@ impl<'a> UdpPeer {
             udp_header.dest_port(dest_port);
             udp_header.src_port(src_port);
             let mut ipv4_header = encoder.ipv4().header();
-            ipv4_header.src_addr(options.my_ipv4_addr);
+            ipv4_header.src_addr(rt.local_ipv4_addr());
             ipv4_header.dest_addr(dest_ipv4_addr);
             let mut frame_header = encoder.ipv4().frame().header();
             frame_header.dest_addr(dest_link_addr);
-            frame_header.src_addr(options.my_link_addr);
+            frame_header.src_addr(rt.local_link_addr());
             let _ = encoder.seal()?;
-            rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+            rt.transmit(Rc::new(RefCell::new(bytes)));
             Ok(())
         }
     }
@@ -138,7 +139,6 @@ impl<'a> UdpPeer {
                     dest_ipv4_addr,
                     datagram
                 );
-                let options = rt.options();
                 debug!("initiating ARP query");
                 let dest_link_addr = arp.query(dest_ipv4_addr).await?;
                 debug!(
@@ -155,14 +155,15 @@ impl<'a> UdpPeer {
                 ));
                 let ipv4 = error.icmpv4().ipv4();
                 let mut ipv4_header = ipv4.header();
-                ipv4_header.src_addr(options.my_ipv4_addr);
+                ipv4_header.src_addr(rt.local_ipv4_addr());
                 ipv4_header.dest_addr(dest_ipv4_addr);
                 let frame = ipv4.frame();
                 let mut frame_header = frame.header();
-                frame_header.src_addr(options.my_link_addr);
+                frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(dest_link_addr);
                 let _ = error.seal()?;
-                rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+                // rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
+                todo!();
             };
             if let Err(e) = r {
                 warn!("Failed to send_icmpv4_error({}): {:?}", dest_ipv4_addr, e);
@@ -172,7 +173,7 @@ impl<'a> UdpPeer {
     }
 }
 
-impl Future for UdpPeer {
+impl<RT: RuntimeTrait> Future for UdpPeer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {

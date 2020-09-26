@@ -55,11 +55,11 @@ pub struct PassiveSocket<RT: Runtime> {
 
     local: ipv4::Endpoint,
     rt: RT,
-    arp: arp::Peer,
+    arp: arp::Peer<RT>,
 }
 
 impl<RT: Runtime> PassiveSocket<RT> {
-    pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer) -> Self {
+    pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer<RT>) -> Self {
         let nonce = rt.rng_gen_u32();
         Self {
             inflight: FutureMap::new(),
@@ -192,7 +192,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
         local: ipv4::Endpoint,
         remote: ipv4::Endpoint,
         rt: RT,
-        arp: arp::Peer,
+        arp: arp::Peer<RT>,
     ) -> BackgroundFuture<RT> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);

@@ -28,7 +28,7 @@ pub struct ActiveOpenSocket<RT: Runtime> {
     remote: ipv4::Endpoint,
 
     rt: RT,
-    arp: arp::Peer,
+    arp: arp::Peer<RT>,
 
     #[pin]
     future: BackgroundFuture<RT>,
@@ -38,7 +38,7 @@ pub struct ActiveOpenSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: RT, arp: arp::Peer) -> Self {
+    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: RT, arp: arp::Peer<RT>) -> Self {
         let future = Self::background(
             local_isn,
             local.clone(),
@@ -143,7 +143,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         local: ipv4::Endpoint,
         remote: ipv4::Endpoint,
         rt: RT,
-        arp: arp::Peer,
+        arp: arp::Peer<RT>,
     ) -> BackgroundFuture<RT> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);

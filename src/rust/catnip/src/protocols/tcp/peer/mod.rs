@@ -30,7 +30,7 @@ use futures::FutureExt;
 use futures::{Stream, stream::FuturesUnordered};
 
 struct TcpPeerState {
-    arp: arp::Peer,
+    arp: arp::Peer<RT>,
     assigned_handles: FxHashMap<TcpConnectionHandle, Rc<TcpConnectionId>>,
     connections:
         FxHashMap<Rc<TcpConnectionId>, Rc<RefCell<TcpConnection>>>,
@@ -45,7 +45,7 @@ struct TcpPeerState {
 }
 
 impl TcpPeerState {
-    fn new(rt: Runtime, arp: arp::Peer) -> Self {
+    fn new(rt: Runtime, arp: arp::Peer<RT>) -> Self {
         // initialize the pool of available private ports.
         let unassigned_private_ports = {
             let mut ports = Vec::new();
@@ -431,7 +431,7 @@ pub struct TcpPeer {
 }
 
 impl TcpPeer {
-    pub fn new(rt: Runtime, arp: arp::Peer) -> Self {
+    pub fn new(rt: Runtime, arp: arp::Peer<RT>) -> Self {
         TcpPeer {
             state: Rc::new(RefCell::new(TcpPeerState::new(rt, arp))),
         }

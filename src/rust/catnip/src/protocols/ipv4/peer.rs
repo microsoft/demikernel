@@ -14,16 +14,17 @@ use std::{
     net::Ipv4Addr,
     time::Duration, pin::Pin, task::{Poll, Context},
 };
+use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 
-pub struct Ipv4Peer {
-    rt: Runtime,
-    icmpv4: icmpv4::Peer,
-    tcp: tcp2::Peer<Runtime>,
-    udp: udp::Peer,
+pub struct Ipv4Peer<RT: RuntimeTrait> {
+    rt: RT,
+    icmpv4: icmpv4::Peer<RT>,
+    tcp: tcp2::Peer<RT>,
+    udp: udp::Peer<RT>,
 }
 
-impl<'a> Ipv4Peer {
-    pub fn new(rt: Runtime, arp: arp::Peer) -> Ipv4Peer {
+impl<RT: RuntimeTrait> Ipv4Peer<RT> {
+    pub fn new(rt: RT, arp: arp::Peer<RT>) -> Ipv4Peer<RT> {
         let udp = udp::Peer::new(rt.clone(), arp.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
         let tcp = tcp2::Peer::new(rt.clone(), arp);
@@ -37,12 +38,11 @@ impl<'a> Ipv4Peer {
 
     pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
         trace!("Ipv4Peer::receive(...)");
-        let options = self.rt.options();
         let datagram = Ipv4Datagram::try_from(frame)?;
         let header = datagram.header();
 
         let dst_addr = header.dest_addr();
-        if dst_addr != options.my_ipv4_addr && !dst_addr.is_broadcast() {
+        if dst_addr != self.rt.local_ipv4_addr() && !dst_addr.is_broadcast() {
             return Err(Fail::Misdelivered {});
         }
 
@@ -82,6 +82,10 @@ impl<'a> Ipv4Peer {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 
+    pub fn tcp_socket(&mut self) -> SocketDescriptor {
+        self.tcp.socket()
+    }
+
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
@@ -91,8 +95,16 @@ impl<'a> Ipv4Peer {
 
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<u16> {
         let backlog = 256;
-        let endpoint = ipv4::Endpoint::new(self.rt.options().my_ipv4_addr, port);
+        let endpoint = ipv4::Endpoint::new(self.rt.local_ipv4_addr(), port);
         self.tcp.listen(endpoint, backlog)
+    }
+
+    pub fn tcp_listen2(&mut self, fd: SocketDescriptor, backlog: usize) -> Result<()> {
+        self.tcp.listen2(fd, backlog)
+    }
+
+    pub fn tcp_bind(&mut self, fd: SocketDescriptor, endpoint: ipv4::Endpoint) -> Result<()> {
+        self.tcp.bind(fd, endpoint)
     }
 
     pub fn tcp_accept(&mut self, fd: SocketDescriptor) -> Result<Option<SocketDescriptor>> {
@@ -124,6 +136,10 @@ impl<'a> Ipv4Peer {
         }
     }
 
+    pub fn tcp_close(&mut self, handle: SocketDescriptor) -> Result<()> {
+        self.tcp.close(handle)
+    }
+
     pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize> {
         self.tcp.remote_mss(handle)
     }
@@ -140,7 +156,7 @@ impl<'a> Ipv4Peer {
     }
 }
 
-impl Future for Ipv4Peer {
+impl<RT: RuntimeTrait> Future for Ipv4Peer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {

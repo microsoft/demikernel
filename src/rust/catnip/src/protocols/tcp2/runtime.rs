@@ -1,4 +1,4 @@
-use crate::protocols::{tcp};
+use crate::protocols::{arp, tcp};
 use std::net::Ipv4Addr;
 use crate::protocols::ethernet2::MacAddress;
 use std::rc::Rc;
@@ -7,11 +7,13 @@ use std::future::Future;
 use std::time::{Duration, Instant};
 use rand::Rng;
 
-pub trait Runtime: Clone + Unpin {
+pub trait Runtime: Clone + Unpin + 'static {
+    fn advance_clock(&self, now: Instant);
     fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>);
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;
+    fn arp_options(&self) -> arp::Options;
     fn tcp_options(&self) -> tcp::Options;
 
     type WaitFuture: Future<Output = ()>;
@@ -23,6 +25,10 @@ pub trait Runtime: Clone + Unpin {
 }
 
 impl Runtime for crate::runtime::Runtime {
+    fn advance_clock(&self, now: Instant) {
+        crate::runtime::Runtime::advance_clock(self, now);
+    }
+
     fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
         let event = crate::event::Event::Transmit(buf);
         self.emit_event(event);
@@ -34,6 +40,10 @@ impl Runtime for crate::runtime::Runtime {
 
     fn local_ipv4_addr(&self) -> Ipv4Addr {
         self.options().my_ipv4_addr
+    }
+
+    fn arp_options(&self) -> arp::Options {
+        self.options().arp
     }
 
     fn tcp_options(&self) -> tcp::Options {
