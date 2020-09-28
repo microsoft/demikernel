@@ -25,9 +25,9 @@ set(DPDK_CFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt)
 set(DPDK_LDFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt)
 
 if(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O3 -fkeep-inline-functions")
 else(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd -D_FORTIFY_SOURCE -fstack-protector-strong")
+    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd -D_FORTIFY_SOURCE -fstack-protector-strong -fkeep-inline-functions")
 endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
 if(CMAKE_VERBOSE_MAKEFILE)

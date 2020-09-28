@@ -8,6 +8,7 @@ use crate::{
     prelude::*,
     protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp2, udp},
 };
+use crate::protocols::tcp2::peer::ConnectFuture;
 use std::future::Future;
 use std::{
     convert::TryFrom,
@@ -19,7 +20,7 @@ use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 pub struct Ipv4Peer<RT: RuntimeTrait> {
     rt: RT,
     icmpv4: icmpv4::Peer<RT>,
-    tcp: tcp2::Peer<RT>,
+    pub tcp: tcp2::Peer<RT>,
     udp: udp::Peer<RT>,
 }
 
@@ -89,8 +90,16 @@ impl<RT: RuntimeTrait> Ipv4Peer<RT> {
     pub fn tcp_connect(
         &mut self,
         remote_endpoint: ipv4::Endpoint,
-    ) -> impl Future<Output=Result<SocketDescriptor>> {
+    ) -> ConnectFuture<RT> {
         self.tcp.connect(remote_endpoint)
+    }
+
+    pub fn tcp2_connect(
+        &mut self,
+        handle: SocketDescriptor,
+        remote_endpoint: ipv4::Endpoint,
+    ) -> ConnectFuture<RT> {
+        self.tcp.connect2(handle, remote_endpoint)
     }
 
     pub fn tcp_listen(&mut self, port: ip::Port) -> Result<u16> {

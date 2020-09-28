@@ -7,8 +7,8 @@ fn main() {
 
     let bindings = Builder::default()
         .clang_arg("-I../../../submodules/dpdk/build/include")
-
         .header("wrapper.h")
+        .generate_inline_functions(true)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Failed to generate bindings");

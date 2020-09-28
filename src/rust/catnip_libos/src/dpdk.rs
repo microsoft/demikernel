@@ -1,5 +1,6 @@
 use catnip::protocols::ethernet2::MacAddress;
 use std::time::Duration;
+use std::ptr;
 use std::mem::MaybeUninit;
 use std::net::Ipv4Addr;
 use std::ffi::CString;
@@ -33,6 +34,7 @@ use crate::bindings::{
     rte_eth_dev_count_avail,
     rte_pktmbuf_pool_create,
     RTE_MBUF_DEFAULT_BUF_SIZE,
+    rte_mbuf,
     rte_socket_id,
     rte_eth_dev_info_get,
     rte_eth_rx_mq_mode_ETH_MQ_RX_RSS as ETH_MQ_RX_RSS,
@@ -109,7 +111,7 @@ pub fn initialize_dpdk(local_ipv4_addr: Ipv4Addr, eal_init_args: &[CString]) -> 
         Err(format_err!("Invalid mac address"))?;
     }
 
-    Ok(LibOSRuntime::new(local_link_addr, local_ipv4_addr))
+    Ok(LibOSRuntime::new(local_link_addr, local_ipv4_addr, port_id, mbuf_pool))
 }
 
 fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(), Error> {
@@ -214,3 +216,53 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
 
     Ok(())
 }
+
+// pub unsafe fn rte_pktmbuf_free(mut m: *mut rte_mbuf) {
+//     let mut m_next = ptr::null_mut();
+
+//     while !m.is_null() {
+//         m_next = (*m).next;
+//         rte_pktmbuf_free_seg(m);
+//         m = m_next;
+//     }
+// }
+
+// unsafe fn rte_pktmbuf_free_seg(mut m: *mut rte_mbuf) {
+//     m = rte_pktmbuf_prefree_seg(m);
+//     if !m.is_null() {
+//         rte_mbuf_raw_free(m);
+//     }
+// }
+
+// unsafe fn rte_pktmbuf_prefree_seg(m: *mut rte_mbuf) -> *mut rte_mbuf {
+//     if rte_mbuf_refcnt_read(m) == 1 {
+//         if !rte_mbuf_direct(m) {
+//             rte_pktmbuf_detach(m);
+//         }
+//         if !(*m).next.is_null() {
+//             (*m).next = ptr::null_mut();
+//             (*m).nb_segs = 1;
+//         }
+
+//         return m;
+//     } else if rte_mbuf_refcnt_update(m, -1) == 0 {
+//         if !rte_mbuf_direct(m) {
+//             rte_pktmbuf_detach(m);
+//         }
+//         if !(*m).next.is_null() {
+//             (*m).next = ptr::null_mut();
+//             (*m).nb_segs = 1;
+//         }
+// 		rte_mbuf_refcnt_set(m, 1);
+//         return m;
+//     }
+//     ptr::null_mut()
+// }
+
+// unsafe fn rte_mbuf_refcnt_read(m: *mut rte_buf) -> u16 {
+//     rte_atomic16_read((*m).refcnt_atomic) as u16
+// }
+
+// unsafe fn rte_mbuf_raw_free(m: *mut rte_mbuf) {
+//     todo!();
+// }

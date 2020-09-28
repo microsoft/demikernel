@@ -11,7 +11,13 @@ use crate::{
 };
 use bytes::Bytes;
 use crate::event::Event;
-use crate::protocols::tcp2::peer::SocketDescriptor;
+use crate::protocols::tcp2::peer::{
+    SocketDescriptor,
+    AcceptFuture,
+    ConnectFuture,
+    PushFuture,
+    PopFuture,
+};
 use futures::task::{Context, noop_waker_ref};
 use fxhash::FxHashMap;
 use std::future::Future;
@@ -116,8 +122,20 @@ impl<RT: RuntimeTrait> Engine2<RT> {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<SocketDescriptor>> {
+    pub fn tcp_connect(&mut self, remote_endpoint: ipv4::Endpoint) -> ConnectFuture<RT> {
         self.ipv4.tcp_connect(remote_endpoint)
+    }
+
+    pub fn tcp_connect2(&mut self, socket_fd: SocketDescriptor, remote_endpoint: ipv4::Endpoint) -> ConnectFuture<RT> {
+        self.ipv4.tcp.connect2(socket_fd, remote_endpoint)
+    }
+
+    pub fn tcp_push_async(&mut self, socket_fd: SocketDescriptor, buf: Bytes) -> PushFuture<RT> {
+        self.ipv4.tcp.push_async(socket_fd, buf)
+    }
+
+    pub fn tcp_pop_async(&mut self, socket_fd: SocketDescriptor) -> PopFuture<RT> {
+        self.ipv4.tcp.pop_async(socket_fd)
     }
 
     pub fn tcp_close(&mut self, socket_fd: SocketDescriptor) -> Result<()> {
@@ -161,6 +179,10 @@ impl<RT: RuntimeTrait> Engine2<RT> {
         handle: SocketDescriptor,
     ) -> Result<Bytes> {
         self.ipv4.tcp_read(handle)
+    }
+
+    pub fn tcp_accept_async(&mut self, handle: SocketDescriptor) -> AcceptFuture<RT> {
+        self.ipv4.tcp.accept_async(handle)
     }
 
     pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize> {

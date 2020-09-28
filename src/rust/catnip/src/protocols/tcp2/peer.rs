@@ -122,7 +122,14 @@ impl<RT: Runtime> Peer<RT> {
         Ok(Some(fd))
     }
 
-    pub fn connect(&self, remote: ipv4::Endpoint) -> impl Future<Output=Result<SocketDescriptor, Fail>> {
+    pub fn accept_async(&self, fd: SocketDescriptor) -> AcceptFuture<RT> {
+        AcceptFuture {
+            fd,
+            inner: self.inner.clone(),
+        }
+    }
+
+    pub fn connect(&self, remote: ipv4::Endpoint) -> ConnectFuture<RT> {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -149,11 +156,49 @@ impl<RT: Runtime> Peer<RT> {
             assert!(inner.connecting.insert(key, socket).is_none());
             fd
         };
+        let (state, fd) = match r {
+            Ok(fd) => (ConnectFutureState::InProgress, fd),
+            Err(e) => (ConnectFutureState::Failed(e), 0),
+        };
+        ConnectFuture { fd, state, inner: self.inner.clone() }
+    }
+
+    pub fn connect2(&self, fd: SocketDescriptor, remote: ipv4::Endpoint) -> ConnectFuture<RT> {
+        let mut inner = self.inner.borrow_mut();
+
+        let r = try {
+            match inner.sockets.get_mut(&fd) {
+                Some(Socket::Inactive { .. }) => (),
+                _ => Err(Fail::Malformed { details: "Invalid file descriptor" })?,
+            }
+
+            let local_port = inner.unassigned_ports.pop_front()
+                .ok_or_else(|| Fail::ResourceExhausted { details: "Out of private ports" })?;
+            let local = ipv4::Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
+
+            let socket = Socket::Connecting {
+                local: local.clone(),
+                remote: remote.clone(),
+            };
+            inner.sockets.insert(fd, socket);
+
+            let local_isn = inner.isn_generator.generate(&local, &remote);
+            let key = (local.clone(), remote.clone());
+            let socket = ActiveOpenSocket::new(
+                local_isn,
+                local,
+                remote,
+                inner.rt.clone(),
+                inner.arp.clone(),
+            );
+            assert!(inner.connecting.insert(key, socket).is_none());
+            fd
+        };
         let state = match r {
-            Ok(fd) => ConnectFutureState::InProgress(fd),
+            Ok(fd) => ConnectFutureState::InProgress,
             Err(e) => ConnectFutureState::Failed(e),
         };
-        ConnectFuture { state, inner: self.inner.clone() }
+        ConnectFuture { fd, state, inner: self.inner.clone() }
     }
 
     pub fn peek(&self, fd: SocketDescriptor) -> Result<Bytes, Fail> {
@@ -179,6 +224,25 @@ impl<RT: Runtime> Peer<RT> {
         match inner.established.get(&key) {
             Some(ref s) => s.recv(),
             None => Err(Fail::Malformed { details: "Socket not established" }),
+        }
+    }
+
+    pub fn push_async(&self, fd: SocketDescriptor, buf: Bytes) -> PushFuture<RT> {
+        let err = match self.send(fd, buf) {
+            Ok(()) => None,
+            Err(e) => Some(e),
+        };
+        PushFuture {
+            fd,
+            err,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn pop_async(&self, fd: SocketDescriptor) -> PopFuture<RT> {
+        PopFuture {
+            fd,
+            inner: self.inner.clone(),
         }
     }
 
@@ -428,10 +492,11 @@ impl<RT: Runtime> Inner<RT> {
 
 enum ConnectFutureState {
     Failed(Fail),
-    InProgress(SocketDescriptor),
+    InProgress,
 }
 
 pub struct ConnectFuture<RT: Runtime> {
+    pub fd: SocketDescriptor,
     state: ConnectFutureState,
     inner: Rc<RefCell<Inner<RT>>>,
 }
@@ -443,39 +508,64 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
         let self_ = self.get_mut();
         match self_.state {
             ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
-            ConnectFutureState::InProgress(fd) => {
-                self_.inner.borrow_mut().poll_connect_finished(fd, context)
+            ConnectFutureState::InProgress => {
+                self_.inner.borrow_mut().poll_connect_finished(self_.fd, context)
             },
         }
     }
 }
 
-enum AcceptFutureState {
-    Failed(Fail),
-    InProgress(SocketDescriptor),
-}
-
 pub struct AcceptFuture<RT: Runtime> {
-    state: AcceptFutureState,
+    pub fd: SocketDescriptor,
     inner: Rc<RefCell<Inner<RT>>>,
 }
 
-enum PushFutureState {
-    Failed(Fail),
-    InProgress(SocketDescriptor),
+impl<RT: Runtime> Future for AcceptFuture<RT> {
+    type Output = Result<SocketDescriptor, Fail>;
+
+    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
+        let self_ = self.get_mut();
+        let peer = Peer { inner: self_.inner.clone() };
+        match peer.accept(self_.fd) {
+            Ok(Some(fd)) => Poll::Ready(Ok(fd)),
+            Ok(None) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
 }
 
 pub struct PushFuture<RT: Runtime> {
-    state: PushFutureState,
-    inner: Rc<RefCell<Inner<RT>>>,
+    pub fd: SocketDescriptor,
+    err: Option<Fail>,
+    _marker: std::marker::PhantomData<RT>,
 }
 
-enum PopFutureState {
-    Failed(Fail),
-    InProgress(SocketDescriptor),
+impl<RT: Runtime> Future for PushFuture<RT> {
+    type Output = Result<(), Fail>;
+
+    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
+        match self.get_mut().err.take() {
+            None => Poll::Ready(Ok(())),
+            Some(e) => Poll::Ready(Err(e)),
+        }
+    }
 }
 
 pub struct PopFuture<RT: Runtime> {
-    state: PopFutureState,
+    pub fd: SocketDescriptor,
     inner: Rc<RefCell<Inner<RT>>>,
+}
+
+impl<RT: Runtime> Future for PopFuture<RT> {
+    type Output = Result<Bytes, Fail>;
+
+    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
+        let self_ = self.get_mut();
+        let peer = Peer { inner: self_.inner.clone() };
+        match peer.recv(self_.fd) {
+            Ok(Some(bytes)) => Poll::Ready(Ok(bytes)),
+            Ok(None) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
 }

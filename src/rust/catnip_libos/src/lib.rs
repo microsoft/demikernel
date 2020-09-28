@@ -4,7 +4,10 @@
 mod bindings;
 mod dpdk;
 mod runtime;
+mod qtoken;
 
+use futures::task::noop_waker_ref;
+use bytes::BytesMut;
 use std::convert::TryFrom;
 use catnip::engine::Engine2;
 use catnip::protocols::{ip, ipv4};
@@ -12,7 +15,9 @@ use catnip::protocols::tcp2::peer::SocketDescriptor;
 use catnip::interop::fail_to_errno;
 use catnip::logging;
 use std::time::Instant;
+use std::task::{Context, Poll};
 use std::slice;
+use std::ptr;
 use std::fs::File;
 use std::mem;
 use std::net::Ipv4Addr;
@@ -22,6 +27,7 @@ use clap::{App, Arg};
 use std::ffi::{CStr, CString};
 use yaml_rust::{YamlLoader, Yaml};
 use anyhow::{Error, format_err};
+use self::qtoken::{QTokenManager, UserOperation, QToken, UserOperationResult};
 
 // TODO: Investigate using bindgen to avoid the copy paste here.
 use libc::{
@@ -33,7 +39,11 @@ use libc::{
     sockaddr_in,
 };
 
-type Engine = Engine2<crate::runtime::LibOSRuntime>;
+struct Engine {
+    catnip: Engine2<crate::runtime::LibOSRuntime>,
+    qtokens: QTokenManager<crate::runtime::LibOSRuntime>,
+    runtime: crate::runtime::LibOSRuntime,
+}
 
 pub type dmtr_qtoken_t = u64;
 
@@ -82,6 +92,62 @@ pub struct dmtr_qresult_t {
     qr_qd: c_int,
     qr_qt: dmtr_qtoken_t,
     qr_value: dmtr_qr_value_t,
+}
+
+impl dmtr_qresult_t {
+    fn pack(result: UserOperationResult, qd: SocketDescriptor, qt: QToken) -> Self {
+        match result {
+            UserOperationResult::Connect => Self {
+                qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
+                qr_qd: qd as c_int,
+                qr_qt: qt,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            UserOperationResult::Accept(new_qd) => {
+                let sin = unsafe { mem::zeroed() };
+                let qr_value = dmtr_qr_value_t { ares: dmtr_accept_result_t { qd: new_qd as c_int, addr: sin } };
+                Self {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_ACCEPT,
+                    qr_qd: qd as c_int,
+                    qr_qt: qt,
+                    qr_value,
+                }
+            },
+            UserOperationResult::Push => Self {
+                qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
+                qr_qd: qd as c_int,
+                qr_qt: qt,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            UserOperationResult::Pop(bytes) => {
+                let buf: Box<[u8]> = bytes[..].into();
+                let ptr = Box::into_raw(buf);
+                let sgaseg = dmtr_sgaseg_t {
+                    sgaseg_buf: ptr as *mut _,
+                    sgaseg_len: bytes.len() as u32,
+                };
+                let sga = dmtr_sgarray_t {
+                    sga_buf: ptr::null_mut(),
+                    sga_numsegs: 1,
+                    sga_segs: [sgaseg],
+                    sga_addr: unsafe { mem::zeroed() },
+                };
+                let qr_value = dmtr_qr_value_t { sga };
+                Self {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
+                    qr_qd: qd as c_int,
+                    qr_qt: qt,
+                    qr_value,
+                }
+            },
+            UserOperationResult::Failed(e) => {
+                panic!("Unhandled error: {:?}", e);
+            },
+            UserOperationResult::InvalidToken => {
+                unimplemented!();
+            },
+        }
+    }
 }
 
 thread_local! {
@@ -156,7 +222,11 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
         let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args)?;
         logging::initialize();
-        Engine::new(runtime)?
+        Engine {
+            catnip: Engine2::new(runtime.clone())?,
+            qtokens: QTokenManager::new(),
+            runtime,
+        }
     };
     let engine = match r {
         Ok(engine) => engine,
@@ -181,7 +251,7 @@ pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
         eprintln!("Invalid socket: {:?}", (domain, socket_type, protocol));
         return libc::EINVAL;
     }
-    with_engine(|engine| engine.tcp_socket() as c_int)
+    with_engine(|engine| engine.catnip.tcp_socket() as c_int)
 }
 
 #[no_mangle]
@@ -198,10 +268,10 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 
     with_engine(|engine| {
         if addr.is_unspecified() {
-            addr = engine.options().my_ipv4_addr;
+            addr = engine.catnip.options().my_ipv4_addr;
         }
         let endpoint = ipv4::Endpoint::new(addr, port);
-        match engine.tcp_bind(qd as SocketDescriptor, endpoint) {
+        match engine.catnip.tcp_bind(qd as SocketDescriptor, endpoint) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("bind failed: {:?}", e);
@@ -214,7 +284,7 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 #[no_mangle]
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     with_engine(|engine| {
-        match engine.tcp_listen2(fd as SocketDescriptor, backlog as usize) {
+        match engine.catnip.tcp_listen2(fd as SocketDescriptor, backlog as usize) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("listen failed: {:?}", e);
@@ -226,18 +296,39 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
-    todo!()
+    with_engine(|engine| {
+        let future = UserOperation::Accept(engine.catnip.tcp_accept_async(sockqd as SocketDescriptor));
+        let qtoken = engine.qtokens.insert(future);
+        unsafe { *qtok_out = qtoken };
+        0
+    })
 }
 
 #[no_mangle]
-pub extern "C" fn dmtr_connect(qt_out: *mut dmtr_qtoken_t, qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
-    todo!()
+pub extern "C" fn dmtr_connect(qtok_out: *mut dmtr_qtoken_t, qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+    if saddr.is_null() {
+        return libc::EINVAL;
+    }
+    if size as usize != mem::size_of::<libc::sockaddr_in>() {
+        return libc::EINVAL;
+    }
+    let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
+    let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
+    let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
+    let endpoint = ipv4::Endpoint::new(addr, port);
+
+    with_engine(|engine| {
+        let future = UserOperation::Connect(engine.catnip.tcp_connect2(qd as SocketDescriptor, endpoint));
+        let qtoken = engine.qtokens.insert(future);
+        unsafe { *qtok_out = qtoken };
+        0
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     with_engine(|engine| {
-        match engine.tcp_close(qd as SocketDescriptor) {
+        match engine.catnip.tcp_close(qd as SocketDescriptor) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("listen failed: {:?}", e);
@@ -248,33 +339,145 @@ pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn dmtr_push(qt_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
-    todo!()
+pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
+    if sga.is_null() {
+        return libc::EINVAL;
+    }
+    let sga = unsafe { *sga };
+    if !sga.sga_buf.is_null() {
+        eprintln!("Non-NULL sga->sga_buf");
+        return libc::EINVAL;
+    }
+    let mut len = 0;
+    for i in 0..sga.sga_numsegs as usize {
+        len += sga.sga_segs[i].sgaseg_len;
+    }
+    let mut buf = BytesMut::with_capacity(len as usize);
+    for i in 0..sga.sga_numsegs as usize {
+        let seg = &sga.sga_segs[i];
+        let seg_slice = unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
+        buf.extend_from_slice(seg_slice);
+    }
+    let buf = buf.freeze();
+    with_engine(|engine| {
+        let future = UserOperation::Push(engine.catnip.tcp_push_async(qd as SocketDescriptor, buf));
+        let qtoken = engine.qtokens.insert(future);
+        unsafe { *qtok_out = qtoken };
+        0
+    })
 }
 
+// TODO:
+// 1) Finish pop/poll/drop/wait/wait_any
+// 2) Hook up DPDK to runtime
+// 3) Write main loop that polls incoming packets, user tasks, background tasks
+// 4) Fix up dmtr_sgafree stuff
+
 #[no_mangle]
-pub extern "C" fn dmtr_pop(qt_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
-    todo!()
+pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
+    with_engine(|engine| {
+        let future = UserOperation::Pop(engine.catnip.tcp_pop_async(qd as SocketDescriptor));
+        let qtoken = engine.qtokens.insert(future);
+        unsafe { *qtok_out = qtoken };
+        0
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    todo!()
+    with_engine(|engine| {
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        let qt = qt as QToken;
+        match engine.qtokens.poll(qt, &mut ctx) {
+            Poll::Ready((qd, r)) => {
+                unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+                0
+            },
+            Poll::Pending => libc::EAGAIN,
+        }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
-    todo!()
+    with_engine(|engine| {
+        if engine.qtokens.remove(qt as QToken) {
+            0
+        } else {
+            libc::EINVAL
+        }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    todo!()
+    let mut ctx = Context::from_waker(noop_waker_ref());
+    with_engine(|engine| {
+        loop {
+            match engine.qtokens.poll(qt, &mut ctx) {
+                Poll::Ready((qd, r)) => {
+                    unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+                    return 0;
+                },
+                Poll::Pending => (),
+            }
+            let catnip = &mut engine.catnip;
+            engine.runtime.receive(|p| {
+                if let Err(e) = catnip.receive(p) {
+                    eprintln!("Dropped packet: {:?}", e);
+                }
+            });
+            engine.catnip.advance_clock(Instant::now());
+        }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait_any(qr_out: *mut dmtr_qresult_t, ready_offset: *mut c_int, qts: *mut dmtr_qtoken_t, num_qts: c_int) -> c_int {
-    todo!()
+
+    let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
+    let mut ctx = Context::from_waker(noop_waker_ref());
+
+    with_engine(|engine| {
+        loop {
+            for (i, &qt) in qts.iter().enumerate() {
+                match engine.qtokens.poll(qt, &mut ctx) {
+                    Poll::Ready((qd, r)) => {
+                        unsafe {
+                            *qr_out = dmtr_qresult_t::pack(r, qd, qt);
+                            *ready_offset = i as c_int;
+                        };
+                        return 0;
+                    },
+                    Poll::Pending => (),
+                }
+            }
+            let catnip = &mut engine.catnip;
+            engine.runtime.receive(|p| {
+                if let Err(e) = catnip.receive(p) {
+                    eprintln!("Dropped packet: {:?}", e);
+                }
+            });
+            engine.catnip.advance_clock(Instant::now());
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
+    if sga.is_null() {
+        return 0;
+    }
+    let sga = unsafe { *sga };
+    for i in 0..sga.sga_numsegs as usize {
+        let seg = &sga.sga_segs[i];
+        let allocation = unsafe {
+            Box::from_raw(slice::from_raw_parts_mut(seg.sgaseg_buf as *mut _, seg.sgaseg_len as usize))
+        };
+        drop(allocation);
+    }
+
+    0
 }
 
 // #[no_mangle]
