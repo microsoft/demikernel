@@ -218,7 +218,7 @@ impl<RT: Runtime> Peer<RT> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => return Err(Fail::Malformed { details: "Recv: Socket not established" }),
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
@@ -466,7 +466,7 @@ impl<RT: Runtime> Inner<RT> {
     fn poll_connect_finished(&mut self, fd: SocketDescriptor, context: &mut Context) -> Poll<Result<SocketDescriptor, Fail>> {
         let key = match self.sockets.get(&fd) {
             Some(Socket::Connecting { local, remote }) => (*local, *remote),
-            Some(..) => return Poll::Ready(Err(Fail::Malformed { details: "Socket not established" })),
+            Some(..) => return Poll::Ready(Err(Fail::Malformed { details: "Socket not connecting" })),
             None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
         };
 
@@ -484,11 +484,40 @@ impl<RT: Runtime> Inner<RT> {
 
         let cb = result?;
         assert!(self.established.insert(key, EstablishedSocket::new(cb)).is_none());
+	let (local, remote) = key;
+	self.sockets.insert(fd, Socket::Established { local, remote });
 
         Poll::Ready(Ok(fd))
 
     }
 }
+
+use std::fmt;
+
+impl<RT: Runtime> fmt::Debug for ConnectFuture<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Future({})", self.fd)
+    }
+}
+
+impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Future({})", self.fd)
+    }
+}
+
+impl<RT: Runtime> fmt::Debug for PushFuture<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Future({})", self.fd)
+    }
+}
+
+impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Future({})", self.fd)
+    }
+}
+
 
 enum ConnectFutureState {
     Failed(Fail),

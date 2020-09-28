@@ -103,7 +103,7 @@ impl Runtime for LibOSRuntime {
 
         let out_ptr = unsafe { ((*pkt).buf_addr as *mut u8).offset((*pkt).data_off as isize) };
         let out_slice = unsafe { slice::from_raw_parts_mut(out_ptr, buf_len as usize) };
-        out_slice.copy_from_slice(&buf.borrow()[..]);
+        out_slice[..buf.borrow().len()].copy_from_slice(&buf.borrow()[..]);
         let num_sent = unsafe {
             (*pkt).data_len = buf.borrow().len() as u16;
             (*pkt).pkt_len = buf.borrow().len() as u32;

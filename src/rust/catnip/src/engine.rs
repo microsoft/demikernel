@@ -61,12 +61,12 @@ impl<RT: RuntimeTrait> Engine2<RT> {
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<()> {
-        trace!("Engine::receive({:?})", bytes);
         let frame = ethernet2::Frame::attach(&bytes)?;
         let header = frame.header();
         if self.rt.local_link_addr() != header.dest_addr()
             && !header.dest_addr().is_broadcast()
         {
+	    println!("Misdelivered {:?} {:?} {}", self.rt.local_link_addr(), header.dest_addr(), header.dest_addr().is_broadcast());
             return Err(Fail::Misdelivered {});
         }
 

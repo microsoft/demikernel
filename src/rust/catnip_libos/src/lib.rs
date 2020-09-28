@@ -185,6 +185,22 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
                     .help("YAML file for DPDK configuration")
                     .takes_value(true)
             )
+	    .arg(
+	        Arg::with_name("iterations")
+		    .short("i")
+		    .long("iterations")
+		    .value_name("COUNT")
+		    .help("Number of iterations")
+		    .takes_value(true)
+	    )
+	    .arg(
+	        Arg::with_name("size")
+		    .short("s")
+		    .long("size")
+		    .value_name("BYTES")
+		    .help("Packet size")
+		    .takes_value(true)
+            )		    
             .get_matches_from(&arguments);
 
         let config_path = matches.value_of("config")
@@ -251,7 +267,11 @@ pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
         eprintln!("Invalid socket: {:?}", (domain, socket_type, protocol));
         return libc::EINVAL;
     }
-    with_engine(|engine| engine.catnip.tcp_socket() as c_int)
+    with_engine(|engine| {
+        let fd = engine.catnip.tcp_socket() as c_int;
+	unsafe { *qd_out = fd };
+	0       
+    })
 }
 
 #[no_mangle]

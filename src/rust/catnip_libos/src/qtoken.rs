@@ -23,6 +23,19 @@ pub enum UserOperation<RT: Runtime> {
     Pop(PopFuture<RT>),
 }
 
+use std::fmt;
+
+impl<RT: Runtime> fmt::Debug for UserOperation<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+	    UserOperation::Connect(ref fut) => write!(f, "Connect{:?}", fut),
+	    UserOperation::Accept(ref fut) => write!(f, "Accept{:?}", fut),
+	    UserOperation::Push(ref fut) => write!(f, "Push{:?}", fut),
+	    UserOperation::Pop(ref fut) => write!(f, "Pop{:?}", fut),	    
+	}
+    }
+}
+
 impl <RT: Runtime> UserOperation<RT> {
     fn fd(&self) -> SocketDescriptor {
         match self {
@@ -50,6 +63,7 @@ impl<RT: Runtime> Future for UserOperation<RT> {
 }
 
 
+#[derive(Debug)]
 pub enum UserOperationResult {
     Connect,
     Accept(SocketDescriptor),

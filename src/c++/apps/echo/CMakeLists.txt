@@ -114,10 +114,16 @@ add_dependencies(dmtr-dpdk-catnip-echo dmtr-dpdk-catnip-server dmtr-dpdk-catnip-
 # Catnip libos TCP server
 add_executable(catnip-libos-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(catnip-libos-server dmtr-catnip_libos)
+target_link_libraries(catnip-libos-server ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
+target_link_libraries(catnip-libos-server dl)
+target_link_libraries(catnip-libos-server ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
 
 # Catnip libos TCP client
 add_executable(catnip-libos-client  ${TCP_ECHO_CLIENT_SOURCES})
 target_link_libraries(catnip-libos-client dmtr-catnip_libos)
+target_link_libraries(catnip-libos-client ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
+target_link_libraries(catnip-libos-client dl)
+target_link_libraries(catnip-libos-client ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
 
 # Catnip libos TCP client & server
 add_custom_target(catnip-libos-echo)
