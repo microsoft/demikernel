@@ -11,9 +11,10 @@ pub use header::{
     MAX_MSS, MAX_TCP_HEADER_SIZE, MIN_MSS, MIN_TCP_HEADER_SIZE,
 };
 
-use crate::{prelude::*, protocols::ipv4};
+use crate::{protocols::ipv4};
 use byteorder::{NetworkEndian, WriteBytesExt};
 use std::{convert::TryFrom, io::Write};
+use crate::fail::Fail;
 
 #[derive(Debug)]
 enum ChecksumOp {
@@ -25,7 +26,7 @@ enum ChecksumOp {
 pub struct TcpSegmentDecoder<'a>(ipv4::Datagram<'a>);
 
 impl<'a> TcpSegmentDecoder<'a> {
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(TcpSegmentDecoder::try_from(ipv4::Datagram::attach(bytes)?)?)
     }
 
@@ -42,7 +43,7 @@ impl<'a> TcpSegmentDecoder<'a> {
         &self.0.text()[self.header().header_len()..]
     }
 
-    fn checksum(&self, op: ChecksumOp) -> Result<u16> {
+    fn checksum(&self, op: ChecksumOp) -> Result<u16, Fail> {
         let mut checksum = ipv4::Checksum::new();
         let ipv4_header = self.0.header();
         checksum
@@ -121,7 +122,7 @@ impl<'a> TcpSegmentDecoder<'a> {
 impl<'a> TryFrom<ipv4::Datagram<'a>> for TcpSegmentDecoder<'a> {
     type Error = Fail;
 
-    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
+    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self, Fail> {
         if ipv4_datagram.header().protocol()? != ipv4::Protocol::Tcp {
             return Err(Fail::TypeMismatch {
                 details: "expected a TCP segment",
@@ -168,7 +169,7 @@ impl<'a> TcpSegmentEncoder<'a> {
         self.0.write_checksum();
     }
 
-    pub fn seal(mut self) -> Result<TcpSegmentDecoder<'a>> {
+    pub fn seal(mut self) -> Result<TcpSegmentDecoder<'a>, Fail> {
         trace!("TcpSegmentEncoder::seal()");
         let checksum = self.unmut().checksum(ChecksumOp::Generate).unwrap();
         let mut tcp_header = self.header();

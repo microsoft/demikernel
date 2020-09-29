@@ -6,9 +6,9 @@ mod transcode;
 use bytes::{Bytes, BytesMut};
 use super::connection::TcpConnectionId;
 use crate::{
-    prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
+use crate::fail::Fail;
 use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
 
 pub use transcode::{
@@ -115,7 +115,7 @@ impl TcpSegment {
             .dest_port(cxnid.remote.port())
     }
 
-    pub fn decode(bytes: &[u8]) -> Result<TcpSegment> {
+    pub fn decode(bytes: &[u8]) -> Result<TcpSegment, Fail> {
         TcpSegment::try_from(TcpSegmentDecoder::attach(bytes)?)
     }
 
@@ -178,7 +178,7 @@ impl TcpSegment {
 impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
     type Error = Fail;
 
-    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<Self> {
+    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<Self, Fail> {
         let tcp_header = decoder.header();
         let dest_port = tcp_header.dest_port();
         let src_port = tcp_header.src_port();

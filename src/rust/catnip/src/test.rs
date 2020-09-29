@@ -3,15 +3,14 @@
 
 use crate::{
     logging,
-    prelude::*,
     protocols::{arp, ethernet2::MacAddress, tcp},
-    rand::Seed,
     Options,
 };
 use std::{
     net::Ipv4Addr,
     time::{Duration, Instant},
 };
+use crate::Engine;
 
 const RECEIVE_WINDOW_SIZE: usize = 1024;
 
@@ -34,7 +33,7 @@ pub fn new_engine(
 ) -> Engine {
     logging::initialize();
     // we always want to use the same seed for our unit tests.
-    let mut seed = Seed::default();
+    let mut seed = [0; 32];
     seed[0..6].copy_from_slice(&link_addr.to_array());
     Engine::from_options(
         now,

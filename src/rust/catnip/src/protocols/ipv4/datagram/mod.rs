@@ -7,10 +7,11 @@ mod header;
 mod tests;
 
 use super::checksum::Ipv4Checksum;
-use crate::{prelude::*, protocols::ethernet2};
+use crate::protocols::ethernet2;
 use byteorder::{NetworkEndian, WriteBytesExt};
 use header::{DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION};
 use std::{convert::TryFrom, io::Write};
+use crate::fail::Fail;
 
 pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
 
@@ -38,7 +39,7 @@ impl<'a> Ipv4Datagram<'a> {
         bytes
     }
 
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(Ipv4Datagram::try_from(ethernet2::Frame::attach(bytes)?)?)
     }
 
@@ -64,7 +65,7 @@ impl<'a> Ipv4Datagram<'a> {
 impl<'a> TryFrom<ethernet2::Frame<'a>> for Ipv4Datagram<'a> {
     type Error = Fail;
 
-    fn try_from(frame: ethernet2::Frame<'a>) -> Result<Self> {
+    fn try_from(frame: ethernet2::Frame<'a>) -> Result<Self, Fail> {
         trace!("Ipv4Datagram::try_from(...)");
         if frame.header().ether_type()? != ethernet2::EtherType::Ipv4 {
             return Err(Fail::TypeMismatch {
@@ -174,7 +175,7 @@ impl<'a> Ipv4DatagramMut<'a> {
         ipv4_header.checksum(checksum.finish());
     }
 
-    pub fn seal(mut self) -> Result<Ipv4Datagram<'a>> {
+    pub fn seal(mut self) -> Result<Ipv4Datagram<'a>, Fail> {
         trace!("Ipv4DatagramMut::seal()");
         let mut checksum = Ipv4Checksum::new();
         let mut ipv4_header = self.header();

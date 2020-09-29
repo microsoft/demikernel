@@ -11,9 +11,9 @@ use super::{
     segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder},
 };
 use crate::{
-    prelude::*,
     protocols::{arp, ip, ipv4},
 };
+use crate::fail::Fail;
 use fxhash::{FxHashMap, FxHashSet};
 use isn_generator::IsnGenerator;
 use rand::seq::SliceRandom;
@@ -81,7 +81,7 @@ impl TcpPeerState {
         }
     }
 
-    fn add_background_work(&self, name: &'static str, f: impl Future<Output=Result<()>> + 'static) {
+    fn add_background_work(&self, name: &'static str, f: impl Future<Output=Result<(), Fail>> + 'static) {
         let future = async move {
             if let Err(e) = f.await {
                 warn!("{} failed: {:?}", name, e);
@@ -93,7 +93,7 @@ impl TcpPeerState {
     fn get_connection_given_handle(
         &self,
         handle: TcpConnectionHandle,
-    ) -> Result<&Rc<RefCell<TcpConnection>>> {
+    ) -> Result<&Rc<RefCell<TcpConnection>>, Fail> {
         if let Some(cxnid) = self.assigned_handles.get(&handle) {
             Ok(self.connections.get(cxnid).unwrap())
         } else {
@@ -103,7 +103,7 @@ impl TcpPeerState {
         }
     }
 
-    fn acquire_private_port(&mut self) -> Result<ip::Port> {
+    fn acquire_private_port(&mut self) -> Result<ip::Port, Fail> {
         if let Some(p) = self.unassigned_private_ports.pop_front() {
             Ok(p)
         } else {
@@ -118,7 +118,7 @@ impl TcpPeerState {
         self.unassigned_private_ports.push_back(port);
     }
 
-    fn acquire_connection_handle(&mut self) -> Result<TcpConnectionHandle> {
+    fn acquire_connection_handle(&mut self) -> Result<TcpConnectionHandle, Fail> {
         if let Some(h) = self.unassigned_connection_handles.pop_front() {
             Ok(h)
         } else {
@@ -137,7 +137,7 @@ impl TcpPeerState {
         &mut self,
         cxnid: Rc<TcpConnectionId>,
         rt: Runtime,
-    ) -> Result<Rc<RefCell<TcpConnection>>> {
+    ) -> Result<Rc<RefCell<TcpConnection>>, Fail> {
         let options = self.rt.options();
         let handle = self.acquire_connection_handle()?;
         let local_isn = self.isn_generator.next(&*cxnid);
@@ -159,7 +159,7 @@ impl TcpPeerState {
         Ok(cxn)
     }
 
-    async fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> Result<()> {
+    async fn cast(state: Rc<RefCell<TcpPeerState>>, bytes: Rc<RefCell<Vec<u8>>>) -> Result<(), Fail> {
         let (arp, rt, remote_ipv4_addr) = {
             let state = state.borrow();
             let rt = state.rt.clone();
@@ -184,7 +184,7 @@ impl TcpPeerState {
         Ok(())
     }
 
-    async fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> Result<()> {
+    async fn new_active_connection(state: Rc<RefCell<TcpPeerState>>, cxnid: Rc<TcpConnectionId>) -> Result<(), Fail> {
         trace!("TcpRuntime::new_active_connection(.., {:?})", cxnid);
         let (cxn, rt) = {
             let mut state = state.borrow_mut();
@@ -219,7 +219,7 @@ impl TcpPeerState {
         Ok(())
     }
 
-    async fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> Result<()> {
+    async fn new_passive_connection(state: Rc<RefCell<TcpPeerState>>, syn_segment: TcpSegment) -> Result<(), Fail> {
         let (cxn, rt) = {
             let mut state = state.borrow_mut();
             let rt = state.rt.clone();
@@ -268,7 +268,7 @@ impl TcpPeerState {
         Ok(())
     }
 
-    async fn handshake(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<Rc<TcpSegment>> {
+    async fn handshake(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<Rc<TcpSegment>, Fail> {
         trace!("TcpRuntime::handshake()");
         let (bytes, ack_was_sent, expected_ack_num) = {
             let cxn = cxn.borrow();
@@ -312,7 +312,7 @@ impl TcpPeerState {
         cxnid: Rc<TcpConnectionId>,
         error: Option<Fail>,
         notify: bool,
-    ) -> Result<()>
+    ) -> Result<(), Fail>
     {
         let (rst_segment, cxn_handle, rt) = {
             let mut state = state.borrow_mut();
@@ -344,7 +344,7 @@ impl TcpPeerState {
         Ok(())
     }
 
-    pub async fn on_connection_established(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<()> {
+    pub async fn on_connection_established(state: Rc<RefCell<TcpPeerState>>, cxn: Rc<RefCell<TcpConnection>>) -> Result<(), Fail> {
         trace!("TcpRuntime::on_connection_established(...)::coroutine",);
         let cxnid = cxn.borrow().get_id().clone();
         let error = TcpPeerState::main_connection_loop(state.clone(), cxn.clone()).await.err();
@@ -355,7 +355,7 @@ impl TcpPeerState {
     pub async fn main_connection_loop(
         state: Rc<RefCell<TcpPeerState>>,
         cxn: Rc<RefCell<TcpConnection>>,
-    ) -> Result<()> {
+    ) -> Result<(), Fail> {
         trace!("TcpRuntime::main_connection_loop(...)::coroutine",);
 
         let rt = state.borrow().rt.clone();
@@ -437,7 +437,7 @@ impl TcpPeer {
         }
     }
 
-    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
+    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
         trace!("TcpPeer::receive(...)");
         let decoder = TcpSegmentDecoder::try_from(datagram)?;
         let segment = TcpSegment::try_from(decoder)?;
@@ -528,7 +528,7 @@ impl TcpPeer {
         Ok(())
     }
 
-    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<TcpConnectionHandle>> {
+    pub fn connect(&self, remote_endpoint: ipv4::Endpoint) -> impl Future<Output=Result<TcpConnectionHandle, Fail>> {
         trace!("TcpPeer::connect({:?})", remote_endpoint);
         let state = self.state.clone();
         async move {
@@ -564,7 +564,7 @@ impl TcpPeer {
     }
 
 
-    pub fn listen(&mut self, port: ip::Port) -> Result<()> {
+    pub fn listen(&mut self, port: ip::Port) -> Result<(), Fail> {
         let mut state = self.state.borrow_mut();
         if state.open_ports.contains(&port) {
             return Err(Fail::ResourceBusy {
@@ -580,14 +580,14 @@ impl TcpPeer {
         &self,
         handle: TcpConnectionHandle,
         bytes: Vec<u8>,
-    ) -> Result<()> {
+    ) -> Result<(), Fail> {
         let state = self.state.borrow();
         let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();
         cxn.write(bytes);
         Ok(())
     }
 
-    pub fn peek(&self, handle: TcpConnectionHandle) -> Result<Rc<Vec<u8>>> {
+    pub fn peek(&self, handle: TcpConnectionHandle) -> Result<Rc<Vec<u8>>, Fail> {
         let state = self.state.borrow();
         let cxn = state.get_connection_given_handle(handle)?.borrow();
         if let Some(bytes) = cxn.peek() {
@@ -602,7 +602,7 @@ impl TcpPeer {
     pub fn read(
         &mut self,
         handle: TcpConnectionHandle,
-    ) -> Result<Rc<Vec<u8>>> {
+    ) -> Result<Rc<Vec<u8>>, Fail> {
         let state = self.state.borrow();
         let mut cxn = state.get_connection_given_handle(handle)?.borrow_mut();
         if let Some(bytes) = cxn.read() {
@@ -614,13 +614,13 @@ impl TcpPeer {
         }
     }
 
-    pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize> {
+    pub fn get_mss(&self, handle: TcpConnectionHandle) -> Result<usize, Fail> {
         let state = self.state.borrow();
         let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_mss())
     }
 
-    pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration> {
+    pub fn get_rto(&self, handle: TcpConnectionHandle) -> Result<Duration, Fail> {
         let state = self.state.borrow();
         let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_rto())
@@ -629,7 +629,7 @@ impl TcpPeer {
     pub fn get_connection_id(
         &self,
         handle: TcpConnectionHandle,
-    ) -> Result<Rc<TcpConnectionId>> {
+    ) -> Result<Rc<TcpConnectionId>, Fail> {
         let state = self.state.borrow();
         let cxn = state.get_connection_given_handle(handle)?.borrow();
         Ok(cxn.get_id().clone())

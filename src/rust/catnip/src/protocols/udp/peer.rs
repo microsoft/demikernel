@@ -3,9 +3,9 @@
 
 use super::datagram::{UdpDatagram, UdpDatagramDecoder, UdpDatagramEncoder};
 use crate::{
-    prelude::*,
     protocols::{arp, icmpv4, ip, ipv4},
 };
+use crate::fail::Fail;
 use fxhash::FxHashSet;
 use std::collections::VecDeque;
 use std::{
@@ -38,7 +38,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
     pub fn receive(
         &mut self,
         ipv4_datagram: ipv4::Datagram<'_>,
-    ) -> Result<()> {
+    ) -> Result<(), Fail> {
         trace!("UdpPeer::receive(...)");
         let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
         let udp_datagram = UdpDatagram::try_from(decoder)?;
@@ -97,7 +97,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl Future<Output=Result<()>> {
+    ) -> impl Future<Output=Result<(), Fail>> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         async move {
@@ -134,7 +134,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         let future = async move {
-            let r: Result<_> = try {
+            let r: Result<_, Fail> = try {
                 trace!(
                     "UdpPeer::send_icmpv4_error({:?}, {:?})",
                     dest_ipv4_addr,

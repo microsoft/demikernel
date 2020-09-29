@@ -8,13 +8,16 @@ use futures::FutureExt;
 use std::task::Poll;
 use futures::task::{Context, noop_waker_ref};
 use std::pin::Pin;
+use crate::engine::Engine;
+use std::convert::TryFrom;
 use crate::{
     logging,
-    prelude::*,
     protocols::{ethernet2, ip, ipv4},
     shims::Mutex,
     Options,
 };
+use crate::event::Event;
+use crate::fail::Fail;
 use libc;
 use std::{
     net::Ipv4Addr,
@@ -64,22 +67,22 @@ pub struct nip_connect_future {
 }
 
 impl nip_connect_future {
-    unsafe fn pack(f: Pin<Box<dyn Future<Output=Result<u16>>>>) -> Self {
+    unsafe fn pack(f: Pin<Box<dyn Future<Output=Result<u16, Fail>>>>) -> Self {
         let trait_obj = Pin::into_inner_unchecked(f);
         let raw_obj = std::mem::transmute::<_, TraitObject>(trait_obj);
         debug_assert!(!raw_obj.data.is_null() && !raw_obj.vtable.is_null());
         Self { obj: raw_obj }
     }
 
-    unsafe fn unpack_mut<'a>(&'a mut self) -> Pin<&'a mut dyn Future<Output=Result<u16>>> {
+    unsafe fn unpack_mut<'a>(&'a mut self) -> Pin<&'a mut dyn Future<Output=Result<u16, Fail>>> {
         debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
-        let obj_ref = std::mem::transmute::<_, &mut dyn Future<Output=Result<u16>>>(self.obj);
+        let obj_ref = std::mem::transmute::<_, &mut dyn Future<Output=Result<u16, Fail>>>(self.obj);
         Pin::new_unchecked(obj_ref)
     }
 
-    unsafe fn unpack(self) -> Pin<Box<dyn Future<Output=Result<u16>>>> {
+    unsafe fn unpack(self) -> Pin<Box<dyn Future<Output=Result<u16, Fail>>>> {
         debug_assert!(!self.obj.data.is_null() && !self.obj.vtable.is_null());
-        let obj = std::mem::transmute::<_, Box<dyn Future<Output=Result<u16>>>>(self.obj);
+        let obj = std::mem::transmute::<_, Box<dyn Future<Output=Result<u16, Fail>>>>(self.obj);
         Pin::new_unchecked(obj)
     }
 }

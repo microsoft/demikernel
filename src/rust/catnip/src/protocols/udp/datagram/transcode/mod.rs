@@ -5,13 +5,15 @@ mod header;
 
 pub use header::{UdpHeader, UdpHeaderMut, UDP_HEADER_SIZE};
 
-use crate::{prelude::*, protocols::ipv4};
+use crate::protocols::ipv4;
+use crate::fail::Fail;
+use std::convert::TryFrom;
 
 #[derive(Clone, Copy)]
 pub struct UdpDatagramDecoder<'a>(ipv4::Datagram<'a>);
 
 impl<'a> UdpDatagramDecoder<'a> {
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(UdpDatagramDecoder::try_from(ipv4::Datagram::attach(
             bytes,
         )?)?)
@@ -37,7 +39,7 @@ impl<'a> UdpDatagramDecoder<'a> {
 impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagramDecoder<'a> {
     type Error = Fail;
 
-    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
+    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self, Fail> {
         if ipv4_datagram.header().protocol()? != ipv4::Protocol::Udp {
             return Err(Fail::TypeMismatch {
                 details: "expected a UDP datagram",
@@ -92,7 +94,7 @@ impl<'a> UdpDatagramEncoder<'a> {
         UdpDatagramDecoder(self.0.unmut())
     }
 
-    pub fn seal(self) -> Result<UdpDatagramDecoder<'a>> {
+    pub fn seal(self) -> Result<UdpDatagramDecoder<'a>, Fail> {
         trace!("UdpDatagramEncoder::seal()");
         Ok(UdpDatagramDecoder::try_from(self.0.seal()?)?)
     }

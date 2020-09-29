@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::prelude::*;
 use std::num::NonZeroU16;
+use std::convert::TryFrom;
+use crate::fail::Fail;
 
 const FIRST_PRIVATE_PORT: u16 = 49152;
 
@@ -12,7 +13,7 @@ pub struct Port(NonZeroU16);
 impl TryFrom<u16> for Port {
     type Error = Fail;
 
-    fn try_from(n: u16) -> Result<Self> {
+    fn try_from(n: u16) -> Result<Self, Fail> {
         Ok(Port(NonZeroU16::new(n).ok_or(Fail::OutOfRange {
             details: "port number may not be zero",
         })?))

@@ -6,7 +6,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::prelude::*;
+use crate::fail::Fail;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
 use std::{convert::TryFrom, net::Ipv4Addr};
@@ -28,7 +28,7 @@ pub enum Ipv4Protocol {
 impl TryFrom<u8> for Ipv4Protocol {
     type Error = Fail;
 
-    fn try_from(n: u8) -> Result<Self> {
+    fn try_from(n: u8) -> Result<Self, Fail> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
             None => Err(Fail::Unsupported {
@@ -98,7 +98,7 @@ impl<'a> Ipv4Header<'a> {
         self.0[8]
     }
 
-    pub fn protocol(&self) -> Result<Ipv4Protocol> {
+    pub fn protocol(&self) -> Result<Ipv4Protocol, Fail> {
         Ok(Ipv4Protocol::try_from(self.0[9])?)
     }
 

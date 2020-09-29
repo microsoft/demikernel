@@ -8,7 +8,8 @@ mod tests;
 
 mod options;
 
-use crate::{prelude::*, protocols::ip};
+use crate::protocols::ip;
+use crate::fail::Fail;
 use byteorder::{ByteOrder, NetworkEndian};
 use std::{
     cmp::{max, min},
@@ -26,7 +27,7 @@ pub const MAX_TCP_HEADER_SIZE: usize = 60;
 pub struct TcpHeaderDecoder<'a>(&'a [u8]);
 
 impl<'a> TcpHeaderDecoder<'a> {
-    pub fn attach(bytes: &'a [u8]) -> Result<TcpHeaderDecoder<'a>> {
+    pub fn attach(bytes: &'a [u8]) -> Result<TcpHeaderDecoder<'a>, Fail> {
         if bytes.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "buffer is too small for minimum TCP header",

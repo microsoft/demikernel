@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use super::*;
+use crate::event::Event;
 use crate::test;
 use std::future::Future;
 use std::task::Poll;

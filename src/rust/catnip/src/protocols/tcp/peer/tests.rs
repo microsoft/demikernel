@@ -13,7 +13,6 @@ use futures::FutureExt;
 use futures::task::{Context, noop_waker_ref};
 use std::task::Poll;
 use crate::{
-    prelude::*,
     protocols::{ip, ipv4},
     test,
 };

@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::{
-    prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
@@ -12,6 +11,7 @@ use std::{
     io::{Cursor, Read, Write},
     net::Ipv4Addr,
 };
+use crate::fail::Fail;
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;
@@ -28,7 +28,7 @@ pub enum ArpOp {
 impl TryFrom<u16> for ArpOp {
     type Error = Fail;
 
-    fn try_from(n: u16) -> Result<ArpOp> {
+    fn try_from(n: u16) -> Result<ArpOp, Fail> {
         match FromPrimitive::from_u16(n) {
             Some(op) => Ok(op),
             None => Err(Fail::Unsupported {
@@ -48,7 +48,7 @@ pub struct ArpPdu {
 }
 
 impl ArpPdu {
-    pub fn read(reader: &mut dyn Read) -> Result<ArpPdu> {
+    pub fn read(reader: &mut dyn Read) -> Result<ArpPdu, Fail> {
         trace!("ArpPdu::read(...)");
         let hard_type = reader.read_u16::<NetworkEndian>()?;
         if hard_type != HARD_TYPE_ETHER2 {
@@ -98,7 +98,7 @@ impl ArpPdu {
         })
     }
 
-    pub fn write(&self, writer: &mut dyn Write) -> Result<()> {
+    pub fn write(&self, writer: &mut dyn Write) -> Result<(), Fail> {
         writer.write_u16::<NetworkEndian>(HARD_TYPE_ETHER2)?;
         writer.write_u16::<NetworkEndian>(PROT_TYPE_IPV4)?;
         let byte = [HARD_SIZE_ETHER2; 1];
@@ -117,7 +117,7 @@ impl ArpPdu {
         28
     }
 
-    pub fn to_datagram(&self) -> Result<Vec<u8>> {
+    pub fn to_datagram(&self) -> Result<Vec<u8>, Fail> {
         trace!("ArpPdu::to_datagram()");
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
@@ -164,7 +164,7 @@ impl ArpPdu {
 impl TryFrom<&[u8]> for ArpPdu {
     type Error = Fail;
 
-    fn try_from(bytes: &[u8]) -> Result<ArpPdu> {
+    fn try_from(bytes: &[u8]) -> Result<ArpPdu, Fail> {
         trace!("ArpPdu::try_from({:?})", bytes);
         let mut reader = Cursor::new(bytes);
         ArpPdu::read(&mut reader)

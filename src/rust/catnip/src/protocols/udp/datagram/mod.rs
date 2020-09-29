@@ -3,13 +3,12 @@
 
 mod transcode;
 
+use crate::fail::Fail;
 pub use transcode::{
     UdpDatagramDecoder, UdpDatagramEncoder, UdpHeader, UdpHeaderMut,
     UDP_HEADER_SIZE,
 };
-
 use crate::{
-    prelude::*,
     protocols::{ethernet2::MacAddress, ip, ipv4},
 };
 use std::{convert::TryFrom, net::Ipv4Addr};
@@ -61,7 +60,7 @@ impl UdpDatagram {
         self
     }
 
-    pub fn decode(bytes: &[u8]) -> Result<UdpDatagram> {
+    pub fn decode(bytes: &[u8]) -> Result<UdpDatagram, Fail> {
         UdpDatagram::try_from(UdpDatagramDecoder::attach(bytes)?)
     }
 
@@ -95,7 +94,7 @@ impl UdpDatagram {
 impl<'a> TryFrom<UdpDatagramDecoder<'a>> for UdpDatagram {
     type Error = Fail;
 
-    fn try_from(decoder: UdpDatagramDecoder<'a>) -> Result<Self> {
+    fn try_from(decoder: UdpDatagramDecoder<'a>) -> Result<Self, Fail> {
         let udp_header = decoder.header();
         let dest_port = udp_header.dest_port();
         let src_port = udp_header.src_port();

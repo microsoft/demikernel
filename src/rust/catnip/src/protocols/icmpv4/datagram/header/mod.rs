@@ -6,9 +6,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
+use crate::fail::Fail;
+use std::convert::TryFrom;
 
 pub const ICMPV4_HEADER_SIZE: usize = 4;
 
@@ -23,7 +24,7 @@ pub enum Icmpv4Type {
 impl TryFrom<u8> for Icmpv4Type {
     type Error = Fail;
 
-    fn try_from(n: u8) -> Result<Self> {
+    fn try_from(n: u8) -> Result<Self, Fail> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
             None => Err(Fail::Unsupported {
@@ -51,7 +52,7 @@ impl<'a> Icmpv4Header<'a> {
         self.0
     }
 
-    pub fn r#type(&self) -> Result<Icmpv4Type> {
+    pub fn r#type(&self) -> Result<Icmpv4Type, Fail> {
         Ok(Icmpv4Type::try_from(self.0[0])?)
     }
 

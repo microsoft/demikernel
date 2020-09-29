@@ -5,8 +5,9 @@
 mod tests;
 
 use super::datagram::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
-use crate::prelude::*;
 use byteorder::{ByteOrder, NetworkEndian};
+use crate::fail::Fail;
+use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Icmpv4EchoOp {
@@ -22,7 +23,7 @@ impl<'a> Icmpv4Echo<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(Icmpv4Echo::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
@@ -55,7 +56,7 @@ impl<'a> Icmpv4Echo<'a> {
 impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Echo<'a> {
     type Error = Fail;
 
-    fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self> {
+    fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self, Fail> {
         trace!("Icmpv4Datagram::try_from()");
         let r#type = datagram.header().r#type()?;
         assert!(
@@ -101,7 +102,7 @@ impl<'a> Icmpv4EchoMut<'a> {
         Icmpv4Echo(self.0.unmut())
     }
 
-    pub fn seal(self) -> Result<Icmpv4Echo<'a>> {
+    pub fn seal(self) -> Result<Icmpv4Echo<'a>, Fail> {
         trace!("Icmpv4EchoMut::seal()");
         Ok(Icmpv4Echo::try_from(self.0.seal()?)?)
     }

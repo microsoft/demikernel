@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::{
-    prelude::*,
     protocols::{icmpv4, tcp, udp},
 };
 use std::{
@@ -10,6 +9,7 @@ use std::{
     fmt::{Debug, Formatter, Result as FmtResult},
     rc::Rc,
 };
+use crate::fail::Fail;
 use crate::protocols::tcp2::peer::SocketDescriptor;
 
 pub enum Event {

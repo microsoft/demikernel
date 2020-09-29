@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-// we don't include the prelude here to avoid circular dependencies
 use super::datagram::{
     Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Header, Icmpv4Type,
 };
-use crate::{prelude::*, protocols::ipv4};
+use crate::protocols::ipv4;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
 use std::{convert::TryFrom, fmt, io::Write};
+use crate::fail::Fail;
 
 #[repr(u8)]
 #[derive(FromPrimitive, Clone, Copy, PartialEq, Eq, Debug)]
@@ -92,7 +92,7 @@ impl fmt::Display for Icmpv4ErrorId {
 }
 
 impl Icmpv4ErrorId {
-    fn decode(header: &Icmpv4Header<'_>) -> Result<Icmpv4ErrorId> {
+    fn decode(header: &Icmpv4Header<'_>) -> Result<Icmpv4ErrorId, Fail> {
         match header.r#type()? {
             Icmpv4Type::DestinationUnreachable => {
                 Ok(Icmpv4ErrorId::DestinationUnreachable(
@@ -132,7 +132,7 @@ impl<'a> Icmpv4Error<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(Icmpv4Error::try_from(Icmpv4Datagram::attach(bytes)?)?)
     }
 
@@ -158,7 +158,7 @@ impl<'a> Icmpv4Error<'a> {
 impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Error<'a> {
     type Error = Fail;
 
-    fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self> {
+    fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self, Fail> {
         let header = datagram.header();
         match header.r#type()? {
             Icmpv4Type::DestinationUnreachable => {
@@ -207,7 +207,7 @@ impl<'a> Icmpv4ErrorMut<'a> {
         Icmpv4Error(self.0.unmut())
     }
 
-    pub fn seal(self) -> Result<Icmpv4Error<'a>> {
+    pub fn seal(self) -> Result<Icmpv4Error<'a>, Fail> {
         trace!("Icmpv4ErrorMut::seal()");
         // todo: we don't yet support setting the next hop MTU. when we do,
         // we'll need to ensure this is 0 when not needed.

@@ -18,6 +18,9 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use crate::runtime::TimerPtr;
+use rand_chacha::ChaChaRng;
+use rand::{Rng, SeedableRng};
+use rand::distributions::{Standard, Distribution};
 
 #[derive(Clone)]
 struct TimerRc(Rc<Timer<TimerRc>>);
@@ -32,7 +35,7 @@ struct TestRuntime {
     #[allow(unused)]
     name: &'static str,
     timer: TimerRc,
-    rng: u32,
+    rng: ChaChaRng,
     outgoing: VecDeque<Vec<u8>>,
 
     link_addr: MacAddress,
@@ -46,7 +49,7 @@ impl TestRuntime {
         let self_ = Self {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
-            rng: 1,
+            rng: ChaChaRng::from_seed([0; 32]),
             outgoing: VecDeque::new(),
             link_addr,
             ipv4_addr,
@@ -97,11 +100,9 @@ impl Runtime for Rc<RefCell<TestRuntime>> {
         self.borrow().timer.0.now()
     }
 
-    fn rng_gen_u32(&self) -> u32 {
+    fn rng_gen<T>(&self) -> T where Standard: Distribution<T> {
         let mut self_ = self.borrow_mut();
-        let r = self_.rng;
-        self_.rng += 1;
-        r
+        self_.rng.gen()
     }
 }
 

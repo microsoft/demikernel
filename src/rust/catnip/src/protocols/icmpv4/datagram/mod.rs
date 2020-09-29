@@ -10,7 +10,8 @@ pub use header::{
     Icmpv4Header, Icmpv4HeaderMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
 };
 
-use crate::{prelude::*, protocols::ipv4};
+use crate::protocols::ipv4;
+use crate::fail::Fail;
 use byteorder::{NetworkEndian, WriteBytesExt};
 use std::{convert::TryFrom, io::Write};
 
@@ -29,7 +30,7 @@ impl<'a> Icmpv4Datagram<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ok(Icmpv4Datagram::try_from(ipv4::Datagram::attach(bytes)?)?)
     }
 
@@ -49,7 +50,7 @@ impl<'a> Icmpv4Datagram<'a> {
 impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
     type Error = Fail;
 
-    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self> {
+    fn try_from(ipv4_datagram: ipv4::Datagram<'a>) -> Result<Self, Fail> {
         if ipv4_datagram.header().protocol()? != ipv4::Protocol::Icmpv4 {
             return Err(Fail::TypeMismatch {
                 details: "expected a ICMPv4 datagram",
@@ -101,7 +102,7 @@ impl<'a> Icmpv4DatagramMut<'a> {
         Icmpv4Datagram(self.0.unmut())
     }
 
-    pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>> {
+    pub fn seal(mut self) -> Result<Icmpv4Datagram<'a>, Fail> {
         trace!("Icmp4DatagramMut::seal()");
         let ipv4_text = self.0.text();
         let mut checksum = ipv4::Checksum::new();

@@ -3,8 +3,8 @@
 
 mod header;
 
-use crate::prelude::*;
 use std::cmp::max;
+use crate::fail::Fail;
 
 pub use header::{
     EtherType, Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
@@ -23,7 +23,7 @@ impl<'a> Ethernet2Frame<'a> {
         vec![0u8; text_len + ETHERNET2_HEADER_SIZE]
     }
 
-    pub fn attach(bytes: &'a [u8]) -> Result<Self> {
+    pub fn attach(bytes: &'a [u8]) -> Result<Self, Fail> {
         Ethernet2Frame::validate_buffer_length(bytes.len())?;
 
         let frame = Ethernet2Frame(bytes);
@@ -55,7 +55,7 @@ impl<'a> Ethernet2Frame<'a> {
         &self.0[ETHERNET2_HEADER_SIZE..]
     }
 
-    fn validate_buffer_length(len: usize) -> Result<()> {
+    fn validate_buffer_length(len: usize) -> Result<(), Fail> {
         if len < ETHERNET2_HEADER_SIZE + MIN_PAYLOAD_SIZE {
             Err(Fail::Malformed {
                 details: "frame is shorter than the minimum length",
@@ -92,7 +92,7 @@ impl<'a> Ethernet2FrameMut<'a> {
         Ethernet2Frame(self.0)
     }
 
-    pub fn seal(self) -> Result<Ethernet2Frame<'a>> {
+    pub fn seal(self) -> Result<Ethernet2Frame<'a>, Fail> {
         trace!("Ethernet2FrameMut::seal()");
         Ok(Ethernet2Frame::attach(self.0)?)
     }

@@ -6,9 +6,9 @@ use super::{
     pdu::{ArpOp, ArpPdu},
 };
 use crate::{
-    prelude::*,
     protocols::ethernet2::{self, MacAddress},
 };
+use crate::fail::Fail;
 use futures::FutureExt;
 use fxhash::FxHashMap;
 use std::future::Future;
@@ -26,7 +26,7 @@ pub struct ArpPeer<RT: RuntimeTrait> {
 }
 
 impl<RT: RuntimeTrait> ArpPeer<RT> {
-    pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>> {
+    pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>, Fail> {
         let options = rt.arp_options();
         let cache = ArpCache::new(now, Some(options.cache_ttl));
         Ok(ArpPeer {
@@ -36,7 +36,7 @@ impl<RT: RuntimeTrait> ArpPeer<RT> {
     }
 
 
-    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<()> {
+    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<(), Fail> {
         trace!("ArpPeer::receive(...)");
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
@@ -117,7 +117,7 @@ impl<RT: RuntimeTrait> ArpPeer<RT> {
         self.cache.borrow().get_link_addr(ipv4_addr).cloned()
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output=Result<MacAddress>> {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output=Result<MacAddress, Fail>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
         async move {

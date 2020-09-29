@@ -2,8 +2,9 @@
 // Licensed under the MIT license.
 
 use std::marker::PhantomData;
-use crate::{prelude::*, rand::Rng};
 use rand_core::SeedableRng;
+use crate::{Event, Options};
+use crate::fail::Fail;
 use std::future::Future;
 use std::{
     cell::RefCell,
@@ -15,6 +16,7 @@ use std::task::Waker;
 use std::pin::Pin;
 use std::task::{Poll, Context};
 use futures::FutureExt;
+use rand_chacha::ChaChaRng;
 use futures::future::FusedFuture;
 use futures_intrusive::intrusive_pairing_heap::{HeapNode, PairingHeap};
 
@@ -201,13 +203,13 @@ pub struct Runtime {
 struct Inner {
     events: RefCell<VecDeque<Rc<Event>>>,
     options: Options,
-    rng: RefCell<Rng>,
+    rng: RefCell<ChaChaRng>,
     timer: Timer<Runtime>,
 }
 
 impl Runtime {
     pub fn from_options(now: Instant, options: Options) -> Self {
-        let rng = Rng::from_seed(options.rng_seed);
+        let rng = ChaChaRng::from_seed(options.rng_seed);
         let inner = Inner {
             events: RefCell::new(VecDeque::new()),
             options,
@@ -231,7 +233,7 @@ impl Runtime {
         events.push_back(Rc::new(event));
     }
 
-    pub fn with_rng<R>(&self, f: impl FnOnce(&mut Rng) -> R) -> R {
+    pub fn with_rng<R>(&self, f: impl FnOnce(&mut ChaChaRng) -> R) -> R {
         let mut rng = self.inner.rng.borrow_mut();
         f(&mut *rng)
     }
@@ -269,7 +271,7 @@ impl Runtime {
         mut timeout: Duration,
         max_attempts: usize,
         mut f: impl FnMut() -> F,
-    ) -> impl Future<Output=Result<F::Output>>
+    ) -> impl Future<Output=Result<F::Output, Fail>>
     {
         let self_ = self.clone();
         async move {

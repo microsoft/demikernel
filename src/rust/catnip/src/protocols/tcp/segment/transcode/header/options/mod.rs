@@ -8,7 +8,7 @@ mod tests;
 
 mod parsers;
 
-use crate::prelude::*;
+use crate::fail::Fail;
 use byteorder::{NetworkEndian, WriteBytesExt};
 use fxhash::FxHashMap;
 use num_traits::FromPrimitive;
@@ -46,7 +46,7 @@ impl TcpOptionKind {
 impl TryFrom<u8> for TcpOptionKind {
     type Error = Fail;
 
-    fn try_from(n: u8) -> Result<Self> {
+    fn try_from(n: u8) -> Result<Self, Fail> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
             None => Err(Fail::Unsupported {
@@ -71,7 +71,7 @@ pub enum TcpOption {
 }
 
 impl TcpOption {
-    pub fn kind(&self) -> Result<TcpOptionKind> {
+    pub fn kind(&self) -> Result<TcpOptionKind, Fail> {
         match self {
             TcpOption::Nop => Ok(TcpOptionKind::Nop),
             TcpOption::Mss(_) => Ok(TcpOptionKind::Mss),
@@ -97,7 +97,7 @@ impl TcpSegmentOptions {
         TcpSegmentOptions(FxHashMap::default())
     }
 
-    pub fn parse(bytes: &[u8]) -> Result<TcpSegmentOptions> {
+    pub fn parse(bytes: &[u8]) -> Result<TcpSegmentOptions, Fail> {
         match parsers::start(bytes) {
             Ok((_, list)) => {
                 let mut options = TcpSegmentOptions::new();
@@ -121,7 +121,7 @@ impl TcpSegmentOptions {
         }
     }
 
-    fn insert(&mut self, option: TcpOption) -> Result<()> {
+    fn insert(&mut self, option: TcpOption) -> Result<(), Fail> {
         let kind = option.kind()?;
         match kind {
             TcpOptionKind::Mss => {

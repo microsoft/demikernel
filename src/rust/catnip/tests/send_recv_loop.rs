@@ -9,7 +9,6 @@ use futures::task::noop_waker_ref;
 use catnip::runtime::Runtime;
 use catnip::options::Options;
 use std::time::Instant;
-use catnip::rand::Seed;
 use catnip::protocols::{arp, tcp, ip, ipv4};
 use catnip::protocols::tcp2::runtime::Runtime as RuntimeTrait;
 use futures::Future;
@@ -96,7 +95,7 @@ fn send_recv_loop() {
         arp: arp::Options::default(),
         my_ipv4_addr: alice_ipv4_addr,
         my_link_addr: alice_link_addr,
-        rng_seed: Seed::default(),
+        rng_seed: [0; 32],
         tcp: tcp::Options::default(),
     };
     let alice_rt = Runtime::from_options(now, alice_options);
@@ -108,7 +107,7 @@ fn send_recv_loop() {
         arp: arp::Options::default(),
         my_ipv4_addr: bob_ipv4_addr,
         my_link_addr: bob_link_addr,
-        rng_seed: Seed::default(),
+        rng_seed: [0; 32],
         tcp: tcp::Options::default(),
     };
     let bob_rt = Runtime::from_options(now, bob_options);

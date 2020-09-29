@@ -2,12 +2,13 @@
 // Licensed under the MIT license.
 
 use super::datagram::UdpDatagramDecoder;
+use crate::event::Event;
+use std::convert::TryFrom;
 use std::future::Future;
 use futures::FutureExt;
 use futures::task::{Context, noop_waker_ref};
 use std::task::Poll;
 use crate::{
-    prelude::*,
     protocols::{icmpv4, ip},
     test,
 };

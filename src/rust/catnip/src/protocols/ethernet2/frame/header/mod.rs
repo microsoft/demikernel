@@ -6,9 +6,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{prelude::*, protocols::ethernet2::MacAddress};
+use crate::protocols::ethernet2::MacAddress;
 use byteorder::{ByteOrder, NetworkEndian};
 use num_traits::FromPrimitive;
+use crate::fail::Fail;
+use std::convert::TryFrom;
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 
@@ -22,7 +24,7 @@ pub enum EtherType {
 impl TryFrom<u16> for EtherType {
     type Error = Fail;
 
-    fn try_from(n: u16) -> Result<Self> {
+    fn try_from(n: u16) -> Result<Self, Fail> {
         match FromPrimitive::from_u16(n) {
             Some(n) => Ok(n),
             None => Err(Fail::Unsupported {
@@ -58,7 +60,7 @@ impl<'a> Ethernet2Header<'a> {
         MacAddress::from_bytes(&self.0[6..12])
     }
 
-    pub fn ether_type(&self) -> Result<EtherType> {
+    pub fn ether_type(&self) -> Result<EtherType, Fail> {
         trace!("Ethernet2Header::ether_type()");
         let n = NetworkEndian::read_u16(&self.0[12..14]);
         Ok(EtherType::try_from(n)?)

@@ -2,7 +2,8 @@
 // Licensed under the MIT license.
 
 use super::*;
-use crate::{prelude::*, protocols::ip};
+use crate::protocols::ip;
+use std::convert::TryFrom;
 
 #[test]
 fn serialization() {

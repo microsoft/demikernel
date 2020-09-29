@@ -3,12 +3,12 @@
 
 use super::{TcpSegmentEncoder, TcpSegmentOptions, MAX_TCP_HEADER_SIZE};
 use crate::{
-    prelude::*,
     protocols::{ip, ipv4},
     test,
 };
 use byteorder::{NetworkEndian, WriteBytesExt};
 use std::num::Wrapping;
+use std::convert::TryFrom;
 
 #[test]
 fn checksum() {

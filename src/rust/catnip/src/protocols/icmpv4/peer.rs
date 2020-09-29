@@ -8,9 +8,9 @@ use super::{
 };
 use futures::FutureExt;
 use crate::{
-    prelude::*,
     protocols::{arp, ipv4},
 };
+use crate::fail::Fail;
 use byteorder::{NativeEndian, WriteBytesExt};
 use std::future::Future;
 use std::{
@@ -59,7 +59,7 @@ impl<RT: RuntimeTrait> Icmpv4Peer<RT> {
         }
     }
 
-    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<()> {
+    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
         trace!("Icmpv4Peer::receive(...)");
         let datagram = Icmpv4Datagram::try_from(datagram)?;
         assert_eq!(
@@ -97,7 +97,7 @@ impl<RT: RuntimeTrait> Icmpv4Peer<RT> {
         }
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration>> {
+    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration, Fail>> {
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let id = {
             let mut checksum = ipv4::Checksum::new();
@@ -159,7 +159,7 @@ impl<RT: RuntimeTrait> Icmpv4Peer<RT> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         let future = async move {
-            let r: Result<_> = try {
+            let r: Result<_, Fail> = try {
                 debug!("initiating ARP query");
                 let dest_link_addr = arp.query(dest_ipv4_addr).await?;
                 debug!(

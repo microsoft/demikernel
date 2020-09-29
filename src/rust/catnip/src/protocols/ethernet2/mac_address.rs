@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::prelude::*;
 use eui48;
 use serde::ser::{Serialize, Serializer};
 use std::fmt;
@@ -64,7 +63,7 @@ impl fmt::Debug for MacAddress {
 }
 
 impl Serialize for MacAddress {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
