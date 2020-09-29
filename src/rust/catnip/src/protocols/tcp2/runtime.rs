@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::time::{Duration, Instant};
 use rand::Rng;
+use rand::distributions::{Standard, Distribution};
 
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
@@ -21,7 +22,7 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn wait_until(&self, when: Instant) -> Self::WaitFuture;
     fn now(&self) -> Instant;
 
-    fn rng_gen_u32(&self) -> u32;
+    fn rng_gen<T>(&self) -> T where Standard: Distribution<T>;
 }
 
 impl Runtime for crate::runtime::Runtime {
@@ -63,7 +64,7 @@ impl Runtime for crate::runtime::Runtime {
         crate::runtime::Runtime::now(self)
     }
 
-    fn rng_gen_u32(&self) -> u32 {
+    fn rng_gen<T>(&self) -> T where Standard: Distribution<T> {
         self.with_rng(|r| r.gen())
     }
 }

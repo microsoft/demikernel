@@ -361,7 +361,7 @@ pub struct Inner<RT: Runtime> {
 impl<RT: Runtime> Inner<RT> {
     fn new(rt: RT, arp: arp::Peer<RT>) -> Self {
         Self {
-            isn_generator: IsnGenerator::new(rt.rng_gen_u32()),
+            isn_generator: IsnGenerator::new(rt.rng_gen()),
             // TODO: Reuse old FDs.
             next_fd: 1,
             unassigned_ports: (ip::Port::first_private_port().into()..65535)

@@ -60,7 +60,7 @@ pub struct PassiveSocket<RT: Runtime> {
 
 impl<RT: Runtime> PassiveSocket<RT> {
     pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer<RT>) -> Self {
-        let nonce = rt.rng_gen_u32();
+        let nonce = rt.rng_gen();
         Self {
             inflight: FutureMap::new(),
             ready: VecDeque::new(),

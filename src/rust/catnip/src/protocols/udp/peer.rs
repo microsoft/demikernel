@@ -7,6 +7,7 @@ use crate::{
     protocols::{arp, icmpv4, ip, ipv4},
 };
 use fxhash::FxHashSet;
+use std::collections::VecDeque;
 use std::{
     cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc,
 };
@@ -20,6 +21,7 @@ pub struct UdpPeer<RT: RuntimeTrait> {
     arp: arp::Peer<RT>,
     open_ports: FxHashSet<ip::Port>,
     background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
+    queued_packets: VecDeque<UdpDatagram>,
 }
 
 impl<RT: RuntimeTrait> UdpPeer<RT> {
@@ -29,6 +31,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
             arp,
             open_ports: FxHashSet::default(),
             background_work: FuturesUnordered::new(),
+            queued_packets: VecDeque::new(),
         }
     }
 
@@ -54,9 +57,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
                     details: "source port is zero",
                 });
             }
-
-            //self.rt.emit_event(Event::UdpDatagramReceived(udp_datagram));
-            todo!();
+            self.queued_packets.push_back(udp_datagram);
             Ok(())
         } else {
             // from [TCP/IP Illustrated](https://learning.oreilly.com/library/view/tcpip-illustrated-volume/9780132808200/ch08.html):
@@ -162,8 +163,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
                 frame_header.src_addr(rt.local_link_addr());
                 frame_header.dest_addr(dest_link_addr);
                 let _ = error.seal()?;
-                // rt.emit_event(Event::Transmit(Rc::new(RefCell::new(bytes))));
-                todo!();
+                rt.transmit(Rc::new(RefCell::new(bytes)));
             };
             if let Err(e) = r {
                 warn!("Failed to send_icmpv4_error({}): {:?}", dest_ipv4_addr, e);
