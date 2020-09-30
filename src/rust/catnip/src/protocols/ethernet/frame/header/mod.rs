@@ -6,10 +6,15 @@
 #[cfg(test)]
 mod tests;
 
-use crate::protocols::ethernet::MacAddress;
-use byteorder::{ByteOrder, NetworkEndian};
+use crate::{
+    fail::Fail,
+    protocols::ethernet::MacAddress,
+};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use num_traits::FromPrimitive;
-use crate::fail::Fail;
 use std::convert::TryFrom;
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;

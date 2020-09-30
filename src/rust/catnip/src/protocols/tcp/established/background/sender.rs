@@ -1,12 +1,18 @@
-use std::rc::Rc;
-use std::cmp;
-use std::time::{Duration};
-use super::super::state::ControlBlock;
+use super::super::state::{
+    sender::UnackedSegment,
+    ControlBlock,
+};
+use crate::{
+    fail::Fail,
+    runtime::Runtime,
+};
 use futures::FutureExt;
-use crate::fail::Fail;
-use std::num::Wrapping;
-use super::super::state::sender::UnackedSegment;
-use crate::runtime::Runtime;
+use std::{
+    cmp,
+    num::Wrapping,
+    rc::Rc,
+    time::Duration,
+};
 
 pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     'top: loop {
@@ -34,7 +40,9 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         // repeatedly send window probes until window opens up.
         if win_sz == 0 {
             let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-            let buf = cb.sender.pop_one_unsent_byte()
+            let buf = cb
+                .sender
+                .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", sent_seq, unsent_seq));
 
             cb.sender.sent_seq_no.modify(|s| s + Wrapping(1));
@@ -42,7 +50,10 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                 bytes: buf.clone(),
                 initial_tx: Some(cb.rt.now()),
             };
-            cb.sender.unacked_queue.borrow_mut().push_back(unacked_segment);
+            cb.sender
+                .unacked_queue
+                .borrow_mut()
+                .push_back(unacked_segment);
 
             let segment = cb.tcp_segment().seq_num(sent_seq).payload(buf.clone());
             cb.emit(segment, remote_link_addr);
@@ -81,21 +92,31 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
 
         // Form an outgoing packet.
-        let max_size  = cmp::min((win_sz - sent_data) as usize, cb.sender.mss);
-        let segment_data = cb.sender.pop_unsent(max_size)
+        let max_size = cmp::min((win_sz - sent_data) as usize, cb.sender.mss);
+        let segment_data = cb
+            .sender
+            .pop_unsent(max_size)
             .expect("No unsent data with sequence number gap?");
         let segment_data_len = segment_data.len();
         assert!(segment_data_len > 0);
 
-        let segment = cb.tcp_segment().seq_num(sent_seq).payload(segment_data.clone());
+        let segment = cb
+            .tcp_segment()
+            .seq_num(sent_seq)
+            .payload(segment_data.clone());
         cb.emit(segment, remote_link_addr);
 
-        cb.sender.sent_seq_no.modify(|s| s + Wrapping(segment_data_len as u32));
+        cb.sender
+            .sent_seq_no
+            .modify(|s| s + Wrapping(segment_data_len as u32));
         let unacked_segment = UnackedSegment {
             bytes: segment_data,
             initial_tx: Some(cb.rt.now()),
         };
-        cb.sender.unacked_queue.borrow_mut().push_back(unacked_segment);
+        cb.sender
+            .unacked_queue
+            .borrow_mut()
+            .push_back(unacked_segment);
 
         if cb.sender.retransmit_deadline.get().is_none() {
             let rto = cb.sender.rto.borrow().estimate();

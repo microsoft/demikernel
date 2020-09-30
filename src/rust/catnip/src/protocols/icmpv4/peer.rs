@@ -2,32 +2,56 @@
 // Licensed under the MIT license.
 
 use super::{
-    datagram::{Icmpv4Datagram, Icmpv4Type},
-    echo::{Icmpv4Echo, Icmpv4EchoMut, Icmpv4EchoOp},
+    datagram::{
+        Icmpv4Datagram,
+        Icmpv4Type,
+    },
+    echo::{
+        Icmpv4Echo,
+        Icmpv4EchoMut,
+        Icmpv4EchoOp,
+    },
     error::Icmpv4Error,
 };
-use futures::FutureExt;
 use crate::{
-    protocols::{arp, ipv4},
+    fail::Fail,
+    protocols::{
+        arp,
+        ipv4,
+    },
 };
-use crate::fail::Fail;
-use byteorder::{NativeEndian, WriteBytesExt};
-use std::future::Future;
+use byteorder::{
+    NativeEndian,
+    WriteBytesExt,
+};
+use futures::{
+    stream::FuturesUnordered,
+    FutureExt,
+    Stream,
+};
+use hashbrown::HashMap;
 use std::{
     cell::RefCell,
     convert::TryFrom,
+    future::Future,
     io::Write,
     net::Ipv4Addr,
     num::Wrapping,
+    pin::Pin,
     process,
     rc::Rc,
-    time::Duration, pin::Pin, task::{Poll, Context},
+    task::{
+        Context,
+        Poll,
+    },
+    time::Duration,
 };
-use futures::{Stream, stream::FuturesUnordered};
-use hashbrown::HashMap;
 // TODO: Use unsync channel
-use futures::channel::oneshot::{channel, Sender};
-use crate::runtime::Runtime as Runtime;
+use crate::runtime::Runtime;
+use futures::channel::oneshot::{
+    channel,
+    Sender,
+};
 
 pub struct Icmpv4Peer<RT: Runtime> {
     rt: RT,
@@ -66,19 +90,18 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
             datagram.ipv4().frame().header().dest_addr(),
             self.rt.local_link_addr()
         );
-        assert_eq!(datagram.ipv4().header().dest_addr(), self.rt.local_ipv4_addr());
+        assert_eq!(
+            datagram.ipv4().header().dest_addr(),
+            self.rt.local_ipv4_addr()
+        );
 
         match datagram.header().r#type()? {
             Icmpv4Type::EchoRequest => {
                 let dest_ipv4_addr = datagram.ipv4().header().src_addr();
                 let datagram = Icmpv4Echo::try_from(datagram)?;
-                self.reply_to_ping(
-                    dest_ipv4_addr,
-                    datagram.id(),
-                    datagram.seq_num(),
-                );
+                self.reply_to_ping(dest_ipv4_addr, datagram.id(), datagram.seq_num());
                 Ok(())
-            }
+            },
             Icmpv4Type::EchoReply => {
                 let datagram = Icmpv4Echo::try_from(datagram)?;
                 let mut inner = self.inner.borrow_mut();
@@ -86,18 +109,27 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                     let _ = tx.send(());
                 }
                 Ok(())
-            }
+            },
             _ => match Icmpv4Error::try_from(datagram) {
                 Ok(e) => {
-                    warn!("Icmpv4Error(id: {:?}, next_hop_mtu: {:?}, context: {:?})", e.id(), e.next_hop_mtu(), e.context());
+                    warn!(
+                        "Icmpv4Error(id: {:?}, next_hop_mtu: {:?}, context: {:?})",
+                        e.id(),
+                        e.next_hop_mtu(),
+                        e.context()
+                    );
                     Ok(())
-                }
+                },
                 Err(e) => Err(e.clone()),
             },
         }
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration, Fail>> {
+    pub fn ping(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        timeout: Option<Duration>,
+    ) -> impl Future<Output = Result<Duration, Fail>> {
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let id = {
             let mut checksum = ipv4::Checksum::new();
@@ -183,7 +215,10 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                 rt.transmit(Rc::new(RefCell::new(bytes)));
             };
             if let Err(e) = r {
-                warn!("reply_to_ping({}, {}, {}) failed: {:?}", dest_ipv4_addr, id, seq_num, e)
+                warn!(
+                    "reply_to_ping({}, {}, {}) failed: {:?}",
+                    dest_ipv4_addr, id, seq_num, e
+                )
             }
         };
         self.background_work.push(future.boxed_local());

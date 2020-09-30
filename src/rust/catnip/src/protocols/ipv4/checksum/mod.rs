@@ -4,9 +4,15 @@
 #[cfg(test)]
 mod tests;
 
-use byteorder::{ByteOrder, NetworkEndian};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use either::Either;
-use std::io::{Result as IoResult, Write};
+use std::io::{
+    Result as IoResult,
+    Write,
+};
 
 // note: we're following the model of std::hash::Ipv4Checksum, even though
 // it only supports 64-bit hash widths.

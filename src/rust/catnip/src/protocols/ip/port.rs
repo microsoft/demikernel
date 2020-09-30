@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use std::num::NonZeroU16;
-use std::convert::TryFrom;
 use crate::fail::Fail;
+use std::{
+    convert::TryFrom,
+    num::NonZeroU16,
+};
 
 const FIRST_PRIVATE_PORT: u16 = 49152;
 

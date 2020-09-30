@@ -1,21 +1,38 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{arp, tcp};
-use crate::engine::Engine;
-use crate::runtime::Runtime;
-use std::time::Instant;
-use crate::timer::Timer;
-use std::net::Ipv4Addr;
-use crate::protocols::ethernet::MacAddress;
-use std::time::Duration;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use crate::timer::TimerRc;
+use crate::{
+    engine::Engine,
+    protocols::{
+        arp,
+        ethernet::MacAddress,
+        tcp,
+    },
+    runtime::Runtime,
+    timer::{
+        Timer,
+        TimerRc,
+    },
+};
+use rand::{
+    distributions::{
+        Distribution,
+        Standard,
+    },
+    Rng,
+    SeedableRng,
+};
 use rand_chacha::ChaChaRng;
-use rand::{Rng, SeedableRng};
-use rand::distributions::{Standard, Distribution};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 pub const RECEIVE_WINDOW_SIZE: usize = 1024;
 pub const ALICE_MAC: MacAddress = MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
@@ -31,7 +48,12 @@ pub struct TestRuntime {
 }
 
 impl TestRuntime {
-    pub fn new(name: &'static str, now: Instant, link_addr: MacAddress, ipv4_addr: Ipv4Addr) -> Self {
+    pub fn new(
+        name: &'static str,
+        now: Instant,
+        link_addr: MacAddress,
+        ipv4_addr: Ipv4Addr,
+    ) -> Self {
         let inner = Inner {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -42,7 +64,9 @@ impl TestRuntime {
             tcp_options: tcp::Options::default(),
             arp_options: arp::Options::default(),
         };
-        Self { inner: Rc::new(RefCell::new(inner)) }
+        Self {
+            inner: Rc::new(RefCell::new(inner)),
+        }
     }
 
     pub fn pop_frame(&self) -> Vec<u8> {
@@ -63,10 +87,14 @@ struct Inner {
     arp_options: arp::Options,
 }
 
-
 impl Runtime for TestRuntime {
+    type WaitFuture = crate::timer::WaitFuture<TimerRc>;
+
     fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
-        self.inner.borrow_mut().outgoing.push_back(buf.borrow_mut().clone());
+        self.inner
+            .borrow_mut()
+            .outgoing
+            .push_back(buf.borrow_mut().clone());
     }
 
     fn local_link_addr(&self) -> MacAddress {
@@ -89,13 +117,15 @@ impl Runtime for TestRuntime {
         self.inner.borrow_mut().timer.0.advance_clock(now);
     }
 
-    type WaitFuture = crate::timer::WaitFuture<TimerRc>;
-
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let inner = self.inner.borrow_mut();
         let now = inner.timer.0.now();
-        inner.timer.0.wait_until(inner.timer.clone(), now + duration)
+        inner
+            .timer
+            .0
+            .wait_until(inner.timer.clone(), now + duration)
     }
+
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
         let inner = self.inner.borrow_mut();
         inner.timer.0.wait_until(inner.timer.clone(), when)
@@ -105,7 +135,10 @@ impl Runtime for TestRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn rng_gen<T>(&self) -> T where Standard: Distribution<T> {
+    fn rng_gen<T>(&self) -> T
+    where
+        Standard: Distribution<T>,
+    {
         let mut inner = self.inner.borrow_mut();
         inner.rng.gen()
     }

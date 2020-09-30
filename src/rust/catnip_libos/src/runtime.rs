@@ -4,34 +4,40 @@ use crate::bindings::{
     rte_mbuf,
     rte_mempool,
 };
-use catnip::protocols::ethernet::MacAddress;
-use catnip::protocols::{
-    arp,
-    tcp,
+use catnip::{
+    protocols::{
+        arp,
+        ethernet::MacAddress,
+        tcp,
+    },
+    runtime::Runtime,
+    timer::{
+        Timer,
+        TimerPtr,
+        WaitFuture,
+    },
 };
-use catnip::runtime::Runtime;
-use catnip::timer::Timer;
-use catnip::timer::{
-    TimerPtr,
-    WaitFuture,
-};
-use rand::distributions::{
-    Distribution,
-    Standard,
-};
-use rand::rngs::SmallRng;
 use rand::{
+    distributions::{
+        Distribution,
+        Standard,
+    },
+    rngs::SmallRng,
     Rng,
     SeedableRng,
 };
-use std::cell::RefCell;
-use std::mem;
-use std::net::Ipv4Addr;
-use std::ptr;
-use std::rc::Rc;
-use std::slice;
-use std::time::Duration;
-use std::time::Instant;
+use std::{
+    cell::RefCell,
+    mem,
+    net::Ipv4Addr,
+    ptr,
+    rc::Rc,
+    slice,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[derive(Clone)]
 pub struct TimerRc(Rc<Timer<TimerRc>>);
@@ -131,6 +137,8 @@ struct Inner {
 }
 
 impl Runtime for LibOSRuntime {
+    type WaitFuture = WaitFuture<TimerRc>;
+
     fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
         let pool = { self.inner.borrow().dpdk_mempool };
         let dpdk_port_id = { self.inner.borrow().dpdk_port_id };
@@ -175,8 +183,6 @@ impl Runtime for LibOSRuntime {
         self.inner.borrow_mut().timer.0.advance_clock(now);
     }
 
-    type WaitFuture = WaitFuture<TimerRc>;
-
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let self_ = self.inner.borrow_mut();
         let now = self_.timer.0.now();
@@ -185,6 +191,7 @@ impl Runtime for LibOSRuntime {
             .0
             .wait_until(self_.timer.clone(), now + duration)
     }
+
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
         let self_ = self.inner.borrow_mut();
         self_.timer.0.wait_until(self_.timer.clone(), when)

@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::segment::{DEFAULT_MSS, MAX_MSS, MIN_MSS};
+use super::segment::{
+    DEFAULT_MSS,
+    MAX_MSS,
+    MIN_MSS,
+};
 use std::time::Duration;
 
 #[derive(Clone, Debug)]

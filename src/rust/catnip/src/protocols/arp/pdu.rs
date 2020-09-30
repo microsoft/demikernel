@@ -2,16 +2,27 @@
 // Licensed under the MIT license.
 
 use crate::{
-    protocols::ethernet::{self, MacAddress},
+    fail::Fail,
+    protocols::ethernet::{
+        self,
+        MacAddress,
+    },
 };
-use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{
+    NetworkEndian,
+    ReadBytesExt,
+    WriteBytesExt,
+};
 use num_traits::FromPrimitive;
 use std::{
     convert::TryFrom,
-    io::{Cursor, Read, Write},
+    io::{
+        Cursor,
+        Read,
+        Write,
+    },
     net::Ipv4Addr,
 };
-use crate::fail::Fail;
 
 const HARD_TYPE_ETHER2: u16 = 1;
 const HARD_SIZE_ETHER2: u8 = 6;
@@ -122,19 +133,15 @@ impl ArpPdu {
         let dest_addr = match self.op {
             ArpOp::ArpRequest => {
                 if MacAddress::nil() != self.target_link_addr {
-                    panic!(
-                        "the target link address of an ARP request must be \
-                         `MacAddress::nil()`"
-                    );
+                    panic!("the target link address of an ARP request must be `MacAddress::nil()`");
                 }
 
                 MacAddress::broadcast()
-            }
+            },
             ArpOp::ArpReply => {
                 if MacAddress::nil() == self.target_link_addr {
                     panic!(
-                        "the target link address of an ARP reply must not be \
-                         `MacAddress::nil()`"
+                        "the target link address of an ARP reply must not be `MacAddress::nil()`"
                     );
                 }
 
@@ -146,7 +153,7 @@ impl ArpPdu {
                 }
 
                 self.target_link_addr
-            }
+            },
         };
 
         let mut bytes = ethernet::Frame::new_vec(ArpPdu::size());

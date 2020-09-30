@@ -9,7 +9,10 @@ mod tests;
 mod parsers;
 
 use crate::fail::Fail;
-use byteorder::{NetworkEndian, WriteBytesExt};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
 use hashbrown::HashMap;
 use num_traits::FromPrimitive;
 use std::convert::TryFrom;
@@ -84,7 +87,7 @@ impl TcpOption {
                         details: "unrecognized TCP option KIND",
                     })
                 }
-            }
+            },
         }
     }
 }
@@ -111,13 +114,13 @@ impl TcpSegmentOptions {
                 }
 
                 Ok(options)
-            }
+            },
             Err(e) => {
                 debug!("failed to parse TCP options: {:?}", e);
                 Err(Fail::Malformed {
                     details: "failed to parse TCP options",
                 })
-            }
+            },
         }
     }
 
@@ -131,7 +134,7 @@ impl TcpSegmentOptions {
                     });
                 }
                 Ok(())
-            }
+            },
             TcpOptionKind::Wsc => {
                 if self.0.insert(kind, option).is_some() {
                     return Err(Fail::Malformed {
@@ -141,8 +144,7 @@ impl TcpSegmentOptions {
                 Ok(())
             },
             _ => panic!(
-                "unexpected attempt to insert TCP option `{:?}` into \
-                 `TcpSegmentOptions` struct",
+                "unexpected attempt to insert TCP option `{:?}` into `TcpSegmentOptions` struct",
                 kind
             ),
         }
@@ -208,9 +210,7 @@ impl TcpSegmentOptions {
                 .unwrap();
 
             match v {
-                TcpOption::Mss(n) => {
-                    bytes.write_u16::<NetworkEndian>(*n).unwrap()
-                }
+                TcpOption::Mss(n) => bytes.write_u16::<NetworkEndian>(*n).unwrap(),
                 e => panic!("Unsupported option: {:?}", e),
             };
 

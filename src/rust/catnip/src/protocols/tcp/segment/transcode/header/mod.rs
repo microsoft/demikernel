@@ -8,17 +8,29 @@ mod tests;
 
 mod options;
 
-use crate::protocols::ip;
-use crate::fail::Fail;
-use byteorder::{ByteOrder, NetworkEndian};
+use crate::{
+    fail::Fail,
+    protocols::ip,
+};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use std::{
-    cmp::{max, min},
+    cmp::{
+        max,
+        min,
+    },
     convert::TryFrom,
     num::Wrapping,
 };
 
 pub use options::{
-    TcpSegmentOptions, DEFAULT_MSS, FALLBACK_MSS, MAX_MSS, MIN_MSS,
+    TcpSegmentOptions,
+    DEFAULT_MSS,
+    FALLBACK_MSS,
+    MAX_MSS,
+    MIN_MSS,
 };
 
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
@@ -43,8 +55,7 @@ impl<'a> TcpHeaderDecoder<'a> {
         }
 
         if header_len > MIN_TCP_HEADER_SIZE {
-            let options =
-                TcpSegmentOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
+            let options = TcpSegmentOptions::parse(&bytes[MIN_TCP_HEADER_SIZE..])?;
             if header_len != options.header_length() {
                 return Err(Fail::Malformed {
                     details: "TCP header length mismatch",

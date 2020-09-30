@@ -3,15 +3,25 @@
 
 mod transcode;
 
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    protocols::{
+        ethernet::MacAddress,
+        ip,
+        ipv4,
+    },
+};
+use std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+};
 pub use transcode::{
-    UdpDatagramDecoder, UdpDatagramEncoder, UdpHeader, UdpHeaderMut,
+    UdpDatagramDecoder,
+    UdpDatagramEncoder,
+    UdpHeader,
+    UdpHeaderMut,
     UDP_HEADER_SIZE,
 };
-use crate::{
-    protocols::{ethernet::MacAddress, ip, ipv4},
-};
-use std::{convert::TryFrom, net::Ipv4Addr};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct UdpDatagram {
@@ -65,12 +75,10 @@ impl UdpDatagram {
     }
 
     pub fn encode(self) -> Vec<u8> {
-        let mut bytes =
-            ipv4::Datagram::new_vec(self.payload.len() + UDP_HEADER_SIZE);
+        let mut bytes = ipv4::Datagram::new_vec(self.payload.len() + UDP_HEADER_SIZE);
         let mut encoder = UdpDatagramEncoder::attach(bytes.as_mut());
 
-        encoder.text()[..self.payload.len()]
-            .copy_from_slice(self.payload.as_ref());
+        encoder.text()[..self.payload.len()].copy_from_slice(self.payload.as_ref());
 
         let mut udp_header = encoder.header();
         udp_header.dest_port(self.dest_port.unwrap());

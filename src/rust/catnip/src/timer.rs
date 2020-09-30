@@ -1,17 +1,25 @@
-use std::marker::PhantomData;
-use std::future::Future;
+use futures::future::FusedFuture;
+use futures_intrusive::intrusive_pairing_heap::{
+    HeapNode,
+    PairingHeap,
+};
 use std::{
     cell::RefCell,
-    time::Instant,
+    future::Future,
+    marker::PhantomData,
+    ops::Deref,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+    time::{
+        Duration,
+        Instant,
+    },
 };
-use std::ops::Deref;
-use std::time::Duration;
-use std::task::Waker;
-use std::pin::Pin;
-use std::task::{Poll, Context};
-use futures::future::FusedFuture;
-use futures_intrusive::intrusive_pairing_heap::{HeapNode, PairingHeap};
-use std::rc::Rc;
 
 pub trait TimerPtr: Sized {
     fn timer(&self) -> &Timer<Self>;
@@ -57,10 +65,7 @@ impl PartialEq for TimerQueueEntry {
 impl Eq for TimerQueueEntry {}
 
 impl PartialOrd for TimerQueueEntry {
-    fn partial_cmp(
-        &self,
-        other: &TimerQueueEntry,
-    ) -> Option<core::cmp::Ordering> {
+    fn partial_cmp(&self, other: &TimerQueueEntry) -> Option<core::cmp::Ordering> {
         // Compare timer queue entries by expiration time
         self.expiry.partial_cmp(&other.expiry)
     }
@@ -88,7 +93,10 @@ impl<P: TimerPtr> Timer<P> {
             now,
             heap: PairingHeap::new(),
         };
-        Self { inner: RefCell::new(inner), _marker: PhantomData }
+        Self {
+            inner: RefCell::new(inner),
+            _marker: PhantomData,
+        }
     }
 
     pub fn advance_clock(&self, now: Instant) {
@@ -147,7 +155,10 @@ impl<P: TimerPtr> Future for WaitFuture<P> {
         let mut_self: &mut Self = unsafe { Pin::get_unchecked_mut(self) };
 
         let result = {
-            let ptr = mut_self.ptr.as_ref().expect("Polled future after completion");
+            let ptr = mut_self
+                .ptr
+                .as_ref()
+                .expect("Polled future after completion");
             let timer = ptr.timer();
 
             let mut inner = timer.inner.borrow_mut();
@@ -168,12 +179,16 @@ impl<P: TimerPtr> Future for WaitFuture<P> {
                     }
                 },
                 PollState::Registered => {
-                    if wait_node.task.as_ref().map_or(true, |w| !w.will_wake(cx.waker())) {
+                    if wait_node
+                        .task
+                        .as_ref()
+                        .map_or(true, |w| !w.will_wake(cx.waker()))
+                    {
                         wait_node.task = Some(cx.waker().clone());
                     }
                     Poll::Pending
                 },
-                PollState::Expired => Poll::Ready(())
+                PollState::Expired => Poll::Ready(()),
             }
         };
         if result.is_ready() {
@@ -196,7 +211,13 @@ impl<P: TimerPtr> Drop for WaitFuture<P> {
         // Otherwise the timer would access invalid memory.
         if let Some(ptr) = &self.ptr {
             if let PollState::Registered = self.wait_node.state {
-                unsafe { ptr.timer().inner.borrow_mut().heap.remove(&mut self.wait_node) };
+                unsafe {
+                    ptr.timer()
+                        .inner
+                        .borrow_mut()
+                        .heap
+                        .remove(&mut self.wait_node)
+                };
                 self.wait_node.state = PollState::Unregistered;
             }
         }
@@ -205,13 +226,21 @@ impl<P: TimerPtr> Drop for WaitFuture<P> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-    use std::task::Context;
-    use std::future::Future;
+    use super::{
+        Timer,
+        TimerRc,
+    };
     use futures::task::noop_waker_ref;
-    use std::pin::Pin;
-    use std::rc::Rc;
-    use super::{Timer, TimerRc};
+    use std::{
+        future::Future,
+        pin::Pin,
+        rc::Rc,
+        task::Context,
+        time::{
+            Duration,
+            Instant,
+        },
+    };
 
     #[test]
     fn test_timer() {

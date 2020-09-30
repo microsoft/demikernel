@@ -4,7 +4,8 @@
 use custom_error::custom_error;
 use float_duration;
 use std::{
-    cell::BorrowMutError, io::Error as IoError,
+    cell::BorrowMutError,
+    io::Error as IoError,
     num::TryFromIntError,
 };
 

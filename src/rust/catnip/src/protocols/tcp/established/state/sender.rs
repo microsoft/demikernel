@@ -1,13 +1,20 @@
-use bytes::Bytes;
-use crate::protocols::tcp::SeqNumber;
-use std::convert::TryInto;
-use crate::collections::watched::WatchedValue;
-use std::collections::VecDeque;
-use crate::fail::Fail;
-use std::num::Wrapping;
-use std::cell::{RefCell};
-use std::time::{Instant, Duration};
 use super::rto::RtoCalculator;
+use crate::{
+    collections::watched::WatchedValue,
+    fail::Fail,
+    protocols::tcp::SeqNumber,
+};
+use bytes::Bytes;
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    convert::TryInto,
+    num::Wrapping,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 pub struct UnackedSegment {
     pub bytes: Bytes,
@@ -76,10 +83,13 @@ impl Sender {
 
     pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
-            return Err(Fail::Ignored { details: "Sender closed" });
+            return Err(Fail::Ignored {
+                details: "Sender closed",
+            });
         }
-        let buf_len: u32 = buf.len().try_into()
-            .map_err(|_| Fail::Ignored { details: "Buffer too large" })?;
+        let buf_len: u32 = buf.len().try_into().map_err(|_| Fail::Ignored {
+            details: "Buffer too large",
+        })?;
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + Wrapping(buf_len));
         Ok(())
@@ -87,7 +97,9 @@ impl Sender {
 
     pub fn close(&self) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
-            return Err(Fail::Ignored { details: "Sender closed" });
+            return Err(Fail::Ignored {
+                details: "Sender closed",
+            });
         }
         self.state.set(SenderState::Closed);
         Ok(())
@@ -108,7 +120,9 @@ impl Sender {
         let bytes_acknowledged = ack_seq_no - base_seq_no;
 
         if bytes_acknowledged > bytes_outstanding {
-            return Err(Fail::Ignored { details: "ACK is outside of send window" });
+            return Err(Fail::Ignored {
+                details: "ACK is outside of send window",
+            });
         }
         if bytes_acknowledged.0 == 0 {
             // TODO: Handle fast retransmit here.
@@ -129,7 +143,9 @@ impl Sender {
         while let Some(segment) = self.unacked_queue.borrow_mut().pop_front() {
             if segment.bytes.len() > bytes_remaining {
                 // TODO: We need to close the connection in this case.
-                return Err(Fail::Ignored { details: "ACK isn't on segment boundary" });
+                return Err(Fail::Ignored {
+                    details: "ACK isn't on segment boundary",
+                });
             }
             bytes_remaining -= segment.bytes.len();
 
@@ -168,12 +184,17 @@ impl Sender {
 
     pub fn update_remote_window(&self, window_size_hdr: u16) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
-            return Err(Fail::Ignored { details: "Dropping remote window update for closed sender" });
+            return Err(Fail::Ignored {
+                details: "Dropping remote window update for closed sender",
+            });
         }
 
         // TODO: Is this the right check?
-        let window_size = (window_size_hdr as u32).checked_shl(self.window_scale as u32)
-            .ok_or_else(|| Fail::Ignored { details: "Window size overflow" })?;
+        let window_size = (window_size_hdr as u32)
+            .checked_shl(self.window_scale as u32)
+            .ok_or_else(|| Fail::Ignored {
+                details: "Window size overflow",
+            })?;
         self.window_size.set(window_size);
 
         Ok(())

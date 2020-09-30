@@ -3,11 +3,14 @@
 
 mod header;
 
-use std::cmp::max;
 use crate::fail::Fail;
+use std::cmp::max;
 
 pub use header::{
-    EtherType, Ethernet2Header, Ethernet2HeaderMut, ETHERNET2_HEADER_SIZE,
+    EtherType,
+    Ethernet2Header,
+    Ethernet2HeaderMut,
+    ETHERNET2_HEADER_SIZE,
 };
 
 // minimum paylod size is 46 bytes as described at [this wikipedia article](https://en.wikipedia.org/wiki/Ethernet_frame).

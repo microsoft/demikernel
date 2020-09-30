@@ -1,19 +1,33 @@
 mod background;
 pub mod state;
 
+use self::{
+    background::{
+        background,
+        BackgroundFuture,
+    },
+    state::ControlBlock,
+};
+use crate::{
+    fail::Fail,
+    protocols::{
+        ipv4,
+        tcp::segment::TcpSegment,
+    },
+    runtime::Runtime,
+};
 use bytes::Bytes;
-use std::task::{Poll, Context};
-use std::future::Future;
-use std::pin::Pin;
-use crate::protocols::ipv4;
-use crate::protocols::tcp::segment::{TcpSegment};
-use crate::fail::Fail;
-use std::rc::Rc;
-use crate::runtime::Runtime;
-use std::time::Duration;
-use self::state::ControlBlock;
-use self::background::{background, BackgroundFuture};
 use pin_project::pin_project;
+use std::{
+    future::Future,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
+    time::Duration,
+};
 
 #[pin_project]
 pub struct EstablishedSocket<RT: Runtime> {
@@ -69,7 +83,10 @@ impl<RT: Runtime> Future for EstablishedSocket<RT> {
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
         let self_ = self.project();
-        assert!(Future::poll(self_.background_work, ctx).is_pending(), "TODO: Connection close");
+        assert!(
+            Future::poll(self_.background_work, ctx).is_pending(),
+            "TODO: Connection close"
+        );
         Poll::Pending
     }
 }

@@ -1,22 +1,45 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use bytes::{Bytes, BytesMut};
-use std::task::Poll;
-use catnip::event::Event;
+use bytes::{
+    Bytes,
+    BytesMut,
+};
+use catnip::{
+    event::Event,
+    options::Options,
+    protocols::{
+        arp,
+        ethernet::MacAddress,
+        ip,
+        ipv4,
+        tcp,
+        tcp::{
+            peer::Peer,
+            runtime::Runtime,
+        },
+    },
+    rand::Seed,
+    runtime::Runtime,
+};
+use criterion::{
+    black_box,
+    criterion_group,
+    criterion_main,
+    Criterion,
+};
+use futures::{
+    task::noop_waker_ref,
+    Future,
+};
 use must_let::must_let;
-use catnip::protocols::ethernet::MacAddress;
-use std::net::Ipv4Addr;
-use std::task::Context;
-use futures::task::noop_waker_ref;
-use catnip::runtime::Runtime;
-use catnip::options::Options;
-use std::time::Instant;
-use catnip::rand::Seed;
-use catnip::protocols::{arp, tcp, ip, ipv4};
-use catnip::protocols::tcp::runtime::Runtime as Runtime;
-use futures::Future;
-use std::pin::Pin;
-use std::convert::TryFrom;
-use catnip::protocols::tcp::peer::Peer;
+use std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+    pin::Pin,
+    task::{
+        Context,
+        Poll,
+    },
+    time::Instant,
+};
 
 pub fn send_datagram<RT: Runtime>(src: &Runtime, dst: &Peer<RT>) {
     must_let!(let Some(event) = src.pop_event());
@@ -36,8 +59,7 @@ pub fn one_send_recv_round<RT: Runtime>(
     bob_rt: &Runtime,
     bob_peer: &mut Peer<RT>,
     bob_fd: u16,
-)
-{
+) {
     let start = Instant::now();
 
     // Send data from Alice to Bob
@@ -58,7 +80,6 @@ pub fn one_send_recv_round<RT: Runtime>(
     must_let!(let Ok(Some(buf)) = alice_peer.recv(alice_fd));
     // assert_eq!(buf.len(), size);
 }
-
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut ctx = Context::from_waker(noop_waker_ref());
@@ -126,18 +147,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     must_let!(let Ok(Some(buf)) = bob_peer.recv(bob_fd));
     assert_eq!(buf.len(), size);
 
-    c.bench_function("send+recv", |b| b.iter(|| {
-        one_send_recv_round(
-            &mut ctx,
-            black_box(buf.clone()),
-            &alice_rt,
-            &mut alice_peer,
-            alice_fd,
-            &bob_rt,
-            &mut bob_peer,
-            bob_fd,
-        )
-    }));
+    c.bench_function("send+recv", |b| {
+        b.iter(|| {
+            one_send_recv_round(
+                &mut ctx,
+                black_box(buf.clone()),
+                &alice_rt,
+                &mut alice_peer,
+                alice_fd,
+                &bob_rt,
+                &mut bob_peer,
+                bob_fd,
+            )
+        })
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

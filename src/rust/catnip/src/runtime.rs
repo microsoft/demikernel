@@ -1,13 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-use crate::protocols::{arp, tcp};
-use std::net::Ipv4Addr;
-use crate::protocols::ethernet::MacAddress;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::future::Future;
-use std::time::{Duration, Instant};
-use rand::distributions::{Standard, Distribution};
+use crate::protocols::{
+    arp,
+    ethernet::MacAddress,
+    tcp,
+};
+use rand::distributions::{
+    Distribution,
+    Standard,
+};
+use std::{
+    cell::RefCell,
+    future::Future,
+    net::Ipv4Addr,
+    rc::Rc,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
@@ -23,5 +34,7 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn wait_until(&self, when: Instant) -> Self::WaitFuture;
     fn now(&self) -> Instant;
 
-    fn rng_gen<T>(&self) -> T where Standard: Distribution<T>;
+    fn rng_gen<T>(&self) -> T
+    where
+        Standard: Distribution<T>;
 }

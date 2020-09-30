@@ -1,20 +1,40 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::datagram::{UdpDatagram, UdpDatagramDecoder, UdpDatagramEncoder};
+use super::datagram::{
+    UdpDatagram,
+    UdpDatagramDecoder,
+    UdpDatagramEncoder,
+};
 use crate::{
-    protocols::{arp, icmpv4, ip, ipv4},
+    fail::Fail,
+    protocols::{
+        arp,
+        icmpv4,
+        ip,
+        ipv4,
+    },
+    runtime::Runtime,
 };
-use crate::fail::Fail;
+use futures::{
+    stream::FuturesUnordered,
+    FutureExt,
+    Stream,
+};
 use hashbrown::HashSet;
-use std::collections::VecDeque;
 use std::{
-    cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc,
+    cell::RefCell,
+    collections::VecDeque,
+    convert::TryFrom,
+    future::Future,
+    net::Ipv4Addr,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
 };
-use std::{task::{Context, Poll}, future::Future, pin::Pin};
-use futures::stream::FuturesUnordered;
-use futures::{Stream, FutureExt};
-use crate::runtime::Runtime as Runtime;
 
 pub struct UdpPeer<RT: Runtime> {
     rt: RT,
@@ -35,10 +55,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    pub fn receive(
-        &mut self,
-        ipv4_datagram: ipv4::Datagram<'_>,
-    ) -> Result<(), Fail> {
+    pub fn receive(&mut self, ipv4_datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
         trace!("UdpPeer::receive(...)");
         let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
         let udp_datagram = UdpDatagram::try_from(decoder)?;
@@ -48,7 +65,7 @@ impl<RT: Runtime> UdpPeer<RT> {
                 return Err(Fail::Malformed {
                     details: "destination port is zero",
                 })
-            }
+            },
         };
 
         if self.is_port_open(dest_port) {
@@ -97,12 +114,15 @@ impl<RT: Runtime> UdpPeer<RT> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl Future<Output=Result<(), Fail>> {
+    ) -> impl Future<Output = Result<(), Fail>> {
         let rt = self.rt.clone();
         let arp = self.arp.clone();
         async move {
             debug!("initiating ARP query");
-            let dest_link_addr = arp.query(dest_ipv4_addr).await.expect("TODO handle ARP failure");
+            let dest_link_addr = arp
+                .query(dest_ipv4_addr)
+                .await
+                .expect("TODO handle ARP failure");
             debug!(
                 "ARP query complete ({} -> {})",
                 dest_ipv4_addr, dest_link_addr
@@ -147,8 +167,7 @@ impl<RT: Runtime> UdpPeer<RT> {
                     dest_ipv4_addr, dest_link_addr
                 );
                 // this datagram should have already been validated by the caller.
-                let datagram =
-                    ipv4::Datagram::attach(datagram.as_slice()).unwrap();
+                let datagram = ipv4::Datagram::attach(datagram.as_slice()).unwrap();
                 let mut bytes = icmpv4::Error::new_vec(datagram);
                 let mut error = icmpv4::ErrorMut::attach(&mut bytes);
                 error.id(icmpv4::ErrorId::DestinationUnreachable(

@@ -4,9 +4,16 @@
 #[cfg(test)]
 mod tests;
 
-use super::datagram::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
-use byteorder::{ByteOrder, NetworkEndian};
+use super::datagram::{
+    Icmpv4Datagram,
+    Icmpv4DatagramMut,
+    Icmpv4Type,
+};
 use crate::fail::Fail;
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -59,10 +66,7 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Echo<'a> {
     fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self, Fail> {
         trace!("Icmpv4Datagram::try_from()");
         let r#type = datagram.header().r#type()?;
-        assert!(
-            r#type == Icmpv4Type::EchoRequest
-                || r#type == Icmpv4Type::EchoReply
-        );
+        assert!(r#type == Icmpv4Type::EchoRequest || r#type == Icmpv4Type::EchoReply);
         Ok(Icmpv4Echo(datagram))
     }
 }
@@ -80,12 +84,8 @@ impl<'a> Icmpv4EchoMut<'a> {
 
     pub fn r#type(&mut self, value: Icmpv4EchoOp) {
         match value {
-            Icmpv4EchoOp::Request => {
-                self.0.header().r#type(Icmpv4Type::EchoRequest)
-            }
-            Icmpv4EchoOp::Reply => {
-                self.0.header().r#type(Icmpv4Type::EchoReply)
-            }
+            Icmpv4EchoOp::Request => self.0.header().r#type(Icmpv4Type::EchoRequest),
+            Icmpv4EchoOp::Reply => self.0.header().r#type(Icmpv4Type::EchoReply),
         }
     }
 

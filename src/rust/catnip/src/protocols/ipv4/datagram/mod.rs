@@ -7,13 +7,30 @@ mod header;
 mod tests;
 
 use super::checksum::Ipv4Checksum;
-use crate::protocols::ethernet;
-use byteorder::{NetworkEndian, WriteBytesExt};
-use header::{DEFAULT_IPV4_TTL, IPV4_IHL_NO_OPTIONS, IPV4_VERSION};
-use std::{convert::TryFrom, io::Write};
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    protocols::ethernet,
+};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
+use header::{
+    DEFAULT_IPV4_TTL,
+    IPV4_IHL_NO_OPTIONS,
+    IPV4_VERSION,
+};
+use std::{
+    convert::TryFrom,
+    io::Write,
+};
 
-pub use header::{Ipv4Header, Ipv4HeaderMut, Ipv4Protocol, IPV4_HEADER_SIZE};
+pub use header::{
+    Ipv4Header,
+    Ipv4HeaderMut,
+    Ipv4Protocol,
+    IPV4_HEADER_SIZE,
+};
 
 #[derive(Clone, Copy)]
 pub struct Ipv4Datagram<'a>(ethernet::Frame<'a>);
@@ -75,8 +92,7 @@ impl<'a> TryFrom<ethernet::Frame<'a>> for Ipv4Datagram<'a> {
 
         if frame.text().len() <= IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
-                details: "IPv4 datagram is too small to contain a complete \
-                          header",
+                details: "IPv4 datagram is too small to contain a complete header",
             });
         }
 

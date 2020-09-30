@@ -1,9 +1,16 @@
-use std::rc::Rc;
 use super::super::state::ControlBlock;
-use futures::future::{self, Either};
-use futures::FutureExt;
-use crate::fail::Fail;
-use crate::runtime::Runtime;
+use crate::{
+    fail::Fail,
+    runtime::Runtime,
+};
+use futures::{
+    future::{
+        self,
+        Either,
+    },
+    FutureExt,
+};
+use std::rc::Rc;
 
 pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {

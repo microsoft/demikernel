@@ -1,9 +1,18 @@
-use std::cell::RefCell;
-use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
-use std::future::Future;
 use futures::future::FusedFuture;
-use futures_intrusive::intrusive_double_linked_list::{LinkedList, ListNode};
+use futures_intrusive::intrusive_double_linked_list::{
+    LinkedList,
+    ListNode,
+};
+use std::{
+    cell::RefCell,
+    future::Future,
+    pin::Pin,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+};
 
 #[derive(Eq, PartialEq)]
 enum WatchState {
@@ -32,7 +41,9 @@ impl<T: Copy> WatchedValue<T> {
             value,
             waiters: LinkedList::new(),
         };
-        Self { inner: RefCell::new(inner) }
+        Self {
+            inner: RefCell::new(inner),
+        }
     }
 
     pub fn set(&self, new_value: T) {
@@ -56,8 +67,14 @@ impl<T: Copy> WatchedValue<T> {
 
     pub fn watch(&self) -> (T, WatchFuture<'_, T>) {
         let value = self.get();
-        let watch_entry = WatchEntry { task: None, state: WatchState::Unregistered };
-        let future = WatchFuture { watch: self, wait_node: ListNode::new(watch_entry) };
+        let watch_entry = WatchEntry {
+            task: None,
+            state: WatchState::Unregistered,
+        };
+        let future = WatchFuture {
+            watch: self,
+            wait_node: ListNode::new(watch_entry),
+        };
         (value, future)
     }
 }
@@ -78,7 +95,14 @@ impl<'a, T> Future for WatchFuture<'a, T> {
             WatchState::Unregistered => {
                 wait_node.task = Some(cx.waker().clone());
                 wait_node.state = WatchState::Registered;
-                unsafe { mut_self.watch.inner.borrow_mut().waiters.add_front(wait_node) };
+                unsafe {
+                    mut_self
+                        .watch
+                        .inner
+                        .borrow_mut()
+                        .waiters
+                        .add_front(wait_node)
+                };
                 Poll::Pending
             },
             WatchState::Registered => {
@@ -86,7 +110,7 @@ impl<'a, T> Future for WatchFuture<'a, T> {
                     Some(ref w) if w.will_wake(cx.waker()) => (),
                     _ => {
                         mut_self.wait_node.task = Some(cx.waker().clone());
-                    }
+                    },
                 }
                 Poll::Pending
             },

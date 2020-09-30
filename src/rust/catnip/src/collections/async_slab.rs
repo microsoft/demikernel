@@ -1,10 +1,20 @@
-use slab::Slab;
-use super::waker_page::{WakerPage, WakerPageRef, WAKER_PAGE_SIZE};
-use std::future::Future;
-use std::task::{Context, Poll, Waker};
-use std::sync::Arc;
+use super::waker_page::{
+    WakerPage,
+    WakerPageRef,
+    WAKER_PAGE_SIZE,
+};
 use futures::task::AtomicWaker;
-use std::pin::Pin;
+use slab::Slab;
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+};
 
 pub struct AsyncSlab<F> {
     slab: Slab<F>,
@@ -96,11 +106,18 @@ impl<F: Future + Unpin> AsyncSlab<F> {
 #[cfg(test)]
 mod tests {
     use super::AsyncSlab;
-    use futures::channel::oneshot;
-    use futures::task::noop_waker_ref;
-    use std::task::{Poll, Context};
+    use futures::{
+        channel::oneshot,
+        task::noop_waker_ref,
+    };
     use must_let::must_let;
-    use std::collections::HashMap;
+    use std::{
+        collections::HashMap,
+        task::{
+            Context,
+            Poll,
+        },
+    };
 
     #[test]
     fn test_basic() {

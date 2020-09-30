@@ -1,20 +1,26 @@
 use bytes::Bytes;
-use catnip::fail::Fail;
-use catnip::protocols::tcp::peer::SocketDescriptor;
-use catnip::protocols::tcp::peer::{
-    AcceptFuture,
-    ConnectFuture,
-    PopFuture,
-    PushFuture,
+use catnip::{
+    fail::Fail,
+    protocols::tcp::peer::{
+        AcceptFuture,
+        ConnectFuture,
+        PopFuture,
+        PushFuture,
+        SocketDescriptor,
+    },
+    runtime::Runtime,
 };
-use catnip::runtime::Runtime;
-use hashbrown::hash_map::Entry;
-use hashbrown::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{
-    Context,
-    Poll,
+use hashbrown::{
+    hash_map::Entry,
+    HashMap,
+};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{
+        Context,
+        Poll,
+    },
 };
 
 pub type QToken = u64;

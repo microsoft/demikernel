@@ -1,21 +1,19 @@
 max_width = 100
-# merge_derives = true
-# reorder_modules = true
-# use_field_init_shorthand = true
-# use_try_shorthand = true
+merge_derives = true
+reorder_modules = true
+use_field_init_shorthand = true
+use_try_shorthand = true
 reorder_imports = true
 match_block_trailing_comma = true
 
 # Nightly only options:
 unstable_features = true
 comment_width = 100
-# wrap_comments = true
-# condense_wildcard_suffixes = true
-# format_strings = true
-#  merge_imports = true
-# reorder_impl_items = true
-# blank_lines_lower_bound = 1
-# empty_item_single_line = true
-# imports_indent = "Block"
+condense_wildcard_suffixes = true
+format_strings = true
+merge_imports = true
+reorder_impl_items = true
+empty_item_single_line = true
+imports_indent = "Block"
 imports_layout = "Vertical"
-# indent_style = "Block"
+indent_style = "Block"

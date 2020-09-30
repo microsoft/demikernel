@@ -7,9 +7,15 @@
 mod tests;
 
 use crate::fail::Fail;
-use byteorder::{ByteOrder, NetworkEndian};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use num_traits::FromPrimitive;
-use std::{convert::TryFrom, net::Ipv4Addr};
+use std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+};
 
 pub const IPV4_HEADER_SIZE: usize = 20;
 // todo: need citation
@@ -162,10 +168,7 @@ impl<'a> Ipv4HeaderMut<'a> {
     pub fn flags(&mut self, value: u16) {
         assert!(value <= 0x7);
         let n = NetworkEndian::read_u16(&self.0[6..8]);
-        NetworkEndian::write_u16(
-            &mut self.0[6..8],
-            (n & 0x1fff) | (value << 13),
-        )
+        NetworkEndian::write_u16(&mut self.0[6..8], (n & 0x1fff) | (value << 13))
     }
 
     pub fn frag_offset(&mut self, value: u16) {

@@ -1,13 +1,17 @@
-use std::task::{Poll, Context};
-use hashbrown::HashMap;
-use std::hash::Hash;
-use std::pin::Pin;
-use std::borrow::Borrow;
-use std::future::Future;
-use unicycle::pin_slab::PinSlab;
-use pin_project::pin_project;
 use futures::task::AtomicWaker;
-
+use hashbrown::HashMap;
+use pin_project::pin_project;
+use std::{
+    borrow::Borrow,
+    future::Future,
+    hash::Hash,
+    pin::Pin,
+    task::{
+        Context,
+        Poll,
+    },
+};
+use unicycle::pin_slab::PinSlab;
 
 // 1) Allocate a wait slot for a (parent_key, usize) pair
 // 1a) The usize may just be zero or it can range up and down some contiguous N
@@ -71,7 +75,9 @@ impl<K: Clone + Hash + Eq + Unpin, F: Future> FutureMap<K, F> {
 
 impl<K: Clone + Hash + Eq + Unpin, F: Future> FutureMap<K, F> {
     pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
-        where Q: Hash + Eq, K: Borrow<Q>
+    where
+        Q: Hash + Eq,
+        K: Borrow<Q>,
     {
         self.map.contains_key(key)
     }
@@ -93,14 +99,24 @@ impl<K: Clone + Hash + Eq + Unpin, F: Future> FutureMap<K, F> {
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&F>
-        where Q: Hash + Eq, K: Borrow<Q>
+    where
+        Q: Hash + Eq,
+        K: Borrow<Q>,
     {
         let &ix = self.map.get(key)?;
-        Some(&self.futures.get(ix).expect("Slab and map inconsistent").future)
+        Some(
+            &self
+                .futures
+                .get(ix)
+                .expect("Slab and map inconsistent")
+                .future,
+        )
     }
 
     pub fn get_pin_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<Pin<&mut F>>
-        where Q: Hash + Eq, K: Borrow<Q>
+    where
+        Q: Hash + Eq,
+        K: Borrow<Q>,
     {
         let &ix = self.map.get(key)?;
         let pair = self.futures.get_pin_mut(ix)?;
@@ -108,7 +124,9 @@ impl<K: Clone + Hash + Eq + Unpin, F: Future> FutureMap<K, F> {
     }
 
     pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> bool
-        where Q: Hash + Eq, K: Borrow<Q>
+    where
+        Q: Hash + Eq,
+        K: Borrow<Q>,
     {
         let ix = match self.map.remove(key) {
             Some(ix) => ix,

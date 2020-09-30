@@ -1,10 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crc::{crc32, Hasher32};
-use std::{hash::Hasher, num::Wrapping};
-use crate::protocols::ipv4;
-use crate::protocols::tcp::SeqNumber;
+use crate::protocols::{
+    ipv4,
+    tcp::SeqNumber,
+};
+use crc::{
+    crc32,
+    Hasher32,
+};
+use std::{
+    hash::Hasher,
+    num::Wrapping,
+};
 
 pub struct IsnGenerator {
     nonce: u32,
@@ -13,7 +21,10 @@ pub struct IsnGenerator {
 
 impl IsnGenerator {
     pub fn new(nonce: u32) -> Self {
-        Self { nonce, counter: Wrapping(0) }
+        Self {
+            nonce,
+            counter: Wrapping(0),
+        }
     }
 
     pub fn generate(&mut self, local: &ipv4::Endpoint, remote: &ipv4::Endpoint) -> SeqNumber {

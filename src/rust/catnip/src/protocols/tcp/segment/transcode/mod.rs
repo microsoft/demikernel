@@ -7,14 +7,28 @@ mod header;
 mod tests;
 
 pub use header::{
-    TcpHeaderDecoder, TcpHeaderEncoder, TcpSegmentOptions, DEFAULT_MSS,
-    MAX_MSS, MAX_TCP_HEADER_SIZE, MIN_MSS, MIN_TCP_HEADER_SIZE,
+    TcpHeaderDecoder,
+    TcpHeaderEncoder,
+    TcpSegmentOptions,
+    DEFAULT_MSS,
+    MAX_MSS,
+    MAX_TCP_HEADER_SIZE,
+    MIN_MSS,
+    MIN_TCP_HEADER_SIZE,
 };
 
-use crate::{protocols::ipv4};
-use byteorder::{NetworkEndian, WriteBytesExt};
-use std::{convert::TryFrom, io::Write};
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    protocols::ipv4,
+};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
+use std::{
+    convert::TryFrom,
+    io::Write,
+};
 
 #[derive(Debug)]
 enum ChecksumOp {
@@ -88,12 +102,12 @@ impl<'a> TcpSegmentDecoder<'a> {
         match op {
             ChecksumOp::Generate => {
                 checksum.write_u16::<NetworkEndian>(0u16).unwrap();
-            }
+            },
             ChecksumOp::Validate => {
                 checksum
                     .write_u16::<NetworkEndian>(tcp_header.checksum())
                     .unwrap();
-            }
+            },
         }
 
         checksum
@@ -113,7 +127,7 @@ impl<'a> TcpSegmentDecoder<'a> {
                         details: "TCP checksum mismatch",
                     })
                 }
-            }
+            },
             ChecksumOp::Generate => Ok(checksum.finish()),
         }
     }

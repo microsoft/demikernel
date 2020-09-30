@@ -3,16 +3,24 @@
 
 use super::*;
 use crate::test_helpers;
-use std::future::Future;
-use std::task::Poll;
-use futures::FutureExt;
-use futures::task::{Context, noop_waker_ref};
-use hashbrown::HashMap;
-use std::{
-    iter,
-    time::{Duration, Instant},
+use futures::{
+    task::{
+        noop_waker_ref,
+        Context,
+    },
+    FutureExt,
 };
+use hashbrown::HashMap;
 use must_let::must_let;
+use std::{
+    future::Future,
+    iter,
+    task::Poll,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[test]
 fn serialization() {
@@ -37,18 +45,18 @@ fn ping() {
     let timeout = Duration::from_secs(1);
     let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut bob = test_helpers::new_bob(now);
     bob.import_arp_cache(
-        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.ping(test_helpers::BOB_IPV4, Some(timeout)).boxed_local();
+    let mut fut = alice
+        .ping(test_helpers::BOB_IPV4, Some(timeout))
+        .boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let ping_request = {
@@ -85,12 +93,13 @@ fn timeout() {
     let timeout = Duration::from_secs(1);
     let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.ping(test_helpers::BOB_IPV4, Some(timeout)).boxed_local();
+    let mut fut = alice
+        .ping(test_helpers::BOB_IPV4, Some(timeout))
+        .boxed_local();
 
     alice.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());

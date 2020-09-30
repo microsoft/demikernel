@@ -7,13 +7,24 @@ mod header;
 mod tests;
 
 pub use header::{
-    Icmpv4Header, Icmpv4HeaderMut, Icmpv4Type, ICMPV4_HEADER_SIZE,
+    Icmpv4Header,
+    Icmpv4HeaderMut,
+    Icmpv4Type,
+    ICMPV4_HEADER_SIZE,
 };
 
-use crate::protocols::ipv4;
-use crate::fail::Fail;
-use byteorder::{NetworkEndian, WriteBytesExt};
-use std::{convert::TryFrom, io::Write};
+use crate::{
+    fail::Fail,
+    protocols::ipv4,
+};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
+use std::{
+    convert::TryFrom,
+    io::Write,
+};
 
 const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
@@ -59,8 +70,7 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for Icmpv4Datagram<'a> {
 
         if ipv4_datagram.text().len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
-                details: "ICMPv4 datagram isn't large enough to contain a \
-                          complete header",
+                details: "ICMPv4 datagram isn't large enough to contain a complete header",
             });
         }
 

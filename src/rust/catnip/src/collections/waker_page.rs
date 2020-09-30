@@ -1,11 +1,29 @@
-use std::sync::atomic::{self, AtomicU64, Ordering};
-use std::mem;
-use std::ptr::{self, NonNull};
-use std::alloc::{AllocRef, Global, Layout};
-use std::ops::Deref;
-use std::task::{RawWaker, RawWakerVTable};
 use futures::task::AtomicWaker;
-use std::sync::Arc;
+use std::{
+    alloc::{
+        AllocRef,
+        Global,
+        Layout,
+    },
+    mem,
+    ops::Deref,
+    ptr::{
+        self,
+        NonNull,
+    },
+    sync::{
+        atomic::{
+            self,
+            AtomicU64,
+            Ordering,
+        },
+        Arc,
+    },
+    task::{
+        RawWaker,
+        RawWakerVTable,
+    },
+};
 
 pub const WAKER_PAGE_SIZE: usize = 64;
 
@@ -21,9 +39,7 @@ impl WakerPage {
     pub fn new(waker: Arc<AtomicWaker>) -> WakerPageRef {
         let layout = Layout::new::<WakerPage>();
         assert_eq!(layout.align(), 64);
-        let mut ptr: NonNull<WakerPage> = Global.alloc(layout)
-            .expect("Allocation failed")
-            .cast();
+        let mut ptr: NonNull<WakerPage> = Global.alloc(layout).expect("Allocation failed").cast();
         unsafe {
             let page = ptr.as_mut();
             page.refcount.store(1, Ordering::SeqCst);
@@ -192,8 +208,10 @@ impl Drop for WakerRef {
 mod tests {
     use super::WakerPage;
     use futures::task::AtomicWaker;
-    use std::mem;
-    use std::sync::Arc;
+    use std::{
+        mem,
+        sync::Arc,
+    };
 
     #[test]
     fn test_size() {

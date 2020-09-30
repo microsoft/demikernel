@@ -1,22 +1,38 @@
-use crate::protocols::{arp, ipv4};
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::convert::TryInto;
-use crate::protocols::tcp::segment::TcpSegment;
-use crate::fail::Fail;
-use std::time::Duration;
-use crate::runtime::Runtime;
-use std::num::Wrapping;
-use std::future::Future;
-use std::task::{Poll, Context};
-use crate::protocols::tcp::SeqNumber;
-use super::established::state::sender::Sender;
-use super::established::state::receiver::Receiver;
-use super::established::state::ControlBlock;
-use super::constants::FALLBACK_MSS;
-use std::pin::Pin;
-use std::task::Waker;
+use super::{
+    constants::FALLBACK_MSS,
+    established::state::{
+        receiver::Receiver,
+        sender::Sender,
+        ControlBlock,
+    },
+};
+use crate::{
+    fail::Fail,
+    protocols::{
+        arp,
+        ipv4,
+        tcp::{
+            segment::TcpSegment,
+            SeqNumber,
+        },
+    },
+    runtime::Runtime,
+};
 use pin_project::pin_project;
+use std::{
+    cell::RefCell,
+    convert::TryInto,
+    future::Future,
+    num::Wrapping,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+    time::Duration,
+};
 
 type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<ControlBlock<RT>, Fail>>;
 
@@ -38,7 +54,13 @@ pub struct ActiveOpenSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
-    pub fn new(local_isn: SeqNumber, local: ipv4::Endpoint, remote: ipv4::Endpoint, rt: RT, arp: arp::Peer<RT>) -> Self {
+    pub fn new(
+        local_isn: SeqNumber,
+        local: ipv4::Endpoint,
+        remote: ipv4::Endpoint,
+        rt: RT,
+        arp: arp::Peer<RT>,
+    ) -> Self {
         let future = Self::background(
             local_isn,
             local.clone(),
@@ -60,7 +82,10 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         }
     }
 
-    pub fn poll_result(self: Pin<&mut Self>, context: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+    pub fn poll_result(
+        self: Pin<&mut Self>,
+        context: &mut Context,
+    ) -> Poll<Result<ControlBlock<RT>, Fail>> {
         let self_ = self.project();
         match self_.result.take() {
             None => {
@@ -91,18 +116,18 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 .src_ipv4_addr(self_.local.address())
                 .src_port(self_.local.port())
                 .src_link_addr(self_.rt.local_link_addr())
-
                 .dest_ipv4_addr(self_.remote.address())
                 .dest_port(self_.remote.port())
                 .dest_link_addr(remote_link_addr)
-
                 .ack(remote_seq_num)
                 .encode();
 
             self_.rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
             let window_scale = segment.window_scale.unwrap_or(1);
-            let window_size = segment.window_size.checked_shl(window_scale as u32)
+            let window_size = segment
+                .window_size
+                .checked_shl(window_scale as u32)
                 .expect("TODO: Window size overflow")
                 .try_into()
                 .expect("TODO: Window size overflow");
@@ -113,12 +138,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     FALLBACK_MSS
                 },
             };
-            let sender = Sender::new(
-                expected_seq,
-                window_size,
-                window_scale,
-                mss,
-            );
+            let sender = Sender::new(expected_seq, window_size, window_scale, mss);
             let receiver = Receiver::new(
                 remote_seq_num,
                 self_.rt.tcp_options().receive_window_size as u32,
@@ -162,11 +182,9 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     .src_ipv4_addr(local.address())
                     .src_port(local.port())
                     .src_link_addr(rt.local_link_addr())
-
                     .dest_ipv4_addr(remote.address())
                     .dest_port(remote.port())
                     .dest_link_addr(remote_link_addr)
-
                     .seq_num(local_isn)
                     .window_size(max_window_size)
                     .mss(rt.tcp_options().advertised_mss)

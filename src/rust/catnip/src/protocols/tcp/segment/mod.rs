@@ -3,16 +3,31 @@
 
 mod transcode;
 
-use bytes::{Bytes, BytesMut};
 use crate::{
-    protocols::{ethernet::MacAddress, ip, ipv4},
+    fail::Fail,
+    protocols::{
+        ethernet::MacAddress,
+        ip,
+        ipv4,
+    },
 };
-use crate::fail::Fail;
-use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
+use bytes::{
+    Bytes,
+    BytesMut,
+};
+use std::{
+    convert::TryFrom,
+    net::Ipv4Addr,
+    num::Wrapping,
+};
 
 pub use transcode::{
-    TcpSegmentDecoder, TcpSegmentEncoder, TcpSegmentOptions, DEFAULT_MSS,
-    MAX_MSS, MIN_MSS,
+    TcpSegmentDecoder,
+    TcpSegmentEncoder,
+    TcpSegmentOptions,
+    DEFAULT_MSS,
+    MAX_MSS,
+    MIN_MSS,
 };
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
@@ -118,9 +133,7 @@ impl TcpSegment {
             options.set_mss(mss);
         }
 
-        let mut bytes = ipv4::Datagram::new_vec(
-            self.payload.len() + options.header_length(),
-        );
+        let mut bytes = ipv4::Datagram::new_vec(self.payload.len() + options.header_length());
         let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
 
         let mut tcp_header = encoder.header();
@@ -136,8 +149,7 @@ impl TcpSegment {
 
         // setting the TCP options shifts where `encoder.text()` begins, so we
         // need to ensure that we copy the payload after the options are set.
-        encoder.text()[..self.payload.len()]
-            .copy_from_slice(self.payload.as_ref());
+        encoder.text()[..self.payload.len()].copy_from_slice(self.payload.as_ref());
 
         let ipv4 = encoder.ipv4();
         let mut ipv4_header = ipv4.header();

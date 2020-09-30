@@ -2,21 +2,32 @@
 // Licensed under the MIT license.
 
 use super::datagram::UdpDatagramDecoder;
-use std::convert::TryFrom;
-use std::future::Future;
-use futures::FutureExt;
-use futures::task::{Context, noop_waker_ref};
-use std::task::Poll;
 use crate::{
-    protocols::{icmpv4, ip},
+    protocols::{
+        icmpv4,
+        ip,
+    },
+    test_helpers,
 };
-use crate::test_helpers;
+use futures::{
+    task::{
+        noop_waker_ref,
+        Context,
+    },
+    FutureExt,
+};
 use hashbrown::HashMap;
-use std::{
-    iter,
-    time::{Duration, Instant},
-};
 use must_let::must_let;
+use std::{
+    convert::TryFrom,
+    future::Future,
+    iter,
+    task::Poll,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[test]
 #[ignore]
@@ -30,24 +41,19 @@ fn unicast() {
     let text = vec![0xffu8; 10];
     let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut bob = test_helpers::new_bob(now);
     bob.import_arp_cache(
-        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC)).collect::<HashMap<_, _>>(),
     );
     bob.open_udp_port(bob_port);
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.udp_cast(
-        test_helpers::BOB_IPV4,
-        bob_port,
-        alice_port,
-        text.clone(),
-    ).boxed_local();
+    let mut fut = alice
+        .udp_cast(test_helpers::BOB_IPV4, bob_port, alice_port, text.clone())
+        .boxed_local();
     let now = now + Duration::from_micros(1);
     must_let!(let Poll::Ready(..) = Future::poll(fut.as_mut(), &mut ctx));
 
@@ -85,18 +91,18 @@ fn destination_port_unreachable() {
     let text = vec![0xffu8; 10];
     let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut bob = test_helpers::new_bob(now);
     bob.import_arp_cache(
-        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC))
-            .collect::<HashMap<_, _>>(),
+        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC)).collect::<HashMap<_, _>>(),
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.udp_cast(test_helpers::BOB_IPV4, bob_port, alice_port, text.clone()).boxed_local();
+    let mut fut = alice
+        .udp_cast(test_helpers::BOB_IPV4, bob_port, alice_port, text.clone())
+        .boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());
 
     let now = now + Duration::from_micros(1);

@@ -13,7 +13,7 @@
 #![feature(try_blocks)]
 #![feature(type_alias_impl_trait)]
 #![warn(clippy::all)]
-#![recursion_limit="512"]
+#![recursion_limit = "512"]
 
 #[macro_use]
 extern crate num_derive;
@@ -34,8 +34,8 @@ pub mod protocols;
 pub mod collections;
 pub mod engine;
 pub mod fail;
-pub mod timer;
 pub mod runtime;
+pub mod timer;
 
 #[cfg(test)]
 pub mod test_helpers;

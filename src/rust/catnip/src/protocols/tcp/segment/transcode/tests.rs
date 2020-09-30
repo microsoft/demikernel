@@ -1,14 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{TcpSegmentEncoder, TcpSegmentOptions, MAX_TCP_HEADER_SIZE};
-use crate::{
-    protocols::{ip, ipv4},
+use super::{
+    TcpSegmentEncoder,
+    TcpSegmentOptions,
+    MAX_TCP_HEADER_SIZE,
 };
-use crate::test_helpers;
-use byteorder::{NetworkEndian, WriteBytesExt};
-use std::num::Wrapping;
-use std::convert::TryFrom;
+use crate::{
+    protocols::{
+        ip,
+        ipv4,
+    },
+    test_helpers,
+};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
+use std::{
+    convert::TryFrom,
+    num::Wrapping,
+};
 
 #[test]
 fn checksum() {

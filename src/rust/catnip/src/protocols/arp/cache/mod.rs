@@ -7,15 +7,26 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{collections::HashTtlCache, protocols::ethernet::MacAddress};
-use hashbrown::HashMap;
-use std::future::Future;
-use std::{
-    net::Ipv4Addr,
-    time::{Duration, Instant},
+use crate::{
+    collections::HashTtlCache,
+    protocols::ethernet::MacAddress,
 };
-use futures::channel::oneshot::{channel, Sender};
-use futures::FutureExt;
+use futures::{
+    channel::oneshot::{
+        channel,
+        Sender,
+    },
+    FutureExt,
+};
+use hashbrown::HashMap;
+use std::{
+    future::Future,
+    net::Ipv4Addr,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[derive(Debug, Clone)]
 struct Record {
@@ -63,11 +74,7 @@ impl ArpCache {
         result
     }
 
-    pub fn insert(
-        &mut self,
-        ipv4_addr: Ipv4Addr,
-        link_addr: MacAddress,
-    ) -> Option<MacAddress> {
+    pub fn insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
         let record = Record {
             ipv4_addr,
             link_addr,
@@ -97,7 +104,7 @@ impl ArpCache {
         result
     }
 
-    pub fn wait_link_addr(&mut self, ipv4_addr: Ipv4Addr) -> impl Future<Output=MacAddress> {
+    pub fn wait_link_addr(&mut self, ipv4_addr: Ipv4Addr) -> impl Future<Output = MacAddress> {
         let (tx, rx) = channel();
         if let Some(r) = self.cache.get(&ipv4_addr) {
             let _ = tx.send(r.link_addr);
@@ -115,10 +122,7 @@ impl ArpCache {
         self.cache.advance_clock(now)
     }
 
-    pub fn try_evict(
-        &mut self,
-        count: usize,
-    ) -> HashMap<Ipv4Addr, MacAddress> {
+    pub fn try_evict(&mut self, count: usize) -> HashMap<Ipv4Addr, MacAddress> {
         let evicted = self.cache.try_evict(count);
         let mut result = HashMap::default();
         for (k, v) in &evicted {

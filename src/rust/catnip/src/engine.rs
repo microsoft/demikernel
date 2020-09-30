@@ -2,30 +2,40 @@
 // Licensed under the MIT license.
 
 use crate::{
+    fail::Fail,
     protocols::{
         arp,
-        ethernet::{self, MacAddress},
-        ip, ipv4,
+        ethernet::{
+            self,
+            MacAddress,
+        },
+        ip,
+        ipv4,
+        tcp::peer::{
+            AcceptFuture,
+            ConnectFuture,
+            PopFuture,
+            PushFuture,
+            SocketDescriptor,
+        },
     },
+    runtime::Runtime,
 };
 use bytes::Bytes;
-use crate::protocols::tcp::peer::{
-    SocketDescriptor,
-    AcceptFuture,
-    ConnectFuture,
-    PushFuture,
-    PopFuture,
+use futures::task::{
+    noop_waker_ref,
+    Context,
 };
-use futures::task::{Context, noop_waker_ref};
 use hashbrown::HashMap;
-use std::future::Future;
 use std::{
+    future::Future,
     net::Ipv4Addr,
-    time::{Duration, Instant},
+    pin::Pin,
+    time::{
+        Duration,
+        Instant,
+    },
 };
-use std::pin::Pin;
-use crate::runtime::Runtime as Runtime;
-use crate::fail::Fail;
 
 pub struct Engine<RT: Runtime> {
     rt: RT,
@@ -48,10 +58,13 @@ impl<RT: Runtime> Engine<RT> {
     pub fn receive(&mut self, bytes: &[u8]) -> Result<(), Fail> {
         let frame = ethernet::Frame::attach(&bytes)?;
         let header = frame.header();
-        if self.rt.local_link_addr() != header.dest_addr()
-            && !header.dest_addr().is_broadcast()
-        {
-	    println!("Misdelivered {:?} {:?} {}", self.rt.local_link_addr(), header.dest_addr(), header.dest_addr().is_broadcast());
+        if self.rt.local_link_addr() != header.dest_addr() && !header.dest_addr().is_broadcast() {
+            println!(
+                "Misdelivered {:?} {:?} {}",
+                self.rt.local_link_addr(),
+                header.dest_addr(),
+                header.dest_addr().is_broadcast()
+            );
             return Err(Fail::Misdelivered {});
         }
 
@@ -65,10 +78,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.tcp_socket()
     }
 
-    pub fn arp_query(
-        &self,
-        ipv4_addr: Ipv4Addr,
-    ) -> impl Future<Output=Result<MacAddress, Fail>> {
+    pub fn arp_query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
         self.arp.query(ipv4_addr)
     }
 
@@ -78,7 +88,7 @@ impl<RT: Runtime> Engine<RT> {
         dest_port: ip::Port,
         src_port: ip::Port,
         text: Vec<u8>,
-    ) -> impl Future<Output=Result<(), Fail>> {
+    ) -> impl Future<Output = Result<(), Fail>> {
         self.ipv4
             .udp_cast(dest_ipv4_addr, dest_port, src_port, text)
     }
@@ -91,7 +101,11 @@ impl<RT: Runtime> Engine<RT> {
         self.arp.import_cache(cache)
     }
 
-    pub fn ping(&self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> impl Future<Output=Result<Duration, Fail>> {
+    pub fn ping(
+        &self,
+        dest_ipv4_addr: Ipv4Addr,
+        timeout: Option<Duration>,
+    ) -> impl Future<Output = Result<Duration, Fail>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
@@ -107,7 +121,11 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.close_udp_port(port);
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: SocketDescriptor, remote_endpoint: ipv4::Endpoint) -> ConnectFuture<RT> {
+    pub fn tcp_connect(
+        &mut self,
+        socket_fd: SocketDescriptor,
+        remote_endpoint: ipv4::Endpoint,
+    ) -> ConnectFuture<RT> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
@@ -127,40 +145,36 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.tcp_listen(socket_fd, backlog)
     }
 
-    pub fn tcp_bind(&mut self, socket_fd: SocketDescriptor, endpoint: ipv4::Endpoint) -> Result<(), Fail> {
+    pub fn tcp_bind(
+        &mut self,
+        socket_fd: SocketDescriptor,
+        endpoint: ipv4::Endpoint,
+    ) -> Result<(), Fail> {
         self.ipv4.tcp_bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&mut self, socket_fd: SocketDescriptor) -> Result<Option<SocketDescriptor>, Fail> {
+    pub fn tcp_accept(
+        &mut self,
+        socket_fd: SocketDescriptor,
+    ) -> Result<Option<SocketDescriptor>, Fail> {
         self.ipv4.tcp_accept(socket_fd)
     }
 
-    pub fn tcp_write(
-        &mut self,
-        handle: SocketDescriptor,
-        bytes: Bytes,
-    ) -> Result<(), Fail> {
+    pub fn tcp_write(&mut self, handle: SocketDescriptor, bytes: Bytes) -> Result<(), Fail> {
         self.ipv4.tcp_write(handle, bytes)
     }
 
-    pub fn tcp_peek(
-        &self,
-        handle: SocketDescriptor,
-    ) -> Result<Bytes, Fail> {
+    pub fn tcp_peek(&self, handle: SocketDescriptor) -> Result<Bytes, Fail> {
         self.ipv4.tcp_peek(handle)
     }
 
-    pub fn tcp_read(
-        &mut self,
-        handle: SocketDescriptor,
-    ) -> Result<Bytes, Fail> {
+    pub fn tcp_read(&mut self, handle: SocketDescriptor) -> Result<Bytes, Fail> {
         self.ipv4.tcp_read(handle)
     }
 
     pub fn tcp_accept_async(&mut self, handle: SocketDescriptor) -> AcceptFuture<RT> {
         self.ipv4.tcp.accept_async(handle)
     }
-
 
     #[cfg(test)]
     pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize, Fail> {

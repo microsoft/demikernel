@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use super::TcpOption;
-use nom::number::complete::{be_u16, be_u8};
+use nom::number::complete::{
+    be_u16,
+    be_u8,
+};
 
 named!(kind<u8>, call!(be_u8));
 named!(len<u8>, call!(be_u8));

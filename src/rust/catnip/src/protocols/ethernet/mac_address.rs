@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use eui48;
-use serde::ser::{Serialize, Serializer};
+use serde::ser::{
+    Serialize,
+    Serializer,
+};
 use std::fmt;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

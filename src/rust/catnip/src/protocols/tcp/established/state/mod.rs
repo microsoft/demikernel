@@ -1,17 +1,26 @@
-pub mod sender;
 pub mod receiver;
 mod rto;
+pub mod sender;
 
-use std::rc::Rc;
-use std::cell::RefCell;
-use self::sender::Sender;
-use self::receiver::Receiver;
-use std::time::Duration;
-use crate::runtime::Runtime;
-use crate::protocols::{arp, ipv4};
-use crate::fail::Fail;
-use crate::protocols::ethernet::MacAddress;
-use crate::protocols::tcp::segment::TcpSegment;
+use self::{
+    receiver::Receiver,
+    sender::Sender,
+};
+use crate::{
+    fail::Fail,
+    protocols::{
+        arp,
+        ethernet::MacAddress,
+        ipv4,
+        tcp::segment::TcpSegment,
+    },
+    runtime::Runtime,
+};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::Duration,
+};
 
 pub struct ControlBlock<RT: Runtime> {
     pub local: ipv4::Endpoint,
@@ -23,7 +32,6 @@ pub struct ControlBlock<RT: Runtime> {
     pub sender: Sender,
     pub receiver: Receiver,
 }
-
 
 impl<RT: Runtime> ControlBlock<RT> {
     pub fn receive_segment(&self, segment: TcpSegment) {
@@ -42,10 +50,17 @@ impl<RT: Runtime> ControlBlock<RT> {
             }
         }
         if let Err(e) = self.sender.update_remote_window(segment.window_size as u16) {
-            warn!("Ignoring remote window size update for {:?}: {:?}", segment, e);
+            warn!(
+                "Ignoring remote window size update for {:?}: {:?}",
+                segment, e
+            );
         }
         if segment.payload.len() > 0 {
-            if let Err(e) = self.receiver.receive_segment(segment.seq_num, segment.payload.clone(), self.rt.now()) {
+            if let Err(e) = self.receiver.receive_segment(
+                segment.seq_num,
+                segment.payload.clone(),
+                self.rt.now(),
+            ) {
                 warn!("Ignoring remote data for {:?}: {:?}", segment, e);
             }
         }

@@ -1,51 +1,55 @@
-use crate::bindings::{
-    rte_delay_us_block,
-    rte_eal_init,
-    rte_eth_conf,
-    rte_eth_dev_configure,
-    rte_eth_dev_count_avail,
-    rte_eth_dev_flow_ctrl_get,
-    rte_eth_dev_flow_ctrl_set,
-    rte_eth_dev_info_get,
-    rte_eth_dev_is_valid_port,
-    rte_eth_dev_start,
-    rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
-    rte_eth_find_next_owned_by,
-    rte_eth_link,
-    rte_eth_link_get_nowait,
-    rte_eth_macaddr_get,
-    rte_eth_promiscuous_enable,
-    rte_eth_rx_mq_mode_ETH_MQ_RX_RSS as ETH_MQ_RX_RSS,
-    rte_eth_rx_queue_setup,
-    rte_eth_rxconf,
-    rte_eth_tx_mq_mode_ETH_MQ_TX_NONE as ETH_MQ_TX_NONE,
-    rte_eth_tx_queue_setup,
-    rte_eth_txconf,
-    rte_ether_addr,
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_pool_create,
-    rte_socket_id,
-    ETH_LINK_FULL_DUPLEX,
-    ETH_LINK_UP,
-    ETH_RSS_IP,
-    RTE_ETHER_MAX_LEN,
-    RTE_ETH_DEV_NO_OWNER,
-    RTE_MAX_ETHPORTS,
-    RTE_MBUF_DEFAULT_BUF_SIZE,
+use crate::{
+    bindings::{
+        rte_delay_us_block,
+        rte_eal_init,
+        rte_eth_conf,
+        rte_eth_dev_configure,
+        rte_eth_dev_count_avail,
+        rte_eth_dev_flow_ctrl_get,
+        rte_eth_dev_flow_ctrl_set,
+        rte_eth_dev_info_get,
+        rte_eth_dev_is_valid_port,
+        rte_eth_dev_start,
+        rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
+        rte_eth_find_next_owned_by,
+        rte_eth_link,
+        rte_eth_link_get_nowait,
+        rte_eth_macaddr_get,
+        rte_eth_promiscuous_enable,
+        rte_eth_rx_mq_mode_ETH_MQ_RX_RSS as ETH_MQ_RX_RSS,
+        rte_eth_rx_queue_setup,
+        rte_eth_rxconf,
+        rte_eth_tx_mq_mode_ETH_MQ_TX_NONE as ETH_MQ_TX_NONE,
+        rte_eth_tx_queue_setup,
+        rte_eth_txconf,
+        rte_ether_addr,
+        rte_mbuf,
+        rte_mempool,
+        rte_pktmbuf_pool_create,
+        rte_socket_id,
+        ETH_LINK_FULL_DUPLEX,
+        ETH_LINK_UP,
+        ETH_RSS_IP,
+        RTE_ETHER_MAX_LEN,
+        RTE_ETH_DEV_NO_OWNER,
+        RTE_MAX_ETHPORTS,
+        RTE_MBUF_DEFAULT_BUF_SIZE,
+    },
+    runtime::LibOSRuntime,
 };
-use crate::runtime::LibOSRuntime;
 use anyhow::{
     bail,
     format_err,
     Error,
 };
 use catnip::protocols::ethernet::MacAddress;
-use std::ffi::CString;
-use std::mem::MaybeUninit;
-use std::net::Ipv4Addr;
-use std::ptr;
-use std::time::Duration;
+use std::{
+    ffi::CString,
+    mem::MaybeUninit,
+    net::Ipv4Addr,
+    ptr,
+    time::Duration,
+};
 
 macro_rules! expect_zero {
     ($name:ident ( $($arg: expr),* $(,)* )) => {{

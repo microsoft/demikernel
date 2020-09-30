@@ -1,20 +1,33 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::pdu::{ArpOp, ArpPdu};
-use std::future::Future;
-use crate::runtime::Runtime;
-use futures::FutureExt;
-use futures::task::{Context, noop_waker_ref};
-use std::task::Poll;
-use crate::protocols::ethernet;
-use crate::test_helpers;
-use std::{
-    io::Cursor,
-    time::{Duration, Instant},
+use super::pdu::{
+    ArpOp,
+    ArpPdu,
 };
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    protocols::ethernet,
+    runtime::Runtime,
+    test_helpers,
+};
+use futures::{
+    task::{
+        noop_waker_ref,
+        Context,
+    },
+    FutureExt,
+};
 use must_let::must_let;
+use std::{
+    future::Future,
+    io::Cursor,
+    task::Poll,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[test]
 fn immediate_reply() {

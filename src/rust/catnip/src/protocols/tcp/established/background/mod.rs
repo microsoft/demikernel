@@ -3,16 +3,22 @@ mod closer;
 mod retransmitter;
 mod sender;
 
-use std::rc::Rc;
-use crate::fail::Fail;
+use self::{
+    acknowledger::acknowledger,
+    closer::closer,
+    retransmitter::retransmitter,
+    sender::sender,
+};
 use super::state::ControlBlock;
-use self::acknowledger::acknowledger;
-use self::sender::sender;
-use self::retransmitter::retransmitter;
-use self::closer::closer;
-use std::future::Future;
+use crate::{
+    fail::Fail,
+    runtime::Runtime,
+};
 use futures::FutureExt;
-use crate::runtime::Runtime;
+use std::{
+    future::Future,
+    rc::Rc,
+};
 
 // TODO: This type is quite large. We may have to switch back to manual combinators?
 // 432:  acknowledger

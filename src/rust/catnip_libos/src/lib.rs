@@ -17,36 +17,40 @@ use anyhow::{
     Error,
 };
 use bytes::BytesMut;
-use catnip::engine::Engine;
-use catnip::logging;
-use catnip::protocols::tcp::peer::SocketDescriptor;
-use catnip::protocols::{
-    ip,
-    ipv4,
+use catnip::{
+    engine::Engine,
+    logging,
+    protocols::{
+        ip,
+        ipv4,
+        tcp::peer::SocketDescriptor,
+    },
+    runtime::Runtime,
 };
-use catnip::runtime::Runtime;
 use clap::{
     App,
     Arg,
 };
 use futures::task::noop_waker_ref;
-use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::ffi::{
-    CStr,
-    CString,
+use std::{
+    cell::RefCell,
+    convert::TryFrom,
+    ffi::{
+        CStr,
+        CString,
+    },
+    fs::File,
+    io::Read,
+    mem,
+    net::Ipv4Addr,
+    ptr,
+    slice,
+    task::{
+        Context,
+        Poll,
+    },
+    time::Instant,
 };
-use std::fs::File;
-use std::io::Read;
-use std::mem;
-use std::net::Ipv4Addr;
-use std::ptr;
-use std::slice;
-use std::task::{
-    Context,
-    Poll,
-};
-use std::time::Instant;
 use yaml_rust::{
     Yaml,
     YamlLoader,

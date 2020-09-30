@@ -7,7 +7,10 @@
 mod tests;
 
 use crate::protocols::ip;
-use byteorder::{ByteOrder, NetworkEndian};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use std::convert::TryFrom;
 
 pub const UDP_HEADER_SIZE: usize = 8;

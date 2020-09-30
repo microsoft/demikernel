@@ -1,9 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Type};
+use super::{
+    Icmpv4Datagram,
+    Icmpv4DatagramMut,
+    Icmpv4Type,
+};
 use crate::test_helpers;
-use byteorder::{NetworkEndian, WriteBytesExt};
+use byteorder::{
+    NetworkEndian,
+    WriteBytesExt,
+};
 
 #[test]
 fn checksum() {

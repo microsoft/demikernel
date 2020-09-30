@@ -3,20 +3,35 @@
 
 use super::{
     cache::ArpCache,
-    pdu::{ArpOp, ArpPdu},
+    pdu::{
+        ArpOp,
+        ArpPdu,
+    },
 };
 use crate::{
-    protocols::ethernet::{self, MacAddress},
+    fail::Fail,
+    protocols::ethernet::{
+        self,
+        MacAddress,
+    },
+    runtime::Runtime,
 };
-use crate::fail::Fail;
 use futures::FutureExt;
 use hashbrown::HashMap;
-use std::future::Future;
 use std::{
-    cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
-    time::Instant, pin::Pin, task::{Poll, Context},
+    cell::RefCell,
+    convert::TryFrom,
+    future::Future,
+    mem::swap,
+    net::Ipv4Addr,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
+    time::Instant,
 };
-use crate::runtime::Runtime;
 
 #[derive(Clone)]
 pub struct ArpPeer<RT: Runtime> {
@@ -34,7 +49,6 @@ impl<RT: Runtime> ArpPeer<RT> {
             cache: Rc::new(RefCell::new(cache)),
         })
     }
-
 
     pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
         trace!("ArpPeer::receive(...)");
@@ -99,7 +113,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                 let bytes = Rc::new(RefCell::new(arp.to_datagram()?));
                 self.rt.transmit(bytes);
                 Ok(())
-            }
+            },
             ArpOp::ArpReply => {
                 debug!(
                     "reply from `{}/{}`",
@@ -109,7 +123,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                     .borrow_mut()
                     .insert(arp.sender_ip_addr, arp.sender_link_addr);
                 Ok(())
-            }
+            },
         }
     }
 
@@ -117,7 +131,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         self.cache.borrow().get_link_addr(ipv4_addr).cloned()
     }
 
-    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output=Result<MacAddress, Fail>> {
+    pub fn query(&self, ipv4_addr: Ipv4Addr) -> impl Future<Output = Result<MacAddress, Fail>> {
         let rt = self.rt.clone();
         let cache = self.cache.clone();
         async move {

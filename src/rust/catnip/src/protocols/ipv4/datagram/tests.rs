@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{Ipv4Datagram, Ipv4DatagramMut, Ipv4Protocol};
+use super::{
+    Ipv4Datagram,
+    Ipv4DatagramMut,
+    Ipv4Protocol,
+};
 use crate::test_helpers;
 
 #[test]

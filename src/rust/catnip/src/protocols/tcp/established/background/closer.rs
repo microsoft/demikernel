@@ -1,11 +1,17 @@
-use std::rc::Rc;
-use std::num::Wrapping;
-use crate::fail::Fail;
-use super::super::state::ControlBlock;
-use super::super::state::sender::SenderState;
-use super::super::state::receiver::ReceiverState;
-use futures::{FutureExt};
-use crate::runtime::Runtime;
+use super::super::state::{
+    receiver::ReceiverState,
+    sender::SenderState,
+    ControlBlock,
+};
+use crate::{
+    fail::Fail,
+    runtime::Runtime,
+};
+use futures::FutureExt;
+use std::{
+    num::Wrapping,
+    rc::Rc,
+};
 
 async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
@@ -54,9 +60,7 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
 
                 // TODO: When do we retransmit this?
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-                let segment = cb.tcp_segment()
-                    .seq_num(sent_seq + Wrapping(1))
-                    .fin();
+                let segment = cb.tcp_segment().seq_num(sent_seq + Wrapping(1)).fin();
                 cb.emit(segment, remote_link_addr);
 
                 cb.sender.state.set(SenderState::SentFin);
@@ -66,7 +70,7 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
                 let segment = cb.tcp_segment().rst();
                 cb.emit(segment, remote_link_addr);
                 panic!("Close connection here");
-            }
+            },
         }
     }
 }

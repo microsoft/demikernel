@@ -1,11 +1,11 @@
-pub mod constants;
-pub mod peer;
-mod passive_open;
-mod established;
 mod active_open;
+pub mod constants;
+mod established;
 mod isn_generator;
-pub mod segment;
 mod options;
+mod passive_open;
+pub mod peer;
+pub mod segment;
 
 #[cfg(test)]
 mod tests;
@@ -14,5 +14,7 @@ use std::num::Wrapping;
 
 pub type SeqNumber = Wrapping<u32>;
 
-pub use self::peer::Peer;
-pub use self::options::TcpOptions as Options;
+pub use self::{
+    options::TcpOptions as Options,
+    peer::Peer,
+};

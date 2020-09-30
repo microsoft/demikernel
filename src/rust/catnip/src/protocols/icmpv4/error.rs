@@ -2,13 +2,25 @@
 // Licensed under the MIT license.
 
 use super::datagram::{
-    Icmpv4Datagram, Icmpv4DatagramMut, Icmpv4Header, Icmpv4Type,
+    Icmpv4Datagram,
+    Icmpv4DatagramMut,
+    Icmpv4Header,
+    Icmpv4Type,
 };
-use crate::protocols::ipv4;
-use byteorder::{ByteOrder, NetworkEndian};
+use crate::{
+    fail::Fail,
+    protocols::ipv4,
+};
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+};
 use num_traits::FromPrimitive;
-use std::{convert::TryFrom, fmt, io::Write};
-use crate::fail::Fail;
+use std::{
+    convert::TryFrom,
+    fmt,
+    io::Write,
+};
 
 #[repr(u8)]
 #[derive(FromPrimitive, Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,20 +46,38 @@ pub enum Icmpv4DestinationUnreachable {
 impl Icmpv4DestinationUnreachable {
     fn description(&self) -> &str {
         match self {
-            Icmpv4DestinationUnreachable::DestinationNetworkUnreachable => "destination network unreachable",
-            Icmpv4DestinationUnreachable::DestinationHostUnreachable => "destination host unreachable",
-            Icmpv4DestinationUnreachable::DestinationProtocolUnreachable => "destination protocol unreachable",
-            Icmpv4DestinationUnreachable::DestinationPortUnreachable => "destination port unreachable",
-            Icmpv4DestinationUnreachable::FragmentationRequired => "fragmentation required and DF flag set",
+            Icmpv4DestinationUnreachable::DestinationNetworkUnreachable => {
+                "destination network unreachable"
+            },
+            Icmpv4DestinationUnreachable::DestinationHostUnreachable => {
+                "destination host unreachable"
+            },
+            Icmpv4DestinationUnreachable::DestinationProtocolUnreachable => {
+                "destination protocol unreachable"
+            },
+            Icmpv4DestinationUnreachable::DestinationPortUnreachable => {
+                "destination port unreachable"
+            },
+            Icmpv4DestinationUnreachable::FragmentationRequired => {
+                "fragmentation required and DF flag set"
+            },
             Icmpv4DestinationUnreachable::SourceRouteFailed => "source route failed",
-            Icmpv4DestinationUnreachable::DestinationNetworkUnknown => "destination network unknown",
+            Icmpv4DestinationUnreachable::DestinationNetworkUnknown => {
+                "destination network unknown"
+            },
             Icmpv4DestinationUnreachable::DestinationHostUnknown => "destination host unknown",
             Icmpv4DestinationUnreachable::SourceHostIsolated => "source host isolated",
-            Icmpv4DestinationUnreachable::NetworkAdministrativelyProhibited => "network administratively prohibited",
-            Icmpv4DestinationUnreachable::HostAdministrativelyProhibited => "host administratively prohibited",
+            Icmpv4DestinationUnreachable::NetworkAdministrativelyProhibited => {
+                "network administratively prohibited"
+            },
+            Icmpv4DestinationUnreachable::HostAdministrativelyProhibited => {
+                "host administratively prohibited"
+            },
             Icmpv4DestinationUnreachable::NetworkUnreachableForTos => "network unreachable for ToS",
             Icmpv4DestinationUnreachable::HostUnreachableForTos => "host unreachable for ToS",
-            Icmpv4DestinationUnreachable::CommunicationAdministrativelyProhibited => "communication administratively prohibited",
+            Icmpv4DestinationUnreachable::CommunicationAdministrativelyProhibited => {
+                "communication administratively prohibited"
+            },
             Icmpv4DestinationUnreachable::HostPrecedenceViolation => "host precedence violation",
             Icmpv4DestinationUnreachable::PrecedenceCutoffInEvent => "precedence cutoff in event",
         }
@@ -94,14 +124,11 @@ impl fmt::Display for Icmpv4ErrorId {
 impl Icmpv4ErrorId {
     fn decode(header: &Icmpv4Header<'_>) -> Result<Icmpv4ErrorId, Fail> {
         match header.r#type()? {
-            Icmpv4Type::DestinationUnreachable => {
-                Ok(Icmpv4ErrorId::DestinationUnreachable(
-                    Icmpv4DestinationUnreachable::from(header.code()),
-                ))
-            }
+            Icmpv4Type::DestinationUnreachable => Ok(Icmpv4ErrorId::DestinationUnreachable(
+                Icmpv4DestinationUnreachable::from(header.code()),
+            )),
             _ => Err(Fail::Unsupported {
-                details: "Icmpv4ErrorId is intended only for ICMPv4 error \
-                          packets",
+                details: "Icmpv4ErrorId is intended only for ICMPv4 error packets",
             }),
         }
     }
@@ -161,11 +188,9 @@ impl<'a> TryFrom<Icmpv4Datagram<'a>> for Icmpv4Error<'a> {
     fn try_from(datagram: Icmpv4Datagram<'a>) -> Result<Self, Fail> {
         let header = datagram.header();
         match header.r#type()? {
-            Icmpv4Type::DestinationUnreachable => {
-                Icmpv4ErrorId::DestinationUnreachable(
-                    Icmpv4DestinationUnreachable::from(header.code()),
-                )
-            }
+            Icmpv4Type::DestinationUnreachable => Icmpv4ErrorId::DestinationUnreachable(
+                Icmpv4DestinationUnreachable::from(header.code()),
+            ),
             _ => unimplemented!(),
         };
 

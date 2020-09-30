@@ -3,10 +3,16 @@
 
 mod header;
 
-pub use header::{UdpHeader, UdpHeaderMut, UDP_HEADER_SIZE};
+pub use header::{
+    UdpHeader,
+    UdpHeaderMut,
+    UDP_HEADER_SIZE,
+};
 
-use crate::protocols::ipv4;
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    protocols::ipv4,
+};
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy)]
@@ -48,8 +54,7 @@ impl<'a> TryFrom<ipv4::Datagram<'a>> for UdpDatagramDecoder<'a> {
 
         if ipv4_datagram.text().len() < UDP_HEADER_SIZE {
             return Err(Fail::Malformed {
-                details: "UDP datagram is too small to contain a complete \
-                          header",
+                details: "UDP datagram is too small to contain a complete header",
             });
         }
 

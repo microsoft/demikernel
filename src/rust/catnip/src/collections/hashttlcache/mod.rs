@@ -6,14 +6,19 @@
 #[cfg(test)]
 mod tests;
 
-use hashbrown::HashMap;
-use hashbrown::hash_map::Entry as HashMapEntry;
+use hashbrown::{
+    hash_map::Entry as HashMapEntry,
+    HashMap,
+};
 use std::{
     cmp::Ordering,
     collections::BinaryHeap,
     fmt::Debug,
     hash::Hash,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[derive(PartialEq, Eq, Clone)]
@@ -97,10 +102,7 @@ where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    pub fn new(
-        now: Instant,
-        default_ttl: Option<Duration>,
-    ) -> HashTtlCache<K, V> {
+    pub fn new(now: Instant, default_ttl: Option<Duration>) -> HashTtlCache<K, V> {
         if let Some(ttl) = default_ttl {
             assert!(ttl > Duration::new(0, 0));
         }
@@ -113,12 +115,7 @@ where
         }
     }
 
-    pub fn insert_with_ttl(
-        &mut self,
-        key: K,
-        value: V,
-        ttl: Option<Duration>,
-    ) -> Option<V> {
+    pub fn insert_with_ttl(&mut self, key: K, value: V, ttl: Option<Duration>) -> Option<V> {
         if let Some(ttl) = ttl {
             assert!(ttl > Duration::new(0, 0));
         }
@@ -142,7 +139,7 @@ where
                 record.expiry = expiry.clone();
 
                 old_value
-            }
+            },
             HashMapEntry::Vacant(e) => {
                 e.insert(Record {
                     value,
@@ -150,7 +147,7 @@ where
                 });
 
                 None
-            }
+            },
         };
 
         if let Some(expiry) = expiry {
@@ -188,12 +185,12 @@ where
             None => {
                 debug!("key `{:?}` not present", key);
                 None
-            }
+            },
             Some(r) => match r.expiry.as_ref() {
                 None => {
                     // no expiration on entry.
                     Some(&r.value)
-                }
+                },
                 Some(e) => {
                     if e.has_expired(self.clock) {
                         debug!("key `{:?}` present but expired", key);
@@ -202,7 +199,7 @@ where
                         // present and not yet exipred.
                         Some(&r.value)
                     }
-                }
+                },
             },
         }
     }
@@ -220,7 +217,7 @@ where
             match self.try_evict_once() {
                 Some((key, value)) => {
                     assert!(evicted.insert(key, value).is_none());
-                }
+                },
                 None => return evicted,
             }
 
@@ -239,7 +236,7 @@ where
                 // the graveyard is empty, so we cannot evict anything.
                 {
                     return None
-                }
+                },
             };
 
             // the next tombstone has time from the future; nothing to evict.
@@ -266,7 +263,7 @@ where
                         assert!(!record_expiry.has_expired(self.clock));
                         continue;
                     }
-                }
+                },
                 HashMapEntry::Vacant(_) => continue,
             }
         }

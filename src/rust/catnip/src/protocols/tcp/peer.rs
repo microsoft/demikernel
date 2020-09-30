@@ -1,22 +1,39 @@
-use crate::protocols::{arp, ip, ipv4};
-use std::task::{Poll, Context};
-use super::isn_generator::IsnGenerator;
-use crate::protocols::tcp::segment::{TcpSegment, TcpSegmentDecoder, TcpSegmentEncoder};
-use crate::fail::Fail;
-use std::convert::TryFrom;
-use hashbrown::HashMap;
-use std::collections::VecDeque;
-use std::cell::RefCell;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::future::Future;
-use crate::collections::async_map::FutureMap;
+use super::{
+    active_open::ActiveOpenSocket,
+    established::EstablishedSocket,
+    isn_generator::IsnGenerator,
+    passive_open::PassiveSocket,
+};
+use crate::{
+    collections::async_map::FutureMap,
+    fail::Fail,
+    protocols::{
+        arp,
+        ip,
+        ipv4,
+        tcp::segment::{
+            TcpSegment,
+            TcpSegmentDecoder,
+            TcpSegmentEncoder,
+        },
+    },
+    runtime::Runtime,
+};
 use bytes::Bytes;
-use super::active_open::ActiveOpenSocket;
-use super::passive_open::PassiveSocket;
-use super::established::EstablishedSocket;
-use crate::runtime::Runtime;
-use std::time::Duration;
+use hashbrown::HashMap;
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    convert::TryFrom,
+    future::Future,
+    pin::Pin,
+    rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
+    time::Duration,
+};
 
 pub type SocketDescriptor = u16;
 
@@ -26,27 +43,36 @@ pub struct Peer<RT: Runtime> {
 
 impl<RT: Runtime> Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> Self {
-        Self { inner: Rc::new(RefCell::new(Inner::new(rt, arp))) }
+        Self {
+            inner: Rc::new(RefCell::new(Inner::new(rt, arp))),
+        }
     }
 
     pub fn socket(&self) -> SocketDescriptor {
         let mut inner = self.inner.borrow_mut();
         let fd = inner.alloc_fd();
-        assert!(inner.sockets.insert(fd, Socket::Inactive { local: None }).is_none());
+        assert!(inner
+            .sockets
+            .insert(fd, Socket::Inactive { local: None })
+            .is_none());
         fd
     }
 
     pub fn bind(&self, fd: SocketDescriptor, addr: ipv4::Endpoint) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         if addr.port() >= ip::Port::first_private_port() {
-            return Err(Fail::Malformed { details: "Port number in private port range" });
+            return Err(Fail::Malformed {
+                details: "Port number in private port range",
+            });
         }
         match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { ref mut local }) => {
                 *local = Some(addr);
                 Ok(())
             },
-            _ => Err(Fail::Malformed { details: "Invalid file descriptor" }),
+            _ => Err(Fail::Malformed {
+                details: "Invalid file descriptor",
+            }),
         }
     }
 
@@ -58,11 +84,17 @@ impl<RT: Runtime> Peer<RT> {
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
-            _ => return Err(Fail::Malformed { details: "Invalid file descriptor" }),
+            _ => {
+                return Err(Fail::Malformed {
+                    details: "Invalid file descriptor",
+                })
+            },
         };
         // TODO: Should this move to bind?
         if inner.passive.contains_key(&local) {
-            return Err(Fail::ResourceBusy { details: "Port already in use" });
+            return Err(Fail::ResourceBusy {
+                details: "Port already in use",
+            });
         }
 
         let socket = PassiveSocket::new(local, backlog, inner.rt.clone(), inner.arp.clone());
@@ -77,10 +109,16 @@ impl<RT: Runtime> Peer<RT> {
 
         let local = match inner.sockets.get(&fd) {
             Some(Socket::Listening { local }) => local,
-            Some(..) => return Err(Fail::Malformed { details: "Socket not listening" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not listening",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
-        let passive = inner.passive.get_pin_mut(local)
+        let passive = inner
+            .passive
+            .get_pin_mut(local)
             .expect("sockets/local inconsistency")
             .get_mut();
         let cb = match passive.accept()? {
@@ -115,11 +153,18 @@ impl<RT: Runtime> Peer<RT> {
         let r = try {
             match inner.sockets.get_mut(&fd) {
                 Some(Socket::Inactive { .. }) => (),
-                _ => Err(Fail::Malformed { details: "Invalid file descriptor" })?,
+                _ => Err(Fail::Malformed {
+                    details: "Invalid file descriptor",
+                })?,
             }
 
-            let local_port = inner.unassigned_ports.pop_front()
-                .ok_or_else(|| Fail::ResourceExhausted { details: "Out of private ports" })?;
+            let local_port =
+                inner
+                    .unassigned_ports
+                    .pop_front()
+                    .ok_or_else(|| Fail::ResourceExhausted {
+                        details: "Out of private ports",
+                    })?;
             let local = ipv4::Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
 
             let socket = Socket::Connecting {
@@ -144,19 +189,29 @@ impl<RT: Runtime> Peer<RT> {
             Ok(..) => ConnectFutureState::InProgress,
             Err(e) => ConnectFutureState::Failed(e),
         };
-        ConnectFuture { fd, state, inner: self.inner.clone() }
+        ConnectFuture {
+            fd,
+            state,
+            inner: self.inner.clone(),
+        }
     }
 
     pub fn peek(&self, fd: SocketDescriptor) -> Result<Bytes, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => s.peek(),
-            None => Err(Fail::Malformed { details: "Socket not established" }),
+            None => Err(Fail::Malformed {
+                details: "Socket not established",
+            }),
         }
     }
 
@@ -164,12 +219,18 @@ impl<RT: Runtime> Peer<RT> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Recv: Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Recv: Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => s.recv(),
-            None => Err(Fail::Malformed { details: "Socket not established" }),
+            None => Err(Fail::Malformed {
+                details: "Socket not established",
+            }),
         }
     }
 
@@ -196,12 +257,20 @@ impl<RT: Runtime> Peer<RT> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => s.send(buf),
-            None => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
         }
     }
 
@@ -212,7 +281,11 @@ impl<RT: Runtime> Peer<RT> {
                 let key = (local.clone(), remote.clone());
                 match inner.established.get(&key) {
                     Some(ref s) => s.close()?,
-                    None => return Err(Fail::Malformed { details: "Socket not established" }),
+                    None => {
+                        return Err(Fail::Malformed {
+                            details: "Socket not established",
+                        })
+                    },
                 }
             },
             Some(..) => {
@@ -228,12 +301,20 @@ impl<RT: Runtime> Peer<RT> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.remote_mss()),
-            None => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
         }
     }
 
@@ -241,25 +322,44 @@ impl<RT: Runtime> Peer<RT> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.current_rto()),
-            None => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
         }
     }
 
-    pub fn endpoints(&self, fd: SocketDescriptor) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
+    pub fn endpoints(
+        &self,
+        fd: SocketDescriptor,
+    ) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::Malformed { details: "Socket not established" }),
+            Some(..) => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         };
         match inner.established.get(&key) {
             Some(ref s) => Ok(s.endpoints()),
-            None => return Err(Fail::Malformed { details: "Socket not established" }),
+            None => {
+                return Err(Fail::Malformed {
+                    details: "Socket not established",
+                })
+            },
         }
     }
 }
@@ -281,10 +381,20 @@ impl<RT: Runtime> Future for Peer<RT> {
 }
 
 enum Socket {
-    Inactive { local: Option<ipv4::Endpoint> },
-    Listening { local: ipv4::Endpoint },
-    Connecting { local: ipv4::Endpoint, remote: ipv4::Endpoint },
-    Established { local: ipv4::Endpoint, remote: ipv4::Endpoint },
+    Inactive {
+        local: Option<ipv4::Endpoint>,
+    },
+    Listening {
+        local: ipv4::Endpoint,
+    },
+    Connecting {
+        local: ipv4::Endpoint,
+        remote: ipv4::Endpoint,
+    },
+    Established {
+        local: ipv4::Endpoint,
+        remote: ipv4::Endpoint,
+    },
 }
 
 pub struct Inner<RT: Runtime> {
@@ -320,7 +430,6 @@ impl<RT: Runtime> Inner<RT> {
             rt,
             arp,
         }
-
     }
 
     fn receive_datagram(&mut self, datagram: ipv4::Datagram<'_>) {
@@ -328,23 +437,29 @@ impl<RT: Runtime> Inner<RT> {
             let decoder = TcpSegmentDecoder::try_from(datagram)?;
             let segment = TcpSegment::try_from(decoder)?;
 
-            let local_ipv4_addr = segment.dest_ipv4_addr
-                .ok_or_else(|| Fail::Malformed { details: "Missing destination IPv4 addr" })?;
-            let local_port = segment.dest_port
-                .ok_or_else(|| Fail::Malformed { details: "Missing destination port" })?;
+            let local_ipv4_addr = segment.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
+                details: "Missing destination IPv4 addr",
+            })?;
+            let local_port = segment.dest_port.ok_or_else(|| Fail::Malformed {
+                details: "Missing destination port",
+            })?;
             let local = ipv4::Endpoint::new(local_ipv4_addr, local_port);
 
-            let remote_ipv4_addr = segment.src_ipv4_addr
-                .ok_or_else(|| Fail::Malformed { details: "Missing source IPv4 addr" })?;
-            let remote_port = segment.src_port
-                .ok_or_else(|| Fail::Malformed { details: "Missing source port" })?;
+            let remote_ipv4_addr = segment.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
+                details: "Missing source IPv4 addr",
+            })?;
+            let remote_port = segment.src_port.ok_or_else(|| Fail::Malformed {
+                details: "Missing source port",
+            })?;
             let remote = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
 
             if remote_ipv4_addr.is_broadcast()
                 || remote_ipv4_addr.is_multicast()
                 || remote_ipv4_addr.is_unspecified()
             {
-                Err(Fail::Malformed { details: "only unicast addresses are supported by TCP" })?;
+                Err(Fail::Malformed {
+                    details: "only unicast addresses are supported by TCP",
+                })?;
             }
 
             let key = (local, remote);
@@ -375,14 +490,18 @@ impl<RT: Runtime> Inner<RT> {
     }
 
     fn send_rst(&mut self, segment: TcpSegment) -> Result<(), Fail> {
-        let local_ipv4_addr = segment.dest_ipv4_addr
-            .ok_or_else(|| Fail::Malformed { details: "Missing destination IPv4 addr" })?;
-        let local_port = segment.dest_port
-                .ok_or_else(|| Fail::Malformed { details: "Missing destination port" })?;
-        let remote_ipv4_addr = segment.src_ipv4_addr
-            .ok_or_else(|| Fail::Malformed { details: "Missing source IPv4 addr" })?;
-        let remote_port = segment.src_port
-            .ok_or_else(|| Fail::Malformed { details: "Missing source port" })?;
+        let local_ipv4_addr = segment.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
+            details: "Missing destination IPv4 addr",
+        })?;
+        let local_port = segment.dest_port.ok_or_else(|| Fail::Malformed {
+            details: "Missing destination port",
+        })?;
+        let remote_ipv4_addr = segment.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
+            details: "Missing source IPv4 addr",
+        })?;
+        let remote_port = segment.src_port.ok_or_else(|| Fail::Malformed {
+            details: "Missing source port",
+        })?;
 
         let segment = TcpSegment::default()
             .src_ipv4_addr(local_ipv4_addr)
@@ -392,8 +511,12 @@ impl<RT: Runtime> Inner<RT> {
             .rst();
 
         // TODO: Make this work pending on ARP resolution if needed.
-        let remote_link_addr = self.arp.try_query(remote_ipv4_addr)
-            .ok_or_else(|| Fail::ResourceNotFound { details: "RST destination not in ARP cache" })?;
+        let remote_link_addr =
+            self.arp
+                .try_query(remote_ipv4_addr)
+                .ok_or_else(|| Fail::ResourceNotFound {
+                    details: "RST destination not in ARP cache",
+                })?;
 
         let mut segment_buf = segment.encode();
         let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
@@ -409,17 +532,29 @@ impl<RT: Runtime> Inner<RT> {
         Ok(())
     }
 
-    fn poll_connect_finished(&mut self, fd: SocketDescriptor, context: &mut Context) -> Poll<Result<SocketDescriptor, Fail>> {
+    fn poll_connect_finished(
+        &mut self,
+        fd: SocketDescriptor,
+        context: &mut Context,
+    ) -> Poll<Result<SocketDescriptor, Fail>> {
         let key = match self.sockets.get(&fd) {
             Some(Socket::Connecting { local, remote }) => (*local, *remote),
-            Some(..) => return Poll::Ready(Err(Fail::Malformed { details: "Socket not connecting" })),
+            Some(..) => {
+                return Poll::Ready(Err(Fail::Malformed {
+                    details: "Socket not connecting",
+                }))
+            },
             None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
         };
 
         let result = {
             let socket = match self.connecting.get_pin_mut(&key) {
                 Some(s) => s,
-                None => return Poll::Ready(Err(Fail::Malformed { details: "Socket not connecting" })),
+                None => {
+                    return Poll::Ready(Err(Fail::Malformed {
+                        details: "Socket not connecting",
+                    }))
+                },
             };
             match socket.poll_result(context) {
                 Poll::Pending => return Poll::Pending,
@@ -429,12 +564,15 @@ impl<RT: Runtime> Inner<RT> {
         self.connecting.remove(&key);
 
         let cb = result?;
-        assert!(self.established.insert(key, EstablishedSocket::new(cb)).is_none());
-	let (local, remote) = key;
-	self.sockets.insert(fd, Socket::Established { local, remote });
+        assert!(self
+            .established
+            .insert(key, EstablishedSocket::new(cb))
+            .is_none());
+        let (local, remote) = key;
+        self.sockets
+            .insert(fd, Socket::Established { local, remote });
 
         Poll::Ready(Ok(fd))
-
     }
 }
 
@@ -464,7 +602,6 @@ impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
     }
 }
 
-
 enum ConnectFutureState {
     Failed(Fail),
     InProgress,
@@ -483,9 +620,10 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
         let self_ = self.get_mut();
         match self_.state {
             ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
-            ConnectFutureState::InProgress => {
-                self_.inner.borrow_mut().poll_connect_finished(self_.fd, context)
-            },
+            ConnectFutureState::InProgress => self_
+                .inner
+                .borrow_mut()
+                .poll_connect_finished(self_.fd, context),
         }
     }
 }
@@ -500,7 +638,9 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
-        let peer = Peer { inner: self_.inner.clone() };
+        let peer = Peer {
+            inner: self_.inner.clone(),
+        };
         match peer.accept(self_.fd) {
             Ok(Some(fd)) => Poll::Ready(Ok(fd)),
             Ok(None) => Poll::Pending,
@@ -536,7 +676,9 @@ impl<RT: Runtime> Future for PopFuture<RT> {
 
     fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
-        let peer = Peer { inner: self_.inner.clone() };
+        let peer = Peer {
+            inner: self_.inner.clone(),
+        };
         match peer.recv(self_.fd) {
             Ok(Some(bytes)) => Poll::Ready(Ok(bytes)),
             Ok(None) => Poll::Pending,

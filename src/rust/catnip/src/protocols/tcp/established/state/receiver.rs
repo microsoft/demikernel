@@ -1,11 +1,18 @@
+use crate::{
+    collections::watched::WatchedValue,
+    fail::Fail,
+    protocols::tcp::SeqNumber,
+};
 use bytes::Bytes;
-use crate::protocols::tcp::SeqNumber;
-use crate::collections::watched::WatchedValue;
-use std::collections::VecDeque;
-use crate::fail::Fail;
-use std::num::Wrapping;
-use std::cell::{RefCell};
-use std::time::{Instant, Duration};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    num::Wrapping,
+    time::{
+        Duration,
+        Instant,
+    },
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiverState {
@@ -43,7 +50,6 @@ impl Receiver {
             recv_seq_no: WatchedValue::new(seq_no),
             ack_deadline: WatchedValue::new(None),
             max_window_size,
-
         }
     }
 
@@ -55,7 +61,11 @@ impl Receiver {
     pub fn current_ack(&self) -> Option<SeqNumber> {
         let ack_seq_no = self.ack_seq_no.get();
         let recv_seq_no = self.recv_seq_no.get();
-        if ack_seq_no < recv_seq_no { Some(recv_seq_no) } else { None }
+        if ack_seq_no < recv_seq_no {
+            Some(recv_seq_no)
+        } else {
+            None
+        }
     }
 
     pub fn ack_sent(&self, seq_no: SeqNumber) {
@@ -67,12 +77,19 @@ impl Receiver {
     pub fn peek(&self) -> Result<Bytes, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
-                return Err(Fail::ResourceNotFound { details: "Receiver closed" });
+                return Err(Fail::ResourceNotFound {
+                    details: "Receiver closed",
+                });
             }
-            return Err(Fail::ResourceExhausted { details: "No available data" });
+            return Err(Fail::ResourceExhausted {
+                details: "No available data",
+            });
         }
 
-        let segment = self.recv_queue.borrow_mut().front()
+        let segment = self
+            .recv_queue
+            .borrow_mut()
+            .front()
             .expect("recv_seq > base_seq without data in queue?")
             .clone();
 
@@ -82,14 +99,20 @@ impl Receiver {
     pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
-                return Err(Fail::ResourceNotFound { details: "Receiver closed" });
+                return Err(Fail::ResourceNotFound {
+                    details: "Receiver closed",
+                });
             }
             return Ok(None);
         }
 
-        let segment = self.recv_queue.borrow_mut().pop_front()
+        let segment = self
+            .recv_queue
+            .borrow_mut()
+            .pop_front()
             .expect("recv_seq > base_seq without data in queue?");
-        self.base_seq_no.modify(|b| b + Wrapping(segment.len() as u32));
+        self.base_seq_no
+            .modify(|b| b + Wrapping(segment.len() as u32));
 
         Ok(Some(segment))
     }
@@ -101,16 +124,27 @@ impl Receiver {
 
     pub fn receive_segment(&self, seq_no: SeqNumber, buf: Bytes, now: Instant) -> Result<(), Fail> {
         if self.state.get() != ReceiverState::Open {
-            return Err(Fail::ResourceNotFound { details: "Receiver closed" });
+            return Err(Fail::ResourceNotFound {
+                details: "Receiver closed",
+            });
         }
 
         if self.recv_seq_no.get() != seq_no {
-            return Err(Fail::Ignored { details: "Out of order segment" });
+            return Err(Fail::Ignored {
+                details: "Out of order segment",
+            });
         }
 
-        let unread_bytes = self.recv_queue.borrow().iter().map(|b| b.len()).sum::<usize>();
+        let unread_bytes = self
+            .recv_queue
+            .borrow()
+            .iter()
+            .map(|b| b.len())
+            .sum::<usize>();
         if unread_bytes + buf.len() > self.max_window_size as usize {
-            return Err(Fail::Ignored { details: "Full receive window" });
+            return Err(Fail::Ignored {
+                details: "Full receive window",
+            });
         }
 
         self.recv_seq_no.modify(|r| r + Wrapping(buf.len() as u32));
@@ -119,7 +153,8 @@ impl Receiver {
         // TODO: How do we handle when the other side is in PERSIST state here?
         if self.ack_deadline.get().is_none() {
             // TODO: Configure this value (and also maybe just have an RT pointer here.)
-            self.ack_deadline.set(Some(now + Duration::from_millis(500)));
+            self.ack_deadline
+                .set(Some(now + Duration::from_millis(500)));
         }
 
         Ok(())
