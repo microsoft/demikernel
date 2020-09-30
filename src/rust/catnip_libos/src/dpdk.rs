@@ -1,47 +1,51 @@
-use catnip::protocols::ethernet::MacAddress;
-use std::time::Duration;
-use std::ptr;
-use std::mem::MaybeUninit;
-use std::net::Ipv4Addr;
-use std::ffi::CString;
-use anyhow::{Error, bail, format_err};
 use crate::bindings::{
-    rte_ether_addr,
-    rte_eth_dev_is_valid_port,
-    rte_eth_macaddr_get,
-    ETH_LINK_UP,
-    ETH_LINK_FULL_DUPLEX,
     rte_delay_us_block,
-    rte_eth_dev_flow_ctrl_get,
-    rte_eth_link_get_nowait,
-    rte_eth_link,
-    rte_eth_dev_flow_ctrl_set,
-    rte_eth_dev_start,
-    rte_eth_rx_queue_setup,
-    rte_eth_tx_queue_setup,
-    rte_eth_promiscuous_enable,
-    RTE_ETH_DEV_NO_OWNER,
-    rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
-    RTE_MAX_ETHPORTS,
-    RTE_ETHER_MAX_LEN,
-    rte_eth_dev_configure,
-    rte_eth_conf,
-    rte_eth_rxconf,
-    rte_eth_txconf,
-    rte_eth_find_next_owned_by,
-    rte_mempool,
     rte_eal_init,
+    rte_eth_conf,
+    rte_eth_dev_configure,
     rte_eth_dev_count_avail,
-    rte_pktmbuf_pool_create,
-    RTE_MBUF_DEFAULT_BUF_SIZE,
-    rte_mbuf,
-    rte_socket_id,
+    rte_eth_dev_flow_ctrl_get,
+    rte_eth_dev_flow_ctrl_set,
     rte_eth_dev_info_get,
+    rte_eth_dev_is_valid_port,
+    rte_eth_dev_start,
+    rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
+    rte_eth_find_next_owned_by,
+    rte_eth_link,
+    rte_eth_link_get_nowait,
+    rte_eth_macaddr_get,
+    rte_eth_promiscuous_enable,
     rte_eth_rx_mq_mode_ETH_MQ_RX_RSS as ETH_MQ_RX_RSS,
-    ETH_RSS_IP,
+    rte_eth_rx_queue_setup,
+    rte_eth_rxconf,
     rte_eth_tx_mq_mode_ETH_MQ_TX_NONE as ETH_MQ_TX_NONE,
+    rte_eth_tx_queue_setup,
+    rte_eth_txconf,
+    rte_ether_addr,
+    rte_mbuf,
+    rte_mempool,
+    rte_pktmbuf_pool_create,
+    rte_socket_id,
+    ETH_LINK_FULL_DUPLEX,
+    ETH_LINK_UP,
+    ETH_RSS_IP,
+    RTE_ETHER_MAX_LEN,
+    RTE_ETH_DEV_NO_OWNER,
+    RTE_MAX_ETHPORTS,
+    RTE_MBUF_DEFAULT_BUF_SIZE,
 };
 use crate::runtime::LibOSRuntime;
+use anyhow::{
+    bail,
+    format_err,
+    Error,
+};
+use catnip::protocols::ethernet::MacAddress;
+use std::ffi::CString;
+use std::mem::MaybeUninit;
+use std::net::Ipv4Addr;
+use std::ptr;
+use std::time::Duration;
 
 macro_rules! expect_zero {
     ($name:ident ( $($arg: expr),* $(,)* )) => {{
@@ -54,8 +58,12 @@ macro_rules! expect_zero {
     }};
 }
 
-pub fn initialize_dpdk(local_ipv4_addr: Ipv4Addr, eal_init_args: &[CString]) -> Result<LibOSRuntime, Error> {
-    let eal_init_refs = eal_init_args.iter()
+pub fn initialize_dpdk(
+    local_ipv4_addr: Ipv4Addr,
+    eal_init_args: &[CString],
+) -> Result<LibOSRuntime, Error> {
+    let eal_init_refs = eal_init_args
+        .iter()
         .map(|s| s.as_ptr() as *mut u8)
         .collect::<Vec<_>>();
     unsafe {
@@ -65,7 +73,10 @@ pub fn initialize_dpdk(local_ipv4_addr: Ipv4Addr, eal_init_args: &[CString]) -> 
     if nb_ports == 0 {
         bail!("No ethernet ports available");
     }
-    eprintln!("DPDK reports that {} ports (interfaces) are available.", nb_ports);
+    eprintln!(
+        "DPDK reports that {} ports (interfaces) are available.",
+        nb_ports
+    );
 
     let name = CString::new("default_mbuf_pool").unwrap();
     let num_mbufs = 8191;
@@ -111,7 +122,12 @@ pub fn initialize_dpdk(local_ipv4_addr: Ipv4Addr, eal_init_args: &[CString]) -> 
         Err(format_err!("Invalid mac address"))?;
     }
 
-    Ok(LibOSRuntime::new(local_link_addr, local_ipv4_addr, port_id, mbuf_pool))
+    Ok(LibOSRuntime::new(
+        local_link_addr,
+        local_ipv4_addr,
+        port_id,
+        mbuf_pool,
+    ))
 }
 
 fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(), Error> {
@@ -154,24 +170,35 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
     tx_conf.tx_thresh.wthresh = tx_wthresh;
 
     unsafe {
-        expect_zero!(
-            rte_eth_dev_configure(
-                port_id,
-                rx_rings,
-                tx_rings,
-                &port_conf as *const _,
-            )
-        )?;
+        expect_zero!(rte_eth_dev_configure(
+            port_id,
+            rx_rings,
+            tx_rings,
+            &port_conf as *const _,
+        ))?;
     }
 
     let socket_id = 0;
 
     unsafe {
         for i in 0..rx_rings {
-            expect_zero!(rte_eth_rx_queue_setup(port_id, i, nb_rxd, socket_id, &rx_conf as *const _, mbuf_pool))?;
+            expect_zero!(rte_eth_rx_queue_setup(
+                port_id,
+                i,
+                nb_rxd,
+                socket_id,
+                &rx_conf as *const _,
+                mbuf_pool
+            ))?;
         }
         for i in 0..tx_rings {
-            expect_zero!(rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, &tx_conf as *const _))?;
+            expect_zero!(rte_eth_tx_queue_setup(
+                port_id,
+                i,
+                nb_txd,
+                socket_id,
+                &tx_conf as *const _
+            ))?;
         }
         expect_zero!(rte_eth_dev_start(port_id))?;
         rte_eth_promiscuous_enable(port_id);
@@ -203,7 +230,10 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
                 } else {
                     "half"
                 };
-                eprintln!("Port {} Link Up - speed {} Mbps - {} duplex", port_id, link.link_speed, duplex);
+                eprintln!(
+                    "Port {} Link Up - speed {} Mbps - {} duplex",
+                    port_id, link.link_speed, duplex
+                );
                 break;
             }
             rte_delay_us_block(sleep_duration.as_micros() as u32);

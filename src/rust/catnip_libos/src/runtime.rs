@@ -1,20 +1,37 @@
-use catnip::runtime::Runtime;
+use crate::bindings::{
+    rte_eth_dev,
+    rte_eth_devices,
+    rte_mbuf,
+    rte_mempool,
+};
 use catnip::protocols::ethernet::MacAddress;
-use catnip::protocols::{arp, tcp};
+use catnip::protocols::{
+    arp,
+    tcp,
+};
+use catnip::runtime::Runtime;
 use catnip::timer::Timer;
+use catnip::timer::{
+    TimerPtr,
+    WaitFuture,
+};
+use rand::distributions::{
+    Distribution,
+    Standard,
+};
+use rand::rngs::SmallRng;
+use rand::{
+    Rng,
+    SeedableRng,
+};
 use std::cell::RefCell;
 use std::mem;
-use std::ptr;
-use std::slice;
-use std::rc::Rc;
 use std::net::Ipv4Addr;
+use std::ptr;
+use std::rc::Rc;
+use std::slice;
 use std::time::Duration;
 use std::time::Instant;
-use catnip::timer::{TimerPtr, WaitFuture};
-use crate::bindings::{rte_eth_dev, rte_eth_devices, rte_mbuf, rte_mempool};
-use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
-use rand::distributions::{Standard, Distribution};
 
 #[derive(Clone)]
 pub struct TimerRc(Rc<Timer<TimerRc>>);
@@ -33,12 +50,27 @@ pub struct LibOSRuntime {
 extern "C" {
     fn catnip_libos_free_pkt(m: *mut rte_mbuf);
     fn catnip_libos_alloc_pkt(mp: *mut rte_mempool) -> *mut rte_mbuf;
-    fn catnip_libos_eth_tx_burst(port_id: u16, queue_id: u16, tx_pkts: *mut *mut rte_mbuf, nb_pkts: u16) -> u16;
-    fn catnip_libos_eth_rx_burst(port_id: u16, queue_id: u16, rx_pkts: *mut *mut rte_mbuf, nb_pkts: u16) -> u16;
+    fn catnip_libos_eth_tx_burst(
+        port_id: u16,
+        queue_id: u16,
+        tx_pkts: *mut *mut rte_mbuf,
+        nb_pkts: u16,
+    ) -> u16;
+    fn catnip_libos_eth_rx_burst(
+        port_id: u16,
+        queue_id: u16,
+        rx_pkts: *mut *mut rte_mbuf,
+        nb_pkts: u16,
+    ) -> u16;
 }
 
 impl LibOSRuntime {
-    pub fn new(link_addr: MacAddress, ipv4_addr: Ipv4Addr, dpdk_port_id: u16, dpdk_mempool: *mut rte_mempool) -> Self {
+    pub fn new(
+        link_addr: MacAddress,
+        ipv4_addr: Ipv4Addr,
+        dpdk_port_id: u16,
+        dpdk_mempool: *mut rte_mempool,
+    ) -> Self {
         let mut rng = rand::thread_rng();
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
@@ -54,7 +86,7 @@ impl LibOSRuntime {
             dpdk_mempool,
         };
         Self {
-            inner: Rc::new(RefCell::new(inner))
+            inner: Rc::new(RefCell::new(inner)),
         }
     }
 
@@ -65,7 +97,9 @@ impl LibOSRuntime {
         let mut packets: [*mut rte_mbuf; MAX_QUEUE_DEPTH] = unsafe { mem::zeroed() };
 
         // rte_eth_rx_burst is declared `inline` in the header.
-        let nb_rx = unsafe {catnip_libos_eth_rx_burst(dpdk_port, 0, packets.as_mut_ptr(), MAX_QUEUE_DEPTH as u16) };
+        let nb_rx = unsafe {
+            catnip_libos_eth_rx_burst(dpdk_port, 0, packets.as_mut_ptr(), MAX_QUEUE_DEPTH as u16)
+        };
         // let dev = unsafe { rte_eth_devices[dpdk_port as usize] };
         // let rx_burst = dev.rx_pkt_burst.expect("Missing RX burst function");
         // // This only supports queue_id 0.
@@ -73,7 +107,8 @@ impl LibOSRuntime {
 
         for &packet in &packets[..nb_rx as usize] {
             // auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
-            let p = unsafe { ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize) };;
+            let p =
+                unsafe { ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize) };
             let data = unsafe { slice::from_raw_parts(p, (*packet).data_len as usize) };
             packet_in(data);
             unsafe { catnip_libos_free_pkt(packet as *const _ as *mut _) };
@@ -145,7 +180,10 @@ impl Runtime for LibOSRuntime {
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let self_ = self.inner.borrow_mut();
         let now = self_.timer.0.now();
-        self_.timer.0.wait_until(self_.timer.clone(), now + duration)
+        self_
+            .timer
+            .0
+            .wait_until(self_.timer.clone(), now + duration)
     }
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
         let self_ = self.inner.borrow_mut();
@@ -156,7 +194,10 @@ impl Runtime for LibOSRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn rng_gen<T>(&self) -> T where Standard: Distribution<T> {
+    fn rng_gen<T>(&self) -> T
+    where
+        Standard: Distribution<T>,
+    {
         let mut self_ = self.inner.borrow_mut();
         self_.rng.gen()
     }
