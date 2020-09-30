@@ -1,13 +1,13 @@
-use catnip::protocols::tcp2::runtime::Runtime;
+use catnip::runtime::Runtime;
 use bytes::Bytes;
-use catnip::protocols::tcp2::peer::SocketDescriptor;
+use catnip::protocols::tcp::peer::SocketDescriptor;
 use catnip::fail::Fail;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
-use catnip::protocols::tcp2::peer::{
+use catnip::protocols::tcp::peer::{
     ConnectFuture,
     AcceptFuture,
     PushFuture,
@@ -31,7 +31,7 @@ impl<RT: Runtime> fmt::Debug for UserOperation<RT> {
 	    UserOperation::Connect(ref fut) => write!(f, "Connect{:?}", fut),
 	    UserOperation::Accept(ref fut) => write!(f, "Accept{:?}", fut),
 	    UserOperation::Push(ref fut) => write!(f, "Push{:?}", fut),
-	    UserOperation::Pop(ref fut) => write!(f, "Pop{:?}", fut),	    
+	    UserOperation::Pop(ref fut) => write!(f, "Pop{:?}", fut),
 	}
     }
 }

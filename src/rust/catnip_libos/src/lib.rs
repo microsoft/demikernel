@@ -9,10 +9,10 @@ mod qtoken;
 use futures::task::noop_waker_ref;
 use bytes::BytesMut;
 use std::convert::TryFrom;
-use catnip::engine::Engine2;
+use catnip::engine::Engine;
 use catnip::protocols::{ip, ipv4};
-use catnip::protocols::tcp2::peer::SocketDescriptor;
-use catnip::interop::fail_to_errno;
+use catnip::protocols::tcp::peer::SocketDescriptor;
+use catnip::runtime::Runtime;
 use catnip::logging;
 use std::time::Instant;
 use std::task::{Context, Poll};
@@ -39,8 +39,8 @@ use libc::{
     sockaddr_in,
 };
 
-struct Engine {
-    catnip: Engine2<crate::runtime::LibOSRuntime>,
+struct LibOS {
+    catnip: Engine<crate::runtime::LibOSRuntime>,
     qtokens: QTokenManager<crate::runtime::LibOSRuntime>,
     runtime: crate::runtime::LibOSRuntime,
 }
@@ -151,12 +151,12 @@ impl dmtr_qresult_t {
 }
 
 thread_local! {
-    static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
+    static LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
 }
-fn with_engine<T>(f: impl FnOnce(&mut Engine) -> T) -> T {
-    ENGINE.with(|e| {
-        let mut tls_engine = e.borrow_mut();
-        f(tls_engine.as_mut().expect("Uninitialized engine"))
+fn with_libos<T>(f: impl FnOnce(&mut LibOS) -> T) -> T {
+    LIBOS.with(|l| {
+        let mut tls_libos = l.borrow_mut();
+        f(tls_libos.as_mut().expect("Uninitialized engine"))
     })
 }
 
@@ -200,7 +200,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 		    .value_name("BYTES")
 		    .help("Packet size")
 		    .takes_value(true)
-            )		    
+            )
             .get_matches_from(&arguments);
 
         let config_path = matches.value_of("config")
@@ -238,24 +238,24 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
         let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args)?;
         logging::initialize();
-        Engine {
-            catnip: Engine2::new(runtime.clone())?,
+        LibOS {
+            catnip: Engine::new(runtime.clone())?,
             qtokens: QTokenManager::new(),
             runtime,
         }
     };
-    let engine = match r {
-        Ok(engine) => engine,
+    let libos = match r {
+        Ok(libos) => libos,
         Err(e) => {
             eprintln!("Initialization failure: {:?}", e);
             return libc::EINVAL;
         },
     };
 
-    ENGINE.with(move |e| {
-        let mut tls_engine = e.borrow_mut();
-        assert!(tls_engine.is_none());
-        *tls_engine = Some(engine);
+    LIBOS.with(move |l| {
+        let mut tls_libos = l.borrow_mut();
+        assert!(tls_libos.is_none());
+        *tls_libos = Some(libos);
     });
 
     0
@@ -267,10 +267,10 @@ pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
         eprintln!("Invalid socket: {:?}", (domain, socket_type, protocol));
         return libc::EINVAL;
     }
-    with_engine(|engine| {
-        let fd = engine.catnip.tcp_socket() as c_int;
+    with_libos(|libos| {
+        let fd = libos.catnip.tcp_socket() as c_int;
 	unsafe { *qd_out = fd };
-	0       
+	0
     })
 }
 
@@ -286,16 +286,16 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     let mut addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
     let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
 
-    with_engine(|engine| {
+    with_libos(|libos| {
         if addr.is_unspecified() {
-            addr = engine.catnip.options().my_ipv4_addr;
+            addr = libos.runtime.local_ipv4_addr();
         }
         let endpoint = ipv4::Endpoint::new(addr, port);
-        match engine.catnip.tcp_bind(qd as SocketDescriptor, endpoint) {
+        match libos.catnip.tcp_bind(qd as SocketDescriptor, endpoint) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("bind failed: {:?}", e);
-                fail_to_errno(&e)
+                e.errno()
             }
         }
     })
@@ -303,12 +303,12 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 
 #[no_mangle]
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
-    with_engine(|engine| {
-        match engine.catnip.tcp_listen2(fd as SocketDescriptor, backlog as usize) {
+    with_libos(|libos| {
+        match libos.catnip.tcp_listen(fd as SocketDescriptor, backlog as usize) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("listen failed: {:?}", e);
-                fail_to_errno(&e)
+                e.errno()
             }
         }
     })
@@ -316,9 +316,9 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
-    with_engine(|engine| {
-        let future = UserOperation::Accept(engine.catnip.tcp_accept_async(sockqd as SocketDescriptor));
-        let qtoken = engine.qtokens.insert(future);
+    with_libos(|libos| {
+        let future = UserOperation::Accept(libos.catnip.tcp_accept_async(sockqd as SocketDescriptor));
+        let qtoken = libos.qtokens.insert(future);
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -337,9 +337,9 @@ pub extern "C" fn dmtr_connect(qtok_out: *mut dmtr_qtoken_t, qd: c_int, saddr: *
     let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
     let endpoint = ipv4::Endpoint::new(addr, port);
 
-    with_engine(|engine| {
-        let future = UserOperation::Connect(engine.catnip.tcp_connect2(qd as SocketDescriptor, endpoint));
-        let qtoken = engine.qtokens.insert(future);
+    with_libos(|libos| {
+        let future = UserOperation::Connect(libos.catnip.tcp_connect(qd as SocketDescriptor, endpoint));
+        let qtoken = libos.qtokens.insert(future);
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -347,12 +347,12 @@ pub extern "C" fn dmtr_connect(qtok_out: *mut dmtr_qtoken_t, qd: c_int, saddr: *
 
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
-    with_engine(|engine| {
-        match engine.catnip.tcp_close(qd as SocketDescriptor) {
+    with_libos(|libos| {
+        match libos.catnip.tcp_close(qd as SocketDescriptor) {
             Ok(..) => 0,
             Err(e) =>  {
                 eprintln!("listen failed: {:?}", e);
-                fail_to_errno(&e)
+                e.errno()
             }
         }
     })
@@ -379,9 +379,9 @@ pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const
         buf.extend_from_slice(seg_slice);
     }
     let buf = buf.freeze();
-    with_engine(|engine| {
-        let future = UserOperation::Push(engine.catnip.tcp_push_async(qd as SocketDescriptor, buf));
-        let qtoken = engine.qtokens.insert(future);
+    with_libos(|libos| {
+        let future = UserOperation::Push(libos.catnip.tcp_push_async(qd as SocketDescriptor, buf));
+        let qtoken = libos.qtokens.insert(future);
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -395,9 +395,9 @@ pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const
 
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
-    with_engine(|engine| {
-        let future = UserOperation::Pop(engine.catnip.tcp_pop_async(qd as SocketDescriptor));
-        let qtoken = engine.qtokens.insert(future);
+    with_libos(|libos| {
+        let future = UserOperation::Pop(libos.catnip.tcp_pop_async(qd as SocketDescriptor));
+        let qtoken = libos.qtokens.insert(future);
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -405,10 +405,10 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    with_engine(|engine| {
+    with_libos(|libos| {
         let mut ctx = Context::from_waker(noop_waker_ref());
         let qt = qt as QToken;
-        match engine.qtokens.poll(qt, &mut ctx) {
+        match libos.qtokens.poll(qt, &mut ctx) {
             Poll::Ready((qd, r)) => {
                 unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
                 0
@@ -420,8 +420,8 @@ pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
 
 #[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
-    with_engine(|engine| {
-        if engine.qtokens.remove(qt as QToken) {
+    with_libos(|libos| {
+        if libos.qtokens.remove(qt as QToken) {
             0
         } else {
             libc::EINVAL
@@ -432,22 +432,22 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     let mut ctx = Context::from_waker(noop_waker_ref());
-    with_engine(|engine| {
+    with_libos(|libos| {
         loop {
-            match engine.qtokens.poll(qt, &mut ctx) {
+            match libos.qtokens.poll(qt, &mut ctx) {
                 Poll::Ready((qd, r)) => {
                     unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
                     return 0;
                 },
                 Poll::Pending => (),
             }
-            let catnip = &mut engine.catnip;
-            engine.runtime.receive(|p| {
+            let catnip = &mut libos.catnip;
+            libos.runtime.receive(|p| {
                 if let Err(e) = catnip.receive(p) {
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            engine.catnip.advance_clock(Instant::now());
+            libos.catnip.advance_clock(Instant::now());
         }
     })
 }
@@ -458,10 +458,10 @@ pub extern "C" fn dmtr_wait_any(qr_out: *mut dmtr_qresult_t, ready_offset: *mut 
     let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
     let mut ctx = Context::from_waker(noop_waker_ref());
 
-    with_engine(|engine| {
+    with_libos(|libos| {
         loop {
             for (i, &qt) in qts.iter().enumerate() {
-                match engine.qtokens.poll(qt, &mut ctx) {
+                match libos.qtokens.poll(qt, &mut ctx) {
                     Poll::Ready((qd, r)) => {
                         unsafe {
                             *qr_out = dmtr_qresult_t::pack(r, qd, qt);
@@ -472,13 +472,13 @@ pub extern "C" fn dmtr_wait_any(qr_out: *mut dmtr_qresult_t, ready_offset: *mut 
                     Poll::Pending => (),
                 }
             }
-            let catnip = &mut engine.catnip;
-            engine.runtime.receive(|p| {
+            let catnip = &mut libos.catnip;
+            libos.runtime.receive(|p| {
                 if let Err(e) = catnip.receive(p) {
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            engine.catnip.advance_clock(Instant::now());
+            libos.catnip.advance_clock(Instant::now());
         }
     })
 }

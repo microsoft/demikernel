@@ -9,7 +9,7 @@ pub use transcode::{
     UDP_HEADER_SIZE,
 };
 use crate::{
-    protocols::{ethernet2::MacAddress, ip, ipv4},
+    protocols::{ethernet::MacAddress, ip, ipv4},
 };
 use std::{convert::TryFrom, net::Ipv4Addr};
 

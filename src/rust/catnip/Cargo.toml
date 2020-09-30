@@ -21,7 +21,6 @@ float_duration = "0.3.3"
 futures = "0.3"
 futures-intrusive = { git = "https://github.com/sujayakar/futures-intrusive", rev = "13b113fdc67594bd09912d78acc8f8212127537d" }
 hashbrown = { version = "0.9", features = ["nightly"] }
-lazy_static = "1.4.0"
 libc = "0.2.70"
 log = "0.4"
 nom = "5.1.1"
@@ -33,7 +32,6 @@ rand_core = "0.5.1"
 serde = "1.0.110"
 serde_yaml = "0.8.12"
 spin = "0.5.2"
-fxhash = "0.2.1"
 # mimalloc = { version = "0.1.19", default-features = false }
 uniset = "0.2.0"
 unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "2c379b35d716df0091436ef38d011995a05fb4f9" }

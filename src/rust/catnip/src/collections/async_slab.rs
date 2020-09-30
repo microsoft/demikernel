@@ -99,8 +99,6 @@ mod tests {
     use futures::channel::oneshot;
     use futures::task::noop_waker_ref;
     use std::task::{Poll, Context};
-    use std::future::Future;
-    use std::pin::Pin;
     use must_let::must_let;
     use std::collections::HashMap;
 

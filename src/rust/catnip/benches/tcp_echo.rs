@@ -3,7 +3,7 @@ use bytes::{Bytes, BytesMut};
 use std::task::Poll;
 use catnip::event::Event;
 use must_let::must_let;
-use catnip::protocols::ethernet2::MacAddress;
+use catnip::protocols::ethernet::MacAddress;
 use std::net::Ipv4Addr;
 use std::task::Context;
 use futures::task::noop_waker_ref;
@@ -12,20 +12,20 @@ use catnip::options::Options;
 use std::time::Instant;
 use catnip::rand::Seed;
 use catnip::protocols::{arp, tcp, ip, ipv4};
-use catnip::protocols::tcp2::runtime::Runtime as RuntimeTrait;
+use catnip::protocols::tcp::runtime::Runtime as Runtime;
 use futures::Future;
 use std::pin::Pin;
 use std::convert::TryFrom;
-use catnip::protocols::tcp2::peer::Peer;
+use catnip::protocols::tcp::peer::Peer;
 
-pub fn send_datagram<RT: RuntimeTrait>(src: &Runtime, dst: &Peer<RT>) {
+pub fn send_datagram<RT: Runtime>(src: &Runtime, dst: &Peer<RT>) {
     must_let!(let Some(event) = src.pop_event());
     must_let!(let Event::Transmit(ref buf) = &*event);
     dst.receive_datagram(ipv4::Datagram::attach(&buf.borrow()).unwrap());
 }
 
 #[inline(never)]
-pub fn one_send_recv_round<RT: RuntimeTrait>(
+pub fn one_send_recv_round<RT: Runtime>(
     ctx: &mut Context,
     buf: Bytes,
 

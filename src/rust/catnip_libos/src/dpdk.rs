@@ -1,4 +1,4 @@
-use catnip::protocols::ethernet2::MacAddress;
+use catnip::protocols::ethernet::MacAddress;
 use std::time::Duration;
 use std::ptr;
 use std::mem::MaybeUninit;

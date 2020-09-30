@@ -16,6 +16,7 @@ anyhow = "1.0.32"
 hashbrown = { version = "0.9", features = ["nightly"] }
 bytes = "0.5.6"
 futures = "0.3"
+rand = { version = "0.7.3", features = ["small_rng"] }
 
 [build-dependencies]
 bindgen = "0.55.1"

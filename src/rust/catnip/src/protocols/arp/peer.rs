@@ -6,26 +6,26 @@ use super::{
     pdu::{ArpOp, ArpPdu},
 };
 use crate::{
-    protocols::ethernet2::{self, MacAddress},
+    protocols::ethernet::{self, MacAddress},
 };
 use crate::fail::Fail;
 use futures::FutureExt;
-use fxhash::FxHashMap;
+use hashbrown::HashMap;
 use std::future::Future;
 use std::{
     cell::RefCell, convert::TryFrom, mem::swap, net::Ipv4Addr, rc::Rc,
     time::Instant, pin::Pin, task::{Poll, Context},
 };
-use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
+use crate::runtime::Runtime;
 
 #[derive(Clone)]
-pub struct ArpPeer<RT: RuntimeTrait> {
+pub struct ArpPeer<RT: Runtime> {
     rt: RT,
     // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
 }
 
-impl<RT: RuntimeTrait> ArpPeer<RT> {
+impl<RT: Runtime> ArpPeer<RT> {
     pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>, Fail> {
         let options = rt.arp_options();
         let cache = ArpCache::new(now, Some(options.cache_ttl));
@@ -36,7 +36,7 @@ impl<RT: RuntimeTrait> ArpPeer<RT> {
     }
 
 
-    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<(), Fail> {
+    pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
         trace!("ArpPeer::receive(...)");
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
@@ -157,11 +157,11 @@ impl<RT: RuntimeTrait> ArpPeer<RT> {
         }
     }
 
-    pub fn export_cache(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
+    pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.cache.borrow().export()
     }
 
-    pub fn import_cache(&self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
+    pub fn import_cache(&self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.cache.borrow_mut().import(cache);
     }
 
@@ -170,7 +170,7 @@ impl<RT: RuntimeTrait> ArpPeer<RT> {
     }
 }
 
-impl<RT: RuntimeTrait> Future for ArpPeer<RT> {
+impl<RT: Runtime> Future for ArpPeer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, _ctx: &mut Context) -> Poll<!> {

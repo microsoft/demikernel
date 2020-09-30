@@ -56,3 +56,24 @@ impl From<TryFromIntError> for Fail {
         }
     }
 }
+
+impl Fail {
+    pub fn errno(&self) -> libc::c_int {
+        match self {
+            Fail::ConnectionAborted {} => libc::ECONNABORTED,
+            Fail::ConnectionRefused {} => libc::ECONNREFUSED,
+            Fail::Ignored { .. } => 0,
+            Fail::Malformed { .. } => libc::EILSEQ,
+            Fail::Misdelivered {} => libc::EHOSTUNREACH,
+            Fail::OutOfRange { .. } => libc::ERANGE,
+            Fail::ResourceBusy { .. } => libc::EBUSY,
+            Fail::ResourceExhausted { .. } => libc::ENOMEM,
+            Fail::ResourceNotFound { .. } => libc::ENOENT,
+            Fail::Timeout {} => libc::ETIMEDOUT,
+            Fail::TypeMismatch { .. } => libc::EPERM,
+            Fail::Unsupported { .. } => libc::ENOTSUP,
+            Fail::IoError {} => libc::EIO,
+            Fail::BorrowMutError {} => libc::EINVAL,
+        }
+    }
+}

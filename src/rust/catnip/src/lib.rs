@@ -27,11 +27,6 @@ extern crate nom;
 #[macro_use]
 extern crate derive_more;
 
-#[macro_use]
-extern crate lazy_static;
-
-pub mod event;
-pub mod interop;
 pub mod logging;
 pub mod options;
 pub mod protocols;
@@ -39,17 +34,11 @@ pub mod protocols;
 pub mod collections;
 pub mod engine;
 pub mod fail;
-pub mod result;
+pub mod timer;
 pub mod runtime;
-pub mod shims;
 
 #[cfg(test)]
-pub mod test;
-
-pub use engine::Engine;
-pub use event::Event;
-pub use options::Options;
-pub use runtime::Runtime;
+pub mod test_helpers;
 
 // #[global_allocator]
 // static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

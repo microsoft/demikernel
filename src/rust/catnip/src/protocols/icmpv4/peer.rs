@@ -27,9 +27,9 @@ use futures::{Stream, stream::FuturesUnordered};
 use hashbrown::HashMap;
 // TODO: Use unsync channel
 use futures::channel::oneshot::{channel, Sender};
-use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
+use crate::runtime::Runtime as Runtime;
 
-pub struct Icmpv4Peer<RT: RuntimeTrait> {
+pub struct Icmpv4Peer<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
     background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
@@ -41,7 +41,7 @@ struct Inner {
     ping_seq_num_counter: Wrapping<u16>,
 }
 
-impl<RT: RuntimeTrait> Icmpv4Peer<RT> {
+impl<RT: Runtime> Icmpv4Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> Icmpv4Peer<RT> {
         let inner = Inner {
             requests: HashMap::new(),
@@ -190,7 +190,7 @@ impl<RT: RuntimeTrait> Icmpv4Peer<RT> {
     }
 }
 
-impl<RT: RuntimeTrait> Future for Icmpv4Peer<RT> {
+impl<RT: Runtime> Future for Icmpv4Peer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {

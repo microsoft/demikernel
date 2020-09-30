@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use super::*;
-use crate::test;
+use crate::test_helpers;
 
 #[test]
 fn serialization() {
@@ -20,8 +20,8 @@ fn serialization() {
     header.frag_offset(0x1cde);
     header.ttl(DEFAULT_IPV4_TTL);
     header.protocol(Ipv4Protocol::Udp);
-    header.src_addr(*test::alice_ipv4_addr());
-    header.dest_addr(*test::bob_ipv4_addr());
+    header.src_addr(test_helpers::ALICE_IPV4);
+    header.dest_addr(test_helpers::BOB_IPV4);
     let header = Ipv4Header::new(&bytes);
     assert_eq!(IPV4_VERSION, header.version());
     assert_eq!(IPV4_IHL_NO_OPTIONS, header.ihl());
@@ -33,6 +33,6 @@ fn serialization() {
     assert_eq!(0x1cde, header.frag_offset());
     assert_eq!(DEFAULT_IPV4_TTL, header.ttl());
     assert_eq!(Ipv4Protocol::Udp, header.protocol().unwrap());
-    assert_eq!(*test::alice_ipv4_addr(), header.src_addr());
-    assert_eq!(*test::bob_ipv4_addr(), header.dest_addr());
+    assert_eq!(test_helpers::ALICE_IPV4, header.src_addr());
+    assert_eq!(test_helpers::BOB_IPV4, header.dest_addr());
 }

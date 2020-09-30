@@ -2,13 +2,12 @@
 // Licensed under the MIT license.
 
 use super::*;
-use crate::event::Event;
-use crate::test;
+use crate::test_helpers;
 use std::future::Future;
 use std::task::Poll;
 use futures::FutureExt;
 use futures::task::{Context, noop_waker_ref};
-use fxhash::FxHashMap;
+use hashbrown::HashMap;
 use std::{
     iter,
     time::{Duration, Instant},
@@ -36,28 +35,25 @@ fn ping() {
     let t0 = Instant::now();
     let now = t0;
     let timeout = Duration::from_secs(1);
-    let mut alice = test::new_alice(now);
+    let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
-            .collect::<FxHashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
+            .collect::<HashMap<_, _>>(),
     );
 
-    let mut bob = test::new_bob(now);
+    let mut bob = test_helpers::new_bob(now);
     bob.import_arp_cache(
-        iter::once((*test::alice_ipv4_addr(), *test::alice_link_addr()))
-            .collect::<FxHashMap<_, _>>(),
+        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC))
+            .collect::<HashMap<_, _>>(),
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout)).boxed_local();
+    let mut fut = alice.ping(test_helpers::BOB_IPV4, Some(timeout)).boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let ping_request = {
         alice.advance_clock(now);
-        let event = alice.pop_event().unwrap();
-        must_let!(let Event::Transmit(bytes) = &*event);
-        let bytes = bytes.borrow().to_vec();
-
+        let bytes = alice.rt().pop_frame();
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Request);
         bytes
@@ -68,10 +64,7 @@ fn ping() {
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
         bob.advance_clock(now);
-        let event = bob.pop_event().unwrap();
-        must_let!(let Event::Transmit(bytes) = &*event);
-        let bytes = bytes.borrow().to_vec();
-
+        let bytes = bob.rt().pop_frame();
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Reply);
         bytes
@@ -90,21 +83,19 @@ fn timeout() {
     // ensures that a ICMPv4 ping exchange succeeds.
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
-    let mut alice = test::new_alice(now);
+    let mut alice = test_helpers::new_alice(now);
     alice.import_arp_cache(
-        iter::once((*test::bob_ipv4_addr(), *test::bob_link_addr()))
-            .collect::<FxHashMap<_, _>>(),
+        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC))
+            .collect::<HashMap<_, _>>(),
     );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut fut = alice.ping(*test::bob_ipv4_addr(), Some(timeout)).boxed_local();
+    let mut fut = alice.ping(test_helpers::BOB_IPV4, Some(timeout)).boxed_local();
 
     alice.advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    let event = alice.pop_event().unwrap();
-    must_let!(let Event::Transmit(bytes) = &*event);
-    let bytes = bytes.borrow().to_vec();
+    let bytes = alice.rt().pop_frame();
     let echo = Icmpv4Echo::attach(bytes.as_slice()).unwrap();
     assert_eq!(echo.op(), Icmpv4EchoOp::Request);
 

@@ -4,8 +4,8 @@
 use super::{TcpSegmentEncoder, TcpSegmentOptions, MAX_TCP_HEADER_SIZE};
 use crate::{
     protocols::{ip, ipv4},
-    test,
 };
+use crate::test_helpers;
 use byteorder::{NetworkEndian, WriteBytesExt};
 use std::num::Wrapping;
 use std::convert::TryFrom;
@@ -27,10 +27,10 @@ fn checksum() {
     tcp_header.options(options);
     let mut ipv4_header = segment.ipv4().header();
     ipv4_header.protocol(ipv4::Protocol::Tcp);
-    ipv4_header.src_addr(*test::bob_ipv4_addr());
-    ipv4_header.dest_addr(*test::alice_ipv4_addr());
+    ipv4_header.src_addr(test_helpers::BOB_IPV4);
+    ipv4_header.dest_addr(test_helpers::ALICE_IPV4);
     let mut frame_header = segment.ipv4().frame().header();
-    frame_header.src_addr(*test::bob_link_addr());
-    frame_header.dest_addr(*test::alice_link_addr());
+    frame_header.src_addr(test_helpers::BOB_MAC);
+    frame_header.dest_addr(test_helpers::ALICE_MAC);
     let _ = segment.seal().unwrap();
 }

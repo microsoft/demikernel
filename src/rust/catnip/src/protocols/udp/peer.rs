@@ -6,7 +6,7 @@ use crate::{
     protocols::{arp, icmpv4, ip, ipv4},
 };
 use crate::fail::Fail;
-use fxhash::FxHashSet;
+use hashbrown::HashSet;
 use std::collections::VecDeque;
 use std::{
     cell::RefCell, convert::TryFrom, net::Ipv4Addr, rc::Rc,
@@ -14,22 +14,22 @@ use std::{
 use std::{task::{Context, Poll}, future::Future, pin::Pin};
 use futures::stream::FuturesUnordered;
 use futures::{Stream, FutureExt};
-use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
+use crate::runtime::Runtime as Runtime;
 
-pub struct UdpPeer<RT: RuntimeTrait> {
+pub struct UdpPeer<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
-    open_ports: FxHashSet<ip::Port>,
+    open_ports: HashSet<ip::Port>,
     background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
     queued_packets: VecDeque<UdpDatagram>,
 }
 
-impl<RT: RuntimeTrait> UdpPeer<RT> {
+impl<RT: Runtime> UdpPeer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> UdpPeer<RT> {
         UdpPeer {
             rt,
             arp,
-            open_ports: FxHashSet::default(),
+            open_ports: HashSet::default(),
             background_work: FuturesUnordered::new(),
             queued_packets: VecDeque::new(),
         }
@@ -173,7 +173,7 @@ impl<RT: RuntimeTrait> UdpPeer<RT> {
     }
 }
 
-impl<RT: RuntimeTrait> Future for UdpPeer<RT> {
+impl<RT: Runtime> Future for UdpPeer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {

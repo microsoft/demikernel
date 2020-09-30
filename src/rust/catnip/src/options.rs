@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::{arp, ethernet2::MacAddress, tcp};
+use crate::protocols::{arp, ethernet::MacAddress, tcp};
 use rand::{thread_rng, Rng};
 use std::net::Ipv4Addr;
 

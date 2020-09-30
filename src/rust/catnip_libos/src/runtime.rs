@@ -1,7 +1,7 @@
-use catnip::protocols::tcp2::runtime::Runtime;
-use catnip::protocols::ethernet2::MacAddress;
+use catnip::runtime::Runtime;
+use catnip::protocols::ethernet::MacAddress;
 use catnip::protocols::{arp, tcp};
-use catnip::runtime::Timer;
+use catnip::timer::Timer;
 use std::cell::RefCell;
 use std::mem;
 use std::ptr;
@@ -10,8 +10,11 @@ use std::rc::Rc;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 use std::time::Instant;
-use catnip::runtime::TimerPtr;
+use catnip::timer::{TimerPtr, WaitFuture};
 use crate::bindings::{rte_eth_dev, rte_eth_devices, rte_mbuf, rte_mempool};
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
+use rand::distributions::{Standard, Distribution};
 
 #[derive(Clone)]
 pub struct TimerRc(Rc<Timer<TimerRc>>);
@@ -36,12 +39,14 @@ extern "C" {
 
 impl LibOSRuntime {
     pub fn new(link_addr: MacAddress, ipv4_addr: Ipv4Addr, dpdk_port_id: u16, dpdk_mempool: *mut rte_mempool) -> Self {
+        let mut rng = rand::thread_rng();
+        let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
             ipv4_addr,
-            rng: 1,
+            rng,
             arp_options: arp::Options::default(),
             tcp_options: tcp::Options::default(),
 
@@ -82,7 +87,7 @@ struct Inner {
     timer: TimerRc,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
-    rng: u32,
+    rng: SmallRng,
     arp_options: arp::Options,
     tcp_options: tcp::Options,
 
@@ -135,7 +140,8 @@ impl Runtime for LibOSRuntime {
         self.inner.borrow_mut().timer.0.advance_clock(now);
     }
 
-    type WaitFuture = catnip::runtime::WaitFuture<TimerRc>;
+    type WaitFuture = WaitFuture<TimerRc>;
+
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
         let self_ = self.inner.borrow_mut();
         let now = self_.timer.0.now();
@@ -150,10 +156,8 @@ impl Runtime for LibOSRuntime {
         self.inner.borrow().timer.0.now()
     }
 
-    fn rng_gen_u32(&self) -> u32 {
+    fn rng_gen<T>(&self) -> T where Standard: Distribution<T> {
         let mut self_ = self.inner.borrow_mut();
-        let r = self_.rng;
-        self_.rng += 1;
-        r
+        self_.rng.gen()
     }
 }

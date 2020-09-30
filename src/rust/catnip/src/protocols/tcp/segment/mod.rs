@@ -4,9 +4,8 @@
 mod transcode;
 
 use bytes::{Bytes, BytesMut};
-use super::connection::TcpConnectionId;
 use crate::{
-    protocols::{ethernet2::MacAddress, ip, ipv4},
+    protocols::{ethernet::MacAddress, ip, ipv4},
 };
 use crate::fail::Fail;
 use std::{convert::TryFrom, net::Ipv4Addr, num::Wrapping};
@@ -106,13 +105,6 @@ impl TcpSegment {
     pub fn payload(mut self, bytes: Bytes) -> TcpSegment {
         self.payload = bytes;
         self
-    }
-
-    pub fn connection_id(self, cxnid: &TcpConnectionId) -> TcpSegment {
-        self.src_ipv4_addr(cxnid.local.address())
-            .src_port(cxnid.local.port())
-            .dest_ipv4_addr(cxnid.remote.address())
-            .dest_port(cxnid.remote.port())
     }
 
     pub fn decode(bytes: &[u8]) -> Result<TcpSegment, Fail> {

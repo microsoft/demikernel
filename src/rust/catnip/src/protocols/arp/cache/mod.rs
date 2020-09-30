@@ -7,8 +7,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{collections::HashTtlCache, protocols::ethernet2::MacAddress};
-use fxhash::FxHashMap;
+use crate::{collections::HashTtlCache, protocols::ethernet::MacAddress};
+use hashbrown::HashMap;
 use std::future::Future;
 use std::{
     net::Ipv4Addr,
@@ -25,19 +25,19 @@ struct Record {
 
 pub struct ArpCache {
     cache: HashTtlCache<Ipv4Addr, Record>,
-    rmap: FxHashMap<MacAddress, Ipv4Addr>,
+    rmap: HashMap<MacAddress, Ipv4Addr>,
 
     // TODO: Allow multiple waiters for the same address
     // TODO: Deregister waiters here when the receiver goes away.
-    waiters: FxHashMap<Ipv4Addr, Sender<MacAddress>>,
+    waiters: HashMap<Ipv4Addr, Sender<MacAddress>>,
 }
 
 impl ArpCache {
     pub fn new(now: Instant, default_ttl: Option<Duration>) -> ArpCache {
         ArpCache {
             cache: HashTtlCache::new(now, default_ttl),
-            rmap: FxHashMap::default(),
-            waiters: FxHashMap::default(),
+            rmap: HashMap::default(),
+            waiters: HashMap::default(),
         }
     }
 
@@ -118,9 +118,9 @@ impl ArpCache {
     pub fn try_evict(
         &mut self,
         count: usize,
-    ) -> FxHashMap<Ipv4Addr, MacAddress> {
+    ) -> HashMap<Ipv4Addr, MacAddress> {
         let evicted = self.cache.try_evict(count);
-        let mut result = FxHashMap::default();
+        let mut result = HashMap::default();
         for (k, v) in &evicted {
             self.rmap.remove(&v.link_addr);
             assert!(result.insert(*k, v.link_addr).is_none());
@@ -134,8 +134,8 @@ impl ArpCache {
         self.rmap.clear();
     }
 
-    pub fn export(&self) -> FxHashMap<Ipv4Addr, MacAddress> {
-        let mut map = FxHashMap::default();
+    pub fn export(&self) -> HashMap<Ipv4Addr, MacAddress> {
+        let mut map = HashMap::default();
         for (k, v) in self.cache.iter() {
             map.insert(*k, v.link_addr);
         }
@@ -143,7 +143,7 @@ impl ArpCache {
         map
     }
 
-    pub fn import(&mut self, cache: FxHashMap<Ipv4Addr, MacAddress>) {
+    pub fn import(&mut self, cache: HashMap<Ipv4Addr, MacAddress>) {
         self.clear();
         for (k, v) in &cache {
             self.insert(k.clone(), v.clone());

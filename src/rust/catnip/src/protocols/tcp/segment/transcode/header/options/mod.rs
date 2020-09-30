@@ -10,7 +10,7 @@ mod parsers;
 
 use crate::fail::Fail;
 use byteorder::{NetworkEndian, WriteBytesExt};
-use fxhash::FxHashMap;
+use hashbrown::HashMap;
 use num_traits::FromPrimitive;
 use std::convert::TryFrom;
 
@@ -90,11 +90,11 @@ impl TcpOption {
 }
 
 #[derive(Clone, Debug)]
-pub struct TcpSegmentOptions(FxHashMap<TcpOptionKind, TcpOption>);
+pub struct TcpSegmentOptions(HashMap<TcpOptionKind, TcpOption>);
 
 impl TcpSegmentOptions {
     pub fn new() -> TcpSegmentOptions {
-        TcpSegmentOptions(FxHashMap::default())
+        TcpSegmentOptions(HashMap::default())
     }
 
     pub fn parse(bytes: &[u8]) -> Result<TcpSegmentOptions, Fail> {

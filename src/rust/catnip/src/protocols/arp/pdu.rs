@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    protocols::ethernet2::{self, MacAddress},
+    protocols::ethernet::{self, MacAddress},
 };
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use num_traits::FromPrimitive;
@@ -149,13 +149,13 @@ impl ArpPdu {
             }
         };
 
-        let mut bytes = ethernet2::Frame::new_vec(ArpPdu::size());
-        let mut frame = ethernet2::FrameMut::attach(&mut bytes);
+        let mut bytes = ethernet::Frame::new_vec(ArpPdu::size());
+        let mut frame = ethernet::FrameMut::attach(&mut bytes);
         self.write(&mut frame.text())?;
         let mut header = frame.header();
         header.dest_addr(dest_addr);
         header.src_addr(self.sender_link_addr);
-        header.ether_type(ethernet2::EtherType::Arp);
+        header.ether_type(ethernet::EtherType::Arp);
         debug!("ArpPdu::to_datagram() -> `{:?}`", bytes);
         Ok(bytes)
     }

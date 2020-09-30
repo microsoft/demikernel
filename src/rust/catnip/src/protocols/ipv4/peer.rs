@@ -3,32 +3,32 @@
 
 use bytes::Bytes;
 use super::datagram::{Ipv4Datagram, Ipv4Protocol};
-use crate::protocols::tcp2::peer::SocketDescriptor;
+use crate::protocols::tcp::peer::SocketDescriptor;
 use crate::{
-    protocols::{arp, ethernet2, icmpv4, ip, ipv4, tcp2, udp},
+    protocols::{arp, ethernet, icmpv4, ip, ipv4, tcp, udp},
 };
 use crate::fail::Fail;
-use crate::protocols::tcp2::peer::ConnectFuture;
+use crate::protocols::tcp::peer::ConnectFuture;
 use std::future::Future;
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
     time::Duration, pin::Pin, task::{Poll, Context},
 };
-use crate::protocols::tcp2::runtime::Runtime as RuntimeTrait;
+use crate::runtime::Runtime as Runtime;
 
-pub struct Ipv4Peer<RT: RuntimeTrait> {
+pub struct Ipv4Peer<RT: Runtime> {
     rt: RT,
     icmpv4: icmpv4::Peer<RT>,
-    pub tcp: tcp2::Peer<RT>,
+    pub tcp: tcp::Peer<RT>,
     udp: udp::Peer<RT>,
 }
 
-impl<RT: RuntimeTrait> Ipv4Peer<RT> {
+impl<RT: Runtime> Ipv4Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> Ipv4Peer<RT> {
         let udp = udp::Peer::new(rt.clone(), arp.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
-        let tcp = tcp2::Peer::new(rt.clone(), arp);
+        let tcp = tcp::Peer::new(rt.clone(), arp);
         Ipv4Peer {
             rt,
             udp,
@@ -37,7 +37,7 @@ impl<RT: RuntimeTrait> Ipv4Peer<RT> {
         }
     }
 
-    pub fn receive(&mut self, frame: ethernet2::Frame<'_>) -> Result<(), Fail> {
+    pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
         trace!("Ipv4Peer::receive(...)");
         let datagram = Ipv4Datagram::try_from(frame)?;
         let header = datagram.header();
@@ -87,29 +87,12 @@ impl<RT: RuntimeTrait> Ipv4Peer<RT> {
         self.tcp.socket()
     }
 
-    pub fn tcp_connect(
-        &mut self,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> ConnectFuture<RT> {
-        self.tcp.connect(remote_endpoint)
+    pub fn tcp_connect(&mut self, handle: SocketDescriptor, remote_endpoint: ipv4::Endpoint) -> ConnectFuture<RT> {
+        self.tcp.connect(handle, remote_endpoint)
     }
 
-    pub fn tcp2_connect(
-        &mut self,
-        handle: SocketDescriptor,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> ConnectFuture<RT> {
-        self.tcp.connect2(handle, remote_endpoint)
-    }
-
-    pub fn tcp_listen(&mut self, port: ip::Port) -> Result<u16, Fail> {
-        let backlog = 256;
-        let endpoint = ipv4::Endpoint::new(self.rt.local_ipv4_addr(), port);
-        self.tcp.listen(endpoint, backlog)
-    }
-
-    pub fn tcp_listen2(&mut self, fd: SocketDescriptor, backlog: usize) -> Result<(), Fail> {
-        self.tcp.listen2(fd, backlog)
+    pub fn tcp_listen(&mut self, fd: SocketDescriptor, backlog: usize) -> Result<(), Fail> {
+        self.tcp.listen(fd, backlog)
     }
 
     pub fn tcp_bind(&mut self, fd: SocketDescriptor, endpoint: ipv4::Endpoint) -> Result<(), Fail> {
@@ -148,7 +131,10 @@ impl<RT: RuntimeTrait> Ipv4Peer<RT> {
     pub fn tcp_close(&mut self, handle: SocketDescriptor) -> Result<(), Fail> {
         self.tcp.close(handle)
     }
+}
 
+#[cfg(test)]
+impl<RT: Runtime> Ipv4Peer<RT> {
     pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize, Fail> {
         self.tcp.remote_mss(handle)
     }
@@ -156,16 +142,9 @@ impl<RT: RuntimeTrait> Ipv4Peer<RT> {
     pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration, Fail> {
         self.tcp.current_rto(handle)
     }
-
-    pub fn tcp_get_connection_id(
-        &self,
-        handle: SocketDescriptor,
-    ) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
-        self.tcp.endpoints(handle)
-    }
 }
 
-impl<RT: RuntimeTrait> Future for Ipv4Peer<RT> {
+impl<RT: Runtime> Future for Ipv4Peer<RT> {
     type Output = !;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
