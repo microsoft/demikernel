@@ -40,6 +40,7 @@ unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "2c379b35d716d
 parking_lot = "0.11.0"
 pin-project = "0.4.23"
 must-let = { git = "https://github.com/sujayakar/must-let" }
+slab = "0.4.2"
 
 [dev-dependencies]
 criterion = "0.3.3"
