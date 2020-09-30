@@ -37,7 +37,6 @@ pub mod fail;
 pub mod runtime;
 pub mod timer;
 
-#[cfg(test)]
 pub mod test_helpers;
 
 // #[global_allocator]

@@ -18,6 +18,7 @@ use futures::{
     },
     FutureExt,
 };
+use hashbrown::HashMap;
 use must_let::must_let;
 use std::{
     future::Future,
@@ -34,8 +35,11 @@ fn immediate_reply() {
     // tests to ensure that an are request results in a reply.
     let now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
+    alice.import_arp_cache(HashMap::new());
     let mut bob = test_helpers::new_bob(now);
+    bob.import_arp_cache(HashMap::new());
     let mut carrie = test_helpers::new_carrie(now);
+    carrie.import_arp_cache(HashMap::new());
 
     // this test is written based on certain assumptions.
     let options = alice.rt().arp_options();
@@ -80,8 +84,11 @@ fn slow_reply() {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
+    alice.import_arp_cache(HashMap::new());
     let mut bob = test_helpers::new_bob(now);
+    bob.import_arp_cache(HashMap::new());
     let mut carrie = test_helpers::new_carrie(now);
+    carrie.import_arp_cache(HashMap::new());
 
     // this test is written based on certain assumptions.
     let options = alice.rt().arp_options();
@@ -130,6 +137,7 @@ fn no_reply() {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
+    alice.import_arp_cache(HashMap::new());
     let options = alice.rt().arp_options();
 
     assert_eq!(options.retry_count, 2);

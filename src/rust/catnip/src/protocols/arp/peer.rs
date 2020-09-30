@@ -44,10 +44,14 @@ impl<RT: Runtime> ArpPeer<RT> {
     pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>, Fail> {
         let options = rt.arp_options();
         let cache = ArpCache::new(now, Some(options.cache_ttl));
-        Ok(ArpPeer {
+        let peer = ArpPeer {
             rt,
             cache: Rc::new(RefCell::new(cache)),
-        })
+        };
+        for (&ipv4_addr, &link_addr) in &options.initial_values {
+            peer.insert(ipv4_addr, link_addr);
+        }
+        Ok(peer)
     }
 
     pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {

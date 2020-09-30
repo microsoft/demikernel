@@ -10,11 +10,9 @@ use futures::{
     },
     FutureExt,
 };
-use hashbrown::HashMap;
 use must_let::must_let;
 use std::{
     future::Future,
-    iter,
     task::Poll,
     time::{
         Duration,
@@ -44,14 +42,7 @@ fn ping() {
     let now = t0;
     let timeout = Duration::from_secs(1);
     let mut alice = test_helpers::new_alice(now);
-    alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
-    );
-
     let mut bob = test_helpers::new_bob(now);
-    bob.import_arp_cache(
-        iter::once((test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC)).collect::<HashMap<_, _>>(),
-    );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice
@@ -92,9 +83,6 @@ fn timeout() {
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
     let mut alice = test_helpers::new_alice(now);
-    alice.import_arp_cache(
-        iter::once((test_helpers::BOB_IPV4, test_helpers::BOB_MAC)).collect::<HashMap<_, _>>(),
-    );
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice

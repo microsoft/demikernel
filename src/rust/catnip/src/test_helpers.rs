@@ -42,6 +42,8 @@ pub const BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
 pub const CARRIE_MAC: MacAddress = MacAddress::new([0xef, 0xcd, 0xab, 0x89, 0x67, 0x45]);
 pub const CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 
+pub type TestEngine = Engine<TestRuntime>;
+
 #[derive(Clone)]
 pub struct TestRuntime {
     inner: Rc<RefCell<Inner>>,
@@ -54,6 +56,14 @@ impl TestRuntime {
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
     ) -> Self {
+        let mut arp_options = arp::Options::default();
+        arp_options.retry_count = 2;
+        arp_options.cache_ttl = Duration::from_secs(600);
+        arp_options.request_timeout = Duration::from_secs(1);
+        arp_options.initial_values.insert(ALICE_IPV4, ALICE_MAC);
+        arp_options.initial_values.insert(BOB_IPV4, BOB_MAC);
+        arp_options.initial_values.insert(CARRIE_IPV4, CARRIE_MAC);
+
         let inner = Inner {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -62,7 +72,7 @@ impl TestRuntime {
             link_addr,
             ipv4_addr,
             tcp_options: tcp::Options::default(),
-            arp_options: arp::Options::default(),
+            arp_options,
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
