@@ -8,15 +8,15 @@ edition = "2018"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-catnip = { path = "../catnip" }
-libc = "0.2.77"
-clap = "2.33.3"
-yaml-rust = "0.4.4"
 anyhow = "1.0.32"
-hashbrown = { version = "0.9", features = ["nightly"] }
 bytes = "0.5.6"
+catnip = { path = "../catnip" }
+clap = "2.33.3"
 futures = "0.3"
+hashbrown = { version = "0.9", features = ["nightly"] }
+libc = "0.2.77"
 rand = { version = "0.7.3", features = ["small_rng"] }
+yaml-rust = "0.4.4"
 
 [build-dependencies]
 bindgen = "0.55.1"

@@ -19,10 +19,10 @@ use rand::{
         Distribution,
         Standard,
     },
+    rngs::SmallRng,
     Rng,
     SeedableRng,
 };
-use rand_chacha::ChaChaRng;
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -67,7 +67,7 @@ impl TestRuntime {
         let inner = Inner {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
-            rng: ChaChaRng::from_seed([0; 32]),
+            rng: SmallRng::from_seed([0; 16]),
             outgoing: VecDeque::new(),
             link_addr,
             ipv4_addr,
@@ -88,7 +88,7 @@ struct Inner {
     #[allow(unused)]
     name: &'static str,
     timer: TimerRc,
-    rng: ChaChaRng,
+    rng: SmallRng,
     outgoing: VecDeque<Vec<u8>>,
 
     link_addr: MacAddress,
