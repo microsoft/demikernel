@@ -97,19 +97,7 @@ add_custom_target(posix-echo)
 add_dependencies(posix-echo posix-server posix-client)
 
 add_custom_target(echo)
-add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo dmtr-dpdk-catnip-echo)
-
-# DPDK+catnip TCP server
-add_executable(dmtr-dpdk-catnip-server ${TCP_ECHO_SERVER_SOURCES})
-target_link_libraries(dmtr-dpdk-catnip-server dmtr-libos-dpdk-catnip yaml-cpp boost_program_options)
-
-# DPDK+catnip TCP client
-add_executable(dmtr-dpdk-catnip-client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(dmtr-dpdk-catnip-client dmtr-libos-dpdk-catnip yaml-cpp boost_program_options)
-
-# DPDK+catnip TCP client & server
-add_custom_target(dmtr-dpdk-catnip-echo)
-add_dependencies(dmtr-dpdk-catnip-echo dmtr-dpdk-catnip-server dmtr-dpdk-catnip-client)
+add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo catnip-libos-echo)
 
 # Catnip libos TCP server
 add_executable(catnip-libos-server ${TCP_ECHO_SERVER_SOURCES})
@@ -133,4 +121,3 @@ add_dependencies(catnip-libos-echo catnip-libos-server catnip-libos-client)
 # POSIX TCP client & server
 add_custom_target(dmtr-echo-store)
 add_dependencies(dmtr-echo-store  dmtr-posix-echo dmtr-spdk-rdma-echo dmtr-spdk-lwip-echo posix-echo)
-
