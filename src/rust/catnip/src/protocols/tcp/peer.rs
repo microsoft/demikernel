@@ -4,6 +4,7 @@ use super::{
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
+use std::fmt;
 use crate::{
     collections::async_map::FutureMap,
     fail::Fail,
@@ -575,8 +576,6 @@ impl<RT: Runtime> Inner<RT> {
         Poll::Ready(Ok(fd))
     }
 }
-
-use std::fmt;
 
 impl<RT: Runtime> fmt::Debug for ConnectFuture<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
