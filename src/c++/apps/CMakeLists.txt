@@ -8,9 +8,6 @@ add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
 add_redis(redis-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/redis-lwip)
 
 add_redis(redis-dpdk-catnip dmtr-catnip_libos ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
-target_link_libraries(redis-dpdk-catnip ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
-target_link_libraries(redis-dpdk-catnip dl)
-target_link_libraries(redis-dpdk-catnip ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
 
 set(REDIS_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/redis-vanilla)
 set(REDIS_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/redis-vanilla)
@@ -27,6 +24,3 @@ add_tapir(tapir-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/HoardRdma/sr
 add_tapir(tapir-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-lwip)
 
 add_tapir(tapir-dpdk-catnip dmtr-catnip_libos ${CMAKE_SOURCE_DIR}/submodules/Hoard/src/libhoard.so ${CMAKE_SOURCE_DIR}/submodules/tapir-dpdk-catnip)
-target_link_libraries(tapir-dpdk-catnip ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
-target_link_libraries(tapir-dpdk-catnip dl)
-target_link_libraries(tapir-dpdk-catnip ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
