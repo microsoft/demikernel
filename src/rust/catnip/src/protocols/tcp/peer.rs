@@ -537,7 +537,7 @@ impl<RT: Runtime> Inner<RT> {
         &mut self,
         fd: SocketDescriptor,
         context: &mut Context,
-    ) -> Poll<Result<SocketDescriptor, Fail>> {
+    ) -> Poll<Result<(), Fail>> {
         let key = match self.sockets.get(&fd) {
             Some(Socket::Connecting { local, remote }) => (*local, *remote),
             Some(..) => {
@@ -573,7 +573,7 @@ impl<RT: Runtime> Inner<RT> {
         self.sockets
             .insert(fd, Socket::Established { local, remote });
 
-        Poll::Ready(Ok(fd))
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -613,7 +613,7 @@ pub struct ConnectFuture<RT: Runtime> {
 }
 
 impl<RT: Runtime> Future for ConnectFuture<RT> {
-    type Output = Result<SocketDescriptor, Fail>;
+    type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();

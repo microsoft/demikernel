@@ -30,9 +30,10 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 #[repr(align(64))]
 pub struct WakerPage {
     refcount: AtomicU64,
+    notified: AtomicU64,
     ready: AtomicU64,
     waker: Arc<AtomicWaker>,
-    _unused: [u8; 40],
+    _unused: [u8; 32],
 }
 
 impl WakerPage {
@@ -43,19 +44,42 @@ impl WakerPage {
         unsafe {
             let page = ptr.as_mut();
             page.refcount.store(1, Ordering::SeqCst);
+            page.notified.store(0, Ordering::SeqCst);
             page.ready.store(0, Ordering::SeqCst);
             ptr::write(&mut page.waker as *mut _, waker);
         }
         WakerPageRef(ptr)
     }
 
-    pub fn wake(&self, ix: usize) {
+    pub fn notify(&self, ix: usize) {
+        debug_assert!(ix < 64);
+        self.notified.fetch_or(1 << ix, Ordering::SeqCst);
+    }
+
+    pub fn take_notified(&self) -> u64 {
+        self.notified.swap(0, Ordering::SeqCst)
+    }
+
+    pub fn mark_ready(&self, ix: usize) {
         debug_assert!(ix < 64);
         self.ready.fetch_or(1 << ix, Ordering::SeqCst);
     }
 
     pub fn get_ready(&self) -> u64 {
         self.ready.load(Ordering::SeqCst)
+    }
+
+    pub fn initialize(&self, ix: usize) {
+        debug_assert!(ix < 64);
+        self.notified.fetch_and(!(1 << ix), Ordering::SeqCst);
+        self.ready.fetch_or(1 << ix, Ordering::SeqCst);
+    }
+
+    pub fn unset(&self, ix: usize) {
+        debug_assert!(ix < 64);
+        let mask = !(1 << ix);
+        self.notified.fetch_and(mask, Ordering::SeqCst);
+        self.ready.fetch_and(mask, Ordering::SeqCst);
     }
 }
 
@@ -80,13 +104,6 @@ impl WakerPageRef {
         }
     }
 
-    pub fn take_ready(&self) -> u64 {
-        self.ready.swap(0, Ordering::SeqCst)
-    }
-
-    pub fn wake_many(&self, bitset: u64) {
-        self.ready.fetch_or(bitset, Ordering::SeqCst);
-    }
 }
 
 impl Clone for WakerPageRef {
@@ -141,7 +158,7 @@ impl WakerRef {
     fn wake_by_ref(&self) {
         let (base_ptr, offset) = self.base_ptr();
         let base = unsafe { &*base_ptr.as_ptr() };
-        base.wake(offset);
+        base.notify(offset);
     }
 
     fn wake(self) {
@@ -231,10 +248,10 @@ mod tests {
         q.wake();
         r.wake();
 
-        assert_eq!(p.take_ready(), 1 << 0 | 1 << 63);
+        assert_eq!(p.take_notified(), 1 << 0 | 1 << 63);
 
         s.wake();
 
-        assert_eq!(p.take_ready(), 1 << 16);
+        assert_eq!(p.take_notified(), 1 << 16);
     }
 }

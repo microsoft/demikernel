@@ -85,7 +85,7 @@ fn send_recv_loop() {
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
-    must_let!(let Poll::Ready(Ok(alice_fd)) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
 
     let size = 32;
     let buf = BytesMut::from(&vec![0u8; size][..]).freeze();

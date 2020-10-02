@@ -52,7 +52,7 @@ fn test_connect() {
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
-    must_let!(let Poll::Ready(Ok(alice_fd)) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
 
     // Send data from Alice to Bob
     let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
