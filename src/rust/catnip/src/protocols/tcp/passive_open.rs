@@ -17,7 +17,8 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
 };
 use hashbrown::{HashMap, HashSet};
 use std::{
@@ -35,7 +36,7 @@ use std::{
     time::Duration,
 };
 
-struct InflightAccept<RT: Runtime> {
+struct InflightAccept {
     local_isn: SeqNumber,
     remote_isn: SeqNumber,
     window_size: u32,
@@ -43,7 +44,7 @@ struct InflightAccept<RT: Runtime> {
     mss: usize,
 
     #[allow(unused)]
-    handle: BackgroundHandle<RT>,
+    handle: SchedulerHandle,
 }
 
 struct ReadySockets<RT: Runtime> {
@@ -78,7 +79,7 @@ impl<RT: Runtime> ReadySockets<RT> {
 }
 
 pub struct PassiveSocket<RT: Runtime> {
-    inflight: HashMap<ipv4::Endpoint, InflightAccept<RT>>,
+    inflight: HashMap<ipv4::Endpoint, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<RT>>>,
 
     max_backlog: usize,

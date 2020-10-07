@@ -492,7 +492,7 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
             libos.runtime.advance_clock(Instant::now());
 
             if handle.has_completed() {
-                let (qd, r) = match handle.take() {
+                let (qd, r) = match libos.runtime.scheduler.take(handle) {
                     Operation::Tcp(f) => f.expect_result(),
                     Operation::Background(..) => return libc::EINVAL,
                 };
@@ -529,7 +529,7 @@ pub extern "C" fn dmtr_wait_any(
                     None => return libc::EINVAL,
                 };
                 if handle.has_completed() {
-                    let (qd, r) = match handle.take() {
+                    let (qd, r) = match libos.runtime.scheduler.take(handle) {
                         Operation::Tcp(f) => f.expect_result(),
                         Operation::Background(..) => return libc::EINVAL,
                     };

@@ -13,7 +13,8 @@ use crate::{
         ipv4,
         tcp::segment::TcpSegment,
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
 };
 use bytes::Bytes;
 use std::{
@@ -24,7 +25,7 @@ use std::{
 pub struct EstablishedSocket<RT: Runtime> {
     pub cb: Rc<ControlBlock<RT>>,
     #[allow(unused)]
-    background_work: BackgroundHandle<RT>,
+    background_work: SchedulerHandle,
 }
 
 impl<RT: Runtime> EstablishedSocket<RT> {

@@ -32,8 +32,9 @@ pub struct WakerPage {
     refcount: AtomicU64,
     notified: AtomicU64,
     completed: AtomicU64,
+    dropped: AtomicU64,
     waker: Arc<AtomicWaker>,
-    _unused: [u8; 32],
+    _unused: [u8; 24],
 }
 
 impl WakerPage {
@@ -46,6 +47,7 @@ impl WakerPage {
             page.refcount.store(1, Ordering::SeqCst);
             page.notified.store(0, Ordering::SeqCst);
             page.completed.store(0, Ordering::SeqCst);
+            page.dropped.store(0, Ordering::SeqCst);
             ptr::write(&mut page.waker as *mut _, waker);
         }
         WakerPageRef(ptr)
@@ -54,10 +56,16 @@ impl WakerPage {
     pub fn notify(&self, ix: usize) {
         debug_assert!(ix < 64);
         self.notified.fetch_or(1 << ix, Ordering::SeqCst);
+        self.waker.wake();
     }
 
     pub fn take_notified(&self) -> u64 {
-        self.notified.swap(0, Ordering::SeqCst)
+        // Unset all ready bits, since spurious notifications for completed futures would lead
+        // us to poll them after completion.
+        let mut notified = self.notified.swap(0, Ordering::SeqCst);
+        notified &= !self.completed.load(Ordering::SeqCst);
+        notified &= !self.dropped.load(Ordering::SeqCst);
+        notified
     }
 
     pub fn has_completed(&self, ix: usize) -> bool {
@@ -65,19 +73,31 @@ impl WakerPage {
         self.completed.load(Ordering::SeqCst) & (1 << ix) != 0
     }
 
-    pub fn get_completed(&self) -> u64 {
-        self.completed.load(Ordering::SeqCst)
-    }
-
     pub fn mark_completed(&self, ix: usize) {
         debug_assert!(ix < 64);
         self.completed.fetch_or(1 << ix, Ordering::SeqCst);
+    }
+
+    pub fn mark_dropped(&self, ix: usize) {
+        debug_assert!(ix < 64);
+        self.dropped.fetch_or(1 << ix, Ordering::SeqCst);
+        self.waker.wake();
+    }
+
+    pub fn take_dropped(&self) -> u64 {
+        self.dropped.swap(0, Ordering::SeqCst)
+    }
+
+    pub fn was_dropped(&self, ix: usize) -> bool {
+        debug_assert!(ix < 64);
+        self.dropped.load(Ordering::SeqCst) & (1 << ix) != 0
     }
 
     pub fn initialize(&self, ix: usize) {
         debug_assert!(ix < 64);
         self.notified.fetch_or(1 << ix, Ordering::SeqCst);
         self.completed.fetch_and(!(1 << ix), Ordering::SeqCst);
+        self.dropped.fetch_and(!(1 << ix), Ordering::SeqCst);
     }
 
     pub fn clear(&self, ix: usize) {
@@ -85,6 +105,7 @@ impl WakerPage {
         let mask = !(1 << ix);
         self.notified.fetch_and(mask, Ordering::SeqCst);
         self.completed.fetch_and(mask, Ordering::SeqCst);
+        self.dropped.fetch_and(mask, Ordering::SeqCst);
     }
 }
 

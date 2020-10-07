@@ -16,7 +16,8 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
 };
 use std::{
     cell::RefCell,
@@ -47,7 +48,7 @@ pub struct ActiveOpenSocket<RT: Runtime> {
     arp: arp::Peer<RT>,
 
     #[allow(unused)]
-    handle: BackgroundHandle<RT>,
+    handle: SchedulerHandle,
     result: Rc<RefCell<ConnectResult<RT>>>,
 }
 

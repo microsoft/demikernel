@@ -8,7 +8,8 @@ use crate::{
         ethernet::MacAddress,
         tcp,
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
     timer::{
         Timer,
         TimerRc,
@@ -166,7 +167,7 @@ impl Runtime for TestRuntime {
         inner.rng.gen()
     }
 
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> BackgroundHandle<Self> {
+    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.inner.borrow().scheduler.insert(Operation::Background(future.boxed_local()))
     }
 }

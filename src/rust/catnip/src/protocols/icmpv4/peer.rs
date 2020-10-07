@@ -40,7 +40,8 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-use crate::runtime::{Runtime, BackgroundHandle};
+use crate::runtime::Runtime;
+use crate::scheduler::SchedulerHandle;
 // TODO: Use unsync channel
 use futures::channel::oneshot::{
     channel,
@@ -53,7 +54,7 @@ pub struct Icmpv4Peer<RT: Runtime> {
     arp: arp::Peer<RT>,
 
     #[allow(unused)]
-    handle: BackgroundHandle<RT>,
+    handle: SchedulerHandle,
     tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16)>,
 
     inner: Rc<RefCell<Inner>>,

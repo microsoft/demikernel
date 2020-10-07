@@ -14,7 +14,8 @@ use crate::{
         self,
         MacAddress,
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
 };
 use futures::FutureExt;
 use hashbrown::HashMap;
@@ -33,7 +34,7 @@ pub struct ArpPeer<RT: Runtime> {
     rt: RT,
     // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
-    background: Rc<BackgroundHandle<RT>>,
+    background: Rc<SchedulerHandle>,
 }
 
 impl<RT: Runtime> ArpPeer<RT> {

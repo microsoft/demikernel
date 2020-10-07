@@ -14,7 +14,8 @@ use crate::{
         ip,
         ipv4,
     },
-    runtime::{Runtime, BackgroundHandle},
+    runtime::Runtime,
+    scheduler::SchedulerHandle,
 };
 use futures::{
     StreamExt,
@@ -36,7 +37,7 @@ pub struct UdpPeer<RT: Runtime> {
     open_ports: HashSet<ip::Port>,
 
     #[allow(unused)]
-    handle: BackgroundHandle<RT>,
+    handle: SchedulerHandle,
     tx: mpsc::UnboundedSender<(Ipv4Addr, Vec<u8>)>,
 
     queued_packets: VecDeque<UdpDatagram>,
