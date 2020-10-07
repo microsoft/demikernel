@@ -85,7 +85,9 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
         match self.get_mut() {
             TcpOperation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
-            _ => todo!(),
+            TcpOperation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
+            TcpOperation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
+            TcpOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
 }

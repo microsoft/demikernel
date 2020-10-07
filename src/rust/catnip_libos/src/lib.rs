@@ -3,12 +3,8 @@
 
 mod bindings;
 mod dpdk;
-mod qtoken;
 mod runtime;
 
-use self::qtoken::{
-    UserOperationResult,
-};
 use anyhow::{
     format_err,
     Error,
@@ -21,6 +17,7 @@ use catnip::{
         ip,
         ipv4,
         tcp::peer::SocketDescriptor,
+	tcp::operations::TcpOperationResult,
     },
     scheduler::Operation,
     runtime::Runtime,
@@ -119,15 +116,15 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    fn pack(result: UserOperationResult, qd: SocketDescriptor, qt: u64) -> Self {
+    fn pack(result: TcpOperationResult, qd: SocketDescriptor, qt: u64) -> Self {
         match result {
-            UserOperationResult::Connect => Self {
+            TcpOperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
                 qr_qd: qd as c_int,
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },
             },
-            UserOperationResult::Accept(new_qd) => {
+            TcpOperationResult::Accept(new_qd) => {
                 let sin = unsafe { mem::zeroed() };
                 let qr_value = dmtr_qr_value_t {
                     ares: dmtr_accept_result_t {
@@ -142,13 +139,13 @@ impl dmtr_qresult_t {
                     qr_value,
                 }
             },
-            UserOperationResult::Push => Self {
+            TcpOperationResult::Push => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
                 qr_qd: qd as c_int,
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },
             },
-            UserOperationResult::Pop(bytes) => {
+            TcpOperationResult::Pop(bytes) => {
                 let buf: Box<[u8]> = bytes[..].into();
                 let ptr = Box::into_raw(buf);
                 let sgaseg = dmtr_sgaseg_t {
@@ -169,11 +166,8 @@ impl dmtr_qresult_t {
                     qr_value,
                 }
             },
-            UserOperationResult::Failed(e) => {
+            TcpOperationResult::Failed(e) => {
                 panic!("Unhandled error: {:?}", e);
-            },
-            UserOperationResult::InvalidToken => {
-                unimplemented!();
             },
         }
     }
@@ -458,7 +452,7 @@ pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
         if handle.has_completed() {
             let (qd, r) = match handle.take() {
                 Operation::Tcp(f) => f.expect_result(),
-                Operation::Background => return libc::EINVAL,
+                Operation::Background(..) => return libc::EINVAL,
             };
             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
             return 0;
@@ -475,6 +469,7 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
             Some(h) => h,
         };
         drop(handle);
+	0
     })
 }
 
@@ -494,12 +489,12 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            libos.catnip.advance_clock(Instant::now());
+            libos.runtime.advance_clock(Instant::now());
 
             if handle.has_completed() {
                 let (qd, r) = match handle.take() {
                     Operation::Tcp(f) => f.expect_result(),
-                    Operation::Background => return libc::EINVAL,
+                    Operation::Background(..) => return libc::EINVAL,
                 };
                 unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
                 return 0;
@@ -526,7 +521,7 @@ pub extern "C" fn dmtr_wait_any(
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            libos.catnip.advance_clock(Instant::now());
+            libos.runtime.advance_clock(Instant::now());
 
             for (i, &qt) in qts.iter().enumerate() {
                 let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
@@ -536,7 +531,7 @@ pub extern "C" fn dmtr_wait_any(
                 if handle.has_completed() {
                     let (qd, r) = match handle.take() {
                         Operation::Tcp(f) => f.expect_result(),
-                        Operation::Background => return libc::EINVAL,
+                        Operation::Background(..) => return libc::EINVAL,
                     };
                     unsafe {
                         *qr_out = dmtr_qresult_t::pack(r, qd, qt);
