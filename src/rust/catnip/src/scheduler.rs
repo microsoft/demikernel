@@ -2,6 +2,7 @@ use std::pin::Pin;
 use std::future::Future;
 use std::task::{Context, Poll};
 use gen_iter::gen_iter;
+use std::mem;
 use crate::runtime::Runtime;
 use crate::collections::waker_page::{
     WakerPage,
@@ -60,20 +61,26 @@ fn iter_set_bits(mut bitset: u64) -> impl Iterator<Item=usize> {
 }
 
 pub struct SchedulerHandle<F: Future<Output = ()> + Unpin> {
-    key: Option<usize>,
+    key: Option<u64>,
     inner: Rc<RefCell<Inner<F>>>,
 }
 
 impl<F: Future<Output = ()> + Unpin> SchedulerHandle<F> {
-    fn has_completed(&self) -> bool {
+    pub fn has_completed(&self) -> bool {
         let inner = self.inner.borrow();
         let (page, subpage_ix) = inner.page(self.key.unwrap());
         page.has_completed(subpage_ix)
     }
 
-    fn take(mut self) -> F {
+    pub fn take(mut self) -> F {
         let key = self.key.take().unwrap();
         self.inner.borrow_mut().remove(key)
+    }
+
+    pub fn into_raw(mut self) -> u64 {
+        let key = self.key.take().unwrap();
+        mem::forget(self);
+        key
     }
 }
 
@@ -109,6 +116,13 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         Self { inner: Rc::new(RefCell::new(inner)) }
     }
 
+    pub unsafe fn from_raw_handle(&self, key: u64) -> SchedulerHandle<F> {
+        SchedulerHandle {
+            key: Some(key),
+            inner: self.inner.clone()
+        }
+    }
+
     pub fn insert(&self, future: F) -> SchedulerHandle<F> {
         let key = self.inner.borrow_mut().insert(future);
         SchedulerHandle {
@@ -129,23 +143,24 @@ struct Inner<F: Future<Output = ()> + Unpin> {
 }
 
 impl<F: Future<Output = ()> + Unpin> Inner<F> {
-    fn page(&self, key: usize) -> (&WakerPageRef, usize) {
+    fn page(&self, key: u64) -> (&WakerPageRef, usize) {
+        let key = key as usize;
         let (page_ix, subpage_ix) = (key / WAKER_PAGE_SIZE, key % WAKER_PAGE_SIZE);
         (&self.pages[page_ix], subpage_ix)
     }
 
-    fn insert(&mut self, future: F) -> usize {
+    fn insert(&mut self, future: F) -> u64 {
         let key = self.slab.insert(future);
         while key >= self.pages.len() * WAKER_PAGE_SIZE {
             self.pages.push(WakerPage::new(self.root_waker.clone()));
         }
-        let (page, subpage_ix) = self.page(key);
+        let (page, subpage_ix) = self.page(key as u64);
         page.initialize(subpage_ix);
-        key
+        key as u64
     }
 
-    fn remove(&mut self, key: usize) -> F {
-        let f = self.slab.remove(key);
+    fn remove(&mut self, key: u64) -> F {
+        let f = self.slab.remove(key as usize);
         let (page, subpage_ix) = self.page(key);
         page.clear(subpage_ix);
         f

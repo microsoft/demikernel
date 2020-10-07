@@ -7,9 +7,6 @@ mod qtoken;
 mod runtime;
 
 use self::qtoken::{
-    QToken,
-    QTokenManager,
-    UserOperation,
     UserOperationResult,
 };
 use anyhow::{
@@ -68,7 +65,6 @@ use libc::{
 
 struct LibOS {
     catnip: Engine<crate::runtime::LibOSRuntime>,
-    qtokens: QTokenManager<crate::runtime::LibOSRuntime>,
     runtime: crate::runtime::LibOSRuntime,
 }
 
@@ -273,7 +269,6 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         logging::initialize();
         LibOS {
             catnip: Engine::new(runtime.clone())?,
-            qtokens: QTokenManager::new(),
             runtime,
         }
     };
@@ -358,9 +353,9 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        let future =
-            UserOperation::Accept(libos.catnip.tcp_accept_async(sockqd as SocketDescriptor));
-        let qtoken = libos.qtokens.insert(future);
+        let future = libos.catnip.tcp_accept_async(sockqd as SocketDescriptor);
+        let handle = libos.runtime.scheduler.insert(future.into());
+        let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -385,9 +380,9 @@ pub extern "C" fn dmtr_connect(
     let endpoint = ipv4::Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        let future =
-            UserOperation::Connect(libos.catnip.tcp_connect(qd as SocketDescriptor, endpoint));
-        let qtoken = libos.qtokens.insert(future);
+        let future = libos.catnip.tcp_connect(qd as SocketDescriptor, endpoint);
+        let handle = libos.runtime.scheduler.insert(future.into());
+        let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -433,24 +428,20 @@ pub extern "C" fn dmtr_push(
     }
     let buf = buf.freeze();
     with_libos(|libos| {
-        let future = UserOperation::Push(libos.catnip.tcp_push_async(qd as SocketDescriptor, buf));
-        let qtoken = libos.qtokens.insert(future);
+        let future = libos.catnip.tcp_push_async(qd as SocketDescriptor, buf);
+        let handle = libos.runtime.scheduler.insert(future.into());
+        let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
     })
 }
 
-// TODO:
-// 1) Finish pop/poll/drop/wait/wait_any
-// 2) Hook up DPDK to runtime
-// 3) Write main loop that polls incoming packets, user tasks, background tasks
-// 4) Fix up dmtr_sgafree stuff
-
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = UserOperation::Pop(libos.catnip.tcp_pop_async(qd as SocketDescriptor));
-        let qtoken = libos.qtokens.insert(future);
+        let future = libos.catnip.tcp_pop_async(qd as SocketDescriptor);
+        let handle = libos.runtime.scheduler.insert(future.into());
+        let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
     })
@@ -458,49 +449,52 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    with_libos(|libos| {
-        let mut ctx = Context::from_waker(noop_waker_ref());
-        let qt = qt as QToken;
-        match libos.qtokens.poll(qt, &mut ctx) {
-            Poll::Ready((qd, r)) => {
-                unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-                0
-            },
-            Poll::Pending => libc::EAGAIN,
-        }
-    })
+    // with_libos(|libos| {
+    //     let mut ctx = Context::from_waker(noop_waker_ref());
+    //     let qt = qt as QToken;
+    //     match libos.qtokens.poll(qt, &mut ctx) {
+    //         Poll::Ready((qd, r)) => {
+    //             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+    //             0
+    //         },
+    //         Poll::Pending => libc::EAGAIN,
+    //     }
+    // })
+    todo!();
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
-    with_libos(|libos| {
-        if libos.qtokens.remove(qt as QToken) {
-            0
-        } else {
-            libc::EINVAL
-        }
-    })
+    // with_libos(|libos| {
+    //     if libos.qtokens.remove(qt as QToken) {
+    //         0
+    //     } else {
+    //         libc::EINVAL
+    //     }
+    // })
+    todo!();
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    let mut ctx = Context::from_waker(noop_waker_ref());
-    with_libos(|libos| loop {
-        match libos.qtokens.poll(qt, &mut ctx) {
-            Poll::Ready((qd, r)) => {
-                unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-                return 0;
-            },
-            Poll::Pending => (),
-        }
-        let catnip = &mut libos.catnip;
-        libos.runtime.receive(|p| {
-            if let Err(e) = catnip.receive(p) {
-                eprintln!("Dropped packet: {:?}", e);
-            }
-        });
-        libos.catnip.advance_clock(Instant::now());
-    })
+    // let mut ctx = Context::from_waker(noop_waker_ref());
+    // with_libos(|libos| loop {
+    //     match libos.qtokens.poll(qt, &mut ctx) {
+    //         Poll::Ready((qd, r)) => {
+    //             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+    //             return 0;
+    //         },
+    //         Poll::Pending => (),
+    //     }
+    //     let catnip = &mut libos.catnip;
+    //     libos.runtime.receive(|p| {
+    //         if let Err(e) = catnip.receive(p) {
+    //             eprintln!("Dropped packet: {:?}", e);
+    //         }
+    //     });
+    //     libos.catnip.advance_clock(Instant::now());
+    // })
+    todo!();
 }
 
 #[no_mangle]
@@ -510,30 +504,31 @@ pub extern "C" fn dmtr_wait_any(
     qts: *mut dmtr_qtoken_t,
     num_qts: c_int,
 ) -> c_int {
-    let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
-    let mut ctx = Context::from_waker(noop_waker_ref());
+    // let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
+    // let mut ctx = Context::from_waker(noop_waker_ref());
 
-    with_libos(|libos| loop {
-        for (i, &qt) in qts.iter().enumerate() {
-            match libos.qtokens.poll(qt, &mut ctx) {
-                Poll::Ready((qd, r)) => {
-                    unsafe {
-                        *qr_out = dmtr_qresult_t::pack(r, qd, qt);
-                        *ready_offset = i as c_int;
-                    };
-                    return 0;
-                },
-                Poll::Pending => (),
-            }
-        }
-        let catnip = &mut libos.catnip;
-        libos.runtime.receive(|p| {
-            if let Err(e) = catnip.receive(p) {
-                eprintln!("Dropped packet: {:?}", e);
-            }
-        });
-        libos.catnip.advance_clock(Instant::now());
-    })
+    // with_libos(|libos| loop {
+    //     for (i, &qt) in qts.iter().enumerate() {
+    //         match libos.qtokens.poll(qt, &mut ctx) {
+    //             Poll::Ready((qd, r)) => {
+    //                 unsafe {
+    //                     *qr_out = dmtr_qresult_t::pack(r, qd, qt);
+    //                     *ready_offset = i as c_int;
+    //                 };
+    //                 return 0;
+    //             },
+    //             Poll::Pending => (),
+    //         }
+    //     }
+    //     let catnip = &mut libos.catnip;
+    //     libos.runtime.receive(|p| {
+    //         if let Err(e) = catnip.receive(p) {
+    //             eprintln!("Dropped packet: {:?}", e);
+    //         }
+    //     });
+    //     libos.catnip.advance_clock(Instant::now());
+    // })
+    todo!();
 }
 
 #[no_mangle]

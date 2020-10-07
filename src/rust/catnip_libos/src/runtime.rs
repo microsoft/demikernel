@@ -4,13 +4,14 @@ use crate::bindings::{
     rte_mbuf,
     rte_mempool,
 };
+use catnip::scheduler::{SchedulerHandle, Operation};
 use catnip::{
     protocols::{
         arp,
         ethernet::MacAddress,
         tcp,
     },
-    runtime::Runtime,
+    runtime::{BackgroundHandle, Runtime},
     timer::{
         Timer,
         TimerPtr,
@@ -51,6 +52,7 @@ impl TimerPtr for TimerRc {
 #[derive(Clone)]
 pub struct LibOSRuntime {
     inner: Rc<RefCell<Inner>>,
+    pub scheduler: Scheduler<Operation<Self>>,
 }
 
 extern "C" {
@@ -93,6 +95,7 @@ impl LibOSRuntime {
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
+            scheduler: Scheduler::new(),
         }
     }
 
@@ -207,5 +210,9 @@ impl Runtime for LibOSRuntime {
     {
         let mut self_ = self.inner.borrow_mut();
         self_.rng.gen()
+    }
+
+    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> BackgroundHandle<Self> {
+        self.scheduler.insert(Operation::Background(future.boxed_local()))
     }
 }
