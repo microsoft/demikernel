@@ -115,7 +115,7 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
 
     pub fn from_raw_handle(&self, key: u64) -> Option<SchedulerHandle> {
         let inner = self.inner.borrow();
-        if inner.slab.contains(key as usize) {
+        if !inner.slab.contains(key as usize) {
             return None;
         }
         let (page, _) = inner.page(key);

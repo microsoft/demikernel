@@ -13,7 +13,7 @@ use catnip::{
         ethernet::MacAddress,
         tcp,
     },
-    runtime::{BackgroundHandle, Runtime},
+    runtime::Runtime,
     timer::{
         Timer,
         TimerPtr,
@@ -214,7 +214,7 @@ impl Runtime for LibOSRuntime {
         self_.rng.gen()
     }
 
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> BackgroundHandle<Self> {
+    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.scheduler.insert(Operation::Background(future.boxed_local()))
     }
 }
