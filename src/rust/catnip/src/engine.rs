@@ -11,26 +11,21 @@ use crate::{
         },
         ip,
         ipv4,
-        tcp::peer::{
+        tcp::peer::SocketDescriptor,
+        tcp::operations::{
             AcceptFuture,
             ConnectFuture,
             PopFuture,
             PushFuture,
-            SocketDescriptor,
         },
     },
     runtime::Runtime,
 };
 use bytes::Bytes;
-use futures::task::{
-    noop_waker_ref,
-    Context,
-};
 use hashbrown::HashMap;
 use std::{
     future::Future,
     net::Ipv4Addr,
-    pin::Pin,
     time::{
         Duration,
         Instant,
@@ -184,13 +179,5 @@ impl<RT: Runtime> Engine<RT> {
     #[cfg(test)]
     pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration, Fail> {
         self.ipv4.tcp_rto(handle)
-    }
-
-    pub fn advance_clock(&mut self, now: Instant) {
-        self.rt.advance_clock(now);
-
-        let mut ctx = Context::from_waker(noop_waker_ref());
-        assert!(Future::poll(Pin::new(&mut self.arp), &mut ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut self.ipv4), &mut ctx).is_pending());
     }
 }

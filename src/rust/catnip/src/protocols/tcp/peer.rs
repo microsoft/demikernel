@@ -4,9 +4,7 @@ use super::{
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
-use std::fmt;
 use crate::{
-    collections::async_map::FutureMap,
     fail::Fail,
     protocols::{
         arp,
@@ -17,6 +15,13 @@ use crate::{
             TcpSegmentDecoder,
             TcpSegmentEncoder,
         },
+        tcp::operations::{
+            AcceptFuture,
+            ConnectFuture,
+            PopFuture,
+            PushFuture,
+            ConnectFutureState,
+        },
     },
     runtime::Runtime,
 };
@@ -26,8 +31,6 @@ use std::{
     cell::RefCell,
     collections::VecDeque,
     convert::TryFrom,
-    future::Future,
-    pin::Pin,
     rc::Rc,
     task::{
         Context,
@@ -39,7 +42,7 @@ use std::{
 pub type SocketDescriptor = u16;
 
 pub struct Peer<RT: Runtime> {
-    inner: Rc<RefCell<Inner<RT>>>,
+    pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
 impl<RT: Runtime> Peer<RT> {
@@ -119,9 +122,8 @@ impl<RT: Runtime> Peer<RT> {
         };
         let passive = inner
             .passive
-            .get_pin_mut(local)
-            .expect("sockets/local inconsistency")
-            .get_mut();
+            .get_mut(local)
+            .expect("sockets/local inconsistency");
         let cb = match passive.accept()? {
             Some(e) => e,
             None => return Ok(None),
@@ -365,22 +367,6 @@ impl<RT: Runtime> Peer<RT> {
     }
 }
 
-impl<RT: Runtime> Future for Peer<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<!> {
-        let mut inner = self.inner.borrow_mut();
-
-        // TODO: We never remove sockets from the map here.
-        assert!(FutureMap::poll(Pin::new(&mut inner.connecting), context).is_pending());
-        assert!(FutureMap::poll(Pin::new(&mut inner.passive), context).is_pending());
-        assert!(FutureMap::poll(Pin::new(&mut inner.established), context).is_pending());
-
-        // TODO: Poll ARP cache.
-        Poll::Pending
-    }
-}
-
 enum Socket {
     Inactive {
         local: Option<ipv4::Endpoint>,
@@ -407,9 +393,9 @@ pub struct Inner<RT: Runtime> {
     // FD -> local port
     sockets: HashMap<SocketDescriptor, Socket>,
 
-    passive: FutureMap<ipv4::Endpoint, PassiveSocket<RT>>,
-    connecting: FutureMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
-    established: FutureMap<(ipv4::Endpoint, ipv4::Endpoint), EstablishedSocket<RT>>,
+    passive: HashMap<ipv4::Endpoint, PassiveSocket<RT>>,
+    connecting: HashMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
+    established: HashMap<(ipv4::Endpoint, ipv4::Endpoint), EstablishedSocket<RT>>,
 
     rt: RT,
     arp: arp::Peer<RT>,
@@ -425,9 +411,9 @@ impl<RT: Runtime> Inner<RT> {
                 .map(|p| ip::Port::try_from(p).unwrap())
                 .collect(),
             sockets: HashMap::new(),
-            passive: FutureMap::new(),
-            connecting: FutureMap::new(),
-            established: FutureMap::new(),
+            passive: HashMap::new(),
+            connecting: HashMap::new(),
+            established: HashMap::new(),
             rt,
             arp,
         }
@@ -467,12 +453,12 @@ impl<RT: Runtime> Inner<RT> {
             if let Some(s) = self.established.get(&key) {
                 return s.receive_segment(segment);
             }
-            if let Some(s) = self.connecting.get_pin_mut(&key) {
+            if let Some(s) = self.connecting.get_mut(&key) {
                 return s.receive_segment(segment);
             }
             let (local, _) = key;
-            if let Some(s) = self.passive.get_pin_mut(&local) {
-                return s.get_mut().receive_segment(segment)?;
+            if let Some(s) = self.passive.get_mut(&local) {
+                return s.receive_segment(segment)?;
             }
 
             // The packet isn't for an open port; send a RST segment.
@@ -533,7 +519,7 @@ impl<RT: Runtime> Inner<RT> {
         Ok(())
     }
 
-    fn poll_connect_finished(
+    pub(super) fn poll_connect_finished(
         &mut self,
         fd: SocketDescriptor,
         context: &mut Context,
@@ -549,7 +535,7 @@ impl<RT: Runtime> Inner<RT> {
         };
 
         let result = {
-            let socket = match self.connecting.get_pin_mut(&key) {
+            let socket = match self.connecting.get_mut(&key) {
                 Some(s) => s,
                 None => {
                     return Poll::Ready(Err(Fail::Malformed {
@@ -574,114 +560,5 @@ impl<RT: Runtime> Inner<RT> {
             .insert(fd, Socket::Established { local, remote });
 
         Poll::Ready(Ok(()))
-    }
-}
-
-impl<RT: Runtime> fmt::Debug for ConnectFuture<RT> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Future({})", self.fd)
-    }
-}
-
-impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Future({})", self.fd)
-    }
-}
-
-impl<RT: Runtime> fmt::Debug for PushFuture<RT> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Future({})", self.fd)
-    }
-}
-
-impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Future({})", self.fd)
-    }
-}
-
-enum ConnectFutureState {
-    Failed(Fail),
-    InProgress,
-}
-
-pub struct ConnectFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
-    state: ConnectFutureState,
-    inner: Rc<RefCell<Inner<RT>>>,
-}
-
-impl<RT: Runtime> Future for ConnectFuture<RT> {
-    type Output = Result<(), Fail>;
-
-    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        match self_.state {
-            ConnectFutureState::Failed(ref e) => Poll::Ready(Err(e.clone())),
-            ConnectFutureState::InProgress => self_
-                .inner
-                .borrow_mut()
-                .poll_connect_finished(self_.fd, context),
-        }
-    }
-}
-
-pub struct AcceptFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
-    inner: Rc<RefCell<Inner<RT>>>,
-}
-
-impl<RT: Runtime> Future for AcceptFuture<RT> {
-    type Output = Result<SocketDescriptor, Fail>;
-
-    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        let peer = Peer {
-            inner: self_.inner.clone(),
-        };
-        match peer.accept(self_.fd) {
-            Ok(Some(fd)) => Poll::Ready(Ok(fd)),
-            Ok(None) => Poll::Pending,
-            Err(e) => Poll::Ready(Err(e)),
-        }
-    }
-}
-
-pub struct PushFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
-    err: Option<Fail>,
-    _marker: std::marker::PhantomData<RT>,
-}
-
-impl<RT: Runtime> Future for PushFuture<RT> {
-    type Output = Result<(), Fail>;
-
-    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
-        match self.get_mut().err.take() {
-            None => Poll::Ready(Ok(())),
-            Some(e) => Poll::Ready(Err(e)),
-        }
-    }
-}
-
-pub struct PopFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
-    inner: Rc<RefCell<Inner<RT>>>,
-}
-
-impl<RT: Runtime> Future for PopFuture<RT> {
-    type Output = Result<Bytes, Fail>;
-
-    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        let peer = Peer {
-            inner: self_.inner.clone(),
-        };
-        match peer.recv(self_.fd) {
-            Ok(Some(bytes)) => Poll::Ready(Ok(bytes)),
-            Ok(None) => Poll::Pending,
-            Err(e) => Poll::Ready(Err(e)),
-        }
     }
 }

@@ -16,15 +16,13 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
 };
-use pin_project::pin_project;
 use std::{
     cell::RefCell,
     convert::TryInto,
     future::Future,
     num::Wrapping,
-    pin::Pin,
     rc::Rc,
     task::{
         Context,
@@ -34,9 +32,11 @@ use std::{
     time::Duration,
 };
 
-type BackgroundFuture<RT: Runtime> = impl Future<Output = Result<ControlBlock<RT>, Fail>>;
+struct ConnectResult<RT: Runtime> {
+    waker: Option<Waker>,
+    result: Option<Result<ControlBlock<RT>, Fail>>,
+}
 
-#[pin_project]
 pub struct ActiveOpenSocket<RT: Runtime> {
     local_isn: SeqNumber,
 
@@ -46,11 +46,9 @@ pub struct ActiveOpenSocket<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
 
-    #[pin]
-    future: BackgroundFuture<RT>,
-
-    waker: Option<Waker>,
-    result: Option<Result<ControlBlock<RT>, Fail>>,
+    #[allow(unused)]
+    handle: BackgroundHandle<RT>,
+    result: Rc<RefCell<ConnectResult<RT>>>,
 }
 
 impl<RT: Runtime> ActiveOpenSocket<RT> {
@@ -61,13 +59,22 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         rt: RT,
         arp: arp::Peer<RT>,
     ) -> Self {
+        let result = ConnectResult {
+            waker: None,
+            result: None,
+        };
+        let result = Rc::new(RefCell::new(result));
+
         let future = Self::background(
             local_isn,
             local.clone(),
             remote.clone(),
             rt.clone(),
             arp.clone(),
+            result.clone(),
         );
+        let handle = rt.spawn(future);
+
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
         Self {
             local_isn,
@@ -76,53 +83,48 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             rt,
             arp,
 
-            future,
-            waker: None,
-            result: None,
+            handle,
+            result,
         }
     }
 
-    pub fn poll_result(
-        self: Pin<&mut Self>,
-        context: &mut Context,
-    ) -> Poll<Result<ControlBlock<RT>, Fail>> {
-        let self_ = self.project();
-        match self_.result.take() {
+    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+        let mut r = self.result.borrow_mut();
+        match r.result.take() {
             None => {
-                self_.waker.replace(context.waker().clone());
+                r.waker.replace(context.waker().clone());
                 Poll::Pending
             },
             Some(r) => Poll::Ready(r),
         }
     }
 
-    pub fn receive_segment(self: Pin<&mut Self>, segment: TcpSegment) {
-        let self_ = self.project();
-
+    pub fn receive_segment(&mut self, segment: TcpSegment) {
         if segment.rst {
-            self_.waker.take().map(|w| w.wake());
-            self_.result.replace(Err(Fail::ConnectionRefused {}));
+            let mut r = self.result.borrow_mut();
+            r.waker.take().map(|w| w.wake());
+            r.result.replace(Err(Fail::ConnectionRefused {}));
             return;
         }
-        let expected_seq = *self_.local_isn + Wrapping(1);
+        let expected_seq = self.local_isn + Wrapping(1);
         if segment.ack && segment.syn && segment.ack_num == expected_seq {
             // Acknowledge the SYN+ACK segment.
-            let remote_link_addr = match self_.arp.try_query(self_.remote.address()) {
+            let remote_link_addr = match self.arp.try_query(self.remote.address()) {
                 Some(r) => r,
                 None => panic!("TODO: Clean up ARP query control flow"),
             };
             let remote_seq_num = segment.seq_num + Wrapping(1);
             let segment_buf = TcpSegment::default()
-                .src_ipv4_addr(self_.local.address())
-                .src_port(self_.local.port())
-                .src_link_addr(self_.rt.local_link_addr())
-                .dest_ipv4_addr(self_.remote.address())
-                .dest_port(self_.remote.port())
+                .src_ipv4_addr(self.local.address())
+                .src_port(self.local.port())
+                .src_link_addr(self.rt.local_link_addr())
+                .dest_ipv4_addr(self.remote.address())
+                .dest_port(self.remote.port())
                 .dest_link_addr(remote_link_addr)
                 .ack(remote_seq_num)
                 .encode();
 
-            self_.rt.transmit(Rc::new(RefCell::new(segment_buf)));
+            self.rt.transmit(Rc::new(RefCell::new(segment_buf)));
 
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment
@@ -141,18 +143,19 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             let sender = Sender::new(expected_seq, window_size, window_scale, mss);
             let receiver = Receiver::new(
                 remote_seq_num,
-                self_.rt.tcp_options().receive_window_size as u32,
+                self.rt.tcp_options().receive_window_size as u32,
             );
             let cb = ControlBlock {
-                local: self_.local.clone(),
-                remote: self_.remote.clone(),
-                rt: self_.rt.clone(),
-                arp: self_.arp.clone(),
+                local: self.local.clone(),
+                remote: self.remote.clone(),
+                rt: self.rt.clone(),
+                arp: self.arp.clone(),
                 sender,
                 receiver,
             };
-            self_.waker.take().map(|w| w.wake());
-            self_.result.replace(Ok(cb));
+            let mut r = self.result.borrow_mut();
+            r.waker.take().map(|w| w.wake());
+            r.result.replace(Ok(cb));
             return;
         }
         // Otherwise, just drop the packet.
@@ -164,7 +167,8 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         remote: ipv4::Endpoint,
         rt: RT,
         arp: arp::Peer<RT>,
-    ) -> BackgroundFuture<RT> {
+        result: Rc<RefCell<ConnectResult<RT>>>,
+    ) -> impl Future<Output = ()> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
         let max_window_size = 1024;
@@ -194,25 +198,9 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
                 rt.wait(handshake_timeout).await;
             }
-            Err(Fail::Timeout {})
+            let mut r = result.borrow_mut();
+            r.waker.take().map(|w| w.wake());
+            r.result.replace(Err(Fail::Timeout {}));
         }
-    }
-}
-
-impl<RT: Runtime> Future for ActiveOpenSocket<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let self_ = self.project();
-        if self_.result.is_some() {
-            return Poll::Pending;
-        }
-        let r = match Future::poll(self_.future, ctx) {
-            Poll::Ready(r) => r,
-            Poll::Pending => return Poll::Pending,
-        };
-        self_.waker.take().map(|w| w.wake());
-        self_.result.replace(r);
-        Poll::Pending
     }
 }

@@ -14,13 +14,12 @@ use crate::{
         ip,
         ipv4,
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
 };
 use futures::{
-    stream::FuturesUnordered,
-    FutureExt,
-    Stream,
+    StreamExt,
 };
+use futures::channel::mpsc;
 use hashbrown::HashSet;
 use std::{
     cell::RefCell,
@@ -28,29 +27,34 @@ use std::{
     convert::TryFrom,
     future::Future,
     net::Ipv4Addr,
-    pin::Pin,
     rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
 };
 
 pub struct UdpPeer<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
     open_ports: HashSet<ip::Port>,
-    background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
+
+    #[allow(unused)]
+    handle: BackgroundHandle<RT>,
+    tx: mpsc::UnboundedSender<(Ipv4Addr, Vec<u8>)>,
+
     queued_packets: VecDeque<UdpDatagram>,
 }
 
 impl<RT: Runtime> UdpPeer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> UdpPeer<RT> {
+        let (tx, rx) = mpsc::unbounded();
+        let future = Self::background(rt.clone(), arp.clone(), rx);
+        let handle = rt.spawn(future);
         UdpPeer {
             rt,
             arp,
             open_ports: HashSet::default(),
-            background_work: FuturesUnordered::new(),
+
+            handle,
+            tx,
+
             queued_packets: VecDeque::new(),
         }
     }
@@ -150,10 +154,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    fn send_icmpv4_error(&mut self, dest_ipv4_addr: Ipv4Addr, datagram: Vec<u8>) {
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        let future = async move {
+    async fn background(rt: RT, arp: arp::Peer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, Vec<u8>)>) {
+        while let Some((dest_ipv4_addr, datagram)) = rx.next().await {
             let r: Result<_, Fail> = try {
                 trace!(
                     "UdpPeer::send_icmpv4_error({:?}, {:?})",
@@ -187,21 +189,10 @@ impl<RT: Runtime> UdpPeer<RT> {
             if let Err(e) = r {
                 warn!("Failed to send_icmpv4_error({}): {:?}", dest_ipv4_addr, e);
             }
-        };
-        self.background_work.push(future.boxed_local())
-    }
-}
-
-impl<RT: Runtime> Future for UdpPeer<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let background_work = &mut self.get_mut().background_work;
-        loop {
-            match Stream::poll_next(Pin::new(background_work), ctx) {
-                Poll::Ready(Some(..)) => continue,
-                Poll::Ready(None) | Poll::Pending => return Poll::Pending,
-            }
         }
+    }
+
+    fn send_icmpv4_error(&mut self, dest_ipv4_addr: Ipv4Addr, datagram: Vec<u8>) {
+        self.tx.unbounded_send((dest_ipv4_addr, datagram)).unwrap();
     }
 }

@@ -8,7 +8,6 @@ use super::{
     isn_generator::IsnGenerator,
 };
 use crate::{
-    collections::async_map::FutureMap,
     fail::Fail,
     protocols::{
         arp,
@@ -18,30 +17,24 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
 };
-use pin_project::pin_project;
+use hashbrown::{HashMap, HashSet};
 use std::{
     cell::RefCell,
     collections::{
-        HashSet,
         VecDeque,
     },
     convert::TryInto,
     future::Future,
     num::Wrapping,
-    pin::Pin,
     rc::Rc,
     task::{
-        Context,
-        Poll,
+        Waker,
     },
     time::Duration,
 };
 
-type BackgroundFuture<RT: Runtime> = impl Future<Output = Fail>;
-
-#[pin_project]
 struct InflightAccept<RT: Runtime> {
     local_isn: SeqNumber,
     remote_isn: SeqNumber,
@@ -49,26 +42,46 @@ struct InflightAccept<RT: Runtime> {
     window_scale: u8,
     mss: usize,
 
-    #[pin]
-    future: BackgroundFuture<RT>,
+    #[allow(unused)]
+    handle: BackgroundHandle<RT>,
 }
 
-impl<RT: Runtime> Future for InflightAccept<RT> {
-    type Output = Fail;
+struct ReadySockets<RT: Runtime> {
+    ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
+    endpoints: HashSet<ipv4::Endpoint>,
+    waker: Option<Waker>,
+}
 
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Fail> {
-        Future::poll(self.project().future, ctx)
+impl<RT: Runtime> ReadySockets<RT> {
+    fn push_ok(&mut self, cb: ControlBlock<RT>) {
+        assert!(self.endpoints.insert(cb.remote));
+        self.ready.push_back(Ok(cb));
+        self.waker.take().map(|w| w.wake());
+    }
+
+    fn push_err(&mut self, err: Fail) {
+        self.ready.push_back(Err(err));
+        self.waker.take().map(|w| w.wake());
+    }
+
+    fn pop(&mut self) -> Option<Result<ControlBlock<RT>, Fail>> {
+        let r = self.ready.pop_front()?;
+        if let Ok(ref cb) = r {
+            assert!(self.endpoints.remove(&cb.remote));
+        }
+        Some(r)
+    }
+
+    fn len(&self) -> usize {
+        self.ready.len()
     }
 }
 
 pub struct PassiveSocket<RT: Runtime> {
-    inflight: FutureMap<ipv4::Endpoint, InflightAccept<RT>>,
-
-    ready: VecDeque<Result<ControlBlock<RT>, Fail>>,
-    ready_endpoints: HashSet<ipv4::Endpoint>,
+    inflight: HashMap<ipv4::Endpoint, InflightAccept<RT>>,
+    ready: Rc<RefCell<ReadySockets<RT>>>,
 
     max_backlog: usize,
-
     isn_generator: IsnGenerator,
 
     local: ipv4::Endpoint,
@@ -78,11 +91,16 @@ pub struct PassiveSocket<RT: Runtime> {
 
 impl<RT: Runtime> PassiveSocket<RT> {
     pub fn new(local: ipv4::Endpoint, max_backlog: usize, rt: RT, arp: arp::Peer<RT>) -> Self {
+        let ready = ReadySockets {
+            ready: VecDeque::new(),
+            endpoints: HashSet::new(),
+            waker: None,
+        };
+        let ready = Rc::new(RefCell::new(ready));
         let nonce = rt.rng_gen();
         Self {
-            inflight: FutureMap::new(),
-            ready: VecDeque::new(),
-            ready_endpoints: HashSet::new(),
+            inflight: HashMap::new(),
+            ready,
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
@@ -92,12 +110,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
     }
 
     pub fn accept(&mut self) -> Result<Option<ControlBlock<RT>>, Fail> {
-        match self.ready.pop_front() {
+        match self.ready.borrow_mut().pop() {
             None => Ok(None),
-            Some(Ok(cb)) => {
-                assert!(self.ready_endpoints.remove(&cb.remote));
-                Ok(Some(cb))
-            },
+            Some(Ok(cb)) => Ok(Some(cb)),
             Some(Err(e)) => Err(e),
         }
     }
@@ -123,7 +138,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
         })?;
         let remote = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
 
-        if self.ready_endpoints.contains(&remote) {
+        if self.ready.borrow().endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been
             // `accept`ed yet?
             return Ok(());
@@ -167,8 +182,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 sender,
                 receiver,
             };
-            assert!(self.ready_endpoints.insert(remote));
-            self.ready.push_back(Ok(cb));
+            self.ready.borrow_mut().push_ok(cb);
         }
         // Otherwise, start a new connection.
         else {
@@ -177,7 +191,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     details: "Invalid flags",
                 });
             }
-            if inflight_len + self.ready.len() >= self.max_backlog {
+            if inflight_len + self.ready.borrow().len() >= self.max_backlog {
                 // TODO: Should we send a RST here?
                 return Err(Fail::ConnectionRefused {});
             }
@@ -190,7 +204,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 remote.clone(),
                 self.rt.clone(),
                 self.arp.clone(),
+                self.ready.clone(),
             );
+            let handle = self.rt.spawn(future);
             let window_scale = segment.window_scale.unwrap_or(1);
             let window_size = segment
                 .window_size
@@ -211,7 +227,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 window_size,
                 window_scale,
                 mss,
-                future,
+                handle,
             };
             self.inflight.insert(remote, accept);
         }
@@ -226,7 +242,8 @@ impl<RT: Runtime> PassiveSocket<RT> {
         remote: ipv4::Endpoint,
         rt: RT,
         arp: arp::Peer<RT>,
-    ) -> BackgroundFuture<RT> {
+        ready: Rc<RefCell<ReadySockets<RT>>>,
+    ) -> impl Future<Output = ()> {
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
         let max_window_size = 1024;
@@ -257,24 +274,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 rt.transmit(Rc::new(RefCell::new(segment_buf)));
                 rt.wait(handshake_timeout).await;
             }
-            Fail::Timeout {}
-        }
-    }
-}
-
-impl<RT: Runtime> Future for PassiveSocket<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let self_ = self.get_mut();
-        loop {
-            match FutureMap::poll(Pin::new(&mut self_.inflight), ctx) {
-                Poll::Ready((remote, r)) => {
-                    self_.ready.push_back(Err(r));
-                    assert!(self_.ready_endpoints.insert(remote));
-                },
-                Poll::Pending => return Poll::Pending,
-            }
+            ready.borrow_mut().push_err(Fail::Timeout {});
         }
     }
 }

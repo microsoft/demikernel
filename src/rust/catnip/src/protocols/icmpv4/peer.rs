@@ -25,9 +25,8 @@ use byteorder::{
     WriteBytesExt,
 };
 use futures::{
-    stream::FuturesUnordered,
     FutureExt,
-    Stream,
+    StreamExt,
 };
 use hashbrown::HashMap;
 use std::{
@@ -37,26 +36,26 @@ use std::{
     io::Write,
     net::Ipv4Addr,
     num::Wrapping,
-    pin::Pin,
     process,
     rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
     time::Duration,
 };
+use crate::runtime::{Runtime, BackgroundHandle};
 // TODO: Use unsync channel
-use crate::runtime::Runtime;
 use futures::channel::oneshot::{
     channel,
     Sender,
 };
+use futures::channel::mpsc;
 
 pub struct Icmpv4Peer<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
-    background_work: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
+
+    #[allow(unused)]
+    handle: BackgroundHandle<RT>,
+    tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16)>,
+
     inner: Rc<RefCell<Inner>>,
 }
 
@@ -67,6 +66,7 @@ struct Inner {
 
 impl<RT: Runtime> Icmpv4Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>) -> Icmpv4Peer<RT> {
+        let (tx, rx) = mpsc::unbounded();
         let inner = Inner {
             requests: HashMap::new(),
             // from [TCP/IP Illustrated]():
@@ -75,11 +75,49 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
             // > time a new Echo Request message is sent.
             ping_seq_num_counter: Wrapping(0),
         };
+        let inner = Rc::new(RefCell::new(inner));
+        let future = Self::background(rt.clone(), arp.clone(), rx);
+        let handle = rt.spawn(future);
         Icmpv4Peer {
             rt,
             arp,
-            background_work: FuturesUnordered::new(),
-            inner: Rc::new(RefCell::new(inner)),
+            tx,
+            handle,
+            inner,
+        }
+    }
+
+    async fn background(rt: RT, arp: arp::Peer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>) {
+        while let Some((dest_ipv4_addr, id, seq_num)) = rx.next().await {
+            let r: Result<_, Fail> = try {
+                debug!("initiating ARP query");
+                let dest_link_addr = arp.query(dest_ipv4_addr).await?;
+                debug!(
+                    "ARP query complete ({} -> {})",
+                    dest_ipv4_addr, dest_link_addr
+                );
+                let mut bytes = Icmpv4Echo::new_vec();
+                let mut echo = Icmpv4EchoMut::attach(&mut bytes);
+                echo.r#type(Icmpv4EchoOp::Reply);
+                echo.id(id);
+                echo.seq_num(seq_num);
+                let ipv4 = echo.icmpv4().ipv4();
+                let mut ipv4_header = ipv4.header();
+                ipv4_header.src_addr(rt.local_ipv4_addr());
+                ipv4_header.dest_addr(dest_ipv4_addr);
+                let frame = ipv4.frame();
+                let mut frame_header = frame.header();
+                frame_header.src_addr(rt.local_link_addr());
+                frame_header.dest_addr(dest_link_addr);
+                let _ = echo.seal()?;
+                rt.transmit(Rc::new(RefCell::new(bytes)));
+            };
+            if let Err(e) = r {
+                warn!(
+                    "reply_to_ping({}, {}, {}) failed: {:?}",
+                    dest_ipv4_addr, id, seq_num, e
+                )
+            }
         }
     }
 
@@ -188,53 +226,6 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
     }
 
     pub fn reply_to_ping(&mut self, dest_ipv4_addr: Ipv4Addr, id: u16, seq_num: u16) {
-        let rt = self.rt.clone();
-        let arp = self.arp.clone();
-        let future = async move {
-            let r: Result<_, Fail> = try {
-                debug!("initiating ARP query");
-                let dest_link_addr = arp.query(dest_ipv4_addr).await?;
-                debug!(
-                    "ARP query complete ({} -> {})",
-                    dest_ipv4_addr, dest_link_addr
-                );
-                let mut bytes = Icmpv4Echo::new_vec();
-                let mut echo = Icmpv4EchoMut::attach(&mut bytes);
-                echo.r#type(Icmpv4EchoOp::Reply);
-                echo.id(id);
-                echo.seq_num(seq_num);
-                let ipv4 = echo.icmpv4().ipv4();
-                let mut ipv4_header = ipv4.header();
-                ipv4_header.src_addr(rt.local_ipv4_addr());
-                ipv4_header.dest_addr(dest_ipv4_addr);
-                let frame = ipv4.frame();
-                let mut frame_header = frame.header();
-                frame_header.src_addr(rt.local_link_addr());
-                frame_header.dest_addr(dest_link_addr);
-                let _ = echo.seal()?;
-                rt.transmit(Rc::new(RefCell::new(bytes)));
-            };
-            if let Err(e) = r {
-                warn!(
-                    "reply_to_ping({}, {}, {}) failed: {:?}",
-                    dest_ipv4_addr, id, seq_num, e
-                )
-            }
-        };
-        self.background_work.push(future.boxed_local());
-    }
-}
-
-impl<RT: Runtime> Future for Icmpv4Peer<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let background_work = &mut self.get_mut().background_work;
-        loop {
-            match Stream::poll_next(Pin::new(background_work), ctx) {
-                Poll::Ready(Some(..)) => continue,
-                Poll::Ready(None) | Poll::Pending => return Poll::Pending,
-            }
-        }
+        self.tx.unbounded_send((dest_ipv4_addr, id, seq_num)).unwrap();
     }
 }

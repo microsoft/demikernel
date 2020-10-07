@@ -15,9 +15,9 @@ use crate::{
         ipv4,
         tcp,
         tcp::peer::{
-            ConnectFuture,
             SocketDescriptor,
         },
+        tcp::operations::ConnectFuture,
         udp,
     },
     runtime::Runtime,
@@ -27,11 +27,6 @@ use std::{
     convert::TryFrom,
     future::Future,
     net::Ipv4Addr,
-    pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
     time::Duration,
 };
 
@@ -159,17 +154,5 @@ impl<RT: Runtime> Ipv4Peer<RT> {
 
     pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration, Fail> {
         self.tcp.current_rto(handle)
-    }
-}
-
-impl<RT: Runtime> Future for Ipv4Peer<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let self_ = self.get_mut();
-        assert!(Future::poll(Pin::new(&mut self_.icmpv4), ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut self_.tcp), ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut self_.udp), ctx).is_pending());
-        Poll::Pending
     }
 }

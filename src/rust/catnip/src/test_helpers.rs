@@ -8,11 +8,12 @@ use crate::{
         ethernet::MacAddress,
         tcp,
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
     timer::{
         Timer,
         TimerRc,
     },
+    scheduler::{Operation, Scheduler},
 };
 use rand::{
     distributions::{
@@ -23,7 +24,10 @@ use rand::{
     Rng,
     SeedableRng,
 };
+use futures::FutureExt;
+use futures::task::noop_waker_ref;
 use std::{
+    future::Future,
     cell::RefCell,
     collections::VecDeque,
     net::Ipv4Addr,
@@ -32,6 +36,7 @@ use std::{
         Duration,
         Instant,
     },
+    task::Context,
 };
 
 pub const RECEIVE_WINDOW_SIZE: usize = 1024;
@@ -69,6 +74,7 @@ impl TestRuntime {
             timer: TimerRc(Rc::new(Timer::new(now))),
             rng: SmallRng::from_seed([0; 16]),
             outgoing: VecDeque::new(),
+            scheduler: Scheduler::new(),
             link_addr,
             ipv4_addr,
             tcp_options: tcp::Options::default(),
@@ -82,6 +88,12 @@ impl TestRuntime {
     pub fn pop_frame(&self) -> Vec<u8> {
         self.inner.borrow_mut().outgoing.pop_front().unwrap()
     }
+
+    pub fn poll_scheduler(&self) {
+        let scheduler = self.inner.borrow().scheduler.clone();
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        scheduler.poll(&mut ctx);
+    }
 }
 
 struct Inner {
@@ -90,6 +102,7 @@ struct Inner {
     timer: TimerRc,
     rng: SmallRng,
     outgoing: VecDeque<Vec<u8>>,
+    scheduler: Scheduler<Operation<TestRuntime>>,
 
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
@@ -151,6 +164,10 @@ impl Runtime for TestRuntime {
     {
         let mut inner = self.inner.borrow_mut();
         inner.rng.gen()
+    }
+
+    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> BackgroundHandle<Self> {
+        self.inner.borrow().scheduler.insert(Operation::Background(future.boxed_local()))
     }
 }
 

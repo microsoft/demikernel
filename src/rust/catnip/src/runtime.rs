@@ -5,6 +5,7 @@ use crate::protocols::{
     ethernet::MacAddress,
     tcp,
 };
+use crate::scheduler::{SchedulerHandle, Operation};
 use rand::distributions::{
     Distribution,
     Standard,
@@ -19,6 +20,8 @@ use std::{
         Instant,
     },
 };
+
+pub type BackgroundHandle<RT> = SchedulerHandle<Operation<RT>>;
 
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
@@ -37,4 +40,6 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>;
+
+    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> BackgroundHandle<Self>;
 }

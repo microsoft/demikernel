@@ -14,7 +14,7 @@ use crate::{
         self,
         MacAddress,
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
 };
 use futures::FutureExt;
 use hashbrown::HashMap;
@@ -24,13 +24,8 @@ use std::{
     future::Future,
     mem::swap,
     net::Ipv4Addr,
-    pin::Pin,
     rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 #[derive(Clone)]
@@ -38,20 +33,36 @@ pub struct ArpPeer<RT: Runtime> {
     rt: RT,
     // TODO: Move this to a strong owner that gets polled once.
     cache: Rc<RefCell<ArpCache>>,
+    background: Rc<BackgroundHandle<RT>>,
 }
 
 impl<RT: Runtime> ArpPeer<RT> {
     pub fn new(now: Instant, rt: RT) -> Result<ArpPeer<RT>, Fail> {
         let options = rt.arp_options();
-        let cache = ArpCache::new(now, Some(options.cache_ttl));
+        let cache = Rc::new(RefCell::new(ArpCache::new(now, Some(options.cache_ttl))));
+        let handle = rt.spawn(Self::background(rt.clone(), cache.clone()));
         let peer = ArpPeer {
             rt,
-            cache: Rc::new(RefCell::new(cache)),
+            cache,
+            background: Rc::new(handle),
         };
         for (&ipv4_addr, &link_addr) in &options.initial_values {
             peer.insert(ipv4_addr, link_addr);
         }
         Ok(peer)
+    }
+
+    async fn background(rt: RT, cache: Rc<RefCell<ArpCache>>) {
+        loop {
+            let current_time = rt.now();
+            {
+                let mut cache = cache.borrow_mut();
+                cache.advance_clock(current_time);
+                cache.try_evict(2);
+            }
+            // TODO: Make this more precise.
+            rt.wait(Duration::from_secs(1)).await;
+        }
     }
 
     pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
@@ -185,19 +196,5 @@ impl<RT: Runtime> ArpPeer<RT> {
 
     pub fn insert(&self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) {
         self.cache.borrow_mut().insert(ipv4_addr, link_addr);
-    }
-}
-
-impl<RT: Runtime> Future for ArpPeer<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, _ctx: &mut Context) -> Poll<!> {
-        // TODO: Make this more precise.
-        let self_ = self.get_mut();
-        let current_time = self_.rt.now();
-        let mut cache = self_.cache.borrow_mut();
-        cache.advance_clock(current_time);
-        cache.try_evict(2);
-        Poll::Pending
     }
 }

@@ -15,65 +15,35 @@ use std::{
     task::{
         Waker,
     },
+    rc::Rc,
+    cell::RefCell,
 };
-use futures::FutureExt;
-use crate::protocols::tcp::peer::{
-    ConnectFuture,
-    AcceptFuture,
-    PushFuture,
-    PopFuture,
-    SocketDescriptor,
+use crate::protocols::tcp::operations::{
+    TcpOperation,
 };
 
-pub enum ForegroundFuture<RT: Runtime> {
-    Connect(ConnectFuture<RT>),
-    Accept(AcceptFuture<RT>),
-    Push(PushFuture<RT>),
-    Pop(PopFuture<RT>),
-}
-
-pub enum ScheduledResult<RT: Runtime> {
-    Connect(SocketDescriptor, <ConnectFuture<RT> as Future>::Output),
-    Accept(SocketDescriptor, <AcceptFuture<RT> as Future>::Output),
-    Push(SocketDescriptor, <PushFuture<RT> as Future>::Output),
-    Pop(SocketDescriptor, <PopFuture<RT> as Future>::Output),
-    Background,
-}
-
-impl<RT: Runtime> Future for ForegroundFuture<RT> {
-    type Output = ScheduledResult<RT>;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        match self.get_mut() {
-            ForegroundFuture::Connect(ref mut f) => Future::poll(Pin::new(f), ctx).
-                map(|r| ScheduledResult::Connect(f.fd, r)),
-            ForegroundFuture::Accept(ref mut f) => Future::poll(Pin::new(f), ctx).
-                map(|r| ScheduledResult::Accept(f.fd, r)),
-            ForegroundFuture::Push(ref mut f) => Future::poll(Pin::new(f), ctx).
-                map(|r| ScheduledResult::Push(f.fd, r)),
-            ForegroundFuture::Pop(ref mut f) => Future::poll(Pin::new(f), ctx).
-                map(|r| ScheduledResult::Pop(f.fd, r)),
-        }
-    }
-}
-
-enum ScheduledFuture<RT: Runtime> {
+pub enum Operation<RT: Runtime> {
     // These are all stored inline to prevent hitting the allocator on insertion/removal.
-    Foreground(ForegroundFuture<RT>),
+    Tcp(TcpOperation<RT>),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output=()>>>),
 }
 
-impl<RT: Runtime> Future for ScheduledFuture<RT> {
-    type Output = ScheduledResult<RT>;
+impl<RT: Runtime> Future for Operation<RT> {
+    type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         match self.get_mut() {
-            ScheduledFuture::Foreground(ref mut f) => Future::poll(Pin::new(f), ctx),
-            ScheduledFuture::Background(ref mut f) => Future::poll(Pin::new(f), ctx)
-                .map(|()| ScheduledResult::Background),
+            Operation::Tcp(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Background(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
+    }
+}
+
+impl<T: Into<TcpOperation<RT>>, RT: Runtime> From<T> for Operation<RT> {
+    fn from(f: T) -> Self {
+        Operation::Tcp(f.into())
     }
 }
 
@@ -89,62 +59,83 @@ fn iter_set_bits(mut bitset: u64) -> impl Iterator<Item=usize> {
     })
 }
 
-enum ResultFuture<F: Future> {
-    Pending(F),
-    Done(F::Output),
+pub struct SchedulerHandle<F: Future<Output = ()> + Unpin> {
+    key: Option<usize>,
+    inner: Rc<RefCell<Inner<F>>>,
 }
 
-impl<F: Future + Unpin> Future for ResultFuture<F>
-    where F::Output: Unpin
-{
-    type Output = ();
+impl<F: Future<Output = ()> + Unpin> SchedulerHandle<F> {
+    fn has_completed(&self) -> bool {
+        let inner = self.inner.borrow();
+        let (page, subpage_ix) = inner.page(self.key.unwrap());
+        page.has_completed(subpage_ix)
+    }
 
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
-        let self_ = self.get_mut();
-        match self_ {
-            ResultFuture::Pending(ref mut f) => {
-                let result = match Future::poll(Pin::new(f), ctx) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(r) => r,
-                };
-                *self_ = ResultFuture::Done(result);
-                Poll::Ready(())
-            },
-            ResultFuture::Done(..) => panic!("Polled after completion"),
+    fn take(mut self) -> F {
+        let key = self.key.take().unwrap();
+        self.inner.borrow_mut().remove(key)
+    }
+}
+
+impl<F: Future<Output = ()> + Unpin> Drop for SchedulerHandle<F> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key.take() {
+            let r = {
+                let mut inner = self.inner.borrow_mut();
+                inner.remove(key)
+            };
+            drop(r);
         }
     }
 }
 
-pub struct Scheduler<RT: Runtime> {
-    slab: Slab<ResultFuture<ScheduledFuture<RT>>>,
+pub struct Scheduler<F: Future<Output = ()> + Unpin> {
+    inner: Rc<RefCell<Inner<F>>>,
+}
+
+impl<F: Future<Output = ()> + Unpin> Clone for Scheduler<F> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
+    pub fn new() -> Self {
+        let inner = Inner {
+            slab: Slab::new(),
+            pages: vec![],
+            root_waker: Arc::new(AtomicWaker::new()),
+        };
+        Self { inner: Rc::new(RefCell::new(inner)) }
+    }
+
+    pub fn insert(&self, future: F) -> SchedulerHandle<F> {
+        let key = self.inner.borrow_mut().insert(future);
+        SchedulerHandle {
+            key: Some(key),
+            inner: self.inner.clone(),
+        }
+    }
+
+    pub fn poll(&self, ctx: &mut Context) {
+        self.inner.borrow_mut().poll(ctx)
+    }
+}
+
+struct Inner<F: Future<Output = ()> + Unpin> {
+    slab: Slab<F>,
     pages: Vec<WakerPageRef>,
     root_waker: Arc<AtomicWaker>,
 }
 
-impl<RT: Runtime> Scheduler<RT> {
-    pub fn new() -> Self {
-        Self {
-            slab: Slab::new(),
-            pages: vec![],
-            root_waker: Arc::new(AtomicWaker::new()),
-        }
-    }
-
+impl<F: Future<Output = ()> + Unpin> Inner<F> {
     fn page(&self, key: usize) -> (&WakerPageRef, usize) {
         let (page_ix, subpage_ix) = (key / WAKER_PAGE_SIZE, key % WAKER_PAGE_SIZE);
         (&self.pages[page_ix], subpage_ix)
     }
 
-    pub fn insert_foreground(&mut self, future: ForegroundFuture<RT>) -> usize {
-        self.insert(ScheduledFuture::Foreground(future))
-    }
-
-    pub fn insert_background(&mut self, future: impl Future<Output=()> + 'static) -> usize {
-        self.insert(ScheduledFuture::Background(future.boxed_local()))
-    }
-
-    fn insert(&mut self, future: ScheduledFuture<RT>) -> usize {
-        let key = self.slab.insert(ResultFuture::Pending(future));
+    fn insert(&mut self, future: F) -> usize {
+        let key = self.slab.insert(future);
         while key >= self.pages.len() * WAKER_PAGE_SIZE {
             self.pages.push(WakerPage::new(self.root_waker.clone()));
         }
@@ -153,76 +144,49 @@ impl<RT: Runtime> Scheduler<RT> {
         key
     }
 
-    pub fn remove(&mut self, key: usize) {
-        self.slab.remove(key);
+    fn remove(&mut self, key: usize) -> F {
+        let f = self.slab.remove(key);
         let (page, subpage_ix) = self.page(key);
-        page.unset(subpage_ix);
+        page.clear(subpage_ix);
+        f
     }
 
-    pub fn len(&self) -> usize {
-        self.slab.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.slab.is_empty()
-    }
-
-    pub fn check_foreground(&mut self, ix: usize) -> Option<ScheduledResult<RT>> {
-        let page_ix = ix / WAKER_PAGE_SIZE;
-        let subpage_ix = ix % WAKER_PAGE_SIZE;
-        let page = &self.pages[page_ix];
-        let ready_bitset = page.get_ready();
-        let ready = (ready_bitset & (1 << ix)) != 0;
-        if !ready {
-            return None;
-        }
-        let r = match self.slab.remove(ix) {
-            ResultFuture::Done(ScheduledResult::Background) => panic!("Background result kept ready"),
-            ResultFuture::Done(out) => out,
-            _ => panic!("Ready bitset and slab inconsistent"),
-        };
-        page.unset(subpage_ix);
-        Some(r)
-    }
-
-    pub fn check_foreground_many(&mut self, ixs: &[usize]) -> Option<ScheduledResult<RT>> {
-        for &ix in ixs {
-            if let Some(r) = self.check_foreground(ix) {
-                return Some(r);
-            }
-        }
-        None
-    }
+    // pub fn check_foreground(&mut self, ix: usize) -> Option<ScheduledResult<RT>> {
+    //     let page_ix = ix / WAKER_PAGE_SIZE;
+    //     let subpage_ix = ix % WAKER_PAGE_SIZE;
+    //     let page = &self.pages[page_ix];
+    //     let ready_bitset = page.get_ready();
+    //     let ready = (ready_bitset & (1 << ix)) != 0;
+    //     if !ready {
+    //         return None;
+    //     }
+    //     let r = match self.slab.remove(ix) {
+    //         ResultFuture::Done(ScheduledResult::Background) => panic!("Background result kept ready"),
+    //         ResultFuture::Done(out) => out,
+    //         _ => panic!("Ready bitset and slab inconsistent"),
+    //     };
+    //     page.unset(subpage_ix);
+    //     Some(r)
+    // }
 
     pub fn poll(&mut self, ctx: &mut Context) {
         self.root_waker.register(ctx.waker());
 
         for (page_ix, page) in self.pages.iter().enumerate() {
             let mut notified_bitset = page.take_notified();
-            let ready_bitset = page.get_ready();
+            let completed_bitset = page.get_completed();
 
             // Unset all ready bits, since spurious notifications for completed futures would lead
             // us to poll them after completion.
-            notified_bitset &= !ready_bitset;
+            notified_bitset &= !completed_bitset;
 
             for subpage_ix in iter_set_bits(notified_bitset) {
                 let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
                 let waker = unsafe { Waker::from_raw(page.raw_waker(subpage_ix)) };
                 let mut sub_ctx = Context::from_waker(&waker);
-
-                let future = &mut self.slab[ix];
-                let is_background = match future {
-                    ResultFuture::Pending(ScheduledFuture::Foreground(..)) => false,
-                    ResultFuture::Pending(ScheduledFuture::Background(..)) => true,
-                    _ => panic!("Ready bitset and ResultFuture inconsistent"),
-                };
-                match Future::poll(Pin::new(future), &mut sub_ctx) {
+                match Future::poll(Pin::new(&mut self.slab[ix]), &mut sub_ctx) {
                     Poll::Ready(()) => {
-                        if is_background {
-                            self.slab.remove(ix);
-                        } else {
-                            page.mark_ready(subpage_ix);
-                        }
+                        page.mark_completed(subpage_ix);
                     },
                     Poll::Pending => (),
                 }
@@ -230,21 +194,3 @@ impl<RT: Runtime> Scheduler<RT> {
         }
     }
 }
-
-
-
-
-//     // Do we need to have a "finished" queue here?
-//     // The layer above can...
-//     // 1) Poll a specific qtoken
-//     // 2) Drop a qtoken
-//     // 3) Wait on a particular qtoken
-//     // 4) Wait on many qtokens
-//     //
-//     // If we don't make progress on any of the wait methods, we need to then consider...
-//     // 1) Polling incoming packets
-//     // 2) Doing background work
-//     // 3) Advancing time
-//     fn poll(&self, ctx: &mut Context) {
-//     }
-// }

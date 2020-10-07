@@ -51,7 +51,7 @@ fn ping() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let ping_request = {
-        alice.advance_clock(now);
+        alice.rt().poll_scheduler();
         let bytes = alice.rt().pop_frame();
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Request);
@@ -63,6 +63,7 @@ fn ping() {
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
         bob.advance_clock(now);
+        bob.rt().poll_scheduler();
         let bytes = bob.rt().pop_frame();
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
         assert_eq!(echo.op(), Icmpv4EchoOp::Reply);

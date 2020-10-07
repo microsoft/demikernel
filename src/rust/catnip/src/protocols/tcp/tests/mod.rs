@@ -40,15 +40,15 @@ fn test_connect() {
     let mut connect_future = alice.tcp_connect(alice_fd, listen_addr);
 
     // Send the SYN from Alice to Bob
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Send the SYN+ACK from Bob to Alice
-    bob.advance_clock(now);
+    bob.rt().poll_scheduler();
     alice.receive(&bob.rt().pop_frame()).unwrap();
 
     // Send the ACK from Alice to Bob
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
@@ -57,7 +57,7 @@ fn test_connect() {
     // Send data from Alice to Bob
     let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
     alice.tcp_write(alice_fd, buf.clone()).unwrap();
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
 
     // Receive it on Bob's side.
     bob.receive(&alice.rt().pop_frame()).unwrap();

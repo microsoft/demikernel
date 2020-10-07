@@ -31,7 +31,7 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 pub struct WakerPage {
     refcount: AtomicU64,
     notified: AtomicU64,
-    ready: AtomicU64,
+    completed: AtomicU64,
     waker: Arc<AtomicWaker>,
     _unused: [u8; 32],
 }
@@ -45,7 +45,7 @@ impl WakerPage {
             let page = ptr.as_mut();
             page.refcount.store(1, Ordering::SeqCst);
             page.notified.store(0, Ordering::SeqCst);
-            page.ready.store(0, Ordering::SeqCst);
+            page.completed.store(0, Ordering::SeqCst);
             ptr::write(&mut page.waker as *mut _, waker);
         }
         WakerPageRef(ptr)
@@ -60,26 +60,31 @@ impl WakerPage {
         self.notified.swap(0, Ordering::SeqCst)
     }
 
-    pub fn mark_ready(&self, ix: usize) {
+    pub fn has_completed(&self, ix: usize) -> bool {
         debug_assert!(ix < 64);
-        self.ready.fetch_or(1 << ix, Ordering::SeqCst);
+        self.completed.load(Ordering::SeqCst) & (1 << ix) != 0
     }
 
-    pub fn get_ready(&self) -> u64 {
-        self.ready.load(Ordering::SeqCst)
+    pub fn get_completed(&self) -> u64 {
+        self.completed.load(Ordering::SeqCst)
+    }
+
+    pub fn mark_completed(&self, ix: usize) {
+        debug_assert!(ix < 64);
+        self.completed.fetch_or(1 << ix, Ordering::SeqCst);
     }
 
     pub fn initialize(&self, ix: usize) {
         debug_assert!(ix < 64);
-        self.notified.fetch_and(!(1 << ix), Ordering::SeqCst);
-        self.ready.fetch_or(1 << ix, Ordering::SeqCst);
+        self.notified.fetch_or(1 << ix, Ordering::SeqCst);
+        self.completed.fetch_and(!(1 << ix), Ordering::SeqCst);
     }
 
-    pub fn unset(&self, ix: usize) {
+    pub fn clear(&self, ix: usize) {
         debug_assert!(ix < 64);
         let mask = !(1 << ix);
         self.notified.fetch_and(mask, Ordering::SeqCst);
-        self.ready.fetch_and(mask, Ordering::SeqCst);
+        self.completed.fetch_and(mask, Ordering::SeqCst);
     }
 }
 

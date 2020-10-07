@@ -6,6 +6,7 @@ mod options;
 mod passive_open;
 pub mod peer;
 pub mod segment;
+pub mod operations;
 
 #[cfg(test)]
 mod tests;

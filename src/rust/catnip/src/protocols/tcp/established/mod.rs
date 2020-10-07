@@ -4,7 +4,6 @@ pub mod state;
 use self::{
     background::{
         background,
-        BackgroundFuture,
     },
     state::ControlBlock,
 };
@@ -14,34 +13,28 @@ use crate::{
         ipv4,
         tcp::segment::TcpSegment,
     },
-    runtime::Runtime,
+    runtime::{Runtime, BackgroundHandle},
 };
 use bytes::Bytes;
-use pin_project::pin_project;
 use std::{
-    future::Future,
-    pin::Pin,
     rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
     time::Duration,
 };
 
-#[pin_project]
 pub struct EstablishedSocket<RT: Runtime> {
     pub cb: Rc<ControlBlock<RT>>,
-    #[pin]
-    background_work: BackgroundFuture<RT>,
+    #[allow(unused)]
+    background_work: BackgroundHandle<RT>,
 }
 
 impl<RT: Runtime> EstablishedSocket<RT> {
     pub fn new(cb: ControlBlock<RT>) -> Self {
         let cb = Rc::new(cb);
+        let future = background(cb.clone());
+        let handle = cb.rt.spawn(future);
         Self {
             cb: cb.clone(),
-            background_work: background(cb),
+            background_work: handle,
         }
     }
 
@@ -75,18 +68,5 @@ impl<RT: Runtime> EstablishedSocket<RT> {
 
     pub fn endpoints(&self) -> (ipv4::Endpoint, ipv4::Endpoint) {
         (self.cb.local.clone(), self.cb.remote.clone())
-    }
-}
-
-impl<RT: Runtime> Future for EstablishedSocket<RT> {
-    type Output = !;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<!> {
-        let self_ = self.project();
-        assert!(
-            Future::poll(self_.background_work, ctx).is_pending(),
-            "TODO: Connection close"
-        );
-        Poll::Pending
     }
 }
