@@ -2,10 +2,6 @@ use bytes::Bytes;
 use catnip::{
     fail::Fail,
     protocols::tcp::peer::{
-        AcceptFuture,
-        ConnectFuture,
-        PopFuture,
-        PushFuture,
         SocketDescriptor,
     },
     runtime::Runtime,

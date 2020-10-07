@@ -118,7 +118,7 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    fn pack(result: UserOperationResult, qd: SocketDescriptor, qt: QToken) -> Self {
+    fn pack(result: UserOperationResult, qd: SocketDescriptor, qt: u64) -> Self {
         match result {
             UserOperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,

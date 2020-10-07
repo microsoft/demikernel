@@ -4,7 +4,8 @@ use crate::bindings::{
     rte_mbuf,
     rte_mempool,
 };
-use catnip::scheduler::{SchedulerHandle, Operation};
+use std::future::Future;
+use catnip::scheduler::{Scheduler, SchedulerHandle, Operation};
 use catnip::{
     protocols::{
         arp,
