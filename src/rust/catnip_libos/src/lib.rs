@@ -22,6 +22,7 @@ use catnip::{
         ipv4,
         tcp::peer::SocketDescriptor,
     },
+    scheduler::Operation,
     runtime::Runtime,
 };
 use clap::{
@@ -449,52 +450,62 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    // with_libos(|libos| {
-    //     let mut ctx = Context::from_waker(noop_waker_ref());
-    //     let qt = qt as QToken;
-    //     match libos.qtokens.poll(qt, &mut ctx) {
-    //         Poll::Ready((qd, r)) => {
-    //             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-    //             0
-    //         },
-    //         Poll::Pending => libc::EAGAIN,
-    //     }
-    // })
-    todo!();
+    with_libos(|libos| {
+        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
+            None => return libc::EINVAL,
+            Some(h) => h,
+        };
+        if handle.has_completed() {
+            let (qd, r) = match handle.take() {
+                Operation::Tcp(f) => f.expect_result(),
+                Operation::Background => return libc::EINVAL,
+            };
+            unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+            return 0;
+        }
+        libc::EAGAIN
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
-    // with_libos(|libos| {
-    //     if libos.qtokens.remove(qt as QToken) {
-    //         0
-    //     } else {
-    //         libc::EINVAL
-    //     }
-    // })
-    todo!();
+    with_libos(|libos| {
+        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
+            None => return libc::EINVAL,
+            Some(h) => h,
+        };
+        drop(handle);
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    // let mut ctx = Context::from_waker(noop_waker_ref());
-    // with_libos(|libos| loop {
-    //     match libos.qtokens.poll(qt, &mut ctx) {
-    //         Poll::Ready((qd, r)) => {
-    //             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-    //             return 0;
-    //         },
-    //         Poll::Pending => (),
-    //     }
-    //     let catnip = &mut libos.catnip;
-    //     libos.runtime.receive(|p| {
-    //         if let Err(e) = catnip.receive(p) {
-    //             eprintln!("Dropped packet: {:?}", e);
-    //         }
-    //     });
-    //     libos.catnip.advance_clock(Instant::now());
-    // })
-    todo!();
+    with_libos(|libos| {
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
+            None => return libc::EINVAL,
+            Some(h) => h,
+        };
+        loop {
+            libos.runtime.scheduler.poll(&mut ctx);
+            let catnip = &mut libos.catnip;
+            libos.runtime.receive(|p| {
+                if let Err(e) = catnip.receive(p) {
+                    eprintln!("Dropped packet: {:?}", e);
+                }
+            });
+            libos.catnip.advance_clock(Instant::now());
+
+            if handle.has_completed() {
+                let (qd, r) = match handle.take() {
+                    Operation::Tcp(f) => f.expect_result(),
+                    Operation::Background => return libc::EINVAL,
+                };
+                unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
+                return 0;
+            }
+        }
+    })
 }
 
 #[no_mangle]
@@ -504,31 +515,40 @@ pub extern "C" fn dmtr_wait_any(
     qts: *mut dmtr_qtoken_t,
     num_qts: c_int,
 ) -> c_int {
-    // let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
-    // let mut ctx = Context::from_waker(noop_waker_ref());
+    let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
+    with_libos(|libos| {
+        let mut ctx = Context::from_waker(noop_waker_ref());
+        loop {
+            libos.runtime.scheduler.poll(&mut ctx);
+            let catnip = &mut libos.catnip;
+            libos.runtime.receive(|p| {
+                if let Err(e) = catnip.receive(p) {
+                    eprintln!("Dropped packet: {:?}", e);
+                }
+            });
+            libos.catnip.advance_clock(Instant::now());
 
-    // with_libos(|libos| loop {
-    //     for (i, &qt) in qts.iter().enumerate() {
-    //         match libos.qtokens.poll(qt, &mut ctx) {
-    //             Poll::Ready((qd, r)) => {
-    //                 unsafe {
-    //                     *qr_out = dmtr_qresult_t::pack(r, qd, qt);
-    //                     *ready_offset = i as c_int;
-    //                 };
-    //                 return 0;
-    //             },
-    //             Poll::Pending => (),
-    //         }
-    //     }
-    //     let catnip = &mut libos.catnip;
-    //     libos.runtime.receive(|p| {
-    //         if let Err(e) = catnip.receive(p) {
-    //             eprintln!("Dropped packet: {:?}", e);
-    //         }
-    //     });
-    //     libos.catnip.advance_clock(Instant::now());
-    // })
-    todo!();
+            for (i, &qt) in qts.iter().enumerate() {
+                let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
+                    Some(h) => h,
+                    None => return libc::EINVAL,
+                };
+                if handle.has_completed() {
+                    let (qd, r) = match handle.take() {
+                        Operation::Tcp(f) => f.expect_result(),
+                        Operation::Background => return libc::EINVAL,
+                    };
+                    unsafe {
+                        *qr_out = dmtr_qresult_t::pack(r, qd, qt);
+                        *ready_offset = i as c_int;
+                    }
+                    return 0;
+                }
+                // Leak the handle so we don't drop the future since we're just borrowing it.
+                handle.into_raw();
+            }
+        }
+    })
 }
 
 #[no_mangle]

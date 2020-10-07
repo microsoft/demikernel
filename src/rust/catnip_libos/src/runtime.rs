@@ -5,6 +5,7 @@ use crate::bindings::{
     rte_mempool,
 };
 use std::future::Future;
+use futures::FutureExt;
 use catnip::scheduler::{Scheduler, SchedulerHandle, Operation};
 use catnip::{
     protocols::{

@@ -2,7 +2,6 @@ use std::pin::Pin;
 use std::future::Future;
 use std::task::{Context, Poll};
 use gen_iter::gen_iter;
-use std::mem;
 use crate::runtime::Runtime;
 use crate::collections::waker_page::{
     WakerPage,
@@ -79,7 +78,6 @@ impl<F: Future<Output = ()> + Unpin> SchedulerHandle<F> {
 
     pub fn into_raw(mut self) -> u64 {
         let key = self.key.take().unwrap();
-        mem::forget(self);
         key
     }
 }
@@ -116,11 +114,15 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         Self { inner: Rc::new(RefCell::new(inner)) }
     }
 
-    pub unsafe fn from_raw_handle(&self, key: u64) -> SchedulerHandle<F> {
-        SchedulerHandle {
+    pub fn from_raw_handle(&self, key: u64) -> Option<SchedulerHandle<F>> {
+        if !self.inner.borrow().slab.contains(key as usize) {
+            return None;
+        }
+        let handle = SchedulerHandle {
             key: Some(key),
             inner: self.inner.clone()
-        }
+        };
+        Some(handle)
     }
 
     pub fn insert(&self, future: F) -> SchedulerHandle<F> {

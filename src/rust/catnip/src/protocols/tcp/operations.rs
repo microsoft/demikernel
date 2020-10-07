@@ -18,9 +18,15 @@ use std::{
     },
 };
 
-pub enum ResultFuture<F: Future> {
-    Pending(F),
-    Done(F::Output),
+pub struct ResultFuture<F: Future> {
+    future: F,
+    done: Option<F::Output>,
+}
+
+impl<F: Future> ResultFuture<F> {
+    fn new(future: F) -> Self {
+        Self { future, done: None }
+    }
 }
 
 impl<F: Future + Unpin> Future for ResultFuture<F>
@@ -30,17 +36,15 @@ impl<F: Future + Unpin> Future for ResultFuture<F>
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
         let self_ = self.get_mut();
-        match self_ {
-            ResultFuture::Pending(ref mut f) => {
-                let result = match Future::poll(Pin::new(f), ctx) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(r) => r,
-                };
-                *self_ = ResultFuture::Done(result);
-                Poll::Ready(())
-            },
-            ResultFuture::Done(..) => panic!("Polled after completion"),
+        if self_.done.is_some() {
+            panic!("Polled after completion")
         }
+        let result = match Future::poll(Pin::new(&mut self_.future), ctx) {
+            Poll::Pending => return Poll::Pending,
+            Poll::Ready(r) => r,
+        };
+        self_.done = Some(result);
+        Poll::Ready(())
     }
 }
 
@@ -53,25 +57,25 @@ pub enum TcpOperation<RT: Runtime> {
 
 impl<RT: Runtime> From<AcceptFuture<RT>> for TcpOperation<RT> {
     fn from(f: AcceptFuture<RT>) -> Self {
-        TcpOperation::Accept(ResultFuture::Pending(f))
+        TcpOperation::Accept(ResultFuture::new(f))
     }
 }
 
 impl<RT: Runtime> From<ConnectFuture<RT>> for TcpOperation<RT> {
     fn from(f: ConnectFuture<RT>) -> Self {
-        TcpOperation::Connect(ResultFuture::Pending(f))
+        TcpOperation::Connect(ResultFuture::new(f))
     }
 }
 
 impl<RT: Runtime> From<PushFuture<RT>> for TcpOperation<RT> {
     fn from(f: PushFuture<RT>) -> Self {
-        TcpOperation::Push(ResultFuture::Pending(f))
+        TcpOperation::Push(ResultFuture::new(f))
     }
 }
 
 impl<RT: Runtime> From<PopFuture<RT>> for TcpOperation<RT> {
     fn from(f: PopFuture<RT>) -> Self {
-        TcpOperation::Pop(ResultFuture::Pending(f))
+        TcpOperation::Pop(ResultFuture::new(f))
     }
 }
 
@@ -82,6 +86,44 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
         match self.get_mut() {
             TcpOperation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
             _ => todo!(),
+        }
+    }
+}
+
+pub enum TcpOperationResult {
+    Connect,
+    Accept(SocketDescriptor),
+    Push,
+    Pop(Bytes),
+    Failed(Fail),
+}
+
+impl<RT: Runtime> TcpOperation<RT> {
+    pub fn expect_result(self) -> (SocketDescriptor, TcpOperationResult) {
+        use TcpOperation::*;
+
+        match self {
+            Connect(ResultFuture { future, done: Some(Ok(())) }) =>
+                (future.fd, TcpOperationResult::Connect),
+            Connect(ResultFuture { future, done: Some(Err(e)) }) =>
+                (future.fd, TcpOperationResult::Failed(e)),
+
+            Accept(ResultFuture { future, done: Some(Ok(fd)) }) =>
+                (future.fd, TcpOperationResult::Accept(fd)),
+            Accept(ResultFuture { future, done: Some(Err(e)) }) =>
+                (future.fd, TcpOperationResult::Failed(e)),
+
+            Push(ResultFuture { future, done: Some(Ok(())) }) =>
+                (future.fd, TcpOperationResult::Push),
+            Push(ResultFuture { future, done: Some(Err(e)) }) =>
+                (future.fd, TcpOperationResult::Failed(e)),
+
+            Pop(ResultFuture { future, done: Some(Ok(bytes)) }) =>
+                (future.fd, TcpOperationResult::Pop(bytes)),
+            Pop(ResultFuture { future, done: Some(Err(e)) }) =>
+                (future.fd, TcpOperationResult::Failed(e)),
+
+            _ => panic!("Future not ready"),
         }
     }
 }
