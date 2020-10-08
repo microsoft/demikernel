@@ -50,7 +50,7 @@ fn immediate_reply() {
     let now = now + Duration::from_micros(1);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     let request = alice.rt().pop_frame();
     assert!(request.len() >= ethernet::MIN_PAYLOAD_SIZE);
 
@@ -68,13 +68,13 @@ fn immediate_reply() {
         Some(&test_helpers::ALICE_MAC)
     );
 
-    carrie.advance_clock(now);
+    carrie.rt().advance_clock(now);
     let reply = carrie.rt().pop_frame();
 
     info!("passing ARP reply back to alice...");
     alice.receive(&reply).unwrap();
     let now = now + Duration::from_micros(1);
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
     assert_eq!(test_helpers::CARRIE_MAC, link_addr);
 }
@@ -100,7 +100,7 @@ fn slow_reply() {
 
     // move time forward enough to trigger a timeout.
     now += Duration::from_secs(1);
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = alice.rt().pop_frame();
@@ -121,13 +121,13 @@ fn slow_reply() {
         Some(&test_helpers::ALICE_MAC)
     );
 
-    carrie.advance_clock(now);
+    carrie.rt().advance_clock(now);
     let reply = carrie.rt().pop_frame();
 
     info!("passing ARP reply back to alice...");
     alice.receive(&reply).unwrap();
     now += Duration::from_micros(1);
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
     assert_eq!(test_helpers::CARRIE_MAC, link_addr);
 }
@@ -136,7 +136,7 @@ fn slow_reply() {
 fn no_reply() {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
-    let mut alice = test_helpers::new_alice(now);
+    let alice = test_helpers::new_alice(now);
     alice.import_arp_cache(HashMap::new());
     let options = alice.rt().arp_options();
 
@@ -153,7 +153,7 @@ fn no_reply() {
 
     for i in 0..options.retry_count {
         now += options.request_timeout;
-        alice.advance_clock(now);
+        alice.rt().advance_clock(now);
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
         let bytes = alice.rt().pop_frame();
@@ -164,7 +164,7 @@ fn no_reply() {
 
     // timeout
     now += options.request_timeout;
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
 
     must_let!(let Poll::Ready(Err(Fail::Timeout {})) = Future::poll(fut.as_mut(), &mut ctx));
 }

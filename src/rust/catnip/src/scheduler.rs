@@ -9,7 +9,7 @@ use crate::collections::waker_page::{
     WAKER_PAGE_SIZE,
 };
 use futures::task::AtomicWaker;
-use slab::Slab;
+use unicycle::pin_slab::PinSlab;
 use std::{
     sync::Arc,
     task::{
@@ -97,7 +97,7 @@ impl<F: Future<Output = ()> + Unpin> Clone for Scheduler<F> {
 impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
     pub fn new() -> Self {
         let inner = Inner {
-            slab: Slab::new(),
+            slab: PinSlab::new(),
             pages: vec![],
             root_waker: Arc::new(AtomicWaker::new()),
         };
@@ -110,12 +110,12 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         let (page, subpage_ix) = inner.page(key);
         assert!(!page.was_dropped(subpage_ix));
         page.clear(subpage_ix);
-        inner.slab.remove(key as usize)
+        inner.slab.remove_unpin(key as usize).unwrap()
     }
 
     pub fn from_raw_handle(&self, key: u64) -> Option<SchedulerHandle> {
         let inner = self.inner.borrow();
-        if !inner.slab.contains(key as usize) {
+        if inner.slab.get(key as usize).is_none() {
             return None;
         }
         let (page, _) = inner.page(key);
@@ -137,12 +137,39 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
     }
 
     pub fn poll(&self, ctx: &mut Context) {
-        self.inner.borrow_mut().poll(ctx)
+        let mut inner = self.inner.borrow_mut();
+        inner.root_waker.register(ctx.waker());
+
+        for page_ix in 0..inner.pages.len() {
+            for subpage_ix in iter_set_bits(inner.pages[page_ix].take_notified()) {
+                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
+                let waker = unsafe { Waker::from_raw(inner.pages[page_ix].raw_waker(subpage_ix)) };
+                let mut sub_ctx = Context::from_waker(&waker);
+
+                let pinned_ref = inner.slab.get_pin_mut(ix).unwrap();
+                let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
+
+                drop(inner);
+                let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
+                let poll_result = Future::poll(pinned_ref, &mut sub_ctx);
+                inner = self.inner.borrow_mut();
+
+                match poll_result {
+                    Poll::Ready(()) => inner.pages[page_ix].mark_completed(subpage_ix),
+                    Poll::Pending => (),
+                }
+            }
+            for subpage_ix in iter_set_bits(inner.pages[page_ix].take_dropped()) {
+                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
+                inner.slab.remove(ix);
+                inner.pages[page_ix].clear(subpage_ix);
+            }
+        }
     }
 }
 
 struct Inner<F: Future<Output = ()> + Unpin> {
-    slab: Slab<F>,
+    slab: PinSlab<F>,
     pages: Vec<WakerPageRef>,
     root_waker: Arc<AtomicWaker>,
 }
@@ -162,28 +189,5 @@ impl<F: Future<Output = ()> + Unpin> Inner<F> {
         let (page, subpage_ix) = self.page(key as u64);
         page.initialize(subpage_ix);
         key as u64
-    }
-
-    pub fn poll(&mut self, ctx: &mut Context) {
-        self.root_waker.register(ctx.waker());
-
-        for (page_ix, page) in self.pages.iter().enumerate() {
-            for subpage_ix in iter_set_bits(page.take_notified()) {
-                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
-                let waker = unsafe { Waker::from_raw(page.raw_waker(subpage_ix)) };
-                let mut sub_ctx = Context::from_waker(&waker);
-                match Future::poll(Pin::new(&mut self.slab[ix]), &mut sub_ctx) {
-                    Poll::Ready(()) => {
-                        page.mark_completed(subpage_ix);
-                    },
-                    Poll::Pending => (),
-                }
-            }
-            for subpage_ix in iter_set_bits(page.take_dropped()) {
-                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
-                self.slab.remove(ix);
-                page.clear(subpage_ix);
-            }
-        }
     }
 }

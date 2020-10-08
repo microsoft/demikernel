@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use super::datagram::UdpDatagramDecoder;
+use crate::runtime::Runtime;
 use crate::{
     protocols::{
         icmpv4,
@@ -37,7 +38,7 @@ fn unicast() {
 
     let now = Instant::now();
     let text = vec![0xffu8; 10];
-    let mut alice = test_helpers::new_alice(now);
+    let alice = test_helpers::new_alice(now);
     let mut bob = test_helpers::new_bob(now);
     bob.open_udp_port(bob_port);
 
@@ -49,7 +50,7 @@ fn unicast() {
     must_let!(let Poll::Ready(..) = Future::poll(fut.as_mut(), &mut ctx));
 
     let udp_datagram = {
-        alice.advance_clock(now);
+        alice.rt().advance_clock(now);
         let bytes = alice.rt().pop_frame();
         let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
@@ -57,7 +58,7 @@ fn unicast() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    bob.advance_clock(now);
+    bob.rt().advance_clock(now);
 
     todo!();
     // let datagram = bob.rt().pop_frame();
@@ -89,10 +90,10 @@ fn destination_port_unreachable() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());
 
     let now = now + Duration::from_micros(1);
-    bob.advance_clock(now);
+    bob.rt().advance_clock(now);
 
     let udp_datagram = {
-        alice.advance_clock(now);
+        alice.rt().advance_clock(now);
         let bytes = alice.rt().pop_frame();
         let _ = UdpDatagramDecoder::attach(&bytes).unwrap();
         bytes
@@ -100,7 +101,7 @@ fn destination_port_unreachable() {
 
     info!("passing UDP datagram to bob...");
     bob.receive(&udp_datagram).unwrap();
-    bob.advance_clock(now);
+    bob.rt().advance_clock(now);
     let icmpv4_datagram = {
         let bytes = bob.rt().pop_frame();
         let _ = icmpv4::Error::attach(&bytes).unwrap();
@@ -109,7 +110,7 @@ fn destination_port_unreachable() {
 
     info!("passing ICMPv4 datagram to alice...");
     alice.receive(&icmpv4_datagram).unwrap();
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
 
     todo!();
     // must_let!(let Icmpv4Error { ref id, ref next_hop_mtu, .. } = &*event);

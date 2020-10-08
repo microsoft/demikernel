@@ -8,6 +8,7 @@ use catnip::{
         ipv4,
     },
     test_helpers,
+    runtime::Runtime,
 };
 use futures::{
     task::noop_waker_ref,
@@ -35,7 +36,7 @@ pub fn one_send_recv_round(
 ) {
     // Send data from Alice to Bob
     alice.tcp_write(alice_fd, buf.clone()).unwrap();
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.
@@ -44,7 +45,7 @@ pub fn one_send_recv_round(
 
     // Send data from Bob to Alice
     bob.tcp_write(bob_fd, buf.clone()).unwrap();
-    bob.advance_clock(now);
+    bob.rt().poll_scheduler();
     alice.receive(&bob.rt().pop_frame()).unwrap();
 
     // Receive it on Alice's side.
@@ -73,15 +74,15 @@ fn send_recv_loop() {
     let mut connect_future = alice.tcp_connect(alice_fd, listen_addr);
 
     // Send the SYN from Alice to Bob
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Send the SYN+ACK from Bob to Alice
-    bob.advance_clock(now);
+    bob.rt().poll_scheduler();
     alice.receive(&bob.rt().pop_frame()).unwrap();
 
     // Send the ACK from Alice to Bob
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
@@ -92,7 +93,7 @@ fn send_recv_loop() {
 
     // Send data from Alice to Bob
     alice.tcp_write(alice_fd, buf.clone()).unwrap();
-    alice.advance_clock(now);
+    alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.

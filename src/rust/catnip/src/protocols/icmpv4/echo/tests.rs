@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use super::*;
+use crate::runtime::Runtime;
 use crate::test_helpers;
 use futures::{
     task::{
@@ -62,7 +63,7 @@ fn ping() {
     let now = now + Duration::from_micros(1);
     bob.receive(&ping_request).unwrap();
     let ping_reply = {
-        bob.advance_clock(now);
+        bob.rt().advance_clock(now);
         bob.rt().poll_scheduler();
         let bytes = bob.rt().pop_frame();
         let echo = Icmpv4Echo::attach(&bytes).unwrap();
@@ -72,7 +73,7 @@ fn ping() {
 
     info!("passing ICMPv4 ping reply back to alice...");
     let now = now + Duration::from_micros(1);
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     alice.receive(&ping_reply).unwrap();
 
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_ready());
@@ -83,14 +84,14 @@ fn timeout() {
     // ensures that a ICMPv4 ping exchange succeeds.
     let mut now = Instant::now();
     let timeout = Duration::from_secs(1);
-    let mut alice = test_helpers::new_alice(now);
+    let alice = test_helpers::new_alice(now);
 
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut fut = alice
         .ping(test_helpers::BOB_IPV4, Some(timeout))
         .boxed_local();
 
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let bytes = alice.rt().pop_frame();
@@ -98,6 +99,6 @@ fn timeout() {
     assert_eq!(echo.op(), Icmpv4EchoOp::Request);
 
     now += timeout;
-    alice.advance_clock(now);
+    alice.rt().advance_clock(now);
     must_let!(let Poll::Ready(Err(Fail::Timeout {})) = Future::poll(fut.as_mut(), &mut ctx));
 }
