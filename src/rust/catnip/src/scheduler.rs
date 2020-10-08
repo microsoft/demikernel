@@ -1,3 +1,8 @@
+// TODO: Our safety here is very precarious.
+// We should separate the scheduler into two components.
+// 1) A single Scheduler owned by the top level loop. This can take out finished values and poll.
+// 2) A cloneable half that's given to the runtime. This can insert new values and drop handles.
+//
 use std::pin::Pin;
 use std::future::Future;
 use std::task::{Context, Poll};
