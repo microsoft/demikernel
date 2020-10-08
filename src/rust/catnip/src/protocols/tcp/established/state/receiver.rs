@@ -129,6 +129,7 @@ impl Receiver {
                 }));
             }
             *self.waker.borrow_mut() = Some(ctx.waker().clone());
+            return Poll::Pending;
         }
 
         let segment = self
