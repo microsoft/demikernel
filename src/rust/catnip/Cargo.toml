@@ -31,10 +31,7 @@ serde = "1.0.110"
 serde_yaml = "0.8.12"
 slab = "0.4.2"
 unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "44c0e8f62cb9355cfd35ef5309abf10a4c388b62" }
+uniset = "0.2.0"
 
 [dev-dependencies]
 criterion = "0.3.3"
-
-[[bench]]
-name = "tcp_echo"
-harness = false

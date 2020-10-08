@@ -8,7 +8,6 @@ use catnip::{
         ipv4,
     },
     test_helpers,
-    runtime::Runtime,
 };
 use futures::{
     task::noop_waker_ref,
@@ -25,31 +24,36 @@ use std::{
     },
     time::Instant,
 };
+use catnip::file_table::FileDescriptor;
 
 pub fn one_send_recv_round(
+    ctx: &mut Context,
     buf: Bytes,
-    now: Instant,
     alice: &mut test_helpers::TestEngine,
-    alice_fd: u16,
+    alice_fd: FileDescriptor,
     bob: &mut test_helpers::TestEngine,
-    bob_fd: u16,
+    bob_fd: FileDescriptor,
 ) {
     // Send data from Alice to Bob
-    alice.tcp_write(alice_fd, buf.clone()).unwrap();
+    let mut push_future = alice.tcp_push(alice_fd, buf.clone());
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.
-    must_let!(let Ok(received_buf) = bob.tcp_read(bob_fd));
+    let mut pop_future = bob.tcp_pop(bob_fd);
+    must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), ctx));
     assert_eq!(received_buf.len(), buf.len());
 
     // Send data from Bob to Alice
-    bob.tcp_write(bob_fd, buf.clone()).unwrap();
+    let mut push_future = bob.tcp_push(bob_fd, buf.clone());
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     bob.rt().poll_scheduler();
     alice.receive(&bob.rt().pop_frame()).unwrap();
 
     // Receive it on Alice's side.
-    must_let!(let Ok(received_buf) = alice.tcp_read(alice_fd));
+    let mut pop_future = alice.tcp_pop(alice_fd);
+    must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), ctx));
     assert_eq!(received_buf.len(), buf.len());
 }
 
@@ -57,7 +61,6 @@ pub fn one_send_recv_round(
 fn send_recv_loop() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let now = Instant::now();
-
     let mut alice = test_helpers::new_alice(now);
     let mut bob = test_helpers::new_bob(now);
 
@@ -68,7 +71,7 @@ fn send_recv_loop() {
     let listen_fd = bob.tcp_socket();
     bob.tcp_bind(listen_fd, listen_addr).unwrap();
     bob.tcp_listen(listen_fd, 1).unwrap();
-    let mut accept_future = bob.tcp_accept_async(listen_fd);
+    let mut accept_future = bob.tcp_accept(listen_fd);
 
     let alice_fd = alice.tcp_socket();
     let mut connect_future = alice.tcp_connect(alice_fd, listen_addr);
@@ -92,18 +95,20 @@ fn send_recv_loop() {
     let buf = BytesMut::from(&vec![0u8; size][..]).freeze();
 
     // Send data from Alice to Bob
-    alice.tcp_write(alice_fd, buf.clone()).unwrap();
+    let mut push_future = alice.tcp_push(alice_fd, buf.clone());
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), &mut ctx));
     alice.rt().poll_scheduler();
     bob.receive(&alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.
-    must_let!(let Ok(buf) = bob.tcp_read(bob_fd));
+    let mut pop_future = bob.tcp_pop(bob_fd);
+    must_let!(let Poll::Ready(Ok(buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
     assert_eq!(buf.len(), size);
 
     let num_rounds: usize = env::var("SEND_RECV_ITERS")
         .map(|s| s.parse().unwrap())
         .unwrap_or(1);
     for _ in 0..num_rounds {
-        one_send_recv_round(buf.clone(), now, &mut alice, alice_fd, &mut bob, bob_fd);
+        one_send_recv_round(&mut ctx, buf.clone(), &mut alice, alice_fd, &mut bob, bob_fd);
     }
 }

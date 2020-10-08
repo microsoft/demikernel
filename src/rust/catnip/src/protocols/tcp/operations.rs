@@ -1,6 +1,6 @@
 use crate::runtime::Runtime;
+use crate::file_table::FileDescriptor;
 use super::peer::{
-    SocketDescriptor,
     Inner,
     Peer,
 };
@@ -94,14 +94,14 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 
 pub enum TcpOperationResult {
     Connect,
-    Accept(SocketDescriptor),
+    Accept(FileDescriptor),
     Push,
     Pop(Bytes),
     Failed(Fail),
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (SocketDescriptor, TcpOperationResult) {
+    pub fn expect_result(self) -> (FileDescriptor, TcpOperationResult) {
         use TcpOperation::*;
 
         match self {
@@ -136,7 +136,7 @@ pub enum ConnectFutureState {
 }
 
 pub struct ConnectFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
+    pub fd: FileDescriptor,
     pub state: ConnectFutureState,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
@@ -163,7 +163,7 @@ impl<RT: Runtime> Future for ConnectFuture<RT> {
 }
 
 pub struct AcceptFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
+    pub fd: FileDescriptor,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 
@@ -174,7 +174,7 @@ impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
 }
 
 impl<RT: Runtime> Future for AcceptFuture<RT> {
-    type Output = Result<SocketDescriptor, Fail>;
+    type Output = Result<FileDescriptor, Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
@@ -186,7 +186,7 @@ impl<RT: Runtime> Future for AcceptFuture<RT> {
 }
 
 pub struct PushFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
+    pub fd: FileDescriptor,
     pub err: Option<Fail>,
     pub _marker: std::marker::PhantomData<RT>,
 }
@@ -209,7 +209,7 @@ impl<RT: Runtime> Future for PushFuture<RT> {
 }
 
 pub struct PopFuture<RT: Runtime> {
-    pub fd: SocketDescriptor,
+    pub fd: FileDescriptor,
     pub inner: Rc<RefCell<Inner<RT>>>,
 }
 

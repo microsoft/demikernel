@@ -348,7 +348,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.catnip.tcp_accept_async(sockqd as SocketDescriptor);
+        let future = libos.catnip.tcp_accept(sockqd as SocketDescriptor);
         let handle = libos.runtime.scheduler.insert(future.into());
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -423,7 +423,7 @@ pub extern "C" fn dmtr_push(
     }
     let buf = buf.freeze();
     with_libos(|libos| {
-        let future = libos.catnip.tcp_push_async(qd as SocketDescriptor, buf);
+        let future = libos.catnip.tcp_push(qd as SocketDescriptor, buf);
         let handle = libos.runtime.scheduler.insert(future.into());
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -434,7 +434,7 @@ pub extern "C" fn dmtr_push(
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.catnip.tcp_pop_async(qd as SocketDescriptor);
+        let future = libos.catnip.tcp_pop(qd as SocketDescriptor);
         let handle = libos.runtime.scheduler.insert(future.into());
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };

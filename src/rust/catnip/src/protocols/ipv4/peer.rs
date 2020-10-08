@@ -12,23 +12,20 @@ use crate::{
         ethernet,
         icmpv4,
         ip,
-        ipv4,
         tcp,
-        tcp::peer::{
-            SocketDescriptor,
-        },
-        tcp::operations::ConnectFuture,
         udp,
     },
     runtime::Runtime,
 };
-use bytes::Bytes;
 use std::{
     convert::TryFrom,
     future::Future,
     net::Ipv4Addr,
     time::Duration,
 };
+use crate::file_table::FileTable;
+#[cfg(test)]
+use crate::file_table::FileDescriptor;
 
 pub struct Ipv4Peer<RT: Runtime> {
     rt: RT,
@@ -38,10 +35,10 @@ pub struct Ipv4Peer<RT: Runtime> {
 }
 
 impl<RT: Runtime> Ipv4Peer<RT> {
-    pub fn new(rt: RT, arp: arp::Peer<RT>) -> Ipv4Peer<RT> {
-        let udp = udp::Peer::new(rt.clone(), arp.clone());
+    pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Ipv4Peer<RT> {
+        let udp = udp::Peer::new(rt.clone(), arp.clone(), file_table.clone());
         let icmpv4 = icmpv4::Peer::new(rt.clone(), arp.clone());
-        let tcp = tcp::Peer::new(rt.clone(), arp);
+        let tcp = tcp::Peer::new(rt.clone(), arp, file_table);
         Ipv4Peer {
             rt,
             udp,
@@ -99,60 +96,15 @@ impl<RT: Runtime> Ipv4Peer<RT> {
     ) -> impl Future<Output = Result<(), Fail>> {
         self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
-
-    pub fn tcp_socket(&mut self) -> SocketDescriptor {
-        self.tcp.socket()
-    }
-
-    pub fn tcp_connect(
-        &mut self,
-        handle: SocketDescriptor,
-        remote_endpoint: ipv4::Endpoint,
-    ) -> ConnectFuture<RT> {
-        self.tcp.connect(handle, remote_endpoint)
-    }
-
-    pub fn tcp_listen(&mut self, fd: SocketDescriptor, backlog: usize) -> Result<(), Fail> {
-        self.tcp.listen(fd, backlog)
-    }
-
-    pub fn tcp_bind(&mut self, fd: SocketDescriptor, endpoint: ipv4::Endpoint) -> Result<(), Fail> {
-        self.tcp.bind(fd, endpoint)
-    }
-
-    pub fn tcp_accept(&mut self, fd: SocketDescriptor) -> Result<Option<SocketDescriptor>, Fail> {
-        self.tcp.accept(fd)
-    }
-
-    pub fn tcp_write(&mut self, handle: SocketDescriptor, bytes: Bytes) -> Result<(), Fail> {
-        self.tcp.send(handle, bytes)
-    }
-
-    pub fn tcp_peek(&self, handle: SocketDescriptor) -> Result<Bytes, Fail> {
-        self.tcp.peek(handle)
-    }
-
-    pub fn tcp_read(&mut self, handle: SocketDescriptor) -> Result<Bytes, Fail> {
-        match self.tcp.recv(handle)? {
-            Some(r) => Ok(r),
-            None => Err(Fail::ResourceExhausted {
-                details: "No available data",
-            }),
-        }
-    }
-
-    pub fn tcp_close(&mut self, handle: SocketDescriptor) -> Result<(), Fail> {
-        self.tcp.close(handle)
-    }
 }
 
 #[cfg(test)]
 impl<RT: Runtime> Ipv4Peer<RT> {
-    pub fn tcp_mss(&self, handle: SocketDescriptor) -> Result<usize, Fail> {
-        self.tcp.remote_mss(handle)
+    pub fn tcp_mss(&self, fd: FileDescriptor) -> Result<usize, Fail> {
+        self.tcp.remote_mss(fd)
     }
 
-    pub fn tcp_rto(&self, handle: SocketDescriptor) -> Result<Duration, Fail> {
-        self.tcp.current_rto(handle)
+    pub fn tcp_rto(&self, fd: FileDescriptor) -> Result<Duration, Fail> {
+        self.tcp.current_rto(fd)
     }
 }

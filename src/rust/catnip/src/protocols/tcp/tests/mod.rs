@@ -34,7 +34,7 @@ fn test_connect() {
     let listen_fd = bob.tcp_socket();
     bob.tcp_bind(listen_fd, listen_addr).unwrap();
     bob.tcp_listen(listen_fd, 1).unwrap();
-    let mut accept_future = bob.tcp_accept_async(listen_fd);
+    let mut accept_future = bob.tcp_accept(listen_fd);
 
     let alice_fd = alice.tcp_socket();
     let mut connect_future = alice.tcp_connect(alice_fd, listen_addr);
@@ -56,11 +56,13 @@ fn test_connect() {
 
     // Send data from Alice to Bob
     let buf = BytesMut::from(&vec![0x5a; 32][..]).freeze();
-    alice.tcp_write(alice_fd, buf.clone()).unwrap();
+    let mut write_future = alice.tcp_push(alice_fd, buf.clone());
+    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut write_future), &mut ctx));
     alice.rt().poll_scheduler();
 
     // Receive it on Bob's side.
     bob.receive(&alice.rt().pop_frame()).unwrap();
-    must_let!(let Ok(received_buf) = bob.tcp_read(bob_fd));
+    let mut pop_future = bob.tcp_pop(bob_fd);
+    must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
     assert_eq!(received_buf, buf);
 }

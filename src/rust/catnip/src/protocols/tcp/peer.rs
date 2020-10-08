@@ -4,11 +4,14 @@ use super::{
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
+use crate::file_table::{File, FileTable};
+use crate::file_table::FileDescriptor;
 use crate::{
     fail::Fail,
     protocols::{
         arp,
         ip,
+        ip::port::EphemeralPorts,
         ipv4,
         tcp::segment::{
             TcpSegment,
@@ -39,22 +42,20 @@ use std::{
     time::Duration,
 };
 
-pub type SocketDescriptor = u16;
-
 pub struct Peer<RT: Runtime> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
 }
 
 impl<RT: Runtime> Peer<RT> {
-    pub fn new(rt: RT, arp: arp::Peer<RT>) -> Self {
+    pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(Inner::new(rt, arp))),
+            inner: Rc::new(RefCell::new(Inner::new(rt, arp, file_table))),
         }
     }
 
-    pub fn socket(&self) -> SocketDescriptor {
+    pub fn socket(&self) -> FileDescriptor {
         let mut inner = self.inner.borrow_mut();
-        let fd = inner.alloc_fd();
+        let fd = inner.file_table.alloc(File::TcpSocket);
         assert!(inner
             .sockets
             .insert(fd, Socket::Inactive { local: None })
@@ -62,7 +63,7 @@ impl<RT: Runtime> Peer<RT> {
         fd
     }
 
-    pub fn bind(&self, fd: SocketDescriptor, addr: ipv4::Endpoint) -> Result<(), Fail> {
+    pub fn bind(&self, fd: FileDescriptor, addr: ipv4::Endpoint) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         if addr.port() >= ip::Port::first_private_port() {
             return Err(Fail::Malformed {
@@ -84,7 +85,7 @@ impl<RT: Runtime> Peer<RT> {
         self.inner.borrow_mut().receive_datagram(datagram)
     }
 
-    pub fn listen(&self, fd: SocketDescriptor, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get_mut(&fd) {
             Some(Socket::Inactive { local: Some(local) }) => *local,
@@ -107,43 +108,7 @@ impl<RT: Runtime> Peer<RT> {
         Ok(())
     }
 
-    pub fn accept(&self, fd: SocketDescriptor) -> Result<Option<SocketDescriptor>, Fail> {
-        let mut inner_ = self.inner.borrow_mut();
-        let inner = &mut *inner_;
-
-        let local = match inner.sockets.get(&fd) {
-            Some(Socket::Listening { local }) => local,
-            Some(..) => {
-                return Err(Fail::Malformed {
-                    details: "Socket not listening",
-                })
-            },
-            None => return Err(Fail::Malformed { details: "Bad FD" }),
-        };
-        let passive = inner
-            .passive
-            .get_mut(local)
-            .expect("sockets/local inconsistency");
-        let cb = match passive.accept()? {
-            Some(e) => e,
-            None => return Ok(None),
-        };
-        let established = EstablishedSocket::new(cb);
-
-        let fd = inner.alloc_fd();
-        let key = (established.cb.local.clone(), established.cb.remote.clone());
-
-        let socket = Socket::Established {
-            local: established.cb.local.clone(),
-            remote: established.cb.remote.clone(),
-        };
-        assert!(inner.sockets.insert(fd, socket).is_none());
-        assert!(inner.established.insert(key, established).is_none());
-
-        Ok(Some(fd))
-    }
-
-    pub fn poll_accept(&self, fd: SocketDescriptor, ctx: &mut Context) -> Poll<Result<SocketDescriptor, Fail>> {
+    pub fn poll_accept(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<FileDescriptor, Fail>> {
         let mut inner_ = self.inner.borrow_mut();
         let inner = &mut *inner_;
 
@@ -167,7 +132,7 @@ impl<RT: Runtime> Peer<RT> {
         };
         let established = EstablishedSocket::new(cb);
 
-        let fd = inner.alloc_fd();
+        let fd = inner.file_table.alloc(File::TcpSocket);
         let key = (established.cb.local.clone(), established.cb.remote.clone());
 
         let socket = Socket::Established {
@@ -180,14 +145,14 @@ impl<RT: Runtime> Peer<RT> {
         Poll::Ready(Ok(fd))
     }
 
-    pub fn accept_async(&self, fd: SocketDescriptor) -> AcceptFuture<RT> {
+    pub fn accept(&self, fd: FileDescriptor) -> AcceptFuture<RT> {
         AcceptFuture {
             fd,
             inner: self.inner.clone(),
         }
     }
 
-    pub fn connect(&self, fd: SocketDescriptor, remote: ipv4::Endpoint) -> ConnectFuture<RT> {
+    pub fn connect(&self, fd: FileDescriptor, remote: ipv4::Endpoint) -> ConnectFuture<RT> {
         let mut inner = self.inner.borrow_mut();
 
         let r = try {
@@ -198,13 +163,8 @@ impl<RT: Runtime> Peer<RT> {
                 })?,
             }
 
-            let local_port =
-                inner
-                    .unassigned_ports
-                    .pop_front()
-                    .ok_or_else(|| Fail::ResourceExhausted {
-                        details: "Out of private ports",
-                    })?;
+            // TODO: We need to free these!
+            let local_port = inner.ephemeral_ports.alloc()?;
             let local = ipv4::Endpoint::new(inner.rt.local_ipv4_addr(), local_port);
 
             let socket = Socket::Connecting {
@@ -236,7 +196,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn peek(&self, fd: SocketDescriptor) -> Result<Bytes, Fail> {
+    pub fn peek(&self, fd: FileDescriptor) -> Result<Bytes, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -255,7 +215,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn recv(&self, fd: SocketDescriptor) -> Result<Option<Bytes>, Fail> {
+    pub fn recv(&self, fd: FileDescriptor) -> Result<Option<Bytes>, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -274,7 +234,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn poll_recv(&self, fd: SocketDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+    pub fn poll_recv(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -293,7 +253,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn push_async(&self, fd: SocketDescriptor, buf: Bytes) -> PushFuture<RT> {
+    pub fn push(&self, fd: FileDescriptor, buf: Bytes) -> PushFuture<RT> {
         let err = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
@@ -305,14 +265,14 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn pop_async(&self, fd: SocketDescriptor) -> PopFuture<RT> {
+    pub fn pop(&self, fd: FileDescriptor) -> PopFuture<RT> {
         PopFuture {
             fd,
             inner: self.inner.clone(),
         }
     }
 
-    pub fn send(&self, fd: SocketDescriptor, buf: Bytes) -> Result<(), Fail> {
+    fn send(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -333,7 +293,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn close(&self, fd: SocketDescriptor) -> Result<(), Fail> {
+    pub fn close(&self, fd: FileDescriptor) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => {
@@ -356,7 +316,7 @@ impl<RT: Runtime> Peer<RT> {
         Ok(())
     }
 
-    pub fn remote_mss(&self, fd: SocketDescriptor) -> Result<usize, Fail> {
+    pub fn remote_mss(&self, fd: FileDescriptor) -> Result<usize, Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -377,7 +337,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn current_rto(&self, fd: SocketDescriptor) -> Result<Duration, Fail> {
+    pub fn current_rto(&self, fd: FileDescriptor) -> Result<Duration, Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -400,7 +360,7 @@ impl<RT: Runtime> Peer<RT> {
 
     pub fn endpoints(
         &self,
-        fd: SocketDescriptor,
+        fd: FileDescriptor,
     ) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
@@ -443,11 +403,11 @@ enum Socket {
 pub struct Inner<RT: Runtime> {
     isn_generator: IsnGenerator,
 
-    next_fd: SocketDescriptor,
-    unassigned_ports: VecDeque<ip::Port>,
+    file_table: FileTable,
+    ephemeral_ports: EphemeralPorts,
 
     // FD -> local port
-    sockets: HashMap<SocketDescriptor, Socket>,
+    sockets: HashMap<FileDescriptor, Socket>,
 
     passive: HashMap<ipv4::Endpoint, PassiveSocket<RT>>,
     connecting: HashMap<(ipv4::Endpoint, ipv4::Endpoint), ActiveOpenSocket<RT>>,
@@ -458,14 +418,11 @@ pub struct Inner<RT: Runtime> {
 }
 
 impl<RT: Runtime> Inner<RT> {
-    fn new(rt: RT, arp: arp::Peer<RT>) -> Self {
+    fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
         Self {
             isn_generator: IsnGenerator::new(rt.rng_gen()),
-            // TODO: Reuse old FDs.
-            next_fd: 1,
-            unassigned_ports: (ip::Port::first_private_port().into()..65535)
-                .map(|p| ip::Port::try_from(p).unwrap())
-                .collect(),
+            file_table,
+            ephemeral_ports: EphemeralPorts::new(),
             sockets: HashMap::new(),
             passive: HashMap::new(),
             connecting: HashMap::new(),
@@ -526,12 +483,6 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn alloc_fd(&mut self) -> SocketDescriptor {
-        let fd = self.next_fd;
-        self.next_fd += 1;
-        fd
-    }
-
     fn send_rst(&mut self, segment: TcpSegment) -> Result<(), Fail> {
         let local_ipv4_addr = segment.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
             details: "Missing destination IPv4 addr",
@@ -577,7 +528,7 @@ impl<RT: Runtime> Inner<RT> {
 
     pub(super) fn poll_connect_finished(
         &mut self,
-        fd: SocketDescriptor,
+        fd: FileDescriptor,
         context: &mut Context,
     ) -> Poll<Result<(), Fail>> {
         let key = match self.sockets.get(&fd) {

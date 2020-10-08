@@ -67,14 +67,6 @@ impl<RT: Runtime> ReadySockets<RT> {
         self.waker.take().map(|w| w.wake());
     }
 
-    fn pop(&mut self) -> Option<Result<ControlBlock<RT>, Fail>> {
-        let r = self.ready.pop_front()?;
-        if let Ok(ref cb) = r {
-            assert!(self.endpoints.remove(&cb.remote));
-        }
-        Some(r)
-    }
-
     fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
         let r = match self.ready.pop_front() {
             Some(r) => r,
@@ -123,14 +115,6 @@ impl<RT: Runtime> PassiveSocket<RT> {
             local,
             rt,
             arp,
-        }
-    }
-
-    pub fn accept(&mut self) -> Result<Option<ControlBlock<RT>>, Fail> {
-        match self.ready.borrow_mut().pop() {
-            None => Ok(None),
-            Some(Ok(cb)) => Ok(Some(cb)),
-            Some(Err(e)) => Err(e),
         }
     }
 

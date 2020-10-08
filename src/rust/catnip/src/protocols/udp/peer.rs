@@ -21,7 +21,7 @@ use futures::{
     StreamExt,
 };
 use futures::channel::mpsc;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -30,11 +30,96 @@ use std::{
     net::Ipv4Addr,
     rc::Rc,
 };
+use crate::file_table::{FileTable, FileDescriptor};
+use bytes::Bytes;
+use std::task::Waker;
+
+pub struct UdpPeer2<RT: Runtime> {
+    inner: Rc<RefCell<Inner<RT>>>,
+}
+
+struct Listener {
+    buf: VecDeque<(ipv4::Endpoint, Vec<u8>)>,
+    waker: Option<Waker>,
+}
+
+struct Socket {
+    // `bind(2)` fixes a local address
+    local: Option<ipv4::Endpoint>,
+    // `connect(2)` fixes a remote address
+    remote: Option<ipv4::Endpoint>,
+}
+
+struct Inner<RT: Runtime> {
+    rt: RT,
+    arp: arp::Peer<RT>,
+    file_table: FileTable,
+
+    sockets: HashMap<FileDescriptor, Socket>,
+    bound: HashMap<ipv4::Endpoint, Listener>,
+}
+
+
+impl<RT: Runtime> UdpPeer2<RT> {
+    pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
+        let inner = Inner {
+            rt,
+            arp,
+            file_table,
+            sockets: HashMap::new(),
+            bound: HashMap::new(),
+        };
+        Self { inner: Rc::new(RefCell::new(inner)) }
+    }
+
+    pub fn receive(&self, ipv4_datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
+        let mut inner = self.inner.borrow_mut();
+
+        trace!("UdpPeer::receive(...)");
+        let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
+        let udp_datagram = UdpDatagram::try_from(decoder)?;
+
+        let local_ipv4_addr = udp_datagram.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
+            details: "Missing destination IPv4 addr",
+        })?;
+        let local_port = udp_datagram.dest_port.ok_or_else(|| Fail::Malformed {
+            details: "Missing destination port",
+        })?;
+        let local = ipv4::Endpoint::new(local_ipv4_addr, local_port);
+
+        let remote_ipv4_addr = udp_datagram.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
+            details: "Missing source IPv4 addr",
+        })?;
+        let remote_port = udp_datagram.src_port.ok_or_else(|| Fail::Malformed {
+            details: "Missing source port",
+        })?;
+        let remote = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
+
+        // TODO: Send ICMPv4 error in this condition.
+        let mut listener = inner.bound.get_mut(&local).ok_or_else(|| Fail::Malformed {
+            details: "Port not bound",
+        })?;
+
+        listener.buf.push_back((remote, udp_datagram.payload));
+        listener.waker.take().map(|w| w.wake());
+
+        Ok(())
+    }
+
+    pub fn push(&self, fd: FileDescriptor, buf: Bytes) {
+        todo!();
+    }
+
+    pub fn pop(&self, fd: FileDescriptor) {
+        todo!();
+    }
+}
 
 pub struct UdpPeer<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
     open_ports: HashSet<ip::Port>,
+    file_table: FileTable,
 
     #[allow(unused)]
     handle: SchedulerHandle,
@@ -44,7 +129,7 @@ pub struct UdpPeer<RT: Runtime> {
 }
 
 impl<RT: Runtime> UdpPeer<RT> {
-    pub fn new(rt: RT, arp: arp::Peer<RT>) -> UdpPeer<RT> {
+    pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> UdpPeer<RT> {
         let (tx, rx) = mpsc::unbounded();
         let future = Self::background(rt.clone(), arp.clone(), rx);
         let handle = rt.spawn(future);
@@ -52,6 +137,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             rt,
             arp,
             open_ports: HashSet::default(),
+            file_table,
 
             handle,
             tx,

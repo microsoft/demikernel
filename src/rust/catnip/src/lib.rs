@@ -15,6 +15,9 @@
 #![warn(clippy::all)]
 #![recursion_limit = "512"]
 
+#![feature(test)]
+extern crate test;
+
 #[macro_use]
 extern crate num_derive;
 
@@ -30,7 +33,7 @@ extern crate derive_more;
 pub mod logging;
 pub mod options;
 pub mod protocols;
-
+pub mod file_table;
 pub mod collections;
 pub mod engine;
 pub mod fail;
