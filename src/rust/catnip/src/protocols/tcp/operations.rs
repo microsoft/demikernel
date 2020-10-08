@@ -176,16 +176,12 @@ impl<RT: Runtime> fmt::Debug for AcceptFuture<RT> {
 impl<RT: Runtime> Future for AcceptFuture<RT> {
     type Output = Result<SocketDescriptor, Fail>;
 
-    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
         let peer = Peer {
             inner: self_.inner.clone(),
         };
-        match peer.accept(self_.fd) {
-            Ok(Some(fd)) => Poll::Ready(Ok(fd)),
-            Ok(None) => Poll::Pending,
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        peer.poll_accept(self_.fd, context)
     }
 }
 
@@ -226,15 +222,11 @@ impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
 impl<RT: Runtime> Future for PopFuture<RT> {
     type Output = Result<Bytes, Fail>;
 
-    fn poll(self: Pin<&mut Self>, _context: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
         let peer = Peer {
             inner: self_.inner.clone(),
         };
-        match peer.recv(self_.fd) {
-            Ok(Some(bytes)) => Poll::Ready(Ok(bytes)),
-            Ok(None) => Poll::Pending,
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        peer.poll_recv(self_.fd, ctx)
     }
 }

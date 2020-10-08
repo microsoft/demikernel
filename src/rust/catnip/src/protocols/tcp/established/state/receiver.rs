@@ -7,6 +7,7 @@ use bytes::Bytes;
 use std::{
     cell::RefCell,
     collections::VecDeque,
+    task::{Context, Poll, Waker},
     num::Wrapping,
     time::{
         Duration,
@@ -38,6 +39,8 @@ pub struct Receiver {
     pub ack_deadline: WatchedValue<Option<Instant>>,
 
     pub max_window_size: u32,
+
+    waker: RefCell<Option<Waker>>,
 }
 
 impl Receiver {
@@ -50,6 +53,7 @@ impl Receiver {
             recv_seq_no: WatchedValue::new(seq_no),
             ack_deadline: WatchedValue::new(None),
             max_window_size,
+            waker: RefCell::new(None),
         }
     }
 
@@ -117,6 +121,27 @@ impl Receiver {
         Ok(Some(segment))
     }
 
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+        if self.base_seq_no.get() == self.recv_seq_no.get() {
+            if self.state.get() != ReceiverState::Open {
+                return Poll::Ready(Err(Fail::ResourceNotFound {
+                    details: "Receiver closed",
+                }));
+            }
+            *self.waker.borrow_mut() = Some(ctx.waker().clone());
+        }
+
+        let segment = self
+            .recv_queue
+            .borrow_mut()
+            .pop_front()
+            .expect("recv_seq > base_seq without data in queue?");
+        self.base_seq_no
+            .modify(|b| b + Wrapping(segment.len() as u32));
+
+        Poll::Ready(Ok(segment))
+    }
+
     pub fn receive_fin(&self) {
         // Even if we've already ACKd the FIN, we need to resend the ACK if we receive another FIN.
         self.state.set(ReceiverState::ReceivedFin);
@@ -149,6 +174,7 @@ impl Receiver {
 
         self.recv_seq_no.modify(|r| r + Wrapping(buf.len() as u32));
         self.recv_queue.borrow_mut().push_back(buf);
+        self.waker.borrow_mut().take().map(|w| w.wake());
 
         // TODO: How do we handle when the other side is in PERSIST state here?
         if self.ack_deadline.get().is_none() {

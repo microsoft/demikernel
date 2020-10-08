@@ -31,6 +31,8 @@ use std::{
     num::Wrapping,
     rc::Rc,
     task::{
+        Context,
+        Poll,
         Waker,
     },
     time::Duration,
@@ -71,6 +73,20 @@ impl<RT: Runtime> ReadySockets<RT> {
             assert!(self.endpoints.remove(&cb.remote));
         }
         Some(r)
+    }
+
+    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+        let r = match self.ready.pop_front() {
+            Some(r) => r,
+            None => {
+                self.waker.replace(ctx.waker().clone());
+                return Poll::Pending;
+            },
+        };
+        if let Ok(ref cb) = r {
+            assert!(self.endpoints.remove(&cb.remote));
+        }
+        Poll::Ready(r)
     }
 
     fn len(&self) -> usize {
@@ -116,6 +132,10 @@ impl<RT: Runtime> PassiveSocket<RT> {
             Some(Ok(cb)) => Ok(Some(cb)),
             Some(Err(e)) => Err(e),
         }
+    }
+
+    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<RT>, Fail>> {
+        self.ready.borrow_mut().poll(ctx)
     }
 
     pub fn receive_segment(&mut self, segment: TcpSegment) -> Result<(), Fail> {

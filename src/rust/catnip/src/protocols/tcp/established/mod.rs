@@ -20,6 +20,7 @@ use bytes::Bytes;
 use std::{
     rc::Rc,
     time::Duration,
+    task::{Poll, Context},
 };
 
 pub struct EstablishedSocket<RT: Runtime> {
@@ -53,6 +54,10 @@ impl<RT: Runtime> EstablishedSocket<RT> {
 
     pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
         self.cb.receiver.recv()
+    }
+
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+        self.cb.receiver.poll_recv(ctx)
     }
 
     pub fn close(&self) -> Result<(), Fail> {

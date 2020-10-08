@@ -143,6 +143,43 @@ impl<RT: Runtime> Peer<RT> {
         Ok(Some(fd))
     }
 
+    pub fn poll_accept(&self, fd: SocketDescriptor, ctx: &mut Context) -> Poll<Result<SocketDescriptor, Fail>> {
+        let mut inner_ = self.inner.borrow_mut();
+        let inner = &mut *inner_;
+
+        let local = match inner.sockets.get(&fd) {
+            Some(Socket::Listening { local }) => local,
+            Some(..) => {
+                return Poll::Ready(Err(Fail::Malformed {
+                    details: "Socket not listening",
+                }))
+            },
+            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+        };
+        let passive = inner
+            .passive
+            .get_mut(local)
+            .expect("sockets/local inconsistency");
+        let cb = match passive.poll_accept(ctx) {
+            Poll::Pending => return Poll::Pending,
+            Poll::Ready(Ok(e)) => e,
+            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+        };
+        let established = EstablishedSocket::new(cb);
+
+        let fd = inner.alloc_fd();
+        let key = (established.cb.local.clone(), established.cb.remote.clone());
+
+        let socket = Socket::Established {
+            local: established.cb.local.clone(),
+            remote: established.cb.remote.clone(),
+        };
+        assert!(inner.sockets.insert(fd, socket).is_none());
+        assert!(inner.established.insert(key, established).is_none());
+
+        Poll::Ready(Ok(fd))
+    }
+
     pub fn accept_async(&self, fd: SocketDescriptor) -> AcceptFuture<RT> {
         AcceptFuture {
             fd,
@@ -234,6 +271,25 @@ impl<RT: Runtime> Peer<RT> {
             None => Err(Fail::Malformed {
                 details: "Socket not established",
             }),
+        }
+    }
+
+    pub fn poll_recv(&self, fd: SocketDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+        let inner = self.inner.borrow_mut();
+        let key = match inner.sockets.get(&fd) {
+            Some(Socket::Established { local, remote }) => (*local, *remote),
+            Some(..) => {
+                return Poll::Ready(Err(Fail::Malformed {
+                    details: "Recv: Socket not established",
+                }))
+            },
+            None => return Poll::Ready(Err(Fail::Malformed { details: "Bad FD" })),
+        };
+        match inner.established.get(&key) {
+            Some(ref s) => s.poll_recv(ctx),
+            None => Poll::Ready(Err(Fail::Malformed {
+                details: "Socket not established",
+            })),
         }
     }
 
