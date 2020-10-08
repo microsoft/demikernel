@@ -32,7 +32,6 @@ use bytes::Bytes;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
-    collections::VecDeque,
     convert::TryFrom,
     rc::Rc,
     task::{

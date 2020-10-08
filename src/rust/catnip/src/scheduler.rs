@@ -26,10 +26,12 @@ use std::{
 use crate::protocols::tcp::operations::{
     TcpOperation,
 };
+use crate::protocols::udp::peer::UdpOperation;
 
 pub enum Operation<RT: Runtime> {
     // These are all stored inline to prevent hitting the allocator on insertion/removal.
     Tcp(TcpOperation<RT>),
+    Udp(UdpOperation<RT>),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output=()>>>),
@@ -41,6 +43,7 @@ impl<RT: Runtime> Future for Operation<RT> {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         match self.get_mut() {
             Operation::Tcp(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Udp(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Background(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }

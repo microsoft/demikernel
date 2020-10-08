@@ -4,6 +4,7 @@ use super::peer::{
     Inner,
     Peer,
 };
+use crate::operations::{ResultFuture, OperationResult};
 use crate::fail::Fail;
 use bytes::Bytes;
 use std::{
@@ -17,36 +18,6 @@ use std::{
         Poll,
     },
 };
-
-pub struct ResultFuture<F: Future> {
-    future: F,
-    done: Option<F::Output>,
-}
-
-impl<F: Future> ResultFuture<F> {
-    fn new(future: F) -> Self {
-        Self { future, done: None }
-    }
-}
-
-impl<F: Future + Unpin> Future for ResultFuture<F>
-    where F::Output: Unpin
-{
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
-        let self_ = self.get_mut();
-        if self_.done.is_some() {
-            panic!("Polled after completion")
-        }
-        let result = match Future::poll(Pin::new(&mut self_.future), ctx) {
-            Poll::Pending => return Poll::Pending,
-            Poll::Ready(r) => r,
-        };
-        self_.done = Some(result);
-        Poll::Ready(())
-    }
-}
 
 pub enum TcpOperation<RT: Runtime> {
     Accept(ResultFuture<AcceptFuture<RT>>),
@@ -92,38 +63,30 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
     }
 }
 
-pub enum TcpOperationResult {
-    Connect,
-    Accept(FileDescriptor),
-    Push,
-    Pop(Bytes),
-    Failed(Fail),
-}
-
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (FileDescriptor, TcpOperationResult) {
+    pub fn expect_result(self) -> (FileDescriptor, OperationResult) {
         use TcpOperation::*;
 
         match self {
             Connect(ResultFuture { future, done: Some(Ok(())) }) =>
-                (future.fd, TcpOperationResult::Connect),
+                (future.fd, OperationResult::Connect),
             Connect(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, TcpOperationResult::Failed(e)),
+                (future.fd, OperationResult::Failed(e)),
 
             Accept(ResultFuture { future, done: Some(Ok(fd)) }) =>
-                (future.fd, TcpOperationResult::Accept(fd)),
+                (future.fd, OperationResult::Accept(fd)),
             Accept(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, TcpOperationResult::Failed(e)),
+                (future.fd, OperationResult::Failed(e)),
 
             Push(ResultFuture { future, done: Some(Ok(())) }) =>
-                (future.fd, TcpOperationResult::Push),
+                (future.fd, OperationResult::Push),
             Push(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, TcpOperationResult::Failed(e)),
+                (future.fd, OperationResult::Failed(e)),
 
             Pop(ResultFuture { future, done: Some(Ok(bytes)) }) =>
-                (future.fd, TcpOperationResult::Pop(bytes)),
+                (future.fd, OperationResult::Pop(bytes)),
             Pop(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, TcpOperationResult::Failed(e)),
+                (future.fd, OperationResult::Failed(e)),
 
             _ => panic!("Future not ready"),
         }

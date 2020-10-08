@@ -11,13 +11,13 @@ use anyhow::{
 };
 use bytes::BytesMut;
 use catnip::{
-    engine::Engine,
+    operations::OperationResult,
+    engine::{Engine, Protocol},
     logging,
     protocols::{
         ip,
         ipv4,
         tcp::peer::SocketDescriptor,
-	tcp::operations::TcpOperationResult,
     },
     scheduler::Operation,
     runtime::Runtime,
@@ -62,7 +62,7 @@ use libc::{
 };
 
 struct LibOS {
-    catnip: Engine<crate::runtime::LibOSRuntime>,
+    engine: Engine<crate::runtime::LibOSRuntime>,
     runtime: crate::runtime::LibOSRuntime,
 }
 
@@ -116,15 +116,15 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    fn pack(result: TcpOperationResult, qd: SocketDescriptor, qt: u64) -> Self {
+    fn pack(result: OperationResult, qd: SocketDescriptor, qt: u64) -> Self {
         match result {
-            TcpOperationResult::Connect => Self {
+            OperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
                 qr_qd: qd as c_int,
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },
             },
-            TcpOperationResult::Accept(new_qd) => {
+            OperationResult::Accept(new_qd) => {
                 let sin = unsafe { mem::zeroed() };
                 let qr_value = dmtr_qr_value_t {
                     ares: dmtr_accept_result_t {
@@ -139,13 +139,13 @@ impl dmtr_qresult_t {
                     qr_value,
                 }
             },
-            TcpOperationResult::Push => Self {
+            OperationResult::Push => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
                 qr_qd: qd as c_int,
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },
             },
-            TcpOperationResult::Pop(bytes) => {
+            OperationResult::Pop(bytes) => {
                 let buf: Box<[u8]> = bytes[..].into();
                 let ptr = Box::into_raw(buf);
                 let sgaseg = dmtr_sgaseg_t {
@@ -166,7 +166,7 @@ impl dmtr_qresult_t {
                     qr_value,
                 }
             },
-            TcpOperationResult::Failed(e) => {
+            OperationResult::Failed(e) => {
                 panic!("Unhandled error: {:?}", e);
             },
         }
@@ -263,7 +263,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args)?;
         logging::initialize();
         LibOS {
-            catnip: Engine::new(runtime.clone())?,
+            engine: Engine::new(runtime.clone())?,
             runtime,
         }
     };
@@ -291,12 +291,24 @@ pub extern "C" fn dmtr_socket(
     socket_type: c_int,
     protocol: c_int,
 ) -> c_int {
-    if (domain, socket_type, protocol) != (libc::AF_INET, libc::SOCK_STREAM, 0) {
-        eprintln!("Invalid socket: {:?}", (domain, socket_type, protocol));
+    if domain != libc::AF_INET {
+        eprintln!("Invalid domain: {:?}", domain);
+        return libc::EINVAL;
+    }
+    let engine_protocol = match socket_type {
+        libc::SOCK_STREAM => Protocol::Tcp,
+        libc::SOCK_DGRAM => Protocol::Udp,
+        _ => {
+            eprintln!("Invalid socket_type: {:?}", socket_type);
+            return libc::EINVAL;
+        },
+    };
+    if protocol != 0 {
+        eprintln!("Invalid protocol: {:?}", protocol);
         return libc::EINVAL;
     }
     with_libos(|libos| {
-        let fd = libos.catnip.tcp_socket() as c_int;
+        let fd = libos.engine.socket(engine_protocol) as c_int;
         unsafe { *qd_out = fd };
         0
     })
@@ -319,7 +331,7 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
             addr = libos.runtime.local_ipv4_addr();
         }
         let endpoint = ipv4::Endpoint::new(addr, port);
-        match libos.catnip.tcp_bind(qd as SocketDescriptor, endpoint) {
+        match libos.engine.bind(qd as SocketDescriptor, endpoint) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("bind failed: {:?}", e);
@@ -334,7 +346,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     with_libos(|libos| {
         match libos
             .catnip
-            .tcp_listen(fd as SocketDescriptor, backlog as usize)
+            .listen(fd as SocketDescriptor, backlog as usize)
         {
             Ok(..) => 0,
             Err(e) => {
@@ -348,8 +360,8 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.catnip.tcp_accept(sockqd as SocketDescriptor);
-        let handle = libos.runtime.scheduler.insert(future.into());
+        let future = libos.engine.accept(sockqd as SocketDescriptor);
+        let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
@@ -375,8 +387,8 @@ pub extern "C" fn dmtr_connect(
     let endpoint = ipv4::Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        let future = libos.catnip.tcp_connect(qd as SocketDescriptor, endpoint);
-        let handle = libos.runtime.scheduler.insert(future.into());
+        let future = libos.engine.connect(qd as SocketDescriptor, endpoint);
+        let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
@@ -386,10 +398,10 @@ pub extern "C" fn dmtr_connect(
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     with_libos(
-        |libos| match libos.catnip.tcp_close(qd as SocketDescriptor) {
+        |libos| match libos.engine.close(qd as SocketDescriptor) {
             Ok(..) => 0,
             Err(e) => {
-                eprintln!("listen failed: {:?}", e);
+                eprintln!("close failed: {:?}", e);
                 e.errno()
             },
         },
@@ -423,8 +435,8 @@ pub extern "C" fn dmtr_push(
     }
     let buf = buf.freeze();
     with_libos(|libos| {
-        let future = libos.catnip.tcp_push(qd as SocketDescriptor, buf);
-        let handle = libos.runtime.scheduler.insert(future.into());
+        let future = libos.engine.push(qd as SocketDescriptor, buf);
+        let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
@@ -434,8 +446,8 @@ pub extern "C" fn dmtr_push(
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.catnip.tcp_pop(qd as SocketDescriptor);
-        let handle = libos.runtime.scheduler.insert(future.into());
+        let future = libos.engine.pop(qd as SocketDescriptor);
+        let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
         0
@@ -452,6 +464,7 @@ pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
         if handle.has_completed() {
             let (qd, r) = match libos.runtime.scheduler.take(handle) {
                 Operation::Tcp(f) => f.expect_result(),
+                Operation::Udp(f) => f.expect_result(),
                 Operation::Background(..) => return libc::EINVAL,
             };
             unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
@@ -494,6 +507,7 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
             if handle.has_completed() {
                 let (qd, r) = match libos.runtime.scheduler.take(handle) {
                     Operation::Tcp(f) => f.expect_result(),
+                    Operation::Udp(f) => f.expect_result(),
                     Operation::Background(..) => return libc::EINVAL,
                 };
                 unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
@@ -531,6 +545,7 @@ pub extern "C" fn dmtr_wait_any(
                 if handle.has_completed() {
                     let (qd, r) = match libos.runtime.scheduler.take(handle) {
                         Operation::Tcp(f) => f.expect_result(),
+                        Operation::Udp(f) => f.expect_result(),
                         Operation::Background(..) => return libc::EINVAL,
                     };
                     unsafe {

@@ -40,7 +40,7 @@ pub mod fail;
 pub mod runtime;
 pub mod timer;
 pub mod scheduler;
-
+pub mod operations;
 pub mod test_helpers;
 
 // #[global_allocator]

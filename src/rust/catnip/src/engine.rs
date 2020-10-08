@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::file_table::FileDescriptor;
+use crate::file_table::{File, FileDescriptor};
+use crate::scheduler::Operation;
+use crate::protocols::udp::peer::UdpOperation;
 use crate::{
+    operations::ResultFuture,
     fail::Fail,
     protocols::{
         arp,
@@ -40,6 +43,11 @@ pub struct Engine<RT: Runtime> {
     ipv4: ipv4::Peer<RT>,
 
     file_table: FileTable,
+}
+
+pub enum Protocol {
+    Tcp,
+    Udp,
 }
 
 impl<RT: Runtime> Engine<RT> {
@@ -80,6 +88,81 @@ impl<RT: Runtime> Engine<RT> {
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
+    }
+
+    pub fn socket(&mut self, protocol: Protocol) -> FileDescriptor {
+        match protocol {
+            Protocol::Tcp => self.ipv4.tcp.socket(),
+            Protocol::Udp => self.ipv4.udp.socket(),
+        }
+    }
+
+    pub fn connect(&mut self, fd: FileDescriptor, remote_endpoint: ipv4::Endpoint) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.connect(fd, remote_endpoint)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Connect(fd, self.ipv4.udp.connect(fd, remote_endpoint));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn bind(&mut self, fd: FileDescriptor, endpoint: ipv4::Endpoint) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.bind(fd, endpoint),
+            Some(File::UdpSocket) => self.ipv4.udp.bind(fd, endpoint),
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn accept(&mut self, fd: FileDescriptor) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.accept(fd)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Accept(fd, self.ipv4.udp.accept());
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn listen(&mut self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
+            Some(File::UdpSocket) => Err(Fail::Malformed { details: "Operation not supported" }),
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn push(&mut self, fd: FileDescriptor, buf: Bytes) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.push(fd, buf)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Push(fd, self.ipv4.udp.push(fd, buf));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn pop(&mut self, fd: FileDescriptor) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.pop(fd)),
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Pop(ResultFuture::new(self.ipv4.udp.pop(fd)));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
+    pub fn close(&mut self, fd: FileDescriptor) -> Result<(), Fail> {
+        match self.file_table.get(fd) {
+            Some(File::TcpSocket) => self.ipv4.tcp.close(fd),
+            Some(File::UdpSocket) => self.ipv4.udp.close(fd),
+            _ => panic!("TODO: Invalid fd"),
+        }
     }
 
     pub fn tcp_socket(&mut self) -> FileDescriptor {

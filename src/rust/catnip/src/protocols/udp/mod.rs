@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod datagram;
-mod peer;
+pub mod peer;
 
 #[cfg(test)]
 mod tests;

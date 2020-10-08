@@ -11,7 +11,6 @@ use crate::{
         arp,
         ethernet,
         icmpv4,
-        ip,
         tcp,
         udp,
     },
@@ -31,7 +30,7 @@ pub struct Ipv4Peer<RT: Runtime> {
     rt: RT,
     icmpv4: icmpv4::Peer<RT>,
     pub tcp: tcp::Peer<RT>,
-    udp: udp::Peer<RT>,
+    pub udp: udp::Peer<RT>,
 }
 
 impl<RT: Runtime> Ipv4Peer<RT> {
@@ -73,28 +72,6 @@ impl<RT: Runtime> Ipv4Peer<RT> {
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
         self.icmpv4.ping(dest_ipv4_addr, timeout)
-    }
-
-    pub fn is_udp_port_open(&self, port: ip::Port) -> bool {
-        self.udp.is_port_open(port)
-    }
-
-    pub fn open_udp_port(&mut self, port: ip::Port) {
-        self.udp.open_port(port);
-    }
-
-    pub fn close_udp_port(&mut self, port: ip::Port) {
-        self.udp.close_port(port);
-    }
-
-    pub fn udp_cast(
-        &self,
-        dest_ipv4_addr: Ipv4Addr,
-        dest_port: ip::Port,
-        src_port: ip::Port,
-        text: Vec<u8>,
-    ) -> impl Future<Output = Result<(), Fail>> {
-        self.udp.cast(dest_ipv4_addr, dest_port, src_port, text)
     }
 }
 
