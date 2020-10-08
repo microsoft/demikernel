@@ -42,6 +42,7 @@ struct Listener {
     waker: Option<Waker>,
 }
 
+#[derive(Debug)]
 struct Socket {
     // `bind(2)` fixes a local address
     local: Option<ipv4::Endpoint>,
@@ -134,7 +135,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             Some(Socket { ref mut local, .. }) if local.is_none() => {
                 *local = Some(addr);
             },
-            _ => return Err(Fail::Malformed { details: "Invalid file descriptor" }),
+            _ => return Err(Fail::Malformed { details: "Invalid file descriptor on bind" }),
         }
         let listener = Listener {
             buf: VecDeque::new(),
@@ -151,7 +152,7 @@ impl<RT: Runtime> UdpPeer<RT> {
                 *remote = Some(addr);
                 Ok(())
             },
-            _ => Err(Fail::Malformed { details: "Invalid file descriptor" }),
+            _ => Err(Fail::Malformed { details: "Invalid file descriptor on connect" }),
         }
     }
 
@@ -194,7 +195,10 @@ impl<RT: Runtime> UdpPeer<RT> {
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
             Some(Socket { local, remote: Some(remote) }) => (*local, *remote),
-            _ => return Err(Fail::Malformed { details: "Invalid file descriptor" }),
+            e => {
+	        eprintln!("{:?} invalid for {}", e, fd);
+	        return Err(Fail::Malformed { details: "Invalid file descriptor on push" })
+	    },
         };
         inner.outgoing.try_send((local, remote, buf)).unwrap();
         Ok(())
@@ -207,16 +211,17 @@ impl<RT: Runtime> UdpPeer<RT> {
     pub fn close(&self, fd: FileDescriptor) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         if !inner.sockets.contains_key(&fd) {
-            return Err(Fail::Malformed { details: "Invalid file descriptor" });
+            return Err(Fail::Malformed { details: "Invalid file descriptor on close" });
         }
-        todo!();
+	// TODO: Actually clean up state here.
+        Ok(())
     }
 
     pub fn poll_pop(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get(&fd) {
             Some(Socket { local: Some(local), .. }) => *local,
-            _ => return Poll::Ready(Err(Fail::Malformed { details: "Invalid file descriptor" })),
+            _ => return Poll::Ready(Err(Fail::Malformed { details: "Invalid file descriptor on poll pop" })),
         };
         let listener = inner.bound.get_mut(&local).unwrap();
         match listener.buf.pop_front() {

@@ -17,8 +17,8 @@ use catnip::{
     protocols::{
         ip,
         ipv4,
-        tcp::peer::SocketDescriptor,
     },
+    file_table::FileDescriptor,
     scheduler::Operation,
     runtime::Runtime,
 };
@@ -116,7 +116,7 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    fn pack(result: OperationResult, qd: SocketDescriptor, qt: u64) -> Self {
+    fn pack(result: OperationResult, qd: FileDescriptor, qt: u64) -> Self {
         match result {
             OperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
@@ -324,6 +324,7 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     }
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let mut addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
+    eprintln!("SADDR_IN: {:?} {:?}", addr, saddr_in.sin_port);
     let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
 
     with_libos(|libos| {
@@ -331,7 +332,7 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
             addr = libos.runtime.local_ipv4_addr();
         }
         let endpoint = ipv4::Endpoint::new(addr, port);
-        match libos.engine.bind(qd as SocketDescriptor, endpoint) {
+        match libos.engine.bind(qd as FileDescriptor, endpoint) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("bind failed: {:?}", e);
@@ -345,8 +346,8 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     with_libos(|libos| {
         match libos
-            .catnip
-            .listen(fd as SocketDescriptor, backlog as usize)
+            .engine
+            .listen(fd as FileDescriptor, backlog as usize)
         {
             Ok(..) => 0,
             Err(e) => {
@@ -360,7 +361,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.engine.accept(sockqd as SocketDescriptor);
+        let future = libos.engine.accept(sockqd as FileDescriptor);
         let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -387,7 +388,7 @@ pub extern "C" fn dmtr_connect(
     let endpoint = ipv4::Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        let future = libos.engine.connect(qd as SocketDescriptor, endpoint);
+        let future = libos.engine.connect(qd as FileDescriptor, endpoint);
         let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -398,7 +399,7 @@ pub extern "C" fn dmtr_connect(
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     with_libos(
-        |libos| match libos.engine.close(qd as SocketDescriptor) {
+        |libos| match libos.engine.close(qd as FileDescriptor) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("close failed: {:?}", e);
@@ -435,7 +436,7 @@ pub extern "C" fn dmtr_push(
     }
     let buf = buf.freeze();
     with_libos(|libos| {
-        let future = libos.engine.push(qd as SocketDescriptor, buf);
+        let future = libos.engine.push(qd as FileDescriptor, buf);
         let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -446,7 +447,7 @@ pub extern "C" fn dmtr_push(
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.engine.pop(qd as SocketDescriptor);
+        let future = libos.engine.pop(qd as FileDescriptor);
         let handle = libos.runtime.scheduler.insert(future);
         let qtoken = handle.into_raw();
         unsafe { *qtok_out = qtoken };
@@ -496,9 +497,9 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
         };
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
-            let catnip = &mut libos.catnip;
+            let engine = &mut libos.engine;
             libos.runtime.receive(|p| {
-                if let Err(e) = catnip.receive(p) {
+                if let Err(e) = engine.receive(p) {
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
@@ -529,9 +530,9 @@ pub extern "C" fn dmtr_wait_any(
         let mut ctx = Context::from_waker(noop_waker_ref());
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
-            let catnip = &mut libos.catnip;
+            let engine = &mut libos.engine;
             libos.runtime.receive(|p| {
-                if let Err(e) = catnip.receive(p) {
+                if let Err(e) = engine.receive(p) {
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });

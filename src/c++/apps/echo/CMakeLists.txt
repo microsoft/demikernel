@@ -117,6 +117,24 @@ target_link_libraries(catnip-libos-client ${CMAKE_BINARY_DIR}/src/c++/libos/catn
 add_custom_target(catnip-libos-echo)
 add_dependencies(catnip-libos-echo catnip-libos-server catnip-libos-client)
 
+# Catnip libos UDP server
+add_executable(catnip-libos-udp-server ${UDP_ECHO_SERVER_SOURCES})
+target_link_libraries(catnip-libos-udp-server dmtr-catnip_libos)
+target_link_libraries(catnip-libos-udp-server ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
+target_link_libraries(catnip-libos-udp-server dl)
+target_link_libraries(catnip-libos-udp-server ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
+
+# Catnip libos UDP client
+add_executable(catnip-libos-udp-client ${UDP_ECHO_CLIENT_SOURCES})
+target_link_libraries(catnip-libos-udp-client dmtr-catnip_libos)
+target_link_libraries(catnip-libos-udp-client ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.a)
+target_link_libraries(catnip-libos-udp-client dl)
+target_link_libraries(catnip-libos-udp-client ${CMAKE_BINARY_DIR}/src/c++/libos/catnip_libos/libdmtr-catnip_libos.so)
+
+# Catnip libos UDP client & server
+add_custom_target(catnip-libos-udp-echo)
+add_dependencies(catnip-libos-udp-echo catnip-libos-udp-server catnip-libos-udp-client)
+
 # POSIX & SPDK storage test clients
 # POSIX TCP client & server
 add_custom_target(dmtr-echo-store)
