@@ -18,6 +18,7 @@ futures = "0.3"
 futures-intrusive = { git = "https://github.com/sujayakar/futures-intrusive", rev = "13b113fdc67594bd09912d78acc8f8212127537d" }
 gen-iter = { git = "https://github.com/sujayakar/gen-iter", rev = "7a0418991ae06dd03ee33e98625e5573120786cc" }
 hashbrown = { version = "0.9", features = ["nightly"] }
+histogram = "0.6.9"
 libc = "0.2.70"
 log = "0.4"
 # mimalloc = { version = "0.1.19", default-features = false }
@@ -33,5 +34,13 @@ slab = "0.4.2"
 unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "44c0e8f62cb9355cfd35ef5309abf10a4c388b62" }
 uniset = "0.2.0"
 
+[dependencies.tracy-client]
+path = "/Users/sujayakar/src/rust_tracy_client/tracy-client"
+default-features = false
+features = []
+
 [dev-dependencies]
 criterion = "0.3.3"
+
+[features]
+tracing = ["tracy-client/enable"]

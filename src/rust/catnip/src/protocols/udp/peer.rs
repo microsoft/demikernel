@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use tracy_client::static_span;
 use super::datagram::{
     UdpDatagram,
     UdpDatagramDecoder,
@@ -91,6 +92,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         while let Some((local, remote, buf)) = rx.receive().await {
             let r: Result<_, Fail> = try {
                 let link_addr = arp.query(remote.address()).await?;
+                let _s = static_span!("bg_send_udp");
                 let mut bytes = UdpDatagramEncoder::new_vec(buf.len());
                 let mut encoder = UdpDatagramEncoder::attach(&mut bytes);
                 encoder.text()[..buf.len()].copy_from_slice(&buf);
@@ -157,6 +159,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn receive(&self, ipv4_datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
+        let _s = static_span!();
         let mut inner = self.inner.borrow_mut();
 
         trace!("UdpPeer::receive(...)");
@@ -192,6 +195,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn push(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+        let _s = static_span!();
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
             Some(Socket { local, remote: Some(remote) }) => (*local, *remote),
@@ -218,6 +222,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn poll_pop(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+        let _s = static_span!();
         let mut inner = self.inner.borrow_mut();
         let local = match inner.sockets.get(&fd) {
             Some(Socket { local: Some(local), .. }) => *local,

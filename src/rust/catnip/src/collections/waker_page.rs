@@ -1,4 +1,5 @@
 use futures::task::AtomicWaker;
+use tracy_client::static_span;
 use std::{
     alloc::{
         AllocRef,
@@ -200,6 +201,7 @@ impl WakerRef {
 }
 
 unsafe fn waker_ref_clone(ptr: *const ()) -> RawWaker {
+    let _s = static_span!();
     let p = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     let q = p.clone();
     mem::forget(p);
@@ -207,17 +209,20 @@ unsafe fn waker_ref_clone(ptr: *const ()) -> RawWaker {
 }
 
 unsafe fn waker_ref_wake(ptr: *const ()) {
+    let _s = static_span!();
     let p = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     p.wake();
 }
 
 unsafe fn waker_ref_wake_by_ref(ptr: *const ()) {
+    let _s = static_span!();
     let p = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     p.wake_by_ref();
     mem::forget(p);
 }
 
 unsafe fn waker_ref_drop(ptr: *const ()) {
+    let _s = static_span!();
     let p = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     drop(p);
 }

@@ -1,3 +1,4 @@
+use tracy_client::static_span;
 use super::{
     active_open::ActiveOpenSocket,
     established::EstablishedSocket,
@@ -234,6 +235,7 @@ impl<RT: Runtime> Peer<RT> {
     }
 
     pub fn poll_recv(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+        let _s = static_span!();
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -272,6 +274,7 @@ impl<RT: Runtime> Peer<RT> {
     }
 
     fn send(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+        let _s = static_span!();
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),

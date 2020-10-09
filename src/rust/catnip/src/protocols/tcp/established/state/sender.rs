@@ -1,3 +1,4 @@
+use tracy_client::static_span;
 use super::rto::RtoCalculator;
 use crate::{
     collections::watched::WatchedValue,
@@ -82,6 +83,7 @@ impl Sender {
     }
 
     pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
+        let _s = static_span!();
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored {
                 details: "Sender closed",

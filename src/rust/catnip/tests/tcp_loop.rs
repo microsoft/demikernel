@@ -1,3 +1,5 @@
+#![feature(const_fn, const_mut_refs, const_type_name)]
+
 use bytes::{
     Bytes,
     BytesMut,
@@ -22,9 +24,10 @@ use std::{
         Context,
         Poll,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 use catnip::file_table::FileDescriptor;
+use tracy_client::static_span;
 
 pub fn one_send_recv_round(
     ctx: &mut Context,
@@ -34,6 +37,8 @@ pub fn one_send_recv_round(
     bob: &mut test_helpers::TestEngine,
     bob_fd: FileDescriptor,
 ) {
+    let _s = static_span!("tcp_round");
+
     // Send data from Alice to Bob
     let mut push_future = alice.tcp_push(alice_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
@@ -58,7 +63,7 @@ pub fn one_send_recv_round(
 }
 
 #[test]
-fn send_recv_loop() {
+fn tcp_loop() {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
@@ -108,7 +113,26 @@ fn send_recv_loop() {
     let num_rounds: usize = env::var("SEND_RECV_ITERS")
         .map(|s| s.parse().unwrap())
         .unwrap_or(1);
+
+    let mut samples = Vec::with_capacity(num_rounds);
+
     for _ in 0..num_rounds {
+        let start = Instant::now();
         one_send_recv_round(&mut ctx, buf.clone(), &mut alice, alice_fd, &mut bob, bob_fd);
+        samples.push(start.elapsed());
     }
+
+    let mut h = histogram::Histogram::new();
+    for s in samples {
+        h.increment(s.as_nanos() as u64).unwrap();
+    }
+    println!("Min:   {:?}", Duration::from_nanos(h.minimum().unwrap()));
+    println!("p25:   {:?}", Duration::from_nanos(h.percentile(0.25).unwrap()));
+    println!("p50:   {:?}", Duration::from_nanos(h.percentile(0.50).unwrap()));
+    println!("p75:   {:?}", Duration::from_nanos(h.percentile(0.75).unwrap()));
+    println!("p90:   {:?}", Duration::from_nanos(h.percentile(0.90).unwrap()));
+    println!("p95:   {:?}", Duration::from_nanos(h.percentile(0.95).unwrap()));
+    println!("p99:   {:?}", Duration::from_nanos(h.percentile(0.99).unwrap()));
+    println!("p99.9: {:?}", Duration::from_nanos(h.percentile(0.999).unwrap()));
+    println!("Max:   {:?}", Duration::from_nanos(h.maximum().unwrap()));
 }

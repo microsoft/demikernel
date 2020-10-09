@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use tracy_client::static_span;
 use super::datagram::{
     Ipv4Datagram,
     Ipv4Protocol,
@@ -47,6 +48,7 @@ impl<RT: Runtime> Ipv4Peer<RT> {
     }
 
     pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
+        let _s = static_span!();
         trace!("Ipv4Peer::receive(...)");
         let datagram = Ipv4Datagram::try_from(frame)?;
         let header = datagram.header();

@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use tracy_client::static_span;
 use crate::file_table::{File, FileDescriptor};
 use crate::scheduler::Operation;
-use crate::protocols::udp::peer::UdpOperation;
+use crate::protocols::udp::peer::{UdpOperation, PopFuture as UdpPopFuture};
 use crate::{
     operations::ResultFuture,
     fail::Fail,
@@ -64,6 +65,7 @@ impl<RT: Runtime> Engine<RT> {
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<(), Fail> {
+        let _s = static_span!();
         let frame = ethernet::Frame::attach(&bytes)?;
         let header = frame.header();
         if self.rt.local_link_addr() != header.dest_addr() && !header.dest_addr().is_broadcast() {
@@ -144,6 +146,14 @@ impl<RT: Runtime> Engine<RT> {
             },
             _ => panic!("TODO: Invalid fd"),
         }
+    }
+
+    pub fn udp_push(&mut self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+        self.ipv4.udp.push(fd, buf)
+    }
+
+    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture<RT> {
+        self.ipv4.udp.pop(fd)
     }
 
     pub fn pop(&mut self, fd: FileDescriptor) -> Operation<RT> {

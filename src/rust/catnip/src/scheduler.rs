@@ -3,6 +3,7 @@
 // 1) A single Scheduler owned by the top level loop. This can take out finished values and poll.
 // 2) A cloneable half that's given to the runtime. This can insert new values and drop handles.
 //
+use tracy_client::static_span;
 use std::pin::Pin;
 use std::future::Future;
 use std::task::{Context, Poll};
@@ -145,8 +146,12 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
     }
 
     pub fn poll(&self, ctx: &mut Context) {
+        let _s = static_span!();
         let mut inner = self.inner.borrow_mut();
-        inner.root_waker.register(ctx.waker());
+        {
+            let _t = static_span!("register_waker");
+            inner.root_waker.register(ctx.waker());
+        }
 
         for page_ix in 0..inner.pages.len() {
             for subpage_ix in iter_set_bits(inner.pages[page_ix].take_notified()) {
@@ -159,7 +164,10 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
 
                 drop(inner);
                 let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
-                let poll_result = Future::poll(pinned_ref, &mut sub_ctx);
+                let poll_result = {
+                    let _u = static_span!("poll_future");
+                    Future::poll(pinned_ref, &mut sub_ctx)
+                };
                 inner = self.inner.borrow_mut();
 
                 match poll_result {
