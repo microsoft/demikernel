@@ -10,14 +10,13 @@ use std::task::{Context, Poll};
 use gen_iter::gen_iter;
 use crate::runtime::Runtime;
 use crate::collections::waker_page::{
+    SharedWaker,
     WakerPage,
     WakerPageRef,
     WAKER_PAGE_SIZE,
 };
-use futures::task::AtomicWaker;
 use unicycle::pin_slab::PinSlab;
 use std::{
-    sync::Arc,
     task::{
         Waker,
     },
@@ -108,7 +107,7 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         let inner = Inner {
             slab: PinSlab::new(),
             pages: vec![],
-            root_waker: Arc::new(AtomicWaker::new()),
+            root_waker: SharedWaker::new(),
         };
         Self { inner: Rc::new(RefCell::new(inner)) }
     }
@@ -187,7 +186,7 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
 struct Inner<F: Future<Output = ()> + Unpin> {
     slab: PinSlab<F>,
     pages: Vec<WakerPageRef>,
-    root_waker: Arc<AtomicWaker>,
+    root_waker: SharedWaker,
 }
 
 impl<F: Future<Output = ()> + Unpin> Inner<F> {

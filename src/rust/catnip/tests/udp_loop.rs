@@ -57,7 +57,7 @@ fn udp_loop() {
     let mut samples = Vec::with_capacity(num_rounds);
 
     for _ in 0..num_rounds {
-        let s = static_span!("udp round");
+        let _s = static_span!("udp round");
         let start = Instant::now();
 
         alice.udp_push(alice_fd, buf.clone()).unwrap();

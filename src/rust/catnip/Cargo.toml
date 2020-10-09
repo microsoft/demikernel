@@ -44,3 +44,4 @@ criterion = "0.3.3"
 
 [features]
 tracing = ["tracy-client/enable"]
+threadunsafe = []
