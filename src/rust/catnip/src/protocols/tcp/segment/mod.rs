@@ -3,6 +3,8 @@
 
 mod transcode;
 
+use std::io::Cursor;
+use std::convert::TryInto;
 use crate::{
     fail::Fail,
     protocols::{
@@ -11,10 +13,12 @@ use crate::{
         ipv4,
     },
 };
+use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header2};
 use bytes::{
     Bytes,
     BytesMut,
 };
+use byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
 use std::{
     convert::TryFrom,
     net::Ipv4Addr,
@@ -29,6 +33,275 @@ pub use transcode::{
     MAX_MSS,
     MIN_MSS,
 };
+use crate::protocols::tcp::SeqNumber;
+
+const MIN_TCP_HEADER2_SIZE: usize = 20;
+const MAX_TCP_HEADER2_SIZE: usize = 60;
+const MAX_TCP_OPTIONS: usize = 5;
+
+#[derive(Clone, Copy)]
+struct SelectiveAcknowlegement {
+    begin: SeqNumber,
+    end: SeqNumber,
+}
+
+#[derive(Clone, Copy)]
+enum TcpOptions2 {
+    NoOperation,
+    MaximumSegmentSize(u16),
+    WindowScale(u8),
+    SelectiveAcknowlegementPermitted,
+    SelectiveAcknowlegement {
+        num_sacks: usize,
+        sacks: [SelectiveAcknowlegement; 4],
+    },
+    Timestamp {
+        sender_timestamp: u32,
+        echo_timestamp: u32,
+    },
+}
+
+pub struct TcpHeader2 {
+    src_port: ip::Port,
+    dst_port: ip::Port,
+    seq_num: SeqNumber,
+    ack_num: SeqNumber,
+
+    // Octet 12: [ data offset in u32s (4 bits) ][ reserved zeros (3 bits) ] [ NS flag ]
+    // The data offset is computed on the fly on serialization based on options.
+    // data_offset: u8,
+    ns: bool,
+
+    // Octet 13: [ CWR ] [ ECE ] [ URG ] [ ACK ] [ PSH ] [ RST ] [ SYN ] [ FIN ]
+    cwr: bool,
+    ece: bool,
+    urg: bool,
+    psh: bool,
+    rst: bool,
+    syn: bool,
+    fin: bool,
+
+    window_size: u16,
+
+    // We omit the checksum since it's checked when parsing and computed when serializing.
+    // checksum: u16
+
+    urgent_pointer: u16,
+
+    num_options: usize,
+    option_list: [TcpOptions2; MAX_TCP_OPTIONS],
+}
+
+impl TcpHeader2 {
+    pub fn parse(ipv4_header: &Ipv4Header2, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+        if buf.len() < MIN_TCP_HEADER2_SIZE {
+            return Err(Fail::Malformed { details: "TCP segment too small" });
+        }
+        let data_offset = (buf[12] >> 4) as usize * 4;
+        if buf.len() < data_offset {
+            return Err(Fail::Malformed { details: "TCP segment smaller than data offset" });
+        }
+        if data_offset < MIN_TCP_HEADER2_SIZE {
+            return Err(Fail::Malformed { details: "TCP data offset too small" });
+        }
+        if data_offset > MAX_TCP_HEADER2_SIZE {
+            return Err(Fail::Malformed { details: "TCP data offset too large" });
+        }
+        let data_buf = buf.split_off(data_offset);
+
+        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[0..2]))?;
+        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[3..4]))?;
+
+        let seq_num = Wrapping(NetworkEndian::read_u32(&buf[4..8]));
+        let ack_num = Wrapping(NetworkEndian::read_u32(&buf[8..12]));
+
+        let ns = (buf[12] & 1) != 0;
+
+        let cwr = (buf[13] & (1 << 7)) != 0;
+        let ece = (buf[13] & (1 << 6)) != 0;
+        let urg = (buf[13] & (1 << 5)) != 0;
+        let ack = (buf[13] & (1 << 4)) != 0;
+        let psh = (buf[13] & (1 << 3)) != 0;
+        let rst = (buf[13] & (1 << 2)) != 0;
+        let syn = (buf[13] & (1 << 1)) != 0;
+        let fin = (buf[13] & (1 << 0)) != 0;
+
+        let window_size = NetworkEndian::read_u16(&buf[14..16]);
+
+        let checksum = NetworkEndian::read_u16(&buf[16..18]);
+        if checksum != tcp_checksum(ipv4_header, &buf[..], &data_buf[..]) {
+            return Err(Fail::Malformed { details: "TCP checksum mismatch" });
+        }
+
+        let urgent_pointer = NetworkEndian::read_u16(&buf[18..20]);
+
+        let mut num_options = 0;
+        let mut option_list = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
+
+        if data_offset > MIN_TCP_HEADER2_SIZE {
+            let mut option_rdr = Cursor::new(&buf[MIN_TCP_HEADER2_SIZE..data_offset]);
+            loop {
+                let option_kind = option_rdr.read_u8()?;
+                let option = match option_kind {
+                    0 => break,
+                    1 => continue,
+                    2 => {
+                        let option_length = option_rdr.read_u8()?;
+                        if option_length != 4 {
+                            return Err(Fail::Malformed { details: "MSS size was not 4" });
+                        }
+                        let mss = option_rdr.read_u16::<NetworkEndian>()?;
+                        TcpOptions2::MaximumSegmentSize(mss)
+                    },
+                    3 => {
+                        let option_length = option_rdr.read_u8()?;
+                        if option_length != 3 {
+                            return Err(Fail::Malformed { details: "Window scale size was not 3" });
+                        }
+                        let window_scale = option_rdr.read_u8()?;
+                        TcpOptions2::WindowScale(window_scale)
+                    },
+                    4 => {
+                        let option_length = option_rdr.read_u8()?;
+                        if option_length != 2 {
+                            return Err(Fail::Malformed { details: "SACK permitted size was not 2" });
+                        }
+                        TcpOptions2::SelectiveAcknowlegementPermitted
+                    },
+                    5 => {
+                        let option_length = option_rdr.read_u8()?;
+                        let num_sacks = match option_length {
+                            10 | 18 | 26 | 34 => (option_length as usize - 2) / 8,
+                            _ => return Err(Fail::Malformed { details: "Invalid SACK size" }),
+                        };
+                        let mut sacks = [SelectiveAcknowlegement { begin: Wrapping(0), end: Wrapping(0)}; 4];
+                        for i in 0..num_sacks {
+                            sacks[i].begin = Wrapping(option_rdr.read_u32::<NetworkEndian>()?);
+                            sacks[i].end = Wrapping(option_rdr.read_u32::<NetworkEndian>()?);
+                        }
+                        TcpOptions2::SelectiveAcknowlegement { num_sacks, sacks }
+                    },
+                    8 => {
+                        let option_length = option_rdr.read_u8()?;
+                        if option_length != 10 {
+                            return Err(Fail::Malformed { details: "TCP timestamp size was not 10" });
+                        }
+                        let sender_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
+                        let echo_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
+                        TcpOptions2::Timestamp { sender_timestamp, echo_timestamp }
+                    },
+                    _ => return Err(Fail::Malformed { details: "Invalid TCP option" }),
+                };
+                if num_options >= option_list.len() {
+                    return Err(Fail::Malformed { details: "Too many TCP options provided" });
+                }
+                option_list[num_options] = option;
+                num_options += 1;
+            }
+        }
+
+        let header = Self {
+            src_port,
+            dst_port,
+            seq_num,
+            ack_num,
+            ns,
+            cwr,
+            ece,
+            urg,
+            psh,
+            rst,
+            syn,
+            fin,
+            window_size,
+            urgent_pointer,
+
+            num_options,
+            option_list,
+        };
+        Ok((header, data_buf))
+
+    }
+}
+
+fn tcp_checksum(ipv4_header: &Ipv4Header2, header: &[u8], data: &[u8]) -> u16 {
+    let mut state = 0xffffu32;
+
+    // First, fold in a "pseudo-IP" header of...
+    // 1) Source address (4 bytes)
+    let src_octets = ipv4_header.src_addr.octets();
+    state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
+    state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
+
+    // 2) Destination address (4 bytes)
+    let dst_octets = ipv4_header.dst_addr.octets();
+    state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
+    state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
+
+    // 3) 1 byte of zeros and TCP protocol number (1 byte)
+    state += NetworkEndian::read_u16(&[0, Ipv4Protocol2::Tcp as u8]) as u32;
+
+    // 4) TCP segment length (2 bytes)
+    state += (header.len() + data.len()) as u32;
+
+    let fixed_header: &[u8; MIN_TCP_HEADER2_SIZE] = header[..MIN_TCP_HEADER2_SIZE].try_into().unwrap();
+
+    // Continue to the TCP header. First, for the fixed length parts, we have...
+    // 1) Source port (2 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[0..2]) as u32;
+
+    // 2) Destination port (2 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[2..4]) as u32;
+
+    // 3) Sequence number (4 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[4..6]) as u32;
+    state += NetworkEndian::read_u16(&fixed_header[6..8]) as u32;
+
+    // 4) Acknowledgement number (4 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[8..10]) as u32;
+    state += NetworkEndian::read_u16(&fixed_header[10..12]) as u32;
+
+    // 5) Data offset (4 bits), reserved (4 bits), and flags (1 byte)
+    state += NetworkEndian::read_u16(&fixed_header[12..14]) as u32;
+
+    // 6) Window (2 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[14..16]) as u32;
+
+    // 7) Checksum (all zeros, 2 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[16..18]) as u32;
+
+    // 8) Urgent pointer (2 bytes)
+    state += NetworkEndian::read_u16(&fixed_header[18..20]) as u32;
+
+    // Next, the variable length part of the header for TCP options. Since `data_offset` is
+    // guaranteed to be aligned to a 32-bit boundary, we don't have to handle remainders.
+    if header.len() > MIN_TCP_HEADER2_SIZE {
+        assert_eq!(header.len() % 2, 0);
+        for chunk in header[MIN_TCP_HEADER2_SIZE..].chunks_exact(2) {
+            state += NetworkEndian::read_u16(chunk) as u32;
+        }
+    }
+
+    // Finally, checksum the data itself.
+    let mut chunks_iter = data.chunks_exact(2);
+    while let Some(chunk) = chunks_iter.next() {
+        state += NetworkEndian::read_u16(chunk) as u32;
+    }
+    // Since the data may have an odd number of bytes, pad the last byte with zero if necessary.
+    if let Some(&b) = chunks_iter.remainder().get(0) {
+        state += NetworkEndian::read_u16(&[b, 0]) as u32;
+    }
+
+    // NB: We don't need to subtract out 0xFFFF as we accumulate the sum. Since we use a u32 for
+    // intermediate state, we would need 2^16 additions to overflow. This is well beyond the reach
+    // of the largest jumbo frames. The upshot is that the compiler can then optimize this final
+    // loop into a branchfree algorithm.
+    while state > 0xFFFF {
+        state -= 0xFFFF;
+    }
+    !state as u16
+}
+
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct TcpSegment {

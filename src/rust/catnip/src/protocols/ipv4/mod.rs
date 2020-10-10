@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod checksum;
-mod datagram;
+pub mod datagram;
 mod endpoint;
 mod peer;
 
