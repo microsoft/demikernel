@@ -9,7 +9,7 @@ use anyhow::{
     format_err,
     Error,
 };
-use bytes::BytesMut;
+use catnip::sync::BytesMut;
 use catnip::{
     operations::OperationResult,
     engine::{Engine, Protocol},
@@ -427,12 +427,14 @@ pub extern "C" fn dmtr_push(
     for i in 0..sga.sga_numsegs as usize {
         len += sga.sga_segs[i].sgaseg_len;
     }
-    let mut buf = BytesMut::with_capacity(len as usize);
+    let mut buf = BytesMut::zeroed(len as usize);
+    let mut pos = 0;
     for i in 0..sga.sga_numsegs as usize {
         let seg = &sga.sga_segs[i];
         let seg_slice =
             unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
-        buf.extend_from_slice(seg_slice);
+	buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
+	pos += seg_slice.len();
     }
     let buf = buf.freeze();
     with_libos(|libos| {
@@ -495,6 +497,7 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
             None => return libc::EINVAL,
             Some(h) => h,
         };
+	let mut i = 0;
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
             let engine = &mut libos.engine;
@@ -503,7 +506,11 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            libos.runtime.advance_clock(Instant::now());
+
+	    if i % 4 == 0 {
+                libos.runtime.advance_clock(Instant::now());
+	    }
+	    i = (i + 1) % 4;
 
             if handle.has_completed() {
                 let (qd, r) = match libos.runtime.scheduler.take(handle) {
@@ -528,6 +535,7 @@ pub extern "C" fn dmtr_wait_any(
     let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
     with_libos(|libos| {
         let mut ctx = Context::from_waker(noop_waker_ref());
+	let mut i = 0;	
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
             let engine = &mut libos.engine;
@@ -536,7 +544,10 @@ pub extern "C" fn dmtr_wait_any(
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-            libos.runtime.advance_clock(Instant::now());
+	    if i % 4 == 0 {
+               libos.runtime.advance_clock(Instant::now());
+	    }
+	    i = (i + 1) % 4;
 
             for (i, &qt) in qts.iter().enumerate() {
                 let handle = match libos.runtime.scheduler.from_raw_handle(qt) {

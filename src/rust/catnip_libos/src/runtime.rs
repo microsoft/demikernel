@@ -6,14 +6,15 @@ use crate::bindings::{
 };
 use std::future::Future;
 use futures::FutureExt;
+use catnip::sync::{BytesMut, Bytes};
 use catnip::scheduler::{Scheduler, SchedulerHandle, Operation};
 use catnip::{
     protocols::{
         arp,
-        ethernet::MacAddress,
+        ethernet2::MacAddress,
         tcp,
     },
-    runtime::Runtime,
+    runtime::{PacketBuf, Runtime},
     timer::{
         Timer,
         TimerPtr,
@@ -101,7 +102,7 @@ impl LibOSRuntime {
         }
     }
 
-    pub fn receive(&self, mut packet_in: impl FnMut(&[u8])) -> usize {
+    pub fn receive(&self, mut packet_in: impl FnMut(Bytes)) -> usize {
         let dpdk_port = { self.inner.borrow().dpdk_port_id };
 
         const MAX_QUEUE_DEPTH: usize = 64;
@@ -121,7 +122,8 @@ impl LibOSRuntime {
             let p =
                 unsafe { ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize) };
             let data = unsafe { slice::from_raw_parts(p, (*packet).data_len as usize) };
-            packet_in(data);
+	    let buf = BytesMut::from(data).freeze();
+            packet_in(buf);
             unsafe { catnip_libos_free_pkt(packet as *const _ as *mut _) };
         }
 
@@ -144,22 +146,24 @@ struct Inner {
 impl Runtime for LibOSRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
 
-    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
+    fn transmit(&self, buf: impl PacketBuf) {
         let pool = { self.inner.borrow().dpdk_mempool };
         let dpdk_port_id = { self.inner.borrow().dpdk_port_id };
         let mut pkt = unsafe { catnip_libos_alloc_pkt(pool) };
         assert!(!pkt.is_null());
 
+	let size = buf.compute_size();
+
         let rte_pktmbuf_headroom = 128;
         let buf_len = unsafe { (*pkt).buf_len } - rte_pktmbuf_headroom;
-        assert!(buf_len as usize >= buf.borrow().len());
+        assert!(buf_len as usize >= size);
 
         let out_ptr = unsafe { ((*pkt).buf_addr as *mut u8).offset((*pkt).data_off as isize) };
         let out_slice = unsafe { slice::from_raw_parts_mut(out_ptr, buf_len as usize) };
-        out_slice[..buf.borrow().len()].copy_from_slice(&buf.borrow()[..]);
+	buf.serialize(&mut out_slice[..size]);
         let num_sent = unsafe {
-            (*pkt).data_len = buf.borrow().len() as u16;
-            (*pkt).pkt_len = buf.borrow().len() as u32;
+            (*pkt).data_len = size as u16;
+            (*pkt).pkt_len = size as u32;
             (*pkt).nb_segs = 1;
             (*pkt).next = ptr::null_mut();
 

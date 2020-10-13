@@ -70,5 +70,7 @@ unsafe impl<T: alloc::GlobalAlloc> alloc::GlobalAlloc for ProfiledAllocator<T> {
     }
 }
 
+// use mimalloc::MiMalloc;
 #[global_allocator]
+// static GLOBAL: MiMalloc = MiMalloc;
 static GLOBAL: ProfiledAllocator<alloc::System> = ProfiledAllocator(alloc::System);

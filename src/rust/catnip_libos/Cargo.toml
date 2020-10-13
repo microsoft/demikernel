@@ -9,8 +9,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 anyhow = "1.0.32"
-bytes = "0.5.6"
-catnip = { path = "../catnip" }
+catnip = { path = "../catnip", features = ["threadunsafe"] }
 clap = "2.33.3"
 futures = "0.3"
 hashbrown = { version = "0.9", features = ["nightly"] }

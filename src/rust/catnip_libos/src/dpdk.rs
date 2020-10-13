@@ -42,7 +42,7 @@ use anyhow::{
     format_err,
     Error,
 };
-use catnip::protocols::ethernet::MacAddress;
+use catnip::protocols::ethernet2::MacAddress;
 use std::{
     ffi::CString,
     mem::MaybeUninit,

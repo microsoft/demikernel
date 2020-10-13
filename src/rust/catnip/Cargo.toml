@@ -21,7 +21,7 @@ hashbrown = { version = "0.9", features = ["nightly"] }
 histogram = "0.6.9"
 libc = "0.2.70"
 log = "0.4"
-# mimalloc = { version = "0.1.19", default-features = false }
+mimalloc = { version = "0.1.19", default-features = false }
 must-let = { git = "https://github.com/sujayakar/must-let" }
 num-derive = "0.3.0"
 num-traits = "0.2.11"
