@@ -37,7 +37,7 @@ pub enum ArpOperation {
     Reply = 2,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArpPdu {
     // We only support Ethernet/Ipv4, so omit these fields.
     // hardware_type: u16,

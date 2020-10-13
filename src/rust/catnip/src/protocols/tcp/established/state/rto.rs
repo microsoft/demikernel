@@ -5,6 +5,7 @@ use std::{
 };
 
 // RFC6298
+#[derive(Debug)]
 pub struct RtoCalculator {
     srtt: f64,
     rttvar: f64,

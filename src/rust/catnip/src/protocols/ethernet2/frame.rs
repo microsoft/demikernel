@@ -73,7 +73,7 @@ impl Ethernet2Header {
     pub fn serialize(&self, buf: &mut [u8]) {
         let buf: &mut [u8; ETHERNET2_HEADER2_SIZE] = buf.try_into().unwrap();
         buf[0..6].copy_from_slice(&self.dst_addr.octets());
-        buf[6..12].copy_from_slice(&self.dst_addr.octets());
+        buf[6..12].copy_from_slice(&self.src_addr.octets());
         NetworkEndian::write_u16(&mut buf[12..14], self.ether_type as u16);
     }
 }

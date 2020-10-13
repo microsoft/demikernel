@@ -103,6 +103,14 @@ pub struct Bytes {
     len: usize,
 }
 
+impl PartialEq for Bytes {
+    fn eq(&self, rhs: &Self) -> bool {
+        &self[..] == &rhs[..]
+    }
+}
+
+impl Eq for Bytes {}
+
 impl fmt::Debug for Bytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Bytes({:?})", &self[..])
@@ -121,6 +129,9 @@ impl Bytes {
     }
 
     pub fn split(self, ix: usize) -> (Self, Self) {
+        if ix == self.len() {
+            return (self, Bytes::empty());
+        }
         let buf = self.buf.expect("Can't split an empty buffer");
         assert!(ix < self.len);
         let prefix = Self {
@@ -151,6 +162,14 @@ impl Deref for Bytes {
 pub struct BytesMut {
     buf: Rc<[u8]>,
 }
+
+impl PartialEq for BytesMut {
+    fn eq(&self, rhs: &Self) -> bool {
+        &self[..] == &rhs[..]
+    }
+}
+
+impl Eq for BytesMut {}
 
 impl fmt::Debug for BytesMut {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -13,6 +13,7 @@ use std::{
         Waker,
     },
 };
+use std::fmt;
 
 #[derive(Eq, PartialEq)]
 enum WatchState {
@@ -33,6 +34,12 @@ struct WatchEntry {
 
 pub struct WatchedValue<T> {
     inner: RefCell<Inner<T>>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for WatchedValue<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "WatchedValue({:?})", self.inner.borrow().value)
+    }
 }
 
 impl<T: Copy> WatchedValue<T> {

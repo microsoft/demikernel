@@ -80,6 +80,14 @@ impl fmt::Debug for Bytes {
     }
 }
 
+impl PartialEq for Bytes {
+    fn eq(&self, rhs: &Self) -> bool {
+        &self[..] == &rhs[..]
+    }
+}
+
+impl Eq for Bytes {}
+
 impl Bytes {
     pub fn empty() -> Self {
         Self {
@@ -90,6 +98,9 @@ impl Bytes {
     }
 
     pub fn split(self, ix: usize) -> (Self, Self) {
+        if ix == self.len() {
+            return (self, Bytes::empty());
+        }
         let buf = self.buf.expect("Can't split an empty buffer");
         assert!(ix < self.len);
         let prefix = Self {
@@ -126,6 +137,14 @@ impl fmt::Debug for BytesMut {
         write!(f, "BytesMut({:?})", &self[..])
     }
 }
+
+impl PartialEq for BytesMut {
+    fn eq(&self, rhs: &Self) -> bool {
+        &self[..] == &rhs[..]
+    }
+}
+
+impl Eq for BytesMut {}
 
 impl BytesMut {
     pub fn zeroed(capacity: usize) -> Self {

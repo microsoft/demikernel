@@ -79,6 +79,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
         let pdu = ArpPdu::parse(buf)?;
+
         // from RFC 826:
         // > Merge_flag := false
         // > If the pair <protocol type, sender protocol address> is
@@ -125,12 +126,12 @@ impl<RT: Runtime> ArpPeer<RT> {
                     ethernet2_hdr: Ethernet2Header {
                         dst_addr: pdu.sender_hardware_addr,
                         src_addr: self.rt.local_link_addr(),
-                        ether_type: EtherType2::Ipv4,
+                        ether_type: EtherType2::Arp,
                     },
                     arp_pdu: ArpPdu {
                         operation: ArpOperation::Reply,
-                        sender_hardware_addr: pdu.target_hardware_addr,
-                        sender_protocol_addr: pdu.target_protocol_addr,
+                        sender_hardware_addr: self.rt.local_link_addr(),
+                        sender_protocol_addr: self.rt.local_ipv4_addr(),
                         target_hardware_addr: pdu.sender_hardware_addr,
                         target_protocol_addr: pdu.sender_protocol_addr,
                     },
@@ -164,15 +165,15 @@ impl<RT: Runtime> ArpPeer<RT> {
             }
             let msg = ArpMessage {
                 ethernet2_hdr: Ethernet2Header {
-                    dst_addr: MacAddress::nil(),
+                    dst_addr: MacAddress::broadcast(),
                     src_addr: rt.local_link_addr(),
-                    ether_type: EtherType2::Ipv4,
+                    ether_type: EtherType2::Arp,
                 },
                 arp_pdu: ArpPdu {
                     operation: ArpOperation::Request,
                     sender_hardware_addr: rt.local_link_addr(),
                     sender_protocol_addr: rt.local_ipv4_addr(),
-                    target_hardware_addr: MacAddress::nil(),
+                    target_hardware_addr: MacAddress::broadcast(),
                     target_protocol_addr: ipv4_addr,
                 },
             };

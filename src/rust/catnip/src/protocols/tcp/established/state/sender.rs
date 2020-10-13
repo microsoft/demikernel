@@ -6,6 +6,7 @@ use crate::{
 };
 use crate::sync::Bytes;
 use std::{
+    fmt,
     cell::RefCell,
     collections::VecDeque,
     convert::TryInto,
@@ -60,6 +61,21 @@ pub struct Sender {
 
     pub retransmit_deadline: WatchedValue<Option<Instant>>,
     pub rto: RefCell<RtoCalculator>,
+}
+
+impl fmt::Debug for Sender {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender")
+            .field("base_seq_no", &self.base_seq_no)
+            .field("sent_seq_no", &self.sent_seq_no)
+            .field("unsent_seq_no", &self.unsent_seq_no)
+            .field("window_size", &self.window_size)
+            .field("window_scale", &self.window_scale)
+            .field("mss", &self.mss)
+            .field("retransmit_deadline", &self.retransmit_deadline)
+            .field("rto", &self.rto)
+            .finish()
+    }
 }
 
 impl Sender {

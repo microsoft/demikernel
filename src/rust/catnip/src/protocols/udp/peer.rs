@@ -169,15 +169,8 @@ impl<RT: Runtime> UdpPeer<RT> {
             Some(Socket { ref mut local, .. }) if local.is_none() => {
                 *local = Some(addr);
             },
-<<<<<<< HEAD
             _ => return Err(Fail::Malformed { details: "Invalid file descriptor on bind" }),
-=======
-            _ => {
-                return Err(Fail::Malformed {
-                    details: "Invalid file descriptor",
-                })
-            },
->>>>>>> rustfmt
+
         }
         let listener = Listener {
             buf: VecDeque::new(),
@@ -194,13 +187,7 @@ impl<RT: Runtime> UdpPeer<RT> {
                 *remote = Some(addr);
                 Ok(())
             },
-<<<<<<< HEAD
             _ => Err(Fail::Malformed { details: "Invalid file descriptor on connect" }),
-=======
-            _ => Err(Fail::Malformed {
-                details: "Invalid file descriptor",
-            }),
->>>>>>> rustfmt
         }
     }
 
@@ -225,23 +212,10 @@ impl<RT: Runtime> UdpPeer<RT> {
         let _s = static_span!();
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
-<<<<<<< HEAD
             Some(Socket { local, remote: Some(remote) }) => (*local, *remote),
-            e => {
-	        eprintln!("{:?} invalid for {}", e, fd);
-	        return Err(Fail::Malformed { details: "Invalid file descriptor on push" })
-	    },
-=======
-            Some(Socket {
-                local,
-                remote: Some(remote),
-            }) => (*local, *remote),
             _ => {
-                return Err(Fail::Malformed {
-                    details: "Invalid file descriptor",
-                })
-            },
->>>>>>> rustfmt
+	            return Err(Fail::Malformed { details: "Invalid file descriptor on push" })
+	        },
         };
 
         // First, try to send the packet immediately.

@@ -27,6 +27,7 @@ pub enum ReceiverState {
     AckdFin,
 }
 
+#[derive(Debug)]
 pub struct Receiver {
     pub state: WatchedValue<ReceiverState>,
 

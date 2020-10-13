@@ -125,7 +125,6 @@ fn slow_reply() {
     carrie.rt().advance_clock(now);
     let reply = carrie.rt().pop_frame();
 
-    info!("passing ARP reply back to alice...");
     alice.receive(reply).unwrap();
     now += Duration::from_micros(1);
     alice.rt().advance_clock(now);

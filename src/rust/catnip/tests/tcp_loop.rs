@@ -1,6 +1,6 @@
 #![feature(const_fn, const_mut_refs, const_type_name)]
 
-use crate::sync::{
+use catnip::sync::{
     Bytes,
     BytesMut,
 };
@@ -51,7 +51,7 @@ pub fn one_send_recv_round(
     // Receive it on Bob's side.
     let mut pop_future = bob.tcp_pop(bob_fd);
     must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), ctx));
-    assert_eq!(received_buf.len(), buf.len());
+    debug_assert_eq!(received_buf, buf);
 
     // Send data from Bob to Alice
     let mut push_future = bob.tcp_push(bob_fd, buf.clone());
@@ -62,7 +62,7 @@ pub fn one_send_recv_round(
     // Receive it on Alice's side.
     let mut pop_future = alice.tcp_pop(alice_fd);
     must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), ctx));
-    assert_eq!(received_buf.len(), buf.len());
+    debug_assert_eq!(received_buf, buf);
 }
 
 #[test]
@@ -100,7 +100,11 @@ fn tcp_loop() {
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
 
     let size = 32;
-    let buf = BytesMut::from(&vec![0u8; size][..]).freeze();
+    let mut buf = BytesMut::zeroed(size);
+    for i in 0..size {
+        buf[i] = i as u8;
+    }
+    let buf = buf.freeze();
 
     // Send data from Alice to Bob
     let mut push_future = alice.tcp_push(alice_fd, buf.clone());
