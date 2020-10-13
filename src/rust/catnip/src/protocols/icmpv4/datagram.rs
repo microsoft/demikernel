@@ -15,7 +15,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cmp,
     convert::TryInto,
@@ -145,26 +145,26 @@ impl Icmpv4Header {
         ICMPV4_HEADER2_SIZE
     }
 
-    pub fn parse(mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < ICMPV4_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "ICMPv4 datagram too small for header",
             });
         }
-        let data = buf.split_off(ICMPV4_HEADER2_SIZE);
-        let buf: &[u8; ICMPV4_HEADER2_SIZE] = buf[..].try_into().unwrap();
+        let (hdr_buf, data_buf) = buf.split(ICMPV4_HEADER2_SIZE);
+        let hdr_buf: &[u8; ICMPV4_HEADER2_SIZE] = hdr_buf[..].try_into().unwrap();
 
-        let type_byte = buf[0];
-        let code = buf[1];
-        let checksum = NetworkEndian::read_u16(&buf[2..4]);
-        if checksum != icmpv4_checksum(buf) {
+        let type_byte = hdr_buf[0];
+        let code = hdr_buf[1];
+        let checksum = NetworkEndian::read_u16(&hdr_buf[2..4]);
+        if checksum != icmpv4_checksum(hdr_buf) {
             return Err(Fail::Malformed {
                 details: "ICMPv4 checksum mismatch",
             });
         }
-        let rest_of_header: &[u8; 4] = buf[4..8].try_into().unwrap();
+        let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
         let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;
-        Ok((Self { icmpv4_type, code }, data))
+        Ok((Self { icmpv4_type, code }, data_buf))
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {

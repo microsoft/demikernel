@@ -17,7 +17,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cmp,
     convert::{
@@ -93,26 +93,26 @@ impl UdpHeader {
         UDP_HEADER2_SIZE
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < UDP_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "UDP segment too small",
             });
         }
-        let data_buf = buf.split_off(UDP_HEADER2_SIZE);
+        let (hdr_buf, data_buf) = buf.split(UDP_HEADER2_SIZE);
 
-        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[0..2])).ok();
-        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[2..4]))?;
+        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[0..2])).ok();
+        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
 
-        let length = NetworkEndian::read_u16(&buf[4..6]) as usize;
-        if length != buf.len() + data_buf.len() {
+        let length = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
+        if length != hdr_buf.len() + data_buf.len() {
             return Err(Fail::Malformed {
                 details: "UDP length mismatch",
             });
         }
 
-        let checksum = NetworkEndian::read_u16(&buf[6..8]);
-        if checksum != 0 && checksum != udp_checksum(&ipv4_header, &buf[..], &data_buf[..]) {
+        let checksum = NetworkEndian::read_u16(&hdr_buf[6..8]);
+        if checksum != 0 && checksum != udp_checksum(&ipv4_header, &hdr_buf[..], &data_buf[..]) {
             return Err(Fail::Malformed {
                 details: "UDP checksum mismatch",
             });

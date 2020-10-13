@@ -31,7 +31,7 @@ use crate::{
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     convert::TryInto,
@@ -149,7 +149,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             },
             ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
-            data: Bytes::new(),
+            data: Bytes::empty(),
         };
         self.rt.transmit(segment);
 
@@ -227,7 +227,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     },
                     ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
-                    data: Bytes::new(),
+                    data: Bytes::empty(),
                 };
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;

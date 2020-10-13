@@ -21,7 +21,7 @@ use byteorder::{
     NetworkEndian,
     ReadBytesExt,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cmp,
     convert::{
@@ -233,7 +233,7 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP segment too small",
@@ -255,41 +255,41 @@ impl TcpHeader {
                 details: "TCP data offset too large",
             });
         }
-        let data_buf = buf.split_off(data_offset);
+        let (hdr_buf, data_buf) = buf.split(data_offset);
 
-        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[0..2]))?;
-        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[2..4]))?;
+        let src_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[0..2]))?;
+        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
 
-        let seq_num = Wrapping(NetworkEndian::read_u32(&buf[4..8]));
-        let ack_num = Wrapping(NetworkEndian::read_u32(&buf[8..12]));
+        let seq_num = Wrapping(NetworkEndian::read_u32(&hdr_buf[4..8]));
+        let ack_num = Wrapping(NetworkEndian::read_u32(&hdr_buf[8..12]));
 
-        let ns = (buf[12] & 1) != 0;
+        let ns = (hdr_buf[12] & 1) != 0;
 
-        let cwr = (buf[13] & (1 << 7)) != 0;
-        let ece = (buf[13] & (1 << 6)) != 0;
-        let urg = (buf[13] & (1 << 5)) != 0;
-        let ack = (buf[13] & (1 << 4)) != 0;
-        let psh = (buf[13] & (1 << 3)) != 0;
-        let rst = (buf[13] & (1 << 2)) != 0;
-        let syn = (buf[13] & (1 << 1)) != 0;
-        let fin = (buf[13] & (1 << 0)) != 0;
+        let cwr = (hdr_buf[13] & (1 << 7)) != 0;
+        let ece = (hdr_buf[13] & (1 << 6)) != 0;
+        let urg = (hdr_buf[13] & (1 << 5)) != 0;
+        let ack = (hdr_buf[13] & (1 << 4)) != 0;
+        let psh = (hdr_buf[13] & (1 << 3)) != 0;
+        let rst = (hdr_buf[13] & (1 << 2)) != 0;
+        let syn = (hdr_buf[13] & (1 << 1)) != 0;
+        let fin = (hdr_buf[13] & (1 << 0)) != 0;
 
-        let window_size = NetworkEndian::read_u16(&buf[14..16]);
+        let window_size = NetworkEndian::read_u16(&hdr_buf[14..16]);
 
-        let checksum = NetworkEndian::read_u16(&buf[16..18]);
-        if checksum != tcp_checksum(ipv4_header, &buf[..], &data_buf[..]) {
+        let checksum = NetworkEndian::read_u16(&hdr_buf[16..18]);
+        if checksum != tcp_checksum(ipv4_header, &hdr_buf[..], &data_buf[..]) {
             return Err(Fail::Malformed {
                 details: "TCP checksum mismatch",
             });
         }
 
-        let urgent_pointer = NetworkEndian::read_u16(&buf[18..20]);
+        let urgent_pointer = NetworkEndian::read_u16(&hdr_buf[18..20]);
 
         let mut num_options = 0;
         let mut option_list = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
 
         if data_offset > MIN_TCP_HEADER2_SIZE {
-            let mut option_rdr = Cursor::new(&buf[MIN_TCP_HEADER2_SIZE..data_offset]);
+            let mut option_rdr = Cursor::new(&hdr_buf[MIN_TCP_HEADER2_SIZE..data_offset]);
             loop {
                 let option_kind = option_rdr.read_u8()?;
                 let option = match option_kind {

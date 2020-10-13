@@ -32,7 +32,7 @@ use crate::{
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use hashbrown::{
     HashMap,
     HashSet,
@@ -275,7 +275,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     },
                     ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
-                    data: Bytes::new(),
+                    data: Bytes::empty(),
                 };
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;

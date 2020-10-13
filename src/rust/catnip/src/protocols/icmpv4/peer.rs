@@ -26,7 +26,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use futures::{
     FutureExt,
     StreamExt,

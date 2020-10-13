@@ -31,7 +31,7 @@ use crate::{
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use futures_intrusive::{
     buffer::GrowingHeapBuf,
     channel::shared::{
@@ -114,7 +114,7 @@ impl<RT: Runtime> UdpPeer<RT> {
     async fn background(rt: RT, arp: arp::Peer<RT>, rx: OutgoingReceiver) {
         while let Some((local, remote, buf)) = rx.receive().await {
             let r: Result<_, Fail> = try {
-                let link_addr = arp.query(remote.address()).await?;
+                let link_addr = arp.query(remote.addr).await?;
                 let _s = static_span!("bg_send_udp");
                 let datagram = UdpDatagram {
                     ethernet2_hdr: Ethernet2Header {
@@ -243,7 +243,32 @@ impl<RT: Runtime> UdpPeer<RT> {
             },
 >>>>>>> rustfmt
         };
-        inner.outgoing.try_send((local, remote, buf)).unwrap();
+
+        // First, try to send the packet immediately.
+        if let Some(link_addr) = inner.arp.try_query(remote.addr) {
+            let datagram = UdpDatagram {
+                ethernet2_hdr: Ethernet2Header {
+                    dst_addr: link_addr,
+                    src_addr: inner.rt.local_link_addr(),
+                    ether_type: EtherType2::Ipv4,
+                },
+                ipv4_hdr: Ipv4Header::new(
+                    inner.rt.local_ipv4_addr(),
+                    remote.addr,
+                    Ipv4Protocol2::Udp,
+                ),
+                udp_hdr: UdpHeader {
+                    src_port: local.map(|l| l.port),
+                    dst_port: remote.port,
+                },
+                data: buf,
+            };
+            inner.rt.transmit(datagram);
+        }
+        // Otherwise defer to the async path.
+        else {
+            inner.outgoing.try_send((local, remote, buf)).unwrap();
+        }
         Ok(())
     }
 

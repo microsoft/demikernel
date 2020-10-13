@@ -3,7 +3,7 @@ use crate::{
     fail::Fail,
     protocols::tcp::SeqNumber,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     collections::VecDeque,

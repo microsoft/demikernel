@@ -14,7 +14,7 @@ use crate::{
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     rc::Rc,
     task::{

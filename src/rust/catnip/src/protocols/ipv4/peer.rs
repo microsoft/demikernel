@@ -18,7 +18,7 @@ use crate::{
     },
     runtime::Runtime,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,

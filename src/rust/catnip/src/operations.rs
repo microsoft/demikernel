@@ -2,7 +2,7 @@ use crate::{
     fail::Fail,
     file_table::FileDescriptor,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     future::Future,
     pin::Pin,

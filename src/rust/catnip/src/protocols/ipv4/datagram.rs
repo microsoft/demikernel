@@ -3,7 +3,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use num_traits::FromPrimitive;
 use std::{
     convert::{
@@ -73,12 +73,12 @@ fn ipv4_checksum(buf: &[u8]) -> u16 {
     let buf: &[u8; IPV4_HEADER2_SIZE] = buf.try_into().expect("Invalid header size");
     let mut state = 0xffffu32;
     for i in 0..5 {
-        state += NetworkEndian::read_u16(&buf[2 * i..2 * i + 1]) as u32;
+        state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;
     }
     // Skip the 5th u16 since octets 10-12 are the header checksum, whose value should be zero when
     // computing a checksum.
     for i in 6..10 {
-        state += NetworkEndian::read_u16(&buf[2 * i..2 * i + 1]) as u32;
+        state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;
     }
     while state > 0xffff {
         state -= 0xffff;
@@ -106,22 +106,22 @@ impl Ipv4Header {
         IPV4_HEADER2_SIZE
     }
 
-    pub fn parse(mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < IPV4_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "Datagram too small",
             });
         }
-        let payload_buf = buf.split_off(IPV4_HEADER2_SIZE);
+        let (hdr_buf, payload_buf) = buf.split(IPV4_HEADER2_SIZE);
 
-        let version = buf[0] >> 4;
+        let version = hdr_buf[0] >> 4;
         if version != IPV4_VERSION {
             return Err(Fail::Unsupported {
                 details: "Unsupported IP version",
             });
         }
 
-        let ihl = buf[0] & 0xF;
+        let ihl = hdr_buf[0] & 0xF;
         if ihl < IPV4_IHL_NO_OPTIONS {
             return Err(Fail::Malformed {
                 details: "IPv4 IHL is too small",
@@ -133,43 +133,43 @@ impl Ipv4Header {
             });
         }
 
-        let dscp = buf[1] >> 2;
-        let ecn = buf[1] & 3;
+        let dscp = hdr_buf[1] >> 2;
+        let ecn = hdr_buf[1] & 3;
 
-        let total_length = NetworkEndian::read_u16(&buf[2..4]);
+        let total_length = NetworkEndian::read_u16(&hdr_buf[2..4]);
         if total_length as usize != IPV4_HEADER2_SIZE + payload_buf.len() {
             return Err(Fail::Malformed {
                 details: "IPv4 TOTALLEN mismatch",
             });
         }
 
-        let identification = NetworkEndian::read_u16(&buf[4..6]);
-        let flags = (NetworkEndian::read_u16(&buf[6..8]) >> 13) as u8;
+        let identification = NetworkEndian::read_u16(&hdr_buf[4..6]);
+        let flags = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
 
-        let fragment_offset = NetworkEndian::read_u16(&buf[6..8]) & 0x1fff;
+        let fragment_offset = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
         if fragment_offset != 0 {
             return Err(Fail::Unsupported {
                 details: "IPv4 fragmentation is unsupported",
             });
         }
 
-        let time_to_live = buf[8];
-        let protocol = Ipv4Protocol2::try_from(buf[9])?;
+        let time_to_live = hdr_buf[8];
+        let protocol = Ipv4Protocol2::try_from(hdr_buf[9])?;
 
-        let header_checksum = NetworkEndian::read_u16(&buf[10..12]);
+        let header_checksum = NetworkEndian::read_u16(&hdr_buf[10..12]);
         if header_checksum == 0xffff {
             return Err(Fail::Malformed {
                 details: "IPv4 checksum is 0xFFFF",
             });
         }
-        if header_checksum != ipv4_checksum(&buf[..]) {
+        if header_checksum != ipv4_checksum(&hdr_buf[..]) {
             return Err(Fail::Malformed {
                 details: "Invalid IPv4 checksum",
             });
         }
 
-        let src_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[12..16]));
-        let dst_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[16..20]));
+        let src_addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[12..16]));
+        let dst_addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
 
         let header = Self {
             dscp,

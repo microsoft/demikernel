@@ -16,7 +16,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use num_traits::FromPrimitive;
 use std::{
     cmp,

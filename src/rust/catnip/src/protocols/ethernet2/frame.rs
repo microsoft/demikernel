@@ -6,7 +6,7 @@ use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use num_traits::FromPrimitive;
 use std::convert::{
     TryFrom,
@@ -51,17 +51,17 @@ impl Ethernet2Header {
         ETHERNET2_HEADER2_SIZE
     }
 
-    pub fn parse(mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < ETHERNET2_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "Frame too small",
             });
         }
-        let payload_buf = buf.split_off(ETHERNET2_HEADER2_SIZE);
+        let (hdr_buf, payload_buf) = buf.split(ETHERNET2_HEADER2_SIZE);
 
-        let dst_addr = MacAddress::from_bytes(&buf[0..6]);
-        let src_addr = MacAddress::from_bytes(&buf[6..12]);
-        let ether_type = EtherType2::try_from(NetworkEndian::read_u16(&buf[12..14]))?;
+        let dst_addr = MacAddress::from_bytes(&hdr_buf[0..6]);
+        let src_addr = MacAddress::from_bytes(&hdr_buf[6..12]);
+        let ether_type = EtherType2::try_from(NetworkEndian::read_u16(&hdr_buf[12..14]))?;
         let hdr = Self {
             dst_addr,
             src_addr,

@@ -5,7 +5,7 @@ use crate::{
     },
     test_helpers,
 };
-use bytes::BytesMut;
+use crate::sync::BytesMut;
 use futures::task::noop_waker_ref;
 use must_let::must_let;
 use std::{

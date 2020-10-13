@@ -22,7 +22,7 @@ use crate::{
         TimerRc,
     },
 };
-use bytes::{
+use crate::sync::{
     Bytes,
     BytesMut,
 };
@@ -128,8 +128,7 @@ impl Runtime for TestRuntime {
 
     fn transmit(&self, pkt: impl PacketBuf) {
         let size = pkt.compute_size();
-        let mut buf = BytesMut::with_capacity(size);
-        unsafe { buf.set_len(size) };
+        let mut buf = BytesMut::zeroed(size);
         pkt.serialize(&mut buf[..]);
         self.inner.borrow_mut().outgoing.push_back(buf.freeze());
     }

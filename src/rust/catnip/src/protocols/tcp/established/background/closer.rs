@@ -7,7 +7,7 @@ use crate::{
     fail::Fail,
     runtime::Runtime,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use futures::FutureExt;
 use std::{
     num::Wrapping,
@@ -36,7 +36,7 @@ async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
         let mut header = cb.tcp_header();
         header.ack = true;
         header.ack_num = recv_seq + Wrapping(1);
-        cb.emit(header, Bytes::new(), remote_link_addr);
+        cb.emit(header, Bytes::empty(), remote_link_addr);
 
         cb.receiver.state.set(ReceiverState::AckdFin);
     }
@@ -66,7 +66,7 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
                 let mut header = cb.tcp_header();
                 header.seq_num = sent_seq + Wrapping(1);
                 header.fin = true;
-                cb.emit(header, Bytes::new(), remote_link_addr);
+                cb.emit(header, Bytes::empty(), remote_link_addr);
 
                 cb.sender.state.set(SenderState::SentFin);
             },
@@ -74,7 +74,7 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
                 let mut header = cb.tcp_header();
                 header.rst = true;
-                cb.emit(header, Bytes::new(), remote_link_addr);
+                cb.emit(header, Bytes::empty(), remote_link_addr);
                 panic!("Close connection here");
             },
         }

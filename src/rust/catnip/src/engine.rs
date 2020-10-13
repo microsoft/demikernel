@@ -30,7 +30,7 @@ use crate::{
     runtime::Runtime,
     scheduler::Operation,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,

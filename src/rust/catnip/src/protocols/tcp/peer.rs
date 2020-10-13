@@ -40,7 +40,7 @@ use crate::{
     },
     runtime::Runtime,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
@@ -497,7 +497,7 @@ impl<RT: Runtime> Inner<RT> {
             },
             ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
-            data: Bytes::new(),
+            data: Bytes::empty(),
         };
         self.rt.transmit(segment);
 

@@ -11,7 +11,7 @@ use crate::{
     },
     runtime::Runtime,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     fmt,

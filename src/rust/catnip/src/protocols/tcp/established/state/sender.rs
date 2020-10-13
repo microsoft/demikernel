@@ -4,7 +4,7 @@ use crate::{
     fail::Fail,
     protocols::tcp::SeqNumber,
 };
-use bytes::Bytes;
+use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -167,10 +167,10 @@ impl Sender {
 
     pub fn pop_one_unsent_byte(&self) -> Option<Bytes> {
         let mut queue = self.unsent_queue.borrow_mut();
-        let mut buf = queue.pop_front()?;
-        let remainder = buf.split_off(1);
+        let buf = queue.pop_front()?;
+        let (byte, remainder) = buf.split(1);
         queue.push_front(remainder);
-        Some(buf)
+        Some(byte)
     }
 
     pub fn pop_unsent(&self, max_bytes: usize) -> Option<Bytes> {
@@ -178,7 +178,8 @@ impl Sender {
         let mut unsent_queue = self.unsent_queue.borrow_mut();
         let mut buf = unsent_queue.pop_front()?;
         if buf.len() > max_bytes {
-            let tail = buf.split_off(max_bytes);
+            let (head, tail) = buf.split(max_bytes);
+            buf = head;
             unsent_queue.push_front(tail);
         }
         Some(buf)

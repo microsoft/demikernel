@@ -1,6 +1,6 @@
 #![feature(const_fn, const_mut_refs, const_type_name)]
 
-use bytes::BytesMut;
+use catnip::sync::BytesMut;
 use catnip::{
     engine::Protocol,
     protocols::{
