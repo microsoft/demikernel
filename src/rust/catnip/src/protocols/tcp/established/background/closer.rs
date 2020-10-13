@@ -3,6 +3,7 @@ use super::super::state::{
     sender::SenderState,
     ControlBlock,
 };
+use bytes::Bytes;
 use crate::{
     fail::Fail,
     runtime::Runtime,
@@ -32,8 +33,10 @@ async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
 
         // Send ACK segment
         let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-        let segment = cb.tcp_segment().ack(recv_seq + Wrapping(1));
-        cb.emit(segment, remote_link_addr);
+        let mut header = cb.tcp_header();
+        header.ack = true;
+        header.ack_num = recv_seq + Wrapping(1);
+        cb.emit2(header, Bytes::new(), remote_link_addr);
 
         cb.receiver.state.set(ReceiverState::AckdFin);
     }
@@ -60,15 +63,18 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
 
                 // TODO: When do we retransmit this?
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-                let segment = cb.tcp_segment().seq_num(sent_seq + Wrapping(1)).fin();
-                cb.emit(segment, remote_link_addr);
+                let mut header = cb.tcp_header();
+                header.seq_num = sent_seq + Wrapping(1);
+                header.fin = true;
+                cb.emit2(header, Bytes::new(), remote_link_addr);
 
                 cb.sender.state.set(SenderState::SentFin);
             },
             SenderState::Reset => {
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-                let segment = cb.tcp_segment().rst();
-                cb.emit(segment, remote_link_addr);
+                let mut header = cb.tcp_header();
+                header.rst = true;
+                cb.emit2(header, Bytes::new(), remote_link_addr);
                 panic!("Close connection here");
             },
         }

@@ -2,6 +2,7 @@ pub mod receiver;
 mod rto;
 pub mod sender;
 
+use bytes::Bytes;
 use self::{
     receiver::Receiver,
     sender::Sender,
@@ -12,13 +13,13 @@ use crate::{
         arp,
         ethernet::MacAddress,
         ipv4,
-        tcp::segment::TcpSegment,
+        tcp::segment::{TcpSegment2, TcpHeader2},
+        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header2},
     },
     runtime::Runtime,
 };
 use std::{
-    cell::RefCell,
-    rc::Rc,
     time::Duration,
 };
 
@@ -34,34 +35,28 @@ pub struct ControlBlock<RT: Runtime> {
 }
 
 impl<RT: Runtime> ControlBlock<RT> {
-    pub fn receive_segment(&self, segment: TcpSegment) {
-        if segment.syn {
+    pub fn receive2(&self, header: &TcpHeader2, data: Bytes) {
+        let now = self.rt.now();
+        if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
         }
-        if segment.rst {
+        if header.rst {
             unimplemented!();
         }
-        if segment.fin {
+        if header.fin {
             self.receiver.receive_fin();
         }
-        if segment.ack {
-            if let Err(e) = self.sender.remote_ack(segment.ack_num, self.rt.now()) {
-                warn!("Ignoring remote ack for {:?}: {:?}", segment, e);
+        if header.ack {
+            if let Err(e) = self.sender.remote_ack(header.ack_num, now) {
+                warn!("Ignoring remote ack for {:?}: {:?}", header, e);
             }
         }
-        if let Err(e) = self.sender.update_remote_window(segment.window_size as u16) {
-            warn!(
-                "Ignoring remote window size update for {:?}: {:?}",
-                segment, e
-            );
+        if let Err(e) = self.sender.update_remote_window(header.window_size as u16) {
+            warn!("Invalid window size update for {:?}: {:?}", header, e);
         }
-        if segment.payload.len() > 0 {
-            if let Err(e) = self.receiver.receive_segment(
-                segment.seq_num,
-                segment.payload.clone(),
-                self.rt.now(),
-            ) {
-                warn!("Ignoring remote data for {:?}: {:?}", segment, e);
+        if !data.is_empty() {
+            if let Err(e) = self.receiver.receive_data(header.seq_num, data, now) {
+                warn!("Ignoring remote data for {:?}: {:?}", header, e);
             }
         }
     }
@@ -70,28 +65,31 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.close()
     }
 
-    pub fn tcp_segment(&self) -> TcpSegment {
-        let mut segment = TcpSegment::default()
-            .src_ipv4_addr(self.local.address())
-            .src_port(self.local.port())
-            .src_link_addr(self.rt.local_link_addr())
-            .dest_ipv4_addr(self.remote.address())
-            .dest_port(self.remote.port())
-            .window_size(self.receiver.window_size() as usize);
+    pub fn tcp_header(&self) -> TcpHeader2 {
+        let mut header = TcpHeader2::new(self.local.port, self.remote.port);
+        // TODO: Support window scaling here.
+        header.window_size = self.receiver.window_size() as u16;
         if let Some(ack_seq_no) = self.receiver.current_ack() {
-            segment = segment.ack(ack_seq_no);
+            header.ack_num = ack_seq_no;
         }
-        segment
+        header
     }
 
-    pub fn emit(&self, segment: TcpSegment, remote_link_addr: MacAddress) {
-        if segment.ack {
-            self.receiver.ack_sent(segment.ack_num);
+    pub fn emit2(&self, header: TcpHeader2, data: Bytes, remote_link_addr: MacAddress) {
+        if header.ack {
+            self.receiver.ack_sent(header.ack_num);
         }
-        let segment_buf = segment.dest_link_addr(remote_link_addr).encode();
-
-        // TODO: We should have backpressure here for emitting events.
-        self.rt.transmit(Rc::new(RefCell::new(segment_buf)));
+        let segment = TcpSegment2 {
+            ethernet2_hdr: Ethernet2Header2 {
+                dst_addr: remote_link_addr,
+                src_addr: self.rt.local_link_addr(),
+                ether_type: EtherType2::Ipv4,
+            },
+            ipv4_hdr: Ipv4Header2::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
+            tcp_hdr: header,
+            data,
+        };
+        self.rt.transmit2(segment);
     }
 
     pub fn remote_mss(&self) -> usize {

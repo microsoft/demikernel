@@ -14,10 +14,11 @@ use crate::{
         ip,
         ip::port::EphemeralPorts,
         ipv4,
+        ethernet::frame::{EtherType2, Ethernet2Header2},
+        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
         tcp::segment::{
-            TcpSegment,
-            TcpSegmentDecoder,
-            TcpSegmentEncoder,
+            TcpHeader2,
+            TcpSegment2,
         },
         tcp::operations::{
             AcceptFuture,
@@ -33,7 +34,6 @@ use bytes::Bytes;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
-    convert::TryFrom,
     rc::Rc,
     task::{
         Context,
@@ -81,8 +81,8 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn receive_datagram(&self, datagram: ipv4::Datagram<'_>) {
-        self.inner.borrow_mut().receive_datagram(datagram)
+    pub fn receive2(&self, ip_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
+        self.inner.borrow_mut().receive2(ip_header, buf)
     }
 
     pub fn listen(&self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
@@ -434,96 +434,54 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn receive_datagram(&mut self, datagram: ipv4::Datagram<'_>) {
-        let r: Result<_, Fail> = try {
-            let decoder = TcpSegmentDecoder::try_from(datagram)?;
-            let segment = TcpSegment::try_from(decoder)?;
+    fn receive2(&mut self, ip_hdr: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
+        let (tcp_hdr, data) = TcpHeader2::parse(ip_hdr, buf)?;
+        let local = ipv4::Endpoint::new(ip_hdr.dst_addr, tcp_hdr.dst_port);
+        let remote = ipv4::Endpoint::new(ip_hdr.src_addr, tcp_hdr.src_port);
 
-            let local_ipv4_addr = segment.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
-                details: "Missing destination IPv4 addr",
-            })?;
-            let local_port = segment.dest_port.ok_or_else(|| Fail::Malformed {
-                details: "Missing destination port",
-            })?;
-            let local = ipv4::Endpoint::new(local_ipv4_addr, local_port);
-
-            let remote_ipv4_addr = segment.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
-                details: "Missing source IPv4 addr",
-            })?;
-            let remote_port = segment.src_port.ok_or_else(|| Fail::Malformed {
-                details: "Missing source port",
-            })?;
-            let remote = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
-
-            if remote_ipv4_addr.is_broadcast()
-                || remote_ipv4_addr.is_multicast()
-                || remote_ipv4_addr.is_unspecified()
-            {
-                Err(Fail::Malformed {
-                    details: "only unicast addresses are supported by TCP",
-                })?;
-            }
-
-            let key = (local, remote);
-            if let Some(s) = self.established.get(&key) {
-                return s.receive_segment(segment);
-            }
-            if let Some(s) = self.connecting.get_mut(&key) {
-                return s.receive_segment(segment);
-            }
-            let (local, _) = key;
-            if let Some(s) = self.passive.get_mut(&local) {
-                return s.receive_segment(segment)?;
-            }
-
-            // The packet isn't for an open port; send a RST segment.
-            self.send_rst(segment)?;
-        };
-        if let Err(e) = r {
-            // TODO: Actually send a RST segment here.
-            warn!("Dropping invalid packet: {:?}", e);
+        if remote.addr.is_broadcast() || remote.addr.is_multicast() || remote.addr.is_unspecified() {
+            return Err(Fail::Malformed { details: "Invalid address type" });
         }
+        let key = (local, remote);
+
+        if let Some(s) = self.established.get(&key) {
+            s.receive2(&tcp_hdr, data);
+            return Ok(());
+        }
+        if let Some(s) = self.connecting.get_mut(&key) {
+            s.receive2(&tcp_hdr);
+            return Ok(());
+        }
+        let (local, _) = key;
+        if let Some(s) = self.passive.get_mut(&local) {
+            return s.receive2(ip_hdr, &tcp_hdr);
+        }
+
+        // The packet isn't for an open port; send a RST segment.
+        self.send_rst(&local, &remote)?;
+        Ok(())
     }
 
-    fn send_rst(&mut self, segment: TcpSegment) -> Result<(), Fail> {
-        let local_ipv4_addr = segment.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
-            details: "Missing destination IPv4 addr",
-        })?;
-        let local_port = segment.dest_port.ok_or_else(|| Fail::Malformed {
-            details: "Missing destination port",
-        })?;
-        let remote_ipv4_addr = segment.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
-            details: "Missing source IPv4 addr",
-        })?;
-        let remote_port = segment.src_port.ok_or_else(|| Fail::Malformed {
-            details: "Missing source port",
-        })?;
-
-        let segment = TcpSegment::default()
-            .src_ipv4_addr(local_ipv4_addr)
-            .src_port(local_port)
-            .dest_ipv4_addr(remote_ipv4_addr)
-            .dest_port(remote_port)
-            .rst();
-
+    fn send_rst(&mut self, local: &ipv4::Endpoint, remote: &ipv4::Endpoint) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
-        let remote_link_addr =
-            self.arp
-                .try_query(remote_ipv4_addr)
-                .ok_or_else(|| Fail::ResourceNotFound {
-                    details: "RST destination not in ARP cache",
-                })?;
+        let remote_link_addr = self.arp
+            .try_query(remote.addr)
+            .ok_or_else(|| Fail::ResourceNotFound { details: "RST destination not in ARP cache" })?;
 
-        let mut segment_buf = segment.encode();
-        let mut encoder = TcpSegmentEncoder::attach(&mut segment_buf);
-        encoder.ipv4().header().src_addr(self.rt.local_ipv4_addr());
+        let mut tcp_hdr = TcpHeader2::new(local.port, remote.port);
+        tcp_hdr.rst = true;
 
-        let mut frame_header = encoder.ipv4().frame().header();
-        frame_header.src_addr(self.rt.local_link_addr());
-        frame_header.dest_addr(remote_link_addr);
-        let _ = encoder.seal()?;
-
-        self.rt.transmit(Rc::new(RefCell::new(segment_buf)));
+        let segment = TcpSegment2 {
+            ethernet2_hdr: Ethernet2Header2 {
+                dst_addr: remote_link_addr,
+                src_addr: self.rt.local_link_addr(),
+                ether_type: EtherType2::Ipv4,
+            },
+            ipv4_hdr: Ipv4Header2::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
+            tcp_hdr,
+            data: Bytes::new(),
+        };
+        self.rt.transmit2(segment);
 
         Ok(())
     }

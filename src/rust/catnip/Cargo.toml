@@ -23,13 +23,10 @@ libc = "0.2.70"
 log = "0.4"
 # mimalloc = { version = "0.1.19", default-features = false }
 must-let = { git = "https://github.com/sujayakar/must-let" }
-nom = "5.1.1"
 num-derive = "0.3.0"
 num-traits = "0.2.11"
 pin-project = "0.4.23"
 rand = { version = "0.7.3", features = ["small_rng"] }
-serde = "1.0.110"
-serde_yaml = "0.8.12"
 slab = "0.4.2"
 unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "44c0e8f62cb9355cfd35ef5309abf10a4c388b62" }
 uniset = "0.2.0"

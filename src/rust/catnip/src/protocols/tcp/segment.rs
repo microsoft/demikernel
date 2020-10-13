@@ -1,52 +1,83 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-
-mod transcode;
-
+use std::cmp;
 use std::io::Cursor;
 use std::convert::TryInto;
 use crate::{
     fail::Fail,
     protocols::{
-        ethernet::MacAddress,
         ip,
-        ipv4,
     },
 };
+use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header2};
 use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header2};
 use bytes::{
     Bytes,
-    BytesMut,
 };
 use byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
 use std::{
     convert::TryFrom,
-    net::Ipv4Addr,
     num::Wrapping,
 };
-
-pub use transcode::{
-    TcpSegmentDecoder,
-    TcpSegmentEncoder,
-    TcpSegmentOptions,
-    DEFAULT_MSS,
-    MAX_MSS,
-    MIN_MSS,
-};
+use crate::runtime::PacketBuf;
 use crate::protocols::tcp::SeqNumber;
 
 const MIN_TCP_HEADER2_SIZE: usize = 20;
 const MAX_TCP_HEADER2_SIZE: usize = 60;
 const MAX_TCP_OPTIONS: usize = 5;
 
-#[derive(Clone, Copy)]
-struct SelectiveAcknowlegement {
-    begin: SeqNumber,
-    end: SeqNumber,
+pub struct TcpSegment2 {
+    pub ethernet2_hdr: Ethernet2Header2,
+    pub ipv4_hdr: Ipv4Header2,
+    pub tcp_hdr: TcpHeader2,
+    pub data: Bytes,
 }
 
-#[derive(Clone, Copy)]
-enum TcpOptions2 {
+impl PacketBuf for TcpSegment2 {
+    fn compute_size(&self) -> usize {
+        let size = self.ethernet2_hdr.compute_size()
+            + self.ipv4_hdr.compute_size()
+            + self.tcp_hdr.compute_size()
+            + self.data.len();
+
+        // Pad the end of the buffer with zeros if needed.
+        cmp::max(size, MIN_PAYLOAD_SIZE)
+    }
+
+    fn serialize(&self, buf: &mut [u8]) {
+        let eth_hdr_size = self.ethernet2_hdr.compute_size();
+        let ipv4_hdr_size = self.ipv4_hdr.compute_size();
+        let tcp_hdr_size = self.tcp_hdr.compute_size();
+        let mut cur_pos = 0;
+
+        self.ethernet2_hdr.serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        cur_pos += eth_hdr_size;
+
+        let ipv4_payload_len = tcp_hdr_size + self.data.len();
+        self.ipv4_hdr.serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
+        cur_pos += ipv4_hdr_size;
+
+        self.tcp_hdr.serialize(&mut buf[cur_pos..(cur_pos + tcp_hdr_size)], &self.ipv4_hdr, &self.data[..]);
+        cur_pos += tcp_hdr_size;
+
+        buf[cur_pos..(cur_pos + self.data.len())].copy_from_slice(&self.data[..]);
+        cur_pos += self.data.len();
+
+        // Add Ethernet padding if needed.
+        for byte in &mut buf[cur_pos..] {
+            *byte = 0;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SelectiveAcknowlegement {
+    pub begin: SeqNumber,
+    pub end: SeqNumber,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TcpOptions2 {
     NoOperation,
     MaximumSegmentSize(u16),
     WindowScale(u8),
@@ -61,38 +92,121 @@ enum TcpOptions2 {
     },
 }
 
+impl TcpOptions2 {
+    fn compute_size(&self) -> usize {
+        use TcpOptions2::*;
+        match self {
+            NoOperation => 1,
+            MaximumSegmentSize(..) => 4,
+            WindowScale(..) => 3,
+            SelectiveAcknowlegementPermitted => 2,
+            SelectiveAcknowlegement { num_sacks, .. } => 2 + 8 * num_sacks,
+            Timestamp { .. } => 10,
+        }
+    }
+
+    fn serialize(&self, buf: &mut [u8]) -> usize {
+        use TcpOptions2::*;
+        match self {
+            NoOperation => {
+                buf[0] = 1;
+                1
+            },
+            MaximumSegmentSize(mss) => {
+                buf[0] = 2;
+                buf[1] = 4;
+                NetworkEndian::write_u16(&mut buf[2..4], *mss);
+                4
+            },
+            WindowScale(scale) => {
+                buf[0] = 3;
+                buf[1] = 3;
+                buf[2] = *scale;
+                3
+            },
+            SelectiveAcknowlegementPermitted => {
+                buf[0] = 4;
+                buf[1] = 2;
+                2
+            },
+            SelectiveAcknowlegement { num_sacks, sacks } => {
+                buf[0] = 5;
+                buf[1] = 2 + 8 * *num_sacks as u8;
+                for i in 0..*num_sacks {
+                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i)..(2 + 8 * i + 4)], sacks[i].begin.0);
+                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)], sacks[i].end.0);
+                }
+                2 + 8 * num_sacks
+            },
+            Timestamp { sender_timestamp, echo_timestamp } => {
+                buf[0] = 8;
+                buf[1] = 10;
+                NetworkEndian::write_u32(&mut buf[2..6], *sender_timestamp);
+                NetworkEndian::write_u32(&mut buf[6..10], *echo_timestamp);
+                10
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct TcpHeader2 {
-    src_port: ip::Port,
-    dst_port: ip::Port,
-    seq_num: SeqNumber,
-    ack_num: SeqNumber,
+    pub src_port: ip::Port,
+    pub dst_port: ip::Port,
+    pub seq_num: SeqNumber,
+    pub ack_num: SeqNumber,
 
     // Octet 12: [ data offset in u32s (4 bits) ][ reserved zeros (3 bits) ] [ NS flag ]
     // The data offset is computed on the fly on serialization based on options.
     // data_offset: u8,
-    ns: bool,
+    pub ns: bool,
 
     // Octet 13: [ CWR ] [ ECE ] [ URG ] [ ACK ] [ PSH ] [ RST ] [ SYN ] [ FIN ]
-    cwr: bool,
-    ece: bool,
-    urg: bool,
-    psh: bool,
-    rst: bool,
-    syn: bool,
-    fin: bool,
+    pub cwr: bool,
+    pub ece: bool,
+    pub urg: bool,
+    pub ack: bool,
+    pub psh: bool,
+    pub rst: bool,
+    pub syn: bool,
+    pub fin: bool,
 
-    window_size: u16,
+    pub window_size: u16,
 
     // We omit the checksum since it's checked when parsing and computed when serializing.
     // checksum: u16
 
-    urgent_pointer: u16,
+    pub urgent_pointer: u16,
 
     num_options: usize,
     option_list: [TcpOptions2; MAX_TCP_OPTIONS],
 }
 
 impl TcpHeader2 {
+    pub fn new(src_port: ip::Port, dst_port: ip::Port) -> Self {
+        Self {
+            src_port,
+            dst_port,
+            seq_num: Wrapping(0),
+            ack_num: Wrapping(0),
+
+            ns: false,
+            cwr: false,
+            ece: false,
+            urg: false,
+            ack: false,
+            psh: false,
+            rst: false,
+            syn: false,
+            fin: false,
+
+            window_size: 0,
+            urgent_pointer: 0,
+            num_options: 0,
+            option_list: [TcpOptions2::NoOperation; MAX_TCP_OPTIONS],
+        }
+    }
+
     pub fn parse(ipv4_header: &Ipv4Header2, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
             return Err(Fail::Malformed { details: "TCP segment too small" });
@@ -110,7 +224,7 @@ impl TcpHeader2 {
         let data_buf = buf.split_off(data_offset);
 
         let src_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[0..2]))?;
-        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[3..4]))?;
+        let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&buf[2..4]))?;
 
         let seq_num = Wrapping(NetworkEndian::read_u32(&buf[4..8]));
         let ack_num = Wrapping(NetworkEndian::read_u32(&buf[8..12]));
@@ -209,6 +323,7 @@ impl TcpHeader2 {
             cwr,
             ece,
             urg,
+            ack,
             psh,
             rst,
             syn,
@@ -220,7 +335,94 @@ impl TcpHeader2 {
             option_list,
         };
         Ok((header, data_buf))
+    }
 
+    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header2, data: &[u8]) {
+        let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] = (&mut buf[..MIN_TCP_HEADER2_SIZE])
+            .try_into()
+            .unwrap();
+        NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
+        NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
+        NetworkEndian::write_u32(&mut fixed_buf[4..8], self.seq_num.0);
+        NetworkEndian::write_u32(&mut fixed_buf[8..12], self.ack_num.0);
+
+        fixed_buf[12] = ((self.compute_size() / 4) as u8) << 4;
+        if self.ns {
+            fixed_buf[12] |= 1;
+        }
+        fixed_buf[13] = 0;
+        if self.cwr {
+            fixed_buf[13] |= 1 << 7;
+        }
+        if self.ece {
+            fixed_buf[13] |= 1 << 6;
+        }
+        if self.urg {
+            fixed_buf[13] |= 1 << 5;
+        }
+        if self.ack {
+            fixed_buf[13] |= 1 << 4;
+        }
+        if self.psh {
+            fixed_buf[13] |= 1 << 3;
+        }
+        if self.rst {
+            fixed_buf[13] |= 1 << 2;
+        }
+        if self.syn {
+            fixed_buf[13] |= 1 << 1;
+        }
+        if self.fin {
+            fixed_buf[13] |= 1 << 0;
+        }
+
+        NetworkEndian::write_u16(&mut fixed_buf[14..16], self.window_size);
+
+        // Write the checksum (bytes 16..18) later.
+
+        NetworkEndian::write_u16(&mut fixed_buf[18..20], self.urgent_pointer);
+
+        let mut cur_pos = MIN_TCP_HEADER2_SIZE;
+        for i in 0..self.num_options {
+            let bytes_written = self.option_list[i].serialize(&mut buf[cur_pos..]);
+            cur_pos += bytes_written;
+        }
+        // Write out an "End of options list" if we had options.
+        if self.num_options > 0 {
+            buf[cur_pos] = 0;
+            cur_pos += 1;
+        }
+        // Zero out the remainder of padding in the header.
+        for byte in &mut buf[cur_pos..] {
+            *byte = 0;
+        }
+
+        // Alright, we've fully filled out the header, time to compute the checksum.
+        let checksum = tcp_checksum(ipv4_hdr, &buf[..], data);
+        NetworkEndian::write_u16(&mut buf[16..18], checksum);
+    }
+
+    pub fn compute_size(&self) -> usize {
+        let mut size = MIN_TCP_HEADER2_SIZE;
+        for i in 0..self.num_options {
+            size += self.option_list[i].compute_size();
+        }
+        if self.num_options > 0 {
+            // Add a byte for the "End of options list" if needed.
+            size += 1;
+        }
+
+        // Round up to the next multiple of 4 so the TCP data is always 32 bit aligned.
+        size.wrapping_add(3) & !0x3
+    }
+
+    pub fn iter_options(&self) -> impl Iterator<Item=&TcpOptions2> {
+        (0..self.num_options).map(move |i| &self.option_list[i])
+    }
+
+    pub fn push_option(&mut self, option: TcpOptions2) {
+        self.option_list[self.num_options] = option;
+        self.num_options += 1;
     }
 }
 
@@ -268,7 +470,7 @@ fn tcp_checksum(ipv4_header: &Ipv4Header2, header: &[u8], data: &[u8]) -> u16 {
     state += NetworkEndian::read_u16(&fixed_header[14..16]) as u32;
 
     // 7) Checksum (all zeros, 2 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[16..18]) as u32;
+    state += 0;
 
     // 8) Urgent pointer (2 bytes)
     state += NetworkEndian::read_u16(&fixed_header[18..20]) as u32;
@@ -295,207 +497,9 @@ fn tcp_checksum(ipv4_header: &Ipv4Header2, header: &[u8], data: &[u8]) -> u16 {
     // NB: We don't need to subtract out 0xFFFF as we accumulate the sum. Since we use a u32 for
     // intermediate state, we would need 2^16 additions to overflow. This is well beyond the reach
     // of the largest jumbo frames. The upshot is that the compiler can then optimize this final
-    // loop into a branchfree algorithm.
+    // loop into a single branchfree code.
     while state > 0xFFFF {
         state -= 0xFFFF;
     }
     !state as u16
-}
-
-
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct TcpSegment {
-    pub dest_ipv4_addr: Option<Ipv4Addr>,
-    pub dest_port: Option<ip::Port>,
-    pub dest_link_addr: Option<MacAddress>,
-    pub src_ipv4_addr: Option<Ipv4Addr>,
-    pub src_port: Option<ip::Port>,
-    pub src_link_addr: Option<MacAddress>,
-    pub seq_num: Wrapping<u32>,
-    pub ack_num: Wrapping<u32>,
-    pub window_size: usize,
-    pub syn: bool,
-    pub ack: bool,
-    pub rst: bool,
-    pub fin: bool,
-    pub mss: Option<usize>,
-    pub window_scale: Option<u8>,
-    pub payload: Bytes,
-}
-
-impl TcpSegment {
-    pub fn dest_ipv4_addr(mut self, addr: Ipv4Addr) -> TcpSegment {
-        self.dest_ipv4_addr = Some(addr);
-        self
-    }
-
-    pub fn dest_port(mut self, port: ip::Port) -> TcpSegment {
-        self.dest_port = Some(port);
-        self
-    }
-
-    pub fn dest_link_addr(mut self, addr: MacAddress) -> TcpSegment {
-        self.dest_link_addr = Some(addr);
-        self
-    }
-
-    pub fn src_ipv4_addr(mut self, addr: Ipv4Addr) -> TcpSegment {
-        self.src_ipv4_addr = Some(addr);
-        self
-    }
-
-    pub fn src_port(mut self, port: ip::Port) -> TcpSegment {
-        self.src_port = Some(port);
-        self
-    }
-
-    pub fn src_link_addr(mut self, addr: MacAddress) -> TcpSegment {
-        self.src_link_addr = Some(addr);
-        self
-    }
-
-    pub fn seq_num(mut self, value: Wrapping<u32>) -> TcpSegment {
-        self.seq_num = value;
-        self
-    }
-
-    pub fn ack(mut self, ack_num: Wrapping<u32>) -> TcpSegment {
-        self.ack = true;
-        self.ack_num = ack_num;
-        self
-    }
-
-    pub fn window_size(mut self, window_size: usize) -> TcpSegment {
-        self.window_size = window_size;
-        self
-    }
-
-    pub fn syn(mut self) -> TcpSegment {
-        self.syn = true;
-        self
-    }
-
-    pub fn fin(mut self) -> TcpSegment {
-        self.fin = true;
-        self
-    }
-
-    pub fn rst(mut self) -> TcpSegment {
-        self.rst = true;
-        self
-    }
-
-    pub fn mss(mut self, value: usize) -> TcpSegment {
-        self.mss = Some(value);
-        self
-    }
-
-    pub fn payload(mut self, bytes: Bytes) -> TcpSegment {
-        self.payload = bytes;
-        self
-    }
-
-    pub fn decode(bytes: &[u8]) -> Result<TcpSegment, Fail> {
-        TcpSegment::try_from(TcpSegmentDecoder::attach(bytes)?)
-    }
-
-    pub fn encode(self) -> Vec<u8> {
-        trace!("TcpSegment::encode()");
-        let mut options = TcpSegmentOptions::new();
-        if let Some(mss) = self.mss {
-            options.set_mss(mss);
-        }
-
-        let mut bytes = ipv4::Datagram::new_vec(self.payload.len() + options.header_length());
-        let mut encoder = TcpSegmentEncoder::attach(bytes.as_mut());
-
-        let mut tcp_header = encoder.header();
-        tcp_header.dest_port(self.dest_port.unwrap());
-        tcp_header.src_port(self.src_port.unwrap());
-        tcp_header.seq_num(self.seq_num);
-        tcp_header.ack_num(self.ack_num);
-        tcp_header.window_size(u16::try_from(self.window_size).unwrap());
-        tcp_header.syn(self.syn);
-        tcp_header.ack(self.ack);
-        tcp_header.rst(self.rst);
-        tcp_header.options(options);
-
-        // setting the TCP options shifts where `encoder.text()` begins, so we
-        // need to ensure that we copy the payload after the options are set.
-        encoder.text()[..self.payload.len()].copy_from_slice(self.payload.as_ref());
-
-        let ipv4 = encoder.ipv4();
-        let mut ipv4_header = ipv4.header();
-        ipv4_header.protocol(ipv4::Protocol::Tcp);
-        ipv4_header.dest_addr(self.dest_ipv4_addr.unwrap());
-
-        // the source IPv4 address is set within `TcpPeerState::cast()` so this
-        // field is not likely to be filled in in advance.
-        if let Some(src_ipv4_addr) = self.src_ipv4_addr {
-            ipv4_header.src_addr(src_ipv4_addr);
-        }
-
-        let mut frame_header = ipv4.frame().header();
-        // link layer addresses are filled in after the ARP request is
-        // complete, so these fields won't be filled in in advance.
-        if let Some(dest_link_addr) = self.dest_link_addr {
-            frame_header.dest_addr(dest_link_addr);
-        }
-
-        if let Some(src_link_addr) = self.src_link_addr {
-            frame_header.src_addr(src_link_addr);
-        }
-
-        encoder.write_checksum();
-
-        bytes
-    }
-}
-
-impl<'a> TryFrom<TcpSegmentDecoder<'a>> for TcpSegment {
-    type Error = Fail;
-
-    fn try_from(decoder: TcpSegmentDecoder<'a>) -> Result<Self, Fail> {
-        let tcp_header = decoder.header();
-        let dest_port = tcp_header.dest_port();
-        let src_port = tcp_header.src_port();
-        let seq_num = tcp_header.seq_num();
-        let ack_num = tcp_header.ack_num();
-        let syn = tcp_header.syn();
-        let ack = tcp_header.ack();
-        let rst = tcp_header.rst();
-        let fin = tcp_header.fin();
-        let options = tcp_header.options();
-        let mss = options.get_mss();
-        let window_size = usize::from(tcp_header.window_size());
-        let window_scale = options.get_window_scale();
-
-        let ipv4_header = decoder.ipv4().header();
-        let dest_ipv4_addr = ipv4_header.dest_addr();
-        let src_ipv4_addr = ipv4_header.src_addr();
-
-        let frame_header = decoder.ipv4().frame().header();
-        let src_link_addr = frame_header.src_addr();
-        let dest_link_addr = frame_header.dest_addr();
-        let payload = BytesMut::from(decoder.text()).freeze();
-
-        Ok(TcpSegment {
-            dest_ipv4_addr: Some(dest_ipv4_addr),
-            dest_port,
-            dest_link_addr: Some(dest_link_addr),
-            src_ipv4_addr: Some(src_ipv4_addr),
-            src_port,
-            src_link_addr: Some(src_link_addr),
-            seq_num,
-            ack_num,
-            window_size,
-            syn,
-            ack,
-            rst,
-            mss,
-            fin,
-            payload,
-            window_scale,
-        })
-    }
 }

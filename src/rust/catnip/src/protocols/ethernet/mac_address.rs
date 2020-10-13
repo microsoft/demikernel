@@ -2,10 +2,6 @@
 // Licensed under the MIT license.
 
 use eui48;
-use serde::ser::{
-    Serialize,
-    Serializer,
-};
 use std::fmt;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -18,6 +14,10 @@ impl MacAddress {
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
         MacAddress(eui48::MacAddress::from_bytes(bytes).unwrap())
+    }
+
+    pub fn octets(&self) -> [u8; 6] {
+        self.0.to_array()
     }
 
     pub fn broadcast() -> MacAddress {
@@ -62,15 +62,5 @@ impl fmt::Display for MacAddress {
 impl fmt::Debug for MacAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "MacAddress({})", &self.to_canonical())
-    }
-}
-
-impl Serialize for MacAddress {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = self.0.to_canonical();
-        serializer.serialize_str(&s)
     }
 }

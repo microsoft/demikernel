@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use tracy_client::static_span;
 use crate::file_table::{File, FileDescriptor};
 use crate::scheduler::Operation;
 use crate::protocols::udp::peer::{UdpOperation, PopFuture as UdpPopFuture};
@@ -11,7 +10,10 @@ use crate::{
     protocols::{
         arp,
         ethernet::{
-            self,
+            frame::{
+                Ethernet2Header2,
+                EtherType2,
+            },
         },
         ipv4,
         tcp::operations::{
@@ -64,23 +66,15 @@ impl<RT: Runtime> Engine<RT> {
         &self.rt
     }
 
-    pub fn receive(&mut self, bytes: &[u8]) -> Result<(), Fail> {
-        let _s = static_span!();
-        let frame = ethernet::Frame::attach(&bytes)?;
-        let header = frame.header();
-        if self.rt.local_link_addr() != header.dest_addr() && !header.dest_addr().is_broadcast() {
-            println!(
-                "Misdelivered {:?} {:?} {}",
-                self.rt.local_link_addr(),
-                header.dest_addr(),
-                header.dest_addr().is_broadcast()
-            );
+    pub fn receive2(&mut self, bytes: Bytes) -> Result<(), Fail> {
+        let (header, payload) = Ethernet2Header2::parse(bytes)?;
+        if self.rt.local_link_addr() != header.dst_addr && !header.dst_addr.is_broadcast() {
+            println!("Misdelivered {:?}", header);
             return Err(Fail::Misdelivered {});
         }
-
-        match header.ether_type()? {
-            ethernet::EtherType::Arp => self.arp.receive(frame),
-            ethernet::EtherType::Ipv4 => self.ipv4.receive(frame),
+        match header.ether_type {
+            EtherType2::Arp => self.arp.receive2(payload),
+            EtherType2::Ipv4 => self.ipv4.receive2(payload),
         }
     }
 

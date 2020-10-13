@@ -3,6 +3,7 @@ use crate::{
     fail::Fail,
     runtime::Runtime,
 };
+use bytes::Bytes;
 use futures::{
     future::{
         self,
@@ -36,8 +37,11 @@ pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
                 assert!(cb.receiver.ack_seq_no.get() < recv_seq_no);
 
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
-                let segment = cb.tcp_segment().ack(recv_seq_no);
-                cb.emit(segment, remote_link_addr);
+
+                let mut header = cb.tcp_header();
+                header.ack = true;
+                header.ack_num = recv_seq_no;
+                cb.emit2(header, Bytes::new(), remote_link_addr);
             },
         }
     }

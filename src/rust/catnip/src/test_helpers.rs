@@ -8,7 +8,7 @@ use crate::{
         ethernet::MacAddress,
         tcp,
     },
-    runtime::Runtime,
+    runtime::{PacketBuf, Runtime},
     scheduler::SchedulerHandle,
     timer::{
         Timer,
@@ -119,6 +119,12 @@ impl Runtime for TestRuntime {
             .borrow_mut()
             .outgoing
             .push_back(buf.borrow_mut().clone());
+    }
+
+    fn transmit2(&self, pkt: impl PacketBuf) {
+        let mut buf = vec![0; pkt.compute_size()];
+        pkt.serialize(&mut buf[..]);
+        self.inner.borrow_mut().outgoing.push_back(buf);
     }
 
     fn local_link_addr(&self) -> MacAddress {

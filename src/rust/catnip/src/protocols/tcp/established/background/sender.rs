@@ -55,8 +55,9 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                 .borrow_mut()
                 .push_back(unacked_segment);
 
-            let segment = cb.tcp_segment().seq_num(sent_seq).payload(buf.clone());
-            cb.emit(segment, remote_link_addr);
+            let mut header = cb.tcp_header();
+            header.seq_num = sent_seq;
+            cb.emit2(header, buf.clone(), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
             // TODO: Use the correct PERSIST state timer here.
@@ -69,8 +70,9 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
                     }
                 }
                 // Retransmit our window probe.
-                let segment = cb.tcp_segment().seq_num(sent_seq).payload(buf.clone());
-                cb.emit(segment, remote_link_addr);
+                let mut header = cb.tcp_header();
+                header.seq_num = sent_seq;
+                cb.emit2(header, buf.clone(), remote_link_addr);
             }
         }
 
@@ -100,11 +102,9 @@ pub async fn sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
         let segment_data_len = segment_data.len();
         assert!(segment_data_len > 0);
 
-        let segment = cb
-            .tcp_segment()
-            .seq_num(sent_seq)
-            .payload(segment_data.clone());
-        cb.emit(segment, remote_link_addr);
+        let mut header = cb.tcp_header();
+        header.seq_num = sent_seq;
+        cb.emit2(header, segment_data.clone(), remote_link_addr);
 
         cb.sender
             .sent_seq_no

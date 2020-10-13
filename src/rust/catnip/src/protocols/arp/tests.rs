@@ -41,7 +41,6 @@ fn immediate_reply() {
     let mut carrie = test_helpers::new_carrie(now);
     carrie.import_arp_cache(HashMap::new());
 
-    // this test is written based on certain assumptions.
     let options = alice.rt().arp_options();
     assert_eq!(options.request_timeout, Duration::from_secs(1));
 

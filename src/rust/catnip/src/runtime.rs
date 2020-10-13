@@ -21,9 +21,15 @@ use std::{
     },
 };
 
+pub trait PacketBuf {
+    fn compute_size(&self) -> usize;
+    fn serialize(&self, buf: &mut [u8]);
+}
+
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
     fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>);
+    fn transmit2(&self, pkt: impl PacketBuf);
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;

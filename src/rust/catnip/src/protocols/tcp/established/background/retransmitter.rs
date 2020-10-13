@@ -44,10 +44,9 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
                 // Unset the initial timestamp so we don't use this for RTT estimation.
                 segment.initial_tx.take();
 
-                let segment = cb.tcp_segment()
-                    .seq_num(seq_no)
-                    .payload(segment.bytes.clone());
-                cb.emit(segment, remote_link_addr);
+                let mut header = cb.tcp_header();
+                header.seq_num = seq_no;
+                cb.emit2(header, segment.bytes.clone(), remote_link_addr);
 
                 // Set new retransmit deadline
                 let deadline = cb.rt.now() + rto.estimate();

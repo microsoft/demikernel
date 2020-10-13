@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use tracy_client::static_span;
 use super::datagram::{
-    Ipv4Datagram,
-    Ipv4Protocol,
+    Ipv4Header2,
+    Ipv4Protocol2,
 };
 use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ethernet,
         icmpv4,
         tcp,
         udp,
@@ -18,11 +16,11 @@ use crate::{
     runtime::Runtime,
 };
 use std::{
-    convert::TryFrom,
     future::Future,
     net::Ipv4Addr,
     time::Duration,
 };
+use bytes::Bytes;
 use crate::file_table::FileTable;
 #[cfg(test)]
 use crate::file_table::FileDescriptor;
@@ -47,24 +45,15 @@ impl<RT: Runtime> Ipv4Peer<RT> {
         }
     }
 
-    pub fn receive(&mut self, frame: ethernet::Frame<'_>) -> Result<(), Fail> {
-        let _s = static_span!();
-        trace!("Ipv4Peer::receive(...)");
-        let datagram = Ipv4Datagram::try_from(frame)?;
-        let header = datagram.header();
-
-        let dst_addr = header.dest_addr();
-        if dst_addr != self.rt.local_ipv4_addr() && !dst_addr.is_broadcast() {
+    pub fn receive2(&mut self, buf: Bytes) -> Result<(), Fail> {
+        let (header, payload) = Ipv4Header2::parse(buf)?;
+        if header.dst_addr != self.rt.local_ipv4_addr() && !header.dst_addr.is_broadcast() {
             return Err(Fail::Misdelivered {});
         }
-
-        match header.protocol()? {
-            Ipv4Protocol::Tcp => {
-                self.tcp.receive_datagram(datagram);
-                Ok(())
-            },
-            Ipv4Protocol::Udp => self.udp.receive(datagram),
-            Ipv4Protocol::Icmpv4 => self.icmpv4.receive(datagram),
+        match header.protocol {
+            Ipv4Protocol2::Icmpv4 => self.icmpv4.receive2(&header, payload),
+            Ipv4Protocol2::Tcp => self.tcp.receive2(&header, payload),
+            Ipv4Protocol2::Udp => self.udp.receive2(&header, payload),
         }
     }
 

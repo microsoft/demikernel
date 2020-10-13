@@ -3,9 +3,8 @@
 
 use tracy_client::static_span;
 use super::datagram::{
-    UdpDatagram,
-    UdpDatagramDecoder,
-    UdpDatagramEncoder,
+    UdpHeader2,
+    UdpDatagram2,
 };
 use crate::operations::{ResultFuture, OperationResult};
 use crate::{
@@ -13,6 +12,8 @@ use crate::{
     protocols::{
         arp,
         ipv4,
+        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header2},
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
@@ -23,12 +24,11 @@ use std::{
     task::{Context, Poll},
     cell::RefCell,
     collections::VecDeque,
-    convert::TryFrom,
     future::Future,
     rc::Rc,
 };
 use crate::file_table::{File, FileTable, FileDescriptor};
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use std::task::Waker;
 use futures_intrusive::NoopLock;
 use futures_intrusive::channel::shared::{generic_channel, GenericSender, GenericReceiver};
@@ -39,7 +39,7 @@ pub struct UdpPeer<RT: Runtime> {
 }
 
 struct Listener {
-    buf: VecDeque<(ipv4::Endpoint, Bytes)>,
+    buf: VecDeque<(Option<ipv4::Endpoint>, Bytes)>,
     waker: Option<Waker>,
 }
 
@@ -93,22 +93,24 @@ impl<RT: Runtime> UdpPeer<RT> {
             let r: Result<_, Fail> = try {
                 let link_addr = arp.query(remote.address()).await?;
                 let _s = static_span!("bg_send_udp");
-                let mut bytes = UdpDatagramEncoder::new_vec(buf.len());
-                let mut encoder = UdpDatagramEncoder::attach(&mut bytes);
-                encoder.text()[..buf.len()].copy_from_slice(&buf);
-                let mut udp_header = encoder.header();
-                udp_header.dest_port(remote.port());
-                if let Some(local) = local {
-                    udp_header.src_port(local.port());
-                }
-                let mut ipv4_header = encoder.ipv4().header();
-                ipv4_header.src_addr(rt.local_ipv4_addr());
-                ipv4_header.dest_addr(remote.address());
-                let mut frame_header = encoder.ipv4().frame().header();
-                frame_header.dest_addr(link_addr);
-                frame_header.src_addr(rt.local_link_addr());
-                let _ = encoder.seal()?;
-                rt.transmit(Rc::new(RefCell::new(bytes)));
+                let datagram = UdpDatagram2 {
+                    ethernet2_hdr: Ethernet2Header2 {
+                        dst_addr: link_addr,
+                        src_addr: rt.local_link_addr(),
+                        ether_type: EtherType2::Ipv4,
+                    },
+                    ipv4_hdr: Ipv4Header2::new(
+                        rt.local_ipv4_addr(),
+                        remote.addr,
+                        Ipv4Protocol2::Udp,
+                    ),
+                    udp_hdr: UdpHeader2 {
+                        src_port: local.map(|l| l.port),
+                        dst_port: remote.port,
+                    },
+                    data: buf,
+                };
+                rt.transmit2(datagram);
             };
             if let Err(e) = r {
                 warn!("Failed to send UDP message: {:?}", e);
@@ -158,39 +160,18 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    pub fn receive(&self, ipv4_datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
-        let _s = static_span!();
-        let mut inner = self.inner.borrow_mut();
-
-        trace!("UdpPeer::receive(...)");
-        let decoder = UdpDatagramDecoder::try_from(ipv4_datagram)?;
-        let udp_datagram = UdpDatagram::try_from(decoder)?;
-
-        let local_ipv4_addr = udp_datagram.dest_ipv4_addr.ok_or_else(|| Fail::Malformed {
-            details: "Missing destination IPv4 addr",
-        })?;
-        let local_port = udp_datagram.dest_port.ok_or_else(|| Fail::Malformed {
-            details: "Missing destination port",
-        })?;
-        let local = ipv4::Endpoint::new(local_ipv4_addr, local_port);
-
-        let remote_ipv4_addr = udp_datagram.src_ipv4_addr.ok_or_else(|| Fail::Malformed {
-            details: "Missing source IPv4 addr",
-        })?;
-        let remote_port = udp_datagram.src_port.ok_or_else(|| Fail::Malformed {
-            details: "Missing source port",
-        })?;
-        let remote = ipv4::Endpoint::new(remote_ipv4_addr, remote_port);
+    pub fn receive2(&self, ipv4_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
+        let (hdr, data) = UdpHeader2::parse(ipv4_header, buf)?;
+        let local = ipv4::Endpoint::new(ipv4_header.dst_addr, hdr.dst_port);
+        let remote = hdr.src_port.map(|p| ipv4::Endpoint::new(ipv4_header.src_addr, p));
 
         // TODO: Send ICMPv4 error in this condition.
+        let mut inner = self.inner.borrow_mut();
         let listener = inner.bound.get_mut(&local).ok_or_else(|| Fail::Malformed {
             details: "Port not bound",
         })?;
-
-        let bytes = BytesMut::from(&udp_datagram.payload[..]).freeze();
-        listener.buf.push_back((remote, bytes));
+        listener.buf.push_back((remote, data));
         listener.waker.take().map(|w| w.wake());
-
         Ok(())
     }
 

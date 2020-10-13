@@ -150,7 +150,7 @@ impl Receiver {
         self.state.set(ReceiverState::ReceivedFin);
     }
 
-    pub fn receive_segment(&self, seq_no: SeqNumber, buf: Bytes, now: Instant) -> Result<(), Fail> {
+    pub fn receive_data(&self, seq_no: SeqNumber, buf: Bytes, now: Instant) -> Result<(), Fail> {
         if self.state.get() != ReceiverState::Open {
             return Err(Fail::ResourceNotFound {
                 details: "Receiver closed",

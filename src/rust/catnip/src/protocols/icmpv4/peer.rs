@@ -1,28 +1,27 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use crate::protocols::ethernet::frame::Ethernet2Header2;
+use crate::protocols::ipv4::datagram::{Ipv4Protocol2};
 use super::{
     datagram::{
-        Icmpv4Datagram,
-        Icmpv4Type,
+        Icmpv4Header2,
+        Icmpv4Type2,
     },
-    echo::{
-        Icmpv4Echo,
-        Icmpv4EchoMut,
-        Icmpv4EchoOp,
-    },
-    error::Icmpv4Error,
 };
+use crate::protocols::ipv4::datagram::Ipv4Header2;
+use bytes::Bytes;
 use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ipv4,
+        ethernet::frame::{EtherType2},
+        icmpv4::datagram::Icmpv4Message,
     },
 };
 use byteorder::{
-    NativeEndian,
-    WriteBytesExt,
+    NetworkEndian,
+    ByteOrder,
 };
 use futures::{
     FutureExt,
@@ -31,9 +30,7 @@ use futures::{
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
-    convert::TryFrom,
     future::Future,
-    io::Write,
     net::Ipv4Addr,
     num::Wrapping,
     process,
@@ -89,96 +86,80 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
     }
 
     async fn background(rt: RT, arp: arp::Peer<RT>, mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>) {
-        while let Some((dest_ipv4_addr, id, seq_num)) = rx.next().await {
+        while let Some((dst_ipv4_addr, id, seq_num)) = rx.next().await {
             let r: Result<_, Fail> = try {
                 debug!("initiating ARP query");
-                let dest_link_addr = arp.query(dest_ipv4_addr).await?;
+                let dst_link_addr = arp.query(dst_ipv4_addr).await?;
                 debug!(
                     "ARP query complete ({} -> {})",
-                    dest_ipv4_addr, dest_link_addr
+                    dst_ipv4_addr, dst_link_addr
                 );
-                let mut bytes = Icmpv4Echo::new_vec();
-                let mut echo = Icmpv4EchoMut::attach(&mut bytes);
-                echo.r#type(Icmpv4EchoOp::Reply);
-                echo.id(id);
-                echo.seq_num(seq_num);
-                let ipv4 = echo.icmpv4().ipv4();
-                let mut ipv4_header = ipv4.header();
-                ipv4_header.src_addr(rt.local_ipv4_addr());
-                ipv4_header.dest_addr(dest_ipv4_addr);
-                let frame = ipv4.frame();
-                let mut frame_header = frame.header();
-                frame_header.src_addr(rt.local_link_addr());
-                frame_header.dest_addr(dest_link_addr);
-                let _ = echo.seal()?;
-                rt.transmit(Rc::new(RefCell::new(bytes)));
+                let msg = Icmpv4Message {
+                    ethernet2_hdr: Ethernet2Header2 {
+                        dst_addr: dst_link_addr,
+                        src_addr: rt.local_link_addr(),
+                        ether_type: EtherType2::Ipv4,
+                    },
+                    ipv4_hdr: Ipv4Header2::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
+                    icmpv4_hdr: Icmpv4Header2 {
+                        icmpv4_type: Icmpv4Type2::EchoReply { id, seq_num },
+                        code: 0,
+                    },
+                };
+                rt.transmit2(msg);
             };
             if let Err(e) = r {
                 warn!(
                     "reply_to_ping({}, {}, {}) failed: {:?}",
-                    dest_ipv4_addr, id, seq_num, e
+                    dst_ipv4_addr, id, seq_num, e
                 )
             }
         }
     }
 
-    pub fn receive(&mut self, datagram: ipv4::Datagram<'_>) -> Result<(), Fail> {
-        trace!("Icmpv4Peer::receive(...)");
-        let datagram = Icmpv4Datagram::try_from(datagram)?;
-        assert_eq!(
-            datagram.ipv4().frame().header().dest_addr(),
-            self.rt.local_link_addr()
-        );
-        assert_eq!(
-            datagram.ipv4().header().dest_addr(),
-            self.rt.local_ipv4_addr()
-        );
-
-        match datagram.header().r#type()? {
-            Icmpv4Type::EchoRequest => {
-                let dest_ipv4_addr = datagram.ipv4().header().src_addr();
-                let datagram = Icmpv4Echo::try_from(datagram)?;
-                self.reply_to_ping(dest_ipv4_addr, datagram.id(), datagram.seq_num());
-                Ok(())
+    pub fn receive2(&mut self, ipv4_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
+        let (icmpv4_hdr, _) = Icmpv4Header2::parse(buf)?;
+        match icmpv4_hdr.icmpv4_type {
+            Icmpv4Type2::EchoRequest { id, seq_num } => {
+                self.reply_to_ping(ipv4_header.src_addr, id, seq_num);
             },
-            Icmpv4Type::EchoReply => {
-                let datagram = Icmpv4Echo::try_from(datagram)?;
+            Icmpv4Type2::EchoReply { id, seq_num } => {
                 let mut inner = self.inner.borrow_mut();
-                if let Some(tx) = inner.requests.remove(&(datagram.id(), datagram.seq_num())) {
+                if let Some(tx) = inner.requests.remove(&(id, seq_num)) {
                     let _ = tx.send(());
                 }
-                Ok(())
             },
-            _ => match Icmpv4Error::try_from(datagram) {
-                Ok(e) => {
-                    warn!(
-                        "Icmpv4Error(id: {:?}, next_hop_mtu: {:?}, context: {:?})",
-                        e.id(),
-                        e.next_hop_mtu(),
-                        e.context()
-                    );
-                    Ok(())
-                },
-                Err(e) => Err(e.clone()),
+            _ => {
+                warn!("Unsupported ICMPv4 message: {:?}", icmpv4_hdr);
             },
         }
+        Ok(())
     }
 
     pub fn ping(
         &self,
-        dest_ipv4_addr: Ipv4Addr,
+        dst_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
         let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let id = {
-            let mut checksum = ipv4::Checksum::new();
-            checksum
-                .write_u32::<NativeEndian>(self.rt.local_ipv4_addr().into())
-                .unwrap();
-            checksum.write_u32::<NativeEndian>(process::id()).unwrap();
+            let mut state = 0xFFFF as u32;
+            let addr_octets = self.rt.local_ipv4_addr().octets();
+            state += NetworkEndian::read_u16(&addr_octets[0..2]) as u32;
+            state += NetworkEndian::read_u16(&addr_octets[3..4]) as u32;
+
+            let mut pid_buf = [0u8; 4];
+            NetworkEndian::write_u32(&mut pid_buf[..], process::id());
+            state += NetworkEndian::read_u16(&pid_buf[0..2]) as u32;
+            state += NetworkEndian::read_u16(&pid_buf[2..4]) as u32;
+
             let nonce: [u8; 2] = self.rt.rng_gen();
-            checksum.write_all(&nonce).unwrap();
-            checksum.finish()
+            state += NetworkEndian::read_u16(&nonce[..]) as u32;
+
+            while state > 0xFFFF {
+                state -= 0xFFFF;
+            }
+            !state as u16
         };
         let seq_num = {
             let mut inner = self.inner.borrow_mut();
@@ -192,26 +173,22 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
         async move {
             let t0 = rt.now();
             debug!("initiating ARP query");
-            let dest_link_addr = arp.query(dest_ipv4_addr).await?;
-            debug!(
-                "ARP query complete ({} -> {})",
-                dest_ipv4_addr, dest_link_addr
-            );
+            let dst_link_addr = arp.query(dst_ipv4_addr).await?;
+            debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
-            let mut bytes = Icmpv4Echo::new_vec();
-            let mut echo = Icmpv4EchoMut::attach(&mut bytes);
-            echo.r#type(Icmpv4EchoOp::Request);
-            echo.id(id);
-            echo.seq_num(seq_num);
-            let mut ipv4_header = echo.icmpv4().ipv4().header();
-            ipv4_header.src_addr(rt.local_ipv4_addr());
-            ipv4_header.dest_addr(dest_ipv4_addr);
-            let mut frame_header = echo.icmpv4().ipv4().frame().header();
-            frame_header.dest_addr(dest_link_addr);
-            frame_header.src_addr(rt.local_link_addr());
-            let _ = echo.seal()?;
-            rt.transmit(Rc::new(RefCell::new(bytes)));
-
+            let msg = Icmpv4Message {
+                ethernet2_hdr: Ethernet2Header2 {
+                    dst_addr: dst_link_addr,
+                    src_addr: rt.local_link_addr(),
+                    ether_type: EtherType2::Ipv4,
+                },
+                ipv4_hdr: Ipv4Header2::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
+                icmpv4_hdr: Icmpv4Header2 {
+                    icmpv4_type: Icmpv4Type2::EchoRequest { id, seq_num },
+                    code: 0,
+                },
+            };
+            rt.transmit2(msg);
             let rx = {
                 let (tx, rx) = channel();
                 let mut inner = inner.borrow_mut();
