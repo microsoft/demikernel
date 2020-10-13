@@ -5,6 +5,7 @@ use bytes::{
     BytesMut,
 };
 use catnip::{
+    file_table::FileDescriptor,
     protocols::{
         ip,
         ipv4,
@@ -24,9 +25,11 @@ use std::{
         Context,
         Poll,
     },
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
-use catnip::file_table::FileDescriptor;
 use tracy_client::static_span;
 
 pub fn one_send_recv_round(
@@ -118,7 +121,14 @@ fn tcp_loop() {
 
     for _ in 0..num_rounds {
         let start = Instant::now();
-        one_send_recv_round(&mut ctx, buf.clone(), &mut alice, alice_fd, &mut bob, bob_fd);
+        one_send_recv_round(
+            &mut ctx,
+            buf.clone(),
+            &mut alice,
+            alice_fd,
+            &mut bob,
+            bob_fd,
+        );
         samples.push(start.elapsed());
     }
 
@@ -127,12 +137,33 @@ fn tcp_loop() {
         h.increment(s.as_nanos() as u64).unwrap();
     }
     println!("Min:   {:?}", Duration::from_nanos(h.minimum().unwrap()));
-    println!("p25:   {:?}", Duration::from_nanos(h.percentile(0.25).unwrap()));
-    println!("p50:   {:?}", Duration::from_nanos(h.percentile(0.50).unwrap()));
-    println!("p75:   {:?}", Duration::from_nanos(h.percentile(0.75).unwrap()));
-    println!("p90:   {:?}", Duration::from_nanos(h.percentile(0.90).unwrap()));
-    println!("p95:   {:?}", Duration::from_nanos(h.percentile(0.95).unwrap()));
-    println!("p99:   {:?}", Duration::from_nanos(h.percentile(0.99).unwrap()));
-    println!("p99.9: {:?}", Duration::from_nanos(h.percentile(0.999).unwrap()));
+    println!(
+        "p25:   {:?}",
+        Duration::from_nanos(h.percentile(0.25).unwrap())
+    );
+    println!(
+        "p50:   {:?}",
+        Duration::from_nanos(h.percentile(0.50).unwrap())
+    );
+    println!(
+        "p75:   {:?}",
+        Duration::from_nanos(h.percentile(0.75).unwrap())
+    );
+    println!(
+        "p90:   {:?}",
+        Duration::from_nanos(h.percentile(0.90).unwrap())
+    );
+    println!(
+        "p95:   {:?}",
+        Duration::from_nanos(h.percentile(0.95).unwrap())
+    );
+    println!(
+        "p99:   {:?}",
+        Duration::from_nanos(h.percentile(0.99).unwrap())
+    );
+    println!(
+        "p99.9: {:?}",
+        Duration::from_nanos(h.percentile(0.999).unwrap())
+    );
     println!("Max:   {:?}", Duration::from_nanos(h.maximum().unwrap()));
 }

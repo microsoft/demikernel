@@ -1,9 +1,16 @@
-use crate::file_table::FileDescriptor;
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    file_table::FileDescriptor,
+};
 use bytes::Bytes;
-use std::future::Future;
-use std::task::{Poll, Context};
-use std::pin::Pin;
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{
+        Context,
+        Poll,
+    },
+};
 
 pub struct ResultFuture<F: Future> {
     pub future: F,
@@ -17,7 +24,8 @@ impl<F: Future> ResultFuture<F> {
 }
 
 impl<F: Future + Unpin> Future for ResultFuture<F>
-    where F::Output: Unpin
+where
+    F::Output: Unpin,
 {
     type Output = ();
 

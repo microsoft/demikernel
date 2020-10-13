@@ -3,30 +3,33 @@
 // 1) A single Scheduler owned by the top level loop. This can take out finished values and poll.
 // 2) A cloneable half that's given to the runtime. This can insert new values and drop handles.
 //
-use tracy_client::static_span;
-use std::pin::Pin;
-use std::future::Future;
-use std::task::{Context, Poll};
-use gen_iter::gen_iter;
-use crate::runtime::Runtime;
-use crate::collections::waker_page::{
-    SharedWaker,
-    WakerPage,
-    WakerPageRef,
-    WAKER_PAGE_SIZE,
+use crate::{
+    collections::waker_page::{
+        WakerPage,
+        WakerPageRef,
+        WAKER_PAGE_SIZE,
+    },
+    protocols::{
+        tcp::operations::TcpOperation,
+        udp::peer::UdpOperation,
+    },
+    runtime::Runtime,
+    sync::SharedWaker,
 };
-use unicycle::pin_slab::PinSlab;
+use gen_iter::gen_iter;
 use std::{
+    cell::RefCell,
+    future::Future,
+    pin::Pin,
+    rc::Rc,
     task::{
+        Context,
+        Poll,
         Waker,
     },
-    rc::Rc,
-    cell::RefCell,
 };
-use crate::protocols::tcp::operations::{
-    TcpOperation,
-};
-use crate::protocols::udp::peer::UdpOperation;
+use tracy_client::static_span;
+use unicycle::pin_slab::PinSlab;
 
 pub enum Operation<RT: Runtime> {
     // These are all stored inline to prevent hitting the allocator on insertion/removal.
@@ -34,7 +37,7 @@ pub enum Operation<RT: Runtime> {
     Udp(UdpOperation<RT>),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
-    Background(Pin<Box<dyn Future<Output=()>>>),
+    Background(Pin<Box<dyn Future<Output = ()>>>),
 }
 
 impl<RT: Runtime> Future for Operation<RT> {
@@ -56,7 +59,7 @@ impl<T: Into<TcpOperation<RT>>, RT: Runtime> From<T> for Operation<RT> {
 }
 
 // Adapted from https://lemire.me/blog/2018/02/21/iterating-over-set-bits-quickly/
-fn iter_set_bits(mut bitset: u64) -> impl Iterator<Item=usize> {
+fn iter_set_bits(mut bitset: u64) -> impl Iterator<Item = usize> {
     gen_iter!({
         while bitset != 0 {
             // `bitset & -bitset` returns a bitset with only the lowest significant bit set
@@ -98,7 +101,9 @@ pub struct Scheduler<F: Future<Output = ()> + Unpin> {
 
 impl<F: Future<Output = ()> + Unpin> Clone for Scheduler<F> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -109,7 +114,9 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
             pages: vec![],
             root_waker: SharedWaker::new(),
         };
-        Self { inner: Rc::new(RefCell::new(inner)) }
+        Self {
+            inner: Rc::new(RefCell::new(inner)),
+        }
     }
 
     pub fn take(&self, mut handle: SchedulerHandle) -> F {

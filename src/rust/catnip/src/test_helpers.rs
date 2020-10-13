@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use bytes::{Bytes, BytesMut};
 use crate::{
     engine::Engine,
     protocols::{
@@ -9,13 +8,27 @@ use crate::{
         ethernet2::MacAddress,
         tcp,
     },
-    runtime::{PacketBuf, Runtime},
-    scheduler::SchedulerHandle,
+    runtime::{
+        PacketBuf,
+        Runtime,
+    },
+    scheduler::{
+        Operation,
+        Scheduler,
+        SchedulerHandle,
+    },
     timer::{
         Timer,
         TimerRc,
     },
-    scheduler::{Operation, Scheduler},
+};
+use bytes::{
+    Bytes,
+    BytesMut,
+};
+use futures::{
+    task::noop_waker_ref,
+    FutureExt,
 };
 use rand::{
     distributions::{
@@ -26,19 +39,17 @@ use rand::{
     Rng,
     SeedableRng,
 };
-use futures::FutureExt;
-use futures::task::noop_waker_ref;
 use std::{
-    future::Future,
     cell::RefCell,
     collections::VecDeque,
+    future::Future,
     net::Ipv4Addr,
     rc::Rc,
+    task::Context,
     time::{
         Duration,
         Instant,
     },
-    task::Context,
 };
 
 pub const RECEIVE_WINDOW_SIZE: usize = 1024;
@@ -170,7 +181,10 @@ impl Runtime for TestRuntime {
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.inner.borrow().scheduler.insert(Operation::Background(future.boxed_local()))
+        self.inner
+            .borrow()
+            .scheduler
+            .insert(Operation::Background(future.boxed_local()))
     }
 }
 

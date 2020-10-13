@@ -4,22 +4,24 @@
 use super::{
     cache::ArpCache,
     pdu::{
-        ArpPdu,
         ArpMessage,
         ArpOperation,
-
+        ArpPdu,
     },
 };
-use crate::protocols::ethernet2::frame::{Ethernet2Header, EtherType2};
-use bytes::Bytes;
 use crate::{
     fail::Fail,
     protocols::ethernet2::{
+        frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
         MacAddress,
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
+use bytes::Bytes;
 use futures::FutureExt;
 use hashbrown::HashMap;
 use std::{
@@ -27,7 +29,10 @@ use std::{
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[derive(Clone)]

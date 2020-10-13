@@ -1,26 +1,36 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-use std::cmp;
-use std::io::Cursor;
-use std::convert::TryInto;
 use crate::{
     fail::Fail,
     protocols::{
+        ethernet2::frame::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
         ip,
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
+        },
+        tcp::SeqNumber,
     },
+    runtime::PacketBuf,
 };
-use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
-use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header};
-use bytes::{
-    Bytes,
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
+    ReadBytesExt,
 };
-use byteorder::{ByteOrder, NetworkEndian, ReadBytesExt};
+use bytes::Bytes;
 use std::{
-    convert::TryFrom,
+    cmp,
+    convert::{
+        TryFrom,
+        TryInto,
+    },
+    io::Cursor,
     num::Wrapping,
 };
-use crate::runtime::PacketBuf;
-use crate::protocols::tcp::SeqNumber;
 
 const MIN_TCP_HEADER2_SIZE: usize = 20;
 const MAX_TCP_HEADER2_SIZE: usize = 60;
@@ -50,14 +60,22 @@ impl PacketBuf for TcpSegment {
         let tcp_hdr_size = self.tcp_hdr.compute_size();
         let mut cur_pos = 0;
 
-        self.ethernet2_hdr.serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        self.ethernet2_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
         let ipv4_payload_len = tcp_hdr_size + self.data.len();
-        self.ipv4_hdr.serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
+        self.ipv4_hdr.serialize(
+            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
+            ipv4_payload_len,
+        );
         cur_pos += ipv4_hdr_size;
 
-        self.tcp_hdr.serialize(&mut buf[cur_pos..(cur_pos + tcp_hdr_size)], &self.ipv4_hdr, &self.data[..]);
+        self.tcp_hdr.serialize(
+            &mut buf[cur_pos..(cur_pos + tcp_hdr_size)],
+            &self.ipv4_hdr,
+            &self.data[..],
+        );
         cur_pos += tcp_hdr_size;
 
         buf[cur_pos..(cur_pos + self.data.len())].copy_from_slice(&self.data[..]);
@@ -133,12 +151,21 @@ impl TcpOptions2 {
                 buf[0] = 5;
                 buf[1] = 2 + 8 * *num_sacks as u8;
                 for i in 0..*num_sacks {
-                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i)..(2 + 8 * i + 4)], sacks[i].begin.0);
-                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)], sacks[i].end.0);
+                    NetworkEndian::write_u32(
+                        &mut buf[(2 + 8 * i)..(2 + 8 * i + 4)],
+                        sacks[i].begin.0,
+                    );
+                    NetworkEndian::write_u32(
+                        &mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)],
+                        sacks[i].end.0,
+                    );
                 }
                 2 + 8 * num_sacks
             },
-            Timestamp { sender_timestamp, echo_timestamp } => {
+            Timestamp {
+                sender_timestamp,
+                echo_timestamp,
+            } => {
                 buf[0] = 8;
                 buf[1] = 10;
                 NetworkEndian::write_u32(&mut buf[2..6], *sender_timestamp);
@@ -175,7 +202,6 @@ pub struct TcpHeader {
 
     // We omit the checksum since it's checked when parsing and computed when serializing.
     // checksum: u16
-
     pub urgent_pointer: u16,
 
     num_options: usize,
@@ -209,17 +235,25 @@ impl TcpHeader {
 
     pub fn parse(ipv4_header: &Ipv4Header, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "TCP segment too small" });
+            return Err(Fail::Malformed {
+                details: "TCP segment too small",
+            });
         }
         let data_offset = (buf[12] >> 4) as usize * 4;
         if buf.len() < data_offset {
-            return Err(Fail::Malformed { details: "TCP segment smaller than data offset" });
+            return Err(Fail::Malformed {
+                details: "TCP segment smaller than data offset",
+            });
         }
         if data_offset < MIN_TCP_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "TCP data offset too small" });
+            return Err(Fail::Malformed {
+                details: "TCP data offset too small",
+            });
         }
         if data_offset > MAX_TCP_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "TCP data offset too large" });
+            return Err(Fail::Malformed {
+                details: "TCP data offset too large",
+            });
         }
         let data_buf = buf.split_off(data_offset);
 
@@ -244,7 +278,9 @@ impl TcpHeader {
 
         let checksum = NetworkEndian::read_u16(&buf[16..18]);
         if checksum != tcp_checksum(ipv4_header, &buf[..], &data_buf[..]) {
-            return Err(Fail::Malformed { details: "TCP checksum mismatch" });
+            return Err(Fail::Malformed {
+                details: "TCP checksum mismatch",
+            });
         }
 
         let urgent_pointer = NetworkEndian::read_u16(&buf[18..20]);
@@ -262,7 +298,9 @@ impl TcpHeader {
                     2 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 4 {
-                            return Err(Fail::Malformed { details: "MSS size was not 4" });
+                            return Err(Fail::Malformed {
+                                details: "MSS size was not 4",
+                            });
                         }
                         let mss = option_rdr.read_u16::<NetworkEndian>()?;
                         TcpOptions2::MaximumSegmentSize(mss)
@@ -270,7 +308,9 @@ impl TcpHeader {
                     3 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 3 {
-                            return Err(Fail::Malformed { details: "Window scale size was not 3" });
+                            return Err(Fail::Malformed {
+                                details: "Window scale size was not 3",
+                            });
                         }
                         let window_scale = option_rdr.read_u8()?;
                         TcpOptions2::WindowScale(window_scale)
@@ -278,7 +318,9 @@ impl TcpHeader {
                     4 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 2 {
-                            return Err(Fail::Malformed { details: "SACK permitted size was not 2" });
+                            return Err(Fail::Malformed {
+                                details: "SACK permitted size was not 2",
+                            });
                         }
                         TcpOptions2::SelectiveAcknowlegementPermitted
                     },
@@ -286,9 +328,16 @@ impl TcpHeader {
                         let option_length = option_rdr.read_u8()?;
                         let num_sacks = match option_length {
                             10 | 18 | 26 | 34 => (option_length as usize - 2) / 8,
-                            _ => return Err(Fail::Malformed { details: "Invalid SACK size" }),
+                            _ => {
+                                return Err(Fail::Malformed {
+                                    details: "Invalid SACK size",
+                                })
+                            },
                         };
-                        let mut sacks = [SelectiveAcknowlegement { begin: Wrapping(0), end: Wrapping(0)}; 4];
+                        let mut sacks = [SelectiveAcknowlegement {
+                            begin: Wrapping(0),
+                            end: Wrapping(0),
+                        }; 4];
                         for i in 0..num_sacks {
                             sacks[i].begin = Wrapping(option_rdr.read_u32::<NetworkEndian>()?);
                             sacks[i].end = Wrapping(option_rdr.read_u32::<NetworkEndian>()?);
@@ -298,16 +347,27 @@ impl TcpHeader {
                     8 => {
                         let option_length = option_rdr.read_u8()?;
                         if option_length != 10 {
-                            return Err(Fail::Malformed { details: "TCP timestamp size was not 10" });
+                            return Err(Fail::Malformed {
+                                details: "TCP timestamp size was not 10",
+                            });
                         }
                         let sender_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
                         let echo_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
-                        TcpOptions2::Timestamp { sender_timestamp, echo_timestamp }
+                        TcpOptions2::Timestamp {
+                            sender_timestamp,
+                            echo_timestamp,
+                        }
                     },
-                    _ => return Err(Fail::Malformed { details: "Invalid TCP option" }),
+                    _ => {
+                        return Err(Fail::Malformed {
+                            details: "Invalid TCP option",
+                        })
+                    },
                 };
                 if num_options >= option_list.len() {
-                    return Err(Fail::Malformed { details: "Too many TCP options provided" });
+                    return Err(Fail::Malformed {
+                        details: "Too many TCP options provided",
+                    });
                 }
                 option_list[num_options] = option;
                 num_options += 1;
@@ -338,9 +398,8 @@ impl TcpHeader {
     }
 
     pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8]) {
-        let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] = (&mut buf[..MIN_TCP_HEADER2_SIZE])
-            .try_into()
-            .unwrap();
+        let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] =
+            (&mut buf[..MIN_TCP_HEADER2_SIZE]).try_into().unwrap();
         NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
         NetworkEndian::write_u32(&mut fixed_buf[4..8], self.seq_num.0);
@@ -416,7 +475,7 @@ impl TcpHeader {
         size.wrapping_add(3) & !0x3
     }
 
-    pub fn iter_options(&self) -> impl Iterator<Item=&TcpOptions2> {
+    pub fn iter_options(&self) -> impl Iterator<Item = &TcpOptions2> {
         (0..self.num_options).map(move |i| &self.option_list[i])
     }
 
@@ -446,7 +505,8 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
     // 4) TCP segment length (2 bytes)
     state += (header.len() + data.len()) as u32;
 
-    let fixed_header: &[u8; MIN_TCP_HEADER2_SIZE] = header[..MIN_TCP_HEADER2_SIZE].try_into().unwrap();
+    let fixed_header: &[u8; MIN_TCP_HEADER2_SIZE] =
+        header[..MIN_TCP_HEADER2_SIZE].try_into().unwrap();
 
     // Continue to the TCP header. First, for the fixed length parts, we have...
     // 1) Source port (2 bytes)

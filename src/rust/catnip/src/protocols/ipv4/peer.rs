@@ -5,8 +5,11 @@ use super::datagram::{
     Ipv4Header,
     Ipv4Protocol2,
 };
+#[cfg(test)]
+use crate::file_table::FileDescriptor;
 use crate::{
     fail::Fail,
+    file_table::FileTable,
     protocols::{
         arp,
         icmpv4,
@@ -15,15 +18,12 @@ use crate::{
     },
     runtime::Runtime,
 };
+use bytes::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,
     time::Duration,
 };
-use bytes::Bytes;
-use crate::file_table::FileTable;
-#[cfg(test)]
-use crate::file_table::FileDescriptor;
 
 pub struct Ipv4Peer<RT: Runtime> {
     rt: RT,

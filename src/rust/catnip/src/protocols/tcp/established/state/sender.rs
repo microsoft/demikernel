@@ -1,4 +1,3 @@
-use tracy_client::static_span;
 use super::rto::RtoCalculator;
 use crate::{
     collections::watched::WatchedValue,
@@ -16,6 +15,7 @@ use std::{
         Instant,
     },
 };
+use tracy_client::static_span;
 
 pub struct UnackedSegment {
     pub bytes: Bytes,

@@ -1,31 +1,41 @@
-use tracy_client::static_span;
 use super::{
     active_open::ActiveOpenSocket,
     established::EstablishedSocket,
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
-use crate::file_table::{File, FileTable};
-use crate::file_table::FileDescriptor;
 use crate::{
     fail::Fail,
+    file_table::{
+        File,
+        FileDescriptor,
+        FileTable,
+    },
     protocols::{
         arp,
+        ethernet2::frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ip,
         ip::port::EphemeralPorts,
         ipv4,
-        ethernet2::frame::{EtherType2, Ethernet2Header},
-        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        tcp::segment::{
-            TcpHeader,
-            TcpSegment,
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
         },
-        tcp::operations::{
-            AcceptFuture,
-            ConnectFuture,
-            PopFuture,
-            PushFuture,
-            ConnectFutureState,
+        tcp::{
+            operations::{
+                AcceptFuture,
+                ConnectFuture,
+                ConnectFutureState,
+                PopFuture,
+                PushFuture,
+            },
+            segment::{
+                TcpHeader,
+                TcpSegment,
+            },
         },
     },
     runtime::Runtime,
@@ -41,6 +51,7 @@ use std::{
     },
     time::Duration,
 };
+use tracy_client::static_span;
 
 pub struct Peer<RT: Runtime> {
     pub(super) inner: Rc<RefCell<Inner<RT>>>,
@@ -108,7 +119,11 @@ impl<RT: Runtime> Peer<RT> {
         Ok(())
     }
 
-    pub fn poll_accept(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<FileDescriptor, Fail>> {
+    pub fn poll_accept(
+        &self,
+        fd: FileDescriptor,
+        ctx: &mut Context,
+    ) -> Poll<Result<FileDescriptor, Fail>> {
         let mut inner_ = self.inner.borrow_mut();
         let inner = &mut *inner_;
 
@@ -360,10 +375,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn endpoints(
-        &self,
-        fd: FileDescriptor,
-    ) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
+    pub fn endpoints(&self, fd: FileDescriptor) -> Result<(ipv4::Endpoint, ipv4::Endpoint), Fail> {
         let inner = self.inner.borrow();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -439,8 +451,11 @@ impl<RT: Runtime> Inner<RT> {
         let local = ipv4::Endpoint::new(ip_hdr.dst_addr, tcp_hdr.dst_port);
         let remote = ipv4::Endpoint::new(ip_hdr.src_addr, tcp_hdr.src_port);
 
-        if remote.addr.is_broadcast() || remote.addr.is_multicast() || remote.addr.is_unspecified() {
-            return Err(Fail::Malformed { details: "Invalid address type" });
+        if remote.addr.is_broadcast() || remote.addr.is_multicast() || remote.addr.is_unspecified()
+        {
+            return Err(Fail::Malformed {
+                details: "Invalid address type",
+            });
         }
         let key = (local, remote);
 
@@ -464,9 +479,12 @@ impl<RT: Runtime> Inner<RT> {
 
     fn send_rst(&mut self, local: &ipv4::Endpoint, remote: &ipv4::Endpoint) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
-        let remote_link_addr = self.arp
-            .try_query(remote.addr)
-            .ok_or_else(|| Fail::ResourceNotFound { details: "RST destination not in ARP cache" })?;
+        let remote_link_addr =
+            self.arp
+                .try_query(remote.addr)
+                .ok_or_else(|| Fail::ResourceNotFound {
+                    details: "RST destination not in ARP cache",
+                })?;
 
         let mut tcp_hdr = TcpHeader::new(local.port, remote.port);
         tcp_hdr.rst = true;

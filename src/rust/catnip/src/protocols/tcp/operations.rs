@@ -1,11 +1,16 @@
-use crate::runtime::Runtime;
-use crate::file_table::FileDescriptor;
 use super::peer::{
     Inner,
     Peer,
 };
-use crate::operations::{ResultFuture, OperationResult};
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    file_table::FileDescriptor,
+    operations::{
+        OperationResult,
+        ResultFuture,
+    },
+    runtime::Runtime,
+};
 use bytes::Bytes;
 use std::{
     cell::RefCell,
@@ -68,25 +73,41 @@ impl<RT: Runtime> TcpOperation<RT> {
         use TcpOperation::*;
 
         match self {
-            Connect(ResultFuture { future, done: Some(Ok(())) }) =>
-                (future.fd, OperationResult::Connect),
-            Connect(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, OperationResult::Failed(e)),
+            Connect(ResultFuture {
+                future,
+                done: Some(Ok(())),
+            }) => (future.fd, OperationResult::Connect),
+            Connect(ResultFuture {
+                future,
+                done: Some(Err(e)),
+            }) => (future.fd, OperationResult::Failed(e)),
 
-            Accept(ResultFuture { future, done: Some(Ok(fd)) }) =>
-                (future.fd, OperationResult::Accept(fd)),
-            Accept(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, OperationResult::Failed(e)),
+            Accept(ResultFuture {
+                future,
+                done: Some(Ok(fd)),
+            }) => (future.fd, OperationResult::Accept(fd)),
+            Accept(ResultFuture {
+                future,
+                done: Some(Err(e)),
+            }) => (future.fd, OperationResult::Failed(e)),
 
-            Push(ResultFuture { future, done: Some(Ok(())) }) =>
-                (future.fd, OperationResult::Push),
-            Push(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, OperationResult::Failed(e)),
+            Push(ResultFuture {
+                future,
+                done: Some(Ok(())),
+            }) => (future.fd, OperationResult::Push),
+            Push(ResultFuture {
+                future,
+                done: Some(Err(e)),
+            }) => (future.fd, OperationResult::Failed(e)),
 
-            Pop(ResultFuture { future, done: Some(Ok(bytes)) }) =>
-                (future.fd, OperationResult::Pop(bytes)),
-            Pop(ResultFuture { future, done: Some(Err(e)) }) =>
-                (future.fd, OperationResult::Failed(e)),
+            Pop(ResultFuture {
+                future,
+                done: Some(Ok(bytes)),
+            }) => (future.fd, OperationResult::Pop(bytes)),
+            Pop(ResultFuture {
+                future,
+                done: Some(Err(e)),
+            }) => (future.fd, OperationResult::Failed(e)),
 
             _ => panic!("Future not ready"),
         }

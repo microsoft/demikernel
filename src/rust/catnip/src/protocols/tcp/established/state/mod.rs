@@ -2,7 +2,6 @@ pub mod receiver;
 mod rto;
 pub mod sender;
 
-use bytes::Bytes;
 use self::{
     receiver::Receiver,
     sender::Sender,
@@ -11,17 +10,27 @@ use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ethernet2::MacAddress,
+        ethernet2::{
+            frame::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            MacAddress,
+        },
         ipv4,
-        tcp::segment::{TcpSegment, TcpHeader},
-        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet2::frame::{EtherType2, Ethernet2Header},
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
+        },
+        tcp::segment::{
+            TcpHeader,
+            TcpSegment,
+        },
     },
     runtime::Runtime,
 };
-use std::{
-    time::Duration,
-};
+use bytes::Bytes;
+use std::time::Duration;
 
 pub struct ControlBlock<RT: Runtime> {
     pub local: ipv4::Endpoint,

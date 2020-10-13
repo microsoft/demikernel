@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use super::{
     constants::FALLBACK_MSS,
     established::state::{
@@ -12,23 +11,35 @@ use crate::{
     fail::Fail,
     protocols::{
         arp,
+        ethernet2::frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ipv4,
-        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet2::frame::{EtherType2, Ethernet2Header},
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
+        },
         tcp::{
-            segment::{TcpSegment, TcpHeader, TcpOptions2},
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
+            },
             SeqNumber,
         },
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
-use hashbrown::{HashMap, HashSet};
+use bytes::Bytes;
+use hashbrown::{
+    HashMap,
+    HashSet,
+};
 use std::{
     cell::RefCell,
-    collections::{
-        VecDeque,
-    },
+    collections::VecDeque,
     convert::TryInto,
     future::Future,
     num::Wrapping,
@@ -137,7 +148,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
         // If the packet is for an inflight connection, route it there.
         if self.inflight.contains_key(&remote) {
             if !header.ack {
-                return Err(Fail::Malformed { details: "Expected ACK" });
+                return Err(Fail::Malformed {
+                    details: "Expected ACK",
+                });
             }
             // TODO: Add entry API.
             let &InflightAccept {
@@ -149,7 +162,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 ..
             } = self.inflight.get(&remote).unwrap();
             if header.ack_num != local_isn + Wrapping(1) {
-                return Err(Fail::Malformed { details: "Invalid SYN+ACK seq num" });
+                return Err(Fail::Malformed {
+                    details: "Invalid SYN+ACK seq num",
+                });
             }
             let sender = Sender::new(local_isn + Wrapping(1), window_size, window_scale, mss);
             let receiver = Receiver::new(
@@ -171,7 +186,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
 
         // Otherwise, start a new connection.
         if !header.syn || header.ack || header.rst {
-            return Err(Fail::Malformed { details: "Invalid flags" });
+            return Err(Fail::Malformed {
+                details: "Invalid flags",
+            });
         }
         if inflight_len + self.ready.borrow().len() >= self.max_backlog {
             // TODO: Should we send a RST here?
@@ -199,7 +216,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     mss = *m as usize;
-                }
+                },
                 _ => continue,
             }
         }

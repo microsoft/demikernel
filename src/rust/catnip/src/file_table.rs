@@ -1,6 +1,8 @@
-use std::rc::Rc;
-use std::cell::RefCell;
 use slab::Slab;
+use std::{
+    cell::RefCell,
+    rc::Rc,
+};
 
 pub type FileDescriptor = u32;
 
@@ -17,9 +19,7 @@ pub enum File {
 
 impl FileTable {
     pub fn new() -> Self {
-        let inner = Inner {
-            table: Slab::new(),
-        };
+        let inner = Inner { table: Slab::new() };
         Self {
             inner: Rc::new(RefCell::new(inner)),
         }
@@ -43,7 +43,6 @@ impl FileTable {
         let mut inner = self.inner.borrow_mut();
         inner.table.remove(ix)
     }
-
 }
 
 struct Inner {

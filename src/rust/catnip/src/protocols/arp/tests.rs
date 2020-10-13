@@ -8,8 +8,8 @@ use super::pdu::{
 use crate::{
     fail::Fail,
     protocols::ethernet2::frame::{
-        MIN_PAYLOAD_SIZE,
         Ethernet2Header,
+        MIN_PAYLOAD_SIZE,
     },
     runtime::Runtime,
     test_helpers,

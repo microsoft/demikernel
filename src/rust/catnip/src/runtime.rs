@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-use crate::protocols::{
-    arp,
-    ethernet2::MacAddress,
-    tcp,
+use crate::{
+    protocols::{
+        arp,
+        ethernet2::MacAddress,
+        tcp,
+    },
+    scheduler::SchedulerHandle,
 };
-use crate::scheduler::SchedulerHandle;
 use rand::distributions::{
     Distribution,
     Standard,

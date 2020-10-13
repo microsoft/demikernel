@@ -2,9 +2,7 @@ mod background;
 pub mod state;
 
 use self::{
-    background::{
-        background,
-    },
+    background::background,
     state::ControlBlock,
 };
 use crate::{
@@ -19,8 +17,11 @@ use crate::{
 use bytes::Bytes;
 use std::{
     rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
     time::Duration,
-    task::{Poll, Context},
 };
 
 pub struct EstablishedSocket<RT: Runtime> {

@@ -57,9 +57,13 @@ impl EphemeralPorts {
         match self.bits.iter().next() {
             Some(i) => {
                 self.bits.clear(i);
-                Ok(Port(NonZeroU16::new(FIRST_PRIVATE_PORT + i as u16).unwrap()))
+                Ok(Port(
+                    NonZeroU16::new(FIRST_PRIVATE_PORT + i as u16).unwrap(),
+                ))
             },
-            None => Err(Fail::ResourceExhausted { details: "Out of private ports" }),
+            None => Err(Fail::ResourceExhausted {
+                details: "Out of private ports",
+            }),
         }
     }
 

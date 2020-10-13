@@ -6,22 +6,32 @@ use super::{
         ControlBlock,
     },
 };
-use bytes::Bytes;
 use crate::{
     fail::Fail,
     protocols::{
         arp,
+        ethernet2::frame::{
+            EtherType2,
+            Ethernet2Header,
+        },
         ipv4,
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
+        },
         tcp::{
-            segment::{TcpSegment, TcpHeader, TcpOptions2},
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
+            },
             SeqNumber,
         },
-        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet2::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
 };
+use bytes::Bytes;
 use std::{
     cell::RefCell,
     convert::TryInto,
@@ -152,7 +162,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     mss = *m as usize;
-                }
+                },
                 _ => continue,
             }
         }

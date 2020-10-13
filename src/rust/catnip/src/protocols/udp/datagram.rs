@@ -1,25 +1,36 @@
 use crate::{
     fail::Fail,
     protocols::{
+        ethernet2::frame::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
         ip,
+        ipv4::datagram::{
+            Ipv4Header,
+            Ipv4Protocol2,
+        },
     },
+    runtime::PacketBuf,
 };
-use std::{
-    convert::{TryInto, TryFrom},
+use byteorder::{
+    ByteOrder,
+    NetworkEndian,
 };
 use bytes::Bytes;
-use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
-use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header};
-use byteorder::{ByteOrder, NetworkEndian};
-use crate::runtime::PacketBuf;
-use std::cmp;
+use std::{
+    cmp,
+    convert::{
+        TryFrom,
+        TryInto,
+    },
+};
 
 pub const UDP_HEADER2_SIZE: usize = 8;
 
 pub struct UdpHeader {
     pub src_port: Option<ip::Port>,
     pub dst_port: ip::Port,
-
     // Omit the length and checksum as those are computed when serializing.
     // length: u16,
     // checksum: u16,
@@ -49,14 +60,22 @@ impl PacketBuf for UdpDatagram {
         let udp_hdr_size = self.udp_hdr.compute_size();
         let mut cur_pos = 0;
 
-        self.ethernet2_hdr.serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        self.ethernet2_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
         let ipv4_payload_len = udp_hdr_size + self.data.len();
-        self.ipv4_hdr.serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
+        self.ipv4_hdr.serialize(
+            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
+            ipv4_payload_len,
+        );
         cur_pos += ipv4_hdr_size;
 
-        self.udp_hdr.serialize(&mut buf[cur_pos..(cur_pos + udp_hdr_size)], &self.ipv4_hdr, &self.data[..]);
+        self.udp_hdr.serialize(
+            &mut buf[cur_pos..(cur_pos + udp_hdr_size)],
+            &self.ipv4_hdr,
+            &self.data[..],
+        );
         cur_pos += udp_hdr_size;
 
         buf[cur_pos..(cur_pos + self.data.len())].copy_from_slice(&self.data[..]);
@@ -76,7 +95,9 @@ impl UdpHeader {
 
     pub fn parse(ipv4_header: &Ipv4Header, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < UDP_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "UDP segment too small" });
+            return Err(Fail::Malformed {
+                details: "UDP segment too small",
+            });
         }
         let data_buf = buf.split_off(UDP_HEADER2_SIZE);
 
@@ -85,12 +106,16 @@ impl UdpHeader {
 
         let length = NetworkEndian::read_u16(&buf[4..6]) as usize;
         if length != buf.len() + data_buf.len() {
-            return Err(Fail::Malformed { details: "UDP length mismatch" });
+            return Err(Fail::Malformed {
+                details: "UDP length mismatch",
+            });
         }
 
         let checksum = NetworkEndian::read_u16(&buf[6..8]);
         if checksum != 0 && checksum != udp_checksum(&ipv4_header, &buf[..], &data_buf[..]) {
-            return Err(Fail::Malformed { details: "UDP checksum mismatch" });
+            return Err(Fail::Malformed {
+                details: "UDP checksum mismatch",
+            });
         }
 
         let header = Self { src_port, dst_port };
@@ -98,11 +123,13 @@ impl UdpHeader {
     }
 
     fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8]) {
-        let fixed_buf: &mut [u8; UDP_HEADER2_SIZE] = (&mut buf[..UDP_HEADER2_SIZE])
-            .try_into()
-            .unwrap();
+        let fixed_buf: &mut [u8; UDP_HEADER2_SIZE] =
+            (&mut buf[..UDP_HEADER2_SIZE]).try_into().unwrap();
 
-        NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.map(|p| p.into()).unwrap_or(0));
+        NetworkEndian::write_u16(
+            &mut fixed_buf[0..2],
+            self.src_port.map(|p| p.into()).unwrap_or(0),
+        );
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
         NetworkEndian::write_u16(&mut fixed_buf[4..6], (UDP_HEADER2_SIZE + data.len()) as u16);
 

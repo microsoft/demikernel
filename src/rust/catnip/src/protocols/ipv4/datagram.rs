@@ -1,17 +1,17 @@
-use bytes::Bytes;
-use crate::{
-    fail::Fail,
-};
+use crate::fail::Fail;
 use byteorder::{
-    NetworkEndian,
     ByteOrder,
+    NetworkEndian,
 };
+use bytes::Bytes;
+use num_traits::FromPrimitive;
 use std::{
-    convert::TryFrom,
-    convert::TryInto,
+    convert::{
+        TryFrom,
+        TryInto,
+    },
     net::Ipv4Addr,
 };
-use num_traits::FromPrimitive;
 
 pub const IPV4_HEADER2_SIZE: usize = 20;
 
@@ -34,7 +34,9 @@ impl TryFrom<u8> for Ipv4Protocol2 {
     fn try_from(n: u8) -> Result<Self, Fail> {
         match FromPrimitive::from_u8(n) {
             Some(n) => Ok(n),
-            None => Err(Fail::Unsupported { details: "Unsupported IPv4 protocol" }),
+            None => Err(Fail::Unsupported {
+                details: "Unsupported IPv4 protocol",
+            }),
         }
     }
 }
@@ -63,7 +65,6 @@ pub struct Ipv4Header {
 
     // We omit the header checksum since it's checked when parsing and computed when serializing.
     // header_checksum: u16,
-
     pub src_addr: Ipv4Addr,
     pub dst_addr: Ipv4Addr,
 }
@@ -72,12 +73,12 @@ fn ipv4_checksum(buf: &[u8]) -> u16 {
     let buf: &[u8; IPV4_HEADER2_SIZE] = buf.try_into().expect("Invalid header size");
     let mut state = 0xffffu32;
     for i in 0..5 {
-        state += NetworkEndian::read_u16(&buf[2*i..2*i + 1]) as u32;
+        state += NetworkEndian::read_u16(&buf[2 * i..2 * i + 1]) as u32;
     }
     // Skip the 5th u16 since octets 10-12 are the header checksum, whose value should be zero when
     // computing a checksum.
     for i in 6..10 {
-        state += NetworkEndian::read_u16(&buf[2*i..2*i + 1]) as u32;
+        state += NetworkEndian::read_u16(&buf[2 * i..2 * i + 1]) as u32;
     }
     while state > 0xffff {
         state -= 0xffff;
@@ -107,21 +108,29 @@ impl Ipv4Header {
 
     pub fn parse(mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < IPV4_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "Datagram too small" });
+            return Err(Fail::Malformed {
+                details: "Datagram too small",
+            });
         }
         let payload_buf = buf.split_off(IPV4_HEADER2_SIZE);
 
         let version = buf[0] >> 4;
         if version != IPV4_VERSION {
-            return Err(Fail::Unsupported { details: "Unsupported IP version" });
+            return Err(Fail::Unsupported {
+                details: "Unsupported IP version",
+            });
         }
 
         let ihl = buf[0] & 0xF;
         if ihl < IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Malformed { details: "IPv4 IHL is too small" });
+            return Err(Fail::Malformed {
+                details: "IPv4 IHL is too small",
+            });
         }
         if ihl > IPV4_IHL_NO_OPTIONS {
-            return Err(Fail::Unsupported { details: "IPv4 options are unsupported" });
+            return Err(Fail::Unsupported {
+                details: "IPv4 options are unsupported",
+            });
         }
 
         let dscp = buf[1] >> 2;
@@ -129,7 +138,9 @@ impl Ipv4Header {
 
         let total_length = NetworkEndian::read_u16(&buf[2..4]);
         if total_length as usize != IPV4_HEADER2_SIZE + payload_buf.len() {
-            return Err(Fail::Malformed { details: "IPv4 TOTALLEN mismatch" });
+            return Err(Fail::Malformed {
+                details: "IPv4 TOTALLEN mismatch",
+            });
         }
 
         let identification = NetworkEndian::read_u16(&buf[4..6]);
@@ -137,7 +148,9 @@ impl Ipv4Header {
 
         let fragment_offset = NetworkEndian::read_u16(&buf[6..8]) & 0x1fff;
         if fragment_offset != 0 {
-            return Err(Fail::Unsupported { details: "IPv4 fragmentation is unsupported" });
+            return Err(Fail::Unsupported {
+                details: "IPv4 fragmentation is unsupported",
+            });
         }
 
         let time_to_live = buf[8];
@@ -145,10 +158,14 @@ impl Ipv4Header {
 
         let header_checksum = NetworkEndian::read_u16(&buf[10..12]);
         if header_checksum == 0xffff {
-            return Err(Fail::Malformed { details: "IPv4 checksum is 0xFFFF" });
+            return Err(Fail::Malformed {
+                details: "IPv4 checksum is 0xFFFF",
+            });
         }
         if header_checksum != ipv4_checksum(&buf[..]) {
-            return Err(Fail::Malformed { details: "Invalid IPv4 checksum" });
+            return Err(Fail::Malformed {
+                details: "Invalid IPv4 checksum",
+            });
         }
 
         let src_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[12..16]));

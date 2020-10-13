@@ -1,25 +1,28 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use bytes::Bytes;
 use crate::{
     fail::Fail,
     protocols::ethernet2::{
+        frame::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
         MacAddress,
     },
+    runtime::PacketBuf,
 };
 use byteorder::{
-    NetworkEndian,
     ByteOrder,
+    NetworkEndian,
 };
+use bytes::Bytes;
 use num_traits::FromPrimitive;
 use std::{
+    cmp,
     convert::TryInto,
     net::Ipv4Addr,
 };
-use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
-use crate::runtime::PacketBuf;
-use std::cmp;
 
 const HTYPE_ETHER2: u16 = 1;
 const HLEN_ETHER2: u8 = 1;
@@ -65,10 +68,12 @@ impl PacketBuf for ArpMessage {
         let arp_pdu_size = self.arp_pdu.compute_size();
         let mut cur_pos = 0;
 
-        self.ethernet2_hdr.serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        self.ethernet2_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
-        self.arp_pdu.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
+        self.arp_pdu
+            .serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
         cur_pos += arp_pdu_size;
 
         // Add Ethernet padding if needed.
@@ -85,27 +90,41 @@ impl ArpPdu {
 
     pub fn parse(buf: Bytes) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
-            return Err(Fail::Malformed { details: "ARP message too short"});
+            return Err(Fail::Malformed {
+                details: "ARP message too short",
+            });
         }
         let buf: &[u8; ARP_MESSAGE_SIZE] = &buf[..ARP_MESSAGE_SIZE].try_into().unwrap();
         let hardware_type = NetworkEndian::read_u16(&buf[0..2]);
         if hardware_type != HTYPE_ETHER2 {
-            return Err(Fail::Unsupported { details: "Unsupported HTYPE" });
+            return Err(Fail::Unsupported {
+                details: "Unsupported HTYPE",
+            });
         }
         let protocol_type = NetworkEndian::read_u16(&buf[2..4]);
         if protocol_type != PTYPE_IPV4 {
-            return Err(Fail::Unsupported { details: "Unsupported PTYPE" });
+            return Err(Fail::Unsupported {
+                details: "Unsupported PTYPE",
+            });
         }
         let hardware_address_len = buf[4];
         if hardware_address_len != HLEN_ETHER2 {
-            return Err(Fail::Unsupported { details: "Unsupported HLEN" });
+            return Err(Fail::Unsupported {
+                details: "Unsupported HLEN",
+            });
         }
         let protocol_address_len = buf[5];
         if protocol_address_len != PLEN_IPV4 {
-            return Err(Fail::Unsupported { details: "Unsupported PLEN" });
+            return Err(Fail::Unsupported {
+                details: "Unsupported PLEN",
+            });
         }
-        let operation = FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8]))
-            .ok_or_else(|| Fail::Unsupported { details: "Unsupported OPER" })?;
+        let operation =
+            FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8])).ok_or_else(|| {
+                Fail::Unsupported {
+                    details: "Unsupported OPER",
+                }
+            })?;
         let sender_hardware_addr = MacAddress::from_bytes(&buf[8..14]);
         let sender_protocol_addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
         let target_hardware_addr = MacAddress::from_bytes(&buf[18..24]);

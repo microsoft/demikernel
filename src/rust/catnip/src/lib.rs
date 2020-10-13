@@ -15,7 +15,6 @@
 #![feature(type_alias_impl_trait)]
 #![warn(clippy::all)]
 #![recursion_limit = "512"]
-
 #![feature(test)]
 extern crate test;
 
@@ -28,23 +27,24 @@ extern crate log;
 #[macro_use]
 extern crate derive_more;
 
-pub mod logging;
-pub mod options;
-pub mod protocols;
-pub mod file_table;
 pub mod collections;
 pub mod engine;
 pub mod fail;
-pub mod runtime;
-pub mod timer;
-pub mod scheduler;
+pub mod file_table;
+pub mod logging;
 pub mod operations;
+pub mod options;
+pub mod protocols;
+pub mod runtime;
+pub mod scheduler;
+pub mod sync;
 pub mod test_helpers;
+pub mod timer;
 
 // static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use tracy_client::static_span;
 use std::alloc;
+use tracy_client::static_span;
 
 pub struct ProfiledAllocator<T>(T);
 

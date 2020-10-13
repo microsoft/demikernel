@@ -3,11 +3,11 @@ use super::super::state::{
     sender::SenderState,
     ControlBlock,
 };
-use bytes::Bytes;
 use crate::{
     fail::Fail,
     runtime::Runtime,
 };
+use bytes::Bytes;
 use futures::FutureExt;
 use std::{
     num::Wrapping,

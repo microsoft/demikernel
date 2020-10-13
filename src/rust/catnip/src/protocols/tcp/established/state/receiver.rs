@@ -1,4 +1,3 @@
-use tracy_client::static_span;
 use crate::{
     collections::watched::WatchedValue,
     fail::Fail,
@@ -8,13 +7,18 @@ use bytes::Bytes;
 use std::{
     cell::RefCell,
     collections::VecDeque,
-    task::{Context, Poll, Waker},
     num::Wrapping,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
     time::{
         Duration,
         Instant,
     },
 };
+use tracy_client::static_span;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiverState {

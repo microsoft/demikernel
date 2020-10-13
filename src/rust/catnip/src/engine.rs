@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::file_table::{File, FileDescriptor};
-use crate::scheduler::Operation;
-use crate::protocols::udp::peer::{UdpOperation, PopFuture as UdpPopFuture};
 use crate::{
-    operations::ResultFuture,
     fail::Fail,
+    file_table::{
+        File,
+        FileDescriptor,
+        FileTable,
+    },
+    operations::ResultFuture,
     protocols::{
         arp,
-        ethernet2::{
-            frame::{
-                Ethernet2Header,
-                EtherType2,
-            },
+        ethernet2::frame::{
+            EtherType2,
+            Ethernet2Header,
         },
         ipv4,
         tcp::operations::{
@@ -22,21 +22,23 @@ use crate::{
             PopFuture,
             PushFuture,
         },
+        udp::peer::{
+            PopFuture as UdpPopFuture,
+            UdpOperation,
+        },
     },
     runtime::Runtime,
+    scheduler::Operation,
 };
 use bytes::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,
-    time::{
-        Duration,
-    },
+    time::Duration,
 };
-use crate::file_table::FileTable;
 
 #[cfg(test)]
-use crate::protocols::{ethernet2::MacAddress};
+use crate::protocols::ethernet2::MacAddress;
 #[cfg(test)]
 use hashbrown::HashMap;
 
@@ -59,7 +61,12 @@ impl<RT: Runtime> Engine<RT> {
         let file_table = FileTable::new();
         let arp = arp::Peer::new(now, rt.clone())?;
         let ipv4 = ipv4::Peer::new(rt.clone(), arp.clone(), file_table.clone());
-        Ok(Engine { rt, arp, ipv4, file_table })
+        Ok(Engine {
+            rt,
+            arp,
+            ipv4,
+            file_table,
+        })
     }
 
     pub fn rt(&self) -> &RT {
@@ -93,7 +100,11 @@ impl<RT: Runtime> Engine<RT> {
         }
     }
 
-    pub fn connect(&mut self, fd: FileDescriptor, remote_endpoint: ipv4::Endpoint) -> Operation<RT> {
+    pub fn connect(
+        &mut self,
+        fd: FileDescriptor,
+        remote_endpoint: ipv4::Endpoint,
+    ) -> Operation<RT> {
         match self.file_table.get(fd) {
             Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.connect(fd, remote_endpoint)),
             Some(File::UdpSocket) => {
@@ -126,7 +137,9 @@ impl<RT: Runtime> Engine<RT> {
     pub fn listen(&mut self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
         match self.file_table.get(fd) {
             Some(File::TcpSocket) => self.ipv4.tcp.listen(fd, backlog),
-            Some(File::UdpSocket) => Err(Fail::Malformed { details: "Operation not supported" }),
+            Some(File::UdpSocket) => Err(Fail::Malformed {
+                details: "Operation not supported",
+            }),
             _ => panic!("TODO: Invalid fd"),
         }
     }

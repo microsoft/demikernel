@@ -10,9 +10,7 @@ use self::{
     sender::sender,
 };
 use super::state::ControlBlock;
-use crate::{
-    runtime::Runtime,
-};
+use crate::runtime::Runtime;
 use futures::FutureExt;
 use std::{
     future::Future,

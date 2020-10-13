@@ -1,17 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-use std::cmp;
-use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
-use crate::protocols::ipv4::datagram::Ipv4Header;
-use crate::runtime::PacketBuf;
-use bytes::Bytes;
-use std::convert::TryInto;
 use crate::{
     fail::Fail,
+    protocols::{
+        ethernet2::frame::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
+        ipv4::datagram::Ipv4Header,
+    },
+    runtime::PacketBuf,
 };
 use byteorder::{
     ByteOrder,
     NetworkEndian,
+};
+use bytes::Bytes;
+use std::{
+    cmp,
+    convert::TryInto,
 };
 
 #[allow(unused)]
@@ -19,17 +26,11 @@ const MAX_ICMPV4_DATAGRAM_SIZE: usize = 576;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Icmpv4Type2 {
-    EchoReply {
-        id: u16,
-        seq_num: u16,
-    },
+    EchoReply { id: u16, seq_num: u16 },
     DestinationUnreachable,
     SourceQuench,
     RedirectMessage,
-    EchoRequest {
-        id: u16,
-        seq_num: u16,
-    },
+    EchoRequest { id: u16, seq_num: u16 },
     RouterAdvertisement,
     RouterSolicitation,
     TimeExceeded,
@@ -61,7 +62,9 @@ impl Icmpv4Type2 {
             12 => Ok(BadIpHeader),
             13 => Ok(Timestamp),
             14 => Ok(TimestampReply),
-            _ => Err(Fail::Malformed { details: "Invalid type byte" }),
+            _ => Err(Fail::Malformed {
+                details: "Invalid type byte",
+            }),
         }
     }
 
@@ -106,14 +109,19 @@ impl PacketBuf for Icmpv4Message {
         let icmpv4_hdr_size = self.icmpv4_hdr.compute_size();
         let mut cur_pos = 0;
 
-        self.ethernet2_hdr.serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
+        self.ethernet2_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
         let ipv4_payload_len = icmpv4_hdr_size;
-        self.ipv4_hdr.serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
+        self.ipv4_hdr.serialize(
+            &mut buf[cur_pos..(cur_pos + ipv4_hdr_size)],
+            ipv4_payload_len,
+        );
         cur_pos += ipv4_hdr_size;
 
-        self.icmpv4_hdr.serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
+        self.icmpv4_hdr
+            .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
         cur_pos += icmpv4_hdr_size;
 
         // Add Ethernet padding if needed.
@@ -139,7 +147,9 @@ impl Icmpv4Header {
 
     pub fn parse(mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < ICMPV4_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "ICMPv4 datagram too small for header" });
+            return Err(Fail::Malformed {
+                details: "ICMPv4 datagram too small for header",
+            });
         }
         let data = buf.split_off(ICMPV4_HEADER2_SIZE);
         let buf: &[u8; ICMPV4_HEADER2_SIZE] = buf[..].try_into().unwrap();
@@ -148,7 +158,9 @@ impl Icmpv4Header {
         let code = buf[1];
         let checksum = NetworkEndian::read_u16(&buf[2..4]);
         if checksum != icmpv4_checksum(buf) {
-            return Err(Fail::Malformed { details: "ICMPv4 checksum mismatch" });
+            return Err(Fail::Malformed {
+                details: "ICMPv4 checksum mismatch",
+            });
         }
         let rest_of_header: &[u8; 4] = buf[4..8].try_into().unwrap();
         let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;
@@ -156,7 +168,8 @@ impl Icmpv4Header {
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ICMPV4_HEADER2_SIZE] = (&mut buf[..ICMPV4_HEADER2_SIZE]).try_into().unwrap();
+        let buf: &mut [u8; ICMPV4_HEADER2_SIZE] =
+            (&mut buf[..ICMPV4_HEADER2_SIZE]).try_into().unwrap();
         let (type_byte, rest_of_header) = self.icmpv4_type.serialize();
         buf[0] = type_byte;
         buf[1] = self.code;
