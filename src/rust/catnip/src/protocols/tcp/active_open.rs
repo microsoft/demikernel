@@ -13,11 +13,11 @@ use crate::{
         arp,
         ipv4,
         tcp::{
-            segment::{TcpSegment2, TcpHeader2, TcpOptions2},
+            segment::{TcpSegment, TcpHeader, TcpOptions2},
             SeqNumber,
         },
-        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header2},
+        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
@@ -109,7 +109,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         r.result.replace(result);
     }
 
-    pub fn receive2(&mut self, header: &TcpHeader2) {
+    pub fn receive(&mut self, header: &TcpHeader) {
         if header.rst {
             self.set_result(Err(Fail::ConnectionRefused {}));
             return;
@@ -127,21 +127,21 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             None => panic!("TODO: Clean up ARP query control flow"),
         };
         let remote_seq_num = header.seq_num + Wrapping(1);
-        let mut tcp_hdr = TcpHeader2::new(self.local.port, self.remote.port);
+        let mut tcp_hdr = TcpHeader::new(self.local.port, self.remote.port);
         tcp_hdr.ack = true;
         tcp_hdr.ack_num = remote_seq_num;
 
-        let segment = TcpSegment2 {
-            ethernet2_hdr: Ethernet2Header2 {
+        let segment = TcpSegment {
+            ethernet2_hdr: Ethernet2Header {
                 dst_addr: remote_link_addr,
                 src_addr: self.rt.local_link_addr(),
                 ether_type: EtherType2::Ipv4,
             },
-            ipv4_hdr: Ipv4Header2::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
+            ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
             data: Bytes::new(),
         };
-        self.rt.transmit2(segment);
+        self.rt.transmit(segment);
 
         let mut window_scale = 1;
         let mut mss = FALLBACK_MSS;
@@ -201,7 +201,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     },
                 };
 
-                let mut tcp_hdr = TcpHeader2::new(local.port, remote.port);
+                let mut tcp_hdr = TcpHeader::new(local.port, remote.port);
                 tcp_hdr.syn = true;
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.window_size = max_window_size;
@@ -209,17 +209,17 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 let mss = rt.tcp_options().advertised_mss as u16;
                 tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
 
-                let segment = TcpSegment2 {
-                    ethernet2_hdr: Ethernet2Header2 {
+                let segment = TcpSegment {
+                    ethernet2_hdr: Ethernet2Header {
                         dst_addr: remote_link_addr,
                         src_addr: rt.local_link_addr(),
                         ether_type: EtherType2::Ipv4,
                     },
-                    ipv4_hdr: Ipv4Header2::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
+                    ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
                     data: Bytes::new(),
                 };
-                rt.transmit2(segment);
+                rt.transmit(segment);
                 rt.wait(handshake_timeout).await;
             }
             let mut r = result.borrow_mut();

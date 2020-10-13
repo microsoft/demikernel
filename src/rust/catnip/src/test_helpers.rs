@@ -114,14 +114,7 @@ struct Inner {
 impl Runtime for TestRuntime {
     type WaitFuture = crate::timer::WaitFuture<TimerRc>;
 
-    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>) {
-        self.inner
-            .borrow_mut()
-            .outgoing
-            .push_back(buf.borrow_mut().clone());
-    }
-
-    fn transmit2(&self, pkt: impl PacketBuf) {
+    fn transmit(&self, pkt: impl PacketBuf) {
         let mut buf = vec![0; pkt.compute_size()];
         pkt.serialize(&mut buf[..]);
         self.inner.borrow_mut().outgoing.push_back(buf);

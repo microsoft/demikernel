@@ -17,7 +17,7 @@ use std::{
     convert::TryInto,
     net::Ipv4Addr,
 };
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header2};
+use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
 use crate::runtime::PacketBuf;
 use std::cmp;
 
@@ -35,7 +35,7 @@ pub enum ArpOperation {
 }
 
 #[derive(Clone)]
-pub struct ArpPdu2 {
+pub struct ArpPdu {
     // We only support Ethernet/Ipv4, so omit these fields.
     // hardware_type: u16,
     // protocol_type: u16,
@@ -50,8 +50,8 @@ pub struct ArpPdu2 {
 
 #[derive(Clone)]
 pub struct ArpMessage {
-    pub ethernet2_hdr: Ethernet2Header2,
-    pub arp_pdu: ArpPdu2,
+    pub ethernet2_hdr: Ethernet2Header,
+    pub arp_pdu: ArpPdu,
 }
 
 impl PacketBuf for ArpMessage {
@@ -78,7 +78,7 @@ impl PacketBuf for ArpMessage {
     }
 }
 
-impl ArpPdu2 {
+impl ArpPdu {
     fn compute_size(&self) -> usize {
         ARP_MESSAGE_SIZE
     }

@@ -11,7 +11,7 @@ use crate::{
     fail::Fail,
     protocols::{
         ipv4,
-        tcp::segment::TcpHeader2,
+        tcp::segment::TcpHeader,
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
@@ -40,8 +40,8 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         }
     }
 
-    pub fn receive2(&self, header: &TcpHeader2, data: Bytes) {
-        self.cb.receive2(header, data)
+    pub fn receive(&self, header: &TcpHeader, data: Bytes) {
+        self.cb.receive(header, data)
     }
 
     pub fn send(&self, buf: Bytes) -> Result<(), Fail> {

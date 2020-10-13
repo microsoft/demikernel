@@ -13,10 +13,10 @@ use crate::{
     protocols::{
         arp,
         ipv4,
-        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header2},
+        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header},
         tcp::{
-            segment::{TcpSegment2, TcpHeader2, TcpOptions2},
+            segment::{TcpSegment, TcpHeader, TcpOptions2},
             SeqNumber,
         },
     },
@@ -125,7 +125,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
         self.ready.borrow_mut().poll(ctx)
     }
 
-    pub fn receive2(&mut self, ip_header: &Ipv4Header2, header: &TcpHeader2) -> Result<(), Fail> {
+    pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {
         let remote = ipv4::Endpoint::new(ip_header.src_addr, header.src_port);
         if self.ready.borrow().endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been
@@ -243,24 +243,24 @@ impl<RT: Runtime> PassiveSocket<RT> {
                         continue;
                     },
                 };
-                let mut tcp_hdr = TcpHeader2::new(local.port, remote.port);
+                let mut tcp_hdr = TcpHeader::new(local.port, remote.port);
                 tcp_hdr.syn = true;
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.ack = true;
                 tcp_hdr.ack_num = remote_isn + Wrapping(1);
                 tcp_hdr.window_size = max_window_size;
 
-                let segment = TcpSegment2 {
-                    ethernet2_hdr: Ethernet2Header2 {
+                let segment = TcpSegment {
+                    ethernet2_hdr: Ethernet2Header {
                         dst_addr: remote_link_addr,
                         src_addr: rt.local_link_addr(),
                         ether_type: EtherType2::Ipv4,
                     },
-                    ipv4_hdr: Ipv4Header2::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
+                    ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
                     data: Bytes::new(),
                 };
-                rt.transmit2(segment);
+                rt.transmit(segment);
                 rt.wait(handshake_timeout).await;
             }
             ready.borrow_mut().push_err(Fail::Timeout {});

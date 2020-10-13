@@ -27,7 +27,7 @@ impl TryFrom<u16> for EtherType2 {
 }
 
 #[derive(Clone, Debug)]
-pub struct Ethernet2Header2 {
+pub struct Ethernet2Header {
     // Bytes 0..6
     pub dst_addr: MacAddress,
     // Bytes 6..12
@@ -36,7 +36,7 @@ pub struct Ethernet2Header2 {
     pub ether_type: EtherType2,
 }
 
-impl Ethernet2Header2 {
+impl Ethernet2Header {
     pub fn compute_size(&self) -> usize {
         ETHERNET2_HEADER2_SIZE
     }

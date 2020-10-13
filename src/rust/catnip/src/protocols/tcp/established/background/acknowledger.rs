@@ -41,7 +41,7 @@ pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
                 let mut header = cb.tcp_header();
                 header.ack = true;
                 header.ack_num = recv_seq_no;
-                cb.emit2(header, Bytes::new(), remote_link_addr);
+                cb.emit(header, Bytes::new(), remote_link_addr);
             },
         }
     }

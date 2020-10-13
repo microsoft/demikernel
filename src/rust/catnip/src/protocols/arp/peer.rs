@@ -4,13 +4,13 @@
 use super::{
     cache::ArpCache,
     pdu::{
-        ArpPdu2,
+        ArpPdu,
         ArpMessage,
         ArpOperation,
 
     },
 };
-use crate::protocols::ethernet::frame::{Ethernet2Header2, EtherType2};
+use crate::protocols::ethernet::frame::{Ethernet2Header, EtherType2};
 use bytes::Bytes;
 use crate::{
     fail::Fail,
@@ -67,13 +67,13 @@ impl<RT: Runtime> ArpPeer<RT> {
         }
     }
 
-    pub fn receive2(&mut self, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
-        let pdu = ArpPdu2::parse(buf)?;
+        let pdu = ArpPdu::parse(buf)?;
         // from RFC 826:
         // > Merge_flag := false
         // > If the pair <protocol type, sender protocol address> is
@@ -117,12 +117,12 @@ impl<RT: Runtime> ArpPeer<RT> {
                 // > Swap hardware and protocol fields, putting the local
                 // > hardware and protocol addresses in the sender fields.
                 let reply = ArpMessage {
-                    ethernet2_hdr: Ethernet2Header2 {
+                    ethernet2_hdr: Ethernet2Header {
                         dst_addr: pdu.sender_hardware_addr,
                         src_addr: self.rt.local_link_addr(),
                         ether_type: EtherType2::Ipv4,
                     },
-                    arp_pdu: ArpPdu2 {
+                    arp_pdu: ArpPdu {
                         operation: ArpOperation::Reply,
                         sender_hardware_addr: pdu.target_hardware_addr,
                         sender_protocol_addr: pdu.target_protocol_addr,
@@ -130,7 +130,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                         target_protocol_addr: pdu.sender_protocol_addr,
                     },
                 };
-                self.rt.transmit2(reply);
+                self.rt.transmit(reply);
                 Ok(())
             },
             ArpOperation::Reply => {
@@ -158,12 +158,12 @@ impl<RT: Runtime> ArpPeer<RT> {
                 return Ok(link_addr);
             }
             let msg = ArpMessage {
-                ethernet2_hdr: Ethernet2Header2 {
+                ethernet2_hdr: Ethernet2Header {
                     dst_addr: MacAddress::nil(),
                     src_addr: rt.local_link_addr(),
                     ether_type: EtherType2::Ipv4,
                 },
-                arp_pdu: ArpPdu2 {
+                arp_pdu: ArpPdu {
                     operation: ArpOperation::Request,
                     sender_hardware_addr: rt.local_link_addr(),
                     sender_protocol_addr: rt.local_ipv4_addr(),
@@ -180,7 +180,7 @@ impl<RT: Runtime> ArpPeer<RT> {
             let arp_options = rt.arp_options();
 
             for i in 0..arp_options.retry_count + 1 {
-                rt.transmit2(msg.clone());
+                rt.transmit(msg.clone());
                 futures::select! {
                     link_addr = arp_response => {
                         debug!("ARP result available ({})", link_addr);

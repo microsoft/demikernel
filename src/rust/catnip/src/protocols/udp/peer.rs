@@ -3,8 +3,8 @@
 
 use tracy_client::static_span;
 use super::datagram::{
-    UdpHeader2,
-    UdpDatagram2,
+    UdpHeader,
+    UdpDatagram,
 };
 use crate::operations::{ResultFuture, OperationResult};
 use crate::{
@@ -12,8 +12,8 @@ use crate::{
     protocols::{
         arp,
         ipv4,
-        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header2},
+        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
@@ -93,24 +93,24 @@ impl<RT: Runtime> UdpPeer<RT> {
             let r: Result<_, Fail> = try {
                 let link_addr = arp.query(remote.address()).await?;
                 let _s = static_span!("bg_send_udp");
-                let datagram = UdpDatagram2 {
-                    ethernet2_hdr: Ethernet2Header2 {
+                let datagram = UdpDatagram {
+                    ethernet2_hdr: Ethernet2Header {
                         dst_addr: link_addr,
                         src_addr: rt.local_link_addr(),
                         ether_type: EtherType2::Ipv4,
                     },
-                    ipv4_hdr: Ipv4Header2::new(
+                    ipv4_hdr: Ipv4Header::new(
                         rt.local_ipv4_addr(),
                         remote.addr,
                         Ipv4Protocol2::Udp,
                     ),
-                    udp_hdr: UdpHeader2 {
+                    udp_hdr: UdpHeader {
                         src_port: local.map(|l| l.port),
                         dst_port: remote.port,
                     },
                     data: buf,
                 };
-                rt.transmit2(datagram);
+                rt.transmit(datagram);
             };
             if let Err(e) = r {
                 warn!("Failed to send UDP message: {:?}", e);
@@ -160,8 +160,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    pub fn receive2(&self, ipv4_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
-        let (hdr, data) = UdpHeader2::parse(ipv4_header, buf)?;
+    pub fn receive(&self, ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+        let (hdr, data) = UdpHeader::parse(ipv4_header, buf)?;
         let local = ipv4::Endpoint::new(ipv4_header.dst_addr, hdr.dst_port);
         let remote = hdr.src_port.map(|p| ipv4::Endpoint::new(ipv4_header.src_addr, p));
 

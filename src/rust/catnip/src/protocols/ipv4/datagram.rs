@@ -39,7 +39,7 @@ impl TryFrom<u8> for Ipv4Protocol2 {
     }
 }
 
-pub struct Ipv4Header2 {
+pub struct Ipv4Header {
     // [ version 4 bits ] [ IHL 4 bits ]
     // The user shouldn't be able to mutate the version, so we parse it out but don't include it
     // here. Since we don't support IPv4 options, the same holds for the ihl field.
@@ -85,7 +85,7 @@ fn ipv4_checksum(buf: &[u8]) -> u16 {
     !state as u16
 }
 
-impl Ipv4Header2 {
+impl Ipv4Header {
     pub fn new(src_addr: Ipv4Addr, dst_addr: Ipv4Addr, protocol: Ipv4Protocol2) -> Self {
         Self {
             dscp: 0,

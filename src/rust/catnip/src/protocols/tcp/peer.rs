@@ -14,11 +14,11 @@ use crate::{
         ip,
         ip::port::EphemeralPorts,
         ipv4,
-        ethernet::frame::{EtherType2, Ethernet2Header2},
-        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header},
+        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
         tcp::segment::{
-            TcpHeader2,
-            TcpSegment2,
+            TcpHeader,
+            TcpSegment,
         },
         tcp::operations::{
             AcceptFuture,
@@ -81,8 +81,8 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn receive2(&self, ip_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
-        self.inner.borrow_mut().receive2(ip_header, buf)
+    pub fn receive(&self, ip_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+        self.inner.borrow_mut().receive(ip_header, buf)
     }
 
     pub fn listen(&self, fd: FileDescriptor, backlog: usize) -> Result<(), Fail> {
@@ -434,8 +434,8 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn receive2(&mut self, ip_hdr: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
-        let (tcp_hdr, data) = TcpHeader2::parse(ip_hdr, buf)?;
+    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+        let (tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf)?;
         let local = ipv4::Endpoint::new(ip_hdr.dst_addr, tcp_hdr.dst_port);
         let remote = ipv4::Endpoint::new(ip_hdr.src_addr, tcp_hdr.src_port);
 
@@ -445,16 +445,16 @@ impl<RT: Runtime> Inner<RT> {
         let key = (local, remote);
 
         if let Some(s) = self.established.get(&key) {
-            s.receive2(&tcp_hdr, data);
+            s.receive(&tcp_hdr, data);
             return Ok(());
         }
         if let Some(s) = self.connecting.get_mut(&key) {
-            s.receive2(&tcp_hdr);
+            s.receive(&tcp_hdr);
             return Ok(());
         }
         let (local, _) = key;
         if let Some(s) = self.passive.get_mut(&local) {
-            return s.receive2(ip_hdr, &tcp_hdr);
+            return s.receive(ip_hdr, &tcp_hdr);
         }
 
         // The packet isn't for an open port; send a RST segment.
@@ -468,20 +468,20 @@ impl<RT: Runtime> Inner<RT> {
             .try_query(remote.addr)
             .ok_or_else(|| Fail::ResourceNotFound { details: "RST destination not in ARP cache" })?;
 
-        let mut tcp_hdr = TcpHeader2::new(local.port, remote.port);
+        let mut tcp_hdr = TcpHeader::new(local.port, remote.port);
         tcp_hdr.rst = true;
 
-        let segment = TcpSegment2 {
-            ethernet2_hdr: Ethernet2Header2 {
+        let segment = TcpSegment {
+            ethernet2_hdr: Ethernet2Header {
                 dst_addr: remote_link_addr,
                 src_addr: self.rt.local_link_addr(),
                 ether_type: EtherType2::Ipv4,
             },
-            ipv4_hdr: Ipv4Header2::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
+            ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
             data: Bytes::new(),
         };
-        self.rt.transmit2(segment);
+        self.rt.transmit(segment);
 
         Ok(())
     }

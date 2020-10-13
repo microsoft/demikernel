@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use super::datagram::{
-    Ipv4Header2,
+    Ipv4Header,
     Ipv4Protocol2,
 };
 use crate::{
@@ -45,15 +45,15 @@ impl<RT: Runtime> Ipv4Peer<RT> {
         }
     }
 
-    pub fn receive2(&mut self, buf: Bytes) -> Result<(), Fail> {
-        let (header, payload) = Ipv4Header2::parse(buf)?;
+    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
+        let (header, payload) = Ipv4Header::parse(buf)?;
         if header.dst_addr != self.rt.local_ipv4_addr() && !header.dst_addr.is_broadcast() {
             return Err(Fail::Misdelivered {});
         }
         match header.protocol {
-            Ipv4Protocol2::Icmpv4 => self.icmpv4.receive2(&header, payload),
-            Ipv4Protocol2::Tcp => self.tcp.receive2(&header, payload),
-            Ipv4Protocol2::Udp => self.udp.receive2(&header, payload),
+            Ipv4Protocol2::Icmpv4 => self.icmpv4.receive(&header, payload),
+            Ipv4Protocol2::Tcp => self.tcp.receive(&header, payload),
+            Ipv4Protocol2::Udp => self.udp.receive(&header, payload),
         }
     }
 

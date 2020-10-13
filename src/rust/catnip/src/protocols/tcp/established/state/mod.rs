@@ -13,9 +13,9 @@ use crate::{
         arp,
         ethernet::MacAddress,
         ipv4,
-        tcp::segment::{TcpSegment2, TcpHeader2},
-        ipv4::datagram::{Ipv4Header2, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header2},
+        tcp::segment::{TcpSegment, TcpHeader},
+        ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
+        ethernet::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
 };
@@ -35,7 +35,7 @@ pub struct ControlBlock<RT: Runtime> {
 }
 
 impl<RT: Runtime> ControlBlock<RT> {
-    pub fn receive2(&self, header: &TcpHeader2, data: Bytes) {
+    pub fn receive(&self, header: &TcpHeader, data: Bytes) {
         let now = self.rt.now();
         if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
@@ -65,8 +65,8 @@ impl<RT: Runtime> ControlBlock<RT> {
         self.sender.close()
     }
 
-    pub fn tcp_header(&self) -> TcpHeader2 {
-        let mut header = TcpHeader2::new(self.local.port, self.remote.port);
+    pub fn tcp_header(&self) -> TcpHeader {
+        let mut header = TcpHeader::new(self.local.port, self.remote.port);
         // TODO: Support window scaling here.
         header.window_size = self.receiver.window_size() as u16;
         if let Some(ack_seq_no) = self.receiver.current_ack() {
@@ -75,21 +75,21 @@ impl<RT: Runtime> ControlBlock<RT> {
         header
     }
 
-    pub fn emit2(&self, header: TcpHeader2, data: Bytes, remote_link_addr: MacAddress) {
+    pub fn emit(&self, header: TcpHeader, data: Bytes, remote_link_addr: MacAddress) {
         if header.ack {
             self.receiver.ack_sent(header.ack_num);
         }
-        let segment = TcpSegment2 {
-            ethernet2_hdr: Ethernet2Header2 {
+        let segment = TcpSegment {
+            ethernet2_hdr: Ethernet2Header {
                 dst_addr: remote_link_addr,
                 src_addr: self.rt.local_link_addr(),
                 ether_type: EtherType2::Ipv4,
             },
-            ipv4_hdr: Ipv4Header2::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
+            ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr: header,
             data,
         };
-        self.rt.transmit2(segment);
+        self.rt.transmit(segment);
     }
 
     pub fn remote_mss(&self) -> usize {

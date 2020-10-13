@@ -9,8 +9,8 @@ use crate::{
         ip,
     },
 };
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header2};
-use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header2};
+use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
+use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header};
 use bytes::{
     Bytes,
 };
@@ -26,14 +26,14 @@ const MIN_TCP_HEADER2_SIZE: usize = 20;
 const MAX_TCP_HEADER2_SIZE: usize = 60;
 const MAX_TCP_OPTIONS: usize = 5;
 
-pub struct TcpSegment2 {
-    pub ethernet2_hdr: Ethernet2Header2,
-    pub ipv4_hdr: Ipv4Header2,
-    pub tcp_hdr: TcpHeader2,
+pub struct TcpSegment {
+    pub ethernet2_hdr: Ethernet2Header,
+    pub ipv4_hdr: Ipv4Header,
+    pub tcp_hdr: TcpHeader,
     pub data: Bytes,
 }
 
-impl PacketBuf for TcpSegment2 {
+impl PacketBuf for TcpSegment {
     fn compute_size(&self) -> usize {
         let size = self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
@@ -150,7 +150,7 @@ impl TcpOptions2 {
 }
 
 #[derive(Debug)]
-pub struct TcpHeader2 {
+pub struct TcpHeader {
     pub src_port: ip::Port,
     pub dst_port: ip::Port,
     pub seq_num: SeqNumber,
@@ -182,7 +182,7 @@ pub struct TcpHeader2 {
     option_list: [TcpOptions2; MAX_TCP_OPTIONS],
 }
 
-impl TcpHeader2 {
+impl TcpHeader {
     pub fn new(src_port: ip::Port, dst_port: ip::Port) -> Self {
         Self {
             src_port,
@@ -207,7 +207,7 @@ impl TcpHeader2 {
         }
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header2, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(ipv4_header: &Ipv4Header, mut buf: Bytes) -> Result<(Self, Bytes), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
             return Err(Fail::Malformed { details: "TCP segment too small" });
         }
@@ -337,7 +337,7 @@ impl TcpHeader2 {
         Ok((header, data_buf))
     }
 
-    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header2, data: &[u8]) {
+    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8]) {
         let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] = (&mut buf[..MIN_TCP_HEADER2_SIZE])
             .try_into()
             .unwrap();
@@ -426,7 +426,7 @@ impl TcpHeader2 {
     }
 }
 
-fn tcp_checksum(ipv4_header: &Ipv4Header2, header: &[u8], data: &[u8]) -> u16 {
+fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
     let mut state = 0xffffu32;
 
     // First, fold in a "pseudo-IP" header of...

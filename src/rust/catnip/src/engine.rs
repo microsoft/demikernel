@@ -11,7 +11,7 @@ use crate::{
         arp,
         ethernet::{
             frame::{
-                Ethernet2Header2,
+                Ethernet2Header,
                 EtherType2,
             },
         },
@@ -66,15 +66,15 @@ impl<RT: Runtime> Engine<RT> {
         &self.rt
     }
 
-    pub fn receive2(&mut self, bytes: Bytes) -> Result<(), Fail> {
-        let (header, payload) = Ethernet2Header2::parse(bytes)?;
+    pub fn receive(&mut self, bytes: Bytes) -> Result<(), Fail> {
+        let (header, payload) = Ethernet2Header::parse(bytes)?;
         if self.rt.local_link_addr() != header.dst_addr && !header.dst_addr.is_broadcast() {
             println!("Misdelivered {:?}", header);
             return Err(Fail::Misdelivered {});
         }
         match header.ether_type {
-            EtherType2::Arp => self.arp.receive2(payload),
-            EtherType2::Ipv4 => self.ipv4.receive2(payload),
+            EtherType2::Arp => self.arp.receive(payload),
+            EtherType2::Ipv4 => self.ipv4.receive(payload),
         }
     }
 

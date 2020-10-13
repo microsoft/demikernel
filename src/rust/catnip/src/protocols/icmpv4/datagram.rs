@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 use std::cmp;
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header2};
-use crate::protocols::ipv4::datagram::Ipv4Header2;
+use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
+use crate::protocols::ipv4::datagram::Ipv4Header;
 use crate::runtime::PacketBuf;
 use bytes::Bytes;
 use std::convert::TryInto;
@@ -84,9 +84,9 @@ impl Icmpv4Type2 {
 }
 
 pub struct Icmpv4Message {
-    pub ethernet2_hdr: Ethernet2Header2,
-    pub ipv4_hdr: Ipv4Header2,
-    pub icmpv4_hdr: Icmpv4Header2,
+    pub ethernet2_hdr: Ethernet2Header,
+    pub ipv4_hdr: Ipv4Header,
+    pub icmpv4_hdr: Icmpv4Header,
     // TODO: Add a body enum when we need it.
 }
 
@@ -126,13 +126,13 @@ impl PacketBuf for Icmpv4Message {
 pub const ICMPV4_HEADER2_SIZE: usize = 8;
 
 #[derive(Copy, Clone, Debug)]
-pub struct Icmpv4Header2 {
+pub struct Icmpv4Header {
     pub icmpv4_type: Icmpv4Type2,
     // TODO: Turn this into an enum on Icmpv4Type2 and then collapse the struct.
     pub code: u8,
 }
 
-impl Icmpv4Header2 {
+impl Icmpv4Header {
     fn compute_size(&self) -> usize {
         ICMPV4_HEADER2_SIZE
     }

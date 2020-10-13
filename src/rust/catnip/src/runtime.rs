@@ -11,10 +11,8 @@ use rand::distributions::{
     Standard,
 };
 use std::{
-    cell::RefCell,
     future::Future,
     net::Ipv4Addr,
-    rc::Rc,
     time::{
         Duration,
         Instant,
@@ -28,8 +26,7 @@ pub trait PacketBuf {
 
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
-    fn transmit(&self, buf: Rc<RefCell<Vec<u8>>>);
-    fn transmit2(&self, pkt: impl PacketBuf);
+    fn transmit(&self, pkt: impl PacketBuf);
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;

@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::ethernet::frame::Ethernet2Header2;
+use crate::protocols::ethernet::frame::Ethernet2Header;
 use crate::protocols::ipv4::datagram::{Ipv4Protocol2};
 use super::{
     datagram::{
-        Icmpv4Header2,
+        Icmpv4Header,
         Icmpv4Type2,
     },
 };
-use crate::protocols::ipv4::datagram::Ipv4Header2;
+use crate::protocols::ipv4::datagram::Ipv4Header;
 use bytes::Bytes;
 use crate::{
     fail::Fail,
@@ -95,18 +95,18 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                     dst_ipv4_addr, dst_link_addr
                 );
                 let msg = Icmpv4Message {
-                    ethernet2_hdr: Ethernet2Header2 {
+                    ethernet2_hdr: Ethernet2Header {
                         dst_addr: dst_link_addr,
                         src_addr: rt.local_link_addr(),
                         ether_type: EtherType2::Ipv4,
                     },
-                    ipv4_hdr: Ipv4Header2::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
-                    icmpv4_hdr: Icmpv4Header2 {
+                    ipv4_hdr: Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
+                    icmpv4_hdr: Icmpv4Header {
                         icmpv4_type: Icmpv4Type2::EchoReply { id, seq_num },
                         code: 0,
                     },
                 };
-                rt.transmit2(msg);
+                rt.transmit(msg);
             };
             if let Err(e) = r {
                 warn!(
@@ -117,8 +117,8 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
         }
     }
 
-    pub fn receive2(&mut self, ipv4_header: &Ipv4Header2, buf: Bytes) -> Result<(), Fail> {
-        let (icmpv4_hdr, _) = Icmpv4Header2::parse(buf)?;
+    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+        let (icmpv4_hdr, _) = Icmpv4Header::parse(buf)?;
         match icmpv4_hdr.icmpv4_type {
             Icmpv4Type2::EchoRequest { id, seq_num } => {
                 self.reply_to_ping(ipv4_header.src_addr, id, seq_num);
@@ -177,18 +177,18 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
             let msg = Icmpv4Message {
-                ethernet2_hdr: Ethernet2Header2 {
+                ethernet2_hdr: Ethernet2Header {
                     dst_addr: dst_link_addr,
                     src_addr: rt.local_link_addr(),
                     ether_type: EtherType2::Ipv4,
                 },
-                ipv4_hdr: Ipv4Header2::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
-                icmpv4_hdr: Icmpv4Header2 {
+                ipv4_hdr: Ipv4Header::new(rt.local_ipv4_addr(), dst_ipv4_addr, Ipv4Protocol2::Icmpv4),
+                icmpv4_hdr: Icmpv4Header {
                     icmpv4_type: Icmpv4Type2::EchoRequest { id, seq_num },
                     code: 0,
                 },
             };
-            rt.transmit2(msg);
+            rt.transmit(msg);
             let rx = {
                 let (tx, rx) = channel();
                 let mut inner = inner.borrow_mut();
