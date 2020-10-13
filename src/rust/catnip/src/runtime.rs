@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 use crate::protocols::{
     arp,
-    ethernet::MacAddress,
+    ethernet2::MacAddress,
     tcp,
 };
 use crate::scheduler::SchedulerHandle;

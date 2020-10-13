@@ -9,7 +9,7 @@ use crate::{
         ip,
     },
 };
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
+use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
 use crate::protocols::ipv4::datagram::{Ipv4Protocol2, Ipv4Header};
 use bytes::{
     Bytes,

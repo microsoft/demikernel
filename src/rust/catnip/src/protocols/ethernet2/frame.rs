@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use byteorder::{ByteOrder, NetworkEndian};
 use crate::fail::Fail;
-use crate::protocols::ethernet::MacAddress;
+use crate::protocols::ethernet2::MacAddress;
 use std::convert::{TryInto, TryFrom};
 use num_traits::FromPrimitive;
 

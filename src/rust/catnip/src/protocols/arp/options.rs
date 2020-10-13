@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::ethernet::MacAddress;
+use crate::protocols::ethernet2::MacAddress;
 use hashbrown::HashMap;
 use std::{
     net::Ipv4Addr,

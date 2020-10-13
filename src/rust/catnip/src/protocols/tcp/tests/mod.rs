@@ -41,15 +41,15 @@ fn test_connect() {
 
     // Send the SYN from Alice to Bob
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     // Send the SYN+ACK from Bob to Alice
     bob.rt().poll_scheduler();
-    alice.receive(&bob.rt().pop_frame()).unwrap();
+    alice.receive(bob.rt().pop_frame()).unwrap();
 
     // Send the ACK from Alice to Bob
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
@@ -61,7 +61,7 @@ fn test_connect() {
     alice.rt().poll_scheduler();
 
     // Receive it on Bob's side.
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
     let mut pop_future = bob.tcp_pop(bob_fd);
     must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
     assert_eq!(received_buf, buf);

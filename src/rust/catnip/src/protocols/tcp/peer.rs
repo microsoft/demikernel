@@ -14,7 +14,7 @@ use crate::{
         ip,
         ip::port::EphemeralPorts,
         ipv4,
-        ethernet::frame::{EtherType2, Ethernet2Header},
+        ethernet2::frame::{EtherType2, Ethernet2Header},
         ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
         tcp::segment::{
             TcpHeader,

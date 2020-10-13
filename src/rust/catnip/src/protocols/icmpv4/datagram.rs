@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 use std::cmp;
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
+use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
 use crate::protocols::ipv4::datagram::Ipv4Header;
 use crate::runtime::PacketBuf;
 use bytes::Bytes;

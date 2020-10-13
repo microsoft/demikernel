@@ -10,11 +10,11 @@ use super::{
 
     },
 };
-use crate::protocols::ethernet::frame::{Ethernet2Header, EtherType2};
+use crate::protocols::ethernet2::frame::{Ethernet2Header, EtherType2};
 use bytes::Bytes;
 use crate::{
     fail::Fail,
-    protocols::ethernet::{
+    protocols::ethernet2::{
         MacAddress,
     },
     runtime::Runtime,

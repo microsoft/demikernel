@@ -9,7 +9,7 @@ mod tests;
 
 use crate::{
     collections::HashTtlCache,
-    protocols::ethernet::MacAddress,
+    protocols::ethernet2::MacAddress,
 };
 use futures::{
     channel::oneshot::{

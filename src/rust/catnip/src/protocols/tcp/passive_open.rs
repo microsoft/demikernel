@@ -14,7 +14,7 @@ use crate::{
         arp,
         ipv4,
         ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header},
+        ethernet2::frame::{EtherType2, Ethernet2Header},
         tcp::{
             segment::{TcpSegment, TcpHeader, TcpOptions2},
             SeqNumber,

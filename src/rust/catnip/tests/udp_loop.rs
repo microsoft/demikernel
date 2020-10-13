@@ -62,7 +62,7 @@ fn udp_loop() {
 
         alice.udp_push(alice_fd, buf.clone()).unwrap();
         alice.rt().poll_scheduler();
-        bob.receive(&alice.rt().pop_frame()).unwrap();
+        bob.receive(alice.rt().pop_frame()).unwrap();
 
         let mut pop_future = bob.udp_pop(bob_fd);
         must_let!(let Poll::Ready(Ok(recv_buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
@@ -70,7 +70,7 @@ fn udp_loop() {
 
         bob.udp_push(bob_fd, recv_buf).unwrap();
         bob.rt().poll_scheduler();
-        alice.receive(&bob.rt().pop_frame()).unwrap();
+        alice.receive(bob.rt().pop_frame()).unwrap();
 
         let mut pop_future = alice.udp_pop(alice_fd);
         must_let!(let Poll::Ready(Ok(recv_buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));

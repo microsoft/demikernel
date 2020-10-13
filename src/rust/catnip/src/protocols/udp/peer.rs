@@ -13,7 +13,7 @@ use crate::{
         arp,
         ipv4,
         ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header},
+        ethernet2::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
@@ -194,11 +194,15 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn close(&self, fd: FileDescriptor) -> Result<(), Fail> {
-        let inner = self.inner.borrow_mut();
-        if !inner.sockets.contains_key(&fd) {
-            return Err(Fail::Malformed { details: "Invalid file descriptor on close" });
+        let mut inner = self.inner.borrow_mut();
+        let socket = match inner.sockets.remove(&fd) {
+            Some(s) => s,
+            None => return Err(Fail::Malformed { details: "Invalid file descriptor" }),
+        };
+        if let Some(local) = socket.local {
+            assert!(inner.bound.remove(&local).is_some());
         }
-	// TODO: Actually clean up state here.
+        inner.file_table.free(fd);
         Ok(())
     }
 

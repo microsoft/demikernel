@@ -3,7 +3,7 @@
 
 use crate::protocols::{
     arp,
-    ethernet::MacAddress,
+    ethernet2::MacAddress,
     tcp,
 };
 use rand::{

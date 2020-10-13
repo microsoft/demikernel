@@ -4,7 +4,7 @@
 use bytes::Bytes;
 use crate::{
     fail::Fail,
-    protocols::ethernet::{
+    protocols::ethernet2::{
         MacAddress,
     },
 };
@@ -17,7 +17,7 @@ use std::{
     convert::TryInto,
     net::Ipv4Addr,
 };
-use crate::protocols::ethernet::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
+use crate::protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, Ethernet2Header};
 use crate::runtime::PacketBuf;
 use std::cmp;
 

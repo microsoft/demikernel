@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use bytes::{Bytes, BytesMut};
 use crate::{
     engine::Engine,
     protocols::{
         arp,
-        ethernet::MacAddress,
+        ethernet2::MacAddress,
         tcp,
     },
     runtime::{PacketBuf, Runtime},
@@ -86,7 +87,7 @@ impl TestRuntime {
         }
     }
 
-    pub fn pop_frame(&self) -> Vec<u8> {
+    pub fn pop_frame(&self) -> Bytes {
         self.inner.borrow_mut().outgoing.pop_front().unwrap()
     }
 
@@ -102,7 +103,7 @@ struct Inner {
     name: &'static str,
     timer: TimerRc,
     rng: SmallRng,
-    outgoing: VecDeque<Vec<u8>>,
+    outgoing: VecDeque<Bytes>,
     scheduler: Scheduler<Operation<TestRuntime>>,
 
     link_addr: MacAddress,
@@ -115,9 +116,11 @@ impl Runtime for TestRuntime {
     type WaitFuture = crate::timer::WaitFuture<TimerRc>;
 
     fn transmit(&self, pkt: impl PacketBuf) {
-        let mut buf = vec![0; pkt.compute_size()];
+        let size = pkt.compute_size();
+        let mut buf = BytesMut::with_capacity(size);
+        unsafe { buf.set_len(size) };
         pkt.serialize(&mut buf[..]);
-        self.inner.borrow_mut().outgoing.push_back(buf);
+        self.inner.borrow_mut().outgoing.push_back(buf.freeze());
     }
 
     fn local_link_addr(&self) -> MacAddress {

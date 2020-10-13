@@ -9,7 +9,7 @@ use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ethernet::{
+        ethernet2::{
             frame::{
                 Ethernet2Header,
                 EtherType2,
@@ -36,7 +36,7 @@ use std::{
 use crate::file_table::FileTable;
 
 #[cfg(test)]
-use crate::protocols::{ethernet::MacAddress};
+use crate::protocols::{ethernet2::MacAddress};
 #[cfg(test)]
 use hashbrown::HashMap;
 

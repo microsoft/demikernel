@@ -2,12 +2,15 @@
 // Licensed under the MIT license.
 
 use super::pdu::{
-    ArpOp,
+    ArpOperation,
     ArpPdu,
 };
 use crate::{
     fail::Fail,
-    protocols::ethernet,
+    protocols::ethernet2::frame::{
+        MIN_PAYLOAD_SIZE,
+        Ethernet2Header,
+    },
     runtime::Runtime,
     test_helpers,
 };
@@ -22,7 +25,6 @@ use hashbrown::HashMap;
 use must_let::must_let;
 use std::{
     future::Future,
-    io::Cursor,
     task::Poll,
     time::{
         Duration,
@@ -51,15 +53,15 @@ fn immediate_reply() {
 
     alice.rt().advance_clock(now);
     let request = alice.rt().pop_frame();
-    assert!(request.len() >= ethernet::MIN_PAYLOAD_SIZE);
+    assert!(request.len() >= MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(&request));
+    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(request.clone()));
     let cache = bob.export_arp_cache();
     assert!(cache.get(&test_helpers::ALICE_IPV4).is_none());
 
-    carrie.receive(&request).unwrap();
+    carrie.receive(request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
@@ -71,7 +73,7 @@ fn immediate_reply() {
     let reply = carrie.rt().pop_frame();
 
     info!("passing ARP reply back to alice...");
-    alice.receive(&reply).unwrap();
+    alice.receive(reply).unwrap();
     let now = now + Duration::from_micros(1);
     alice.rt().advance_clock(now);
     must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
@@ -103,16 +105,16 @@ fn slow_reply() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = alice.rt().pop_frame();
-    assert!(request.len() >= ethernet::MIN_PAYLOAD_SIZE);
+    assert!(request.len() >= MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
-    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(&request));
+    must_let!(let Err(Fail::Ignored { .. }) = bob.receive(request.clone()));
 
     let cache = bob.export_arp_cache();
     assert!(cache.get(&test_helpers::ALICE_IPV4).is_none());
 
-    carrie.receive(&request).unwrap();
+    carrie.receive(request).unwrap();
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     assert_eq!(
@@ -124,7 +126,7 @@ fn slow_reply() {
     let reply = carrie.rt().pop_frame();
 
     info!("passing ARP reply back to alice...");
-    alice.receive(&reply).unwrap();
+    alice.receive(reply).unwrap();
     now += Duration::from_micros(1);
     alice.rt().advance_clock(now);
     must_let!(let Poll::Ready(Ok(link_addr)) = Future::poll(fut.as_mut(), &mut ctx));
@@ -146,9 +148,10 @@ fn no_reply() {
     let mut fut = alice.arp_query(test_helpers::CARRIE_IPV4).boxed_local();
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
     let bytes = alice.rt().pop_frame();
-    let frame = ethernet::Frame::attach(bytes.as_slice()).unwrap();
-    let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
-    assert_eq!(arp.op, ArpOp::ArpRequest);
+
+    let (_, payload) = Ethernet2Header::parse(bytes).unwrap();
+    let arp = ArpPdu::parse(payload).unwrap();
+    assert_eq!(arp.operation, ArpOperation::Request);
 
     for i in 0..options.retry_count {
         now += options.request_timeout;
@@ -156,9 +159,9 @@ fn no_reply() {
         assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
         info!("no_reply(): retry #{}", i + 1);
         let bytes = alice.rt().pop_frame();
-        let frame = ethernet::Frame::attach(bytes.as_slice()).unwrap();
-        let arp = ArpPdu::read(&mut Cursor::new(frame.text())).unwrap();
-        assert_eq!(arp.op, ArpOp::ArpRequest);
+        let (_, payload) = Ethernet2Header::parse(bytes).unwrap();
+        let arp = ArpPdu::parse(payload).unwrap();
+        assert_eq!(arp.operation, ArpOperation::Request);
     }
 
     // timeout

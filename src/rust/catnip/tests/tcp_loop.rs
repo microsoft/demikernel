@@ -43,7 +43,7 @@ pub fn one_send_recv_round(
     let mut push_future = alice.tcp_push(alice_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.
     let mut pop_future = bob.tcp_pop(bob_fd);
@@ -54,7 +54,7 @@ pub fn one_send_recv_round(
     let mut push_future = bob.tcp_push(bob_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     bob.rt().poll_scheduler();
-    alice.receive(&bob.rt().pop_frame()).unwrap();
+    alice.receive(bob.rt().pop_frame()).unwrap();
 
     // Receive it on Alice's side.
     let mut pop_future = alice.tcp_pop(alice_fd);
@@ -83,15 +83,15 @@ fn tcp_loop() {
 
     // Send the SYN from Alice to Bob
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     // Send the SYN+ACK from Bob to Alice
     bob.rt().poll_scheduler();
-    alice.receive(&bob.rt().pop_frame()).unwrap();
+    alice.receive(bob.rt().pop_frame()).unwrap();
 
     // Send the ACK from Alice to Bob
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
@@ -103,7 +103,7 @@ fn tcp_loop() {
     let mut push_future = alice.tcp_push(alice_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), &mut ctx));
     alice.rt().poll_scheduler();
-    bob.receive(&alice.rt().pop_frame()).unwrap();
+    bob.receive(alice.rt().pop_frame()).unwrap();
 
     // Receive it on Bob's side.
     let mut pop_future = bob.tcp_pop(bob_fd);

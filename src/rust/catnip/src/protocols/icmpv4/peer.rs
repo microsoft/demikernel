@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::protocols::ethernet::frame::Ethernet2Header;
+use crate::protocols::ethernet2::frame::Ethernet2Header;
 use crate::protocols::ipv4::datagram::{Ipv4Protocol2};
 use super::{
     datagram::{
@@ -15,7 +15,7 @@ use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ethernet::frame::{EtherType2},
+        ethernet2::frame::{EtherType2},
         icmpv4::datagram::Icmpv4Message,
     },
 };

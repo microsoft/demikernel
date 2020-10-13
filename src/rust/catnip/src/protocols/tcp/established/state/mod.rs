@@ -11,11 +11,11 @@ use crate::{
     fail::Fail,
     protocols::{
         arp,
-        ethernet::MacAddress,
+        ethernet2::MacAddress,
         ipv4,
         tcp::segment::{TcpSegment, TcpHeader},
         ipv4::datagram::{Ipv4Header, Ipv4Protocol2},
-        ethernet::frame::{EtherType2, Ethernet2Header},
+        ethernet2::frame::{EtherType2, Ethernet2Header},
     },
     runtime::Runtime,
 };
