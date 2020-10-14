@@ -5,12 +5,14 @@ mod bindings;
 mod dpdk;
 mod runtime;
 
+use crate::runtime::DPDKRuntime;
 use anyhow::{
     format_err,
     Error,
 };
 use bytes::BytesMut;
 use catnip::{
+    libos::LibOS;
     operations::OperationResult,
     engine::{Engine, Protocol},
     logging,
@@ -60,11 +62,6 @@ use libc::{
     sockaddr_in,
     socklen_t,
 };
-
-struct LibOS {
-    engine: Engine<crate::runtime::LibOSRuntime>,
-    runtime: crate::runtime::LibOSRuntime,
-}
 
 pub type dmtr_qtoken_t = u64;
 
@@ -174,9 +171,9 @@ impl dmtr_qresult_t {
 }
 
 thread_local! {
-    static LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
+    static LIBOS: RefCell<Option<LibOS<DPDKRuntime>>> = RefCell::new(None);
 }
-fn with_libos<T>(f: impl FnOnce(&mut LibOS) -> T) -> T {
+fn with_libos<T>(f: impl FnOnce(&mut LibOS<DPDKRuntime>) -> T) -> T {
     LIBOS.with(|l| {
         let mut tls_libos = l.borrow_mut();
         f(tls_libos.as_mut().expect("Uninitialized engine"))
@@ -262,10 +259,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
         let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args)?;
         logging::initialize();
-        LibOS {
-            engine: Engine::new(runtime.clone())?,
-            runtime,
-        }
+        LibOS::new(runtime)?
     };
     let libos = match r {
         Ok(libos) => libos,
@@ -291,26 +285,18 @@ pub extern "C" fn dmtr_socket(
     socket_type: c_int,
     protocol: c_int,
 ) -> c_int {
-    if domain != libc::AF_INET {
-        eprintln!("Invalid domain: {:?}", domain);
-        return libc::EINVAL;
-    }
-    let engine_protocol = match socket_type {
-        libc::SOCK_STREAM => Protocol::Tcp,
-        libc::SOCK_DGRAM => Protocol::Udp,
-        _ => {
-            eprintln!("Invalid socket_type: {:?}", socket_type);
-            return libc::EINVAL;
-        },
-    };
-    if protocol != 0 {
-        eprintln!("Invalid protocol: {:?}", protocol);
-        return libc::EINVAL;
-    }
+
     with_libos(|libos| {
-        let fd = libos.engine.socket(engine_protocol) as c_int;
-        unsafe { *qd_out = fd };
-        0
+        match libos.socket(domain, socket_type, protocol) {
+            Ok(fd) => {
+                unsafe { *qd_out } = fd;
+                0
+            },
+            Err(e) => {
+                eprintln!("dmtr_socket failed: {:?}", e);
+                e.errno()
+            }
+        }
     })
 }
 
@@ -331,10 +317,10 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
             addr = libos.runtime.local_ipv4_addr();
         }
         let endpoint = ipv4::Endpoint::new(addr, port);
-        match libos.engine.bind(qd as FileDescriptor, endpoint) {
+        match libos.bind(qd as FileDescriptor, endpoint) {
             Ok(..) => 0,
             Err(e) => {
-                eprintln!("bind failed: {:?}", e);
+                eprintln!("dmtr_bind failed: {:?}", e);
                 e.errno()
             },
         }
@@ -344,10 +330,7 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 #[no_mangle]
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     with_libos(|libos| {
-        match libos
-            .engine
-            .listen(fd as FileDescriptor, backlog as usize)
-        {
+        match libos.listen(fd as FileDescriptor, backlog as usize) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("listen failed: {:?}", e);
@@ -360,10 +343,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.engine.accept(sockqd as FileDescriptor);
-        let handle = libos.runtime.scheduler.insert(future);
-        let qtoken = handle.into_raw();
-        unsafe { *qtok_out = qtoken };
+        unsafe { *qtok_out = libos.accept(sockqd as FileDescriptor) };
         0
     })
 }
@@ -387,10 +367,7 @@ pub extern "C" fn dmtr_connect(
     let endpoint = ipv4::Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        let future = libos.engine.connect(qd as FileDescriptor, endpoint);
-        let handle = libos.runtime.scheduler.insert(future);
-        let qtoken = handle.into_raw();
-        unsafe { *qtok_out = qtoken };
+        unsafe { *qtok_out = libos.connect(qd as FileDescriptor, endpoint) };
         0
     })
 }
@@ -398,10 +375,10 @@ pub extern "C" fn dmtr_connect(
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     with_libos(
-        |libos| match libos.engine.close(qd as FileDescriptor) {
+        |libos| match libos.close(qd as FileDescriptor) {
             Ok(..) => 0,
             Err(e) => {
-                eprintln!("close failed: {:?}", e);
+                eprintln!("dmtr_close failed: {:?}", e);
                 e.errno()
             },
         },
@@ -417,28 +394,9 @@ pub extern "C" fn dmtr_push(
     if sga.is_null() {
         return libc::EINVAL;
     }
-    let sga = unsafe { *sga };
-    if !sga.sga_buf.is_null() {
-        eprintln!("Non-NULL sga->sga_buf");
-        return libc::EINVAL;
-    }
-    let mut len = 0;
-    for i in 0..sga.sga_numsegs as usize {
-        len += sga.sga_segs[i].sgaseg_len;
-    }
-    let mut buf = BytesMut::with_capacity(len as usize);
-    for i in 0..sga.sga_numsegs as usize {
-        let seg = &sga.sga_segs[i];
-        let seg_slice =
-            unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
-        buf.extend_from_slice(seg_slice);
-    }
-    let buf = buf.freeze();
+    let sga = unsafe { &*sga };
     with_libos(|libos| {
-        let future = libos.engine.push(qd as FileDescriptor, buf);
-        let handle = libos.runtime.scheduler.insert(future);
-        let qtoken = handle.into_raw();
-        unsafe { *qtok_out = qtoken };
+        unsafe { *qtok_out = libos.push(qd as FileDescriptor, sga) };
         0
     })
 }
@@ -446,10 +404,7 @@ pub extern "C" fn dmtr_push(
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        let future = libos.engine.pop(qd as FileDescriptor);
-        let handle = libos.runtime.scheduler.insert(future);
-        let qtoken = handle.into_raw();
-        unsafe { *qtok_out = qtoken };
+        unsafe { *qtok_out = libos.pop(qd) };
         0
     })
 }
@@ -457,63 +412,28 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
-        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
-            None => return libc::EINVAL,
-            Some(h) => h,
-        };
-        if handle.has_completed() {
-            let (qd, r) = match libos.runtime.scheduler.take(handle) {
-                Operation::Tcp(f) => f.expect_result(),
-                Operation::Udp(f) => f.expect_result(),
-                Operation::Background(..) => return libc::EINVAL,
-            };
-            unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-            return 0;
+        match libos.poll(qt) {
+            None => libc::EAGAIN,
+            Some(r) => {
+                unsafe { *qr_out = r };
+                0
+            },
         }
-        libc::EAGAIN
     })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
-        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
-            None => return libc::EINVAL,
-            Some(h) => h,
-        };
-        drop(handle);
-	0
+        libos.drop_qtoken(qt);
+        0
     })
 }
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
-        let mut ctx = Context::from_waker(noop_waker_ref());
-        let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
-            None => return libc::EINVAL,
-            Some(h) => h,
-        };
-        loop {
-            libos.runtime.scheduler.poll(&mut ctx);
-            let engine = &mut libos.engine;
-            libos.runtime.receive(|p| {
-                if let Err(e) = engine.receive(p) {
-                    eprintln!("Dropped packet: {:?}", e);
-                }
-            });
-            libos.runtime.advance_clock(Instant::now());
-
-            if handle.has_completed() {
-                let (qd, r) = match libos.runtime.scheduler.take(handle) {
-                    Operation::Tcp(f) => f.expect_result(),
-                    Operation::Udp(f) => f.expect_result(),
-                    Operation::Background(..) => return libc::EINVAL,
-                };
-                unsafe { *qr_out = dmtr_qresult_t::pack(r, qd, qt) };
-                return 0;
-            }
-        }
+        unsafe { *qr_out = libos.wait(qt) };
     })
 }
 
@@ -526,38 +446,12 @@ pub extern "C" fn dmtr_wait_any(
 ) -> c_int {
     let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
     with_libos(|libos| {
-        let mut ctx = Context::from_waker(noop_waker_ref());
-        loop {
-            libos.runtime.scheduler.poll(&mut ctx);
-            let engine = &mut libos.engine;
-            libos.runtime.receive(|p| {
-                if let Err(e) = engine.receive(p) {
-                    eprintln!("Dropped packet: {:?}", e);
-                }
-            });
-            libos.runtime.advance_clock(Instant::now());
-
-            for (i, &qt) in qts.iter().enumerate() {
-                let handle = match libos.runtime.scheduler.from_raw_handle(qt) {
-                    Some(h) => h,
-                    None => return libc::EINVAL,
-                };
-                if handle.has_completed() {
-                    let (qd, r) = match libos.runtime.scheduler.take(handle) {
-                        Operation::Tcp(f) => f.expect_result(),
-                        Operation::Udp(f) => f.expect_result(),
-                        Operation::Background(..) => return libc::EINVAL,
-                    };
-                    unsafe {
-                        *qr_out = dmtr_qresult_t::pack(r, qd, qt);
-                        *ready_offset = i as c_int;
-                    }
-                    return 0;
-                }
-                // Leak the handle so we don't drop the future since we're just borrowing it.
-                handle.into_raw();
-            }
+        let (ix, qr) = libos.wait_any(qts);
+        unsafe {
+            *qr_out = qr;
+            *ready_offset = ix as c_int;
         }
+        0
     })
 }
 

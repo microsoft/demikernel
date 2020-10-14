@@ -89,6 +89,10 @@ impl<RT: Runtime> LibOS<RT> {
         self.rt.scheduler().insert(future).into_raw()
     }
 
+    pub fn drop_qtoken(&mut self, qt: QToken) {
+        drop(self.rt.scheduler().from_raw_handle(qt).unwrap());
+    }
+
     pub fn pop(&mut self, fd: FileDescriptor) -> QToken {
         let future = self.engine.pop(fd);
         self.rt.scheduler().insert(future).into_raw()

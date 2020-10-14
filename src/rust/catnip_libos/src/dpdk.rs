@@ -35,7 +35,7 @@ use crate::{
         RTE_MAX_ETHPORTS,
         RTE_MBUF_DEFAULT_BUF_SIZE,
     },
-    runtime::LibOSRuntime,
+    runtime::DPDKRuntime,
 };
 use anyhow::{
     bail,
@@ -65,7 +65,7 @@ macro_rules! expect_zero {
 pub fn initialize_dpdk(
     local_ipv4_addr: Ipv4Addr,
     eal_init_args: &[CString],
-) -> Result<LibOSRuntime, Error> {
+) -> Result<DPDKRuntime, Error> {
     let eal_init_refs = eal_init_args
         .iter()
         .map(|s| s.as_ptr() as *mut u8)
@@ -126,7 +126,7 @@ pub fn initialize_dpdk(
         Err(format_err!("Invalid mac address"))?;
     }
 
-    Ok(LibOSRuntime::new(
+    Ok(DPDKRuntime::new(
         local_link_addr,
         local_ipv4_addr,
         port_id,

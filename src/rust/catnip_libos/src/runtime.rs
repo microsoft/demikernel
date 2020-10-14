@@ -55,7 +55,7 @@ impl TimerPtr for TimerRc {
 }
 
 #[derive(Clone)]
-pub struct LibOSRuntime {
+pub struct DPDKRuntime {
     inner: Rc<RefCell<Inner>>,
     scheduler: Scheduler<Operation<Self>>,
 }
@@ -77,7 +77,7 @@ extern "C" {
     ) -> u16;
 }
 
-impl LibOSRuntime {
+impl DPDKRuntime {
     pub fn new(
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
@@ -123,7 +123,7 @@ struct Inner {
     buffered: [Bytes; MAX_QUEUE_DEPTH],
 }
 
-impl Runtime for LibOSRuntime {
+impl Runtime for DPDKRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
 
     fn transmit(&self, buf: impl PacketBuf) {

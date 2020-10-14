@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
         assert(reinterpret_cast<uint8_t *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf)[0] == FILL_CHAR);
 
         //fprintf(stderr, "[%lu] client: rcvd\t%s\tbuf size:\t%d\n", i, reinterpret_cast<char *>(qr.qr_value.sga.sga_segs[0].sgaseg_buf), qr.qr_value.sga.sga_segs[0].sgaseg_len);
-        free(qr.qr_value.sga.sga_buf);
+        dmtr_sgafree(&qr.qr_value.sga);
     }
 
     DMTR_OK(dmtr_dump_latency(stderr, latency));
