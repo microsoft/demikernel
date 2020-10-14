@@ -2,23 +2,48 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(try_blocks)]
 
-use std::io::Read;
-use catnip::runtime::Runtime;
-use std::fs::File;
-use std::{mem, slice};
-use clap::{App, Arg};
-use yaml_rust::{Yaml, YamlLoader};
-use catnip::file_table::FileDescriptor;
-use std::cell::RefCell;
-use std::ffi::CStr;
-use std::convert::TryFrom;
-use catnip::libos::LibOS;
-use catnip::interop::{dmtr_qresult_t, dmtr_qtoken_t, dmtr_sgarray_t};
-use libc::{sockaddr, c_char, socklen_t, c_int};
-use catnip::protocols::{ip, ipv4};
-use std::ffi::CString;
-use std::net::Ipv4Addr;
-use catnip::logging;
+use catnip::{
+    file_table::FileDescriptor,
+    interop::{
+        dmtr_qresult_t,
+        dmtr_qtoken_t,
+        dmtr_sgarray_t,
+    },
+    libos::LibOS,
+    logging,
+    protocols::{
+        ip,
+        ipv4,
+    },
+    runtime::Runtime,
+};
+use clap::{
+    App,
+    Arg,
+};
+use libc::{
+    c_char,
+    c_int,
+    sockaddr,
+    socklen_t,
+};
+use std::{
+    cell::RefCell,
+    convert::TryFrom,
+    ffi::{
+        CStr,
+        CString,
+    },
+    fs::File,
+    io::Read,
+    mem,
+    net::Ipv4Addr,
+    slice,
+};
+use yaml_rust::{
+    Yaml,
+    YamlLoader,
+};
 
 mod bindings;
 mod dpdk;
@@ -145,18 +170,15 @@ pub extern "C" fn dmtr_socket(
     socket_type: c_int,
     protocol: c_int,
 ) -> c_int {
-
-    with_libos(|libos| {
-        match libos.socket(domain, socket_type, protocol) {
-            Ok(fd) => {
-                unsafe { *qd_out = fd as c_int };
-                0
-            },
-            Err(e) => {
-                eprintln!("dmtr_socket failed: {:?}", e);
-                e.errno()
-            }
-        }
+    with_libos(|libos| match libos.socket(domain, socket_type, protocol) {
+        Ok(fd) => {
+            unsafe { *qd_out = fd as c_int };
+            0
+        },
+        Err(e) => {
+            eprintln!("dmtr_socket failed: {:?}", e);
+            e.errno()
+        },
     })
 }
 
@@ -189,15 +211,15 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 
 #[no_mangle]
 pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
-    with_libos(|libos| {
-        match libos.listen(fd as FileDescriptor, backlog as usize) {
+    with_libos(
+        |libos| match libos.listen(fd as FileDescriptor, backlog as usize) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("listen failed: {:?}", e);
                 e.errno()
             },
-        }
-    })
+        },
+    )
 }
 
 #[no_mangle]
@@ -234,15 +256,13 @@ pub extern "C" fn dmtr_connect(
 
 #[no_mangle]
 pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
-    with_libos(
-        |libos| match libos.close(qd as FileDescriptor) {
-            Ok(..) => 0,
-            Err(e) => {
-                eprintln!("dmtr_close failed: {:?}", e);
-                e.errno()
-            },
+    with_libos(|libos| match libos.close(qd as FileDescriptor) {
+        Ok(..) => 0,
+        Err(e) => {
+            eprintln!("dmtr_close failed: {:?}", e);
+            e.errno()
         },
-    )
+    })
 }
 
 #[no_mangle]
@@ -271,14 +291,12 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    with_libos(|libos| {
-        match libos.poll(qt) {
-            None => libc::EAGAIN,
-            Some(r) => {
-                unsafe { *qr_out = r };
-                0
-            },
-        }
+    with_libos(|libos| match libos.poll(qt) {
+        None => libc::EAGAIN,
+        Some(r) => {
+            unsafe { *qr_out = r };
+            0
+        },
     })
 }
 
@@ -294,7 +312,7 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
         unsafe { *qr_out = libos.wait(qt) };
-	0
+        0
     })
 }
 

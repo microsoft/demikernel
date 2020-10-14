@@ -29,8 +29,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::Operation,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,
@@ -76,7 +76,9 @@ impl<RT: Runtime> Engine<RT> {
     pub fn receive(&mut self, bytes: Bytes) -> Result<(), Fail> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         if self.rt.local_link_addr() != header.dst_addr && !header.dst_addr.is_broadcast() {
-            return Err(Fail::Ignored { details: "Physical dst_addr mismatch" });
+            return Err(Fail::Ignored {
+                details: "Physical dst_addr mismatch",
+            });
         }
         match header.ether_type {
             EtherType2::Arp => self.arp.receive(payload),

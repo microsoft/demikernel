@@ -1,14 +1,14 @@
 #![feature(const_fn, const_mut_refs, const_type_name)]
 
-use catnip::sync::{
-    Bytes,
-    BytesMut,
-};
 use catnip::{
     file_table::FileDescriptor,
     protocols::{
         ip,
         ipv4,
+    },
+    sync::{
+        Bytes,
+        BytesMut,
     },
     test_helpers,
 };

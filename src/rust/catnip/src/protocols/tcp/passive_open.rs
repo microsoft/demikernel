@@ -31,8 +31,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use hashbrown::{
     HashMap,
     HashSet,

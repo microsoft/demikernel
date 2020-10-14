@@ -20,8 +20,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use futures::FutureExt;
 use hashbrown::HashMap;
 use std::{

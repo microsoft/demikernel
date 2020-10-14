@@ -30,8 +30,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     convert::TryInto,

@@ -17,14 +17,14 @@ use crate::{
         Scheduler,
         SchedulerHandle,
     },
+    sync::{
+        Bytes,
+        BytesMut,
+    },
     timer::{
         Timer,
         TimerRc,
     },
-};
-use crate::sync::{
-    Bytes,
-    BytesMut,
 };
 use futures::{
     task::noop_waker_ref,

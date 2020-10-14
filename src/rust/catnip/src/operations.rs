@@ -1,8 +1,8 @@
 use crate::{
     fail::Fail,
     file_table::FileDescriptor,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     future::Future,
     pin::Pin,

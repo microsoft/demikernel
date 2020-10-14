@@ -6,7 +6,12 @@ use crate::{
         ethernet2::MacAddress,
         tcp,
     },
-    scheduler::{Scheduler, Operation, SchedulerHandle},
+    scheduler::{
+        Operation,
+        Scheduler,
+        SchedulerHandle,
+    },
+    sync::Bytes,
 };
 use rand::distributions::{
     Distribution,
@@ -20,7 +25,6 @@ use std::{
         Instant,
     },
 };
-use crate::sync::Bytes;
 
 pub trait PacketBuf {
     fn compute_size(&self) -> usize;

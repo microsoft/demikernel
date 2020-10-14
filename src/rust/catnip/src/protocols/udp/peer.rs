@@ -30,8 +30,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use futures_intrusive::{
     buffer::GrowingHeapBuf,
     channel::shared::{
@@ -169,14 +169,20 @@ impl<RT: Runtime> UdpPeer<RT> {
             Some(Socket { ref mut local, .. }) if local.is_none() => {
                 *local = Some(addr);
             },
-            _ => return Err(Fail::Malformed { details: "Invalid file descriptor on bind" }),
-
+            _ => {
+                return Err(Fail::Malformed {
+                    details: "Invalid file descriptor on bind",
+                })
+            },
         }
         let listener = Listener {
             buf: VecDeque::new(),
             waker: None,
         };
-        assert!(inner.bound.insert(addr, Rc::new(RefCell::new(listener))).is_none());
+        assert!(inner
+            .bound
+            .insert(addr, Rc::new(RefCell::new(listener)))
+            .is_none());
         Ok(())
     }
 
@@ -187,7 +193,9 @@ impl<RT: Runtime> UdpPeer<RT> {
                 *remote = Some(addr);
                 Ok(())
             },
-            _ => Err(Fail::Malformed { details: "Invalid file descriptor on connect" }),
+            _ => Err(Fail::Malformed {
+                details: "Invalid file descriptor on connect",
+            }),
         }
     }
 
@@ -213,10 +221,15 @@ impl<RT: Runtime> UdpPeer<RT> {
         let _s = static_span!();
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
-            Some(Socket { local, remote: Some(remote) }) => (*local, *remote),
+            Some(Socket {
+                local,
+                remote: Some(remote),
+            }) => (*local, *remote),
             _ => {
-	            return Err(Fail::Malformed { details: "Invalid file descriptor on push" })
-	        },
+                return Err(Fail::Malformed {
+                    details: "Invalid file descriptor on push",
+                })
+            },
         };
 
         // First, try to send the packet immediately.
@@ -250,17 +263,14 @@ impl<RT: Runtime> UdpPeer<RT> {
     pub fn pop(&self, fd: FileDescriptor) -> PopFuture {
         let inner = self.inner.borrow();
         let listener = match inner.sockets.get(&fd) {
-            Some(Socket { local: Some(local), .. }) => {
-                Ok(inner.bound.get(&local).unwrap().clone())
-            }
+            Some(Socket {
+                local: Some(local), ..
+            }) => Ok(inner.bound.get(&local).unwrap().clone()),
             _ => Err(Fail::Malformed {
                 details: "Invalid file descriptor",
-            })
+            }),
         };
-        PopFuture {
-            listener,
-            fd,
-        }
+        PopFuture { listener, fd }
     }
 
     pub fn close(&self, fd: FileDescriptor) -> Result<(), Fail> {

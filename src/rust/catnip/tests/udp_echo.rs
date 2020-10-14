@@ -1,15 +1,15 @@
-use libc;
-use std::convert::TryFrom;
-use std::thread;
-use std::env;
 use catnip::{
+    interop::{
+        dmtr_opcode_t,
+        dmtr_sgarray_t,
+    },
     libos::LibOS,
     protocols::{
         arp,
         ethernet2::MacAddress,
-        tcp,
         ip,
         ipv4,
+        tcp,
     },
     runtime::{
         PacketBuf,
@@ -20,28 +20,24 @@ use catnip::{
         Scheduler,
         SchedulerHandle,
     },
-    interop::{
-        dmtr_opcode_t,
-        dmtr_sgarray_t,
+    sync::{
+        Bytes,
+        BytesMut,
+    },
+    test_helpers::{
+        ALICE_IPV4,
+        ALICE_MAC,
+        BOB_IPV4,
+        BOB_MAC,
     },
     timer::{
         Timer,
         TimerRc,
     },
-    test_helpers::{
-        ALICE_MAC,
-        ALICE_IPV4,
-        BOB_MAC,
-        BOB_IPV4,
-    },
 };
-use catnip::sync::{
-    Bytes,
-    BytesMut,
-};
-use futures::{
-    FutureExt,
-};
+use crossbeam_channel;
+use futures::FutureExt;
+use libc;
 use rand::{
     distributions::{
         Distribution,
@@ -53,15 +49,17 @@ use rand::{
 };
 use std::{
     cell::RefCell,
+    convert::TryFrom,
+    env,
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
+    thread,
     time::{
         Duration,
         Instant,
     },
 };
-use crossbeam_channel;
 
 #[derive(Clone)]
 pub struct TestRuntime {
@@ -83,7 +81,6 @@ impl TestRuntime {
         arp_options.request_timeout = Duration::from_secs(1);
         arp_options.initial_values.insert(ALICE_IPV4, ALICE_MAC);
         arp_options.initial_values.insert(BOB_IPV4, BOB_MAC);
-
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -121,7 +118,11 @@ impl Runtime for TestRuntime {
         let size = pkt.compute_size();
         let mut buf = BytesMut::zeroed(size);
         pkt.serialize(&mut buf[..]);
-        self.inner.borrow_mut().outgoing.try_send(buf.freeze()).unwrap();
+        self.inner
+            .borrow_mut()
+            .outgoing
+            .try_send(buf.freeze())
+            .unwrap();
     }
 
     fn receive(&self) -> Option<Bytes> {
@@ -299,5 +300,4 @@ fn udp_echo() {
         Duration::from_nanos(h.percentile(0.999).unwrap())
     );
     println!("Max:   {:?}", Duration::from_nanos(h.maximum().unwrap()));
-
 }

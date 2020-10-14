@@ -1,9 +1,11 @@
-use crate::fail::Fail;
+use crate::{
+    fail::Fail,
+    sync::Bytes,
+};
 use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use crate::sync::Bytes;
 use num_traits::FromPrimitive;
 use std::{
     convert::{

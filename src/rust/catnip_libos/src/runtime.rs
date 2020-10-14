@@ -4,24 +4,32 @@ use crate::bindings::{
     rte_mbuf,
     rte_mempool,
 };
-use std::mem::MaybeUninit;
-use std::future::Future;
-use futures::FutureExt;
-use catnip::sync::{BytesMut, Bytes};
-use catnip::scheduler::{Scheduler, SchedulerHandle, Operation};
 use catnip::{
     protocols::{
         arp,
         ethernet2::MacAddress,
         tcp,
     },
-    runtime::{PacketBuf, Runtime},
+    runtime::{
+        PacketBuf,
+        Runtime,
+    },
+    scheduler::{
+        Operation,
+        Scheduler,
+        SchedulerHandle,
+    },
+    sync::{
+        Bytes,
+        BytesMut,
+    },
     timer::{
         Timer,
         TimerPtr,
         WaitFuture,
     },
 };
+use futures::FutureExt;
 use rand::{
     distributions::{
         Distribution,
@@ -33,7 +41,9 @@ use rand::{
 };
 use std::{
     cell::RefCell,
+    future::Future,
     mem,
+    mem::MaybeUninit,
     net::Ipv4Addr,
     ptr,
     rc::Rc,
@@ -89,9 +99,13 @@ impl DPDKRuntime {
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
 
-    	let mut buffered: MaybeUninit<[Bytes; MAX_QUEUE_DEPTH]> = MaybeUninit::uninit();
-	for i in 0..MAX_QUEUE_DEPTH {	    
-	    unsafe { (buffered.as_mut_ptr() as *mut Bytes).offset(i as isize).write(Bytes::empty()) };
+        let mut buffered: MaybeUninit<[Bytes; MAX_QUEUE_DEPTH]> = MaybeUninit::uninit();
+        for i in 0..MAX_QUEUE_DEPTH {
+            unsafe {
+                (buffered.as_mut_ptr() as *mut Bytes)
+                    .offset(i as isize)
+                    .write(Bytes::empty())
+            };
         }
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -138,7 +152,7 @@ impl Runtime for DPDKRuntime {
         let mut pkt = unsafe { catnip_libos_alloc_pkt(pool) };
         assert!(!pkt.is_null());
 
-	    let size = buf.compute_size();
+        let size = buf.compute_size();
 
         let rte_pktmbuf_headroom = 128;
         let buf_len = unsafe { (*pkt).buf_len } - rte_pktmbuf_headroom;
@@ -146,7 +160,7 @@ impl Runtime for DPDKRuntime {
 
         let out_ptr = unsafe { ((*pkt).buf_addr as *mut u8).offset((*pkt).data_off as isize) };
         let out_slice = unsafe { slice::from_raw_parts_mut(out_ptr, buf_len as usize) };
-	    buf.serialize(&mut out_slice[..size]);
+        buf.serialize(&mut out_slice[..size]);
         let num_sent = unsafe {
             (*pkt).data_len = size as u16;
             (*pkt).pkt_len = size as u32;
@@ -163,7 +177,7 @@ impl Runtime for DPDKRuntime {
         loop {
             if inner.num_buffered > 0 {
                 inner.num_buffered -= 1;
-		let ix = inner.num_buffered;
+                let ix = inner.num_buffered;
                 return Some(mem::replace(&mut inner.buffered[ix], Bytes::empty()));
             }
 
@@ -172,7 +186,12 @@ impl Runtime for DPDKRuntime {
 
             // rte_eth_rx_burst is declared `inline` in the header.
             let nb_rx = unsafe {
-                catnip_libos_eth_rx_burst(dpdk_port, 0, packets.as_mut_ptr(), MAX_QUEUE_DEPTH as u16)
+                catnip_libos_eth_rx_burst(
+                    dpdk_port,
+                    0,
+                    packets.as_mut_ptr(),
+                    MAX_QUEUE_DEPTH as u16,
+                )
             };
             assert!(nb_rx as usize <= MAX_QUEUE_DEPTH);
             if nb_rx == 0 {
@@ -185,11 +204,12 @@ impl Runtime for DPDKRuntime {
 
             for &packet in &packets[..nb_rx as usize] {
                 // auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
-                let p =
-                    unsafe { ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize) };
+                let p = unsafe {
+                    ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize)
+                };
 
                 let data = unsafe { slice::from_raw_parts(p, (*packet).data_len as usize) };
-		let ix = inner.num_buffered;
+                let ix = inner.num_buffered;
                 inner.buffered[ix] = BytesMut::from(data).freeze();
                 inner.num_buffered += 1;
 
@@ -245,7 +265,8 @@ impl Runtime for DPDKRuntime {
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(Operation::Background(future.boxed_local()))
+        self.scheduler
+            .insert(Operation::Background(future.boxed_local()))
     }
 
     fn scheduler(&self) -> &Scheduler<Operation<Self>> {

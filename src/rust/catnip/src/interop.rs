@@ -1,14 +1,19 @@
 #![allow(non_camel_case_types)]
 
-use std::slice;
+use crate::{
+    file_table::FileDescriptor,
+    operations::OperationResult,
+};
 use libc::{
     c_int,
     c_void,
     sockaddr_in,
 };
-use std::{mem, ptr};
-use crate::operations::OperationResult;
-use crate::file_table::FileDescriptor;
+use std::{
+    mem,
+    ptr,
+    slice,
+};
 
 pub type dmtr_qtoken_t = u64;
 

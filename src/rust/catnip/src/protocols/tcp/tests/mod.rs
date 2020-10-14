@@ -3,9 +3,9 @@ use crate::{
         ip,
         ipv4,
     },
+    sync::BytesMut,
     test_helpers,
 };
-use crate::sync::BytesMut;
 use futures::task::noop_waker_ref;
 use must_let::must_let;
 use std::{

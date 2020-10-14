@@ -15,13 +15,13 @@ use crate::{
         tcp::SeqNumber,
     },
     runtime::PacketBuf,
+    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
     NetworkEndian,
     ReadBytesExt,
 };
-use crate::sync::Bytes;
 use std::{
     cmp,
     convert::{

@@ -1,8 +1,11 @@
 #![allow(unused)]
 use futures::task::AtomicWaker;
-use std::fmt;
-use std::ops::{Deref, DerefMut};
 use std::{
+    fmt,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     sync::{
         atomic::{
             AtomicU64,

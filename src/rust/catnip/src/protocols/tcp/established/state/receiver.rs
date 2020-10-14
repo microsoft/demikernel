@@ -2,8 +2,8 @@ use crate::{
     collections::watched::WatchedValue,
     fail::Fail,
     protocols::tcp::SeqNumber,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     collections::VecDeque,

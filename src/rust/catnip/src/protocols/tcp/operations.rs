@@ -10,8 +10,8 @@ use crate::{
         ResultFuture,
     },
     runtime::Runtime,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     cell::RefCell,
     fmt,

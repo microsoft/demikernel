@@ -5,6 +5,7 @@ use futures_intrusive::intrusive_double_linked_list::{
 };
 use std::{
     cell::RefCell,
+    fmt,
     future::Future,
     pin::Pin,
     task::{
@@ -13,7 +14,6 @@ use std::{
         Waker,
     },
 };
-use std::fmt;
 
 #[derive(Eq, PartialEq)]
 enum WatchState {

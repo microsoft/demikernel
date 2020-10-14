@@ -12,12 +12,12 @@ use crate::{
         },
     },
     runtime::PacketBuf,
+    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use crate::sync::Bytes;
 use std::{
     cmp,
     convert::{

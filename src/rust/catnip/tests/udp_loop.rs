@@ -1,12 +1,12 @@
 #![feature(const_fn, const_mut_refs, const_type_name)]
 
-use catnip::sync::BytesMut;
 use catnip::{
     engine::Protocol,
     protocols::{
         ip,
         ipv4,
     },
+    sync::BytesMut,
     test_helpers,
 };
 use futures::{

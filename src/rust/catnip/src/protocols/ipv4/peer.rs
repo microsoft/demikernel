@@ -17,8 +17,8 @@ use crate::{
         udp,
     },
     runtime::Runtime,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
     future::Future,
     net::Ipv4Addr,

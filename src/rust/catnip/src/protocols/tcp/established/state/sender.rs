@@ -3,13 +3,13 @@ use crate::{
     collections::watched::WatchedValue,
     fail::Fail,
     protocols::tcp::SeqNumber,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::{
-    fmt,
     cell::RefCell,
     collections::VecDeque,
     convert::TryInto,
+    fmt,
     num::Wrapping,
     time::{
         Duration,

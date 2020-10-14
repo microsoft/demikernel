@@ -21,12 +21,12 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
+    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use crate::sync::Bytes;
 use futures::{
     FutureExt,
     StreamExt,

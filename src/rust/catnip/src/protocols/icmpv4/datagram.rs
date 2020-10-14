@@ -10,12 +10,12 @@ use crate::{
         ipv4::datagram::Ipv4Header,
     },
     runtime::PacketBuf,
+    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
     NetworkEndian,
 };
-use crate::sync::Bytes;
 use std::{
     cmp,
     convert::TryInto,

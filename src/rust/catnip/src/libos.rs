@@ -1,16 +1,29 @@
-use crate::sync::{BytesMut};
-use std::task::Context;
-use std::slice;
-use crate::engine::{Engine, Protocol};
-use crate::fail::Fail;
-use crate::file_table::FileDescriptor;
-use crate::runtime::Runtime;
-use crate::protocols::ipv4::Endpoint;
-use crate::scheduler::{Operation, SchedulerHandle};
-use crate::interop::{dmtr_sgarray_t, dmtr_qresult_t};
+use crate::{
+    engine::{
+        Engine,
+        Protocol,
+    },
+    fail::Fail,
+    file_table::FileDescriptor,
+    interop::{
+        dmtr_qresult_t,
+        dmtr_sgarray_t,
+    },
+    protocols::ipv4::Endpoint,
+    runtime::Runtime,
+    scheduler::{
+        Operation,
+        SchedulerHandle,
+    },
+    sync::BytesMut,
+};
 use futures::task::noop_waker_ref;
-use std::time::Instant;
 use libc::c_int;
+use std::{
+    slice,
+    task::Context,
+    time::Instant,
+};
 
 const TIMER_RESOLUTION: usize = 64;
 
@@ -37,17 +50,30 @@ impl<RT: Runtime> LibOS<RT> {
         &self.rt
     }
 
-    pub fn socket(&mut self, domain: c_int, socket_type: c_int, protocol: c_int) -> Result<FileDescriptor, Fail> {
+    pub fn socket(
+        &mut self,
+        domain: c_int,
+        socket_type: c_int,
+        protocol: c_int,
+    ) -> Result<FileDescriptor, Fail> {
         if domain != libc::AF_INET {
-            return Err(Fail::Invalid { details: "Invalid domain" });
+            return Err(Fail::Invalid {
+                details: "Invalid domain",
+            });
         }
         let engine_protocol = match socket_type {
             libc::SOCK_STREAM => Protocol::Tcp,
             libc::SOCK_DGRAM => Protocol::Udp,
-            _ => return Err(Fail::Invalid { details: "Invalid socket type" }),
+            _ => {
+                return Err(Fail::Invalid {
+                    details: "Invalid socket type",
+                })
+            },
         };
         if protocol != 0 {
-            return Err(Fail::Invalid { details: "Invalid protocol" });
+            return Err(Fail::Invalid {
+                details: "Invalid protocol",
+            });
         }
         Ok(self.engine.socket(engine_protocol))
     }
@@ -83,8 +109,9 @@ impl<RT: Runtime> LibOS<RT> {
         let mut pos = 0;
         for i in 0..sga.sga_numsegs as usize {
             let seg = &sga.sga_segs[i];
-            let seg_slice =
-                unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
+            let seg_slice = unsafe {
+                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
+            };
             buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
             pos += seg_slice.len();
         }

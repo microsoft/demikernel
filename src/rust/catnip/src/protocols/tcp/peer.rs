@@ -39,8 +39,8 @@ use crate::{
         },
     },
     runtime::Runtime,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,

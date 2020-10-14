@@ -2,8 +2,8 @@ use super::super::state::ControlBlock;
 use crate::{
     fail::Fail,
     runtime::Runtime,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use futures::{
     future::{
         self,

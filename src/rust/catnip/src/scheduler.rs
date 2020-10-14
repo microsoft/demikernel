@@ -168,7 +168,8 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
             if notified != 0 {
                 for subpage_ix in iter_set_bits(notified) {
                     let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
-                    let waker = unsafe { Waker::from_raw(inner.pages[page_ix].raw_waker(subpage_ix)) };
+                    let waker =
+                        unsafe { Waker::from_raw(inner.pages[page_ix].raw_waker(subpage_ix)) };
                     let mut sub_ctx = Context::from_waker(&waker);
 
                     let pinned_ref = inner.slab.get_pin_mut(ix).unwrap();

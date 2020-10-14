@@ -28,8 +28,8 @@ use crate::{
         },
     },
     runtime::Runtime,
+    sync::Bytes,
 };
-use crate::sync::Bytes;
 use std::time::Duration;
 
 pub struct ControlBlock<RT: Runtime> {

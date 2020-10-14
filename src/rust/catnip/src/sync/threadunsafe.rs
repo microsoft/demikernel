@@ -1,9 +1,12 @@
 #![allow(unused)]
-use std::fmt;
-use std::ops::{Deref, DerefMut};
 use std::{
     cell::UnsafeCell,
+    fmt,
     mem,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     rc::Rc,
     task::Waker,
 };
