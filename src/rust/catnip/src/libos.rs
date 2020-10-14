@@ -33,6 +33,10 @@ impl<RT: Runtime> LibOS<RT> {
         })
     }
 
+    pub fn rt(&self) -> &RT {
+        &self.rt
+    }
+
     pub fn socket(&mut self, domain: c_int, socket_type: c_int, protocol: c_int) -> Result<FileDescriptor, Fail> {
         if domain != libc::AF_INET {
             return Err(Fail::Invalid { details: "Invalid domain" });

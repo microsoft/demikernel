@@ -120,7 +120,7 @@ impl fmt::Debug for Bytes {
 unsafe impl Send for Bytes {}
 
 impl Bytes {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             buf: None,
             offset: 0,

@@ -4,6 +4,7 @@ use crate::bindings::{
     rte_mbuf,
     rte_mempool,
 };
+use std::mem::MaybeUninit;
 use std::future::Future;
 use futures::FutureExt;
 use catnip::sync::{BytesMut, Bytes};
@@ -87,6 +88,11 @@ impl DPDKRuntime {
         let mut rng = rand::thread_rng();
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
+
+    	let mut buffered: MaybeUninit<[Bytes; MAX_QUEUE_DEPTH]> = MaybeUninit::uninit();
+	for i in 0..MAX_QUEUE_DEPTH {	    
+	    unsafe { (buffered.as_mut_ptr() as *mut Bytes).offset(i as isize).write(Bytes::empty()) };
+        }
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
@@ -99,7 +105,7 @@ impl DPDKRuntime {
             dpdk_mempool,
 
             num_buffered: 0,
-            buffered: [Bytes::empty(); MAX_QUEUE_DEPTH],
+            buffered: unsafe { buffered.assume_init() },
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
@@ -152,22 +158,23 @@ impl Runtime for DPDKRuntime {
         assert_eq!(num_sent, 1);
     }
 
-    pub fn receive(&self) -> Option<Bytes> {
+    fn receive(&self) -> Option<Bytes> {
         let mut inner = self.inner.borrow_mut();
         loop {
             if inner.num_buffered > 0 {
                 inner.num_buffered -= 1;
-                return Some(mem::replace(&mut inner.buffered[inner.num_buffered], Bytes::new()));
+		let ix = inner.num_buffered;
+                return Some(mem::replace(&mut inner.buffered[ix], Bytes::empty()));
             }
 
-            let dpdk_port = { self.inner.borrow().dpdk_port_id };
+            let dpdk_port = inner.dpdk_port_id;
             let mut packets: [*mut rte_mbuf; MAX_QUEUE_DEPTH] = unsafe { mem::zeroed() };
 
             // rte_eth_rx_burst is declared `inline` in the header.
             let nb_rx = unsafe {
                 catnip_libos_eth_rx_burst(dpdk_port, 0, packets.as_mut_ptr(), MAX_QUEUE_DEPTH as u16)
             };
-            assert!(nb_rx <= MAX_QUEUE_DEPTH);
+            assert!(nb_rx as usize <= MAX_QUEUE_DEPTH);
             if nb_rx == 0 {
                 return None;
             }
@@ -182,7 +189,8 @@ impl Runtime for DPDKRuntime {
                     unsafe { ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize) };
 
                 let data = unsafe { slice::from_raw_parts(p, (*packet).data_len as usize) };
-                inner.buffered[inner.num_buffered] = BytesMut::from(data).freeze();
+		let ix = inner.num_buffered;
+                inner.buffered[ix] = BytesMut::from(data).freeze();
                 inner.num_buffered += 1;
 
                 unsafe { catnip_libos_free_pkt(packet as *const _ as *mut _) };
