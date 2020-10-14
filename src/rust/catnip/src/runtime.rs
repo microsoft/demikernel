@@ -6,7 +6,7 @@ use crate::{
         ethernet2::MacAddress,
         tcp,
     },
-    scheduler::SchedulerHandle,
+    scheduler::{Scheduler, Operation, SchedulerHandle},
 };
 use rand::distributions::{
     Distribution,
@@ -20,6 +20,7 @@ use std::{
         Instant,
     },
 };
+use crate::sync::Bytes;
 
 pub trait PacketBuf {
     fn compute_size(&self) -> usize;
@@ -29,6 +30,7 @@ pub trait PacketBuf {
 pub trait Runtime: Clone + Unpin + 'static {
     fn advance_clock(&self, now: Instant);
     fn transmit(&self, pkt: impl PacketBuf);
+    fn receive(&self) -> Option<Bytes>;
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;
@@ -45,4 +47,5 @@ pub trait Runtime: Clone + Unpin + 'static {
         Standard: Distribution<T>;
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle;
+    fn scheduler(&self) -> &Scheduler<Operation<Self>>;
 }

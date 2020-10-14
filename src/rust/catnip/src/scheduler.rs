@@ -34,7 +34,7 @@ use unicycle::pin_slab::PinSlab;
 pub enum Operation<RT: Runtime> {
     // These are all stored inline to prevent hitting the allocator on insertion/removal.
     Tcp(TcpOperation<RT>),
-    Udp(UdpOperation<RT>),
+    Udp(UdpOperation),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output = ()>>>),
@@ -151,40 +151,49 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         }
     }
 
-    pub fn poll(&self, ctx: &mut Context) {
+    #[inline(never)]
+    pub fn poll(&self) {
         let _s = static_span!();
         let mut inner = self.inner.borrow_mut();
-        {
-            let _t = static_span!("register_waker");
-            inner.root_waker.register(ctx.waker());
-        }
+        // {
+        //     let _t = static_span!("register_waker");
+        //     inner.root_waker.register(ctx.waker());
+        // }
 
         for page_ix in 0..inner.pages.len() {
-            for subpage_ix in iter_set_bits(inner.pages[page_ix].take_notified()) {
-                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
-                let waker = unsafe { Waker::from_raw(inner.pages[page_ix].raw_waker(subpage_ix)) };
-                let mut sub_ctx = Context::from_waker(&waker);
+            let (notified, dropped) = {
+                let page = &mut inner.pages[page_ix];
+                (page.take_notified(), page.take_dropped())
+            };
+            if notified != 0 {
+                for subpage_ix in iter_set_bits(notified) {
+                    let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
+                    let waker = unsafe { Waker::from_raw(inner.pages[page_ix].raw_waker(subpage_ix)) };
+                    let mut sub_ctx = Context::from_waker(&waker);
 
-                let pinned_ref = inner.slab.get_pin_mut(ix).unwrap();
-                let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
+                    let pinned_ref = inner.slab.get_pin_mut(ix).unwrap();
+                    let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
 
-                drop(inner);
-                let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
-                let poll_result = {
-                    let _u = static_span!("poll_future");
-                    Future::poll(pinned_ref, &mut sub_ctx)
-                };
-                inner = self.inner.borrow_mut();
+                    drop(inner);
+                    let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
+                    let poll_result = {
+                        let _u = static_span!("poll_future");
+                        Future::poll(pinned_ref, &mut sub_ctx)
+                    };
+                    inner = self.inner.borrow_mut();
 
-                match poll_result {
-                    Poll::Ready(()) => inner.pages[page_ix].mark_completed(subpage_ix),
-                    Poll::Pending => (),
+                    match poll_result {
+                        Poll::Ready(()) => inner.pages[page_ix].mark_completed(subpage_ix),
+                        Poll::Pending => (),
+                    }
                 }
             }
-            for subpage_ix in iter_set_bits(inner.pages[page_ix].take_dropped()) {
-                let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
-                inner.slab.remove(ix);
-                inner.pages[page_ix].clear(subpage_ix);
+            if dropped != 0 {
+                for subpage_ix in iter_set_bits(dropped) {
+                    let ix = page_ix * WAKER_PAGE_SIZE + subpage_ix;
+                    inner.slab.remove(ix);
+                    inner.pages[page_ix].clear(subpage_ix);
+                }
             }
         }
     }

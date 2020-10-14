@@ -85,7 +85,7 @@ struct Inner<RT: Runtime> {
     file_table: FileTable,
 
     sockets: HashMap<FileDescriptor, Socket>,
-    bound: HashMap<ipv4::Endpoint, Listener>,
+    bound: HashMap<ipv4::Endpoint, Rc<RefCell<Listener>>>,
 
     outgoing: OutgoingSender,
     #[allow(unused)]
@@ -176,7 +176,7 @@ impl<RT: Runtime> UdpPeer<RT> {
             buf: VecDeque::new(),
             waker: None,
         };
-        assert!(inner.bound.insert(addr, listener).is_none());
+        assert!(inner.bound.insert(addr, Rc::new(RefCell::new(listener))).is_none());
         Ok(())
     }
 
@@ -203,8 +203,9 @@ impl<RT: Runtime> UdpPeer<RT> {
         let listener = inner.bound.get_mut(&local).ok_or_else(|| Fail::Malformed {
             details: "Port not bound",
         })?;
-        listener.buf.push_back((remote, data));
-        listener.waker.take().map(|w| w.wake());
+        let mut l = listener.borrow_mut();
+        l.buf.push_back((remote, data));
+        l.waker.take().map(|w| w.wake());
         Ok(())
     }
 
@@ -246,9 +247,18 @@ impl<RT: Runtime> UdpPeer<RT> {
         Ok(())
     }
 
-    pub fn pop(&self, fd: FileDescriptor) -> PopFuture<RT> {
+    pub fn pop(&self, fd: FileDescriptor) -> PopFuture {
+        let inner = self.inner.borrow();
+        let listener = match inner.sockets.get(&fd) {
+            Some(Socket { local: Some(local), .. }) => {
+                Ok(inner.bound.get(&local).unwrap().clone())
+            }
+            _ => Err(Fail::Malformed {
+                details: "Invalid file descriptor",
+            })
+        };
         PopFuture {
-            inner: self.inner.clone(),
+            listener,
             fd,
         }
     }
@@ -269,55 +279,42 @@ impl<RT: Runtime> UdpPeer<RT> {
         inner.file_table.free(fd);
         Ok(())
     }
-
-    pub fn poll_pop(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
-        let _s = static_span!();
-        let mut inner = self.inner.borrow_mut();
-        let local = match inner.sockets.get(&fd) {
-            Some(Socket {
-                local: Some(local), ..
-            }) => *local,
-            _ => {
-                return Poll::Ready(Err(Fail::Malformed {
-                    details: "Invalid file descriptor",
-                }))
-            },
-        };
-        let listener = inner.bound.get_mut(&local).unwrap();
-        match listener.buf.pop_front() {
-            Some((_, buf)) => return Poll::Ready(Ok(buf)),
-            None => (),
-        }
-        listener.waker = Some(ctx.waker().clone());
-        Poll::Pending
-    }
 }
 
-pub struct PopFuture<RT: Runtime> {
+pub struct PopFuture {
     pub fd: FileDescriptor,
-    inner: Rc<RefCell<Inner<RT>>>,
+    listener: Result<Rc<RefCell<Listener>>, Fail>,
 }
 
-impl<RT: Runtime> Future for PopFuture<RT> {
+impl Future for PopFuture {
     type Output = Result<Bytes, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
-        UdpPeer {
-            inner: self_.inner.clone(),
+        match self_.listener {
+            Err(ref e) => Poll::Ready(Err(e.clone())),
+            Ok(ref l) => {
+                let mut listener = l.borrow_mut();
+                match listener.buf.pop_front() {
+                    Some((_, buf)) => return Poll::Ready(Ok(buf)),
+                    None => (),
+                }
+                let waker = ctx.waker();
+                listener.waker = Some(waker.clone());
+                Poll::Pending
+            },
         }
-        .poll_pop(self_.fd, ctx)
     }
 }
 
-pub enum UdpOperation<RT: Runtime> {
+pub enum UdpOperation {
     Accept(FileDescriptor, Fail),
     Connect(FileDescriptor, Result<(), Fail>),
     Push(FileDescriptor, Result<(), Fail>),
-    Pop(ResultFuture<PopFuture<RT>>),
+    Pop(ResultFuture<PopFuture>),
 }
 
-impl<RT: Runtime> Future for UdpOperation<RT> {
+impl Future for UdpOperation {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
@@ -330,7 +327,7 @@ impl<RT: Runtime> Future for UdpOperation<RT> {
     }
 }
 
-impl<RT: Runtime> UdpOperation<RT> {
+impl UdpOperation {
     pub fn expect_result(self) -> (FileDescriptor, OperationResult) {
         match self {
             UdpOperation::Push(fd, Err(e))

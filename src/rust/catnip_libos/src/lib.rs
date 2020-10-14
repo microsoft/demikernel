@@ -9,7 +9,7 @@ use anyhow::{
     format_err,
     Error,
 };
-use catnip::sync::BytesMut;
+use bytes::BytesMut;
 use catnip::{
     operations::OperationResult,
     engine::{Engine, Protocol},
@@ -324,7 +324,6 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     }
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let mut addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
-    eprintln!("SADDR_IN: {:?} {:?}", addr, saddr_in.sin_port);
     let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
 
     with_libos(|libos| {
@@ -427,14 +426,12 @@ pub extern "C" fn dmtr_push(
     for i in 0..sga.sga_numsegs as usize {
         len += sga.sga_segs[i].sgaseg_len;
     }
-    let mut buf = BytesMut::zeroed(len as usize);
-    let mut pos = 0;
+    let mut buf = BytesMut::with_capacity(len as usize);
     for i in 0..sga.sga_numsegs as usize {
         let seg = &sga.sga_segs[i];
         let seg_slice =
             unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
-	buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-	pos += seg_slice.len();
+        buf.extend_from_slice(seg_slice);
     }
     let buf = buf.freeze();
     with_libos(|libos| {
@@ -497,7 +494,6 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
             None => return libc::EINVAL,
             Some(h) => h,
         };
-	let mut i = 0;
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
             let engine = &mut libos.engine;
@@ -506,11 +502,7 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-
-	    if i % 4 == 0 {
-                libos.runtime.advance_clock(Instant::now());
-	    }
-	    i = (i + 1) % 4;
+            libos.runtime.advance_clock(Instant::now());
 
             if handle.has_completed() {
                 let (qd, r) = match libos.runtime.scheduler.take(handle) {
@@ -535,7 +527,6 @@ pub extern "C" fn dmtr_wait_any(
     let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
     with_libos(|libos| {
         let mut ctx = Context::from_waker(noop_waker_ref());
-	let mut i = 0;	
         loop {
             libos.runtime.scheduler.poll(&mut ctx);
             let engine = &mut libos.engine;
@@ -544,10 +535,7 @@ pub extern "C" fn dmtr_wait_any(
                     eprintln!("Dropped packet: {:?}", e);
                 }
             });
-	    if i % 4 == 0 {
-               libos.runtime.advance_clock(Instant::now());
-	    }
-	    i = (i + 1) % 4;
+            libos.runtime.advance_clock(Instant::now());
 
             for (i, &qt) in qts.iter().enumerate() {
                 let handle = match libos.runtime.scheduler.from_raw_handle(qt) {

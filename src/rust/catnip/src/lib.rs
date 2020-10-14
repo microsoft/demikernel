@@ -31,6 +31,7 @@ pub mod collections;
 pub mod engine;
 pub mod fail;
 pub mod file_table;
+pub mod interop;
 pub mod logging;
 pub mod operations;
 pub mod options;
@@ -40,6 +41,7 @@ pub mod scheduler;
 pub mod sync;
 pub mod test_helpers;
 pub mod timer;
+pub mod libos;
 
 // static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

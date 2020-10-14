@@ -65,6 +65,7 @@ pub type TestEngine = Engine<TestRuntime>;
 #[derive(Clone)]
 pub struct TestRuntime {
     inner: Rc<RefCell<Inner>>,
+    scheduler: Scheduler<Operation<TestRuntime>>,
 }
 
 impl TestRuntime {
@@ -86,8 +87,8 @@ impl TestRuntime {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
             rng: SmallRng::from_seed([0; 16]),
+            incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            scheduler: Scheduler::new(),
             link_addr,
             ipv4_addr,
             tcp_options: tcp::Options::default(),
@@ -95,6 +96,7 @@ impl TestRuntime {
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
+            scheduler: Scheduler::new(),
         }
     }
 
@@ -102,10 +104,13 @@ impl TestRuntime {
         self.inner.borrow_mut().outgoing.pop_front().unwrap()
     }
 
+    pub fn push_frame(&self, buf: Bytes) {
+        self.inner.borrow_mut().incoming.push_back(buf);
+    }
+
     pub fn poll_scheduler(&self) {
-        let scheduler = self.inner.borrow().scheduler.clone();
-        let mut ctx = Context::from_waker(noop_waker_ref());
-        scheduler.poll(&mut ctx);
+        // let mut ctx = Context::from_waker(noop_waker_ref());
+        self.scheduler.poll();
     }
 }
 
@@ -114,8 +119,8 @@ struct Inner {
     name: &'static str,
     timer: TimerRc,
     rng: SmallRng,
+    incoming: VecDeque<Bytes>,
     outgoing: VecDeque<Bytes>,
-    scheduler: Scheduler<Operation<TestRuntime>>,
 
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
@@ -131,6 +136,14 @@ impl Runtime for TestRuntime {
         let mut buf = BytesMut::zeroed(size);
         pkt.serialize(&mut buf[..]);
         self.inner.borrow_mut().outgoing.push_back(buf.freeze());
+    }
+
+    fn receive(&self) -> Option<Bytes> {
+        self.inner.borrow_mut().incoming.pop_front()
+    }
+
+    fn scheduler(&self) -> &Scheduler<Operation<Self>> {
+        &self.scheduler
     }
 
     fn local_link_addr(&self) -> MacAddress {
@@ -180,9 +193,7 @@ impl Runtime for TestRuntime {
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.inner
-            .borrow()
-            .scheduler
+        self.scheduler
             .insert(Operation::Background(future.boxed_local()))
     }
 }

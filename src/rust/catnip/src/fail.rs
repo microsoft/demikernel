@@ -28,6 +28,7 @@ custom_error! {#[derive(Clone)] pub Fail
     Timeout{} = "an asynchronous operation timed out",
     TypeMismatch{details: Str} = "type mismatch ({details})",
     Unsupported{details: Str} = "unsupported ({details})",
+    Invalid {details: Str} = "invalid ({details})",
 }
 
 impl From<IoError> for Fail {
@@ -75,6 +76,7 @@ impl Fail {
             Fail::Unsupported { .. } => libc::ENOTSUP,
             Fail::IoError {} => libc::EIO,
             Fail::BorrowMutError {} => libc::EINVAL,
+            Fail::Invalid { .. } => libc::EINVAL,
         }
     }
 }

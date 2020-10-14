@@ -158,7 +158,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.udp.push(fd, buf)
     }
 
-    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture<RT> {
+    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture {
         self.ipv4.udp.pop(fd)
     }
 
