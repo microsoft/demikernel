@@ -151,15 +151,10 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
         }
     }
 
-    #[inline(never)]
     pub fn poll(&self) {
         let _s = static_span!();
         let mut inner = self.inner.borrow_mut();
-        // {
-        //     let _t = static_span!("register_waker");
-        //     inner.root_waker.register(ctx.waker());
-        // }
-
+        // inner.root_waker.register(ctx.waker());
         for page_ix in 0..inner.pages.len() {
             let (notified, dropped) = {
                 let page = &mut inner.pages[page_ix];
@@ -178,7 +173,6 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
                     drop(inner);
                     let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
                     let poll_result = {
-                        let _u = static_span!("poll_future");
                         Future::poll(pinned_ref, &mut sub_ctx)
                     };
                     inner = self.inner.borrow_mut();

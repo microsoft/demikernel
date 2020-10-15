@@ -18,7 +18,6 @@ use std::{
         Instant,
     },
 };
-use tracy_client::static_span;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiverState {
@@ -128,7 +127,6 @@ impl Receiver {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
-        let _s = static_span!();
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Poll::Ready(Err(Fail::ResourceNotFound {

@@ -54,7 +54,6 @@ use std::{
         Waker,
     },
 };
-use tracy_client::static_span;
 
 pub struct UdpPeer<RT: Runtime> {
     inner: Rc<RefCell<Inner<RT>>>,
@@ -115,7 +114,6 @@ impl<RT: Runtime> UdpPeer<RT> {
         while let Some((local, remote, buf)) = rx.receive().await {
             let r: Result<_, Fail> = try {
                 let link_addr = arp.query(remote.addr).await?;
-                let _s = static_span!("bg_send_udp");
                 let datagram = UdpDatagram {
                     ethernet2_hdr: Ethernet2Header {
                         dst_addr: link_addr,
@@ -218,7 +216,6 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn push(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
-        let _s = static_span!();
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
             Some(Socket {

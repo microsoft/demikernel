@@ -172,6 +172,7 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
     tx_conf.tx_thresh.pthresh = tx_pthresh;
     tx_conf.tx_thresh.hthresh = tx_hthresh;
     tx_conf.tx_thresh.wthresh = tx_wthresh;
+    tx_conf.tx_free_thresh = 32;
 
     unsafe {
         expect_zero!(rte_eth_dev_configure(

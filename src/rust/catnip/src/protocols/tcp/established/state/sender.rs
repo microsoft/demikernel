@@ -16,7 +16,6 @@ use std::{
         Instant,
     },
 };
-use tracy_client::static_span;
 
 pub struct UnackedSegment {
     pub bytes: Bytes,
@@ -99,7 +98,6 @@ impl Sender {
     }
 
     pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
-        let _s = static_span!();
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored {
                 details: "Sender closed",
