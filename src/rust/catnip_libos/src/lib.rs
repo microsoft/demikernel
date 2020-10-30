@@ -287,6 +287,7 @@ pub extern "C" fn dmtr_pushto(
     qd: c_int,
     sga: *const dmtr_sgarray_t,
     saddr: *const sockaddr,
+    size: socklen_t,
 
 ) -> c_int {
     if sga.is_null() {
