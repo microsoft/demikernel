@@ -103,7 +103,7 @@ impl<RT: Runtime> TcpOperation<RT> {
             Pop(ResultFuture {
                 future,
                 done: Some(Ok(bytes)),
-            }) => (future.fd, OperationResult::Pop(bytes)),
+            }) => (future.fd, OperationResult::Pop(None, bytes)),
             Pop(ResultFuture {
                 future,
                 done: Some(Err(e)),

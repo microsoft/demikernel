@@ -127,8 +127,13 @@ impl dmtr_qresult_t {
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },
             },
-            OperationResult::Pop(bytes) => {
-                let sga = dmtr_sgarray_t::from(&bytes[..]);
+            OperationResult::Pop(addr, bytes) => {
+                let mut sga = dmtr_sgarray_t::from(&bytes[..]);
+                if let Some(addr) = addr {
+                    sga.sga_addr.sin_family = libc::AF_INET as u8;
+                    sga.sga_addr.sin_port = addr.port.into();
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.addr.octets());
+                }
                 let qr_value = dmtr_qr_value_t { sga };
                 Self {
                     qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,

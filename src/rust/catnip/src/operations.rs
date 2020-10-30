@@ -1,4 +1,5 @@
 use crate::{
+    protocols::ipv4,
     fail::Fail,
     file_table::FileDescriptor,
     sync::Bytes,
@@ -47,6 +48,6 @@ pub enum OperationResult {
     Connect,
     Accept(FileDescriptor),
     Push,
-    Pop(Bytes),
+    Pop(Option<ipv4::Endpoint>, Bytes),
     Failed(Fail),
 }

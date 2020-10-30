@@ -312,7 +312,7 @@ pub struct PopFuture {
 }
 
 impl Future for PopFuture {
-    type Output = Result<Bytes, Fail>;
+    type Output = Result<(Option<ipv4::Endpoint>, Bytes), Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
@@ -321,7 +321,7 @@ impl Future for PopFuture {
             Ok(ref l) => {
                 let mut listener = l.borrow_mut();
                 match listener.buf.pop_front() {
-                    Some((_, buf)) => return Poll::Ready(Ok(buf)),
+                    Some(r) => return Poll::Ready(Ok(r)),
                     None => (),
                 }
                 let waker = ctx.waker();
@@ -363,8 +363,8 @@ impl UdpOperation {
 
             UdpOperation::Pop(ResultFuture {
                 future,
-                done: Some(Ok(bytes)),
-            }) => (future.fd, OperationResult::Pop(bytes)),
+                done: Some(Ok((addr, bytes))),
+            }) => (future.fd, OperationResult::Pop(addr, bytes)),
             UdpOperation::Pop(ResultFuture {
                 future,
                 done: Some(Err(e)),
