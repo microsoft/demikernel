@@ -228,33 +228,20 @@ impl<RT: Runtime> UdpPeer<RT> {
                 })
             },
         };
+        inner.send_datagram(buf, local, remote)
+    }
 
-        // First, try to send the packet immediately.
-        if let Some(link_addr) = inner.arp.try_query(remote.addr) {
-            let datagram = UdpDatagram {
-                ethernet2_hdr: Ethernet2Header {
-                    dst_addr: link_addr,
-                    src_addr: inner.rt.local_link_addr(),
-                    ether_type: EtherType2::Ipv4,
-                },
-                ipv4_hdr: Ipv4Header::new(
-                    inner.rt.local_ipv4_addr(),
-                    remote.addr,
-                    Ipv4Protocol2::Udp,
-                ),
-                udp_hdr: UdpHeader {
-                    src_port: local.map(|l| l.port),
-                    dst_port: remote.port,
-                },
-                data: buf,
-            };
-            inner.rt.transmit(datagram);
-        }
-        // Otherwise defer to the async path.
-        else {
-            inner.outgoing.try_send((local, remote, buf)).unwrap();
-        }
-        Ok(())
+    pub fn pushto(&self, fd: FileDescriptor, buf: Bytes, to: ipv4::Endpoint) -> Result<(), Fail> {
+        let inner = self.inner.borrow();
+        let local = match inner.sockets.get(&fd) {
+            Some(Socket { local, .. }) => *local,
+            _ => {
+                return Err(Fail::Malformed {
+                    details: "Invalid file descriptor on pushto",
+                })
+            },
+        };
+        inner.send_datagram(buf, local, to)
     }
 
     pub fn pop(&self, fd: FileDescriptor) -> PopFuture {
@@ -284,6 +271,37 @@ impl<RT: Runtime> UdpPeer<RT> {
             assert!(inner.bound.remove(&local).is_some());
         }
         inner.file_table.free(fd);
+        Ok(())
+    }
+}
+
+impl<RT: Runtime> Inner<RT> {
+    fn send_datagram(&self, buf: Bytes, local: Option<ipv4::Endpoint>, remote: ipv4::Endpoint) -> Result<(), Fail> {
+        // First, try to send the packet immediately.
+        if let Some(link_addr) = self.arp.try_query(remote.addr) {
+            let datagram = UdpDatagram {
+                ethernet2_hdr: Ethernet2Header {
+                    dst_addr: link_addr,
+                    src_addr: self.rt.local_link_addr(),
+                    ether_type: EtherType2::Ipv4,
+                },
+                ipv4_hdr: Ipv4Header::new(
+                    self.rt.local_ipv4_addr(),
+                    remote.addr,
+                    Ipv4Protocol2::Udp,
+                ),
+                udp_hdr: UdpHeader {
+                    src_port: local.map(|l| l.port),
+                    dst_port: remote.port,
+                },
+                data: buf,
+            };
+            self.rt.transmit(datagram);
+        }
+        // Otherwise defer to the async path.
+        else {
+            self.outgoing.try_send((local, remote, buf)).unwrap();
+        }
         Ok(())
     }
 }

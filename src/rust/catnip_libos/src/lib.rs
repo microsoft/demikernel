@@ -282,6 +282,34 @@ pub extern "C" fn dmtr_push(
 }
 
 #[no_mangle]
+pub extern "C" fn dmtr_pushto(
+    qtok_out: *mut dmtr_qtoken_t,
+    qd: c_int,
+    sga: *const dmtr_sgarray_t,
+    saddr: *const sockaddr,
+
+) -> c_int {
+    if sga.is_null() {
+        return libc::EINVAL;
+    }
+    let sga = unsafe { &*sga };
+    if saddr.is_null() {
+        return libc::EINVAL;
+    }
+    if size as usize != mem::size_of::<libc::sockaddr_in>() {
+        return libc::EINVAL;
+    }
+    let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
+    let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
+    let port = ip::Port::try_from(saddr_in.sin_port).unwrap();
+    let endpoint = ipv4::Endpoint::new(addr, port);
+    with_libos(|libos| {
+        unsafe { *qtok_out = libos.pushto(qd as FileDescriptor, sga, endpoint) };
+        0
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
         unsafe { *qtok_out = libos.pop(qd as FileDescriptor) };

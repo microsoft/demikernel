@@ -122,6 +122,27 @@ impl<RT: Runtime> LibOS<RT> {
         self.rt.scheduler().insert(future).into_raw()
     }
 
+    pub fn pushto(&mut self, fd: FileDescriptor, sga: &dmtr_sgarray_t, to: Endpoint) -> QToken {
+        let _s = static_span!();
+        let mut len = 0;
+        for i in 0..sga.sga_numsegs as usize {
+            len += sga.sga_segs[i].sgaseg_len;
+        }
+        let mut buf = BytesMut::zeroed(len as usize);
+        let mut pos = 0;
+        for i in 0..sga.sga_numsegs as usize {
+            let seg = &sga.sga_segs[i];
+            let seg_slice = unsafe {
+                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
+            };
+            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
+            pos += seg_slice.len();
+        }
+        let buf = buf.freeze();
+        let future = self.engine.pushto(fd, buf, to);
+        self.rt.scheduler().insert(future).into_raw()
+    }
+
     pub fn drop_qtoken(&mut self, qt: QToken) {
         drop(self.rt.scheduler().from_raw_handle(qt).unwrap());
     }

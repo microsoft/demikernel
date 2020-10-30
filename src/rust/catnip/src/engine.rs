@@ -158,6 +158,16 @@ impl<RT: Runtime> Engine<RT> {
         }
     }
 
+    pub fn pushto(&mut self, fd: FileDescriptor, buf: Bytes, to: ipv4::Endpoint) -> Operation<RT> {
+        match self.file_table.get(fd) {
+            Some(File::UdpSocket) => {
+                let udp_op = UdpOperation::Push(fd, self.ipv4.udp.pushto(fd, buf, to));
+                Operation::Udp(udp_op)
+            },
+            _ => panic!("TODO: Invalid fd"),
+        }
+    }
+
     pub fn udp_push(&mut self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
         self.ipv4.udp.push(fd, buf)
     }
