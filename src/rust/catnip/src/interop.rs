@@ -130,7 +130,6 @@ impl dmtr_qresult_t {
             OperationResult::Pop(addr, bytes) => {
                 let mut sga = dmtr_sgarray_t::from(&bytes[..]);
                 if let Some(addr) = addr {
-                    sga.sga_addr.sin_family = libc::AF_INET as u8;
                     sga.sga_addr.sin_port = addr.port.into();
                     sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.addr.octets());
                 }
