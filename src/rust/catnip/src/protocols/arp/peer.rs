@@ -53,7 +53,7 @@ impl<RT: Runtime> ArpPeer<RT> {
             cache,
             background: Rc::new(handle),
         };
-        for (&ipv4_addr, &link_addr) in &options.initial_values {
+        for (&link_addr, &ipv4_addr) in &options.initial_values {
             peer.insert(ipv4_addr, link_addr);
         }
         Ok(peer)

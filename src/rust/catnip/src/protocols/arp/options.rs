@@ -14,7 +14,7 @@ pub struct ArpOptions {
     pub request_timeout: Duration,
     pub retry_count: usize,
 
-    pub initial_values: HashMap<Ipv4Addr, MacAddress>,
+    pub initial_values: HashMap<MacAddress, Ipv4Addr>,
 }
 
 impl Default for ArpOptions {

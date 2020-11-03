@@ -59,6 +59,11 @@ impl From<TryFromIntError> for Fail {
     }
 }
 
+impl From<eui48::ParseError> for Fail {
+    fn from(_: eui48::ParseError) -> Self {
+        Fail::Invalid { details: "Failed to parse MAC Address" }
+    }
+}
 impl Fail {
     pub fn errno(&self) -> libc::c_int {
         match self {

@@ -14,6 +14,7 @@ use catnip::{
     protocols::{
         ip,
         ipv4,
+        ethernet2::MacAddress,
     },
     runtime::Runtime,
 };
@@ -27,6 +28,7 @@ use libc::{
     sockaddr,
     socklen_t,
 };
+use hashbrown::HashMap;
 use std::{
     cell::RefCell,
     convert::TryFrom,
@@ -130,6 +132,20 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             Err(format_err!("Invalid IPv4 address"))?;
         }
 
+        let mut arp_table = HashMap::new();
+        if let Some(arp_table_obj) = config_obj["catnip"]["arp_table"].as_hash() {
+            for (k, v) in arp_table_obj {
+                let key_str = k.as_str()
+                    .ok_or_else(|| format_err!("Couldn't find ARP table key in config"))?;
+                let key = MacAddress::parse_str(key_str)?;
+                let value: Ipv4Addr = v.as_str()
+                    .ok_or_else(|| format_err!("Couldn't find ARP table key in config"))?
+                    .parse()?;
+                arp_table.insert(key, value);
+            }
+            println!("Pre-populating ARP table: {:?}", arp_table);
+        }
+        
         let eal_init_args = match config_obj["dpdk"]["eal_init"] {
             Yaml::Array(ref arr) => arr
                 .iter()
@@ -142,7 +158,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 
-        let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args)?;
+        let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args, arp_table)?;
         logging::initialize();
         LibOS::new(runtime)?
     };
