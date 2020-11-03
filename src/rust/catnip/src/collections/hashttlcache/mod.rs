@@ -21,7 +21,7 @@ use std::{
     },
 };
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Expiry(Instant);
 
 impl Expiry {
@@ -49,12 +49,13 @@ impl PartialOrd for Expiry {
     }
 }
 
+#[derive(Debug)]
 struct Record<V> {
     value: V,
     expiry: Option<Expiry>,
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Tombstone<K>
 where
     K: Eq,
@@ -84,7 +85,7 @@ where
 // todo: `HashMap<>` has an `S` parameter that i'd like to include but causes
 // problems with the inference engine. the workaround is to leave it out but
 // what am i doing wrong?
-
+#[derive(Debug)]
 pub struct HashTtlCache<K, V>
 where
     K: Eq + Hash,

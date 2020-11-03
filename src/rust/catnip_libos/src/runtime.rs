@@ -116,7 +116,7 @@ impl DPDKRuntime {
             link_addr,
             ipv4_addr,
             rng,
-            arp_options: arp::Options::default(),
+            arp_options,
             tcp_options: tcp::Options::default(),
 
             dpdk_port_id,
