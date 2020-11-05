@@ -213,14 +213,6 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
         rte_eth_promiscuous_enable(port_id);
     }
 
-    let mut fc_conf = unsafe {
-        let mut f = MaybeUninit::zeroed();
-        expect_zero!(rte_eth_dev_flow_ctrl_get(port_id, f.as_mut_ptr()))?;
-        f.assume_init()
-    };
-    fc_conf.mode = RTE_FC_NONE;
-    unsafe { expect_zero!(rte_eth_dev_flow_ctrl_set(port_id, &mut fc_conf as *mut _))? };
-
     if unsafe { rte_eth_dev_is_valid_port(port_id) } == 0 {
         bail!("Invalid port");
     }
