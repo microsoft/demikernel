@@ -145,20 +145,15 @@ impl Ipv4Header {
         if total_length < IPV4_HEADER2_SIZE {
             return Err(Fail::Malformed { details: "IPv4 TOTALLEN smaller than header" });
         }
-        // If TOTALLEN indicates we have a packet smaller than the minimum Ethernet frame size, we
-        // need to strip the padding from the end of our payload.
-        else if IPV4_HEADER2_SIZE <= total_length && total_length < (MIN_PAYLOAD_SIZE - ETHERNET2_HEADER2_SIZE) {
-            let (payload, _padding) = payload_buf.split(total_length - IPV4_HEADER2_SIZE);
-            payload_buf = payload;
+        if total_length - IPV4_HEADER2_SIZE > payload_buf.len() {
+            return Err(Fail::Malformed { details: "IPv4 TOTALLEN greater than header + payload" });
         }
-        // Otherwise, the IPv4 payload should match TOTALLEN minus the header.
-        else {
-            if total_length != IPV4_HEADER2_SIZE + payload_buf.len() {
-                return Err(Fail::Malformed {
-                    details: "IPv4 TOTALLEN mismatch",
-                });
-            }
-        }
+        // NB (sujayakar, 11/6/2020): I've noticed that Ethernet transmission is liable to add
+        // padding zeros for small payloads, so we can't assert that the Ethernet payload we
+        // receives exactly matches the header's TOTALLEN. Therefore, we may need to truncate off
+        // padding bytes when they don't line up.
+        let (payload, _padding) = payload_buf.split(total_length - IPV4_HEADER2_SIZE);
+        payload_buf = payload;
 
         let identification = NetworkEndian::read_u16(&hdr_buf[4..6]);
         let flags = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
