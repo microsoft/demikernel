@@ -1,6 +1,7 @@
 use crate::{
     fail::Fail,
     sync::Bytes,
+    protocols::ethernet2::frame::{MIN_PAYLOAD_SIZE, ETHERNET2_HEADER2_SIZE},
 };
 use byteorder::{
     ByteOrder,
@@ -114,7 +115,7 @@ impl Ipv4Header {
                 details: "Datagram too small",
             });
         }
-        let (hdr_buf, payload_buf) = buf.split(IPV4_HEADER2_SIZE);
+        let (hdr_buf, mut payload_buf) = buf.split(IPV4_HEADER2_SIZE);
 
         let version = hdr_buf[0] >> 4;
         if version != IPV4_VERSION {
@@ -138,11 +139,25 @@ impl Ipv4Header {
         let dscp = hdr_buf[1] >> 2;
         let ecn = hdr_buf[1] & 3;
 
-        let total_length = NetworkEndian::read_u16(&hdr_buf[2..4]);
-        if total_length as usize != IPV4_HEADER2_SIZE + payload_buf.len() {
-            return Err(Fail::Malformed {
-                details: "IPv4 TOTALLEN mismatch",
-            });
+        let total_length = NetworkEndian::read_u16(&hdr_buf[2..4]) as usize;
+
+        // The TOTALLEN is definitely malformed if it doesn't have room for our header.
+        if total_length < IPV4_HEADER2_SIZE {
+            return Err(Fail::Malformed { details: "IPv4 TOTALLEN smaller than header" });
+        }
+        // If TOTALLEN indicates we have a packet smaller than the minimum Ethernet frame size, we
+        // need to strip the padding from the end of our payload.
+        else if IPV4_HEADER2_SIZE <= total_length && total_length < (MIN_PAYLOAD_SIZE - ETHERNET2_HEADER2_SIZE) {
+            let (payload, _padding) = payload_buf.split(total_length - IPV4_HEADER2_SIZE);
+            payload_buf = payload;
+        }
+        // Otherwise, the IPv4 payload should match TOTALLEN minus the header.
+        else {
+            if total_length != IPV4_HEADER2_SIZE + payload_buf.len() {
+                return Err(Fail::Malformed {
+                    details: "IPv4 TOTALLEN mismatch",
+                });
+            }
         }
 
         let identification = NetworkEndian::read_u16(&hdr_buf[4..6]);

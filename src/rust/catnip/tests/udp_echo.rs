@@ -83,8 +83,8 @@ impl TestRuntime {
         arp_options.retry_count = 2;
         arp_options.cache_ttl = Duration::from_secs(600);
         arp_options.request_timeout = Duration::from_secs(1);
-        arp_options.initial_values.insert(ALICE_IPV4, ALICE_MAC);
-        arp_options.initial_values.insert(BOB_IPV4, BOB_MAC);
+        arp_options.initial_values.insert(ALICE_MAC, ALICE_IPV4);
+        arp_options.initial_values.insert(BOB_MAC, BOB_IPV4);
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
