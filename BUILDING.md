@@ -68,7 +68,8 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 4. Turn on Azure support and CX5 support by running `cmake -DAZURE_SUPPORT=ON -DDPDK_MLX5_SUPPORT=ON -DCMAKE_BUILD_TYPE=Release ..` in your build directory or using `ccmake ..` and setting the cmake flags manually. 
 5. Compile DPDK by running 'make dpdk' in the build directory. After this you should be able to run the testpmd single sender & receiver test below.
 6. Use config options from testpmd in the config.yaml file. The DPDK interface is usually the slave interface listed first by `ifconfig`.  Using that interface id, run `ethtool -i` to find your PCI ID.
-5. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
+7. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
+8. If you're using Catnip, set the `disable_arp` flag in `config.yaml` since the Azure VLAN will set the destination address in the Ethernet header automatically based on the destination IP address.
 
 ### Single Sender & Receiver Test
 
