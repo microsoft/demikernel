@@ -97,7 +97,7 @@ impl Sender {
         }
     }
 
-    pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
+    pub fn send<RT: crate::runtime::Runtime>(&self, buf: Bytes, cb: &super::ControlBlock<RT>) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored {
                 details: "Sender closed",
@@ -106,8 +106,37 @@ impl Sender {
         let buf_len: u32 = buf.len().try_into().map_err(|_| Fail::Ignored {
             details: "Buffer too large",
         })?;
+
+        let win_sz = self.window_size.get();
+        let base_seq = self.base_seq_no.get();
+        let sent_seq = self.sent_seq_no.get();
+        let Wrapping(sent_data) = sent_seq - base_seq;
+
+        // Fast path: Try to send the data immediately.
+        if win_sz > 0 && win_sz >= sent_data + buf_len {
+            if let Some(remote_link_addr) = cb.arp.try_query(cb.remote.address()) {
+                let mut header = cb.tcp_header();
+                header.seq_num = sent_seq;
+                cb.emit(header, buf.clone(), remote_link_addr);
+
+                self.unsent_seq_no.modify(|s| s + Wrapping(buf_len));
+                self.sent_seq_no.modify(|s| s + Wrapping(buf_len));
+                let unacked_segment = UnackedSegment {
+                    bytes: buf,
+                    initial_tx: Some(cb.rt.now()),
+                };
+                self.unacked_queue.borrow_mut().push_back(unacked_segment);
+                if self.retransmit_deadline.get().is_none() {
+                    let rto = self.rto.borrow().estimate();
+                    self.retransmit_deadline.set(Some(cb.rt.now() + rto));
+                }
+                return Ok(());
+            }
+        }
+        // Slow path: Delegating sending the data to background processing.
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + Wrapping(buf_len));
+
         Ok(())
     }
 

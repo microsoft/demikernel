@@ -46,7 +46,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
     }
 
     pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
-        self.cb.sender.send(buf)
+        self.cb.sender.send(buf, &self.cb)
     }
 
     pub fn peek(&self) -> Result<Bytes, Fail> {
