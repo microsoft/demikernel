@@ -9,7 +9,9 @@ target_include_directories(dmtr-catnip_libos PUBLIC ${CMAKE_SOURCE_DIR}/src/rust
 
 target_link_libraries(dmtr-catnip_libos boost_program_options yaml-cpp Threads::Threads)
 
-target_link_libraries(dmtr-catnip_libos "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
+# target_link_libraries(dmtr-catnip_libos "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
+
+target_link_libraries(dmtr-catnip_libos "-Wl,--whole-archive" dmtr-libos-base "-Wl,--no-whole-archive")
 
 target_link_libraries(dmtr-catnip_libos "-Wl,--whole-archive -lnuma -Wl,--no-whole-archive")
 
