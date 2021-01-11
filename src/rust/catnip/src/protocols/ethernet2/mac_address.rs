@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use crate::fail::Fail;
 use eui48;
 use std::fmt;
-use crate::fail::Fail;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct MacAddress(eui48::MacAddress);
@@ -52,6 +52,7 @@ impl MacAddress {
     pub fn parse_str(s: &str) -> Result<Self, Fail> {
         Ok(Self(eui48::MacAddress::parse_str(s)?))
     }
+
     pub fn to_array(self) -> [u8; 6] {
         self.0.to_array()
     }

@@ -6,7 +6,10 @@ use crate::{
 };
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
     num::Wrapping,
     task::{
         Context,
@@ -18,6 +21,9 @@ use std::{
         Instant,
     },
 };
+
+const RECV_QUEUE_SZ: usize = 2048;
+const MAX_OUT_OF_ORDER: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReceiverState {
@@ -46,6 +52,7 @@ pub struct Receiver {
     pub max_window_size: u32,
 
     waker: RefCell<Option<Waker>>,
+    out_of_order: RefCell<BTreeMap<SeqNumber, Bytes>>,
 }
 
 impl Receiver {
@@ -53,12 +60,13 @@ impl Receiver {
         Self {
             state: WatchedValue::new(ReceiverState::Open),
             base_seq_no: WatchedValue::new(seq_no),
-            recv_queue: RefCell::new(VecDeque::new()),
+            recv_queue: RefCell::new(VecDeque::with_capacity(RECV_QUEUE_SZ)),
             ack_seq_no: WatchedValue::new(seq_no),
             recv_seq_no: WatchedValue::new(seq_no),
             ack_deadline: WatchedValue::new(None),
             max_window_size,
             waker: RefCell::new(None),
+            out_of_order: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -160,9 +168,23 @@ impl Receiver {
             });
         }
 
-        if self.recv_seq_no.get() != seq_no {
+        let recv_seq_no = self.recv_seq_no.get();
+        if seq_no > recv_seq_no {
+            let mut out_of_order = self.out_of_order.borrow_mut();
+            if !out_of_order.contains_key(&seq_no) {
+                while out_of_order.len() > MAX_OUT_OF_ORDER {
+                    let (&key, _) = out_of_order.iter().rev().next().unwrap();
+                    out_of_order.remove(&key);
+                }
+                out_of_order.insert(seq_no, buf);
+                return Err(Fail::Ignored {
+                    details: "Out of order segment (reordered)",
+                });
+            }
+        }
+        if seq_no < recv_seq_no {
             return Err(Fail::Ignored {
-                details: "Out of order segment",
+                details: "Out of order segment (duplicate)",
             });
         }
 
@@ -189,6 +211,42 @@ impl Receiver {
                 .set(Some(now + Duration::from_millis(500)));
         }
 
+        let new_recv_seq_no = self.recv_seq_no.get();
+        let old_data = {
+            let mut out_of_order = self.out_of_order.borrow_mut();
+            out_of_order.remove(&new_recv_seq_no)
+        };
+        if let Some(old_data) = old_data {
+            info!("Recovering out-of-order packet at {}", new_recv_seq_no);
+            if let Err(e) = self.receive_data(new_recv_seq_no, old_data, now) {
+                info!("Failed to recover out-of-order packet: {:?}", e);
+            }
+        }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Receiver;
+    use crate::{
+        fail::Fail,
+        sync::BytesMut,
+    };
+    use must_let::must_let;
+    use std::{
+        num::Wrapping,
+        time::Instant,
+    };
+
+    #[test]
+    fn test_out_of_order() {
+        let now = Instant::now();
+        let receiver = Receiver::new(Wrapping(0), 65536);
+        let buf = BytesMut::zeroed(16).freeze();
+        must_let!(let Err(Fail::Ignored { .. }) = receiver.receive_data(Wrapping(16), buf.clone(), now));
+        must_let!(let Ok(..) = receiver.receive_data(Wrapping(0), buf.clone(), now));
+        assert_eq!(receiver.recv_seq_no.get(), Wrapping(32))
     }
 }

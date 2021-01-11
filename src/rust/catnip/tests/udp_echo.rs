@@ -1,7 +1,6 @@
 #![feature(const_fn, const_panic, const_alloc_layout)]
 #![feature(const_mut_refs, const_type_name)]
 
-use tracy_client::static_span;
 use catnip::{
     interop::{
         dmtr_opcode_t,
@@ -64,6 +63,7 @@ use std::{
         Instant,
     },
 };
+use tracy_client::static_span;
 
 #[derive(Clone)]
 pub struct TestRuntime {

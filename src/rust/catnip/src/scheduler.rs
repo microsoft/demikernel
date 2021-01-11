@@ -172,9 +172,7 @@ impl<F: Future<Output = ()> + Unpin> Scheduler<F> {
 
                     drop(inner);
                     let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
-                    let poll_result = {
-                        Future::poll(pinned_ref, &mut sub_ctx)
-                    };
+                    let poll_result = { Future::poll(pinned_ref, &mut sub_ctx) };
                     inner = self.inner.borrow_mut();
 
                     match poll_result {

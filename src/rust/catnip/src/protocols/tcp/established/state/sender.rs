@@ -97,7 +97,11 @@ impl Sender {
         }
     }
 
-    pub fn send<RT: crate::runtime::Runtime>(&self, buf: Bytes, cb: &super::ControlBlock<RT>) -> Result<(), Fail> {
+    pub fn send<RT: crate::runtime::Runtime>(
+        &self,
+        buf: Bytes,
+        cb: &super::ControlBlock<RT>,
+    ) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored {
                 details: "Sender closed",

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use tracy_client::static_span;
 use crate::{
     fail::Fail,
     file_table::{
@@ -37,6 +36,7 @@ use std::{
     net::Ipv4Addr,
     time::Duration,
 };
+use tracy_client::static_span;
 
 #[cfg(test)]
 use crate::protocols::ethernet2::MacAddress;

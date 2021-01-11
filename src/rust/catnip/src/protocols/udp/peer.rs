@@ -276,7 +276,12 @@ impl<RT: Runtime> UdpPeer<RT> {
 }
 
 impl<RT: Runtime> Inner<RT> {
-    fn send_datagram(&self, buf: Bytes, local: Option<ipv4::Endpoint>, remote: ipv4::Endpoint) -> Result<(), Fail> {
+    fn send_datagram(
+        &self,
+        buf: Bytes,
+        local: Option<ipv4::Endpoint>,
+        remote: ipv4::Endpoint,
+    ) -> Result<(), Fail> {
         // First, try to send the packet immediately.
         if let Some(link_addr) = self.arp.try_query(remote.addr) {
             let datagram = UdpDatagram {

@@ -1,7 +1,7 @@
 use crate::{
-    protocols::ipv4,
     fail::Fail,
     file_table::FileDescriptor,
+    protocols::ipv4,
     sync::Bytes,
 };
 use std::{

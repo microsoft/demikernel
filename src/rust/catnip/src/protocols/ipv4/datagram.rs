@@ -142,10 +142,14 @@ impl Ipv4Header {
 
         // The TOTALLEN is definitely malformed if it doesn't have room for our header.
         if total_length < IPV4_HEADER2_SIZE {
-            return Err(Fail::Malformed { details: "IPv4 TOTALLEN smaller than header" });
+            return Err(Fail::Malformed {
+                details: "IPv4 TOTALLEN smaller than header",
+            });
         }
         if total_length - IPV4_HEADER2_SIZE > payload_buf.len() {
-            return Err(Fail::Malformed { details: "IPv4 TOTALLEN greater than header + payload" });
+            return Err(Fail::Malformed {
+                details: "IPv4 TOTALLEN greater than header + payload",
+            });
         }
         // NB (sujayakar, 11/6/2020): I've noticed that Ethernet transmission is liable to add
         // padding zeros for small payloads, so we can't assert that the Ethernet payload we

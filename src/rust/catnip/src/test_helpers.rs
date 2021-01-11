@@ -26,9 +26,7 @@ use crate::{
         TimerRc,
     },
 };
-use futures::{
-    FutureExt,
-};
+use futures::FutureExt;
 use rand::{
     distributions::{
         Distribution,
