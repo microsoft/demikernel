@@ -433,7 +433,7 @@ impl<RT: Runtime> Inner<RT> {
         Self {
             isn_generator: IsnGenerator::new(rt.rng_gen()),
             file_table,
-            ephemeral_ports: EphemeralPorts::new(),
+            ephemeral_ports: EphemeralPorts::new(&rt),
             sockets: HashMap::new(),
             passive: HashMap::new(),
             connecting: HashMap::new(),

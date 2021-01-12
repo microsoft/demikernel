@@ -35,6 +35,7 @@ use rand::{
     rngs::SmallRng,
     Rng,
     SeedableRng,
+    seq::SliceRandom,
 };
 use std::{
     cell::RefCell,
@@ -186,6 +187,11 @@ impl Runtime for TestRuntime {
     {
         let mut inner = self.inner.borrow_mut();
         inner.rng.gen()
+    }
+
+    fn rng_shuffle<T>(&self, slice: &mut [T]) {
+        let mut inner = self.inner.borrow_mut();
+        slice.shuffle(&mut inner.rng);
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {

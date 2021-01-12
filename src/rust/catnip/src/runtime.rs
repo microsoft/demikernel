@@ -49,6 +49,7 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>;
+    fn rng_shuffle<T>(&self, slice: &mut [T]);
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle;
     fn scheduler(&self) -> &Scheduler<Operation<Self>>;

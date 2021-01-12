@@ -25,6 +25,7 @@ use std::{
 use tracy_client::static_span;
 
 const TIMER_RESOLUTION: usize = 64;
+const MAX_RECV_ITERS: usize = 2;
 
 pub type QToken = u64;
 
@@ -197,9 +198,14 @@ impl<RT: Runtime> LibOS<RT> {
     fn poll_bg_work(&mut self) {
         let _s = static_span!();
         self.rt.scheduler().poll();
-        while let Some(pkt) = self.rt.receive() {
-            if let Err(e) = self.engine.receive(pkt) {
-                warn!("Dropped packet: {:?}", e);
+        for _ in 0..MAX_RECV_ITERS {
+            match self.rt.receive() {
+                Some(pkt) => {
+                    if let Err(e) = self.engine.receive(pkt) {
+                        warn!("Dropped packet: {:?}", e);
+                    }
+                },
+                None => break,
             }
         }
         if self.ts_iters == 0 {

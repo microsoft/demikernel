@@ -1,4 +1,3 @@
-use hashbrown::HashMap;
 use crate::bindings::{
     rte_eth_dev,
     rte_eth_devices,
@@ -31,12 +30,14 @@ use catnip::{
     },
 };
 use futures::FutureExt;
+use hashbrown::HashMap;
 use rand::{
     distributions::{
         Distribution,
         Standard,
     },
     rngs::SmallRng,
+    seq::SliceRandom,
     Rng,
     SeedableRng,
 };
@@ -268,6 +269,11 @@ impl Runtime for DPDKRuntime {
     {
         let mut self_ = self.inner.borrow_mut();
         self_.rng.gen()
+    }
+
+    fn rng_shuffle<T>(&self, slice: &mut [T]) {
+        let mut inner = self.inner.borrow_mut();
+        slice.shuffle(&mut inner.rng);
     }
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {

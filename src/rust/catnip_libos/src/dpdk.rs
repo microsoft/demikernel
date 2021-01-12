@@ -1,4 +1,3 @@
-use hashbrown::HashMap;
 use crate::{
     bindings::{
         rte_delay_us_block,
@@ -44,6 +43,7 @@ use anyhow::{
     Error,
 };
 use catnip::protocols::ethernet2::MacAddress;
+use hashbrown::HashMap;
 use std::{
     ffi::CString,
     mem::MaybeUninit,

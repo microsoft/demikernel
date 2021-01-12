@@ -12,9 +12,9 @@ use catnip::{
     libos::LibOS,
     logging,
     protocols::{
+        ethernet2::MacAddress,
         ip,
         ipv4,
-        ethernet2::MacAddress,
     },
     runtime::Runtime,
 };
@@ -22,13 +22,13 @@ use clap::{
     App,
     Arg,
 };
+use hashbrown::HashMap;
 use libc::{
     c_char,
     c_int,
     sockaddr,
     socklen_t,
 };
-use hashbrown::HashMap;
 use std::{
     cell::RefCell,
     convert::TryFrom,
@@ -135,10 +135,12 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         let mut arp_table = HashMap::new();
         if let Some(arp_table_obj) = config_obj["catnip"]["arp_table"].as_hash() {
             for (k, v) in arp_table_obj {
-                let key_str = k.as_str()
+                let key_str = k
+                    .as_str()
                     .ok_or_else(|| format_err!("Couldn't find ARP table key in config"))?;
                 let key = MacAddress::parse_str(key_str)?;
-                let value: Ipv4Addr = v.as_str()
+                let value: Ipv4Addr = v
+                    .as_str()
                     .ok_or_else(|| format_err!("Couldn't find ARP table key in config"))?
                     .parse()?;
                 arp_table.insert(key, value);
@@ -151,7 +153,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             disable_arp = arp_disabled;
             println!("ARP disabled: {:?}", disable_arp);
         }
-        
+
         let eal_init_args = match config_obj["dpdk"]["eal_init"] {
             Yaml::Array(ref arr) => arr
                 .iter()
@@ -164,7 +166,8 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 
-        let runtime = self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args, arp_table, disable_arp)?;
+        let runtime =
+            self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args, arp_table, disable_arp)?;
         logging::initialize();
         LibOS::new(runtime)?
     };
@@ -310,7 +313,6 @@ pub extern "C" fn dmtr_pushto(
     sga: *const dmtr_sgarray_t,
     saddr: *const sockaddr,
     size: socklen_t,
-
 ) -> c_int {
     if sga.is_null() {
         return libc::EINVAL;
