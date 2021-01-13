@@ -161,6 +161,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     window_scale = *w;
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
+                    info!("Received advertised MSS: {}", m);
                     mss = *m as usize;
                 },
                 _ => continue,
@@ -218,6 +219,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
 
                 let mss = rt.tcp_options().advertised_mss as u16;
                 tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
+                info!("Advertising MSS: {}", mss);
 
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header {

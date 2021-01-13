@@ -80,6 +80,9 @@ impl TestRuntime {
         arp_options.initial_values.insert(BOB_MAC, BOB_IPV4);
         arp_options.initial_values.insert(CARRIE_MAC, CARRIE_IPV4);
 
+        let mut tcp_options = tcp::Options::default();
+        tcp_options.advertised_mss = 2048;
+
         let inner = Inner {
             name,
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -88,7 +91,7 @@ impl TestRuntime {
             outgoing: VecDeque::new(),
             link_addr,
             ipv4_addr,
-            tcp_options: tcp::Options::default(),
+            tcp_options,
             arp_options,
         };
         Self {

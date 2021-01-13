@@ -215,6 +215,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     window_scale = *w;
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
+                    info!("Received advertised MSS: {}", m);
                     mss = *m as usize;
                 },
                 _ => continue,
@@ -266,6 +267,10 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 tcp_hdr.ack = true;
                 tcp_hdr.ack_num = remote_isn + Wrapping(1);
                 tcp_hdr.window_size = max_window_size;
+
+                let mss = rt.tcp_options().advertised_mss as u16;
+                tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
+                info!("Advertising MSS: {}", mss);
 
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header {
