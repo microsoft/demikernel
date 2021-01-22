@@ -47,9 +47,9 @@ use rand::{
         Standard,
     },
     rngs::SmallRng,
+    seq::SliceRandom,
     Rng,
     SeedableRng,
-    seq::SliceRandom,
 };
 use std::{
     cell::RefCell,

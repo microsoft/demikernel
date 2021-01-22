@@ -32,6 +32,9 @@ use std::{
 };
 use tracy_client::static_span;
 
+#[macro_use]
+extern crate log;
+
 pub fn one_send_recv_round(
     ctx: &mut Context,
     buf: Bytes,
@@ -43,6 +46,7 @@ pub fn one_send_recv_round(
     let _s = static_span!("tcp_round");
 
     // Send data from Alice to Bob
+    debug!("Sending from Alice to Bob");
     let mut push_future = alice.tcp_push(alice_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     alice.rt().poll_scheduler();
@@ -54,6 +58,7 @@ pub fn one_send_recv_round(
     debug_assert_eq!(received_buf, buf);
 
     // Send data from Bob to Alice
+    debug!("Sending from Bob to Alice");
     let mut push_future = bob.tcp_push(bob_fd, buf.clone());
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), ctx));
     bob.rt().poll_scheduler();
@@ -67,6 +72,8 @@ pub fn one_send_recv_round(
 
 #[test]
 fn tcp_loop() {
+    catnip::logging::initialize();
+
     let mut ctx = Context::from_waker(noop_waker_ref());
     let now = Instant::now();
     let mut alice = test_helpers::new_alice(now);
@@ -99,23 +106,12 @@ fn tcp_loop() {
     must_let!(let Poll::Ready(Ok(bob_fd)) = Future::poll(Pin::new(&mut accept_future), &mut ctx));
     must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut connect_future), &mut ctx));
 
-    let size = 32;
+    let size = 2048;
     let mut buf = BytesMut::zeroed(size);
     for i in 0..size {
         buf[i] = i as u8;
     }
     let buf = buf.freeze();
-
-    // Send data from Alice to Bob
-    let mut push_future = alice.tcp_push(alice_fd, buf.clone());
-    must_let!(let Poll::Ready(Ok(())) = Future::poll(Pin::new(&mut push_future), &mut ctx));
-    alice.rt().poll_scheduler();
-    bob.receive(alice.rt().pop_frame()).unwrap();
-
-    // Receive it on Bob's side.
-    let mut pop_future = bob.tcp_pop(bob_fd);
-    must_let!(let Poll::Ready(Ok(buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
-    assert_eq!(buf.len(), size);
 
     let num_rounds: usize = env::var("SEND_RECV_ITERS")
         .map(|s| s.parse().unwrap())

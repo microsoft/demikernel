@@ -33,9 +33,9 @@ use rand::{
         Standard,
     },
     rngs::SmallRng,
+    seq::SliceRandom,
     Rng,
     SeedableRng,
-    seq::SliceRandom,
 };
 use std::{
     cell::RefCell,
@@ -82,6 +82,7 @@ impl TestRuntime {
 
         let mut tcp_options = tcp::Options::default();
         tcp_options.advertised_mss = 2048;
+        tcp_options.window_scale = 2;
 
         let inner = Inner {
             name,

@@ -114,13 +114,18 @@ impl DPDKRuntime {
         let mut arp_options = arp::Options::default();
         arp_options.initial_values = arp_table;
         arp_options.disable_arp = disable_arp;
+
+        let mut tcp_options = tcp::Options::default();
+        tcp_options.advertised_mss = 9000;
+        tcp_options.window_scale = 10;
+
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
             ipv4_addr,
             rng,
             arp_options,
-            tcp_options: tcp::Options::default(),
+            tcp_options,
 
             dpdk_port_id,
             dpdk_mempool,

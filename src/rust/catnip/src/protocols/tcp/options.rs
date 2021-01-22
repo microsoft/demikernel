@@ -12,9 +12,10 @@ pub struct TcpOptions {
     pub advertised_mss: usize,
     pub handshake_retries: usize,
     pub handshake_timeout: Duration,
-    pub receive_window_size: usize,
+    pub receive_window_size: u16,
     pub retries: usize,
     pub trailing_ack_delay: Duration,
+    pub window_scale: u8,
 }
 
 impl Default for TcpOptions {
@@ -26,6 +27,7 @@ impl Default for TcpOptions {
             receive_window_size: 0xffff,
             retries: 5,
             trailing_ack_delay: Duration::from_micros(1),
+            window_scale: 0,
         }
     }
 }
@@ -50,7 +52,7 @@ impl TcpOptions {
         self
     }
 
-    pub fn receive_window_size(mut self, value: usize) -> Self {
+    pub fn receive_window_size(mut self, value: u16) -> Self {
         assert!(value > 0);
         self.receive_window_size = value;
         self

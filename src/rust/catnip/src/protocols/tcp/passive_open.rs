@@ -55,8 +55,8 @@ use std::{
 struct InflightAccept {
     local_isn: SeqNumber,
     remote_isn: SeqNumber,
-    window_size: u32,
-    window_scale: u8,
+    header_window_size: u16,
+    remote_window_scale: Option<u8>,
     mss: usize,
 
     #[allow(unused)]
@@ -152,12 +152,13 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     details: "Expected ACK",
                 });
             }
+            debug!("Received ACK: {:?}", header);
             // TODO: Add entry API.
             let &InflightAccept {
                 local_isn,
                 remote_isn,
-                window_size,
-                window_scale,
+                header_window_size,
+                remote_window_scale,
                 mss,
                 ..
             } = self.inflight.get(&remote).unwrap();
@@ -166,10 +167,39 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     details: "Invalid SYN+ACK seq num",
                 });
             }
-            let sender = Sender::new(local_isn + Wrapping(1), window_size, window_scale, mss);
+
+            let tcp_options = self.rt.tcp_options();
+            let (local_window_scale, remote_window_scale) = match remote_window_scale {
+                Some(w) => (tcp_options.window_scale as u32, w),
+                None => (0, 0),
+            };
+            let remote_window_size = (header_window_size as u32)
+                .checked_shl(remote_window_scale as u32)
+                .expect("TODO: Window size overflow")
+                .try_into()
+                .expect("TODO: Window size overflow");
+            let local_window_size = (tcp_options.receive_window_size as u32)
+                .checked_shl(local_window_scale as u32)
+                .expect("TODO: Window size overflow");
+            info!(
+                "Window sizes: local {}, remote {}",
+                local_window_size, remote_window_size
+            );
+            info!(
+                "Window scale: local {}, remote {}",
+                local_window_scale, remote_window_scale
+            );
+
+            let sender = Sender::new(
+                local_isn + Wrapping(1),
+                remote_window_size,
+                remote_window_scale,
+                mss,
+            );
             let receiver = Receiver::new(
                 remote_isn + Wrapping(1),
-                self.rt.tcp_options().receive_window_size as u32,
+                local_window_size,
+                local_window_scale,
             );
             self.inflight.remove(&remote);
             let cb = ControlBlock {
@@ -190,6 +220,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 details: "Invalid flags",
             });
         }
+        debug!("Received SYN: {:?}", header);
         if inflight_len + self.ready.borrow().len() >= self.max_backlog {
             // TODO: Should we send a RST here?
             return Err(Fail::ConnectionRefused {});
@@ -207,12 +238,13 @@ impl<RT: Runtime> PassiveSocket<RT> {
         );
         let handle = self.rt.spawn(future);
 
-        let mut window_scale = 1;
+        let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
         for option in header.iter_options() {
             match option {
                 TcpOptions2::WindowScale(w) => {
-                    window_scale = *w;
+                    info!("Received window scale: {:?}", w);
+                    remote_window_scale = Some(*w);
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
@@ -221,17 +253,11 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 _ => continue,
             }
         }
-        let window_size = header
-            .window_size
-            .checked_shl(window_scale as u32)
-            .expect("TODO: Window size overflow")
-            .try_into()
-            .expect("TODO: Window size overflow");
         let accept = InflightAccept {
             local_isn,
             remote_isn,
-            window_size,
-            window_scale,
+            header_window_size: header.window_size,
+            remote_window_scale,
             mss,
             handle,
         };
@@ -248,9 +274,9 @@ impl<RT: Runtime> PassiveSocket<RT> {
         arp: arp::Peer<RT>,
         ready: Rc<RefCell<ReadySockets<RT>>>,
     ) -> impl Future<Output = ()> {
+        let tcp_options = rt.tcp_options();
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
-        let max_window_size = 1024;
 
         async move {
             for _ in 0..handshake_retries {
@@ -266,12 +292,16 @@ impl<RT: Runtime> PassiveSocket<RT> {
                 tcp_hdr.seq_num = local_isn;
                 tcp_hdr.ack = true;
                 tcp_hdr.ack_num = remote_isn + Wrapping(1);
-                tcp_hdr.window_size = max_window_size;
+                tcp_hdr.window_size = tcp_options.receive_window_size;
 
-                let mss = rt.tcp_options().advertised_mss as u16;
+                let mss = tcp_options.advertised_mss as u16;
                 tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
                 info!("Advertising MSS: {}", mss);
 
+                tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.window_scale));
+                info!("Advertising window scale: {}", tcp_options.window_scale);
+
+                debug!("Sending SYN+ACK: {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header {
                         dst_addr: remote_link_addr,

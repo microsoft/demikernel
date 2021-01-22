@@ -10,6 +10,7 @@ use std::{
         BTreeMap,
         VecDeque,
     },
+    convert::TryInto,
     num::Wrapping,
     task::{
         Context,
@@ -42,6 +43,11 @@ pub struct Receiver {
     // ... ----------------|-----------------------|-----------------------| (unavailable)
     //         received           acknowledged           unacknowledged
     //
+    // NB: We can have `ack_seq_no < base_seq_no` when the application fully drains the receive
+    // buffer before we've sent a pure ACK or transmitted some data on which we could piggyback
+    // an ACK. The sender, however, will still be computing the receive window relative to the
+    // the old `ack_seq_no` until we send them an ACK (see the diagram in sender.rs).
+    //
     pub base_seq_no: WatchedValue<SeqNumber>,
     pub recv_queue: RefCell<VecDeque<Bytes>>,
     pub ack_seq_no: WatchedValue<SeqNumber>,
@@ -50,13 +56,14 @@ pub struct Receiver {
     pub ack_deadline: WatchedValue<Option<Instant>>,
 
     pub max_window_size: u32,
+    pub window_scale: u32,
 
     waker: RefCell<Option<Waker>>,
     out_of_order: RefCell<BTreeMap<SeqNumber, Bytes>>,
 }
 
 impl Receiver {
-    pub fn new(seq_no: SeqNumber, max_window_size: u32) -> Self {
+    pub fn new(seq_no: SeqNumber, max_window_size: u32, window_scale: u32) -> Self {
         Self {
             state: WatchedValue::new(ReceiverState::Open),
             base_seq_no: WatchedValue::new(seq_no),
@@ -65,14 +72,25 @@ impl Receiver {
             recv_seq_no: WatchedValue::new(seq_no),
             ack_deadline: WatchedValue::new(None),
             max_window_size,
+            window_scale,
             waker: RefCell::new(None),
             out_of_order: RefCell::new(BTreeMap::new()),
         }
     }
 
-    pub fn window_size(&self) -> u32 {
+    pub fn hdr_window_size(&self) -> u16 {
         let Wrapping(bytes_outstanding) = self.recv_seq_no.get() - self.base_seq_no.get();
-        self.max_window_size - bytes_outstanding
+        let window_size = self.max_window_size - bytes_outstanding;
+        let hdr_window_size = (window_size >> self.window_scale)
+            .try_into()
+            .expect("Window size overflow");
+        debug!(
+            "Sending window size update -> {} (hdr {}, scale {})",
+            (hdr_window_size as u32) << self.window_scale,
+            hdr_window_size,
+            self.window_scale
+        );
+        hdr_window_size
     }
 
     pub fn current_ack(&self) -> Option<SeqNumber> {
@@ -243,7 +261,7 @@ mod tests {
     #[test]
     fn test_out_of_order() {
         let now = Instant::now();
-        let receiver = Receiver::new(Wrapping(0), 65536);
+        let receiver = Receiver::new(Wrapping(0), 65536, 0);
         let buf = BytesMut::zeroed(16).freeze();
         must_let!(let Err(Fail::Ignored { .. }) = receiver.receive_data(Wrapping(16), buf.clone(), now));
         must_let!(let Ok(..) = receiver.receive_data(Wrapping(0), buf.clone(), now));

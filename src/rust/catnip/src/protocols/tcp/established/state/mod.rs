@@ -45,6 +45,7 @@ pub struct ControlBlock<RT: Runtime> {
 
 impl<RT: Runtime> ControlBlock<RT> {
     pub fn receive(&self, header: &TcpHeader, data: Bytes) {
+        debug!("Receiving {} bytes + {:?}", data.len(), header);
         let now = self.rt.now();
         if header.syn {
             warn!("Ignoring duplicate SYN on established connection");
@@ -76,8 +77,7 @@ impl<RT: Runtime> ControlBlock<RT> {
 
     pub fn tcp_header(&self) -> TcpHeader {
         let mut header = TcpHeader::new(self.local.port, self.remote.port);
-        // TODO: Support window scaling here.
-        header.window_size = self.receiver.window_size() as u16;
+        header.window_size = self.receiver.hdr_window_size();
         if let Some(ack_seq_no) = self.receiver.current_ack() {
             header.ack_num = ack_seq_no;
             header.ack = true;
@@ -89,6 +89,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         if header.ack {
             self.receiver.ack_sent(header.ack_num);
         }
+        debug!("Sending {} bytes + {:?}", data.len(), header);
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header {
                 dst_addr: remote_link_addr,

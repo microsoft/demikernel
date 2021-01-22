@@ -245,6 +245,11 @@ impl Sender {
             .ok_or_else(|| Fail::Ignored {
                 details: "Window size overflow",
             })?;
+
+        debug!(
+            "Updating window size -> {} (hdr {}, scale {})",
+            window_size, window_size_hdr, self.window_scale
+        );
         self.window_size.set(window_size);
 
         Ok(())

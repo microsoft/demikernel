@@ -132,6 +132,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         }
 
         // Acknowledge the SYN+ACK segment.
+        debug!("Received SYN+ACK: {:?}", header);
         let remote_link_addr = match self.arp.try_query(self.remote.address()) {
             Some(r) => r,
             None => panic!("TODO: Clean up ARP query control flow"),
@@ -140,6 +141,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         let mut tcp_hdr = TcpHeader::new(self.local.port, self.remote.port);
         tcp_hdr.ack = true;
         tcp_hdr.ack_num = remote_seq_num;
+        debug!("Sending ACK: {:?}", tcp_hdr);
 
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header {
@@ -153,12 +155,13 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         };
         self.rt.transmit(segment);
 
-        let mut window_scale = 1;
+        let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
         for option in header.iter_options() {
             match option {
                 TcpOptions2::WindowScale(w) => {
-                    window_scale = *w;
+                    info!("Received window scale: {}", w);
+                    remote_window_scale = Some(*w);
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
@@ -167,18 +170,39 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 _ => continue,
             }
         }
-        let window_size = header
-            .window_size
-            .checked_shl(window_scale as u32)
+
+        let tcp_options = self.rt.tcp_options();
+        let (local_window_scale, remote_window_scale) = match remote_window_scale {
+            Some(w) => (tcp_options.window_scale as u32, w),
+            None => (0, 0),
+        };
+
+        // TODO(RFC1323): Clamp the scale to 14 instead of panicking.
+        assert!(local_window_scale <= 14 && remote_window_scale <= 14);
+
+        let rx_window_size: u32 = (tcp_options.receive_window_size as u32)
+            .checked_shl(local_window_scale as u32)
             .expect("TODO: Window size overflow")
             .try_into()
             .expect("TODO: Window size overflow");
 
-        let sender = Sender::new(expected_seq, window_size, window_scale, mss);
-        let receiver = Receiver::new(
-            remote_seq_num,
-            self.rt.tcp_options().receive_window_size as u32,
+        let tx_window_size: u32 = (header.window_size as u32)
+            .checked_shl(remote_window_scale as u32)
+            .expect("TODO: Window size overflow")
+            .try_into()
+            .expect("TODO: Window size overflow");
+
+        info!(
+            "Window sizes: local {}, remote {}",
+            rx_window_size, tx_window_size
         );
+        info!(
+            "Window scale: local {}, remote {}",
+            local_window_scale, remote_window_scale
+        );
+
+        let sender = Sender::new(expected_seq, tx_window_size, remote_window_scale, mss);
+        let receiver = Receiver::new(remote_seq_num, rx_window_size, local_window_scale);
         let cb = ControlBlock {
             local: self.local.clone(),
             remote: self.remote.clone(),
@@ -198,9 +222,9 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         arp: arp::Peer<RT>,
         result: Rc<RefCell<ConnectResult<RT>>>,
     ) -> impl Future<Output = ()> {
+        let tcp_options = rt.tcp_options();
         let handshake_retries = 3usize;
         let handshake_timeout = Duration::from_secs(5);
-        let max_window_size = 1024;
 
         async move {
             for _ in 0..handshake_retries {
@@ -215,12 +239,16 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                 let mut tcp_hdr = TcpHeader::new(local.port, remote.port);
                 tcp_hdr.syn = true;
                 tcp_hdr.seq_num = local_isn;
-                tcp_hdr.window_size = max_window_size;
+                tcp_hdr.window_size = tcp_options.receive_window_size;
 
-                let mss = rt.tcp_options().advertised_mss as u16;
+                let mss = tcp_options.advertised_mss as u16;
                 tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
                 info!("Advertising MSS: {}", mss);
 
+                tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_options.window_scale));
+                info!("Advertising window scale: {}", tcp_options.window_scale);
+
+                debug!("Sending SYN {:?}", tcp_hdr);
                 let segment = TcpSegment {
                     ethernet2_hdr: Ethernet2Header {
                         dst_addr: remote_link_addr,

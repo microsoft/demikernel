@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::fail::Fail;
-use crate::runtime::Runtime;
+use crate::{
+    fail::Fail,
+    runtime::Runtime,
+};
 use std::{
     convert::TryFrom,
     num::NonZeroU16,
@@ -54,7 +56,9 @@ impl EphemeralPorts {
     }
 
     pub fn alloc(&mut self) -> Result<Port, Fail> {
-        self.ports.pop().ok_or(Fail::ResourceExhausted { details: "Out of private ports" })
+        self.ports.pop().ok_or(Fail::ResourceExhausted {
+            details: "Out of private ports",
+        })
     }
 
     pub fn free(&mut self, port: Port) {
