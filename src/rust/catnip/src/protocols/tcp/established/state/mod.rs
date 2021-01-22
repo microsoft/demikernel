@@ -99,6 +99,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr: header,
             data,
+            tx_checksum_offload: self.rt.tcp_options().tx_checksum_offload,
         };
         self.rt.transmit(segment);
     }

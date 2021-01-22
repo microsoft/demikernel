@@ -16,6 +16,8 @@ pub struct TcpOptions {
     pub retries: usize,
     pub trailing_ack_delay: Duration,
     pub window_scale: u8,
+    pub rx_checksum_offload: bool,
+    pub tx_checksum_offload: bool,
 }
 
 impl Default for TcpOptions {
@@ -28,6 +30,8 @@ impl Default for TcpOptions {
             retries: 5,
             trailing_ack_delay: Duration::from_micros(1),
             window_scale: 0,
+            rx_checksum_offload: false,
+            tx_checksum_offload: false,
         }
     }
 }

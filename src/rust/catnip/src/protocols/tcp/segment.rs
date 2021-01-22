@@ -41,6 +41,8 @@ pub struct TcpSegment {
     pub ipv4_hdr: Ipv4Header,
     pub tcp_hdr: TcpHeader,
     pub data: Bytes,
+
+    pub tx_checksum_offload: bool,
 }
 
 impl PacketBuf for TcpSegment {
@@ -75,6 +77,7 @@ impl PacketBuf for TcpSegment {
             &mut buf[cur_pos..(cur_pos + tcp_hdr_size)],
             &self.ipv4_hdr,
             &self.data[..],
+            self.tx_checksum_offload,
         );
         cur_pos += tcp_hdr_size;
 
@@ -233,7 +236,11 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse(
+        ipv4_header: &Ipv4Header,
+        buf: Bytes,
+        rx_checksum_offload: bool,
+    ) -> Result<(Self, Bytes), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP segment too small",
@@ -276,11 +283,13 @@ impl TcpHeader {
 
         let window_size = NetworkEndian::read_u16(&hdr_buf[14..16]);
 
-        let checksum = NetworkEndian::read_u16(&hdr_buf[16..18]);
-        if checksum != tcp_checksum(ipv4_header, &hdr_buf[..], &data_buf[..]) {
-            return Err(Fail::Malformed {
-                details: "TCP checksum mismatch",
-            });
+        if !rx_checksum_offload {
+            let checksum = NetworkEndian::read_u16(&hdr_buf[16..18]);
+            if checksum != tcp_checksum(ipv4_header, &hdr_buf[..], &data_buf[..]) {
+                return Err(Fail::Malformed {
+                    details: "TCP checksum mismatch",
+                });
+            }
         }
 
         let urgent_pointer = NetworkEndian::read_u16(&hdr_buf[18..20]);
@@ -397,7 +406,13 @@ impl TcpHeader {
         Ok((header, data_buf))
     }
 
-    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8]) {
+    pub fn serialize(
+        &self,
+        buf: &mut [u8],
+        ipv4_hdr: &Ipv4Header,
+        data: &[u8],
+        tx_checksum_offload: bool,
+    ) {
         let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] =
             (&mut buf[..MIN_TCP_HEADER2_SIZE]).try_into().unwrap();
         NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
@@ -457,8 +472,12 @@ impl TcpHeader {
         }
 
         // Alright, we've fully filled out the header, time to compute the checksum.
-        let checksum = tcp_checksum(ipv4_hdr, &buf[..], data);
-        NetworkEndian::write_u16(&mut buf[16..18], checksum);
+        if !tx_checksum_offload {
+            let checksum = tcp_checksum(ipv4_hdr, &buf[..], data);
+            NetworkEndian::write_u16(&mut buf[16..18], checksum);
+        } else {
+            NetworkEndian::write_u16(&mut buf[16..18], 0u16);
+        }
     }
 
     pub fn compute_size(&self) -> usize {

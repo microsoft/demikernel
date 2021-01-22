@@ -143,6 +143,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
         tcp_hdr.ack_num = remote_seq_num;
         debug!("Sending ACK: {:?}", tcp_hdr);
 
+        let tcp_options = self.rt.tcp_options();
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header {
                 dst_addr: remote_link_addr,
@@ -152,6 +153,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
             data: Bytes::empty(),
+            tx_checksum_offload: tcp_options.tx_checksum_offload,
         };
         self.rt.transmit(segment);
 
@@ -171,7 +173,6 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             }
         }
 
-        let tcp_options = self.rt.tcp_options();
         let (local_window_scale, remote_window_scale) = match remote_window_scale {
             Some(w) => (tcp_options.window_scale as u32, w),
             None => (0, 0),
@@ -258,6 +259,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
                     data: Bytes::empty(),
+                    tx_checksum_offload: tcp_options.tx_checksum_offload,
                 };
                 rt.transmit(segment);
                 rt.wait(handshake_timeout).await;

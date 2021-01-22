@@ -168,8 +168,14 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
         let use_jumbo_frames = true;
         let mtu = 9216;
-        let runtime =
-            self::dpdk::initialize_dpdk(local_ipv4_addr, &eal_init_args, arp_table, disable_arp, use_jumbo_frames, mtu)?;
+        let runtime = self::dpdk::initialize_dpdk(
+            local_ipv4_addr,
+            &eal_init_args,
+            arp_table,
+            disable_arp,
+            use_jumbo_frames,
+            mtu,
+        )?;
         logging::initialize();
         LibOS::new(runtime)?
     };

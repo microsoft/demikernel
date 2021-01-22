@@ -7,8 +7,10 @@ use crate::{
         rte_eth_dev_count_avail,
         rte_eth_dev_flow_ctrl_get,
         rte_eth_dev_flow_ctrl_set,
+        rte_eth_dev_get_mtu,
         rte_eth_dev_info_get,
         rte_eth_dev_is_valid_port,
+        rte_eth_dev_set_mtu,
         rte_eth_dev_start,
         rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
         rte_eth_find_next_owned_by,
@@ -23,21 +25,21 @@ use crate::{
         rte_eth_tx_queue_setup,
         rte_eth_txconf,
         rte_ether_addr,
-        rte_eth_dev_set_mtu,
-        rte_eth_dev_get_mtu,
-        DEV_RX_OFFLOAD_JUMBO_FRAME,
         rte_mbuf,
         rte_mempool,
         rte_pktmbuf_pool_create,
         rte_socket_id,
+        DEV_RX_OFFLOAD_JUMBO_FRAME,
+        DEV_RX_OFFLOAD_TCP_CKSUM,
+        DEV_TX_OFFLOAD_TCP_CKSUM,
         ETH_LINK_FULL_DUPLEX,
         ETH_LINK_UP,
         ETH_RSS_IP,
+        RTE_ETHER_MAX_JUMBO_FRAME_LEN,
         RTE_ETHER_MAX_LEN,
         RTE_ETH_DEV_NO_OWNER,
         RTE_MAX_ETHPORTS,
         RTE_MBUF_DEFAULT_BUF_SIZE,
-        RTE_ETHER_MAX_JUMBO_FRAME_LEN,
         RTE_PKTMBUF_HEADROOM,
     },
     runtime::DPDKRuntime,
@@ -96,7 +98,11 @@ pub fn initialize_dpdk(
     let name = CString::new("default_mbuf_pool").unwrap();
     let num_mbufs = 8192;
     let mbuf_cache_size = 250;
-    let mbuf_size = if use_jumbo_frames { RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM } else { RTE_MBUF_DEFAULT_BUF_SIZE };
+    let mbuf_size = if use_jumbo_frames {
+        RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM
+    } else {
+        RTE_MBUF_DEFAULT_BUF_SIZE
+    };
     let mbuf_pool = unsafe {
         rte_pktmbuf_pool_create(
             name.as_ptr(),
@@ -148,7 +154,12 @@ pub fn initialize_dpdk(
     ))
 }
 
-fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool, use_jumbo_frames: bool, mtu: u16) -> Result<(), Error> {
+fn initialize_dpdk_port(
+    port_id: u16,
+    mbuf_pool: *mut rte_mempool,
+    use_jumbo_frames: bool,
+    mtu: u16,
+) -> Result<(), Error> {
     let rx_rings = 1;
     let tx_rings = 1;
     let rx_ring_size = 128;
@@ -181,13 +192,20 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool, use_jumbo_fra
     }
 
     let mut port_conf: rte_eth_conf = unsafe { MaybeUninit::zeroed().assume_init() };
-    port_conf.rxmode.max_rx_pkt_len = if use_jumbo_frames { RTE_ETHER_MAX_JUMBO_FRAME_LEN } else { RTE_ETHER_MAX_LEN };
+    port_conf.rxmode.max_rx_pkt_len = if use_jumbo_frames {
+        RTE_ETHER_MAX_JUMBO_FRAME_LEN
+    } else {
+        RTE_ETHER_MAX_LEN
+    };
+    port_conf.rxmode.offloads = DEV_RX_OFFLOAD_TCP_CKSUM as u64;
     if use_jumbo_frames {
         port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME as u64;
     }
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP as u64 | dev_info.flow_type_rss_offloads;
+
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    port_conf.txmode.offloads = DEV_TX_OFFLOAD_TCP_CKSUM as u64;
 
     let mut rx_conf: rte_eth_rxconf = unsafe { MaybeUninit::zeroed().assume_init() };
     rx_conf.rx_thresh.pthresh = rx_pthresh;
