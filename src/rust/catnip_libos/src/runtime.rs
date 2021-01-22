@@ -117,7 +117,7 @@ impl DPDKRuntime {
 
         let mut tcp_options = tcp::Options::default();
         tcp_options.advertised_mss = 9000;
-        tcp_options.window_scale = 10;
+        tcp_options.window_scale = 5;
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),

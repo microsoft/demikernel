@@ -23,6 +23,9 @@ use crate::{
         rte_eth_tx_queue_setup,
         rte_eth_txconf,
         rte_ether_addr,
+        rte_eth_dev_set_mtu,
+        rte_eth_dev_get_mtu,
+        DEV_RX_OFFLOAD_JUMBO_FRAME,
         rte_mbuf,
         rte_mempool,
         rte_pktmbuf_pool_create,
@@ -34,6 +37,8 @@ use crate::{
         RTE_ETH_DEV_NO_OWNER,
         RTE_MAX_ETHPORTS,
         RTE_MBUF_DEFAULT_BUF_SIZE,
+        RTE_ETHER_MAX_JUMBO_FRAME_LEN,
+        RTE_PKTMBUF_HEADROOM,
     },
     runtime::DPDKRuntime,
 };
@@ -68,6 +73,8 @@ pub fn initialize_dpdk(
     eal_init_args: &[CString],
     arp_table: HashMap<MacAddress, Ipv4Addr>,
     disable_arp: bool,
+    use_jumbo_frames: bool,
+    mtu: u16,
 ) -> Result<DPDKRuntime, Error> {
     std::env::set_var("MLX5_SHUT_UP_BF", "1");
     let eal_init_refs = eal_init_args
@@ -87,15 +94,16 @@ pub fn initialize_dpdk(
     );
 
     let name = CString::new("default_mbuf_pool").unwrap();
-    let num_mbufs = 8191;
+    let num_mbufs = 8192;
     let mbuf_cache_size = 250;
+    let mbuf_size = if use_jumbo_frames { RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM } else { RTE_MBUF_DEFAULT_BUF_SIZE };
     let mbuf_pool = unsafe {
         rte_pktmbuf_pool_create(
             name.as_ptr(),
             (num_mbufs * nb_ports) as u32,
             mbuf_cache_size,
             0,
-            RTE_MBUF_DEFAULT_BUF_SIZE as u16,
+            mbuf_size as u16,
             rte_socket_id() as i32,
         )
     };
@@ -110,7 +118,7 @@ pub fn initialize_dpdk(
         while p < RTE_MAX_ETHPORTS as u16 {
             // TODO: This is pretty hax, we clearly only support one port.
             port_id = p;
-            initialize_dpdk_port(p, mbuf_pool)?;
+            initialize_dpdk_port(p, mbuf_pool, use_jumbo_frames, mtu)?;
             p = unsafe { rte_eth_find_next_owned_by(p + 1, owner) as u16 };
         }
     }
@@ -140,7 +148,7 @@ pub fn initialize_dpdk(
     ))
 }
 
-fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(), Error> {
+fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool, use_jumbo_frames: bool, mtu: u16) -> Result<(), Error> {
     let rx_rings = 1;
     let tx_rings = 1;
     let rx_ring_size = 128;
@@ -148,8 +156,8 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
     let nb_rxd = rx_ring_size;
     let nb_txd = tx_ring_size;
 
-    let rx_pthresh = 0;
-    let rx_hthresh = 0;
+    let rx_pthresh = 8;
+    let rx_hthresh = 8;
     let rx_wthresh = 0;
 
     let tx_pthresh = 0;
@@ -162,8 +170,21 @@ fn initialize_dpdk_port(port_id: u16, mbuf_pool: *mut rte_mempool) -> Result<(),
         d.assume_init()
     };
 
+    println!("dev_info: {:?}", dev_info);
+    unsafe {
+        expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
+        let mut dpdk_mtu = 0u16;
+        expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
+        if dpdk_mtu != mtu {
+            bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
+        }
+    }
+
     let mut port_conf: rte_eth_conf = unsafe { MaybeUninit::zeroed().assume_init() };
-    port_conf.rxmode.max_rx_pkt_len = RTE_ETHER_MAX_LEN;
+    port_conf.rxmode.max_rx_pkt_len = if use_jumbo_frames { RTE_ETHER_MAX_JUMBO_FRAME_LEN } else { RTE_ETHER_MAX_LEN };
+    if use_jumbo_frames {
+        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME as u64;
+    }
     port_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP as u64 | dev_info.flow_type_rss_offloads;
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
