@@ -29,8 +29,6 @@ pub enum SenderState {
     Closed,
     SentFin,
     FinAckd,
-
-    #[allow(unused)]
     Reset,
 }
 
@@ -154,8 +152,14 @@ impl Sender {
         Ok(())
     }
 
+    pub fn receive_rst(&self) {
+        self.state.set(SenderState::Reset);
+    }
+
     pub fn remote_ack(&self, ack_seq_no: SeqNumber, now: Instant) -> Result<(), Fail> {
-        if self.state.get() == SenderState::SentFin {
+        if self.state.get() == SenderState::SentFin
+            && ack_seq_no == self.base_seq_no.get() + Wrapping(1)
+        {
             assert_eq!(self.base_seq_no.get(), self.sent_seq_no.get());
             assert_eq!(self.sent_seq_no.get(), self.unsent_seq_no.get());
             self.state.set(SenderState::FinAckd);
@@ -173,7 +177,7 @@ impl Sender {
                 details: "ACK is outside of send window",
             });
         }
-        if bytes_acknowledged.0 == 0 {
+        if bytes_acknowledged == Wrapping(0) {
             // TODO: Handle fast retransmit here.
             return Ok(());
         }

@@ -39,8 +39,14 @@ use crate::{
         },
     },
     runtime::Runtime,
-    sync::Bytes,
+    scheduler::SchedulerHandle,
+    sync::{
+        Bytes,
+        UnboundedReceiver,
+        UnboundedSender,
+    },
 };
+use futures_intrusive::channel::shared::generic_channel;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
@@ -58,8 +64,42 @@ pub struct Peer<RT: Runtime> {
 
 impl<RT: Runtime> Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(Inner::new(rt, arp, file_table))),
+        let (tx, rx) = generic_channel(16);
+        let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, file_table, tx)));
+        let bg_handle = rt.spawn(Self::background(rx, inner.clone()));
+        inner.borrow_mut().dead_socket_handle = Some(bg_handle);
+        Self { inner }
+    }
+
+    async fn background(
+        dead_socket_rx: UnboundedReceiver<FileDescriptor>,
+        inner: Rc<RefCell<Inner<RT>>>,
+    ) {
+        while let Some(fd) = dead_socket_rx.receive().await {
+            let mut inner = inner.borrow_mut();
+
+            let (local, remote) = match inner.sockets.remove(&fd) {
+                None => continue,
+                Some(Socket::Established { local, remote }) => (local, remote),
+                _ => panic!(
+                    "Received dead socket message for non-established socket: {}",
+                    fd
+                ),
+            };
+            let socket = inner
+                .established
+                .remove(&(local, remote))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "sockets/established inconsistency: {}, {:?}, {:?}",
+                        fd, local, remote
+                    )
+                });
+
+            // TODO: Assert we've been properly closed here.
+            // TODO: Recycle this FD.
+            info!("Cleaning up dead socket for FD {}", fd);
+            drop(socket);
         }
     }
 
@@ -144,9 +184,8 @@ impl<RT: Runtime> Peer<RT> {
             Poll::Ready(Ok(e)) => e,
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
-        let established = EstablishedSocket::new(cb);
-
         let fd = inner.file_table.alloc(File::TcpSocket);
+        let established = EstablishedSocket::new(cb, fd, inner.dead_socket_tx.clone());
         let key = (established.cb.local.clone(), established.cb.remote.clone());
 
         let socket = Socket::Established {
@@ -426,10 +465,18 @@ pub struct Inner<RT: Runtime> {
 
     rt: RT,
     arp: arp::Peer<RT>,
+
+    dead_socket_tx: UnboundedSender<FileDescriptor>,
+    dead_socket_handle: Option<SchedulerHandle>,
 }
 
 impl<RT: Runtime> Inner<RT> {
-    fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
+    fn new(
+        rt: RT,
+        arp: arp::Peer<RT>,
+        file_table: FileTable,
+        dead_socket_tx: UnboundedSender<FileDescriptor>,
+    ) -> Self {
         Self {
             isn_generator: IsnGenerator::new(rt.rng_gen()),
             file_table,
@@ -440,6 +487,8 @@ impl<RT: Runtime> Inner<RT> {
             established: HashMap::new(),
             rt,
             arp,
+            dead_socket_tx,
+            dead_socket_handle: None,
         }
     }
 
@@ -535,10 +584,8 @@ impl<RT: Runtime> Inner<RT> {
         self.connecting.remove(&key);
 
         let cb = result?;
-        assert!(self
-            .established
-            .insert(key, EstablishedSocket::new(cb))
-            .is_none());
+        let socket = EstablishedSocket::new(cb, fd, self.dead_socket_tx.clone());
+        assert!(self.established.insert(key, socket).is_none());
         let (local, remote) = key;
         self.sockets
             .insert(fd, Socket::Established { local, remote });

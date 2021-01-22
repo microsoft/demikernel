@@ -51,7 +51,7 @@ impl<RT: Runtime> ControlBlock<RT> {
             warn!("Ignoring duplicate SYN on established connection");
         }
         if header.rst {
-            unimplemented!();
+            self.sender.receive_rst();
         }
         if header.fin {
             self.receiver.receive_fin();

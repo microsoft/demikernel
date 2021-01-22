@@ -7,13 +7,17 @@ use self::{
 };
 use crate::{
     fail::Fail,
+    file_table::FileDescriptor,
     protocols::{
         ipv4,
         tcp::segment::TcpHeader,
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::Bytes,
+    sync::{
+        Bytes,
+        UnboundedSender,
+    },
 };
 use std::{
     rc::Rc,
@@ -31,9 +35,13 @@ pub struct EstablishedSocket<RT: Runtime> {
 }
 
 impl<RT: Runtime> EstablishedSocket<RT> {
-    pub fn new(cb: ControlBlock<RT>) -> Self {
+    pub fn new(
+        cb: ControlBlock<RT>,
+        fd: FileDescriptor,
+        dead_socket_tx: UnboundedSender<FileDescriptor>,
+    ) -> Self {
         let cb = Rc::new(cb);
-        let future = background(cb.clone());
+        let future = background(cb.clone(), fd, dead_socket_tx);
         let handle = cb.rt.spawn(future);
         Self {
             cb: cb.clone(),

@@ -3,6 +3,7 @@ use crate::{
         ip,
         ipv4,
     },
+    runtime::Runtime,
     sync::BytesMut,
     test_helpers,
 };
@@ -16,13 +17,16 @@ use std::{
         Context,
         Poll,
     },
-    time::Instant,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[test]
 fn test_connect() {
     let mut ctx = Context::from_waker(noop_waker_ref());
-    let now = Instant::now();
+    let mut now = Instant::now();
 
     let mut alice = test_helpers::new_alice(now);
     let mut bob = test_helpers::new_bob(now);
@@ -65,4 +69,28 @@ fn test_connect() {
     let mut pop_future = bob.tcp_pop(bob_fd);
     must_let!(let Poll::Ready(Ok(received_buf)) = Future::poll(Pin::new(&mut pop_future), &mut ctx));
     assert_eq!(received_buf, buf);
+
+    // Test closing the socket from the client
+    alice.close(alice_fd).unwrap();
+
+    alice.rt().poll_scheduler();
+    bob.receive(alice.rt().pop_frame()).unwrap();
+
+    // We need Bob to send a pure ACK before Alice's FIN gets ack'd.
+    bob.rt().poll_scheduler();
+    now += Duration::from_secs(5);
+    bob.rt().advance_clock(now);
+    bob.rt().poll_scheduler();
+
+    alice.receive(bob.rt().pop_frame()).unwrap();
+    alice.receive(bob.rt().pop_frame()).unwrap();
+    alice.rt().poll_scheduler();
+
+    bob.close(bob_fd).unwrap();
+    bob.rt().poll_scheduler();
+    alice.receive(bob.rt().pop_frame()).unwrap();
+    alice.rt().poll_scheduler();
+
+    bob.receive(alice.rt().pop_frame()).unwrap();
+    bob.rt().poll_scheduler();
 }

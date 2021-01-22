@@ -104,7 +104,11 @@ impl Receiver {
     }
 
     pub fn ack_sent(&self, seq_no: SeqNumber) {
-        assert_eq!(seq_no, self.recv_seq_no.get());
+        if self.state.get() == ReceiverState::AckdFin {
+            assert_eq!(seq_no, self.recv_seq_no.get() + Wrapping(1));
+        } else {
+            assert_eq!(seq_no, self.recv_seq_no.get());
+        }
         self.ack_deadline.set(None);
         self.ack_seq_no.set(seq_no);
     }

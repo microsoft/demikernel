@@ -17,7 +17,7 @@ use std::{
 async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail> {
     loop {
         let (receiver_st, receiver_st_changed) = cb.receiver.state.watch();
-        if receiver_st == ReceiverState::Open || receiver_st == ReceiverState::AckdFin {
+        if receiver_st != ReceiverState::ReceivedFin {
             receiver_st_changed.await;
             continue;
         }
@@ -32,13 +32,12 @@ async fn rx_ack_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
         }
 
         // Send ACK segment
+        cb.receiver.state.set(ReceiverState::AckdFin);
         let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
         let mut header = cb.tcp_header();
         header.ack = true;
         header.ack_num = recv_seq + Wrapping(1);
         cb.emit(header, Bytes::empty(), remote_link_addr);
-
-        cb.receiver.state.set(ReceiverState::AckdFin);
     }
 }
 
@@ -75,7 +74,7 @@ async fn tx_fin_sender<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fail>
                 let mut header = cb.tcp_header();
                 header.rst = true;
                 cb.emit(header, Bytes::empty(), remote_link_addr);
-                panic!("Close connection here");
+                return Err(Fail::ConnectionAborted {});
             },
         }
     }

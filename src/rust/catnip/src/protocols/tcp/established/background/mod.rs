@@ -10,7 +10,11 @@ use self::{
     sender::sender,
 };
 use super::state::ControlBlock;
-use crate::runtime::Runtime;
+use crate::{
+    file_table::FileDescriptor,
+    runtime::Runtime,
+    sync::UnboundedSender,
+};
 use futures::FutureExt;
 use std::{
     future::Future,
@@ -24,7 +28,11 @@ use std::{
 // 1408: future total
 pub type BackgroundFuture<RT> = impl Future<Output = ()>;
 
-pub fn background<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> BackgroundFuture<RT> {
+pub fn background<RT: Runtime>(
+    cb: Rc<ControlBlock<RT>>,
+    fd: FileDescriptor,
+    dead_socket_tx: UnboundedSender<FileDescriptor>,
+) -> BackgroundFuture<RT> {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();
         futures::pin_mut!(acknowledger);
@@ -38,11 +46,15 @@ pub fn background<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> BackgroundFuture<RT>
         let closer = closer(cb).fuse();
         futures::pin_mut!(closer);
 
-        futures::select_biased! {
-            r = acknowledger => panic!("TODO: {:?}", r),
-            r = retransmitter => panic!("TODO: {:?}", r),
-            r = sender => panic!("TODO: {:?}", r),
-            r = closer => panic!("TODO: {:?}", r),
-        }
+        let r = futures::select_biased! {
+            r = acknowledger => r,
+            r = retransmitter => r,
+            r = sender => r,
+            r = closer => r,
+        };
+        error!("Connection (fd {}) terminated: {:?}", fd, r);
+        dead_socket_tx
+            .try_send(fd)
+            .expect("Failed to terminate connection");
     }
 }

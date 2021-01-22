@@ -30,17 +30,13 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::Bytes,
-};
-use futures_intrusive::{
-    buffer::GrowingHeapBuf,
-    channel::shared::{
-        generic_channel,
-        GenericReceiver,
-        GenericSender,
+    sync::{
+        Bytes,
+        UnboundedReceiver,
+        UnboundedSender,
     },
-    NoopLock,
 };
+use futures_intrusive::channel::shared::generic_channel;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
@@ -73,8 +69,8 @@ struct Socket {
 }
 
 type OutgoingReq = (Option<ipv4::Endpoint>, ipv4::Endpoint, Bytes);
-type OutgoingSender = GenericSender<NoopLock, OutgoingReq, GrowingHeapBuf<OutgoingReq>>;
-type OutgoingReceiver = GenericReceiver<NoopLock, OutgoingReq, GrowingHeapBuf<OutgoingReq>>;
+type OutgoingSender = UnboundedSender<OutgoingReq>;
+type OutgoingReceiver = UnboundedReceiver<OutgoingReq>;
 
 struct Inner<RT: Runtime> {
     #[allow(unused)]
