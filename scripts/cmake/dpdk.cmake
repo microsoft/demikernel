@@ -8,72 +8,65 @@ include(ExternalProject)
 include(list)
 include(azure)
 
-option(DPDK_MLX4_SUPPORT "Include DPDK support for Mellanox ConnectX-3 and Mellanox ConnectX-3 Pro 10/40 Gbps adapters" OFF)
-option(DPDK_MLX5_SUPPORT "Include DPDK support for Mellanox ConnectX-4, Mellanox ConnectX-4 Lx, Mellanox ConnectX-5, Mellanox ConnectX-6 and Mellanox BlueField families of 10/25/40/50/100/200 Gb/s adapters" OFF)
 set(DPDK_TARGET x86_64-native-linuxapp-gcc CACHE STRING "The DPDK Target")
 
 # DPDK
 set(DPDK_SOURCE_DIR ${CMAKE_SOURCE_DIR}/submodules/dpdk)
 set(DPDK_BINARY_DIR ${CMAKE_BINARY_DIR}/ExternalProject/dpdk)
-set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR})
-set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include ${DPDK_INSTALL_DIR}/include/dpdk)
-set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib)
+set(DPDK_INSTALL_DIR ${DPDK_BINARY_DIR}/install)
+set(DPDK_INCLUDE_DIR ${DPDK_INSTALL_DIR}/include)
+set(DPDK_LIB_DIR ${DPDK_INSTALL_DIR}/lib/x86_64-linux-gnu)
 
-# we hacked the DPDK build to divulge the flags it generated for
-# compilation and linking-- a technique borrowed from mTCP.
-set(DPDK_CFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/include/cflags.txt)
-set(DPDK_LDFLAGS_FILE ${DPDK_SOURCE_DIR}/${DPDK_TARGET}/lib/ldflags.txt)
-
-if(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
-    set(DPDK_CONFIG_FLAGS "-Dbuildtype=release")
-else(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd -D_FORTIFY_SOURCE -fstack-protector-strong")
-    set(DPDK_CONFIG_FLAGS "-Dbuildtype=debug")
-endif(CMAKE_BUILD_TYPE MATCHES "Rel")
-
-if(CMAKE_VERBOSE_MAKEFILE)
-    set(DPDK_VERBOSE_MAKEFILE "V=1")
-endif(CMAKE_VERBOSE_MAKEFILE)
+# TODO: Add support for configuring the DPDK build from our CMAKE_BUILD_TYPE
+# if(CMAKE_BUILD_TYPE MATCHES "Rel")
+#     set(DPDK_EXTRA_CFLAGS "-fPIC -O3")
+# else(CMAKE_BUILD_TYPE MATCHES "Rel")
+#     set(DPDK_EXTRA_CFLAGS "-fPIC -O0 -g3 -mno-rdrnd -D_FORTIFY_SOURCE -fstack-protector-strong")
+# endif(CMAKE_BUILD_TYPE MATCHES "Rel")
+# if(CMAKE_VERBOSE_MAKEFILE)
+#     set(DPDK_VERBOSE_MAKEFILE "V=1")
+# endif(CMAKE_VERBOSE_MAKEFILE)
 
 # warning: the same build flags have to be passed to both the build command
 # and the install command (or `EXTRA_CFLAGS` could be wiped out during
 # install).
+
+set(DPDK_PKGCONFIG_PATH ${DPDK_LIB_DIR}/pkgconfig)
+set(DPDK_CFLAGS_FILE ${DPDK_INSTALL_DIR}/cflags.txt)
+set(DPDK_LDFLAGS_FILE ${DPDK_INSTALL_DIR}/ldflags.txt)
+
 ExternalProject_Add(dpdk
-    PREFIX ${DPDK_BINARY_DIR}
+    PREFIX ${DPDK_SOURCE_DIR}
     SOURCE_DIR ${DPDK_SOURCE_DIR}
-    CONFIGURE_COMMAND cd ${DPDK_SOURCE_DIR} && meson configure ${DPDK_CONFIG_FLAGS} ${DPDK_INSTALL_DIR}
-    BUILD_COMMAND ninja -C ${DPDK_SOURCE_DIR} 
-    INSTALL_COMMAND 
+    CONFIGURE_COMMAND meson --prefix=${DPDK_INSTALL_DIR} ${DPDK_BINARY_DIR} ${DPDK_SOURCE_DIR}
+    BUILD_COMMAND ninja -C ${DPDK_BINARY_DIR}
+    INSTALL_COMMAND ninja -C ${DPDK_BINARY_DIR} install
+    COMMAND sh -c "PKG_CONFIG_PATH=${DPDK_PKGCONFIG_PATH} pkg-config --cflags libdpdk > ${DPDK_CFLAGS_FILE}"
+    COMMAND sh -c "PKG_CONFIG_PATH=${DPDK_PKGCONFIG_PATH} pkg-config --libs libdpdk > ${DPDK_LDFLAGS_FILE}" 
+    # HAX: See the comment below. We need to make the LDFLAGS file from pkg-config safe to pass directly
+    # to the linker, removing any of the "-Wl," quoting that's used to pass through flags that the C 
+    # compiler doesn't understand.
+    COMMAND sed -i"" "s/-Wl,//g" ${DPDK_LDFLAGS_FILE}
 )
 
-# configure DPDK options.
-if(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTR_MLX4_PMD y)
-else(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTR_MLX4_PMD n)
-endif(DPDK_MLX4_SUPPORT OR AZURE_SUPPORT)
-if(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD y)
-else(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTR_MLX5_PMD n)
-endif(DPDK_MLX5_SUPPORT OR AZURE_SUPPORT)
-if(AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD y)
-else(AZURE_SUPPORT)
-    set(DPDK_CONFIG_RTE_LIBRTE_VDEV_NETVSC_PMD n)
-endif(AZURE_SUPPORT)
-set(DPDK_CONFIG_COMMON_BASE ${DPDK_SOURCE_DIR}/config/common_base)
-set(DPDK_CONFIG_COMMON_BASE_IN ${DPDK_SOURCE_DIR}/config/common_linux)
-configure_file(${DPDK_CONFIG_COMMON_BASE_IN} ${DPDK_CONFIG_COMMON_BASE})
+# add_library(dpdk INTERFACE)
+# add_dependencies(dpdk dpdk-build)
+# target_link_libraries(dpdk INTERFACE @${DPDK_LDFLAGS_FILE})
+
+# target_link_libraries(dpdk @${DPDK_LDFLAGS_FILE})
 
 function(target_add_dpdk TARGET)
     target_include_directories(${TARGET} PUBLIC ${DPDK_INCLUDE_DIR})
+
+    # This is pretty hax: We want to pass in some raw flags to the linker via our DPDK_LDFLAGS_FILE, but
+    # CMake interprets "@${DPDK_LDFLAGS_FILE}" as the name of a library and prefixes it with "-l". To 
+    # get around this, we use "-Wl," to directly pass the file argument to the linker, skipping `c++`.
+    target_link_libraries(${TARGET} "-Wl,@${DPDK_LDFLAGS_FILE}")
     set_target_properties(${TARGET} PROPERTIES
-        COMPILE_FLAGS @${DPDK_CFLAGS_FILE}
-        LINK_FLAGS @${DPDK_LDFLAGS_FILE}
+	COMPILE_FLAGS @${DPDK_CFLAGS_FILE}
     )
     add_dependencies(${TARGET} dpdk)
+
 endfunction(target_add_dpdk)
 
 endif(NOT DPDK_DOT_CMAKE_INCLUDED)

@@ -47,7 +47,6 @@ use yaml_rust::{
     YamlLoader,
 };
 
-mod bindings;
 mod dpdk;
 mod runtime;
 
