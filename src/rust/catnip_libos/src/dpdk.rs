@@ -1,5 +1,4 @@
-use crate::{
-    bindings::{
+use dpdk_rs::{
         rte_delay_us_block,
         rte_eal_init,
         rte_eth_conf,
@@ -41,9 +40,8 @@ use crate::{
         RTE_MAX_ETHPORTS,
         RTE_MBUF_DEFAULT_BUF_SIZE,
         RTE_PKTMBUF_HEADROOM,
-    },
-    runtime::DPDKRuntime,
 };
+use crate::runtime::DPDKRuntime;
 use anyhow::{
     bail,
     format_err,
