@@ -62,6 +62,8 @@ function(target_add_dpdk TARGET)
     # CMake interprets "@${DPDK_LDFLAGS_FILE}" as the name of a library and prefixes it with "-l". To 
     # get around this, we use "-Wl," to directly pass the file argument to the linker, skipping `c++`.
     target_link_libraries(${TARGET} "-Wl,@${DPDK_LDFLAGS_FILE}")
+    target_link_libraries(${TARGET} "-Wl,-rpath=${DPDK_LIB_DIR}")
+    target_link_libraries(${TARGET} "-Wl,--disable-new-dtags")
     set_target_properties(${TARGET} PROPERTIES
 	COMPILE_FLAGS @${DPDK_CFLAGS_FILE}
     )

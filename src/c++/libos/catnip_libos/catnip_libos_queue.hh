@@ -1,8 +1,6 @@
 #ifndef DMTR_LIBOS_CATNIP_LIBOS_INCLUDED
 #define DMTR_LIBOS_CATNIP_LIBOS_INCLUDED
 
-#include <catnip_libos.h>
-
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
@@ -17,8 +15,6 @@
 #include <rte_memcpy.h>
 #include <rte_udp.h>
 */
-
-int catnip_libos_noop();
 
 extern "C" {
   void catnip_libos_free_pkt(struct rte_mbuf *packet);
