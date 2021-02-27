@@ -4,11 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-int catnip_libos_noop() {
-    catnip_libos_noop();
-    return 0;
-}
-
 __attribute__((__visibility__("default")))
 void catnip_libos_free_pkt(struct rte_mbuf *packet) {
   rte_pktmbuf_free(packet);
