@@ -10,5 +10,3 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/spdk-dpdk)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/spdk-rdma)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/spdk)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/base)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/catnip_libos)

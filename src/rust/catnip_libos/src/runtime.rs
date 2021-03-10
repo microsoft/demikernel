@@ -3,6 +3,10 @@ use dpdk_rs::{
     rte_eth_devices,
     rte_mbuf,
     rte_mempool,
+    rte_pktmbuf_free,
+    rte_pktmbuf_alloc,
+    rte_eth_tx_burst,
+    rte_eth_rx_burst,
 };
 use catnip::{
     protocols::{
@@ -71,23 +75,6 @@ impl TimerPtr for TimerRc {
 pub struct DPDKRuntime {
     inner: Rc<RefCell<Inner>>,
     scheduler: Scheduler<Operation<Self>>,
-}
-
-extern "C" {
-    fn catnip_libos_free_pkt(m: *mut rte_mbuf);
-    fn catnip_libos_alloc_pkt(mp: *mut rte_mempool) -> *mut rte_mbuf;
-    fn catnip_libos_eth_tx_burst(
-        port_id: u16,
-        queue_id: u16,
-        tx_pkts: *mut *mut rte_mbuf,
-        nb_pkts: u16,
-    ) -> u16;
-    fn catnip_libos_eth_rx_burst(
-        port_id: u16,
-        queue_id: u16,
-        rx_pkts: *mut *mut rte_mbuf,
-        nb_pkts: u16,
-    ) -> u16;
 }
 
 impl DPDKRuntime {
@@ -163,7 +150,7 @@ impl Runtime for DPDKRuntime {
     fn transmit(&self, buf: impl PacketBuf) {
         let pool = { self.inner.borrow().dpdk_mempool };
         let dpdk_port_id = { self.inner.borrow().dpdk_port_id };
-        let mut pkt = unsafe { catnip_libos_alloc_pkt(pool) };
+        let mut pkt = unsafe { rte_pktmbuf_alloc(pool) };
         assert!(!pkt.is_null());
 
         let size = buf.compute_size();
@@ -181,7 +168,7 @@ impl Runtime for DPDKRuntime {
             (*pkt).nb_segs = 1;
             (*pkt).next = ptr::null_mut();
 
-            catnip_libos_eth_tx_burst(dpdk_port_id, 0, &mut pkt as *mut _, 1)
+            rte_eth_tx_burst(dpdk_port_id, 0, &mut pkt as *mut _, 1)
         };
         assert_eq!(num_sent, 1);
     }
@@ -200,7 +187,7 @@ impl Runtime for DPDKRuntime {
 
             // rte_eth_rx_burst is declared `inline` in the header.
             let nb_rx = unsafe {
-                catnip_libos_eth_rx_burst(
+                rte_eth_rx_burst(
                     dpdk_port,
                     0,
                     packets.as_mut_ptr(),
@@ -227,7 +214,7 @@ impl Runtime for DPDKRuntime {
                 inner.buffered[ix] = BytesMut::from(data).freeze();
                 inner.num_buffered += 1;
 
-                unsafe { catnip_libos_free_pkt(packet as *const _ as *mut _) };
+                unsafe { rte_pktmbuf_free(packet as *const _ as *mut _) };
             }
         }
     }
