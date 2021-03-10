@@ -35,10 +35,11 @@ set(DPDK_PKGCONFIG_PATH ${DPDK_LIB_DIR}/pkgconfig)
 set(DPDK_CFLAGS_FILE ${DPDK_INSTALL_DIR}/cflags.txt)
 set(DPDK_LDFLAGS_FILE ${DPDK_INSTALL_DIR}/ldflags.txt)
 
+# See https://mesonbuild.com/Builtin-options.html for meson options
 ExternalProject_Add(dpdk
     PREFIX ${DPDK_SOURCE_DIR}
     SOURCE_DIR ${DPDK_SOURCE_DIR}
-    CONFIGURE_COMMAND meson --buildtype=debugoptimized --prefix=${DPDK_INSTALL_DIR} ${DPDK_BINARY_DIR} ${DPDK_SOURCE_DIR}
+    CONFIGURE_COMMAND meson --buildtype=release --debug --prefix=${DPDK_INSTALL_DIR} ${DPDK_BINARY_DIR} ${DPDK_SOURCE_DIR}
     BUILD_COMMAND ninja -C ${DPDK_BINARY_DIR}
     INSTALL_COMMAND ninja -C ${DPDK_BINARY_DIR} install
     COMMAND sh -c "PKG_CONFIG_PATH=${DPDK_PKGCONFIG_PATH} pkg-config --cflags libdpdk > ${DPDK_CFLAGS_FILE}"
@@ -48,12 +49,6 @@ ExternalProject_Add(dpdk
     # compiler doesn't understand.
     COMMAND sed -i"" "s/-Wl,//g" ${DPDK_LDFLAGS_FILE}
 )
-
-# add_library(dpdk INTERFACE)
-# add_dependencies(dpdk dpdk-build)
-# target_link_libraries(dpdk INTERFACE @${DPDK_LDFLAGS_FILE})
-
-# target_link_libraries(dpdk @${DPDK_LDFLAGS_FILE})
 
 function(target_add_dpdk TARGET)
     target_include_directories(${TARGET} PUBLIC ${DPDK_INCLUDE_DIR})
@@ -68,7 +63,6 @@ function(target_add_dpdk TARGET)
 	COMPILE_FLAGS @${DPDK_CFLAGS_FILE}
     )
     add_dependencies(${TARGET} dpdk)
-
 endfunction(target_add_dpdk)
 
 endif(NOT DPDK_DOT_CMAKE_INCLUDED)
