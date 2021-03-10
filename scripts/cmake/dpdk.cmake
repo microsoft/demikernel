@@ -38,7 +38,7 @@ set(DPDK_LDFLAGS_FILE ${DPDK_INSTALL_DIR}/ldflags.txt)
 ExternalProject_Add(dpdk
     PREFIX ${DPDK_SOURCE_DIR}
     SOURCE_DIR ${DPDK_SOURCE_DIR}
-    CONFIGURE_COMMAND meson --prefix=${DPDK_INSTALL_DIR} ${DPDK_BINARY_DIR} ${DPDK_SOURCE_DIR}
+    CONFIGURE_COMMAND meson --buildtype=debugoptimized --prefix=${DPDK_INSTALL_DIR} ${DPDK_BINARY_DIR} ${DPDK_SOURCE_DIR}
     BUILD_COMMAND ninja -C ${DPDK_BINARY_DIR}
     INSTALL_COMMAND ninja -C ${DPDK_BINARY_DIR} install
     COMMAND sh -c "PKG_CONFIG_PATH=${DPDK_PKGCONFIG_PATH} pkg-config --cflags libdpdk > ${DPDK_CFLAGS_FILE}"
