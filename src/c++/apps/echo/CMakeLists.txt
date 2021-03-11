@@ -23,6 +23,20 @@ set(RAW_ECHO_SERVER_SOURCES ${ECHO_APPS_DIR}/posix_tcp_server.cc)
 set(RAW_ECHO_CLIENT_SOURCES ${ECHO_APPS_DIR}/posix_tcp_client.cc)
 set(STORE_TEST_SOURCES ${ECHO_APPS_DIR}/dmtr_file_test.cc)
 
+function(target_add_catnip TARGET)
+	target_add_dpdk(${TARGET})
+        target_link_libraries(${TARGET} catnip_libos)
+	target_link_libraries(${TARGET} ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.so)
+
+	# TODO: It's not really clear why we need all of these dependencies.
+	target_link_libraries(${TARGET} boost_program_options yaml-cpp Threads::Threads)
+	target_link_libraries(${TARGET} "-Wl,--whole-archive" dmtr-libos-common "-Wl,--no-whole-archive")
+	target_link_libraries(${TARGET} "-Wl,--whole-archive" dmtr-libos-base "-Wl,--no-whole-archive")
+	target_link_libraries(${TARGET} "-Wl,--whole-archive" -lnuma "-Wl,--no-whole-archive")
+	target_link_libraries(${TARGET} boost_context boost_coroutine dmtr-latency)
+	target_link_libraries(${TARGET} dl)
+endfunction(target_add_catnip)
+
 # POSIX TCP server
 add_executable(dmtr-posix-server ${TCP_ECHO_SERVER_SOURCES})
 target_link_libraries(dmtr-posix-server dmtr-libos-posix yaml-cpp boost_program_options)
@@ -83,7 +97,6 @@ target_link_libraries(dmtr-spdk-rdma-server dmtr-libos-spdk-rdma yaml-cpp boost_
 add_custom_target(dmtr-spdk-rdma-echo)
 add_dependencies(dmtr-spdk-rdma-echo dmtr-spdk-rdma-server dmtr-spdk-rdma-client)
 
-
 # POSIX "raw" non-demeter server
 add_executable(posix-server ${RAW_ECHO_SERVER_SOURCES})
 target_link_libraries(posix-server dmtr-latency dmtr-libos-common yaml-cpp boost_program_options)
@@ -101,14 +114,11 @@ add_dependencies(echo posix-echo dmtr-posix-echo dmtr-lwip-echo dmtr-rdma-echo c
 
 # Catnip libos TCP server
 add_executable(catnip-libos-server ${TCP_ECHO_SERVER_SOURCES})
-target_add_dpdk(catnip-libos-server)
-target_link_libraries(catnip-libos-server dmtr-libos-common yaml-cpp boost_program_options)
-target_link_libraries(catnip-libos-server catnip_libos)
-target_link_libraries(catnip-libos-server ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.so)
+target_add_catnip(catnip-libos-server)
 
 # Catnip libos TCP client
 add_executable(catnip-libos-client  ${TCP_ECHO_CLIENT_SOURCES})
-target_link_libraries(catnip-libos-client catnip_libos)
+target_add_catnip(catnip-libos-client)
 
 # Catnip libos TCP client & server
 add_custom_target(catnip-libos-echo)
@@ -116,11 +126,11 @@ add_dependencies(catnip-libos-echo catnip-libos-server catnip-libos-client)
 
 # Catnip libos UDP server
 add_executable(catnip-libos-udp-server ${UDP_ECHO_SERVER_SOURCES})
-target_link_libraries(catnip-libos-udp-server catnip_libos)
+target_add_catnip(catnip-libos-udp-server)
 
 # Catnip libos UDP client
 add_executable(catnip-libos-udp-client ${UDP_ECHO_CLIENT_SOURCES})
-target_link_libraries(catnip-libos-udp-client catnip_libos)
+target_add_catnip(catnip-libos-udp-client)
 
 # Catnip libos UDP client & server
 add_custom_target(catnip-libos-udp-echo)
