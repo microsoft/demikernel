@@ -12,7 +12,6 @@
 #include <dmtr/libos.h>
 #include <dmtr/libos/mem.h>
 #include <dmtr/sga.h>
-#include <dmtr/wait.h>
 #include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>

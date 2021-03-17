@@ -157,3 +157,36 @@ int dmtr_drop(dmtr_qtoken_t qt)
 
     return ioq_api->drop(qt);
 }
+
+int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt) {
+    int ret = EAGAIN;
+    while (EAGAIN == ret) {
+        ret = dmtr_poll(qr_out, qt);
+    }
+    DMTR_OK(dmtr_drop(qt));
+    return ret;
+}
+
+int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qts[], int num_qts) {
+    // start where we last left off
+    int i = (ready_offset != NULL && *ready_offset + 1 < num_qts) ? *ready_offset + 1 : 0;
+    while (1) {
+        // just ignore zero tokens
+        if (qts[i] != 0) {
+            int ret = dmtr_poll(qr_out, qts[i]);
+            if (ret != EAGAIN) {
+                if (ret == 0) {
+                    DMTR_OK(dmtr_drop(qts[i]));
+                    if (ready_offset != NULL)
+                        *ready_offset = i;
+                    return ret;
+                }
+            }
+        }
+        i++;
+        if (i == num_qts) i = 0;
+    }
+
+    DMTR_UNREACHABLE();
+}
+
