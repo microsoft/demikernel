@@ -15,7 +15,7 @@ use crate::{
         Operation,
         SchedulerHandle,
     },
-    sync::BytesMut,
+    sync::{Bytes, BytesMut},
 };
 use libc::c_int;
 use std::{
@@ -117,6 +117,11 @@ impl<RT: Runtime> LibOS<RT> {
             pos += seg_slice.len();
         }
         let buf = buf.freeze();
+        let future = self.engine.push(fd, buf);
+        self.rt.scheduler().insert(future).into_raw()
+    }
+
+    pub fn push2(&mut self, fd: FileDescriptor, buf: Bytes) -> QToken {
         let future = self.engine.push(fd, buf);
         self.rt.scheduler().insert(future).into_raw()
     }
