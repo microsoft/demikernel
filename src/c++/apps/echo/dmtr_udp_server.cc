@@ -13,7 +13,6 @@
 #include <dmtr/annot.h>
 #include <dmtr/latency.h>
 #include <dmtr/libos.h>
-#include <dmtr/wait.h>
 #include <iostream>
 #include <dmtr/libos/mem.h>
 #include <netinet/in.h>
