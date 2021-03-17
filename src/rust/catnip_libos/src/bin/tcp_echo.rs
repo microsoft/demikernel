@@ -164,29 +164,20 @@ fn main() {
 
                 while bytes_received < buf_sz {
                     let start = Instant::now();
-                    // tracing::log("pop:start");
                     let qtoken = libos.pop(fd);
-                    // tracing::log("pop:end");
                     pop_latency.push(start.elapsed());
-                    // tracing::log("wait2:start");
                     must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
-                    // tracing::log("wait2:end");
                     bytes_received += buf.len();
 
                     let start = Instant::now();
-                    // tracing::log("push2:start");
                     let qtoken = libos.push2(fd, buf);
-                    // tracing::log("push2:end");
                     push_latency.push(start.elapsed());
                     push_tokens.push(qtoken);
                 }
                 assert_eq!(bytes_received, buf_sz);
-                // tracing::log("wait_all_pushes:start");
                 libos.wait_all_pushes(&mut push_tokens);
-                // tracing::log("wait_all_pushes:end");
                 assert_eq!(push_tokens.len(), 0);
 
-                // tracing::log("round:end");
             }
 
             let mut push_h = Histogram::configure().precision(4).build().unwrap();
@@ -221,58 +212,50 @@ fn main() {
             let mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
             let hdr_size = 54;
 
-            let num_bufs = (buf_sz - 1) / mss + 1;
-            let mut bufs = Vec::with_capacity(num_bufs);
+            // let num_bufs = (buf_sz - 1) / mss + 1;
+            // let mut bufs = Vec::with_capacity(num_bufs);
 
-            for i in 0..num_bufs {
-                let start = i * mss;
-                let end = std::cmp::min(start + mss, buf_sz);
-                let len = end - start;
-                let mut pktbuf: catnip::sync::Mbuf = libos.rt().alloc_mbuf();
-                for j in hdr_size..(hdr_size + len) {
-                    pktbuf[j] = 'a' as u8;
-                }
-                let buf = catnip::sync::Bytes::from_obj(catnip::sync::BufEnum::DPDK(pktbuf));
-                let (_, buf) = buf.split(hdr_size);
-                let (buf, _) = buf.split(len);
-                println!("Buf {}, {} bytes", i, buf.len());
-                bufs.push(buf); 
-            }
+            // for i in 0..num_bufs {
+            //     let start = i * mss;
+            //     let end = std::cmp::min(start + mss, buf_sz);
+            //     let len = end - start;
+
+            //     let mut pktbuf: catnip::sync::Mbuf = libos.rt().alloc_mbuf();
+            //     for j in hdr_size..(hdr_size + len) {
+            //         pktbuf[j] = 'a' as u8;
+            //     }
+            //     let buf = catnip::sync::Bytes::from_obj(catnip::sync::BufEnum::DPDK(pktbuf));
+            //     let (_, buf) = buf.split(hdr_size);
+            //     let (buf, _) = buf.split(len);
+            //     println!("Buf {}, {} bytes", i, buf.len());
+            //     bufs.push(buf);
+            // }
 
             let mut buf = BytesMut::zeroed(buf_sz);
             for b in &mut buf[..] {
                 *b = 'a' as u8;
             }
             let buf = buf.freeze();
-            let mut push_tokens = Vec::with_capacity(num_bufs);
+            // let mut push_tokens = Vec::with_capacity(num_bufs);
 
             let exp_start = Instant::now();
             let mut samples = Vec::with_capacity(num_iters);
             let mut round_timings = Vec::with_capacity(num_iters);
 
             for i in 0..num_iters {
-                // tracing::log("round:start");
                 if log_round {
                     println!("Round {}", i);
                 }
                 let start = Instant::now();
-                // tracing::log("push2:start");
-                // let qtoken = libos.push2(sockfd, buf.clone());
-                // tracing::log("push2:end");
-                // tracing::log("push_wait3:start");
-                // must_let!(let (_, OperationResult::Push) = libos.wait3(qtoken));
-                // tracing::log("push_wait3:end");
+                let qtoken = libos.push2(sockfd, buf.clone());
+                must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
 
-                assert!(push_tokens.is_empty());
-                for b in &bufs {
-                    // tracing::log("push2:start");
-                    let qtoken = libos.push2(sockfd, b.clone());
-                    // tracing::log("push2:end");
-                    push_tokens.push(qtoken);
-                }
-                // tracing::log("wait_all_pushes:start");
-                libos.wait_all_pushes(&mut push_tokens);
-                // tracing::log("wait_all_pushes:end");
+                // assert!(push_tokens.is_empty());
+                // for b in &bufs {
+                //     let qtoken = libos.push2(sockfd, b.clone());
+                //     push_tokens.push(qtoken);
+                // }
+                // libos.wait_all_pushes(&mut push_tokens);
 
                 if log_round {
                     println!("Done pushing");
@@ -280,14 +263,10 @@ fn main() {
 
                 let mut bytes_popped = 0;
                 while bytes_popped < buf_sz {
-                    // tracing::log("pop:start");
                     let qtoken = libos.pop(sockfd);
-                    // tracing::log("pop:end");
-                    // tracing::log("pop_wait2:start");
                     must_let!(let (_, OperationResult::Pop(_, popped_buf)) = libos.wait2(qtoken));
-                    // tracing::log("pop_wait2:end");
                     bytes_popped += popped_buf.len();
-                    libos.rt().donate_buffer(popped_buf);
+                    drop(popped_buf);
                 }
                 assert_eq!(bytes_popped, buf_sz);
                 samples.push(start.elapsed());
@@ -295,7 +274,6 @@ fn main() {
                 if log_round {
                     println!("Done popping");
                 }
-                // tracing::log("round:end");
             }
             let exp_duration = exp_start.elapsed();
             let mut h = Histogram::configure().precision(4).build().unwrap();
@@ -312,16 +290,6 @@ fn main() {
         else {
             panic!("Set either ECHO_SERVER or ECHO_CLIENT");
         }
-
-        let (events, num_overflow) = tracing::dump();
-        println!("Dropped {} tracing events", num_overflow);
-        let filename = format!("events_{}.log", if is_server { "server" } else { "client" });
-        let mut f = std::io::BufWriter::new(std::fs::File::create(&filename).unwrap());
-        for (name, ts) in events {
-            writeln!(f, "{} {}", name, ts).unwrap();
-        }
-        drop(f);
-
     };
     r.unwrap_or_else(|e| panic!("Initialization failure: {:?}", e));
 }
