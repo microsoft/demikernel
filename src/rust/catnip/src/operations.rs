@@ -44,6 +44,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum OperationResult {
     Connect,
     Accept(FileDescriptor),

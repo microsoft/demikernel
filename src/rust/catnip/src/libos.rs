@@ -15,8 +15,10 @@ use crate::{
         Operation,
         SchedulerHandle,
     },
+    operations::OperationResult,
     sync::{Bytes, BytesMut},
 };
+use must_let::must_let;
 use libc::c_int;
 use std::{
     slice,
@@ -164,16 +166,32 @@ impl<RT: Runtime> LibOS<RT> {
             handle.into_raw();
             return None;
         }
-        Some(self.take_operation(handle, qt))
+        let (qd, r) = self.take_operation(handle);
+        Some(dmtr_qresult_t::pack(r, qd, qt))
     }
 
     pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
+        let (qd, r) = self.wait2(qt);
+        dmtr_qresult_t::pack(r, qd, qt)
+    }
+
+    pub fn wait2(&mut self, qt: QToken) -> (FileDescriptor, OperationResult) {
         let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
         loop {
             self.poll_bg_work();
             if handle.has_completed() {
-                return self.take_operation(handle, qt);
+                return self.take_operation(handle);
             }
+        }
+
+    }
+
+    pub fn wait_all_pushes(&mut self, qts: &mut Vec<QToken>) {
+        self.poll_bg_work();
+        for qt in qts.drain(..) {
+            let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+            assert!(handle.has_completed());
+            must_let!(let (_, OperationResult::Push) = self.take_operation(handle));
         }
     }
 
@@ -184,20 +202,20 @@ impl<RT: Runtime> LibOS<RT> {
             for (i, &qt) in qts.iter().enumerate() {
                 let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
                 if handle.has_completed() {
-                    return (i, self.take_operation(handle, qt));
+                    let (qd, r) = self.take_operation(handle);
+                    return (i, dmtr_qresult_t::pack(r, qd, qt));
                 }
                 handle.into_raw();
             }
         }
     }
 
-    fn take_operation(&mut self, handle: SchedulerHandle, qt: QToken) -> dmtr_qresult_t {
-        let (qd, r) = match self.rt.scheduler().take(handle) {
+    fn take_operation(&mut self, handle: SchedulerHandle) -> (FileDescriptor, OperationResult) {
+        match self.rt.scheduler().take(handle) {
             Operation::Tcp(f) => f.expect_result(),
             Operation::Udp(f) => f.expect_result(),
             Operation::Background(..) => panic!("Polled background operation"),
-        };
-        dmtr_qresult_t::pack(r, qd, qt)
+        }
     }
 
     fn poll_bg_work(&mut self) {

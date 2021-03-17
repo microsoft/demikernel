@@ -47,8 +47,8 @@ use yaml_rust::{
     YamlLoader,
 };
 
-mod dpdk;
-mod runtime;
+pub mod dpdk;
+pub mod runtime;
 
 use crate::runtime::DPDKRuntime;
 use anyhow::{
