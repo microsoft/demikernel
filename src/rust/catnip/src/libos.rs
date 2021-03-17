@@ -161,6 +161,7 @@ impl<RT: Runtime> LibOS<RT> {
 
     // If this returns a result, `qt` is no longer valid.
     pub fn poll(&mut self, qt: QToken) -> Option<dmtr_qresult_t> {
+        self.poll_bg_work();
         let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
         if !handle.has_completed() {
             handle.into_raw();
