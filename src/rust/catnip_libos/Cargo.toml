@@ -17,6 +17,8 @@ hashbrown = { version = "0.9", features = ["nightly"] }
 libc = "0.2.77"
 rand = { version = "0.7.3", features = ["small_rng"] }
 yaml-rust = "0.4.4"
+histogram = "0.6.9"
+must-let = { git = "https://github.com/sujayakar/must-let" }
 
 [build-dependencies]
 bindgen = "0.55.1"
