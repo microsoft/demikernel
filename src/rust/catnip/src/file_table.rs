@@ -25,6 +25,11 @@ impl FileTable {
         }
     }
 
+    pub fn is_valid(&self, fd: FileDescriptor) -> bool {
+        let inner = self.inner.borrow();
+        inner.table.contains(fd as usize)
+    }
+
     pub fn alloc(&self, file: File) -> FileDescriptor {
         let mut inner = self.inner.borrow_mut();
         let ix = inner.table.insert(file);

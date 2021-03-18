@@ -75,6 +75,7 @@ pub fn initialize_dpdk(
     disable_arp: bool,
     use_jumbo_frames: bool,
     mtu: u16,
+    tcp_checksum_offload: bool,
 ) -> Result<DPDKRuntime, Error> {
     std::env::set_var("MLX5_SHUT_UP_BF", "1");
     let eal_init_refs = eal_init_args
@@ -122,7 +123,7 @@ pub fn initialize_dpdk(
         while p < RTE_MAX_ETHPORTS as u16 {
             // TODO: This is pretty hax, we clearly only support one port.
             port_id = p;
-            initialize_dpdk_port(p, mbuf_pool, use_jumbo_frames, mtu)?;
+            initialize_dpdk_port(p, mbuf_pool, use_jumbo_frames, mtu, tcp_checksum_offload)?;
             p = unsafe { rte_eth_find_next_owned_by(p + 1, owner) as u16 };
         }
     }
@@ -149,6 +150,7 @@ pub fn initialize_dpdk(
         mbuf_pool,
         arp_table,
         disable_arp,
+        tcp_checksum_offload,
     ))
 }
 
@@ -157,6 +159,7 @@ fn initialize_dpdk_port(
     mbuf_pool: *mut rte_mempool,
     use_jumbo_frames: bool,
     mtu: u16,
+    tcp_checksum_offload: bool,
 ) -> Result<(), Error> {
     let rx_rings = 1;
     let tx_rings = 1;
@@ -195,7 +198,9 @@ fn initialize_dpdk_port(
     } else {
         RTE_ETHER_MAX_LEN
     };
-    port_conf.rxmode.offloads = DEV_RX_OFFLOAD_TCP_CKSUM as u64;
+    if tcp_checksum_offload {
+        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_TCP_CKSUM as u64;
+    }
     if use_jumbo_frames {
         port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME as u64;
     }
@@ -203,7 +208,9 @@ fn initialize_dpdk_port(
     port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP as u64 | dev_info.flow_type_rss_offloads;
 
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-    port_conf.txmode.offloads = DEV_TX_OFFLOAD_TCP_CKSUM as u64;
+    if tcp_checksum_offload {
+        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_TCP_CKSUM as u64;
+    }
 
     let mut rx_conf: rte_eth_rxconf = unsafe { MaybeUninit::zeroed().assume_init() };
     rx_conf.rx_thresh.pthresh = rx_pthresh;

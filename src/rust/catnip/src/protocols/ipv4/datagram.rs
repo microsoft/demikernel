@@ -43,6 +43,7 @@ impl TryFrom<u8> for Ipv4Protocol2 {
     }
 }
 
+#[derive(Debug)]
 pub struct Ipv4Header {
     // [ version 4 bits ] [ IHL 4 bits ]
     // The user shouldn't be able to mutate the version, so we parse it out but don't include it

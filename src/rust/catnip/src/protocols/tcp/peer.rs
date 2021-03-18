@@ -362,7 +362,7 @@ impl<RT: Runtime> Peer<RT> {
             },
             Some(..) => {
                 // TODO: Implement close for listening sockets.
-                unimplemented!();
+                // unimplemented!();
             },
             None => return Err(Fail::Malformed { details: "Bad FD" }),
         }
@@ -495,6 +495,7 @@ impl<RT: Runtime> Inner<RT> {
     fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
         let (tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.rx_checksum_offload)?;
+        debug!("TCP received {:?}", tcp_hdr);
         let local = ipv4::Endpoint::new(ip_hdr.dst_addr, tcp_hdr.dst_port);
         let remote = ipv4::Endpoint::new(ip_hdr.src_addr, tcp_hdr.src_port);
 
@@ -507,19 +508,23 @@ impl<RT: Runtime> Inner<RT> {
         let key = (local, remote);
 
         if let Some(s) = self.established.get(&key) {
+            debug!("Routing to established connection: {:?}", key);
             s.receive(&tcp_hdr, data);
             return Ok(());
         }
         if let Some(s) = self.connecting.get_mut(&key) {
+            debug!("Routing to connecting connection: {:?}", key);
             s.receive(&tcp_hdr);
             return Ok(());
         }
         let (local, _) = key;
         if let Some(s) = self.passive.get_mut(&local) {
+            debug!("Routing to passive connection: {:?}", local);
             return s.receive(ip_hdr, &tcp_hdr);
         }
 
         // The packet isn't for an open port; send a RST segment.
+        debug!("Sending RST for {:?}, {:?}", local, remote);
         self.send_rst(&local, &remote)?;
         Ok(())
     }

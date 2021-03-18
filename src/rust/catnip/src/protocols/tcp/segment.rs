@@ -299,7 +299,7 @@ impl TcpHeader {
 
         if data_offset > MIN_TCP_HEADER2_SIZE {
             let mut option_rdr = Cursor::new(&hdr_buf[MIN_TCP_HEADER2_SIZE..data_offset]);
-            loop {
+            while (option_rdr.position() as usize) < data_offset - MIN_TCP_HEADER2_SIZE {
                 let option_kind = option_rdr.read_u8()?;
                 let option = match option_kind {
                     0 => break,

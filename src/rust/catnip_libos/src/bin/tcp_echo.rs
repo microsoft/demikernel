@@ -117,6 +117,7 @@ fn main() {
 
         let use_jumbo_frames = false;
         let mtu = 9216;
+        let tcp_checksum_offload = false;
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -124,6 +125,7 @@ fn main() {
             disable_arp,
             use_jumbo_frames,
             mtu,
+            tcp_checksum_offload,
         )?;
         logging::initialize();
 

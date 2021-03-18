@@ -74,45 +74,50 @@ pub extern "C" fn catnip_libos_noop() {
 #[no_mangle]
 pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     let r: Result<_, Error> = try {
-        if argc == 0 || argv.is_null() {
-            Err(format_err!("Arguments not provided"))?;
-        }
-        let argument_ptrs = unsafe { slice::from_raw_parts(argv, argc as usize) };
-        let arguments: Vec<_> = argument_ptrs
-            .into_iter()
-            .map(|&p| unsafe { CStr::from_ptr(p).to_str().expect("Non-UTF8 argument") })
-            .collect();
+        let config_path = match std::env::var("CONFIG_PATH") {
+            Ok(s) => s,
+            Err(..) => {
+                if argc == 0 || argv.is_null() {
+                    Err(format_err!("Arguments not provided"))?;
+                }
+                let argument_ptrs = unsafe { slice::from_raw_parts(argv, argc as usize) };
+                let arguments: Vec<_> = argument_ptrs
+                    .into_iter()
+                    .map(|&p| unsafe { CStr::from_ptr(p).to_str().expect("Non-UTF8 argument") })
+                    .collect();
+                let matches = App::new("libos-catnip")
+                    .arg(
+                        Arg::with_name("config")
+                            .short("c")
+                            .long("config-path")
+                            .value_name("FILE")
+                            .help("YAML file for DPDK configuration")
+                            .takes_value(true),
+                    )
+                    .arg(
+                        Arg::with_name("iterations")
+                            .short("i")
+                            .long("iterations")
+                            .value_name("COUNT")
+                            .help("Number of iterations")
+                            .takes_value(true),
+                    )
+                    .arg(
+                        Arg::with_name("size")
+                            .short("s")
+                            .long("size")
+                            .value_name("BYTES")
+                            .help("Packet size")
+                            .takes_value(true),
+                    )
+                    .get_matches_from(&arguments);
 
-        let matches = App::new("libos-catnip")
-            .arg(
-                Arg::with_name("config")
-                    .short("c")
-                    .long("config-path")
-                    .value_name("FILE")
-                    .help("YAML file for DPDK configuration")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("iterations")
-                    .short("i")
-                    .long("iterations")
-                    .value_name("COUNT")
-                    .help("Number of iterations")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("size")
-                    .short("s")
-                    .long("size")
-                    .value_name("BYTES")
-                    .help("Packet size")
-                    .takes_value(true),
-            )
-            .get_matches_from(&arguments);
-
-        let config_path = matches
-            .value_of("config")
-            .ok_or_else(|| format_err!("--config-path argument not provided"))?;
+                matches
+                    .value_of("config")
+                    .ok_or_else(|| format_err!("--config-path argument not provided"))?
+                    .to_owned()
+            },
+        };
 
         let mut config_s = String::new();
         File::open(config_path)?.read_to_string(&mut config_s)?;
@@ -167,6 +172,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 
         let use_jumbo_frames = false;
         let mtu = 9216;
+        let tcp_checksum_offload = false;
         let runtime = self::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -174,6 +180,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             disable_arp,
             use_jumbo_frames,
             mtu,
+            tcp_checksum_offload,
         )?;
         logging::initialize();
         LibOS::new(runtime)?
@@ -371,7 +378,11 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
-        unsafe { *qr_out = libos.wait(qt) };
+        let (qd, r) = libos.wait2(qt);
+        if !qr_out.is_null() {
+            let packed = dmtr_qresult_t::pack(r, qd, qt);
+            unsafe { *qr_out = packed };
+        }
         0
     })
 }
@@ -419,11 +430,19 @@ pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
 //     unimplemented!()
 // }
 
-// #[no_mangle]
-// pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
-//     unimplemented!()
-// }
+#[no_mangle]
+pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
+    with_libos(|libos| {
+        let is_valid = libos.is_qd_valid(qd as FileDescriptor);
+        unsafe { *flag_out = if is_valid { 1 } else { 0 }; }
+        0
+    })
+}
 
+#[no_mangle]
+pub extern "C" fn dmtr_open2(qd_out: *mut c_int, pathname: *const c_char, flags: c_int, mode: libc::mode_t) -> c_int {
+    unimplemented!();
+}
 // #[no_mangle]
 // pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
 //     unimplemented!();

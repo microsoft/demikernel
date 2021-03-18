@@ -83,6 +83,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         // > ?Do I speak the protocol in ar$pro?
         // > [optionally check the protocol length ar$pln]
         let pdu = ArpPdu::parse(buf)?;
+        debug!("Received {:?}", pdu);
 
         // from RFC 826:
         // > Merge_flag := false
@@ -140,6 +141,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                         target_protocol_addr: pdu.sender_protocol_addr,
                     },
                 };
+                debug!("Responding {:?}", reply);
                 self.rt.transmit(reply);
                 Ok(())
             },

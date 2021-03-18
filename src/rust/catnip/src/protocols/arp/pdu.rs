@@ -25,7 +25,7 @@ use std::{
 };
 
 const HTYPE_ETHER2: u16 = 1;
-const HLEN_ETHER2: u8 = 1;
+const HLEN_ETHER2: u8 = 6;
 const PTYPE_IPV4: u16 = 0x800;
 const PLEN_IPV4: u8 = 4;
 const ARP_MESSAGE_SIZE: usize = 28;
@@ -51,7 +51,7 @@ pub struct ArpPdu {
     pub target_protocol_addr: Ipv4Addr,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArpMessage {
     pub ethernet2_hdr: Ethernet2Header,
     pub arp_pdu: ArpPdu,

@@ -85,6 +85,7 @@ impl DPDKRuntime {
         dpdk_mempool: *mut rte_mempool,
         arp_table: HashMap<MacAddress, Ipv4Addr>,
         disable_arp: bool,
+        tcp_checksum_offload: bool,
     ) -> Self {
         let mut rng = rand::thread_rng();
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
@@ -105,8 +106,8 @@ impl DPDKRuntime {
         let mut tcp_options = tcp::Options::default();
         tcp_options.advertised_mss = 9000;
         tcp_options.window_scale = 5;
-        tcp_options.tx_checksum_offload = true;
-        tcp_options.rx_checksum_offload = true;
+        tcp_options.tx_checksum_offload = tcp_checksum_offload;
+        tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),

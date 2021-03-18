@@ -77,6 +77,7 @@ impl<RT: Runtime> Engine<RT> {
     pub fn receive(&mut self, bytes: Bytes) -> Result<(), Fail> {
         let _s = static_span!();
         let (header, payload) = Ethernet2Header::parse(bytes)?;
+        debug!("Engine received {:?}", header);
         if self.rt.local_link_addr() != header.dst_addr && !header.dst_addr.is_broadcast() {
             return Err(Fail::Ignored {
                 details: "Physical dst_addr mismatch",
@@ -185,6 +186,10 @@ impl<RT: Runtime> Engine<RT> {
             },
             _ => panic!("TODO: Invalid fd"),
         }
+    }
+
+    pub fn is_qd_valid(&self, fd: FileDescriptor) -> bool {
+        self.file_table.is_valid(fd)
     }
 
     pub fn close(&mut self, fd: FileDescriptor) -> Result<(), Fail> {

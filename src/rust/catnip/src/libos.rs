@@ -56,7 +56,7 @@ impl<RT: Runtime> LibOS<RT> {
         &mut self,
         domain: c_int,
         socket_type: c_int,
-        protocol: c_int,
+        _protocol: c_int,
     ) -> Result<FileDescriptor, Fail> {
         if domain != libc::AF_INET {
             return Err(Fail::Invalid {
@@ -72,11 +72,6 @@ impl<RT: Runtime> LibOS<RT> {
                 })
             },
         };
-        if protocol != 0 {
-            return Err(Fail::Invalid {
-                details: "Invalid protocol",
-            });
-        }
         Ok(self.engine.socket(engine_protocol))
     }
 
@@ -162,7 +157,12 @@ impl<RT: Runtime> LibOS<RT> {
     // If this returns a result, `qt` is no longer valid.
     pub fn poll(&mut self, qt: QToken) -> Option<dmtr_qresult_t> {
         self.poll_bg_work();
-        let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+        let handle = match self.rt.scheduler().from_raw_handle(qt) {
+            None => {
+                panic!("Invalid handle {}", qt);
+            },
+            Some(h) => h,
+        };
         if !handle.has_completed() {
             handle.into_raw();
             return None;
@@ -209,6 +209,10 @@ impl<RT: Runtime> LibOS<RT> {
                 handle.into_raw();
             }
         }
+    }
+
+    pub fn is_qd_valid(&self, fd: FileDescriptor) -> bool {
+        self.engine.is_qd_valid(fd)
     }
 
     fn take_operation(&mut self, handle: SchedulerHandle) -> (FileDescriptor, OperationResult) {
