@@ -7,6 +7,8 @@ add_redis(redis-posix dmtr-libos-posix ${CMAKE_SOURCE_DIR}/submodules/redis-posi
 add_redis(redis-rdma dmtr-libos-rdma ${CMAKE_SOURCE_DIR}/submodules/redis-rdma)
 add_redis(redis-lwip dmtr-libos-lwip ${CMAKE_SOURCE_DIR}/submodules/redis-lwip)
 
+add_catnip_redis(redis-dpdk-catnip ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
+
 # add_redis(redis-dpdk-catnip ${CMAKE_SOURCE_DIR}/submodules/redis-dpdk-catnip)
 # target_add_catnip(redis-dpdk-catnip)
 
