@@ -11,20 +11,29 @@ use crate::{
         Scheduler,
         SchedulerHandle,
     },
-    sync::Bytes,
+    interop::dmtr_sgarray_t,
 };
 use rand::distributions::{
     Distribution,
     Standard,
 };
 use std::{
+    fmt::Debug,
     future::Future,
     net::Ipv4Addr,
     time::{
         Duration,
         Instant,
     },
+    ops::Deref,
 };
+
+pub trait RuntimeBuf: Clone + Debug + Deref<Target=[u8]> + Sized + Unpin {
+    fn empty() -> Self;
+    fn split(self, ix: usize) -> (Self, Self);
+
+    fn from_sgarray(sga: &dmtr_sgarray_t) -> Self;
+}
 
 pub trait PacketBuf {
     fn compute_size(&self) -> usize;
@@ -32,9 +41,11 @@ pub trait PacketBuf {
 }
 
 pub trait Runtime: Clone + Unpin + 'static {
+    type Buf: RuntimeBuf;
+
     fn advance_clock(&self, now: Instant);
     fn transmit(&self, pkt: impl PacketBuf);
-    fn receive(&self) -> Option<Bytes>;
+    fn receive(&self) -> Option<Self::Buf>;
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;

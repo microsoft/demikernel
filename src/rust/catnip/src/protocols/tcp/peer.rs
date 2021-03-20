@@ -5,6 +5,7 @@ use super::{
     passive_open::PassiveSocket,
 };
 use crate::{
+    runtime::RuntimeBuf,
     fail::Fail,
     file_table::{
         File,
@@ -40,13 +41,9 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::{
-        Bytes,
-        UnboundedReceiver,
-        UnboundedSender,
-    },
 };
-use futures_intrusive::channel::shared::generic_channel;
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
@@ -64,7 +61,7 @@ pub struct Peer<RT: Runtime> {
 
 impl<RT: Runtime> Peer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
-        let (tx, rx) = generic_channel(16);
+        let (tx, rx) = mpsc::unbounded();
         let inner = Rc::new(RefCell::new(Inner::new(rt.clone(), arp, file_table, tx)));
         let bg_handle = rt.spawn(Self::background(rx, inner.clone()));
         inner.borrow_mut().dead_socket_handle = Some(bg_handle);
@@ -72,10 +69,10 @@ impl<RT: Runtime> Peer<RT> {
     }
 
     async fn background(
-        dead_socket_rx: UnboundedReceiver<FileDescriptor>,
+        mut dead_socket_rx: mpsc::UnboundedReceiver<FileDescriptor>,
         inner: Rc<RefCell<Inner<RT>>>,
     ) {
-        while let Some(fd) = dead_socket_rx.receive().await {
+        while let Some(fd) = dead_socket_rx.next().await {
             let mut inner = inner.borrow_mut();
 
             let (local, remote) = match inner.sockets.remove(&fd) {
@@ -131,7 +128,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn receive(&self, ip_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&self, ip_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         self.inner.borrow_mut().receive(ip_header, buf)
     }
 
@@ -249,7 +246,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn peek(&self, fd: FileDescriptor) -> Result<Bytes, Fail> {
+    pub fn peek(&self, fd: FileDescriptor) -> Result<RT::Buf, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -268,7 +265,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn recv(&self, fd: FileDescriptor) -> Result<Option<Bytes>, Fail> {
+    pub fn recv(&self, fd: FileDescriptor) -> Result<Option<RT::Buf>, Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -287,7 +284,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn poll_recv(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+    pub fn poll_recv(&self, fd: FileDescriptor, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -306,7 +303,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    pub fn push(&self, fd: FileDescriptor, buf: Bytes) -> PushFuture<RT> {
+    pub fn push(&self, fd: FileDescriptor, buf: RT::Buf) -> PushFuture<RT> {
         let err = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
@@ -325,7 +322,7 @@ impl<RT: Runtime> Peer<RT> {
         }
     }
 
-    fn send(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+    fn send(&self, fd: FileDescriptor, buf: RT::Buf) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -466,7 +463,7 @@ pub struct Inner<RT: Runtime> {
     rt: RT,
     arp: arp::Peer<RT>,
 
-    dead_socket_tx: UnboundedSender<FileDescriptor>,
+    dead_socket_tx: mpsc::UnboundedSender<FileDescriptor>,
     dead_socket_handle: Option<SchedulerHandle>,
 }
 
@@ -475,7 +472,7 @@ impl<RT: Runtime> Inner<RT> {
         rt: RT,
         arp: arp::Peer<RT>,
         file_table: FileTable,
-        dead_socket_tx: UnboundedSender<FileDescriptor>,
+        dead_socket_tx: mpsc::UnboundedSender<FileDescriptor>,
     ) -> Self {
         Self {
             isn_generator: IsnGenerator::new(rt.rng_gen()),
@@ -492,7 +489,7 @@ impl<RT: Runtime> Inner<RT> {
         }
     }
 
-    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let tcp_options = self.rt.tcp_options();
         let (tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, tcp_options.rx_checksum_offload)?;
         debug!("TCP received {:?}", tcp_hdr);
@@ -549,7 +546,7 @@ impl<RT: Runtime> Inner<RT> {
             },
             ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
-            data: Bytes::empty(),
+            data: RT::Buf::empty(),
             tx_checksum_offload: self.rt.tcp_options().tx_checksum_offload,
         };
         self.rt.transmit(segment);

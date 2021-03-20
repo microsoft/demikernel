@@ -1,8 +1,7 @@
 use super::super::state::ControlBlock;
 use crate::{
     fail::Fail,
-    runtime::Runtime,
-    sync::Bytes,
+    runtime::{Runtime, RuntimeBuf},
 };
 use futures::{
     future::{
@@ -41,7 +40,7 @@ pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
                 let mut header = cb.tcp_header();
                 header.ack = true;
                 header.ack_num = recv_seq_no;
-                cb.emit(header, Bytes::empty(), remote_link_addr);
+                cb.emit(header, RT::Buf::empty(), remote_link_addr);
             },
         }
     }

@@ -10,7 +10,6 @@ use crate::{
         ResultFuture,
     },
     runtime::Runtime,
-    sync::Bytes,
 };
 use std::{
     cell::RefCell,
@@ -69,7 +68,7 @@ impl<RT: Runtime> Future for TcpOperation<RT> {
 }
 
 impl<RT: Runtime> TcpOperation<RT> {
-    pub fn expect_result(self) -> (FileDescriptor, OperationResult) {
+    pub fn expect_result(self) -> (FileDescriptor, OperationResult<RT>) {
         use TcpOperation::*;
 
         match self {
@@ -204,7 +203,7 @@ impl<RT: Runtime> fmt::Debug for PopFuture<RT> {
 }
 
 impl<RT: Runtime> Future for PopFuture<RT> {
-    type Output = Result<Bytes, Fail>;
+    type Output = Result<RT::Buf, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();

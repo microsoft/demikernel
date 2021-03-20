@@ -1,6 +1,6 @@
 use crate::{
     fail::Fail,
-    sync::Bytes,
+    runtime::RuntimeBuf,
 };
 use byteorder::{
     ByteOrder,
@@ -109,7 +109,7 @@ impl Ipv4Header {
         IPV4_HEADER2_SIZE
     }
 
-    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < IPV4_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "Datagram too small",

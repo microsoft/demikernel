@@ -11,7 +11,7 @@ use crate::{
         MacAddress,
     },
     runtime::PacketBuf,
-    sync::Bytes,
+    runtime::RuntimeBuf,
 };
 use byteorder::{
     ByteOrder,
@@ -88,7 +88,7 @@ impl ArpPdu {
         ARP_MESSAGE_SIZE
     }
 
-    pub fn parse(buf: Bytes) -> Result<Self, Fail> {
+    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
             return Err(Fail::Malformed {
                 details: "ARP message too short",

@@ -3,6 +3,7 @@
 use crate::{
     file_table::FileDescriptor,
     operations::OperationResult,
+    runtime::Runtime,
 };
 use libc::{
     c_int,
@@ -98,7 +99,7 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    pub fn pack(result: OperationResult, qd: FileDescriptor, qt: u64) -> Self {
+    pub fn pack<RT: Runtime>(result: OperationResult<RT>, qd: FileDescriptor, qt: u64) -> Self {
         match result {
             OperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,

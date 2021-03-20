@@ -2,7 +2,7 @@ use crate::{
     collections::watched::WatchedValue,
     fail::Fail,
     protocols::tcp::SeqNumber,
-    sync::Bytes,
+    runtime::Runtime,
 };
 use std::{
     cell::RefCell,
@@ -34,7 +34,7 @@ pub enum ReceiverState {
 }
 
 #[derive(Debug)]
-pub struct Receiver {
+pub struct Receiver<RT: Runtime> {
     pub state: WatchedValue<ReceiverState>,
 
     //                     |-----------------recv_window-------------------|
@@ -49,7 +49,7 @@ pub struct Receiver {
     // the old `ack_seq_no` until we send them an ACK (see the diagram in sender.rs).
     //
     pub base_seq_no: WatchedValue<SeqNumber>,
-    pub recv_queue: RefCell<VecDeque<Bytes>>,
+    pub recv_queue: RefCell<VecDeque<RT::Buf>>,
     pub ack_seq_no: WatchedValue<SeqNumber>,
     pub recv_seq_no: WatchedValue<SeqNumber>,
 
@@ -59,10 +59,10 @@ pub struct Receiver {
     pub window_scale: u32,
 
     waker: RefCell<Option<Waker>>,
-    out_of_order: RefCell<BTreeMap<SeqNumber, Bytes>>,
+    out_of_order: RefCell<BTreeMap<SeqNumber, RT::Buf>>,
 }
 
-impl Receiver {
+impl<RT: Runtime> Receiver<RT> {
     pub fn new(seq_no: SeqNumber, max_window_size: u32, window_scale: u32) -> Self {
         Self {
             state: WatchedValue::new(ReceiverState::Open),
@@ -113,7 +113,7 @@ impl Receiver {
         self.ack_seq_no.set(seq_no);
     }
 
-    pub fn peek(&self) -> Result<Bytes, Fail> {
+    pub fn peek(&self) -> Result<RT::Buf, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Err(Fail::ResourceNotFound {
@@ -135,7 +135,7 @@ impl Receiver {
         Ok(segment)
     }
 
-    pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
+    pub fn recv(&self) -> Result<Option<RT::Buf>, Fail> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Err(Fail::ResourceNotFound {
@@ -156,7 +156,7 @@ impl Receiver {
         Ok(Some(segment))
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
         if self.base_seq_no.get() == self.recv_seq_no.get() {
             if self.state.get() != ReceiverState::Open {
                 return Poll::Ready(Err(Fail::ResourceNotFound {
@@ -183,7 +183,7 @@ impl Receiver {
         self.state.set(ReceiverState::ReceivedFin);
     }
 
-    pub fn receive_data(&self, seq_no: SeqNumber, buf: Bytes, now: Instant) -> Result<(), Fail> {
+    pub fn receive_data(&self, seq_no: SeqNumber, buf: RT::Buf, now: Instant) -> Result<(), Fail> {
         if self.state.get() != ReceiverState::Open {
             return Err(Fail::ResourceNotFound {
                 details: "Receiver closed",
@@ -261,11 +261,12 @@ mod tests {
         num::Wrapping,
         time::Instant,
     };
+    use crate::test_helpers::TestRuntime;
 
     #[test]
     fn test_out_of_order() {
         let now = Instant::now();
-        let receiver = Receiver::new(Wrapping(0), 65536, 0);
+        let receiver = Receiver::<TestRuntime>::new(Wrapping(0), 65536, 0);
         let buf = BytesMut::zeroed(16).freeze();
         must_let!(let Err(Fail::Ignored { .. }) = receiver.receive_data(Wrapping(16), buf.clone(), now));
         must_let!(let Ok(..) = receiver.receive_data(Wrapping(0), buf.clone(), now));

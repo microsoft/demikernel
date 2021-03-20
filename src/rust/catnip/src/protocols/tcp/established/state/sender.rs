@@ -3,7 +3,7 @@ use crate::{
     collections::watched::WatchedValue,
     fail::Fail,
     protocols::tcp::SeqNumber,
-    sync::Bytes,
+    runtime::{Runtime, RuntimeBuf},
 };
 use std::{
     cell::RefCell,
@@ -17,8 +17,8 @@ use std::{
     },
 };
 
-pub struct UnackedSegment {
-    pub bytes: Bytes,
+pub struct UnackedSegment<RT: Runtime> {
+    pub bytes: RT::Buf,
     // Set to `None` on retransmission to implement Karn's algorithm.
     pub initial_tx: Option<Instant>,
 }
@@ -32,7 +32,7 @@ pub enum SenderState {
     Reset,
 }
 
-pub struct Sender {
+pub struct Sender<RT: Runtime> {
     pub state: WatchedValue<SenderState>,
 
     // TODO: Just use Figure 5 from RFC 793 here.
@@ -45,9 +45,9 @@ pub struct Sender {
     //       acknowleged         unacknowledged     ^        unsent
     //
     pub base_seq_no: WatchedValue<SeqNumber>,
-    pub unacked_queue: RefCell<VecDeque<UnackedSegment>>,
+    pub unacked_queue: RefCell<VecDeque<UnackedSegment<RT>>>,
     pub sent_seq_no: WatchedValue<SeqNumber>,
-    pub unsent_queue: RefCell<VecDeque<Bytes>>,
+    pub unsent_queue: RefCell<VecDeque<RT::Buf>>,
     pub unsent_seq_no: WatchedValue<SeqNumber>,
 
     pub window_size: WatchedValue<u32>,
@@ -60,7 +60,7 @@ pub struct Sender {
     pub rto: RefCell<RtoCalculator>,
 }
 
-impl fmt::Debug for Sender {
+impl<RT: Runtime> fmt::Debug for Sender<RT> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("base_seq_no", &self.base_seq_no)
@@ -75,7 +75,7 @@ impl fmt::Debug for Sender {
     }
 }
 
-impl Sender {
+impl<RT: Runtime> Sender<RT> {
     pub fn new(seq_no: SeqNumber, window_size: u32, window_scale: u8, mss: usize) -> Self {
         Self {
             state: WatchedValue::new(SenderState::Open),
@@ -95,11 +95,7 @@ impl Sender {
         }
     }
 
-    pub fn send<RT: crate::runtime::Runtime>(
-        &self,
-        buf: Bytes,
-        cb: &super::ControlBlock<RT>,
-    ) -> Result<(), Fail> {
+    pub fn send(&self, buf: RT::Buf, cb: &super::ControlBlock<RT>) -> Result<(), Fail> {
         if self.state.get() != SenderState::Open {
             return Err(Fail::Ignored {
                 details: "Sender closed",
@@ -216,7 +212,7 @@ impl Sender {
         Ok(())
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Bytes> {
+    pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
         let mut queue = self.unsent_queue.borrow_mut();
         let buf = queue.pop_front()?;
         let (byte, remainder) = buf.split(1);
@@ -224,7 +220,7 @@ impl Sender {
         Some(byte)
     }
 
-    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Bytes> {
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
         let mut buf = unsent_queue.pop_front()?;

@@ -28,7 +28,6 @@ use crate::{
         },
     },
     runtime::Runtime,
-    sync::Bytes,
 };
 use std::time::Duration;
 
@@ -39,12 +38,12 @@ pub struct ControlBlock<RT: Runtime> {
     pub rt: RT,
     pub arp: arp::Peer<RT>,
 
-    pub sender: Sender,
-    pub receiver: Receiver,
+    pub sender: Sender<RT>,
+    pub receiver: Receiver<RT>,
 }
 
 impl<RT: Runtime> ControlBlock<RT> {
-    pub fn receive(&self, header: &TcpHeader, data: Bytes) {
+    pub fn receive(&self, header: &TcpHeader, data: RT::Buf) {
         debug!("Receiving {} bytes + {:?}", data.len(), header);
         let now = self.rt.now();
         if header.syn {
@@ -85,7 +84,7 @@ impl<RT: Runtime> ControlBlock<RT> {
         header
     }
 
-    pub fn emit(&self, header: TcpHeader, data: Bytes, remote_link_addr: MacAddress) {
+    pub fn emit(&self, header: TcpHeader, data: RT::Buf, remote_link_addr: MacAddress) {
         if header.ack {
             self.receiver.ack_sent(header.ack_num);
         }

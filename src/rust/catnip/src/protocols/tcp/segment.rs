@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 use crate::{
     fail::Fail,
+    runtime::RuntimeBuf,
     protocols::{
         ethernet2::frame::{
             Ethernet2Header,
@@ -15,7 +16,6 @@ use crate::{
         tcp::SeqNumber,
     },
     runtime::PacketBuf,
-    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
@@ -36,16 +36,16 @@ const MIN_TCP_HEADER2_SIZE: usize = 20;
 const MAX_TCP_HEADER2_SIZE: usize = 60;
 const MAX_TCP_OPTIONS: usize = 5;
 
-pub struct TcpSegment {
+pub struct TcpSegment<T: RuntimeBuf> {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub tcp_hdr: TcpHeader,
-    pub data: Bytes,
+    pub data: T,
 
     pub tx_checksum_offload: bool,
 }
 
-impl PacketBuf for TcpSegment {
+impl<T: RuntimeBuf> PacketBuf for TcpSegment<T> {
     fn compute_size(&self) -> usize {
         let size = self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
@@ -236,11 +236,11 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(
+    pub fn parse<T: RuntimeBuf>(
         ipv4_header: &Ipv4Header,
-        buf: Bytes,
+        buf: T,
         rx_checksum_offload: bool,
-    ) -> Result<(Self, Bytes), Fail> {
+    ) -> Result<(Self, T), Fail> {
         if buf.len() < MIN_TCP_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP segment too small",

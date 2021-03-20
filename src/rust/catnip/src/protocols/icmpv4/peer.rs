@@ -21,7 +21,6 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
@@ -129,7 +128,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
         }
     }
 
-    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let (icmpv4_hdr, _) = Icmpv4Header::parse(buf)?;
         match icmpv4_hdr.icmpv4_type {
             Icmpv4Type2::EchoRequest { id, seq_num } => {

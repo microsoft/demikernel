@@ -10,10 +10,10 @@ use self::{
     sender::sender,
 };
 use super::state::ControlBlock;
+use futures::channel::mpsc;
 use crate::{
     file_table::FileDescriptor,
     runtime::Runtime,
-    sync::UnboundedSender,
 };
 use futures::FutureExt;
 use std::{
@@ -31,7 +31,7 @@ pub type BackgroundFuture<RT> = impl Future<Output = ()>;
 pub fn background<RT: Runtime>(
     cb: Rc<ControlBlock<RT>>,
     fd: FileDescriptor,
-    dead_socket_tx: UnboundedSender<FileDescriptor>,
+    dead_socket_tx: mpsc::UnboundedSender<FileDescriptor>,
 ) -> BackgroundFuture<RT> {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();
@@ -54,7 +54,7 @@ pub fn background<RT: Runtime>(
         };
         error!("Connection (fd {}) terminated: {:?}", fd, r);
         dead_socket_tx
-            .try_send(fd)
+            .unbounded_send(fd)
             .expect("Failed to terminate connection");
     }
 }

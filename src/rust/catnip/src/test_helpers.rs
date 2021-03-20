@@ -130,6 +130,7 @@ struct Inner {
 }
 
 impl Runtime for TestRuntime {
+    type Buf = Bytes;
     type WaitFuture = crate::timer::WaitFuture<TimerRc>;
 
     fn transmit(&self, pkt: impl PacketBuf) {

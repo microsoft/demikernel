@@ -1,5 +1,6 @@
 use crate::{
     fail::Fail,
+    runtime::RuntimeBuf,
     protocols::{
         ethernet2::frame::{
             Ethernet2Header,
@@ -12,7 +13,6 @@ use crate::{
         },
     },
     runtime::PacketBuf,
-    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
@@ -36,14 +36,14 @@ pub struct UdpHeader {
     // checksum: u16,
 }
 
-pub struct UdpDatagram {
+pub struct UdpDatagram<T: RuntimeBuf> {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub udp_hdr: UdpHeader,
-    pub data: Bytes,
+    pub data: T,
 }
 
-impl PacketBuf for UdpDatagram {
+impl<T: RuntimeBuf> PacketBuf for UdpDatagram<T> {
     fn compute_size(&self) -> usize {
         let size = self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
@@ -93,7 +93,7 @@ impl UdpHeader {
         UDP_HEADER2_SIZE
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse<T: RuntimeBuf>(ipv4_header: &Ipv4Header, buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < UDP_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "UDP segment too small",

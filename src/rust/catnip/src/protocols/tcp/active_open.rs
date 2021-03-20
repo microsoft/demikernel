@@ -29,8 +29,8 @@ use crate::{
         },
     },
     runtime::Runtime,
+    runtime::RuntimeBuf,
     scheduler::SchedulerHandle,
-    sync::Bytes,
 };
 use std::{
     cell::RefCell,
@@ -152,7 +152,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
             },
             ipv4_hdr: Ipv4Header::new(self.local.addr, self.remote.addr, Ipv4Protocol2::Tcp),
             tcp_hdr,
-            data: Bytes::empty(),
+            data: RT::Buf::empty(),
             tx_checksum_offload: tcp_options.tx_checksum_offload,
         };
         self.rt.transmit(segment);
@@ -258,7 +258,7 @@ impl<RT: Runtime> ActiveOpenSocket<RT> {
                     },
                     ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
-                    data: Bytes::empty(),
+                    data: RT::Buf::empty(),
                     tx_checksum_offload: tcp_options.tx_checksum_offload,
                 };
                 rt.transmit(segment);

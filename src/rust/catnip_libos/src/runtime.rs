@@ -8,6 +8,7 @@ use dpdk_rs::{
     rte_eth_tx_burst,
     rte_eth_rx_burst,
 };
+use crate::memory::DPDKBuf;
 use catnip::{
     protocols::{
         arp,
@@ -18,6 +19,7 @@ use catnip::{
         PacketBuf,
         Runtime,
     },
+    runtime::RuntimeBuf,
     scheduler::{
         Operation,
         Scheduler,
@@ -147,6 +149,7 @@ struct Inner {
 
 impl Runtime for DPDKRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
+    type Buf = DPDKBuf;
 
     fn transmit(&self, buf: impl PacketBuf) {
         let pool = { self.inner.borrow().dpdk_mempool };
@@ -174,13 +177,14 @@ impl Runtime for DPDKRuntime {
         assert_eq!(num_sent, 1);
     }
 
-    fn receive(&self) -> Option<Bytes> {
+    fn receive(&self) -> Option<DPDKBuf> {
         let mut inner = self.inner.borrow_mut();
         loop {
             if inner.num_buffered > 0 {
                 inner.num_buffered -= 1;
                 let ix = inner.num_buffered;
-                return Some(mem::replace(&mut inner.buffered[ix], Bytes::empty()));
+                let buf = mem::replace(&mut inner.buffered[ix], Bytes::empty());
+                return Some(DPDKBuf::External(buf));
             }
 
             let dpdk_port = inner.dpdk_port_id;

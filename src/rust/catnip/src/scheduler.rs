@@ -34,7 +34,7 @@ use unicycle::pin_slab::PinSlab;
 pub enum Operation<RT: Runtime> {
     // These are all stored inline to prevent hitting the allocator on insertion/removal.
     Tcp(TcpOperation<RT>),
-    Udp(UdpOperation),
+    Udp(UdpOperation<RT>),
 
     // These are expected to have long lifetimes and be large enough to justify another allocation.
     Background(Pin<Box<dyn Future<Output = ()>>>),

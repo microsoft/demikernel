@@ -2,9 +2,10 @@ use crate::{
     fail::Fail,
     file_table::FileDescriptor,
     protocols::ipv4,
-    sync::Bytes,
+    runtime::Runtime,
 };
 use std::{
+    fmt,
     future::Future,
     pin::Pin,
     task::{
@@ -44,11 +45,22 @@ where
     }
 }
 
-#[derive(Debug)]
-pub enum OperationResult {
+pub enum OperationResult<RT: Runtime> {
     Connect,
     Accept(FileDescriptor),
     Push,
-    Pop(Option<ipv4::Endpoint>, Bytes),
+    Pop(Option<ipv4::Endpoint>, RT::Buf),
     Failed(Fail),
+}
+
+impl<RT: Runtime> fmt::Debug for OperationResult<RT> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OperationResult::Connect => write!(f, "Connect"),
+            OperationResult::Accept(..) => write!(f, "Accept"),
+            OperationResult::Push => write!(f, "Push"),
+            OperationResult::Pop(..) => write!(f, "Pop"),
+            OperationResult::Failed(ref e) => write!(f, "Failed({:?})", e),
+        }
+    }
 }

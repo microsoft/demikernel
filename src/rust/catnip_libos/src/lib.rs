@@ -49,6 +49,7 @@ use yaml_rust::{
 
 pub mod dpdk;
 pub mod runtime;
+pub mod memory;
 
 use crate::runtime::DPDKRuntime;
 use anyhow::{

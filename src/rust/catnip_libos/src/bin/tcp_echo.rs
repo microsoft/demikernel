@@ -7,6 +7,7 @@ use must_let::must_let;
 use std::io::Write;
 use std::str::FromStr;
 use catnip_libos::runtime::DPDKRuntime;
+use catnip_libos::memory::DPDKBuf;
 use anyhow::{
     format_err,
     Error,
@@ -237,7 +238,7 @@ fn main() {
             for b in &mut buf[..] {
                 *b = 'a' as u8;
             }
-            let buf = buf.freeze();
+            let buf = DPDKBuf::External(buf.freeze());
             // let mut push_tokens = Vec::with_capacity(num_bufs);
 
             let exp_start = Instant::now();

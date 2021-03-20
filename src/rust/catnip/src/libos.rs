@@ -10,18 +10,16 @@ use crate::{
         dmtr_sgarray_t,
     },
     protocols::ipv4::Endpoint,
-    runtime::Runtime,
+    runtime::{Runtime, RuntimeBuf},
     scheduler::{
         Operation,
         SchedulerHandle,
     },
     operations::OperationResult,
-    sync::{Bytes, BytesMut},
 };
 use must_let::must_let;
 use libc::c_int;
 use std::{
-    slice,
     time::Instant,
 };
 use tracy_client::static_span;
@@ -99,47 +97,19 @@ impl<RT: Runtime> LibOS<RT> {
 
     pub fn push(&mut self, fd: FileDescriptor, sga: &dmtr_sgarray_t) -> QToken {
         let _s = static_span!();
-        let mut len = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            len += sga.sga_segs[i].sgaseg_len;
-        }
-        let mut buf = BytesMut::zeroed(len as usize);
-        let mut pos = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
-            let seg_slice = unsafe {
-                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
-            };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-            pos += seg_slice.len();
-        }
-        let buf = buf.freeze();
+        let buf = RT::Buf::from_sgarray(sga);
         let future = self.engine.push(fd, buf);
         self.rt.scheduler().insert(future).into_raw()
     }
 
-    pub fn push2(&mut self, fd: FileDescriptor, buf: Bytes) -> QToken {
+    pub fn push2(&mut self, fd: FileDescriptor, buf: RT::Buf) -> QToken {
         let future = self.engine.push(fd, buf);
         self.rt.scheduler().insert(future).into_raw()
     }
 
     pub fn pushto(&mut self, fd: FileDescriptor, sga: &dmtr_sgarray_t, to: Endpoint) -> QToken {
         let _s = static_span!();
-        let mut len = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            len += sga.sga_segs[i].sgaseg_len;
-        }
-        let mut buf = BytesMut::zeroed(len as usize);
-        let mut pos = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
-            let seg_slice = unsafe {
-                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
-            };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-            pos += seg_slice.len();
-        }
-        let buf = buf.freeze();
+        let buf = RT::Buf::from_sgarray(sga);
         let future = self.engine.pushto(fd, buf, to);
         self.rt.scheduler().insert(future).into_raw()
     }
@@ -176,7 +146,7 @@ impl<RT: Runtime> LibOS<RT> {
         dmtr_qresult_t::pack(r, qd, qt)
     }
 
-    pub fn wait2(&mut self, qt: QToken) -> (FileDescriptor, OperationResult) {
+    pub fn wait2(&mut self, qt: QToken) -> (FileDescriptor, OperationResult<RT>) {
         let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
         loop {
             self.poll_bg_work();
@@ -215,7 +185,7 @@ impl<RT: Runtime> LibOS<RT> {
         self.engine.is_qd_valid(fd)
     }
 
-    fn take_operation(&mut self, handle: SchedulerHandle) -> (FileDescriptor, OperationResult) {
+    fn take_operation(&mut self, handle: SchedulerHandle) -> (FileDescriptor, OperationResult<RT>) {
         match self.rt.scheduler().take(handle) {
             Operation::Tcp(f) => f.expect_result(),
             Operation::Udp(f) => f.expect_result(),

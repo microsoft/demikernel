@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 use crate::{
+    runtime::RuntimeBuf,
     fail::Fail,
     protocols::{
         ethernet2::frame::{
@@ -10,7 +11,6 @@ use crate::{
         ipv4::datagram::Ipv4Header,
     },
     runtime::PacketBuf,
-    sync::Bytes,
 };
 use byteorder::{
     ByteOrder,
@@ -145,7 +145,7 @@ impl Icmpv4Header {
         ICMPV4_HEADER2_SIZE
     }
 
-    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ICMPV4_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "ICMPv4 datagram too small for header",

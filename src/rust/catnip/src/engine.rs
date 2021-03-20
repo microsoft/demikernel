@@ -29,7 +29,6 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::Operation,
-    sync::Bytes,
 };
 use std::{
     future::Future,
@@ -74,7 +73,7 @@ impl<RT: Runtime> Engine<RT> {
         &self.rt
     }
 
-    pub fn receive(&mut self, bytes: Bytes) -> Result<(), Fail> {
+    pub fn receive(&mut self, bytes: RT::Buf) -> Result<(), Fail> {
         let _s = static_span!();
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
@@ -148,7 +147,7 @@ impl<RT: Runtime> Engine<RT> {
         }
     }
 
-    pub fn push(&mut self, fd: FileDescriptor, buf: Bytes) -> Operation<RT> {
+    pub fn push(&mut self, fd: FileDescriptor, buf: RT::Buf) -> Operation<RT> {
         match self.file_table.get(fd) {
             Some(File::TcpSocket) => Operation::from(self.ipv4.tcp.push(fd, buf)),
             Some(File::UdpSocket) => {
@@ -159,7 +158,7 @@ impl<RT: Runtime> Engine<RT> {
         }
     }
 
-    pub fn pushto(&mut self, fd: FileDescriptor, buf: Bytes, to: ipv4::Endpoint) -> Operation<RT> {
+    pub fn pushto(&mut self, fd: FileDescriptor, buf: RT::Buf, to: ipv4::Endpoint) -> Operation<RT> {
         match self.file_table.get(fd) {
             Some(File::UdpSocket) => {
                 let udp_op = UdpOperation::Push(fd, self.ipv4.udp.pushto(fd, buf, to));
@@ -169,11 +168,11 @@ impl<RT: Runtime> Engine<RT> {
         }
     }
 
-    pub fn udp_push(&mut self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+    pub fn udp_push(&mut self, fd: FileDescriptor, buf: RT::Buf) -> Result<(), Fail> {
         self.ipv4.udp.push(fd, buf)
     }
 
-    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture {
+    pub fn udp_pop(&mut self, fd: FileDescriptor) -> UdpPopFuture<RT> {
         self.ipv4.udp.pop(fd)
     }
 
@@ -224,7 +223,7 @@ impl<RT: Runtime> Engine<RT> {
         self.ipv4.tcp.accept(handle)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: FileDescriptor, buf: Bytes) -> PushFuture<RT> {
+    pub fn tcp_push(&mut self, socket_fd: FileDescriptor, buf: RT::Buf) -> PushFuture<RT> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 

@@ -14,11 +14,8 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::{
-        Bytes,
-        UnboundedSender,
-    },
 };
+use futures::channel::mpsc;
 use std::{
     rc::Rc,
     task::{
@@ -38,7 +35,7 @@ impl<RT: Runtime> EstablishedSocket<RT> {
     pub fn new(
         cb: ControlBlock<RT>,
         fd: FileDescriptor,
-        dead_socket_tx: UnboundedSender<FileDescriptor>,
+        dead_socket_tx: mpsc::UnboundedSender<FileDescriptor>,
     ) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
@@ -49,23 +46,23 @@ impl<RT: Runtime> EstablishedSocket<RT> {
         }
     }
 
-    pub fn receive(&self, header: &TcpHeader, data: Bytes) {
+    pub fn receive(&self, header: &TcpHeader, data: RT::Buf) {
         self.cb.receive(header, data)
     }
 
-    pub fn send(&self, buf: Bytes) -> Result<(), Fail> {
+    pub fn send(&self, buf: RT::Buf) -> Result<(), Fail> {
         self.cb.sender.send(buf, &self.cb)
     }
 
-    pub fn peek(&self) -> Result<Bytes, Fail> {
+    pub fn peek(&self) -> Result<RT::Buf, Fail> {
         self.cb.receiver.peek()
     }
 
-    pub fn recv(&self) -> Result<Option<Bytes>, Fail> {
+    pub fn recv(&self) -> Result<Option<RT::Buf>, Fail> {
         self.cb.receiver.recv()
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Bytes, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<RT::Buf, Fail>> {
         self.cb.receiver.poll_recv(ctx)
     }
 

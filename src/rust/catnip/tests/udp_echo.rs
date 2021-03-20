@@ -118,6 +118,7 @@ struct Inner {
 
 impl Runtime for TestRuntime {
     type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
+    type Buf = Bytes;
 
     fn transmit(&self, pkt: impl PacketBuf) {
         let _s = static_span!();

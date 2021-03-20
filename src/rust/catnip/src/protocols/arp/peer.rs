@@ -20,7 +20,6 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::Bytes,
 };
 use futures::FutureExt;
 use hashbrown::HashMap;
@@ -76,7 +75,7 @@ impl<RT: Runtime> ArpPeer<RT> {
         }
     }
 
-    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
         // from RFC 826:
         // > ?Do I have the hardware type in ar$hrd?
         // > [optionally check the hardware length ar$hln]

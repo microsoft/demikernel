@@ -17,7 +17,6 @@ use crate::{
         udp,
     },
     runtime::Runtime,
-    sync::Bytes,
 };
 use std::{
     future::Future,
@@ -45,7 +44,7 @@ impl<RT: Runtime> Ipv4Peer<RT> {
         }
     }
 
-    pub fn receive(&mut self, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: RT::Buf) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
         if header.dst_addr != self.rt.local_ipv4_addr() && !header.dst_addr.is_broadcast() {

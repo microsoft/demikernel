@@ -9,6 +9,7 @@ use super::{
 };
 use crate::{
     fail::Fail,
+    runtime::RuntimeBuf,
     protocols::{
         arp,
         ethernet2::frame::{

@@ -1,7 +1,7 @@
 use crate::{
     fail::Fail,
     protocols::ethernet2::MacAddress,
-    sync::Bytes,
+    runtime::RuntimeBuf,
 };
 use byteorder::{
     ByteOrder,
@@ -51,7 +51,7 @@ impl Ethernet2Header {
         ETHERNET2_HEADER2_SIZE
     }
 
-    pub fn parse(buf: Bytes) -> Result<(Self, Bytes), Fail> {
+    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
         if buf.len() < ETHERNET2_HEADER2_SIZE {
             return Err(Fail::Malformed {
                 details: "Frame too small",

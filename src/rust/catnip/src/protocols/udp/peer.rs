@@ -30,13 +30,9 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::{
-        Bytes,
-        UnboundedReceiver,
-        UnboundedSender,
-    },
 };
-use futures_intrusive::channel::shared::generic_channel;
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
 use hashbrown::HashMap;
 use std::{
     cell::RefCell,
@@ -55,8 +51,8 @@ pub struct UdpPeer<RT: Runtime> {
     inner: Rc<RefCell<Inner<RT>>>,
 }
 
-struct Listener {
-    buf: VecDeque<(Option<ipv4::Endpoint>, Bytes)>,
+struct Listener<T> {
+    buf: VecDeque<(Option<ipv4::Endpoint>, T)>,
     waker: Option<Waker>,
 }
 
@@ -68,9 +64,9 @@ struct Socket {
     remote: Option<ipv4::Endpoint>,
 }
 
-type OutgoingReq = (Option<ipv4::Endpoint>, ipv4::Endpoint, Bytes);
-type OutgoingSender = UnboundedSender<OutgoingReq>;
-type OutgoingReceiver = UnboundedReceiver<OutgoingReq>;
+type OutgoingReq<T> = (Option<ipv4::Endpoint>, ipv4::Endpoint, T);
+type OutgoingSender<T> = mpsc::UnboundedSender<OutgoingReq<T>>;
+type OutgoingReceiver<T> = mpsc::UnboundedReceiver<OutgoingReq<T>>;
 
 struct Inner<RT: Runtime> {
     #[allow(unused)]
@@ -80,16 +76,16 @@ struct Inner<RT: Runtime> {
     file_table: FileTable,
 
     sockets: HashMap<FileDescriptor, Socket>,
-    bound: HashMap<ipv4::Endpoint, Rc<RefCell<Listener>>>,
+    bound: HashMap<ipv4::Endpoint, Rc<RefCell<Listener<RT::Buf>>>>,
 
-    outgoing: OutgoingSender,
+    outgoing: OutgoingSender<RT::Buf>,
     #[allow(unused)]
     handle: SchedulerHandle,
 }
 
 impl<RT: Runtime> UdpPeer<RT> {
     pub fn new(rt: RT, arp: arp::Peer<RT>, file_table: FileTable) -> Self {
-        let (tx, rx) = generic_channel(16);
+        let (tx, rx) = mpsc::unbounded();
         let future = Self::background(rt.clone(), arp.clone(), rx);
         let handle = rt.spawn(future);
         let inner = Inner {
@@ -106,8 +102,8 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    async fn background(rt: RT, arp: arp::Peer<RT>, rx: OutgoingReceiver) {
-        while let Some((local, remote, buf)) = rx.receive().await {
+    async fn background(rt: RT, arp: arp::Peer<RT>, mut rx: OutgoingReceiver<RT::Buf>) {
+        while let Some((local, remote, buf)) = rx.next().await {
             let r: Result<_, Fail> = try {
                 let link_addr = arp.query(remote.addr).await?;
                 let datagram = UdpDatagram {
@@ -193,7 +189,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         }
     }
 
-    pub fn receive(&self, ipv4_header: &Ipv4Header, buf: Bytes) -> Result<(), Fail> {
+    pub fn receive(&self, ipv4_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
         let (hdr, data) = UdpHeader::parse(ipv4_header, buf)?;
         let local = ipv4::Endpoint::new(ipv4_header.dst_addr, hdr.dst_port);
         let remote = hdr
@@ -211,7 +207,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         Ok(())
     }
 
-    pub fn push(&self, fd: FileDescriptor, buf: Bytes) -> Result<(), Fail> {
+    pub fn push(&self, fd: FileDescriptor, buf: RT::Buf) -> Result<(), Fail> {
         let inner = self.inner.borrow();
         let (local, remote) = match inner.sockets.get(&fd) {
             Some(Socket {
@@ -227,7 +223,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         inner.send_datagram(buf, local, remote)
     }
 
-    pub fn pushto(&self, fd: FileDescriptor, buf: Bytes, to: ipv4::Endpoint) -> Result<(), Fail> {
+    pub fn pushto(&self, fd: FileDescriptor, buf: RT::Buf, to: ipv4::Endpoint) -> Result<(), Fail> {
         let inner = self.inner.borrow();
         let local = match inner.sockets.get(&fd) {
             Some(Socket { local, .. }) => *local,
@@ -240,7 +236,7 @@ impl<RT: Runtime> UdpPeer<RT> {
         inner.send_datagram(buf, local, to)
     }
 
-    pub fn pop(&self, fd: FileDescriptor) -> PopFuture {
+    pub fn pop(&self, fd: FileDescriptor) -> PopFuture<RT> {
         let inner = self.inner.borrow();
         let listener = match inner.sockets.get(&fd) {
             Some(Socket {
@@ -274,7 +270,7 @@ impl<RT: Runtime> UdpPeer<RT> {
 impl<RT: Runtime> Inner<RT> {
     fn send_datagram(
         &self,
-        buf: Bytes,
+        buf: RT::Buf,
         local: Option<ipv4::Endpoint>,
         remote: ipv4::Endpoint,
     ) -> Result<(), Fail> {
@@ -301,19 +297,19 @@ impl<RT: Runtime> Inner<RT> {
         }
         // Otherwise defer to the async path.
         else {
-            self.outgoing.try_send((local, remote, buf)).unwrap();
+            self.outgoing.unbounded_send((local, remote, buf)).unwrap();
         }
         Ok(())
     }
 }
 
-pub struct PopFuture {
+pub struct PopFuture<RT: Runtime> {
     pub fd: FileDescriptor,
-    listener: Result<Rc<RefCell<Listener>>, Fail>,
+    listener: Result<Rc<RefCell<Listener<RT::Buf>>>, Fail>,
 }
 
-impl Future for PopFuture {
-    type Output = Result<(Option<ipv4::Endpoint>, Bytes), Fail>;
+impl<RT: Runtime> Future for PopFuture<RT> {
+    type Output = Result<(Option<ipv4::Endpoint>, RT::Buf), Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
@@ -333,14 +329,14 @@ impl Future for PopFuture {
     }
 }
 
-pub enum UdpOperation {
+pub enum UdpOperation<RT: Runtime> {
     Accept(FileDescriptor, Fail),
     Connect(FileDescriptor, Result<(), Fail>),
     Push(FileDescriptor, Result<(), Fail>),
-    Pop(ResultFuture<PopFuture>),
+    Pop(ResultFuture<PopFuture<RT>>),
 }
 
-impl Future for UdpOperation {
+impl<RT: Runtime> Future for UdpOperation<RT> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
@@ -353,8 +349,8 @@ impl Future for UdpOperation {
     }
 }
 
-impl UdpOperation {
-    pub fn expect_result(self) -> (FileDescriptor, OperationResult) {
+impl<RT: Runtime> UdpOperation<RT> {
+    pub fn expect_result(self) -> (FileDescriptor, OperationResult<RT>) {
         match self {
             UdpOperation::Push(fd, Err(e))
             | UdpOperation::Connect(fd, Err(e))
