@@ -407,23 +407,21 @@ pub extern "C" fn dmtr_wait_any(
 }
 
 #[no_mangle]
+pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
+    with_libos(|libos| {
+        libos.rt().alloc_sgarray(size)
+    })
+}
+
+#[no_mangle]
 pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
     if sga.is_null() {
         return 0;
     }
-    let sga = unsafe { *sga };
-    for i in 0..sga.sga_numsegs as usize {
-        let seg = &sga.sga_segs[i];
-        let allocation = unsafe {
-            Box::from_raw(slice::from_raw_parts_mut(
-                seg.sgaseg_buf as *mut _,
-                seg.sgaseg_len as usize,
-            ))
-        };
-        drop(allocation);
-    }
-
-    0
+    with_libos(|libos| {
+        libos.rt().free_sgarray(unsafe {*sga});
+        0
+    })
 }
 
 // #[no_mangle]

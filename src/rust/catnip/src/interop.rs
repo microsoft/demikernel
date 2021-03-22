@@ -19,6 +19,7 @@ pub type dmtr_qtoken_t = u64;
 pub const DMTR_SGARRAY_MAXSIZE: usize = 1;
 
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct dmtr_sgaseg_t {
     pub sgaseg_buf: *mut c_void,
     pub sgaseg_len: u32,
