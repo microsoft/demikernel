@@ -12,8 +12,6 @@ use libc::{
 };
 use std::{
     mem,
-    ptr,
-    slice,
 };
 
 pub type dmtr_qtoken_t = u64;
@@ -33,38 +31,6 @@ pub struct dmtr_sgarray_t {
     pub sga_numsegs: u32,
     pub sga_segs: [dmtr_sgaseg_t; DMTR_SGARRAY_MAXSIZE],
     pub sga_addr: sockaddr_in,
-}
-
-impl From<&[u8]> for dmtr_sgarray_t {
-    fn from(bytes: &[u8]) -> Self {
-        let buf: Box<[u8]> = bytes.into();
-        let ptr = Box::into_raw(buf);
-        let sgaseg = dmtr_sgaseg_t {
-            sgaseg_buf: ptr as *mut _,
-            sgaseg_len: bytes.len() as u32,
-        };
-        dmtr_sgarray_t {
-            sga_buf: ptr::null_mut(),
-            sga_numsegs: 1,
-            sga_segs: [sgaseg],
-            sga_addr: unsafe { mem::zeroed() },
-        }
-    }
-}
-
-impl dmtr_sgarray_t {
-    pub fn free(self) {
-        for i in 0..self.sga_numsegs as usize {
-            let seg = &self.sga_segs[i];
-            let allocation: Box<[u8]> = unsafe {
-                Box::from_raw(slice::from_raw_parts_mut(
-                    seg.sgaseg_buf as *mut _,
-                    seg.sgaseg_len as usize,
-                ))
-            };
-            drop(allocation);
-        }
-    }
 }
 
 #[repr(C)]
@@ -99,7 +65,7 @@ pub struct dmtr_qresult_t {
 }
 
 impl dmtr_qresult_t {
-    pub fn pack<RT: Runtime>(result: OperationResult<RT>, qd: FileDescriptor, qt: u64) -> Self {
+    pub fn pack<RT: Runtime>(rt: &RT, result: OperationResult<RT>, qd: FileDescriptor, qt: u64) -> Self {
         match result {
             OperationResult::Connect => Self {
                 qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
@@ -129,7 +95,7 @@ impl dmtr_qresult_t {
                 qr_value: unsafe { mem::zeroed() },
             },
             OperationResult::Pop(addr, bytes) => {
-                let mut sga = dmtr_sgarray_t::from(&bytes[..]);
+                let mut sga = rt.into_sgarray(bytes);
                 if let Some(addr) = addr {
                     sga.sga_addr.sin_port = addr.port.into();
                     sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.addr.octets());

@@ -8,8 +8,9 @@ use dpdk_rs::{
     rte_eth_tx_burst,
     rte_eth_rx_burst,
 };
-use crate::memory::DPDKBuf;
+use crate::memory::{MemoryManager, DPDKBuf};
 use catnip::{
+    interop::{dmtr_sgarray_t, dmtr_sgaseg_t},
     protocols::{
         arp,
         ethernet2::MacAddress,
@@ -111,6 +112,10 @@ impl DPDKRuntime {
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
+        let mem_options = Default::default();
+        // TODO: Move this a layer up.
+        let memory_manager = MemoryManager::new(mem_options).expect("Failed to initialize memory manager");
+
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
@@ -121,6 +126,7 @@ impl DPDKRuntime {
 
             dpdk_port_id,
             dpdk_mempool,
+            memory_manager,
 
             num_buffered: 0,
             buffered: unsafe { buffered.assume_init() },
@@ -134,6 +140,7 @@ impl DPDKRuntime {
 
 struct Inner {
     timer: TimerRc,
+    memory_manager: MemoryManager,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     rng: SmallRng,
@@ -150,6 +157,22 @@ struct Inner {
 impl Runtime for DPDKRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
     type Buf = DPDKBuf;
+
+    fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t {
+        self.inner.borrow().memory_manager.into_sgarray(buf)
+    }
+
+    fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
+        self.inner.borrow().memory_manager.alloc_sgarray(size)
+    }
+
+    fn free_sgarray(&self, sga: dmtr_sgarray_t) {
+        self.inner.borrow().memory_manager.free_sgarray(sga)
+    }
+
+    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf {
+        self.inner.borrow().memory_manager.clone_sgarray(sga)
+    }
 
     fn transmit(&self, buf: impl PacketBuf) {
         let pool = { self.inner.borrow().dpdk_mempool };

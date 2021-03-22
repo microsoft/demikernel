@@ -10,7 +10,7 @@ use crate::{
         dmtr_sgarray_t,
     },
     protocols::ipv4::Endpoint,
-    runtime::{Runtime, RuntimeBuf},
+    runtime::Runtime,
     scheduler::{
         Operation,
         SchedulerHandle,
@@ -97,7 +97,7 @@ impl<RT: Runtime> LibOS<RT> {
 
     pub fn push(&mut self, fd: FileDescriptor, sga: &dmtr_sgarray_t) -> QToken {
         let _s = static_span!();
-        let buf = RT::Buf::from_sgarray(sga);
+        let buf = self.rt.clone_sgarray(sga);
         let future = self.engine.push(fd, buf);
         self.rt.scheduler().insert(future).into_raw()
     }
@@ -109,7 +109,7 @@ impl<RT: Runtime> LibOS<RT> {
 
     pub fn pushto(&mut self, fd: FileDescriptor, sga: &dmtr_sgarray_t, to: Endpoint) -> QToken {
         let _s = static_span!();
-        let buf = RT::Buf::from_sgarray(sga);
+        let buf = self.rt.clone_sgarray(sga);
         let future = self.engine.pushto(fd, buf, to);
         self.rt.scheduler().insert(future).into_raw()
     }
@@ -138,12 +138,12 @@ impl<RT: Runtime> LibOS<RT> {
             return None;
         }
         let (qd, r) = self.take_operation(handle);
-        Some(dmtr_qresult_t::pack(r, qd, qt))
+        Some(dmtr_qresult_t::pack(&self.rt, r, qd, qt))
     }
 
     pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
         let (qd, r) = self.wait2(qt);
-        dmtr_qresult_t::pack(r, qd, qt)
+        dmtr_qresult_t::pack(&self.rt, r, qd, qt)
     }
 
     pub fn wait2(&mut self, qt: QToken) -> (FileDescriptor, OperationResult<RT>) {
@@ -174,7 +174,7 @@ impl<RT: Runtime> LibOS<RT> {
                 let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
-                    return (i, dmtr_qresult_t::pack(r, qd, qt));
+                    return (i, dmtr_qresult_t::pack(&self.rt, r, qd, qt));
                 }
                 handle.into_raw();
             }

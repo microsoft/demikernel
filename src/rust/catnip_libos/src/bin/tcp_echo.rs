@@ -4,9 +4,7 @@
 use std::time::Duration;
 use histogram::Histogram;
 use must_let::must_let;
-use std::io::Write;
 use std::str::FromStr;
-use catnip_libos::runtime::DPDKRuntime;
 use catnip_libos::memory::DPDKBuf;
 use anyhow::{
     format_err,
@@ -16,46 +14,25 @@ use dpdk_rs::load_mlx5_driver;
 use std::env;
 use catnip::{
     sync::BytesMut,
-    file_table::FileDescriptor,
-    interop::{
-        dmtr_qresult_t,
-        dmtr_qtoken_t,
-        dmtr_sgarray_t,
-    },
     libos::LibOS,
     logging,
     operations::OperationResult,
     protocols::{
         ip,
-        ipv4::{self, Endpoint},
+        ipv4::{Endpoint},
         ethernet2::MacAddress,
     },
-    runtime::Runtime,
 };
 use std::time::Instant;
-use clap::{
-    App,
-    Arg,
-};
-use libc::{
-    c_char,
-    c_int,
-    sockaddr,
-    socklen_t,
-};
 use hashbrown::HashMap;
 use std::{
-    cell::RefCell,
     convert::TryFrom,
     ffi::{
-        CStr,
         CString,
     },
     fs::File,
     io::Read,
-    mem,
     net::Ipv4Addr,
-    slice,
 };
 use yaml_rust::{
     Yaml,
@@ -134,10 +111,8 @@ fn main() {
         let buf_sz: usize = std::env::var("BUFFER_SIZE").unwrap().parse().unwrap();
 
         let log_round = std::env::var("LOG_ROUND").is_ok();
-        let mut is_server = false;
 
         if std::env::var("ECHO_SERVER").is_ok() {
-            is_server = true;
             let num_iters: usize = std::env::var("NUM_ITERS").unwrap().parse().unwrap();
             let listen_addr = &config_obj["server"]["bind"];
             let host_s = listen_addr["host"].as_str().expect("Invalid host");
@@ -212,8 +187,8 @@ fn main() {
             let qtoken = libos.connect(sockfd, endpoint);
             must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
 
-            let mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
-            let hdr_size = 54;
+            let _mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
+            let _hdr_size = 54;
 
             // let num_bufs = (buf_sz - 1) / mss + 1;
             // let mut bufs = Vec::with_capacity(num_bufs);
@@ -278,7 +253,7 @@ fn main() {
                     println!("Done popping");
                 }
             }
-            let exp_duration = exp_start.elapsed();
+            let _exp_duration = exp_start.elapsed();
             let mut h = Histogram::configure().precision(4).build().unwrap();
             let mut total_duration = 0.;
             for s in &samples[2..] {

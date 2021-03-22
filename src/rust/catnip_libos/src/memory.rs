@@ -28,9 +28,9 @@ use std::ptr;
 use std::slice;
 use std::sync::Arc;
 use std::rc::Rc;
-use catnip::sync::Bytes;
+use catnip::sync::{Bytes, BytesMut};
 use catnip::runtime::RuntimeBuf;
-use catnip::interop::dmtr_sgarray_t;
+use catnip::interop::{dmtr_sgarray_t, dmtr_sgaseg_t};
 use libc::{c_uint, c_void};
 use anyhow::Error;
 
@@ -78,7 +78,7 @@ pub struct MemoryManager {
 }
 
 impl MemoryManager {
-    fn new(config: MemoryConfig) -> Result<Self, Error> {
+    pub fn new(config: MemoryConfig) -> Result<Self, Error> {
         Ok(Self { inner: Rc::new(Inner::new(config)?) })
     }
 
@@ -138,6 +138,102 @@ impl MemoryManager {
         let ptr_int = ptr as usize;
         let body_end = self.inner.body_region_addr + self.inner.body_region_len;
         ptr_int >= self.inner.body_region_addr && ptr_int < body_end
+    }
+
+    pub fn into_sgarray(&self, buf: DPDKBuf) -> dmtr_sgarray_t {
+        let sgaseg = match buf {
+            DPDKBuf::External(bytes) => {
+                // We have to do a copy here since `Bytes` uses an `Arc<[u8]>` internally and has
+                // some additional bookkeeping for an offset and length, but we want to be able to
+                // hand off a raw pointer up the application that they can free later.
+                let buf_copy: Box<[u8]> = (&bytes[..]).into();
+                let ptr = Box::into_raw(buf_copy);
+                dmtr_sgaseg_t {
+                    sgaseg_buf: ptr as *mut _,
+                    sgaseg_len: bytes.len() as u32,
+                }
+            },
+            DPDKBuf::Managed(mbuf) => {
+                let sgaseg = dmtr_sgaseg_t {
+                    sgaseg_buf: mbuf.data_ptr() as *mut _,
+                    sgaseg_len: mbuf.len() as u32,
+                };
+                mem::forget(mbuf);
+                sgaseg
+            },
+        };
+        dmtr_sgarray_t {
+            sga_buf: ptr::null_mut(),
+            sga_numsegs: 1,
+            sga_segs: [sgaseg],
+            sga_addr: unsafe { mem::zeroed() },
+        }
+    }
+
+    pub fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
+        assert!(size <= self.inner.config.max_body_size);
+
+        let sgaseg = if self.inner.config.inline_body_size < size && size <= self.inner.config.max_body_size {
+            let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
+            assert!(!mbuf_ptr.is_null());
+            unsafe {
+                let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+                // We don't strictly have to set these fields, since we don't directly hand off body
+                // `mbuf`s to `rte_eth_tx_burst`, but it's nice to have the original allocation size around.
+                assert!(size as u16 <= num_bytes);
+                (*mbuf_ptr).data_len = size as u16;
+                (*mbuf_ptr).pkt_len = size as u32;
+                let buf_ptr = (*mbuf_ptr).buf_addr as *mut u8;
+                let data_ptr = buf_ptr.offset((*mbuf_ptr).data_off as isize);
+                dmtr_sgaseg_t {
+                    sgaseg_buf: data_ptr as *mut _,
+                    sgaseg_len: size as u32,
+                }
+            }
+        } else {
+            let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
+            let ptr = Box::into_raw(allocation);
+            dmtr_sgaseg_t {
+                sgaseg_buf: ptr as *mut _,
+                sgaseg_len: size as u32,
+            }
+        };
+        dmtr_sgarray_t {
+            sga_buf: ptr::null_mut(),
+            sga_numsegs: 1,
+            sga_segs: [sgaseg],
+            sga_addr: unsafe { mem::zeroed() },
+        }
+    }
+
+    pub fn free_sgarray(&self, sga: dmtr_sgarray_t) {
+        assert_eq!(sga.sga_numsegs, 1);
+        let sgaseg = sga.sga_segs[0];
+        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+
+        if self.is_body_ptr(ptr) {
+            let mbuf_ptr = self.recover_body_mbuf(ptr).expect("Invalid sga pointer");
+            unsafe { rte_pktmbuf_free(mbuf_ptr) };
+        } else {
+            let allocation: Box<[u8]> = unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
+            drop(allocation);
+        }
+    }
+
+    pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> DPDKBuf {
+        assert_eq!(sga.sga_numsegs, 1);
+        let sgaseg = sga.sga_segs[0];
+        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+
+        if self.is_body_ptr(ptr) {
+            let mbuf = self.clone_body(ptr, len).expect("Invalid sga pointer");
+            DPDKBuf::Managed(mbuf)
+        } else {
+            let mut buf = BytesMut::zeroed(len);
+            let seg_slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
+            buf.copy_from_slice(seg_slice);
+            DPDKBuf::External(buf.freeze())
+        }
     }
 }
 
@@ -412,12 +508,6 @@ impl RuntimeBuf for DPDKBuf {
             DPDKBuf::External(ref mut buf) => buf.trim(num_bytes),
             DPDKBuf::Managed(ref mut mbuf) => mbuf.trim(num_bytes),
         }
-    }
-
-    fn from_sgarray(sga: &dmtr_sgarray_t) -> Self {
-        // TODO: Scatter/gather support.
-        assert_eq!(sga.sga_numsegs, 1);
-        DPDKBuf::External(Bytes::from_sgarray(sga))
     }
 }
 

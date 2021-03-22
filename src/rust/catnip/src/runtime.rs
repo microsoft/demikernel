@@ -35,8 +35,6 @@ pub trait RuntimeBuf: Clone + Debug + Deref<Target=[u8]> + Sized + Unpin {
     fn adjust(&mut self, num_bytes: usize);
     /// Remove `num_bytes` from the end of the buffer;
     fn trim(&mut self, num_bytes: usize);
-
-    fn from_sgarray(sga: &dmtr_sgarray_t) -> Self;
 }
 
 pub trait PacketBuf {
@@ -46,6 +44,10 @@ pub trait PacketBuf {
 
 pub trait Runtime: Clone + Unpin + 'static {
     type Buf: RuntimeBuf;
+    fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t;
+    fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t;
+    fn free_sgarray(&self, sga: dmtr_sgarray_t);
+    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf;
 
     fn advance_clock(&self, now: Instant);
     fn transmit(&self, pkt: impl PacketBuf);

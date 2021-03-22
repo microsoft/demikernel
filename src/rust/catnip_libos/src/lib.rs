@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types, unused)]
-#![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_uninit_array, new_uninit)]
 #![feature(try_blocks)]
 
 use catnip::{
@@ -381,7 +381,7 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
     with_libos(|libos| {
         let (qd, r) = libos.wait2(qt);
         if !qr_out.is_null() {
-            let packed = dmtr_qresult_t::pack(r, qd, qt);
+            let packed = dmtr_qresult_t::pack(libos.rt(), r, qd, qt);
             unsafe { *qr_out = packed };
         }
         0

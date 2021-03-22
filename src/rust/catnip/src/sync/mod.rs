@@ -1,6 +1,5 @@
 use futures::task::AtomicWaker;
 use std::{
-    slice,
     fmt,
     ops::{
         Deref,
@@ -16,7 +15,6 @@ use std::{
     task::Waker,
 };
 use crate::runtime::RuntimeBuf;
-use crate::interop::dmtr_sgarray_t;
 
 pub struct SharedWaker(Arc<AtomicWaker>);
 
@@ -115,24 +113,6 @@ impl RuntimeBuf for Bytes {
             panic!("Trimming past beginning of buffer: {} vs. {}", num_bytes, self.len);
         }
         self.len -= num_bytes;
-    }
-
-    fn from_sgarray(sga: &dmtr_sgarray_t) -> Self {
-        let mut len = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            len += sga.sga_segs[i].sgaseg_len;
-        }
-        let mut buf = BytesMut::zeroed(len as usize);
-        let mut pos = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
-            let seg_slice = unsafe {
-                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
-            };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-            pos += seg_slice.len();
-        }
-        buf.freeze()
     }
 }
 

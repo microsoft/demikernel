@@ -1,10 +1,15 @@
 #![feature(const_fn, const_panic, const_alloc_layout)]
 #![feature(const_mut_refs, const_type_name)]
+#![feature(new_uninit)]
 
+use std::ptr;
+use std::mem;
+use std::slice;
 use catnip::{
     interop::{
         dmtr_opcode_t,
         dmtr_sgarray_t,
+        dmtr_sgaseg_t,
     },
     libos::LibOS,
     protocols::{
@@ -120,6 +125,68 @@ impl Runtime for TestRuntime {
     type WaitFuture = catnip::timer::WaitFuture<TimerRc>;
     type Buf = Bytes;
 
+    fn into_sgarray(&self, buf: Bytes) -> dmtr_sgarray_t {
+        let buf_copy: Box<[u8]> = (&buf[..]).into();
+        let ptr = Box::into_raw(buf_copy);
+        let sgaseg = dmtr_sgaseg_t {
+            sgaseg_buf: ptr as *mut _,
+            sgaseg_len: buf.len() as u32,
+        };
+        dmtr_sgarray_t {
+            sga_buf: ptr::null_mut(),
+            sga_numsegs: 1,
+            sga_segs: [sgaseg],
+            sga_addr: unsafe { mem::zeroed() },
+        }
+    }
+
+    fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
+        let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
+        let ptr = Box::into_raw(allocation);
+        let sgaseg = dmtr_sgaseg_t {
+            sgaseg_buf: ptr as *mut _,
+            sgaseg_len: size as u32,
+        };
+        dmtr_sgarray_t {
+            sga_buf: ptr::null_mut(),
+            sga_numsegs: 1,
+            sga_segs: [sgaseg],
+            sga_addr: unsafe { mem::zeroed() },
+        }
+    }
+
+    fn free_sgarray(&self, sga: dmtr_sgarray_t) {
+        assert_eq!(sga.sga_numsegs, 1);
+        for i in 0..sga.sga_numsegs as usize {
+            let seg = &sga.sga_segs[i];
+            let allocation: Box<[u8]> = unsafe {
+                Box::from_raw(slice::from_raw_parts_mut(
+                    seg.sgaseg_buf as *mut _,
+                    seg.sgaseg_len as usize,
+                ))
+            };
+            drop(allocation);
+        }
+    }
+
+    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Bytes {
+        let mut len = 0;
+        for i in 0..sga.sga_numsegs as usize {
+            len += sga.sga_segs[i].sgaseg_len;
+        }
+        let mut buf = BytesMut::zeroed(len as usize);
+        let mut pos = 0;
+        for i in 0..sga.sga_numsegs as usize {
+            let seg = &sga.sga_segs[i];
+            let seg_slice = unsafe {
+                slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
+            };
+            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
+            pos += seg_slice.len();
+        }
+        buf.freeze()
+    }
+
     fn transmit(&self, pkt: impl PacketBuf) {
         let _s = static_span!();
         let size = pkt.compute_size();
@@ -225,14 +292,18 @@ fn udp_echo() {
         let qt = alice.connect(alice_fd, bob_addr);
         assert_eq!(alice.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_CONNECT);
 
-        let sga = dmtr_sgarray_t::from(&vec![fill_char; size][..]);
+        let mut buf = BytesMut::zeroed(size);
+        for a in &mut buf[..] {
+            *a = fill_char;
+        }
+        let body_sga = alice.rt().into_sgarray(buf.freeze());
 
         let mut samples = Vec::with_capacity(num_iters);
 
         for _ in 0..num_iters {
             let start = Instant::now();
 
-            let qt = alice.push(alice_fd, &sga);
+            let qt = alice.push(alice_fd, &body_sga);
             assert_eq!(alice.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
 
             let qt = alice.pop(alice_fd);
@@ -242,12 +313,12 @@ fn udp_echo() {
             let sga = unsafe { qr.qr_value.sga };
             assert_eq!(sga.sga_numsegs, 1);
             assert_eq!(sga.sga_segs[0].sgaseg_len, size as u32);
-            sga.free();
+            alice.rt().free_sgarray(sga);
 
             samples.push(start.elapsed());
         }
 
-        sga.free();
+        alice.rt().free_sgarray(body_sga);
         done_tx.send(samples).unwrap();
     });
 
@@ -271,7 +342,7 @@ fn udp_echo() {
 
             let qt = bob.push(bob_fd, &sga);
             assert_eq!(bob.wait(qt).qr_opcode, dmtr_opcode_t::DMTR_OPC_PUSH);
-            sga.free();
+            bob.rt().free_sgarray(sga);
         }
     });
 
