@@ -177,7 +177,7 @@ impl Inner {
         let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size = header_size + config.inline_body_size;
         let priv_size = 0;
-        assert_eq!(priv_size, 0, "Private data isn't supported (it adds another box between `rte_mbuf` and data)");
+        assert_eq!(priv_size, 0, "Private data isn't supported (it adds another region between `rte_mbuf` and data)");
         let header_pool = unsafe {
             let name = CString::new("header_pool")?;
             rte_pktmbuf_pool_create(
