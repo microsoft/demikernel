@@ -11,8 +11,7 @@ crate-type = ["cdylib", "rlib"]
 anyhow = "1.0.32"
 catnip = { path = "../catnip", features = ["threadunsafe"] }
 clap = "2.33.3"
-# dpdk-rs = { git = "https://github.com/sujayakar/dpdk-rs", rev = "36adaad8e936a7499c74d88d6c69aeb5e3a65ed4" }
-dpdk-rs = { path = "/home/sujayakar/src/dpdk-rs" }
+dpdk-rs = { git = "https://github.com/sujayakar/dpdk-rs", rev = "c4fe22e892d74b81f7b41b5482365910660beae1" }
 futures = "0.3"
 hashbrown = { version = "0.9", features = ["nightly"] }
 libc = "0.2.77"
