@@ -93,7 +93,7 @@ impl PartialEq for Bytes {
 
 impl Eq for Bytes {}
 
-impl RuntimeBuf for  Bytes {
+impl RuntimeBuf for Bytes {
     fn empty() -> Self {
         Self {
             buf: None,
@@ -102,23 +102,19 @@ impl RuntimeBuf for  Bytes {
         }
     }
 
-    fn split(self, ix: usize) -> (Self, Self) {
-        if ix == self.len() {
-            return (self, Bytes::empty());
+    fn adjust(&mut self, num_bytes: usize) {
+        if num_bytes > self.len {
+            panic!("Adjusting past end of buffer: {} vs. {}", num_bytes, self.len);
         }
-        let buf = self.buf.expect("Can't split an empty buffer");
-        assert!(ix < self.len);
-        let prefix = Self {
-            buf: Some(buf.clone()),
-            offset: self.offset,
-            len: ix,
-        };
-        let suffix = Self {
-            buf: Some(buf),
-            offset: self.offset + ix,
-            len: self.len - ix,
-        };
-        (prefix, suffix)
+        self.offset += num_bytes;
+        self.len -= num_bytes;
+    }
+
+    fn trim(&mut self, num_bytes: usize) {
+        if num_bytes > self.len {
+            panic!("Trimming past beginning of buffer: {} vs. {}", num_bytes, self.len);
+        }
+        self.len -= num_bytes;
     }
 
     fn from_sgarray(sga: &dmtr_sgarray_t) -> Self {

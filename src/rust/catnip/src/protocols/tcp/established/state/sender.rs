@@ -214,20 +214,33 @@ impl<RT: Runtime> Sender<RT> {
 
     pub fn pop_one_unsent_byte(&self) -> Option<RT::Buf> {
         let mut queue = self.unsent_queue.borrow_mut();
-        let buf = queue.pop_front()?;
-        let (byte, remainder) = buf.split(1);
-        queue.push_front(remainder);
-        Some(byte)
+
+        let buf = queue.front_mut()?;
+        let mut cloned_buf = buf.clone();
+        let buf_len = buf.len();
+
+        // Pop one byte off the buf still in the queue and all but one of the bytes on our clone.
+        buf.adjust(1);
+        cloned_buf.trim(buf_len - 1);
+
+        Some(cloned_buf)
     }
 
     pub fn pop_unsent(&self, max_bytes: usize) -> Option<RT::Buf> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
         let mut buf = unsent_queue.pop_front()?;
-        if buf.len() > max_bytes {
-            let (head, tail) = buf.split(max_bytes);
-            buf = head;
-            unsent_queue.push_front(tail);
+        let buf_len = buf.len();
+
+        if buf_len > max_bytes {
+            let mut cloned_buf = buf.clone();
+
+            buf.adjust(max_bytes);
+            cloned_buf.trim(buf_len - max_bytes);
+
+            unsent_queue.push_front(buf);
+            buf = cloned_buf;
+
         }
         Some(buf)
     }

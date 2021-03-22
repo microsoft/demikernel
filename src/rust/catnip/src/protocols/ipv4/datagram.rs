@@ -15,7 +15,7 @@ use std::{
     net::Ipv4Addr,
 };
 
-pub const IPV4_HEADER2_SIZE: usize = 20;
+pub const IPV4_HEADER_SIZE: usize = 20;
 
 // todo: need citation
 pub const DEFAULT_IPV4_TTL: u8 = 64;
@@ -73,7 +73,7 @@ pub struct Ipv4Header {
 }
 
 fn ipv4_checksum(buf: &[u8]) -> u16 {
-    let buf: &[u8; IPV4_HEADER2_SIZE] = buf.try_into().expect("Invalid header size");
+    let buf: &[u8; IPV4_HEADER_SIZE] = buf.try_into().expect("Invalid header size");
     let mut state = 0xffffu32;
     for i in 0..5 {
         state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;
@@ -106,16 +106,16 @@ impl Ipv4Header {
 
     pub fn compute_size(&self) -> usize {
         // We don't support IPv4 options, so this is always 20.
-        IPV4_HEADER2_SIZE
+        IPV4_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
-        if buf.len() < IPV4_HEADER2_SIZE {
+    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+        if buf.len() < IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "Datagram too small",
             });
         }
-        let (hdr_buf, mut payload_buf) = buf.split(IPV4_HEADER2_SIZE);
+        let hdr_buf = &buf[..IPV4_HEADER_SIZE];
 
         let version = hdr_buf[0] >> 4;
         if version != IPV4_VERSION {
@@ -142,22 +142,16 @@ impl Ipv4Header {
         let total_length = NetworkEndian::read_u16(&hdr_buf[2..4]) as usize;
 
         // The TOTALLEN is definitely malformed if it doesn't have room for our header.
-        if total_length < IPV4_HEADER2_SIZE {
+        if total_length < IPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "IPv4 TOTALLEN smaller than header",
             });
         }
-        if total_length - IPV4_HEADER2_SIZE > payload_buf.len() {
+        if total_length > buf.len() {
             return Err(Fail::Malformed {
                 details: "IPv4 TOTALLEN greater than header + payload",
             });
         }
-        // NB (sujayakar, 11/6/2020): I've noticed that Ethernet transmission is liable to add
-        // padding zeros for small payloads, so we can't assert that the Ethernet payload we
-        // receives exactly matches the header's TOTALLEN. Therefore, we may need to truncate off
-        // padding bytes when they don't line up.
-        let (payload, _padding) = payload_buf.split(total_length - IPV4_HEADER2_SIZE);
-        payload_buf = payload;
 
         let identification = NetworkEndian::read_u16(&hdr_buf[4..6]);
         let flags = (NetworkEndian::read_u16(&hdr_buf[6..8]) >> 13) as u8;
@@ -187,6 +181,14 @@ impl Ipv4Header {
         let src_addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[12..16]));
         let dst_addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
 
+        // NB (sujayakar, 11/6/2020): I've noticed that Ethernet transmission is liable to add
+        // padding zeros for small payloads, so we can't assert that the Ethernet payload we
+        // receives exactly matches the header's TOTALLEN. Therefore, we may need to truncate off
+        // padding bytes when they don't line up.
+        let padding_bytes = buf.len() - total_length;
+        buf.adjust(IPV4_HEADER_SIZE);
+        buf.trim(padding_bytes);
+
         let header = Self {
             dscp,
             ecn,
@@ -198,14 +200,14 @@ impl Ipv4Header {
             src_addr,
             dst_addr,
         };
-        Ok((header, payload_buf))
+        Ok((header, buf))
     }
 
     pub fn serialize(&self, buf: &mut [u8], payload_len: usize) {
-        let buf: &mut [u8; IPV4_HEADER2_SIZE] = buf.try_into().unwrap();
+        let buf: &mut [u8; IPV4_HEADER_SIZE] = buf.try_into().unwrap();
         buf[0] = (IPV4_VERSION << 4) | IPV4_IHL_NO_OPTIONS;
         buf[1] = (self.dscp << 2) | (self.ecn & 3);
-        NetworkEndian::write_u16(&mut buf[2..4], (IPV4_HEADER2_SIZE + payload_len) as u16);
+        NetworkEndian::write_u16(&mut buf[2..4], (IPV4_HEADER_SIZE + payload_len) as u16);
         NetworkEndian::write_u16(&mut buf[4..6], self.identification);
         NetworkEndian::write_u16(
             &mut buf[6..8],

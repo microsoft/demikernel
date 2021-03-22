@@ -30,7 +30,11 @@ use std::{
 
 pub trait RuntimeBuf: Clone + Debug + Deref<Target=[u8]> + Sized + Unpin {
     fn empty() -> Self;
-    fn split(self, ix: usize) -> (Self, Self);
+
+    /// Remove `num_bytes` from the beginning of the buffer.
+    fn adjust(&mut self, num_bytes: usize);
+    /// Remove `num_bytes` from the end of the buffer;
+    fn trim(&mut self, num_bytes: usize);
 
     fn from_sgarray(sga: &dmtr_sgarray_t) -> Self;
 }

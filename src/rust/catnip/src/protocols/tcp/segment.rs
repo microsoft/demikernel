@@ -32,9 +32,9 @@ use std::{
     num::Wrapping,
 };
 
-const MIN_TCP_HEADER2_SIZE: usize = 20;
-const MAX_TCP_HEADER2_SIZE: usize = 60;
-const MAX_TCP_OPTIONS: usize = 5;
+pub const MIN_TCP_HEADER_SIZE: usize = 20;
+pub const MAX_TCP_HEADER_SIZE: usize = 60;
+pub const MAX_TCP_OPTIONS: usize = 5;
 
 pub struct TcpSegment<T: RuntimeBuf> {
     pub ethernet2_hdr: Ethernet2Header,
@@ -238,10 +238,10 @@ impl TcpHeader {
 
     pub fn parse<T: RuntimeBuf>(
         ipv4_header: &Ipv4Header,
-        buf: T,
+        mut buf: T,
         rx_checksum_offload: bool,
     ) -> Result<(Self, T), Fail> {
-        if buf.len() < MIN_TCP_HEADER2_SIZE {
+        if buf.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP segment too small",
             });
@@ -252,17 +252,17 @@ impl TcpHeader {
                 details: "TCP segment smaller than data offset",
             });
         }
-        if data_offset < MIN_TCP_HEADER2_SIZE {
+        if data_offset < MIN_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP data offset too small",
             });
         }
-        if data_offset > MAX_TCP_HEADER2_SIZE {
+        if data_offset > MAX_TCP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "TCP data offset too large",
             });
         }
-        let (hdr_buf, data_buf) = buf.split(data_offset);
+        let (hdr_buf, data_buf) = buf[..].split_at(data_offset);
 
         let src_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[0..2]))?;
         let dst_port = ip::Port::try_from(NetworkEndian::read_u16(&hdr_buf[2..4]))?;
@@ -297,9 +297,9 @@ impl TcpHeader {
         let mut num_options = 0;
         let mut option_list = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
 
-        if data_offset > MIN_TCP_HEADER2_SIZE {
-            let mut option_rdr = Cursor::new(&hdr_buf[MIN_TCP_HEADER2_SIZE..data_offset]);
-            while (option_rdr.position() as usize) < data_offset - MIN_TCP_HEADER2_SIZE {
+        if data_offset > MIN_TCP_HEADER_SIZE {
+            let mut option_rdr = Cursor::new(&hdr_buf[MIN_TCP_HEADER_SIZE..data_offset]);
+            while (option_rdr.position() as usize) < data_offset - MIN_TCP_HEADER_SIZE {
                 let option_kind = option_rdr.read_u8()?;
                 let option = match option_kind {
                     0 => break,
@@ -403,7 +403,8 @@ impl TcpHeader {
             num_options,
             option_list,
         };
-        Ok((header, data_buf))
+        buf.adjust(data_offset);
+        Ok((header, buf))
     }
 
     pub fn serialize(
@@ -413,8 +414,8 @@ impl TcpHeader {
         data: &[u8],
         tx_checksum_offload: bool,
     ) {
-        let fixed_buf: &mut [u8; MIN_TCP_HEADER2_SIZE] =
-            (&mut buf[..MIN_TCP_HEADER2_SIZE]).try_into().unwrap();
+        let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] =
+            (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
         NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
         NetworkEndian::write_u32(&mut fixed_buf[4..8], self.seq_num.0);
@@ -456,7 +457,7 @@ impl TcpHeader {
 
         NetworkEndian::write_u16(&mut fixed_buf[18..20], self.urgent_pointer);
 
-        let mut cur_pos = MIN_TCP_HEADER2_SIZE;
+        let mut cur_pos = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
             let bytes_written = self.option_list[i].serialize(&mut buf[cur_pos..]);
             cur_pos += bytes_written;
@@ -481,7 +482,7 @@ impl TcpHeader {
     }
 
     pub fn compute_size(&self) -> usize {
-        let mut size = MIN_TCP_HEADER2_SIZE;
+        let mut size = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
             size += self.option_list[i].compute_size();
         }
@@ -524,8 +525,8 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
     // 4) TCP segment length (2 bytes)
     state += (header.len() + data.len()) as u32;
 
-    let fixed_header: &[u8; MIN_TCP_HEADER2_SIZE] =
-        header[..MIN_TCP_HEADER2_SIZE].try_into().unwrap();
+    let fixed_header: &[u8; MIN_TCP_HEADER_SIZE] =
+        header[..MIN_TCP_HEADER_SIZE].try_into().unwrap();
 
     // Continue to the TCP header. First, for the fixed length parts, we have...
     // 1) Source port (2 bytes)
@@ -556,9 +557,9 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
 
     // Next, the variable length part of the header for TCP options. Since `data_offset` is
     // guaranteed to be aligned to a 32-bit boundary, we don't have to handle remainders.
-    if header.len() > MIN_TCP_HEADER2_SIZE {
+    if header.len() > MIN_TCP_HEADER_SIZE {
         assert_eq!(header.len() % 2, 0);
-        for chunk in header[MIN_TCP_HEADER2_SIZE..].chunks_exact(2) {
+        for chunk in header[MIN_TCP_HEADER_SIZE..].chunks_exact(2) {
             state += NetworkEndian::read_u16(chunk) as u32;
         }
     }

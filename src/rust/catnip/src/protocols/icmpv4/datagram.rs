@@ -131,7 +131,7 @@ impl PacketBuf for Icmpv4Message {
     }
 }
 
-pub const ICMPV4_HEADER2_SIZE: usize = 8;
+pub const ICMPV4_HEADER_SIZE: usize = 8;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Icmpv4Header {
@@ -142,34 +142,35 @@ pub struct Icmpv4Header {
 
 impl Icmpv4Header {
     fn compute_size(&self) -> usize {
-        ICMPV4_HEADER2_SIZE
+        ICMPV4_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
-        if buf.len() < ICMPV4_HEADER2_SIZE {
+    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+        if buf.len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "ICMPv4 datagram too small for header",
             });
         }
-        let (hdr_buf, data_buf) = buf.split(ICMPV4_HEADER2_SIZE);
-        let hdr_buf: &[u8; ICMPV4_HEADER2_SIZE] = hdr_buf[..].try_into().unwrap();
+        let hdr_buf: &[u8; ICMPV4_HEADER_SIZE] = &buf[..ICMPV4_HEADER_SIZE].try_into().unwrap();
 
         let type_byte = hdr_buf[0];
         let code = hdr_buf[1];
         let checksum = NetworkEndian::read_u16(&hdr_buf[2..4]);
-        if checksum != icmpv4_checksum(hdr_buf, &data_buf) {
+        if checksum != icmpv4_checksum(hdr_buf, &buf[ICMPV4_HEADER_SIZE..]) {
             return Err(Fail::Malformed {
                 details: "ICMPv4 checksum mismatch",
             });
         }
         let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
         let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;
-        Ok((Self { icmpv4_type, code }, data_buf))
+
+        buf.adjust(ICMPV4_HEADER_SIZE);
+        Ok((Self { icmpv4_type, code }, buf))
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ICMPV4_HEADER2_SIZE] =
-            (&mut buf[..ICMPV4_HEADER2_SIZE]).try_into().unwrap();
+        let buf: &mut [u8; ICMPV4_HEADER_SIZE] =
+            (&mut buf[..ICMPV4_HEADER_SIZE]).try_into().unwrap();
         let (type_byte, rest_of_header) = self.icmpv4_type.serialize();
         buf[0] = type_byte;
         buf[1] = self.code;
@@ -180,7 +181,7 @@ impl Icmpv4Header {
     }
 }
 
-fn icmpv4_checksum(buf: &[u8; ICMPV4_HEADER2_SIZE], body: &[u8]) -> u16 {
+fn icmpv4_checksum(buf: &[u8; ICMPV4_HEADER_SIZE], body: &[u8]) -> u16 {
     let mut state = 0xffffu32;
     state += NetworkEndian::read_u16(&buf[0..2]) as u32;
     // Skip the checksum.

@@ -14,7 +14,7 @@ use std::convert::{
 };
 
 pub const MIN_PAYLOAD_SIZE: usize = 46;
-pub const ETHERNET2_HEADER2_SIZE: usize = 14;
+pub const ETHERNET2_HEADER_SIZE: usize = 14;
 
 #[repr(u16)]
 #[derive(FromPrimitive, Copy, Clone, PartialEq, Eq, Debug)]
@@ -48,17 +48,16 @@ pub struct Ethernet2Header {
 
 impl Ethernet2Header {
     pub fn compute_size(&self) -> usize {
-        ETHERNET2_HEADER2_SIZE
+        ETHERNET2_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(buf: T) -> Result<(Self, T), Fail> {
-        if buf.len() < ETHERNET2_HEADER2_SIZE {
+    pub fn parse<T: RuntimeBuf>(mut buf: T) -> Result<(Self, T), Fail> {
+        if buf.len() < ETHERNET2_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "Frame too small",
             });
         }
-        let (hdr_buf, payload_buf) = buf.split(ETHERNET2_HEADER2_SIZE);
-
+        let hdr_buf = &buf[..ETHERNET2_HEADER_SIZE];
         let dst_addr = MacAddress::from_bytes(&hdr_buf[0..6]);
         let src_addr = MacAddress::from_bytes(&hdr_buf[6..12]);
         let ether_type = EtherType2::try_from(NetworkEndian::read_u16(&hdr_buf[12..14]))?;
@@ -67,11 +66,13 @@ impl Ethernet2Header {
             src_addr,
             ether_type,
         };
-        Ok((hdr, payload_buf))
+
+        buf.adjust(ETHERNET2_HEADER_SIZE);
+        Ok((hdr, buf))
     }
 
     pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ETHERNET2_HEADER2_SIZE] = buf.try_into().unwrap();
+        let buf: &mut [u8; ETHERNET2_HEADER_SIZE] = buf.try_into().unwrap();
         buf[0..6].copy_from_slice(&self.dst_addr.octets());
         buf[6..12].copy_from_slice(&self.src_addr.octets());
         NetworkEndian::write_u16(&mut buf[12..14], self.ether_type as u16);
