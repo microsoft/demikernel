@@ -1,5 +1,9 @@
 use std::ffi::CString;
 use dpdk_rs::{
+    rte_mempool_calc_obj_size,
+    rte_mempool_objsz,
+    rte_strerror,
+    rte_errno,
     rte_mbuf,
     rte_pktmbuf_pool_create,
     rte_pktmbuf_free,
@@ -63,7 +67,7 @@ impl Default for MemoryConfig {
             indirect_pool_size: 256,
             max_body_size: 2176,
             body_pool_size: 8192,
-            cache_size: 256,
+            cache_size: 128,
         }
     }
 }
@@ -74,6 +78,10 @@ pub struct MemoryManager {
 }
 
 impl MemoryManager {
+    fn new(config: MemoryConfig) -> Result<Self, Error> {
+        Ok(Self { inner: Rc::new(Inner::new(config)?) })
+    }
+
     fn clone_mbuf(&self, mbuf: &Mbuf) -> Mbuf {
         Mbuf {
             ptr: self.inner.clone_mbuf(mbuf.ptr),
@@ -168,19 +176,24 @@ impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
         let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size = header_size + config.inline_body_size;
+        let priv_size = 0;
+        assert_eq!(priv_size, 0, "Private data isn't supported (it adds another box between `rte_mbuf` and data)");
         let header_pool = unsafe {
             let name = CString::new("header_pool")?;
             rte_pktmbuf_pool_create(
                 name.as_ptr(),
                 config.header_pool_size as u32,
                 config.cache_size as u32,
-                0,
+                priv_size,
                 header_mbuf_size as u16,
                 rte_socket_id() as i32,
             )
         };
         if header_pool.is_null() {
-            anyhow::bail!("Failed to create header pool");
+            let reason = unsafe {
+                std::ffi::CStr::from_ptr(rte_strerror(rte_errno()))
+            };
+            anyhow::bail!("Failed to create header pool: {}", reason.to_str().unwrap())
         }
 
         let indirect_pool = unsafe {
@@ -189,7 +202,7 @@ impl Inner {
                 name.as_ptr(),
                 config.indirect_pool_size as u32,
                 config.cache_size as u32,
-                0,
+                priv_size,
                 // These mbufs have no body -- they're just for indirect mbufs to point to
                 // allocations from the body pool.
                 0,
@@ -206,7 +219,7 @@ impl Inner {
                 name.as_ptr(),
                 config.body_pool_size as u32,
                 config.cache_size as u32,
-                0,
+                priv_size,
                 config.max_body_size as u16,
                 rte_socket_id() as i32,
             )
@@ -218,7 +231,6 @@ impl Inner {
         let mut memory_regions: Vec<(usize, usize)> = vec![];
 
         extern "C" fn mem_cb(mp: *mut rte_mempool, opaque: *mut c_void, memhdr: *mut rte_mempool_memhdr, mem_idx: c_uint) {
-            println!("Memchunk {}: {:?}", mem_idx, unsafe {*memhdr});
             let mut mr = unsafe { &mut *(opaque as *mut Vec<(usize, usize)>) };
             let (addr, len) = unsafe { ((*memhdr).addr, (*memhdr).len) };
             mr.push((addr as usize, len as usize));
@@ -243,6 +255,18 @@ impl Inner {
         }
         let total_len = cur_addr - base_addr;
 
+        // Check our assumptions in `body_alloc_size` for how each object in the mempool is laid
+        // out in the mempool ring.
+        let mut sz: rte_mempool_objsz = unsafe { mem::zeroed() };
+        let elt_size = mem::size_of::<rte_mbuf>() + priv_size as usize + config.max_body_size;
+        let flags = 0;
+        unsafe {
+            rte_mempool_calc_obj_size(elt_size as u32, flags, &mut sz as *mut _);
+        }
+        assert_eq!(sz.header_size, 64);
+        assert_eq!(sz.elt_size as usize, 128 + config.max_body_size);
+        assert_eq!(sz.trailer_size, 0);
+
         Ok(Self {
             config,
             header_pool,
@@ -255,8 +279,6 @@ impl Inner {
     }
 
     fn body_alloc_size(&self) -> usize {
-        assert_eq!(mem::size_of::<rte_mempool_objhdr>(), 64);
-        assert_eq!(mem::size_of::<rte_mbuf>(), 128);
         64 + 128 + self.config.max_body_size
     }
 
@@ -299,7 +321,8 @@ impl Mbuf {
     }
 
     pub fn split(mut self, ix: usize) -> (Self, Self) {
-        if ix == self.len() {
+        let n = self.len();
+        if ix == n {
             let empty = Self {
                 ptr: self.mm.inner.alloc_indirect_empty(),
                 mm: self.mm.clone(),
@@ -310,7 +333,7 @@ impl Mbuf {
         let mut suffix = self.clone();
         let mut prefix = self;
 
-        prefix.trim(ix);
+        prefix.trim(n - ix);
         suffix.adjust(ix);
         (prefix, suffix)
     }
@@ -324,9 +347,7 @@ impl Mbuf {
 
     pub fn len(&self) -> usize {
         unsafe {
-            let headroom = rte_pktmbuf_headroom(self.ptr) as usize;
-            let tailroom = rte_pktmbuf_tailroom(self.ptr) as usize;
-            (*self.ptr).data_len as usize - headroom - tailroom
+            (*self.ptr).data_len as usize
         }
     }
 }
@@ -402,10 +423,80 @@ impl RuntimeBuf for DPDKBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::Mbuf;
+    use std::ffi::CString;
+    use super::{MemoryManager, Mbuf};
+    use dpdk_rs::*;
 
     #[test]
+    #[ignore]
     fn test_mbuf() {
-        todo!()
+        //  ["-c", "0xff", "-n", "4", "-w", "37:00.0","--proc-type=auto"]
+        let eal_init_args: Vec<CString> = vec![
+           CString::new("-c").unwrap(),
+           CString::new("0xff").unwrap(),
+           CString::new("-n").unwrap(),
+           CString::new("4").unwrap(),
+           CString::new("-w").unwrap(),
+           CString::new("37:00.0").unwrap(),
+           CString::new("--proc-type=auto").unwrap(),
+        ];
+        let eal_init_refs = eal_init_args
+            .iter()
+            .map(|s| s.as_ptr() as *mut u8)
+            .collect::<Vec<_>>();
+        unsafe {
+            rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _);
+        }
+        let mm = MemoryManager::new(Default::default()).unwrap();
+
+        // Step 1: Allocate a buffer from the body pool.
+        let mbuf_ptr = unsafe {
+            rte_pktmbuf_alloc(mm.inner.body_pool)
+        };
+        assert!(!mbuf_ptr.is_null());
+
+        // Step 2: Set the length (potentially revealing uninitialized memory)
+        // TODO: Provide a "safe" writer interface.
+        unsafe {
+            let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+            (*mbuf_ptr).data_len = num_bytes as u16;
+            (*mbuf_ptr).pkt_len = num_bytes as u32;
+        }
+
+        let mut mbuf = Mbuf { ptr: mbuf_ptr, mm: mm.clone() };
+
+        unsafe {
+            let out_slice = std::slice::from_raw_parts_mut(mbuf.data_ptr(), mbuf.len());
+            for (i, byte) in out_slice.into_iter().enumerate() {
+                *byte = (i % 256) as u8;
+            }
+        }
+
+        // Consider the mbuf "frozen" at this point. Let's try stripping off some of the "headers"
+        // and coming up with a smaller body buffer we'll pass up to the application.
+        assert_eq!(mbuf.len(), 2048);
+        mbuf.trim(13);
+        assert_eq!(mbuf.len(), 2035);
+        assert_eq!(mbuf[0], 0);
+        mbuf.adjust(22);
+        assert_eq!(mbuf.len(), 2013);
+        assert_eq!(mbuf[0], 22);
+        let (prefix, suffix) = mbuf.split(2012);
+        assert_eq!(&suffix[..], &[242]);
+        assert_eq!(unsafe { (*prefix.ptr).ol_flags }, 0);
+        assert_eq!(unsafe { (*suffix.ptr).ol_flags }, 1 << 62); // IND_ATTACHED_MBUF
+        drop(suffix);
+
+        // Let's hold on to this mbuf (as if the application is retaining it) and try to recover
+        // its mbuf header from an interior data pointer.
+        let data_ptr = unsafe { prefix.data_ptr().offset(10) as *mut libc::c_void };
+        let data_len = 17;
+
+        let cloned_mbuf = mm.clone_body(data_ptr, data_len).unwrap();
+        assert_eq!(cloned_mbuf[0], 32);
+        assert_eq!(cloned_mbuf.len(), 17);
+        assert_eq!(unsafe { (*cloned_mbuf.ptr).ol_flags }, 1 << 62);
+        drop(cloned_mbuf);
+        drop(prefix);
     }
 }
