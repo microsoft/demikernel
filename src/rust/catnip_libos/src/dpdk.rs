@@ -42,7 +42,7 @@ use dpdk_rs::{
         RTE_MBUF_DEFAULT_BUF_SIZE,
         RTE_PKTMBUF_HEADROOM,
 };
-use crate::memory::MemoryManager;
+use crate::memory::{MemoryConfig, MemoryManager};
 use crate::runtime::DPDKRuntime;
 use anyhow::{
     bail,
@@ -96,15 +96,10 @@ pub fn initialize_dpdk(
         nb_ports
     );
 
-    let name = CString::new("default_mbuf_pool").unwrap();
-    let num_mbufs = 8192;
-    let mbuf_cache_size = 250;
-    let mbuf_size = if use_jumbo_frames {
-        RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM
-    } else {
-        RTE_MBUF_DEFAULT_BUF_SIZE
-    };
-    let memory_config = Default::default();
+    let mut memory_config = MemoryConfig::default();
+    if use_jumbo_frames {
+        memory_config.max_body_size = (RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM) as usize;
+    }
     let memory_manager = MemoryManager::new(memory_config)?;
 
     let owner = RTE_ETH_DEV_NO_OWNER as u64;

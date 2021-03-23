@@ -92,8 +92,8 @@ fn main() {
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 
-        let use_jumbo_frames = false;
-        let mtu = 9216;
+        let use_jumbo_frames = std::env::var("USE_JUMBO").is_ok();
+        let mtu: u16 = std::env::var("MTU")?.parse()?;
         let tcp_checksum_offload = false;
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
