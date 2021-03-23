@@ -90,6 +90,7 @@ impl DPDKRuntime {
         memory_manager: MemoryManager,
         arp_table: HashMap<MacAddress, Ipv4Addr>,
         disable_arp: bool,
+        mss: usize,
         tcp_checksum_offload: bool,
     ) -> Self {
         let mut rng = rand::thread_rng();
@@ -101,8 +102,9 @@ impl DPDKRuntime {
         arp_options.disable_arp = disable_arp;
 
         let mut tcp_options = tcp::Options::default();
-        tcp_options.advertised_mss = 9000;
+        tcp_options.advertised_mss = mss;
         tcp_options.window_scale = 5;
+        tcp_options.receive_window_size = 0xffff;
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 

@@ -94,7 +94,8 @@ fn main() {
 
         let use_jumbo_frames = std::env::var("USE_JUMBO").is_ok();
         let mtu: u16 = std::env::var("MTU")?.parse()?;
-        let tcp_checksum_offload = false;
+        let mss: usize = std::env::var("MSS")?.parse()?;
+        let tcp_checksum_offload = std::env::var("TCP_CHECKSUM_OFFLOAD").is_ok();
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -102,6 +103,7 @@ fn main() {
             disable_arp,
             use_jumbo_frames,
             mtu,
+            mss,
             tcp_checksum_offload,
         )?;
         logging::initialize();
@@ -186,8 +188,6 @@ fn main() {
             let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0)?;
             let qtoken = libos.connect(sockfd, endpoint);
             must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
-
-            let mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
 
             let num_bufs = (buf_sz - 1) / mss + 1;
             let mut bufs = Vec::with_capacity(num_bufs);

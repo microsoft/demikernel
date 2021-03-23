@@ -77,6 +77,7 @@ pub fn initialize_dpdk(
     disable_arp: bool,
     use_jumbo_frames: bool,
     mtu: u16,
+    mss: usize,
     tcp_checksum_offload: bool,
 ) -> Result<DPDKRuntime, Error> {
     std::env::set_var("MLX5_SHUT_UP_BF", "1");
@@ -128,6 +129,7 @@ pub fn initialize_dpdk(
         memory_manager,
         arp_table,
         disable_arp,
+        mss,
         tcp_checksum_offload,
     ))
 }
