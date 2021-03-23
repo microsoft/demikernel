@@ -14,19 +14,6 @@ if(CMAKE_BUILD_TYPE MATCHES "Rel")
     set(CATNIP_LIBOS_CARGOFLAGS ${CATNIP_LIBOS_CARGOFLAGS} --release)
 endif(CMAKE_BUILD_TYPE MATCHES "Rel")
 
-# add_custom_command(OUTPUT ${CATNIP_LIBOS_DYNLIB}
-# 	COMMAND sh -c "PKG_CONFIG_PATH=${PKG_CONFIG_PATH} ${CARGO_EXECUTABLE} ${CATNIP_LIBOS_CARGOFLAGS}"
-# 	WORKING_DIRECTORY ${CATNIP_LIBOS_SOURCE_DIR}
-# 	COMMENT "Calling cargo"
-# 	VERBATIM
-# )
-# add_custom_target(catnip_libos DEPENDS ${CATNIP_LIBOS_DYNLIB})
-# target_link_libraries(catnip_libos "blah")
-
-add_library(catnip_libos2 SHARED IMPORTED) # target_link_libraries(catnip_libos3 ${CATNIP_LIBOS_DYNLIB})
-add_dependencies(catnip_libos2 build_catnip_libos)
-set_target_properties(catnip_libos2 PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/src/rust/catnip_libois/lib/libcatnip_libos.so)
-
 ExternalProject_Add(${CATNIP_LIBOS_TARGET}
     PREFIX ${CATNIP_LIBOS_BINARY_DIR}
     SOURCE_DIR ${CATNIP_LIBOS_SOURCE_DIR}
@@ -43,7 +30,6 @@ function(target_add_catnip TARGET)
 	target_link_libraries(${TARGET} ${CATNIP_LIBOS_DYNLIB}) 
 endfunction(target_add_catnip)
 
-# target_link_libraries(catnip_libos ${CMAKE_BINARY_DIR}/src/rust/catnip_libos/lib/libcatnip_libos.so)
 
 
 
