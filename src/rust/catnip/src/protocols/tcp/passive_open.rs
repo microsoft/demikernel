@@ -32,7 +32,6 @@ use crate::{
     },
     runtime::Runtime,
     scheduler::SchedulerHandle,
-    sync::Bytes,
 };
 use hashbrown::{
     HashMap,
@@ -311,7 +310,7 @@ impl<RT: Runtime> PassiveSocket<RT> {
                     },
                     ipv4_hdr: Ipv4Header::new(local.addr, remote.addr, Ipv4Protocol2::Tcp),
                     tcp_hdr,
-                    data: Bytes::empty(),
+                    data: RT::Buf::empty(),
                     tx_checksum_offload: tcp_options.tx_checksum_offload,
                 };
                 rt.transmit(segment);

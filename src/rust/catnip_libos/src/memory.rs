@@ -170,6 +170,28 @@ impl MemoryManager {
         }
     }
 
+    pub fn alloc_header_mbuf(&self) -> Mbuf {
+        let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.header_pool) };
+        assert!(!mbuf_ptr.is_null());
+        unsafe {
+            let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+            (*mbuf_ptr).data_len = num_bytes as u16;
+            (*mbuf_ptr).pkt_len = num_bytes as u32;
+        }
+        Mbuf { ptr: mbuf_ptr, mm: self.clone() }
+    }
+
+    pub fn alloc_body_mbuf(&self) -> Mbuf {
+        let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
+        assert!(!mbuf_ptr.is_null());
+        unsafe {
+            let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+            (*mbuf_ptr).data_len = num_bytes as u16;
+            (*mbuf_ptr).pkt_len = num_bytes as u32;
+        }
+        Mbuf { ptr: mbuf_ptr, mm: self.clone() }
+    }
+
     pub fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
         assert!(size <= self.inner.config.max_body_size);
 
@@ -234,6 +256,10 @@ impl MemoryManager {
             buf.copy_from_slice(seg_slice);
             DPDKBuf::External(buf.freeze())
         }
+    }
+
+    pub fn body_pool(&self) -> *mut rte_mempool {
+        self.inner.body_pool
     }
 }
 
@@ -395,8 +421,8 @@ impl Inner {
 
 #[derive(Debug)]
 pub struct Mbuf {
-    ptr: *mut rte_mbuf,
-    mm: MemoryManager,
+    pub ptr: *mut rte_mbuf,
+    pub mm: MemoryManager,
 }
 
 impl Mbuf {
@@ -445,6 +471,18 @@ impl Mbuf {
         unsafe {
             (*self.ptr).data_len as usize
         }
+    }
+
+    pub unsafe fn slice_mut(&mut self) -> &mut [u8] {
+        slice::from_raw_parts_mut(self.data_ptr(), self.len())
+    }
+
+    pub fn into_raw(mut self) -> *mut rte_mbuf {
+        mem::replace(&mut self.ptr, ptr::null_mut())
+    }
+
+    pub fn ptr(&mut self) -> *mut rte_mbuf {
+        self.ptr
     }
 }
 

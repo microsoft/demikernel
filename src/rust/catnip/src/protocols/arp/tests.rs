@@ -9,7 +9,6 @@ use crate::{
     fail::Fail,
     protocols::ethernet2::frame::{
         Ethernet2Header,
-        MIN_PAYLOAD_SIZE,
     },
     runtime::Runtime,
     test_helpers,
@@ -53,7 +52,6 @@ fn immediate_reply() {
 
     alice.rt().advance_clock(now);
     let request = alice.rt().pop_frame();
-    assert!(request.len() >= MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");
@@ -105,7 +103,6 @@ fn slow_reply() {
     assert!(Future::poll(fut.as_mut(), &mut ctx).is_pending());
 
     let request = alice.rt().pop_frame();
-    assert!(request.len() >= MIN_PAYLOAD_SIZE);
 
     // bob hasn't heard of alice before, so he will ignore the request.
     info!("passing ARP request to bob (should be ignored)...");

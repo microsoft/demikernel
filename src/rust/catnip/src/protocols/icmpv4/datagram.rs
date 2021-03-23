@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
+use std::marker::PhantomData;
 use crate::{
     runtime::RuntimeBuf,
     fail::Fail,
     protocols::{
         ethernet2::frame::{
             Ethernet2Header,
-            MIN_PAYLOAD_SIZE,
         },
         ipv4::datagram::Ipv4Header,
     },
@@ -17,7 +17,6 @@ use byteorder::{
     NetworkEndian,
 };
 use std::{
-    cmp,
     convert::TryInto,
 };
 
@@ -86,24 +85,27 @@ impl Icmpv4Type2 {
     }
 }
 
-pub struct Icmpv4Message {
+pub struct Icmpv4Message<T> {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub icmpv4_hdr: Icmpv4Header,
     // TODO: Add a body enum when we need it.
+
+    pub _body_marker: PhantomData<T>,
 }
 
-impl PacketBuf for Icmpv4Message {
-    fn compute_size(&self) -> usize {
-        let size = self.ethernet2_hdr.compute_size()
+impl<T> PacketBuf<T> for Icmpv4Message<T> {
+    fn header_size(&self) -> usize {
+        self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
-            + self.icmpv4_hdr.compute_size();
-
-        // Pad the end of the buffer with zeros if needed.
-        cmp::max(size, MIN_PAYLOAD_SIZE)
+            + self.icmpv4_hdr.compute_size()
     }
 
-    fn serialize(&self, buf: &mut [u8]) {
+    fn body_size(&self) -> usize {
+        0
+    }
+
+    fn write_header(&self, buf: &mut [u8]) {
         let eth_hdr_size = self.ethernet2_hdr.compute_size();
         let ipv4_hdr_size = self.ipv4_hdr.compute_size();
         let icmpv4_hdr_size = self.icmpv4_hdr.compute_size();
@@ -122,12 +124,10 @@ impl PacketBuf for Icmpv4Message {
 
         self.icmpv4_hdr
             .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
-        cur_pos += icmpv4_hdr_size;
+    }
 
-        // Add Ethernet padding if needed.
-        for byte in &mut buf[cur_pos..] {
-            *byte = 0;
-        }
+    fn take_body(self) -> Option<T> {
+        None
     }
 }
 

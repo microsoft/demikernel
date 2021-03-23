@@ -197,13 +197,14 @@ impl<RT: Runtime> LibOS<RT> {
         let _s = static_span!();
         self.rt.scheduler().poll();
         for _ in 0..MAX_RECV_ITERS {
-            match self.rt.receive() {
-                Some(pkt) => {
-                    if let Err(e) = self.engine.receive(pkt) {
-                        warn!("Dropped packet: {:?}", e);
-                    }
-                },
-                None => break,
+            let batch = self.rt.receive();
+            if batch.is_empty() {
+                break;
+            }
+            for pkt in batch {
+                if let Err(e) = self.engine.receive(pkt) {
+                    warn!("Dropped packet: {:?}", e);
+                }
             }
         }
         if self.ts_iters == 0 {

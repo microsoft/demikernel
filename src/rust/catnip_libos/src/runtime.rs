@@ -7,18 +7,22 @@ use dpdk_rs::{
     rte_pktmbuf_alloc,
     rte_eth_tx_burst,
     rte_eth_rx_burst,
+    rte_pktmbuf_chain,
 };
-use crate::memory::{MemoryManager, DPDKBuf};
+use crate::memory::{MemoryManager, DPDKBuf, Mbuf};
+use arrayvec::ArrayVec;
 use catnip::{
     interop::{dmtr_sgarray_t, dmtr_sgaseg_t},
     protocols::{
         arp,
+        ethernet2::frame::MIN_PAYLOAD_SIZE,
         ethernet2::MacAddress,
         tcp,
     },
     runtime::{
         PacketBuf,
         Runtime,
+        RECEIVE_BATCH_SIZE,
     },
     runtime::RuntimeBuf,
     scheduler::{
@@ -63,8 +67,6 @@ use std::{
     },
 };
 
-const MAX_QUEUE_DEPTH: usize = 4;
-
 #[derive(Clone)]
 pub struct TimerRc(Rc<Timer<TimerRc>>);
 
@@ -85,7 +87,7 @@ impl DPDKRuntime {
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
         dpdk_port_id: u16,
-        dpdk_mempool: *mut rte_mempool,
+        memory_manager: MemoryManager,
         arp_table: HashMap<MacAddress, Ipv4Addr>,
         disable_arp: bool,
         tcp_checksum_offload: bool,
@@ -94,14 +96,6 @@ impl DPDKRuntime {
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
 
-        let mut buffered: MaybeUninit<[Bytes; MAX_QUEUE_DEPTH]> = MaybeUninit::uninit();
-        for i in 0..MAX_QUEUE_DEPTH {
-            unsafe {
-                (buffered.as_mut_ptr() as *mut Bytes)
-                    .offset(i as isize)
-                    .write(Bytes::empty())
-            };
-        }
         let mut arp_options = arp::Options::default();
         arp_options.initial_values = arp_table;
         arp_options.disable_arp = disable_arp;
@@ -112,10 +106,6 @@ impl DPDKRuntime {
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
-        let mem_options = Default::default();
-        // TODO: Move this a layer up.
-        let memory_manager = MemoryManager::new(mem_options).expect("Failed to initialize memory manager");
-
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
@@ -125,16 +115,16 @@ impl DPDKRuntime {
             tcp_options,
 
             dpdk_port_id,
-            dpdk_mempool,
             memory_manager,
-
-            num_buffered: 0,
-            buffered: unsafe { buffered.assume_init() },
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
             scheduler: Scheduler::new(),
         }
+    }
+
+    pub fn alloc_body_mbuf(&self) -> Mbuf {
+        self.inner.borrow().memory_manager.alloc_body_mbuf()
     }
 }
 
@@ -148,10 +138,6 @@ struct Inner {
     tcp_options: tcp::Options,
 
     dpdk_port_id: u16,
-    dpdk_mempool: *mut rte_mempool,
-
-    num_buffered: usize,
-    buffered: [Bytes; MAX_QUEUE_DEPTH],
 }
 
 impl Runtime for DPDKRuntime {
@@ -174,77 +160,124 @@ impl Runtime for DPDKRuntime {
         self.inner.borrow().memory_manager.clone_sgarray(sga)
     }
 
-    fn transmit(&self, buf: impl PacketBuf) {
-        let pool = { self.inner.borrow().dpdk_mempool };
-        let dpdk_port_id = { self.inner.borrow().dpdk_port_id };
-        let mut pkt = unsafe { rte_pktmbuf_alloc(pool) };
-        assert!(!pkt.is_null());
+    fn transmit(&self, buf: impl PacketBuf<DPDKBuf>) {
+        // Alloc header mbuf, check header size.
+        // Serialize header.
+        // Decide if we can inline the data --
+        //   1) How much space is left?
+        //   2) Is the body small enough?
+        // If we can inline, copy and return.
+        // If we can't inline...
+        //   1) See if the body is managed => take
+        //   2) Not managed => alloc body
+        // Chain body buffer.
 
-        let size = buf.compute_size();
+        // First, allocate a header mbuf and write the header into it.
+        let inner = self.inner.borrow_mut();
+        let mut header_mbuf = inner.memory_manager.alloc_header_mbuf();
+        let header_size = buf.header_size();
+        assert!(header_size <= header_mbuf.len());
+        buf.write_header(unsafe { &mut header_mbuf.slice_mut()[..header_size] });
 
-        let rte_pktmbuf_headroom = 128;
-        let buf_len = unsafe { (*pkt).buf_len } - rte_pktmbuf_headroom;
-        assert!(buf_len as usize >= size);
+        if let Some(body) = buf.take_body() {
+            // Next, see how much space we have remaining and inline the body if we have room.
+            let inline_space = header_mbuf.len() - header_size;
 
-        let out_ptr = unsafe { ((*pkt).buf_addr as *mut u8).offset((*pkt).data_off as isize) };
-        let out_slice = unsafe { slice::from_raw_parts_mut(out_ptr, buf_len as usize) };
-        buf.serialize(&mut out_slice[..size]);
-        let num_sent = unsafe {
-            (*pkt).data_len = size as u16;
-            (*pkt).pkt_len = size as u32;
-            (*pkt).nb_segs = 1;
-            (*pkt).next = ptr::null_mut();
+            // Chain a buffer
+            if body.len() > inline_space {
+                assert!(header_size + body.len() >= MIN_PAYLOAD_SIZE);
 
-            rte_eth_tx_burst(dpdk_port_id, 0, &mut pkt as *mut _, 1)
-        };
-        assert_eq!(num_sent, 1);
-    }
+                // We're only using the header_mbuf for, well, the header.
+                header_mbuf.trim(header_mbuf.len() - header_size);
 
-    fn receive(&self) -> Option<DPDKBuf> {
-        let mut inner = self.inner.borrow_mut();
-        loop {
-            if inner.num_buffered > 0 {
-                inner.num_buffered -= 1;
-                let ix = inner.num_buffered;
-                let buf = mem::replace(&mut inner.buffered[ix], Bytes::empty());
-                return Some(DPDKBuf::External(buf));
-            }
-
-            let dpdk_port = inner.dpdk_port_id;
-            let mut packets: [*mut rte_mbuf; MAX_QUEUE_DEPTH] = unsafe { mem::zeroed() };
-
-            // rte_eth_rx_burst is declared `inline` in the header.
-            let nb_rx = unsafe {
-                rte_eth_rx_burst(
-                    dpdk_port,
-                    0,
-                    packets.as_mut_ptr(),
-                    MAX_QUEUE_DEPTH as u16,
-                )
-            };
-            assert!(nb_rx as usize <= MAX_QUEUE_DEPTH);
-            if nb_rx == 0 {
-                return None;
-            }
-            // let dev = unsafe { rte_eth_devices[dpdk_port as usize] };
-            // let rx_burst = dev.rx_pkt_burst.expect("Missing RX burst function");
-            // // This only supports queue_id 0.
-            // let nb_rx = unsafe { (rx_burst)(*(*dev.data).rx_queues, todo!(), MAX_QUEUE_DEPTH as u16) };
-
-            for &packet in &packets[..nb_rx as usize] {
-                // auto * const p = rte_pktmbuf_mtod(packet, uint8_t *);
-                let p = unsafe {
-                    ((*packet).buf_addr as *const u8).offset((*packet).data_off as isize)
+                let body_mbuf = match body {
+                    DPDKBuf::Managed(mbuf) => mbuf,
+                    DPDKBuf::External(bytes) => {
+                        let mut mbuf = inner.memory_manager.alloc_body_mbuf();
+                        assert!(mbuf.len() <= bytes.len());
+                        unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
+                        mbuf.trim(mbuf.len() - bytes.len());
+                        mbuf
+                    },
                 };
+                unsafe {
+                    assert_eq!(rte_pktmbuf_chain(header_mbuf.ptr(), body_mbuf.into_raw()), 0);
+                }
+                let mut header_mbuf_ptr = header_mbuf.into_raw();
+                let num_sent = unsafe {
+                    rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
+                };
+                assert_eq!(num_sent, 1);
+            }
+            // Otherwise, write in the inline space.
+            else {
+                let body_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())] };
+                body_buf.copy_from_slice(&body[..]);
 
-                let data = unsafe { slice::from_raw_parts(p, (*packet).data_len as usize) };
-                let ix = inner.num_buffered;
-                inner.buffered[ix] = BytesMut::from(data).freeze();
-                inner.num_buffered += 1;
+                if header_size + body.len() < MIN_PAYLOAD_SIZE {
+                    let padding_bytes = MIN_PAYLOAD_SIZE - (header_size + body.len());
+                    let padding_buf = unsafe {
+                        &mut header_mbuf.slice_mut()[(header_size + body.len())..][..padding_bytes]
+                    };
+                    for byte in padding_buf {
+                        *byte = 0;
+                    }
+                }
 
-                unsafe { rte_pktmbuf_free(packet as *const _ as *mut _) };
+                let frame_size = std::cmp::max(header_size + body.len(), MIN_PAYLOAD_SIZE);
+                header_mbuf.trim(header_mbuf.len() - frame_size);
+
+                let mut header_mbuf_ptr = header_mbuf.into_raw();
+                let num_sent = unsafe {
+                    rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
+                };
+                assert_eq!(num_sent, 1);
             }
         }
+        // No body on our packet, just send the headers.
+        else {
+            if header_size < MIN_PAYLOAD_SIZE {
+                let padding_bytes = MIN_PAYLOAD_SIZE - header_size;
+                let padding_buf = unsafe {
+                    &mut header_mbuf.slice_mut()[header_size..][..padding_bytes]
+                };
+                for byte in padding_buf {
+                    *byte = 0;
+                }
+            }
+            let frame_size = std::cmp::max(header_size, MIN_PAYLOAD_SIZE);
+            header_mbuf.trim(header_mbuf.len() - frame_size);
+            let mut header_mbuf_ptr = header_mbuf.into_raw();
+            let num_sent = unsafe {
+                rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
+            };
+            assert_eq!(num_sent, 1);
+        }
+    }
+
+    fn receive(&self) -> ArrayVec<[DPDKBuf; RECEIVE_BATCH_SIZE]> {
+        let mut inner = self.inner.borrow_mut();
+        let mut out = ArrayVec::new();
+
+        let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
+        let nb_rx = unsafe {
+            rte_eth_rx_burst(
+                inner.dpdk_port_id,
+                0,
+                packets.as_mut_ptr(),
+                RECEIVE_BATCH_SIZE as u16,
+            )
+        };
+        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
+
+        for &packet in &packets[..nb_rx as usize] {
+            let mbuf = Mbuf {
+                ptr: packet,
+                mm: inner.memory_manager.clone(),
+            };
+            out.push(DPDKBuf::Managed(mbuf));
+        }
+        out
     }
 
     fn local_link_addr(&self) -> MacAddress {

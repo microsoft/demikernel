@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::marker::PhantomData;
 use crate::{
     fail::Fail,
     protocols::ethernet2::{
         frame::{
             Ethernet2Header,
-            MIN_PAYLOAD_SIZE,
         },
         MacAddress,
     },
@@ -19,7 +19,6 @@ use byteorder::{
 };
 use num_traits::FromPrimitive;
 use std::{
-    cmp,
     convert::TryInto,
     net::Ipv4Addr,
 };
@@ -52,18 +51,23 @@ pub struct ArpPdu {
 }
 
 #[derive(Clone, Debug)]
-pub struct ArpMessage {
+pub struct ArpMessage<T> {
     pub ethernet2_hdr: Ethernet2Header,
     pub arp_pdu: ArpPdu,
+
+    pub _body_marker: PhantomData<T>,
 }
 
-impl PacketBuf for ArpMessage {
-    fn compute_size(&self) -> usize {
-        let size = self.ethernet2_hdr.compute_size() + self.arp_pdu.compute_size();
-        cmp::max(size, MIN_PAYLOAD_SIZE)
+impl<T> PacketBuf<T> for ArpMessage<T> {
+    fn header_size(&self) -> usize {
+        self.ethernet2_hdr.compute_size() + self.arp_pdu.compute_size()
     }
 
-    fn serialize(&self, buf: &mut [u8]) {
+    fn body_size(&self) -> usize {
+        0
+    }
+
+    fn write_header(&self, buf: &mut [u8]) {
         let eth_hdr_size = self.ethernet2_hdr.compute_size();
         let arp_pdu_size = self.arp_pdu.compute_size();
         let mut cur_pos = 0;
@@ -74,12 +78,10 @@ impl PacketBuf for ArpMessage {
 
         self.arp_pdu
             .serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
-        cur_pos += arp_pdu_size;
+    }
 
-        // Add Ethernet padding if needed.
-        for byte in &mut buf[cur_pos..] {
-            *byte = 0;
-        }
+    fn take_body(self) -> Option<T> {
+        None
     }
 }
 

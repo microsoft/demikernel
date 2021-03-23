@@ -41,6 +41,7 @@ use dpdk_rs::{
         RTE_MBUF_DEFAULT_BUF_SIZE,
         RTE_PKTMBUF_HEADROOM,
 };
+use crate::memory::MemoryManager;
 use crate::runtime::DPDKRuntime;
 use anyhow::{
     bail,
@@ -102,31 +103,12 @@ pub fn initialize_dpdk(
     } else {
         RTE_MBUF_DEFAULT_BUF_SIZE
     };
-    let mbuf_pool = unsafe {
-        rte_pktmbuf_pool_create(
-            name.as_ptr(),
-            (num_mbufs * nb_ports) as u32,
-            mbuf_cache_size,
-            0,
-            mbuf_size as u16,
-            rte_socket_id() as i32,
-        )
-    };
-    if mbuf_pool.is_null() {
-        Err(format_err!("rte_pktmbuf_pool_create failed"))?;
-    }
-    let mut port_id = 0;
-    {
-        let owner = RTE_ETH_DEV_NO_OWNER as u64;
-        let mut p = unsafe { rte_eth_find_next_owned_by(0, owner) as u16 };
+    let memory_config = Default::default();
+    let memory_manager = MemoryManager::new(memory_config)?;
 
-        while p < RTE_MAX_ETHPORTS as u16 {
-            // TODO: This is pretty hax, we clearly only support one port.
-            port_id = p;
-            initialize_dpdk_port(p, mbuf_pool, use_jumbo_frames, mtu, tcp_checksum_offload)?;
-            p = unsafe { rte_eth_find_next_owned_by(p + 1, owner) as u16 };
-        }
-    }
+    let owner = RTE_ETH_DEV_NO_OWNER as u64;
+    let port_id = unsafe { rte_eth_find_next_owned_by(0, owner) as u16 };
+    initialize_dpdk_port(port_id, &memory_manager, use_jumbo_frames, mtu, tcp_checksum_offload)?;
 
     // TODO: Where is this function?
     // if unsafe { rte_lcore_count() } > 1 {
@@ -147,7 +129,7 @@ pub fn initialize_dpdk(
         local_link_addr,
         local_ipv4_addr,
         port_id,
-        mbuf_pool,
+        memory_manager,
         arp_table,
         disable_arp,
         tcp_checksum_offload,
@@ -156,7 +138,7 @@ pub fn initialize_dpdk(
 
 fn initialize_dpdk_port(
     port_id: u16,
-    mbuf_pool: *mut rte_mempool,
+    memory_manager: &MemoryManager,
     use_jumbo_frames: bool,
     mtu: u16,
     tcp_checksum_offload: bool,
@@ -243,7 +225,7 @@ fn initialize_dpdk_port(
                 nb_rxd,
                 socket_id,
                 &rx_conf as *const _,
-                mbuf_pool
+                memory_manager.body_pool(),
             ))?;
         }
         for i in 0..tx_rings {
@@ -293,53 +275,3 @@ fn initialize_dpdk_port(
 
     Ok(())
 }
-
-// pub unsafe fn rte_pktmbuf_free(mut m: *mut rte_mbuf) {
-//     let mut m_next = ptr::null_mut();
-
-//     while !m.is_null() {
-//         m_next = (*m).next;
-//         rte_pktmbuf_free_seg(m);
-//         m = m_next;
-//     }
-// }
-
-// unsafe fn rte_pktmbuf_free_seg(mut m: *mut rte_mbuf) {
-//     m = rte_pktmbuf_prefree_seg(m);
-//     if !m.is_null() {
-//         rte_mbuf_raw_free(m);
-//     }
-// }
-
-// unsafe fn rte_pktmbuf_prefree_seg(m: *mut rte_mbuf) -> *mut rte_mbuf {
-//     if rte_mbuf_refcnt_read(m) == 1 {
-//         if !rte_mbuf_direct(m) {
-//             rte_pktmbuf_detach(m);
-//         }
-//         if !(*m).next.is_null() {
-//             (*m).next = ptr::null_mut();
-//             (*m).nb_segs = 1;
-//         }
-
-//         return m;
-//     } else if rte_mbuf_refcnt_update(m, -1) == 0 {
-//         if !rte_mbuf_direct(m) {
-//             rte_pktmbuf_detach(m);
-//         }
-//         if !(*m).next.is_null() {
-//             (*m).next = ptr::null_mut();
-//             (*m).nb_segs = 1;
-//         }
-// 		rte_mbuf_refcnt_set(m, 1);
-//         return m;
-//     }
-//     ptr::null_mut()
-// }
-
-// unsafe fn rte_mbuf_refcnt_read(m: *mut rte_buf) -> u16 {
-//     rte_atomic16_read((*m).refcnt_atomic) as u16
-// }
-
-// unsafe fn rte_mbuf_raw_free(m: *mut rte_mbuf) {
-//     todo!();
-// }

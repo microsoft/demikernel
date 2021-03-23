@@ -2,6 +2,7 @@
 #![feature(const_mut_refs, const_type_name)]
 #![feature(new_uninit)]
 
+use arrayvec::ArrayVec;
 use std::ptr;
 use std::mem;
 use std::slice;
@@ -20,6 +21,7 @@ use catnip::{
         tcp,
     },
     runtime::{
+        RECEIVE_BATCH_SIZE,
         PacketBuf,
         Runtime,
     },
@@ -187,11 +189,16 @@ impl Runtime for TestRuntime {
         buf.freeze()
     }
 
-    fn transmit(&self, pkt: impl PacketBuf) {
+    fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
         let _s = static_span!();
-        let size = pkt.compute_size();
-        let mut buf = BytesMut::zeroed(size);
-        pkt.serialize(&mut buf[..]);
+        let header_size = pkt.header_size();
+        let body_size = pkt.body_size();
+
+        let mut buf = BytesMut::zeroed(header_size + body_size);
+        pkt.write_header(&mut buf[..header_size]);
+        if let Some(body) = pkt.take_body() {
+            buf[header_size..].copy_from_slice(&body[..]);
+        }
         self.inner
             .borrow_mut()
             .outgoing
@@ -199,9 +206,13 @@ impl Runtime for TestRuntime {
             .unwrap();
     }
 
-    fn receive(&self) -> Option<Bytes> {
+    fn receive(&self) -> ArrayVec<[Bytes; RECEIVE_BATCH_SIZE]> {
         let _s = static_span!();
-        self.inner.borrow_mut().incoming.try_recv().ok()
+        let mut out = ArrayVec::new();
+        if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
+            out.push(buf);
+        }
+        out
     }
 
     fn scheduler(&self) -> &Scheduler<Operation<Self>> {

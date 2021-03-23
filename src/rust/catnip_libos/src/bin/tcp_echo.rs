@@ -13,7 +13,6 @@ use anyhow::{
 use dpdk_rs::load_mlx5_driver;
 use std::env;
 use catnip::{
-    sync::BytesMut,
     libos::LibOS,
     logging,
     operations::OperationResult,
@@ -187,34 +186,29 @@ fn main() {
             let qtoken = libos.connect(sockfd, endpoint);
             must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
 
-            let _mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
-            let _hdr_size = 54;
+            let mss: usize = std::env::var("MSS").unwrap().parse().unwrap();
 
-            // let num_bufs = (buf_sz - 1) / mss + 1;
-            // let mut bufs = Vec::with_capacity(num_bufs);
+            let num_bufs = (buf_sz - 1) / mss + 1;
+            let mut bufs = Vec::with_capacity(num_bufs);
 
-            // for i in 0..num_bufs {
-            //     let start = i * mss;
-            //     let end = std::cmp::min(start + mss, buf_sz);
-            //     let len = end - start;
+            for i in 0..num_bufs {
+                let start = i * mss;
+                let end = std::cmp::min(start + mss, buf_sz);
+                let len = end - start;
 
-            //     let mut pktbuf: catnip::sync::Mbuf = libos.rt().alloc_mbuf();
-            //     for j in hdr_size..(hdr_size + len) {
-            //         pktbuf[j] = 'a' as u8;
-            //     }
-            //     let buf = catnip::sync::Bytes::from_obj(catnip::sync::BufEnum::DPDK(pktbuf));
-            //     let (_, buf) = buf.split(hdr_size);
-            //     let (buf, _) = buf.split(len);
-            //     println!("Buf {}, {} bytes", i, buf.len());
-            //     bufs.push(buf);
-            // }
+                let mut pktbuf = libos.rt().alloc_body_mbuf();
+                assert!(len <= pktbuf.len());
 
-            let mut buf = BytesMut::zeroed(buf_sz);
-            for b in &mut buf[..] {
-                *b = 'a' as u8;
+                let pktbuf_slice = unsafe { pktbuf.slice_mut() };
+                for j in 0..len {
+                    pktbuf_slice[j] = 'a' as u8;
+                }
+                drop(pktbuf_slice);
+                pktbuf.trim(pktbuf.len() - len);
+                bufs.push(DPDKBuf::Managed(pktbuf));
             }
-            let buf = DPDKBuf::External(buf.freeze());
-            // let mut push_tokens = Vec::with_capacity(num_bufs);
+
+            let mut push_tokens = Vec::with_capacity(num_bufs);
 
             let exp_start = Instant::now();
             let mut samples = Vec::with_capacity(num_iters);
@@ -225,15 +219,13 @@ fn main() {
                     println!("Round {}", i);
                 }
                 let start = Instant::now();
-                let qtoken = libos.push2(sockfd, buf.clone());
-                must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
 
-                // assert!(push_tokens.is_empty());
-                // for b in &bufs {
-                //     let qtoken = libos.push2(sockfd, b.clone());
-                //     push_tokens.push(qtoken);
-                // }
-                // libos.wait_all_pushes(&mut push_tokens);
+                assert!(push_tokens.is_empty());
+                for b in &bufs {
+                    let qtoken = libos.push2(sockfd, b.clone());
+                    push_tokens.push(qtoken);
+                }
+                libos.wait_all_pushes(&mut push_tokens);
 
                 if log_round {
                     println!("Done pushing");

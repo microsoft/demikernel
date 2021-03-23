@@ -8,10 +8,11 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+arrayvec = "0.5.2"
 anyhow = "1.0.32"
 catnip = { path = "../catnip", features = ["threadunsafe"] }
 clap = "2.33.3"
-dpdk-rs = { git = "https://github.com/sujayakar/dpdk-rs", rev = "b13aeb0230861d6b73275855b76d85263ce16b27" }
+dpdk-rs = { git = "https://github.com/sujayakar/dpdk-rs", rev = "4cd0c7724cfe56f0150f9b55004c45fb47d83f18" }
 futures = "0.3"
 hashbrown = { version = "0.9", features = ["nightly"] }
 libc = "0.2.77"

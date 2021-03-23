@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use arrayvec::ArrayVec;
 use std::slice;
 use std::ptr;
 use std::mem;
@@ -15,6 +16,7 @@ use crate::{
     runtime::{
         PacketBuf,
         Runtime,
+        RECEIVE_BATCH_SIZE,
     },
     scheduler::{
         Operation,
@@ -197,15 +199,24 @@ impl Runtime for TestRuntime {
         buf.freeze()
     }
 
-    fn transmit(&self, pkt: impl PacketBuf) {
-        let size = pkt.compute_size();
-        let mut buf = BytesMut::zeroed(size);
-        pkt.serialize(&mut buf[..]);
+    fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
+        let header_size = pkt.header_size();
+        let body_size = pkt.body_size();
+
+        let mut buf = BytesMut::zeroed(header_size + body_size);
+        pkt.write_header(&mut buf[..header_size]);
+        if let Some(body) = pkt.take_body() {
+            buf[header_size..].copy_from_slice(&body[..]);
+        }
         self.inner.borrow_mut().outgoing.push_back(buf.freeze());
     }
 
-    fn receive(&self) -> Option<Bytes> {
-        self.inner.borrow_mut().incoming.pop_front()
+    fn receive(&self) -> ArrayVec<[Bytes; RECEIVE_BATCH_SIZE]> {
+        let mut out = ArrayVec::new();
+        if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
+            out.push(buf);
+        }
+        out
     }
 
     fn scheduler(&self) -> &Scheduler<Operation<Self>> {

@@ -4,7 +4,6 @@ use crate::{
     protocols::{
         ethernet2::frame::{
             Ethernet2Header,
-            MIN_PAYLOAD_SIZE,
         },
         ip,
         ipv4::datagram::{
@@ -19,7 +18,6 @@ use byteorder::{
     NetworkEndian,
 };
 use std::{
-    cmp,
     convert::{
         TryFrom,
         TryInto,
@@ -43,18 +41,18 @@ pub struct UdpDatagram<T: RuntimeBuf> {
     pub data: T,
 }
 
-impl<T: RuntimeBuf> PacketBuf for UdpDatagram<T> {
-    fn compute_size(&self) -> usize {
-        let size = self.ethernet2_hdr.compute_size()
+impl<T: RuntimeBuf> PacketBuf<T> for UdpDatagram<T> {
+    fn header_size(&self) -> usize {
+        self.ethernet2_hdr.compute_size()
             + self.ipv4_hdr.compute_size()
             + self.udp_hdr.compute_size()
-            + self.data.len();
-
-        // Pad the end of the buffer with zeros if needed.
-        cmp::max(size, MIN_PAYLOAD_SIZE)
     }
 
-    fn serialize(&self, buf: &mut [u8]) {
+    fn body_size(&self) -> usize {
+        self.data.len()
+    }
+
+    fn write_header(&self, buf: &mut [u8]) {
         let eth_hdr_size = self.ethernet2_hdr.compute_size();
         let ipv4_hdr_size = self.ipv4_hdr.compute_size();
         let udp_hdr_size = self.udp_hdr.compute_size();
@@ -76,15 +74,10 @@ impl<T: RuntimeBuf> PacketBuf for UdpDatagram<T> {
             &self.ipv4_hdr,
             &self.data[..],
         );
-        cur_pos += udp_hdr_size;
+    }
 
-        buf[cur_pos..(cur_pos + self.data.len())].copy_from_slice(&self.data[..]);
-        cur_pos += self.data.len();
-
-        // Add Ethernet padding if needed.
-        for byte in &mut buf[cur_pos..] {
-            *byte = 0;
-        }
+    fn take_body(self) -> Option<T> {
+        Some(self.data)
     }
 }
 

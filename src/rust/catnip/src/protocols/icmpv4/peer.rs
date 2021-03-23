@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::marker::PhantomData;
 use super::datagram::{
     Icmpv4Header,
     Icmpv4Type2,
@@ -116,6 +117,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                         icmpv4_type: Icmpv4Type2::EchoReply { id, seq_num },
                         code: 0,
                     },
+                    _body_marker: PhantomData,
                 };
                 rt.transmit(msg);
             };
@@ -205,6 +207,7 @@ impl<RT: Runtime> Icmpv4Peer<RT> {
                     icmpv4_type: Icmpv4Type2::EchoRequest { id, seq_num },
                     code: 0,
                 },
+                _body_marker: PhantomData,
             };
             rt.transmit(msg);
             let rx = {

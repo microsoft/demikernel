@@ -13,6 +13,7 @@ use crate::{
     },
     interop::dmtr_sgarray_t,
 };
+use arrayvec::ArrayVec;
 use rand::distributions::{
     Distribution,
     Standard,
@@ -28,6 +29,8 @@ use std::{
     ops::Deref,
 };
 
+pub const RECEIVE_BATCH_SIZE: usize = 4;
+
 pub trait RuntimeBuf: Clone + Debug + Deref<Target=[u8]> + Sized + Unpin {
     fn empty() -> Self;
 
@@ -37,9 +40,11 @@ pub trait RuntimeBuf: Clone + Debug + Deref<Target=[u8]> + Sized + Unpin {
     fn trim(&mut self, num_bytes: usize);
 }
 
-pub trait PacketBuf {
-    fn compute_size(&self) -> usize;
-    fn serialize(&self, buf: &mut [u8]);
+pub trait PacketBuf<T>: Sized {
+    fn header_size(&self) -> usize;
+    fn write_header(&self, buf: &mut [u8]);
+    fn body_size(&self) -> usize;
+    fn take_body(self) -> Option<T>;
 }
 
 pub trait Runtime: Clone + Unpin + 'static {
@@ -50,8 +55,8 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf;
 
     fn advance_clock(&self, now: Instant);
-    fn transmit(&self, pkt: impl PacketBuf);
-    fn receive(&self) -> Option<Self::Buf>;
+    fn transmit(&self, pkt: impl PacketBuf<Self::Buf>);
+    fn receive(&self) -> ArrayVec<[Self::Buf; RECEIVE_BATCH_SIZE]>;
 
     fn local_link_addr(&self) -> MacAddress;
     fn local_ipv4_addr(&self) -> Ipv4Addr;

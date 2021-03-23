@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::marker::PhantomData;
 use super::{
     cache::ArpCache,
     pdu::{
@@ -139,6 +140,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                         target_hardware_addr: pdu.sender_hardware_addr,
                         target_protocol_addr: pdu.sender_protocol_addr,
                     },
+                    _body_marker: PhantomData,
                 };
                 debug!("Responding {:?}", reply);
                 self.rt.transmit(reply);
@@ -181,6 +183,7 @@ impl<RT: Runtime> ArpPeer<RT> {
                     target_hardware_addr: MacAddress::broadcast(),
                     target_protocol_addr: ipv4_addr,
                 },
+                _body_marker: PhantomData,
             };
             let arp_response = cache.borrow_mut().wait_link_addr(ipv4_addr).fuse();
             futures::pin_mut!(arp_response);
