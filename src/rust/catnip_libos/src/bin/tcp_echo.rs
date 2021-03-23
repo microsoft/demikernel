@@ -174,6 +174,7 @@ fn main() {
         }
         else if std::env::var("ECHO_CLIENT").is_ok() {
             let num_iters: usize = std::env::var("NUM_ITERS").unwrap().parse().unwrap();
+            let verify = std::env::var("VERIFY").is_ok();
 
             let connect_addr = &config_obj["client"]["connect_to"];
             let host_s = connect_addr["host"].as_str().expect("Invalid host");
@@ -197,7 +198,7 @@ fn main() {
                 let len = end - start;
 
                 let mut pktbuf = libos.rt().alloc_body_mbuf();
-                assert!(len <= pktbuf.len());
+                assert!(len <= pktbuf.len(), "len {} (from mss {}), pktbuf len {}", len, mss, pktbuf.len());
 
                 let pktbuf_slice = unsafe { pktbuf.slice_mut() };
                 for j in 0..len {
@@ -236,6 +237,11 @@ fn main() {
                     let qtoken = libos.pop(sockfd);
                     must_let!(let (_, OperationResult::Pop(_, popped_buf)) = libos.wait2(qtoken));
                     bytes_popped += popped_buf.len();
+                    if verify {
+                        for &byte in &popped_buf[..] {
+                            assert_eq!(byte, 'a' as u8);
+                        }
+                    }
                     drop(popped_buf);
                 }
                 assert_eq!(bytes_popped, buf_sz);

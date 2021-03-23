@@ -28,6 +28,7 @@ use dpdk_rs::{
         rte_mempool,
         rte_pktmbuf_pool_create,
         rte_socket_id,
+        DEV_TX_OFFLOAD_MULTI_SEGS,
         DEV_RX_OFFLOAD_JUMBO_FRAME,
         DEV_RX_OFFLOAD_TCP_CKSUM,
         DEV_TX_OFFLOAD_TCP_CKSUM,
@@ -193,6 +194,7 @@ fn initialize_dpdk_port(
     if tcp_checksum_offload {
         port_conf.txmode.offloads |= DEV_TX_OFFLOAD_TCP_CKSUM as u64;
     }
+    port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MULTI_SEGS as u64;
 
     let mut rx_conf: rte_eth_rxconf = unsafe { MaybeUninit::zeroed().assume_init() };
     rx_conf.rx_thresh.pthresh = rx_pthresh;

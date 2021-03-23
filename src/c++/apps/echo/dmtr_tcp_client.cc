@@ -67,10 +67,10 @@ int main(int argc, char *argv[]) {
     dmtr_qresult_t qr = {};
     DMTR_OK(dmtr_wait(&qr, q));
     std::cerr << "Connected." << std::endl;
-    
-    sga.sga_numsegs = 1;
-    sga.sga_segs[0].sgaseg_len = packet_size;
-    sga.sga_segs[0].sgaseg_buf = generate_packet();
+
+    sga = dmtr_sgaalloc(packet_size);
+    memset(sga.sga_segs[0].sgaseg_buf, FILL_CHAR, packet_size);
+    ((char*) sga.sga_segs[0].sgaseg_buf)[packet_size - 1] = '\0';
     
     std::cerr << "Number of clients: " << clients << std::endl;
 
@@ -171,6 +171,8 @@ int main(int argc, char *argv[]) {
         start_times[idx] = boost::chrono::steady_clock::now();
 #endif
     } while (iterations > 0 && ret == 0);
+
+    dmtr_sgafree(&sga);
 
     finish();
     exit(0);
