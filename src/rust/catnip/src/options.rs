@@ -5,6 +5,7 @@ use crate::protocols::{
     arp,
     ethernet2::MacAddress,
     tcp,
+    udp,
 };
 use rand::{
     thread_rng,
@@ -19,6 +20,7 @@ pub struct Options {
     pub my_link_addr: MacAddress,
     pub rng_seed: [u8; 32],
     pub tcp: tcp::Options,
+    pub udp: udp::Options,
 }
 
 impl Default for Options {
@@ -31,6 +33,7 @@ impl Default for Options {
             my_link_addr: MacAddress::nil(),
             rng_seed,
             tcp: tcp::Options::default(),
+            udp: Default::default(),
         }
     }
 }

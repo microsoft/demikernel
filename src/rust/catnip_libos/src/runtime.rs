@@ -18,6 +18,7 @@ use catnip::{
         ethernet2::frame::MIN_PAYLOAD_SIZE,
         ethernet2::MacAddress,
         tcp,
+        udp,
     },
     runtime::{
         PacketBuf,
@@ -92,6 +93,7 @@ impl DPDKRuntime {
         disable_arp: bool,
         mss: usize,
         tcp_checksum_offload: bool,
+        udp_checksum_offload: bool,
     ) -> Self {
         let mut rng = rand::thread_rng();
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
@@ -108,6 +110,10 @@ impl DPDKRuntime {
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
+        let mut udp_options = udp::Options::default();
+        udp_options.tx_checksum_offload = udp_checksum_offload;
+        udp_options.rx_checksum_offload = udp_checksum_offload;
+
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
             link_addr,
@@ -115,6 +121,7 @@ impl DPDKRuntime {
             rng,
             arp_options,
             tcp_options,
+            udp_options,
 
             dpdk_port_id,
             memory_manager,
@@ -138,6 +145,7 @@ struct Inner {
     rng: SmallRng,
     arp_options: arp::Options,
     tcp_options: tcp::Options,
+    udp_options: udp::Options,
 
     dpdk_port_id: u16,
 }
@@ -292,6 +300,10 @@ impl Runtime for DPDKRuntime {
 
     fn tcp_options(&self) -> tcp::Options {
         self.inner.borrow().tcp_options.clone()
+    }
+
+    fn udp_options(&self) -> udp::Options {
+        self.inner.borrow().udp_options.clone()
     }
 
     fn arp_options(&self) -> arp::Options {

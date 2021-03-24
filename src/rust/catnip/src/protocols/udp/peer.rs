@@ -69,7 +69,6 @@ type OutgoingSender<T> = mpsc::UnboundedSender<OutgoingReq<T>>;
 type OutgoingReceiver<T> = mpsc::UnboundedReceiver<OutgoingReq<T>>;
 
 struct Inner<RT: Runtime> {
-    #[allow(unused)]
     rt: RT,
     #[allow(unused)]
     arp: arp::Peer<RT>,
@@ -122,6 +121,8 @@ impl<RT: Runtime> UdpPeer<RT> {
                         dst_port: remote.port,
                     },
                     data: buf,
+
+                    tx_checksum_offload: rt.udp_options().tx_checksum_offload,
                 };
                 rt.transmit(datagram);
             };
@@ -190,14 +191,14 @@ impl<RT: Runtime> UdpPeer<RT> {
     }
 
     pub fn receive(&self, ipv4_header: &Ipv4Header, buf: RT::Buf) -> Result<(), Fail> {
-        let (hdr, data) = UdpHeader::parse(ipv4_header, buf)?;
+        let mut inner = self.inner.borrow_mut();
+        let (hdr, data) = UdpHeader::parse(ipv4_header, buf, inner.rt.udp_options().rx_checksum_offload)?;
         let local = ipv4::Endpoint::new(ipv4_header.dst_addr, hdr.dst_port);
         let remote = hdr
             .src_port
             .map(|p| ipv4::Endpoint::new(ipv4_header.src_addr, p));
 
         // TODO: Send ICMPv4 error in this condition.
-        let mut inner = self.inner.borrow_mut();
         let listener = inner.bound.get_mut(&local).ok_or_else(|| Fail::Malformed {
             details: "Port not bound",
         })?;
@@ -292,6 +293,8 @@ impl<RT: Runtime> Inner<RT> {
                     dst_port: remote.port,
                 },
                 data: buf,
+
+                tx_checksum_offload: self.rt.udp_options().tx_checksum_offload,
             };
             self.rt.transmit(datagram);
         }

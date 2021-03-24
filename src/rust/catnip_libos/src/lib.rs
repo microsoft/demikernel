@@ -175,6 +175,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         let mtu = 9216;
         let mss = 9000;
         let tcp_checksum_offload = false;
+        let udp_checksum_offload = false;
         let runtime = self::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -184,6 +185,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             mtu,
             mss,
             tcp_checksum_offload,
+            udp_checksum_offload,
         )?;
         logging::initialize();
         LibOS::new(runtime)?

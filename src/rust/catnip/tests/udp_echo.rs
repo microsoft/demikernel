@@ -18,6 +18,7 @@ use catnip::{
         ethernet2::MacAddress,
         ip,
         ipv4,
+        udp,
         tcp,
     },
     runtime::{
@@ -229,6 +230,10 @@ impl Runtime for TestRuntime {
 
     fn tcp_options(&self) -> tcp::Options {
         self.inner.borrow().tcp_options.clone()
+    }
+
+    fn udp_options(&self) -> udp::Options {
+        udp::Options::default()
     }
 
     fn arp_options(&self) -> arp::Options {

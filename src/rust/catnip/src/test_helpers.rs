@@ -12,6 +12,7 @@ use crate::{
         arp,
         ethernet2::MacAddress,
         tcp,
+        udp,
     },
     runtime::{
         PacketBuf,
@@ -233,6 +234,10 @@ impl Runtime for TestRuntime {
 
     fn tcp_options(&self) -> tcp::Options {
         self.inner.borrow().tcp_options.clone()
+    }
+
+    fn udp_options(&self) -> udp::Options {
+        udp::Options::default()
     }
 
     fn arp_options(&self) -> arp::Options {

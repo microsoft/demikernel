@@ -39,6 +39,8 @@ pub struct UdpDatagram<T: RuntimeBuf> {
     pub ipv4_hdr: Ipv4Header,
     pub udp_hdr: UdpHeader,
     pub data: T,
+
+    pub tx_checksum_offload: bool,
 }
 
 impl<T: RuntimeBuf> PacketBuf<T> for UdpDatagram<T> {
@@ -73,6 +75,7 @@ impl<T: RuntimeBuf> PacketBuf<T> for UdpDatagram<T> {
             &mut buf[cur_pos..(cur_pos + udp_hdr_size)],
             &self.ipv4_hdr,
             &self.data[..],
+            self.tx_checksum_offload,
         );
     }
 
@@ -86,7 +89,7 @@ impl UdpHeader {
         UDP_HEADER_SIZE
     }
 
-    pub fn parse<T: RuntimeBuf>(ipv4_header: &Ipv4Header, mut buf: T) -> Result<(Self, T), Fail> {
+    pub fn parse<T: RuntimeBuf>(ipv4_header: &Ipv4Header, mut buf: T, rx_checksum_offload: bool) -> Result<(Self, T), Fail> {
         if buf.len() < UDP_HEADER_SIZE {
             return Err(Fail::Malformed {
                 details: "UDP segment too small",
@@ -104,11 +107,13 @@ impl UdpHeader {
             });
         }
 
-        let checksum = NetworkEndian::read_u16(&hdr_buf[6..8]);
-        if checksum != 0 && checksum != udp_checksum(&ipv4_header, hdr_buf, &buf[UDP_HEADER_SIZE..]) {
-            return Err(Fail::Malformed {
-                details: "UDP checksum mismatch",
-            });
+        if !rx_checksum_offload {
+            let checksum = NetworkEndian::read_u16(&hdr_buf[6..8]);
+            if checksum != 0 && checksum != udp_checksum(&ipv4_header, hdr_buf, &buf[UDP_HEADER_SIZE..]) {
+                return Err(Fail::Malformed {
+                    details: "UDP checksum mismatch",
+                });
+            }
         }
 
         let header = Self { src_port, dst_port };
@@ -116,7 +121,7 @@ impl UdpHeader {
         Ok((header, buf))
     }
 
-    fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8]) {
+    fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
         let fixed_buf: &mut [u8; UDP_HEADER_SIZE] =
             (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
@@ -127,7 +132,10 @@ impl UdpHeader {
         NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
         NetworkEndian::write_u16(&mut fixed_buf[4..6], (UDP_HEADER_SIZE + data.len()) as u16);
 
-        let checksum = udp_checksum(ipv4_hdr, &fixed_buf[..], data);
+        let mut checksum = 0;
+        if !tx_checksum_offload {
+            checksum = udp_checksum(ipv4_hdr, &fixed_buf[..], data);
+        }
         NetworkEndian::write_u16(&mut fixed_buf[6..8], checksum);
     }
 }

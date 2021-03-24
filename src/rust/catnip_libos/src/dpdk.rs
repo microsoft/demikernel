@@ -32,6 +32,8 @@ use dpdk_rs::{
         DEV_RX_OFFLOAD_JUMBO_FRAME,
         DEV_RX_OFFLOAD_TCP_CKSUM,
         DEV_TX_OFFLOAD_TCP_CKSUM,
+        DEV_RX_OFFLOAD_UDP_CKSUM,
+        DEV_TX_OFFLOAD_UDP_CKSUM,
         ETH_LINK_FULL_DUPLEX,
         ETH_LINK_UP,
         ETH_RSS_IP,
@@ -79,6 +81,7 @@ pub fn initialize_dpdk(
     mtu: u16,
     mss: usize,
     tcp_checksum_offload: bool,
+    udp_checksum_offload: bool,
 ) -> Result<DPDKRuntime, Error> {
     std::env::set_var("MLX5_SHUT_UP_BF", "1");
     let eal_init_refs = eal_init_args
@@ -105,7 +108,7 @@ pub fn initialize_dpdk(
 
     let owner = RTE_ETH_DEV_NO_OWNER as u64;
     let port_id = unsafe { rte_eth_find_next_owned_by(0, owner) as u16 };
-    initialize_dpdk_port(port_id, &memory_manager, use_jumbo_frames, mtu, tcp_checksum_offload)?;
+    initialize_dpdk_port(port_id, &memory_manager, use_jumbo_frames, mtu, tcp_checksum_offload, udp_checksum_offload)?;
 
     // TODO: Where is this function?
     // if unsafe { rte_lcore_count() } > 1 {
@@ -131,6 +134,7 @@ pub fn initialize_dpdk(
         disable_arp,
         mss,
         tcp_checksum_offload,
+        udp_checksum_offload,
     ))
 }
 
@@ -140,6 +144,7 @@ fn initialize_dpdk_port(
     use_jumbo_frames: bool,
     mtu: u16,
     tcp_checksum_offload: bool,
+    udp_checksum_offload: bool,
 ) -> Result<(), Error> {
     let rx_rings = 1;
     let tx_rings = 1;
@@ -181,6 +186,9 @@ fn initialize_dpdk_port(
     if tcp_checksum_offload {
         port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_TCP_CKSUM as u64;
     }
+    if udp_checksum_offload {
+        port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_UDP_CKSUM as u64;
+    }
     if use_jumbo_frames {
         port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME as u64;
     }
@@ -190,6 +198,9 @@ fn initialize_dpdk_port(
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
     if tcp_checksum_offload {
         port_conf.txmode.offloads |= DEV_TX_OFFLOAD_TCP_CKSUM as u64;
+    }
+    if udp_checksum_offload {
+        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_UDP_CKSUM as u64;
     }
     port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MULTI_SEGS as u64;
 

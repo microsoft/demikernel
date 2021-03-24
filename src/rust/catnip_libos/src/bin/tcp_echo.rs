@@ -96,6 +96,7 @@ fn main() {
         let mtu: u16 = std::env::var("MTU")?.parse()?;
         let mss: usize = std::env::var("MSS")?.parse()?;
         let tcp_checksum_offload = std::env::var("TCP_CHECKSUM_OFFLOAD").is_ok();
+        let udp_checksum_offload = std::env::var("UDP_CHECKSUM_OFFLOAD").is_ok();
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -105,6 +106,7 @@ fn main() {
             mtu,
             mss,
             tcp_checksum_offload,
+            udp_checksum_offload,
         )?;
         logging::initialize();
 

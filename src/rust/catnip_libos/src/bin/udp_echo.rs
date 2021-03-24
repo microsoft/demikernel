@@ -119,6 +119,7 @@ fn main() {
         let mtu: u16 = std::env::var("MTU")?.parse()?;
         let mss: usize = std::env::var("MSS")?.parse()?;
         let tcp_checksum_offload = std::env::var("TCP_CHECKSUM_OFFLOAD").is_ok();
+        let udp_checksum_offload = std::env::var("UDP_CHECKSUM_OFFLOAD").is_ok();
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
@@ -128,10 +129,12 @@ fn main() {
             mtu,
             mss,
             tcp_checksum_offload,
+            udp_checksum_offload,
         )?;
         logging::initialize();
 
         let mut libos = LibOS::new(runtime)?;
+        let buf_sz: usize = std::env::var("BUFFER_SIZE").unwrap().parse().unwrap();
 
         if std::env::var("ECHO_SERVER").is_ok() {
             let num_iters: usize = std::env::var("NUM_ITERS").unwrap().parse().unwrap();
@@ -158,15 +161,21 @@ fn main() {
             let mut pop_latency = Vec::with_capacity(num_iters);
 
             for _ in 0..num_iters {
-                let start = Instant::now();
-                let qtoken = libos.pop(sockfd);
-                pop_latency.push(start.elapsed());
-                must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
+                let mut bytes_transferred = 0;
 
-                let start = Instant::now();
-                let qtoken = libos.push2(sockfd, buf);
-                push_latency.push(start.elapsed());
-                must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
+                while bytes_transferred < buf_sz {
+                    let start = Instant::now();
+                    let qtoken = libos.pop(sockfd);
+                    pop_latency.push(start.elapsed());
+                    must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
+                    bytes_transferred += buf.len();
+
+                    let start = Instant::now();
+                    let qtoken = libos.push2(sockfd, buf);
+                    push_latency.push(start.elapsed());
+                    must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
+                }
+                assert_eq!(bytes_transferred, buf_sz);
             }
 
             let mut push_h = Histogram::configure().precision(4).build().unwrap();
@@ -186,7 +195,6 @@ fn main() {
         }
         else if std::env::var("ECHO_CLIENT").is_ok() {
             let num_iters: usize = std::env::var("NUM_ITERS").unwrap().parse().unwrap();
-            let buf_sz: usize = std::env::var("BUFFER_SIZE").unwrap().parse().unwrap();
 
             let connect_addr = &config_obj["client"]["connect_to"];
             let host_s = connect_addr["host"].as_str().expect("Invalid host");
@@ -206,26 +214,48 @@ fn main() {
             libos.bind(sockfd, client_addr)?;
             let qtoken = libos.connect(sockfd, connect_addr);
             must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
+            
+            let num_bufs = (buf_sz - 1) / mss + 1;
+            let mut bufs = Vec::with_capacity(num_bufs);
 
-            let mut pktbuf = libos.rt().alloc_body_mbuf();
-            assert!(buf_sz <= pktbuf.len());
-            let pktbuf_slice = unsafe { pktbuf.slice_mut() };
-            for i in 0..buf_sz {
-                pktbuf_slice[i] = 'a' as u8;
+            for i in 0..num_bufs {
+                let start = i * mss;
+                let end = std::cmp::min(start + mss, buf_sz);
+                let len = end - start;
+
+                let mut pktbuf = libos.rt().alloc_body_mbuf();
+                assert!(len <= pktbuf.len(), "len {} (from mss {}), pktbuf len {}", len, mss, pktbuf.len());
+
+                let pktbuf_slice = unsafe { pktbuf.slice_mut() };
+                for j in 0..len {
+                    pktbuf_slice[j] = 'a' as u8;
+                }
+                drop(pktbuf_slice);
+                pktbuf.trim(pktbuf.len() - len);
+                bufs.push(DPDKBuf::Managed(pktbuf));
             }
-            drop(pktbuf_slice);
-            pktbuf.trim(pktbuf.len() - buf_sz);
-            let buf = DPDKBuf::Managed(pktbuf);
 
             let exp_start = Instant::now();
             let mut samples = Vec::with_capacity(num_iters);
+            let mut push_tokens = Vec::with_capacity(num_bufs);
+             
             for _ in 0..num_iters {
                 let start = Instant::now();
-                let qtoken = libos.push2(sockfd, buf.clone());
-                must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
+                assert!(push_tokens.is_empty());
+                for b in &bufs {
+                    let qtoken = libos.push2(sockfd, b.clone());
+                    push_tokens.push(qtoken);
+                }
+                libos.wait_all_pushes(&mut push_tokens);
 
-                let qtoken = libos.pop(sockfd);
-                must_let!(let (_, OperationResult::Pop(..)) = libos.wait2(qtoken));
+                let mut bytes_popped = 0;
+                while bytes_popped < buf_sz {
+                    let qtoken = libos.pop(sockfd);
+                    must_let!(let (_, OperationResult::Pop(_, popped_buf)) = libos.wait2(qtoken));
+                    bytes_popped += popped_buf.len();
+                    drop(popped_buf);
+                }
+                assert_eq!(bytes_popped, buf_sz);
                 samples.push(start.elapsed());
             }
             let exp_duration = exp_start.elapsed();

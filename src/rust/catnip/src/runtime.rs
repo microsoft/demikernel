@@ -5,6 +5,7 @@ use crate::{
         arp,
         ethernet2::MacAddress,
         tcp,
+        udp,
     },
     scheduler::{
         Operation,
@@ -62,6 +63,7 @@ pub trait Runtime: Clone + Unpin + 'static {
     fn local_ipv4_addr(&self) -> Ipv4Addr;
     fn arp_options(&self) -> arp::Options;
     fn tcp_options(&self) -> tcp::Options;
+    fn udp_options(&self) -> udp::Options;
 
     type WaitFuture: Future<Output = ()>;
     fn wait(&self, duration: Duration) -> Self::WaitFuture;

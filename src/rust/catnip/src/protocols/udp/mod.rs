@@ -3,8 +3,10 @@
 
 mod datagram;
 pub mod peer;
+mod options;
 
 #[cfg(test)]
 mod tests;
 
 pub use peer::UdpPeer as Peer;
+pub use options::UdpOptions as Options;
