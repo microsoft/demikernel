@@ -10,3 +10,4 @@ mod tests;
 
 pub use peer::UdpPeer as Peer;
 pub use options::UdpOptions as Options;
+pub use datagram::UdpHeader;

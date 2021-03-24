@@ -135,6 +135,14 @@ impl DPDKRuntime {
     pub fn alloc_body_mbuf(&self) -> Mbuf {
         self.inner.borrow().memory_manager.alloc_body_mbuf()
     }
+
+    pub fn port_id(&self) -> u16 {
+        self.inner.borrow().dpdk_port_id
+    }
+
+    pub fn memory_manager(&self) -> MemoryManager {
+        self.inner.borrow().memory_manager.clone()
+    }
 }
 
 struct Inner {

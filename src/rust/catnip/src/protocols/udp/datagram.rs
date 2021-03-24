@@ -85,7 +85,7 @@ impl<T: RuntimeBuf> PacketBuf<T> for UdpDatagram<T> {
 }
 
 impl UdpHeader {
-    fn compute_size(&self) -> usize {
+    pub fn compute_size(&self) -> usize {
         UDP_HEADER_SIZE
     }
 
@@ -121,7 +121,7 @@ impl UdpHeader {
         Ok((header, buf))
     }
 
-    fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
+    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
         let fixed_buf: &mut [u8; UDP_HEADER_SIZE] =
             (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
