@@ -1,8 +1,6 @@
-#![feature(maybe_uninit_uninit_array)]
 #![feature(try_blocks)]
 
 use must_let::must_let;
-use catnip_libos::memory::DPDKBuf;
 use anyhow::{
     Error,
 };
@@ -58,27 +56,9 @@ fn main() -> Result<(), Error> {
         let qtoken = libos.connect(sockfd, connect_addr);
         must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
 
-        let num_bufs = (config.buffer_size - 1) / config.mss + 1;
-        let mut bufs = Vec::with_capacity(num_bufs);
+        let bufs = config.body_buffers(libos.rt(), 'a');
+        let mut push_tokens = Vec::with_capacity(bufs.len());
 
-        for i in 0..num_bufs {
-            let start = i * config.mss;
-            let end = std::cmp::min(start + config.mss, config.buffer_size);
-            let len = end - start;
-
-            let mut pktbuf = libos.rt().alloc_body_mbuf();
-            assert!(len <= pktbuf.len(), "len {} (from mss {}), pktbuf len {}", len, config.mss, pktbuf.len());
-
-            let pktbuf_slice = unsafe { pktbuf.slice_mut() };
-            for j in 0..len {
-                pktbuf_slice[j] = 'a' as u8;
-            }
-            drop(pktbuf_slice);
-            pktbuf.trim(pktbuf.len() - len);
-            bufs.push(DPDKBuf::Managed(pktbuf));
-        }
-
-        let mut push_tokens = Vec::with_capacity(num_bufs);
         config.experiment.run(|stats| {
             assert!(push_tokens.is_empty());
             for b in &bufs {
