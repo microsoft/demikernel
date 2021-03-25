@@ -18,7 +18,7 @@ use futures::{
     },
     FutureExt,
 };
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::{
     future::Future,
     net::Ipv4Addr,

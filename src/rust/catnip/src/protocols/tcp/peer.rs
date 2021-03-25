@@ -44,7 +44,7 @@ use crate::{
 };
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::{
     cell::RefCell,
     rc::Rc,

@@ -40,7 +40,7 @@ use tracy_client::static_span;
 #[cfg(test)]
 use crate::protocols::ethernet2::MacAddress;
 #[cfg(test)]
-use hashbrown::HashMap;
+use std::collections::HashMap;
 
 pub struct Engine<RT: Runtime> {
     rt: RT,

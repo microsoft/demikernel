@@ -52,7 +52,7 @@ use anyhow::{
     Error,
 };
 use catnip::protocols::ethernet2::MacAddress;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::{
     ffi::CString,
     mem::MaybeUninit,

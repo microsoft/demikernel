@@ -6,7 +6,7 @@
 #[cfg(test)]
 mod tests;
 
-use hashbrown::{
+use std::collections::{
     hash_map::Entry as HashMapEntry,
     HashMap,
 };

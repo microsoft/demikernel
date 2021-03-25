@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::protocols::ethernet2::MacAddress;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::{
     net::Ipv4Addr,
     time::Duration,

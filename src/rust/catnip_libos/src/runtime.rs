@@ -42,7 +42,7 @@ use catnip::{
     },
 };
 use futures::FutureExt;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use rand::{
     distributions::{
         Distribution,

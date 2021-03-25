@@ -22,7 +22,7 @@ use clap::{
     App,
     Arg,
 };
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use libc::{
     c_char,
     c_int,

@@ -1,5 +1,5 @@
 use futures::task::AtomicWaker;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use pin_project::pin_project;
 use std::{
     borrow::Borrow,

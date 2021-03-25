@@ -31,7 +31,7 @@ use futures::{
     FutureExt,
     StreamExt,
 };
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::{
     cell::RefCell,
     future::Future,

@@ -20,7 +20,7 @@ use futures::{
     },
     FutureExt,
 };
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use must_let::must_let;
 use std::{
     future::Future,

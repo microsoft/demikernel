@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod datagram;
+pub mod datagram;
 pub mod peer;
 mod options;
 

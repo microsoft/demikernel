@@ -19,7 +19,6 @@ float_duration = "0.3.3"
 futures = "0.3"
 futures-intrusive = { git = "https://github.com/sujayakar/futures-intrusive", rev = "13b113fdc67594bd09912d78acc8f8212127537d" }
 gen-iter = { git = "https://github.com/sujayakar/gen-iter", rev = "7a0418991ae06dd03ee33e98625e5573120786cc" }
-hashbrown = { version = "0.9", features = ["nightly"] }
 histogram = "0.6.9"
 libc = "0.2.70"
 log = "0.4"
