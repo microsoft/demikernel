@@ -1,3 +1,5 @@
+pub mod dpdk;
+
 use histogram::Histogram;
 use anyhow::{format_err, Error};
 use catnip::{
@@ -10,6 +12,7 @@ use catnip::{
 };
 use std::time::Instant;
 use catnip_libos::runtime::DPDKRuntime;
+use catnip_libos::memory::DPDKBuf;
 use std::str::FromStr;
 use std::convert::TryFrom;
 use std::env;
@@ -273,5 +276,27 @@ impl ExperimentConfig {
         let port_i = addr["port"].as_i64().ok_or(format_err!("Missing port"))?;
         let port = Port::try_from(port_i as u16)?;
         Ok(Endpoint::new(host, port))
+    }
+
+    pub fn body_buffers(&self, rt: &DPDKRuntime, fill_char: char) -> Vec<DPDKBuf> {
+        let num_bufs = (self.buffer_size - 1) / self.mss + 1;
+        let mut bufs = Vec::with_capacity(num_bufs);
+        for i in 0..num_bufs {
+            let start = i * self.mss;
+            let end = std::cmp::min(start + self.mss, self.buffer_size);
+            let len = end - start;
+
+            let mut pktbuf = rt.alloc_body_mbuf();
+            assert!(len <= pktbuf.len(), "len {} (from mss {}), pktbuf len {}", len, self.mss, pktbuf.len());
+
+            let pktbuf_slice = unsafe { pktbuf.slice_mut() };
+            for j in 0..len {
+                pktbuf_slice[j] = fill_char as u8;
+            }
+            drop(pktbuf_slice);
+            pktbuf.trim(pktbuf.len() - len);
+            bufs.push(DPDKBuf::Managed(pktbuf));
+        }
+        bufs
     }
 }

@@ -26,6 +26,51 @@ use experiments::{
 };
 use std::time::Duration;
 
+struct ClientState {
+    buffer_size: usize,
+    next_buf: usize,
+    buffers: Vec<DPDKBuf>,
+
+    fd: FileDescriptor,
+    bytes_received: usize,
+    bytes_sent: usize,
+    start: Instant,
+}
+impl ClientState {
+    fn step(&mut self, libos: &mut LibOS<DPDKRuntime>, h: &mut Histogram) -> QToken {
+        if self.bytes_sent < self.buffer_size {
+            let i = self.next_buf;
+            self.next_buf += 1;
+            return libos.push2(self.fd, self.buffers[i].clone());
+        }
+        assert_eq!(self.bytes_sent, self.buffer_size);
+
+        if self.bytes_received < self.buffer_size {
+            return libos.pop(self.fd);
+        }
+        assert_eq!(self.bytes_received, self.buffer_size);
+
+        h.increment(self.start.elapsed().as_nanos() as u64).unwrap();
+
+        self.bytes_received = 0;
+        self.bytes_sent = 0;
+        self.next_buf = 0;
+        self.start = Instant::now();
+        return self.step(libos, h);
+    }
+
+    fn handle_push(&mut self) {
+        let n = self.buffers[self.next_buf - 1].len();
+        assert_eq!(self.bytes_received, 0);
+        self.bytes_sent += n;
+    }
+
+    fn handle_pop(&mut self, bytes: DPDKBuf) {
+        assert_eq!(self.bytes_sent, self.buffer_size);
+        self.bytes_received += bytes.len();
+    }
+}
+
 fn main() -> Result<(), Error> {
     load_mlx5_driver();
 
@@ -58,70 +103,7 @@ fn main() -> Result<(), Error> {
         let connect_addr = config.addr("client", "connect_to")?;
         let client_addr = config.addr("client", "client")?;
 
-        let num_bufs = (config.buffer_size - 1) / config.mss + 1;
-        let mut bufs = Vec::with_capacity(num_bufs);
-
-        for i in 0..num_bufs {
-            let start = i * config.mss;
-            let end = std::cmp::min(start + config.mss, config.buffer_size);
-            let len = end - start;
-
-            let mut pktbuf = libos.rt().alloc_body_mbuf();
-            assert!(len <= pktbuf.len(), "len {} (from mss {}), pktbuf len {}", len, config.mss, pktbuf.len());
-
-            let pktbuf_slice = unsafe { pktbuf.slice_mut() };
-            for j in 0..len {
-                pktbuf_slice[j] = 'a' as u8;
-            }
-            drop(pktbuf_slice);
-            pktbuf.trim(pktbuf.len() - len);
-            bufs.push(DPDKBuf::Managed(pktbuf));
-        }
-
-        struct ClientState {
-            buffer_size: usize,
-            next_buf: usize,
-            buffers: Vec<DPDKBuf>,
-
-            fd: FileDescriptor,
-            bytes_received: usize,
-            bytes_sent: usize,
-            start: Instant,
-        }
-        impl ClientState {
-            fn step(&mut self, libos: &mut LibOS<DPDKRuntime>, h: &mut Histogram) -> QToken {
-                if self.bytes_sent < self.buffer_size {
-                    let i = self.next_buf;
-                    self.next_buf += 1;
-                    return libos.push2(self.fd, self.buffers[i].clone());
-                }
-                assert_eq!(self.bytes_sent, self.buffer_size);
-
-                if self.bytes_received < self.buffer_size {
-                    return libos.pop(self.fd);
-                }
-                assert_eq!(self.bytes_received, self.buffer_size);
-
-                h.increment(self.start.elapsed().as_nanos() as u64).unwrap();
-
-                self.bytes_received = 0;
-                self.bytes_sent = 0;
-                self.next_buf = 0;
-                self.start = Instant::now();
-                return self.step(libos, h);
-            }
-
-            fn handle_push(&mut self) {
-                let n = self.buffers[self.next_buf - 1].len();
-                assert_eq!(self.bytes_received, 0);
-                self.bytes_sent += n;
-            }
-
-            fn handle_pop(&mut self, bytes: DPDKBuf) {
-                assert_eq!(self.bytes_sent, self.buffer_size);
-                self.bytes_received += bytes.len();
-            }
-        }
+        let bufs = config.body_buffers(libos.rt(), 'a');
 
         let mut clients = Vec::with_capacity(num_clients);
         let mut qtokens = Vec::with_capacity(num_clients);
