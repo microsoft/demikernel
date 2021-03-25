@@ -12,4 +12,5 @@ debug = true
 members = [
     "catnip",
     "catnip_libos",
+    "experiments",
 ]
