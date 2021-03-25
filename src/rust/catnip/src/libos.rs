@@ -114,6 +114,11 @@ impl<RT: Runtime> LibOS<RT> {
         self.rt.scheduler().insert(future).into_raw()
     }
 
+    pub fn pushto2(&mut self, fd: FileDescriptor, buf: RT::Buf, to: Endpoint) -> QToken {
+        let future = self.engine.pushto(fd, buf, to);
+        self.rt.scheduler().insert(future).into_raw()
+    }
+
     pub fn drop_qtoken(&mut self, qt: QToken) {
         drop(self.rt.scheduler().from_raw_handle(qt).unwrap());
     }
@@ -175,6 +180,20 @@ impl<RT: Runtime> LibOS<RT> {
                 if handle.has_completed() {
                     let (qd, r) = self.take_operation(handle);
                     return (i, dmtr_qresult_t::pack(&self.rt, r, qd, qt));
+                }
+                handle.into_raw();
+            }
+        }
+    }
+
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, FileDescriptor, OperationResult<RT>) {
+        loop {
+            self.poll_bg_work();
+            for (i, &qt) in qts.iter().enumerate() {
+                let handle = self.rt.scheduler().from_raw_handle(qt).unwrap();
+                if handle.has_completed() {
+                    let (qd, r) = self.take_operation(handle);
+                    return (i, qd, r);
                 }
                 handle.into_raw();
             }

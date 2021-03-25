@@ -36,9 +36,9 @@ fn main() -> Result<(), Error> {
 
             while bytes_transferred < config.buffer_size {
                 let qtoken = libos.pop(sockfd);
-                must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
+                must_let!(let (_, OperationResult::Pop(Some(addr), buf)) = libos.wait2(qtoken));
                 bytes_transferred += buf.len();
-                let qtoken = libos.push2(sockfd, buf);
+                let qtoken = libos.pushto2(sockfd, buf, addr);
                 must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
             }
             assert_eq!(bytes_transferred, config.buffer_size);

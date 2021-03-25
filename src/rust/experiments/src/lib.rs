@@ -131,26 +131,38 @@ impl Experiment {
                 }
                 let exp_duration = stats.start.elapsed();
                 if stats.num_bytes > 0 {
-                    let throughput = Self::throughput_gbps(*num_iters, stats.num_bytes, exp_duration);
+                    let throughput = Self::throughput_gbps(stats.num_bytes, exp_duration);
                     println!("Finished ({} samples, {} Gbps)", num_iters, throughput);
                 }
+                latency.print();
             },
             Experiment::Continuous => {
-                let mut last_log = Instant::now();
-                for i in 0.. {
+                let stats_interval = Duration::from_secs(3);
+                let mut h = Histogram::configure().precision(4).build().unwrap();
+                for _ in 0.. {
+                    let start = Instant::now();
                     f(&mut stats);
-                    if last_log.elapsed() > Duration::from_secs(2) {
-                        last_log = Instant::now();
-                        let throughput = Self::throughput_gbps(i, stats.num_bytes, stats.start.elapsed());
-                        println!("Throughput: {} Gbps", throughput);
+                    let duration = start.elapsed();
+                    h.increment(duration.as_nanos() as u64).unwrap();
+                    if stats.start.elapsed() > stats_interval {
+                        let duration = stats.start.elapsed();
+                        let throughput = Self::throughput_gbps(stats.num_bytes, duration);
+                        println!("Throughput: {} Gbps ({} bytes in {:?})", throughput, stats.num_bytes, duration);
+                        println!("Iteration histogram:");
+                        print_histogram(&h);
+                        println!("");
+
+                        h.clear();
+                        stats.start = Instant::now();
+                        stats.num_bytes = 0;
                     }
                 }
             },
         }
     }
 
-    fn throughput_gbps(num_iters: usize, num_bytes: usize, duration: Duration) -> f64 {
-        let bps = (num_iters as f64 * num_bytes as f64) / duration.as_secs_f64();
+    pub fn throughput_gbps(num_bytes: usize, duration: Duration) -> f64 {
+        let bps = (num_bytes as f64) / duration.as_secs_f64();
         bps / 1024. / 1024. / 1024. * 8.
     }
 }
