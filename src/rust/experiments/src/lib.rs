@@ -98,9 +98,67 @@ pub fn print_histogram(h: &Histogram) {
 }
 
 #[derive(Debug)]
+pub enum Experiment {
+    Finite {
+        num_iters: usize,
+    },
+    Continuous,
+}
+
+pub struct ExperimentStats {
+    start: Instant,
+    num_bytes: usize,
+}
+
+impl ExperimentStats {
+    pub fn report_bytes(&mut self, n: usize) {
+        self.num_bytes += n;
+    }
+}
+
+impl Experiment {
+    pub fn run(&self, mut f: impl FnMut(&mut ExperimentStats)) {
+        let mut stats = ExperimentStats {
+            start: Instant::now(),
+            num_bytes: 0,
+        };
+        match self {
+            Experiment::Finite { num_iters } => {
+                let mut latency = Latency::new("round", *num_iters);
+                for _ in 0..*num_iters {
+                    let _s = latency.record();
+                    f(&mut stats);
+                }
+                let exp_duration = stats.start.elapsed();
+                if stats.num_bytes > 0 {
+                    let throughput = Self::throughput_gbps(*num_iters, stats.num_bytes, exp_duration);
+                    println!("Finished ({} samples, {} Gbps)", num_iters, throughput);
+                }
+            },
+            Experiment::Continuous => {
+                let mut last_log = Instant::now();
+                for i in 0.. {
+                    f(&mut stats);
+                    if last_log.elapsed() > Duration::from_secs(2) {
+                        last_log = Instant::now();
+                        let throughput = Self::throughput_gbps(i, stats.num_bytes, stats.start.elapsed());
+                        println!("Throughput: {} Gbps", throughput);
+                    }
+                }
+            },
+        }
+    }
+
+    fn throughput_gbps(num_iters: usize, num_bytes: usize, duration: Duration) -> f64 {
+        let bps = (num_iters as f64 * num_bytes as f64) / duration.as_secs_f64();
+        bps / 1024. / 1024. / 1024. * 8.
+    }
+}
+
+#[derive(Debug)]
 pub struct ExperimentConfig {
     pub buffer_size: usize,
-    pub num_iters: usize,
+    pub experiment: Experiment,
     pub config_obj: Yaml,
     pub mss: usize,
     pub strict: bool,
@@ -162,8 +220,14 @@ impl ExperimentConfig {
         let udp_checksum_offload = env::var("UDP_CHECKSUM_OFFLOAD").is_ok();
         let strict = env::var("STRICT").is_ok();
 
-        let buffer_size: usize = std::env::var("BUFFER_SIZE")?.parse()?;
-        let num_iters: usize = std::env::var("NUM_ITERS")?.parse()?;
+        let buffer_size: usize = env::var("BUFFER_SIZE")?.parse()?;
+
+        let experiment = if env::var("CONTINUOUS").is_ok() {
+            Experiment::Continuous
+        } else {
+            let num_iters = env::var("NUM_ITERS")?.parse()?;
+            Experiment::Finite { num_iters }
+        };
 
         let runtime = catnip_libos::dpdk::initialize_dpdk(
             local_ipv4_addr,
@@ -180,7 +244,7 @@ impl ExperimentConfig {
 
         let config = Self {
             buffer_size,
-            num_iters,
+            experiment,
             mss,
             strict,
             tcp_checksum_offload,
@@ -197,9 +261,5 @@ impl ExperimentConfig {
         let port_i = addr["port"].as_i64().ok_or(format_err!("Missing port"))?;
         let port = Port::try_from(port_i as u16)?;
         Ok(Endpoint::new(host, port))
-    }
-
-    pub fn throughput(&self, exp_duration: Duration) -> f64 {
-        (self.num_iters as f64 * self.buffer_size as f64) / exp_duration.as_secs_f64() / 1024. / 1024. / 1024. * 8.
     }
 }

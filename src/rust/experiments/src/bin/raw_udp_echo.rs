@@ -1,7 +1,7 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(try_blocks)]
 
-use experiments::{Latency, ExperimentConfig};
+use experiments::ExperimentConfig;
 use std::collections::VecDeque;
 use catnip_libos::memory::{Mbuf, DPDKBuf};
 use catnip_libos::runtime::DPDKRuntime;
@@ -17,7 +17,6 @@ use catnip::{
         udp::UdpHeader,
     },
 };
-use std::time::Instant;
 use std::{
     mem,
     slice,
@@ -96,7 +95,7 @@ fn main() -> Result<(), Error> {
         let client_addr = config.addr("server", "client")?;
         let mut pkt_rx = PacketStream::new(runtime.clone());
 
-        for _ in 0..config.num_iters {
+        config.experiment.run(|stats| {
             let mut num_received = 0;
             while num_received < config.buffer_size {
                 let pkt = pkt_rx.next();
@@ -158,7 +157,8 @@ fn main() -> Result<(), Error> {
                 }
             }
             assert_eq!(num_received, config.buffer_size);
-        }
+            stats.report_bytes(num_received);
+        })
     }
     else if env::var("ECHO_CLIENT").is_ok() {
         let connect_addr = config.addr("client", "connect_to")?;
@@ -196,12 +196,8 @@ fn main() -> Result<(), Error> {
        }
 
         let mut pkt_rx = PacketStream::new(runtime.clone());
-        let exp_start = Instant::now();
-        let mut latency = Latency::new("round", config.num_iters);
 
-        for _ in 0..config.num_iters {
-            let _s = latency.record();
-
+        config.experiment.run(|stats| {
             // Send out the precomputed packets
             for pktbuf in &bufs {
                 let buf = pktbuf.clone();
@@ -241,11 +237,8 @@ fn main() -> Result<(), Error> {
                 }
             }
             assert_eq!(bytes_received, config.buffer_size);
-        }
-
-        let exp_duration = exp_start.elapsed();
-        println!("Finished ({} samples, {} Gbps)", config.num_iters, config.throughput(exp_duration));
-        latency.print();
+            stats.report_bytes(bytes_received);
+        });
     }
     else {
         panic!("Set either ECHO_SERVER or ECHO_CLIENT");

@@ -12,9 +12,7 @@ use catnip::{
     libos::LibOS,
     operations::OperationResult,
 };
-use std::time::Instant;
 use experiments::{
-    Latency,
     ExperimentConfig,
 };
 use log::debug;
@@ -36,34 +34,22 @@ fn main() -> Result<(), Error> {
         must_let!(let (_, OperationResult::Accept(fd)) = libos.wait2(qtoken));
         println!("Accepted connection!");
 
-        let mut push_latency = Latency::new("push", config.num_iters);
-        let mut pop_latency = Latency::new("pop", config.num_iters);
         let mut push_tokens = Vec::with_capacity(config.buffer_size / 1000 + 1);
 
-        for i in 0..config.num_iters {
-            debug!("Round {}", i);
-
+        config.experiment.run(|stats| {
             let mut bytes_received = 0;
             while bytes_received < config.buffer_size {
-                let qtoken = {
-                    let _s = pop_latency.record();
-                    libos.pop(fd)
-                };
+                let qtoken = libos.pop(fd);
                 must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
                 bytes_received += buf.len();
-                let qtoken = {
-                    let _s = push_latency.record();
-                    libos.push2(fd, buf)
-                };
+                let qtoken = libos.push2(fd, buf);
                 push_tokens.push(qtoken);
             }
             assert_eq!(bytes_received, config.buffer_size);
             libos.wait_all_pushes(&mut push_tokens);
             assert_eq!(push_tokens.len(), 0);
-        }
-
-        push_latency.print();
-        pop_latency.print();
+            stats.report_bytes(bytes_received);
+        });
     }
     else if env::var("ECHO_CLIENT").is_ok() {
         let connect_addr = config.addr("client", "connect_to")?;
@@ -93,14 +79,7 @@ fn main() -> Result<(), Error> {
         }
 
         let mut push_tokens = Vec::with_capacity(num_bufs);
-
-        let exp_start = Instant::now();
-        let mut latency = Latency::new("round", config.num_iters);
-
-        for i in 0..config.num_iters {
-            let _s = latency.record();
-            debug!("Round {}", i);
-
+        config.experiment.run(|stats| {
             assert!(push_tokens.is_empty());
             for b in &bufs {
                 let qtoken = libos.push2(sockfd, b.clone());
@@ -121,11 +100,8 @@ fn main() -> Result<(), Error> {
                 }
             }
             assert_eq!(bytes_popped, config.buffer_size);
-            debug!("Done popping");
-        }
-        let exp_duration = exp_start.elapsed();
-        println!("Finished ({} samples, {} Gbps throughput)", config.num_iters, config.throughput(exp_duration));
-        latency.print();
+            stats.report_bytes(bytes_popped);
+        });
     }
     else {
         panic!("Set either ECHO_SERVER or ECHO_CLIENT");
