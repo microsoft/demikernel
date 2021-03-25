@@ -1,11 +1,9 @@
 [profile.release]
 lto = true
-overflow-checks = true
 debug = true
 
 [profile.bench]
 lto = true
-overflow-checks = true
 debug = true
 
 [workspace]
