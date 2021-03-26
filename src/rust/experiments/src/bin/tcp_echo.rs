@@ -12,6 +12,8 @@ use catnip::{
 };
 use experiments::{
     ExperimentConfig,
+    Experiment,
+    Latency,
 };
 use log::debug;
 
@@ -34,13 +36,25 @@ fn main() -> Result<(), Error> {
 
         let mut push_tokens = Vec::with_capacity(config.buffer_size / 1000 + 1);
 
+        let (mut push, mut pop) = match config.experiment {
+            Experiment::Continuous => (None, None),
+            Experiment::Finite { num_iters } => {
+                let push = Latency::new("push", num_iters);
+                let pop = Latency::new("pop", num_iters);
+                (Some(push), Some(pop))
+            },
+        };
         config.experiment.run(|stats| {
             let mut bytes_received = 0;
             while bytes_received < config.buffer_size {
+                let r = pop.as_mut().map(|p| p.record());
                 let qtoken = libos.pop(fd);
+                drop(r);
                 must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
                 bytes_received += buf.len();
+                let r = push.as_mut().map(|p| p.record());
                 let qtoken = libos.push2(fd, buf);
+                drop(r);
                 push_tokens.push(qtoken);
             }
             assert_eq!(bytes_received, config.buffer_size);
@@ -48,6 +62,13 @@ fn main() -> Result<(), Error> {
             assert_eq!(push_tokens.len(), 0);
             stats.report_bytes(bytes_received);
         });
+        if let Some(push) = push {
+            push.print();
+        }
+        if let Some(pop) = pop {
+            pop.print();
+        }
+
     }
     else if env::var("ECHO_CLIENT").is_ok() {
         let connect_addr = config.addr("client", "connect_to")?;

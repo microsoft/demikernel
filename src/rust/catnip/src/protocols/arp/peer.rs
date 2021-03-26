@@ -69,7 +69,8 @@ impl<RT: Runtime> ArpPeer<RT> {
             {
                 let mut cache = cache.borrow_mut();
                 cache.advance_clock(current_time);
-                cache.try_evict(2);
+                // TODO: Reenable this when we fix the cache datastructure.
+                // cache.try_evict(2);
             }
             // TODO: Make this more precise.
             rt.wait(Duration::from_secs(1)).await;

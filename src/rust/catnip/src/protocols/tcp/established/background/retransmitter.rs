@@ -46,10 +46,12 @@ pub async fn retransmitter<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, F
 
                 let mut header = cb.tcp_header();
                 header.seq_num = seq_no;
+                let rto_estimate = rto.estimate();
+                debug!("Retransmitting {} bytes, new_estimate {:?}: {:?}", segment.bytes.len(), rto_estimate, header);
                 cb.emit(header, segment.bytes.clone(), remote_link_addr);
 
                 // Set new retransmit deadline
-                let deadline = cb.rt.now() + rto.estimate();
+                let deadline = cb.rt.now() + rto_estimate; 
                 cb.sender.retransmit_deadline.set(Some(deadline));
             },
         }

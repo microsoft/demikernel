@@ -13,6 +13,8 @@ use catnip::{
     operations::OperationResult,
 };
 use experiments::{
+    Latency,
+    Experiment,
     ExperimentConfig,
 };
 
@@ -31,19 +33,37 @@ fn main() -> Result<(), Error> {
         let qtoken = libos.connect(sockfd, client_addr);
         must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
 
+        let (mut push, mut pop) = match config.experiment {
+            Experiment::Continuous => (None, None),
+            Experiment::Finite { num_iters } => {
+                let push = Latency::new("push", num_iters);
+                let pop = Latency::new("pop", num_iters);
+                (Some(push), Some(pop))
+            },
+        };
         config.experiment.run(|stats| {
             let mut bytes_transferred = 0;
 
             while bytes_transferred < config.buffer_size {
+                let r = pop.as_mut().map(|p| p.record());
                 let qtoken = libos.pop(sockfd);
+                drop(r);
                 must_let!(let (_, OperationResult::Pop(Some(addr), buf)) = libos.wait2(qtoken));
                 bytes_transferred += buf.len();
+                let r = push.as_mut().map(|p| p.record());
                 let qtoken = libos.pushto2(sockfd, buf, addr);
+                drop(r);
                 must_let!(let (_, OperationResult::Push) = libos.wait2(qtoken));
             }
             assert_eq!(bytes_transferred, config.buffer_size);
             stats.report_bytes(bytes_transferred);
         });
+        if let Some(push) = push {
+            push.print();
+        }
+        if let Some(pop) = pop {
+            pop.print();
+        }
     }
     else if env::var("ECHO_CLIENT").is_ok() {
         let connect_addr = config.addr("client", "connect_to")?;
