@@ -25,7 +25,7 @@ set(SPDK_LIBS2
 ExternalProject_Add(spdk
   PREFIX ${SPDK_BINARY_DIR}
   SOURCE_DIR ${SPDK_SOURCE_DIR}
-  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_BINARY_DIR}
+  CONFIGURE_COMMAND cd ${SPDK_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_INSTALL_DIR} --disable-examples --disable-tests
   BUILD_COMMAND make -C ${SPDK_SOURCE_DIR}
   INSTALL_COMMAND echo "No install command for target `spdk`.")  
 add_dependencies(spdk dpdk)
@@ -57,7 +57,7 @@ set(SPDK_RDMA_LIBS2
 ExternalProject_Add(spdk-rdma
   PREFIX ${SPDK_RDMA_BINARY_DIR}
   SOURCE_DIR ${SPDK_RDMA_SOURCE_DIR}
-  CONFIGURE_COMMAND cd ${SPDK_RDMA_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_BINARY_DIR} --with-rdma
+  CONFIGURE_COMMAND cd ${SPDK_RDMA_SOURCE_DIR} && ./configure --with-dpdk=${DPDK_INSTALL_DIR} --with-rdma
   BUILD_COMMAND make -C ${SPDK_RDMA_SOURCE_DIR}
   INSTALL_COMMAND echo "No install command for target `spdk-rdma`.")
 add_dependencies(spdk-rdma dpdk)

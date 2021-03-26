@@ -60,7 +60,7 @@ impl ArpCache {
         &mut self,
         ipv4_addr: Ipv4Addr,
         link_addr: MacAddress,
-        ttl: Option<Duration>,
+        _ttl: Option<Duration>,
     ) -> Option<MacAddress> {
         let record = Record {
             ipv4_addr,
@@ -69,7 +69,7 @@ impl ArpCache {
 
         let result = self
             .cache
-            .insert_with_ttl(ipv4_addr, record, ttl)
+            .insert(ipv4_addr, record)
             .map(|r| r.link_addr);
         self.rmap.insert(link_addr, ipv4_addr);
         if let Some(sender) = self.waiters.remove(&ipv4_addr) {
@@ -91,15 +91,16 @@ impl ArpCache {
         result
     }
 
-    pub fn remove(&mut self, ipv4_addr: Ipv4Addr) {
-        if let Some(record) = self.cache.remove(&ipv4_addr) {
-            assert!(self.rmap.remove(&record.link_addr).is_some());
-        } else {
-            panic!(
-                "attempt to remove unrecognized engine (`{}`) from ARP cache",
-                ipv4_addr
-            );
-        }
+    pub fn remove(&mut self, _ipv4_addr: Ipv4Addr) {
+        return;
+        // if let Some(record) = self.cache.remove(&ipv4_addr) {
+        //     assert!(self.rmap.remove(&record.link_addr).is_some());
+        // } else {
+        //     panic!(
+        //         "attempt to remove unrecognized engine (`{}`) from ARP cache",
+        //         ipv4_addr
+        //     );
+        // }
     }
 
     pub fn get_link_addr(&self, ipv4_addr: Ipv4Addr) -> Option<&MacAddress> {
@@ -118,7 +119,7 @@ impl ArpCache {
         } else if let Some(r) = self.cache.get(&ipv4_addr) {
             let _ = tx.send(r.link_addr);
         } else {
-            assert!(self.waiters.insert(ipv4_addr, tx).is_none());
+            assert!(self.waiters.insert(ipv4_addr, tx).is_none(), "Duplicate waiter for {:?}", ipv4_addr);
         }
         rx.map(|r| r.expect("Dropped waiter?"))
     }

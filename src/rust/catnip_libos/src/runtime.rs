@@ -212,7 +212,7 @@ impl Runtime for DPDKRuntime {
                     DPDKBuf::Managed(mbuf) => mbuf,
                     DPDKBuf::External(bytes) => {
                         let mut mbuf = inner.memory_manager.alloc_body_mbuf();
-                        assert!(mbuf.len() <= bytes.len());
+                        assert!(mbuf.len() >= bytes.len());
                         unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
                         mbuf.trim(mbuf.len() - bytes.len());
                         mbuf
