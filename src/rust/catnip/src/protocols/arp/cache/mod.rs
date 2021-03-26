@@ -132,15 +132,10 @@ impl ArpCache {
         self.cache.advance_clock(now)
     }
 
-    pub fn try_evict(&mut self, count: usize) -> HashMap<Ipv4Addr, MacAddress> {
-        let evicted = self.cache.try_evict(count);
-        let mut result = HashMap::default();
-        for (k, v) in &evicted {
-            self.rmap.remove(&v.link_addr);
-            assert!(result.insert(*k, v.link_addr).is_none());
-        }
-
-        result
+    pub fn try_evict(&mut self, _count: usize) {
+        // TODO: This shows up in profiles(!), reimplement properly.
+        // It's likely because it allocates on every iteration, even if it doesn't actually evict
+        // anything. (And, the allocated value isn't even actually used...)
     }
 
     pub fn clear(&mut self) {

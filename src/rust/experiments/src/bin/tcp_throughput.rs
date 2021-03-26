@@ -49,6 +49,7 @@ fn main() -> Result<(), Error> {
             if fd == sockfd {
                 must_let!(let OperationResult::Accept(new_fd) = result);
                 debug!("Accepting new connection: {}", new_fd);
+                qtokens.push(libos.accept(sockfd));
                 qtokens.push(libos.pop(new_fd));
             } else {
                 match result {
@@ -79,7 +80,7 @@ fn main() -> Result<(), Error> {
         }
 
         let mut starts = HashMap::new();
-        let mut h = Histogram::configure().precision(4).build().unwrap();
+        let mut h = Histogram::configure().precision(3).build().unwrap();
         let mut last_log = Instant::now();
         loop {
             if last_log.elapsed() > Duration::from_secs(3) {

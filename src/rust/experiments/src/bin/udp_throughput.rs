@@ -107,7 +107,7 @@ fn main() -> Result<(), Error> {
 
         let mut clients = Vec::with_capacity(num_clients);
         let mut qtokens = Vec::with_capacity(num_clients);
-        let mut h = Histogram::configure().precision(4).build().unwrap();
+        let mut h = Histogram::configure().precision(3).build().unwrap();
         for i in 0..num_clients {
             let sockfd = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0)?;
             let mut addr = client_addr.clone();

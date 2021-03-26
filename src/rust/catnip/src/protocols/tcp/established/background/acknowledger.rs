@@ -33,7 +33,7 @@ pub async fn acknowledger<RT: Runtime>(cb: Rc<ControlBlock<RT>>) -> Result<!, Fa
             _ = ack_deadline_changed => continue,
             _ = ack_future => {
                 let recv_seq_no = cb.receiver.recv_seq_no.get();
-                assert!(cb.receiver.ack_seq_no.get() < recv_seq_no);
+                assert_ne!(cb.receiver.ack_seq_no.get(), recv_seq_no);
 
                 let remote_link_addr = cb.arp.query(cb.remote.address()).await?;
 

@@ -51,7 +51,7 @@ impl RtoCalculator {
 
     fn update_rto(&mut self, new_rto: f64) {
         const UBOUND_SEC: f64 = 60.0f64;
-        const LBOUND_SEC: f64 = 0.001f64;
+        const LBOUND_SEC: f64 = 0.100f64;
         self.rto = match (
             new_rto.partial_cmp(&LBOUND_SEC),
             new_rto.partial_cmp(&UBOUND_SEC),

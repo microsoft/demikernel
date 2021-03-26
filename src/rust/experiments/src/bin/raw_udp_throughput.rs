@@ -158,7 +158,7 @@ fn main() -> Result<(), Error> {
         let client_base_addr = config.addr("client", "client")?;
 
         let mut clients = HashMap::with_capacity(num_clients);
-        let mut histogram = Histogram::configure().precision(4).build().unwrap();
+        let mut histogram = Histogram::configure().precision(3).build().unwrap();
 
         for i in 0..num_clients {
             let num_bufs = (config.buffer_size - 1) / config.mss + 1;

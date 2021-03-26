@@ -96,7 +96,7 @@ impl<RT: Runtime> Receiver<RT> {
     pub fn current_ack(&self) -> Option<SeqNumber> {
         let ack_seq_no = self.ack_seq_no.get();
         let recv_seq_no = self.recv_seq_no.get();
-        if ack_seq_no < recv_seq_no {
+        if ack_seq_no != recv_seq_no {
             Some(recv_seq_no)
         } else {
             None
