@@ -60,6 +60,7 @@ use anyhow::{
 
 thread_local! {
     static LIBOS: RefCell<Option<LibOS<DPDKRuntime>>> = RefCell::new(None);
+    static SPDK: RefCell<Option<self::spdk::SPDKConfig>> = RefCell::new(None);
 }
 fn with_libos<T>(f: impl FnOnce(&mut LibOS<DPDKRuntime>) -> T) -> T {
     LIBOS.with(|l| {
@@ -191,6 +192,12 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         logging::initialize();
         LibOS::new(runtime)?
     };
+
+    SPDK.with(move |s| {
+        let spdk_config = self::spdk::initialize_spdk("86:00.0", 1).expect("Failed to initialize SPDK");
+        let mut spdk = s.borrow_mut();
+        *spdk = Some(spdk_config);
+    });
     let libos = match r {
         Ok(libos) => libos,
         Err(e) => {
@@ -316,6 +323,25 @@ pub extern "C" fn dmtr_push(
     qd: c_int,
     sga: *const dmtr_sgarray_t,
 ) -> c_int {
+
+    if qd == SPDK_FD as c_int {
+        assert!(!sga.is_null());
+        assert_eq!(unsafe { (*sga).sga_numsegs }, 1);
+        let sgaseg = unsafe { (*sga).sga_segs[0] };
+        let slice = unsafe { std::slice::from_raw_parts(sgaseg.sgaseg_buf as *const _, sgaseg.sgaseg_len as usize) };
+
+        let start = std::time::Instant::now();
+        SPDK.with(|s| {
+            let mut spdk = s.borrow_mut();
+            spdk.as_mut().unwrap().push(slice);
+        });
+        log::info!("Wrote {} bytes in {:?}", slice.len(), start.elapsed());
+        unsafe {
+            *qtok_out = SPDK_QT as dmtr_qtoken_t;
+        }
+        return 0;
+    }
+
     if sga.is_null() {
         return libc::EINVAL;
     }
@@ -384,6 +410,13 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
+        if qt as usize == SPDK_QT {
+            if !qr_out.is_null() {
+                let packed = dmtr_qresult_t::pack(libos.rt(), catnip::operations::OperationResult::Push, SPDK_FD as u32, qt);
+                unsafe { *qr_out = packed };
+            }
+            return 0;
+        }
         let (qd, r) = libos.wait2(qt);
         if !qr_out.is_null() {
             let packed = dmtr_qresult_t::pack(libos.rt(), r, qd, qt);
@@ -443,9 +476,15 @@ pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
     })
 }
 
+const SPDK_FD: usize = 13370;
+const SPDK_QT: usize = 13371;
+
 #[no_mangle]
 pub extern "C" fn dmtr_open2(qd_out: *mut c_int, pathname: *const c_char, flags: c_int, mode: libc::mode_t) -> c_int {
-    unimplemented!();
+    unsafe {
+        *qd_out = SPDK_FD as c_int;
+    }
+    0
 }
 // #[no_mangle]
 // pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {

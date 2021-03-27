@@ -35,7 +35,7 @@ function(target_add_spdk TARGET)
   target_link_libraries(${TARGET} "-Wl,--whole-archive" ${SPDK_LIBS})
   target_link_libraries(${TARGET} "-Wl,--no-whole-archive" ${SPDK_LIBS2})
   target_include_directories(${TARGET} PUBLIC ${SPDK_SOURCE_DIR}/include)
-  target_add_dpdk(${TARGET})
+  # target_add_dpdk(${TARGET})
   target_link_libraries(${TARGET} uuid)
 endfunction(target_add_spdk)
 
