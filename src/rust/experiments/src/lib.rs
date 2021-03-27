@@ -74,6 +74,10 @@ pub fn print_histogram(h: &Histogram) {
         "p99:   {:?}",
         Duration::from_nanos(h.percentile(0.99).unwrap())
     );
+    println!(
+        "stddev: {:?}", 
+        Duration::from_nanos(h.stddev().unwrap())
+    );
 }
 
 #[derive(Debug)]

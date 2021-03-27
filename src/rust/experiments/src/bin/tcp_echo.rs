@@ -26,6 +26,9 @@ fn main() -> Result<(), Error> {
     if env::var("ECHO_SERVER").is_ok() {
         let bind_addr = config.addr("server", "bind")?;
 
+        spdk_rs::load_pcie_driver();
+        let mut spdk = catnip_libos::spdk::initialize_spdk("af:00.0", 1).unwrap();
+
         let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0)?;
         libos.bind(sockfd, bind_addr)?;
         libos.listen(sockfd, 10)?;
@@ -36,12 +39,13 @@ fn main() -> Result<(), Error> {
 
         let mut push_tokens = Vec::with_capacity(config.buffer_size / 1000 + 1);
 
-        let (mut push, mut pop) = match config.experiment {
-            Experiment::Continuous => (None, None),
+        let (mut push, mut pop, mut disk) = match config.experiment {
+            Experiment::Continuous => (None, None, None),
             Experiment::Finite { num_iters } => {
                 let push = Latency::new("push", num_iters);
                 let pop = Latency::new("pop", num_iters);
-                (Some(push), Some(pop))
+                let disk = Latency::new("disk", num_iters);
+                (Some(push), Some(pop), Some(disk))
             },
         };
         config.experiment.run(|stats| {
@@ -51,6 +55,9 @@ fn main() -> Result<(), Error> {
                 let qtoken = libos.pop(fd);
                 drop(r);
                 must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
+                let r = disk.as_mut().map(|p| p.record());
+                spdk.push(&buf[..]);
+                drop(r);
                 bytes_received += buf.len();
                 let r = push.as_mut().map(|p| p.record());
                 let qtoken = libos.push2(fd, buf);
@@ -67,6 +74,9 @@ fn main() -> Result<(), Error> {
         }
         if let Some(pop) = pop {
             pop.print();
+        }
+        if let Some(disk) = disk {
+            disk.print();
         }
 
     }

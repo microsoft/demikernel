@@ -21,3 +21,5 @@ yaml-rust = "0.4.4"
 histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 catnip_libos = { path = "../catnip_libos" }
+spdk-rs = { path = "/h/sujayakar/src/spdk-rs" }
+
