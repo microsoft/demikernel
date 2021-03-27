@@ -48,6 +48,7 @@ use yaml_rust::{
 };
 
 pub mod dpdk;
+pub mod spdk;
 pub mod runtime;
 pub mod memory;
 

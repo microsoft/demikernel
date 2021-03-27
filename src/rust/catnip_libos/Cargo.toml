@@ -19,6 +19,8 @@ rand = { version = "0.7.3", features = ["small_rng"] }
 yaml-rust = "0.4.4"
 histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
+# spdk-rs = { git = "https://github.com/sujayakar/spdk-rs", rev = "38f695429b65f2a28ff0a271c1f659f345fa5ef6" }
+spdk-rs = { path = "/h/sujayakar/src/spdk-rs" }
 
 [build-dependencies]
 bindgen = "0.55.1"
