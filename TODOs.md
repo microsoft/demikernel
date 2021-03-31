@@ -15,6 +15,7 @@
 - [ ] Add some warnings when it's been too long since the user entered the kernel. I spent a lot of
       time debugging spurious retransmissions that were killing throughput when really the issue was
       that the application had been hogging the CPU for ~100ms.
+- [ ] Modernize error handling to use `anyhow::Error `instead of our `Fail` type.
 - [ ] Generalize DPDK memory management. Currently, we only use zero-copy when the application
       allocates data within a pretty small range (default: 1kb-9kb). Instead, we should use DPDK
       external memory and use a standard memory allocator on a large region of virtual memory pinned
@@ -38,12 +39,23 @@
 
 - [ ] RDMA support
 
+- [ ] POSIX support
+
+- [ ] Multicore scalability
+  - This shouldn't actually be too hard with the architecture sketched above.
+  - Each core would have its own stack with not much shared:
+    - The ARP cache could be shared but this isn't necessary.
+    - There'd need to be some coordination for ports for the TCP and UDP stack, setting up flow on
+      the NIC, and potentially shuffling packets if they go to the wrong place.
+  - Initialization would set up a DPDK queue per core after initializing DPDK globally.
+
 - [ ] Integration testing for the TCP stack
   - [ ] Add a simulation test that sets up two peers and sends some data back and forth.
   - [ ] Assert some invariants about the execution (e.g. all data eventually makes it)
   - [ ] Psuedorandomly introduce faults (packet drops, reordering) and check that our
         invariants still hold.
   - [ ] Check protocol state coverage.
+
 
 # C++
 - [ ] LWIP build is currently broken: `dmtr_sgalloc` and `dmtr_sgafree` need to be implemented in C
