@@ -3,20 +3,30 @@
 
 client:
   connect_to:
-    host: 192.168.1.1
+    host: 198.19.200.5
+    port: 12345
+  client:
+    host: 198.19.200.3
     port: 12345
 server:
   bind:
-    host: 192.168.1.1
+    host: 198.19.200.5
+    port: 12345
+  client:
+    host: 198.19.200.3
     port: 12345
 catnip:
-  my_ipv4_addr: 192.168.1.1
+  my_ipv4_addr: 198.19.200.3
   arp_table:
-    "24:8a:07:50:95:08": 192.168.1.1
-  disable_arp: false
+    "b8:83:03:70:88:a0": 198.19.200.4
+    "b8:83:03:70:98:44": 198.19.200.5
+    "b8:83:03:70:88:98": 198.19.200.6
+    "b8:83:03:70:98:9c": 198.19.200.7
+    "b8:83:03:79:af:2c": 198.19.200.8
+    "b8:83:03:79:af:38": 198.19.200.9
 dpdk:
 #  eal_init: ["-l", "0-3", "-n", "1", "-w", "aa89:00:02.0", "--vdev=net_vdev_netvsc0,iface=eth1"]
-  eal_init: ["-c", "0xff", "-n", "4", "-w", "03:00.1","--proc-type=auto"]
+  eal_init: ["-c", "0xff", "-n", "4", "-w", "37:00.0","--proc-type=auto"]
 #spdk:
 #  transport: "PCIe"
 #  devAddr: ""
@@ -25,5 +35,5 @@ lwip:
   known_hosts:
     "24:8a:07:50:95:08": 192.168.1.1
     "50:6b:4b:48:f8:f2": 192.168.1.2
-    
+
 # vim: set tabstop=2 shiftwidth=2

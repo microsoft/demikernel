@@ -11,4 +11,6 @@ repo_root=$(git rev-parse --show-toplevel)
 
 apt-get -y install $APT_PACKAGES
 
+pip3 install pyelftools ninja meson
+
 $SHELL ${repo_root}/submodules/spdk/scripts/pkgdep.sh

@@ -16,22 +16,21 @@ These instructions are for setting up a clean build of Demeter on a clean instal
 ## Building
 
 - On Debian systems, run `scripts/setup/debian.sh` to install prerequisites.
-- Install Rust nightly. Run 'curl https://sh.rustup.rs -sSf | sh'
-- You need to use a nightly build of Rust. Currently, the build is only tested to work with `nightly-2020-05-14`. You can install this by running `rustup override set nightly-2020-05-14` from the `src/rust` directory.
-- Make a directory for the build. We suggest `$DATACENTEROS/build/debug` or `$DATACENTEROS/build/release`.
+- Install Rustup, Rust's toolchain manager. Run 'curl https://sh.rustup.rs -sSf | sh'
+- Make a directory for the build. We suggest `$REPO_ROOT:/build`.
 - Run CMake from the build directory, passing the source directory in as an argument.
 - Set the `CMAKE_BUILD_TYPE` variable to `Release` if you want an optimized build. You can do this with the CLI (`ccmake`) or the GUI (`cmake-gui`).
-- Set the `DPDK_MLX4_SUPPORT` and/or `DPDK_MLX5_SUPPORT` option to `ON` if you need DPDK compiled with support for Mellanox NICs.
-- Run `make` from the build directory.
+- Run `make dpdk` from the build directory.
+- Run `make` after DPDK has finished building.
 
 ### Cleaning
 
-- You can clean the build by deleting the build directory and starting over.
+- You can clean the build by deleting the build directory and starting over. Be sure that all of the submodules' repos are clean too.
 - Run `scripts/build/clean.sh` to thouroughly clean the repository. Be warned that this will delete any untracked files that you have not yet staged.
 
 ## Configuring
 
-The Demikernel libOSes and apps are configured through a config.yaml file. You can find an example in `src/c++/config.yaml` 
+The Demikernel libOSes and apps are configured through a config.yaml file. You can find an example in `$REPO_ROOT:/config.yaml`
 
 DPDK requires a white list to ensure that it does not co-opt all of your network connections. Use 'ifconfig' to find the name of your DPDK network device, then 'ethtool -i' to find the PCI bus ID. Update the PCI bus ID in the eal args in your config.yaml file.
 
@@ -44,6 +43,9 @@ In addition, some system-wide configuration needs to be performed before DPDK wi
 - At the menu, select a *hugepage* mapping option, depending upon the system your using (option `19` or `20`).
 - Specify the number of pages for each node (e.g. `1024`).
 - Once at the menu, select *Exit Script* (option `33`).
+
+### SPDK initialization
+Be sure to run the SPDK setup script if you're using SPDK: `$REPO_ROOT:/submodules/spdk/scripts/setup.sh`.
 
 ## Building on Azure
 
@@ -65,7 +67,7 @@ az network nic create --resource-group centigo --name cassance596 --vnet-name ce
 1. Clone git repo with recurse-submodules flag.
 2. Install Azure packages by running `script/setup/ubuntu-azure.sh`.
 3. Create a build directory, I use 'demikernel/build'.
-4. Turn on Azure support and CX5 support by running `cmake -DAZURE_SUPPORT=ON -DDPDK_MLX5_SUPPORT=ON -DCMAKE_BUILD_TYPE=Release ..` in your build directory or using `ccmake ..` and setting the cmake flags manually. 
+4. Turn on Azure support and CX5 support by running `cmake -DAZURE_SUPPORT=ON -DDPDK_MLX5_SUPPORT=ON -DCMAKE_BUILD_TYPE=Release ..` in your build directory or using `ccmake ..` and setting the cmake flags manually.
 5. Compile DPDK by running 'make dpdk' in the build directory. After this you should be able to run the testpmd single sender & receiver test below.
 6. Use config options from testpmd in the config.yaml file. The DPDK interface is usually the slave interface listed first by `ifconfig`.  Using that interface id, run `ethtool -i` to find your PCI ID.
 7. Don't forget to turn on hugepage support and run as root. Running `scripts/setup/dpdk.sh` will turn on huge page support and install needed kernel modules.
@@ -93,4 +95,3 @@ testpmd -l 0-3 -n 1 -w aa89:00:02.0 --vdev="net_vdev_netvsc0,iface=eth1" -- --po
 
 - [Set up DPDK in a Linux virtual machine](https://docs.microsoft.com/en-us/azure/virtual-network/setup-dpdk).
 - [Create a Linux virtual machine with Accelerated Networking](https://docs.microsoft.com/en-us/azure/virtual-network/create-vm-accelerated-networking-cli).
-
