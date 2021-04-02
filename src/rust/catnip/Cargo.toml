@@ -33,7 +33,8 @@ unicycle = { git = "https://github.com/sujayakar/unicycle", rev = "44c0e8f62cb93
 uniset = "0.2.0"
 
 [dependencies.tracy-client]
-path = "../rust_tracy_client/tracy-client"
+git = "https://github.com/sujayakar/rust_tracy_client"
+rev = "b77e7162a7772f16c1e4bd2ed3a9481d80f62025"
 default-features = false
 features = []
 
