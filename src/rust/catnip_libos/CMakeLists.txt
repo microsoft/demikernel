@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-set(CATNIP_LIBOS_TARGET catnip_libos)
+set(CATNIP_LIBOS_TARGET dmtr-libos-catnip)
 set(CATNIP_LIBOS_SUFFIX src/rust/catnip_libos)
 set(CATNIP_LIBOS_BINARY_DIR ${CMAKE_BINARY_DIR}/${CATNIP_LIBOS_SUFFIX})
 set(CATNIP_LIBOS_SOURCE_DIR ${CMAKE_SOURCE_DIR}/${CATNIP_LIBOS_SUFFIX})
@@ -29,7 +29,3 @@ function(target_add_catnip TARGET)
 	add_dependencies(${TARGET} catnip_libos)
 	target_link_libraries(${TARGET} ${CATNIP_LIBOS_DYNLIB}) 
 endfunction(target_add_catnip)
-
-
-
-
