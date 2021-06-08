@@ -9,6 +9,7 @@ APT_PACKAGES="cmake-curses-gui cmake-qt-gui build-essential libnuma-dev libmnl-d
 
 repo_root=$(git rev-parse --show-toplevel)
 
+apt-get update
 apt-get -y install $APT_PACKAGES
 
 pip3 install pyelftools ninja meson
