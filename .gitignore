@@ -1,15 +1,14 @@
+# Build Artifacts
 *.a
 *.so
-/build/
+build/
 
 # vim
 *.swo
 *.swp
 
 # vscode
-/.vscode/launch.json
-/.vscode/ipch
-/.vscode/*
+.vscode/*
 
 # gdb
 .gdb.*
@@ -18,8 +17,7 @@
 tags
 tags.*
 
-# [CMake](https://github.com/github/gitignore/blob/master/CMake.gitignore)
-#
+# CMake
 CMakeCache.txt
 CMakeFiles
 CMakeScripts
