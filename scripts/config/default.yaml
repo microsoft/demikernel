@@ -1,0 +1,24 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+client:
+  connect_to:
+    host: XX.XX.XX.XX
+    port: PPPP
+  client:
+    host: YY.YY.YY.YY
+    port: PPPP
+server:
+  bind:
+    host: XX.XX.XX.XX
+    port: PPPP
+  client:
+    host: YY.YY.YY.YY
+    port: PPPP
+catnip:
+  my_ipv4_addr: ZZ.ZZ.ZZ.ZZ
+  arp_disable: true
+dpdk:
+  eal_init: ["-c", "0xff", "-n", "4", "-w", "WW:WW.W","--proc-type=auto"]
+
+# vim: set tabstop=2 shiftwidth=2
