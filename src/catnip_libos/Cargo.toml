@@ -1,0 +1,24 @@
+[package]
+name = "catnip_libos"
+version = "0.1.0"
+authors = ["Sujay Jayakar <sujayakar314@gmai.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+arrayvec = "0.7.1"
+anyhow = "1.0.32"
+catnip = { git = "https://github.com/demikernel/catnip", rev = "v0.1", features = ["threadunsafe"] }
+clap = "2.33.3"
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "v0.1" }
+futures = "0.3.15"
+libc = "0.2.97"
+rand = { version = "0.8.4", features = ["small_rng"] }
+yaml-rust = "0.4.4"
+histogram = "0.6.9"
+must-let = { git = "https://github.com/sujayakar/must-let" }
+
+[build-dependencies]
+bindgen = "0.55.1"

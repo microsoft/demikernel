@@ -1,0 +1,12 @@
+[profile.release]
+lto = true
+debug = true
+
+[profile.bench]
+lto = true
+debug = true
+
+[workspace]
+members = [
+    "catnip_libos",
+]
