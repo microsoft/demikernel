@@ -1,7 +1,6 @@
 # Build Artifacts
 *.a
 *.so
-build/
 
 # vim
 *.swo
@@ -17,19 +16,9 @@ build/
 tags
 tags.*
 
-# CMake
-CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
-Makefile
-cmake_install.cmake
-install_manifest.txt
-compile_commands.json
-CTestTestfile.cmake
+# rust
+Cargo.lock
 
-# Python3 venv
-/scripts/*/venv/
-
-# astyle
-*.orig
+# Build Artifacts
+contrib/
+target/
