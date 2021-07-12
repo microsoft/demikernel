@@ -1,4 +1,4 @@
 [submodule "submodules/dpdk"]
     path = submodules/dpdk
-    url = https://github.com/demikernel/dpdk.git
-	branch = irene/v19.08
+    url = https://github.com/dpdk/dpdk.git
+	branch = v19.11
