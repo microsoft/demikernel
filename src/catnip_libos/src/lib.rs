@@ -269,7 +269,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.accept(sockqd as FileDescriptor) };
+        unsafe { *qtok_out = libos.accept(sockqd as FileDescriptor).unwrap() };
         0
     })
 }
@@ -293,7 +293,7 @@ pub extern "C" fn dmtr_connect(
     let endpoint = ipv4::Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.connect(qd as FileDescriptor, endpoint) };
+        unsafe { *qtok_out = libos.connect(qd as FileDescriptor, endpoint).unwrap() };
         0
     })
 }
@@ -320,7 +320,7 @@ pub extern "C" fn dmtr_push(
     }
     let sga = unsafe { &*sga };
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.push(qd as FileDescriptor, sga) };
+        unsafe { *qtok_out = libos.push(qd as FileDescriptor, sga).unwrap() };
         0
     })
 }
@@ -348,7 +348,7 @@ pub extern "C" fn dmtr_pushto(
     let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
     let endpoint = ipv4::Endpoint::new(addr, port);
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pushto(qd as FileDescriptor, sga, endpoint) };
+        unsafe { *qtok_out = libos.pushto(qd as FileDescriptor, sga, endpoint).unwrap() };
         0
     })
 }
@@ -356,7 +356,7 @@ pub extern "C" fn dmtr_pushto(
 #[no_mangle]
 pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pop(qd as FileDescriptor) };
+        unsafe { *qtok_out = libos.pop(qd as FileDescriptor).unwrap() };
         0
     })
 }
