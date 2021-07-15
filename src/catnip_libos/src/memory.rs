@@ -534,6 +534,10 @@ impl RuntimeBuf for DPDKBuf {
         DPDKBuf::External(Bytes::empty())
     }
 
+    fn from_slice(_: &[u8]) -> Self {
+        todo!()
+    }
+
     fn adjust(&mut self, num_bytes: usize) {
         match self {
             DPDKBuf::External(ref mut buf) => buf.adjust(num_bytes),
