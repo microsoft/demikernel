@@ -254,7 +254,7 @@ fn main() -> Result<(), Error> {
         libos.bind(sockfd, bind_addr)?;
         libos.listen(sockfd, 10)?;
 
-        let qtoken = libos.accept(sockfd);
+        let qtoken = libos.accept(sockfd).unwrap();
         must_let!(let (_, OperationResult::Accept(fd)) = libos.wait2(qtoken));
         println!("Accepted connection!");
 
@@ -269,12 +269,12 @@ fn main() -> Result<(), Error> {
             let mut bytes_received = 0;
             while bytes_received < config.buffer_size {
                 let r = pop.as_mut().map(|p| p.record());
-                let qtoken = libos.pop(fd);
+                let qtoken = libos.pop(fd).unwrap();
                 drop(r);
                 must_let!(let (_, OperationResult::Pop(_, buf)) = libos.wait2(qtoken));
                 bytes_received += buf.len();
                 let r = push.as_mut().map(|p| p.record());
-                let qtoken = libos.push2(fd, buf);
+                let qtoken = libos.push2(fd, buf).unwrap();
                 drop(r);
                 push_tokens.push(qtoken);
             }
@@ -293,7 +293,7 @@ fn main() -> Result<(), Error> {
         let connect_addr = config.addr("client", "connect_to")?;
 
         let sockfd = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0)?;
-        let qtoken = libos.connect(sockfd, connect_addr);
+        let qtoken = libos.connect(sockfd, connect_addr)?;
         must_let!(let (_, OperationResult::Connect) = libos.wait2(qtoken));
 
         let bufs = config.body_buffers(libos.rt(), 'a');
@@ -302,14 +302,14 @@ fn main() -> Result<(), Error> {
         run(niters, |stats| {
             assert!(push_tokens.is_empty());
             for b in &bufs {
-                let qtoken = libos.push2(sockfd, b.clone());
+                let qtoken = libos.push2(sockfd, b.clone()).unwrap();
                 push_tokens.push(qtoken);
             }
             libos.wait_all_pushes(&mut push_tokens);
 
             let mut bytes_popped = 0;
             while bytes_popped < config.buffer_size {
-                let qtoken = libos.pop(sockfd);
+                let qtoken = libos.pop(sockfd).unwrap();
                 must_let!(let (_, OperationResult::Pop(_, popped_buf)) = libos.wait2(qtoken));
                 bytes_popped += popped_buf.len();
                 if config.strict {
