@@ -51,7 +51,7 @@ impl Default for MemoryConfig {
             inline_body_size: 1024,
             header_pool_size: 256,
             indirect_pool_size: 256,
-            max_body_size: 2176,
+            max_body_size: 8320,
             body_pool_size: 8192,
             cache_size: 128,
         }
