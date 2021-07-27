@@ -1,38 +1,24 @@
-use std::ffi::CString;
-use dpdk_rs::{
-    rte_mempool_calc_obj_size,
-    rte_mempool_objsz,
-    rte_strerror,
-    rte_errno,
-    rte_mbuf,
-    rte_pktmbuf_pool_create,
-    rte_pktmbuf_free,
-    rte_pktmbuf_clone,
-    rte_pktmbuf_trim,
-    rte_pktmbuf_adj,
-    rte_pktmbuf_alloc,
-    rte_mempool,
-    rte_mempool_objhdr,
-    rte_mempool_memhdr,
-    rte_socket_id,
-    rte_mempool_mem_iter,
-    rte_pktmbuf_headroom,
-    rte_pktmbuf_tailroom,
-};
-use catnip::protocols::tcp::segment::MAX_TCP_HEADER_SIZE;
-use catnip::protocols::ipv4::datagram::IPV4_HEADER_SIZE;
+use anyhow::Error;
+use catnip::collections::bytes::{Bytes, BytesMut};
+use catnip::interop::{dmtr_sgarray_t, dmtr_sgaseg_t};
 use catnip::protocols::ethernet2::frame::ETHERNET2_HEADER_SIZE;
-use std::ops::Deref;
+use catnip::protocols::ipv4::datagram::IPV4_HEADER_SIZE;
+use catnip::protocols::tcp::segment::MAX_TCP_HEADER_SIZE;
+use catnip::runtime::RuntimeBuf;
+use dpdk_rs::{
+    rte_errno, rte_mbuf, rte_mempool, rte_mempool_calc_obj_size, rte_mempool_mem_iter,
+    rte_mempool_memhdr, rte_mempool_objhdr, rte_mempool_objsz, rte_pktmbuf_adj, rte_pktmbuf_alloc,
+    rte_pktmbuf_clone, rte_pktmbuf_free, rte_pktmbuf_headroom, rte_pktmbuf_pool_create,
+    rte_pktmbuf_tailroom, rte_pktmbuf_trim, rte_socket_id, rte_strerror,
+};
+use libc::{c_uint, c_void};
+use std::ffi::CString;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
+use std::rc::Rc;
 use std::slice;
 use std::sync::Arc;
-use std::rc::Rc;
-use catnip::collections::bytes::{Bytes, BytesMut};
-use catnip::runtime::RuntimeBuf;
-use catnip::interop::{dmtr_sgarray_t, dmtr_sgaseg_t};
-use libc::{c_uint, c_void};
-use anyhow::Error;
 
 const RTE_PKTMBUF_HEADROOM: usize = 128;
 
@@ -79,7 +65,9 @@ pub struct MemoryManager {
 
 impl MemoryManager {
     pub fn new(config: MemoryConfig) -> Result<Self, Error> {
-        Ok(Self { inner: Rc::new(Inner::new(config)?) })
+        Ok(Self {
+            inner: Rc::new(Inner::new(config)?),
+        })
     }
 
     fn clone_mbuf(&self, mbuf: &Mbuf) -> Mbuf {
@@ -96,18 +84,30 @@ impl MemoryManager {
         let body_clone = self.inner.clone_mbuf(mbuf_ptr);
 
         // Wrap the mbuf first so we free it on early exit.
-        let mut mbuf = Mbuf { ptr: body_clone, mm: self.clone() };
+        let mut mbuf = Mbuf {
+            ptr: body_clone,
+            mm: self.clone(),
+        };
 
         let orig_ptr = mbuf.data_ptr();
         let orig_len = mbuf.len();
 
         if (ptr as usize) < (orig_ptr as usize) {
-            anyhow::bail!("Trying to recover data pointer outside original body: {:?} vs. {:?}", ptr, orig_ptr);
+            anyhow::bail!(
+                "Trying to recover data pointer outside original body: {:?} vs. {:?}",
+                ptr,
+                orig_ptr
+            );
         }
         let adjust = ptr as usize - orig_ptr as usize;
 
         if adjust + len > orig_len {
-            anyhow::bail!("Recovering too many bytes: {} + {} > {}", adjust, len, orig_len);
+            anyhow::bail!(
+                "Recovering too many bytes: {} + {} > {}",
+                adjust,
+                len,
+                orig_len
+            );
         }
         let trim = orig_len - (adjust + len);
 
@@ -127,7 +127,11 @@ impl MemoryManager {
         let offset_within_alloc = ptr_offset % self.inner.body_alloc_size();
 
         if offset_within_alloc < (64 + 128) {
-            anyhow::bail!("Data pointer within allocation header: {:?} in {:?}", ptr, self.inner);
+            anyhow::bail!(
+                "Data pointer within allocation header: {:?} in {:?}",
+                ptr,
+                self.inner
+            );
         }
 
         let mbuf_ptr = (ptr_int - offset_within_alloc + 64) as *mut rte_mbuf;
@@ -152,7 +156,7 @@ impl MemoryManager {
                     sgaseg_buf: ptr as *mut _,
                     sgaseg_len: bytes.len() as u32,
                 }
-            },
+            }
             DPDKBuf::Managed(mbuf) => {
                 let sgaseg = dmtr_sgaseg_t {
                     sgaseg_buf: mbuf.data_ptr() as *mut _,
@@ -160,7 +164,7 @@ impl MemoryManager {
                 };
                 mem::forget(mbuf);
                 sgaseg
-            },
+            }
         };
         dmtr_sgarray_t {
             sga_buf: ptr::null_mut(),
@@ -178,7 +182,10 @@ impl MemoryManager {
             (*mbuf_ptr).data_len = num_bytes as u16;
             (*mbuf_ptr).pkt_len = num_bytes as u32;
         }
-        Mbuf { ptr: mbuf_ptr, mm: self.clone() }
+        Mbuf {
+            ptr: mbuf_ptr,
+            mm: self.clone(),
+        }
     }
 
     pub fn alloc_body_mbuf(&self) -> Mbuf {
@@ -189,13 +196,18 @@ impl MemoryManager {
             (*mbuf_ptr).data_len = num_bytes as u16;
             (*mbuf_ptr).pkt_len = num_bytes as u32;
         }
-        Mbuf { ptr: mbuf_ptr, mm: self.clone() }
+        Mbuf {
+            ptr: mbuf_ptr,
+            mm: self.clone(),
+        }
     }
 
     pub fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
         assert!(size <= self.inner.config.max_body_size);
 
-        let sgaseg = if self.inner.config.inline_body_size < size && size <= self.inner.config.max_body_size {
+        let sgaseg = if self.inner.config.inline_body_size < size
+            && size <= self.inner.config.max_body_size
+        {
             let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
             assert!(!mbuf_ptr.is_null());
             unsafe {
@@ -237,7 +249,8 @@ impl MemoryManager {
             let mbuf_ptr = self.recover_body_mbuf(ptr).expect("Invalid sga pointer");
             unsafe { rte_pktmbuf_free(mbuf_ptr) };
         } else {
-            let allocation: Box<[u8]> = unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
+            let allocation: Box<[u8]> =
+                unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
             drop(allocation);
         }
     }
@@ -299,7 +312,10 @@ impl Inner {
         let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size = header_size + config.inline_body_size;
         let priv_size = 0;
-        assert_eq!(priv_size, 0, "Private data isn't supported (it adds another region between `rte_mbuf` and data)");
+        assert_eq!(
+            priv_size, 0,
+            "Private data isn't supported (it adds another region between `rte_mbuf` and data)"
+        );
         let header_pool = unsafe {
             let name = CString::new("header_pool")?;
             rte_pktmbuf_pool_create(
@@ -312,9 +328,7 @@ impl Inner {
             )
         };
         if header_pool.is_null() {
-            let reason = unsafe {
-                std::ffi::CStr::from_ptr(rte_strerror(rte_errno()))
-            };
+            let reason = unsafe { std::ffi::CStr::from_ptr(rte_strerror(rte_errno())) };
             anyhow::bail!("Failed to create header pool: {}", reason.to_str().unwrap())
         }
 
@@ -352,13 +366,22 @@ impl Inner {
 
         let mut memory_regions: Vec<(usize, usize)> = vec![];
 
-        extern "C" fn mem_cb(mp: *mut rte_mempool, opaque: *mut c_void, memhdr: *mut rte_mempool_memhdr, mem_idx: c_uint) {
+        extern "C" fn mem_cb(
+            mp: *mut rte_mempool,
+            opaque: *mut c_void,
+            memhdr: *mut rte_mempool_memhdr,
+            mem_idx: c_uint,
+        ) {
             let mut mr = unsafe { &mut *(opaque as *mut Vec<(usize, usize)>) };
             let (addr, len) = unsafe { ((*memhdr).addr, (*memhdr).len) };
             mr.push((addr as usize, len as usize));
         }
         unsafe {
-            rte_mempool_mem_iter(body_pool, Some(mem_cb), &mut memory_regions as *mut _ as *mut c_void);
+            rte_mempool_mem_iter(
+                body_pool,
+                Some(mem_cb),
+                &mut memory_regions as *mut _ as *mut c_void,
+            );
         }
         memory_regions.sort();
 
@@ -411,9 +434,7 @@ impl Inner {
     }
 
     fn clone_mbuf(&self, ptr: *mut rte_mbuf) -> *mut rte_mbuf {
-        let ptr = unsafe {
-            rte_pktmbuf_clone(ptr, self.indirect_pool)
-        };
+        let ptr = unsafe { rte_pktmbuf_clone(ptr, self.indirect_pool) };
         assert!(!ptr.is_null());
         ptr
     }
@@ -468,9 +489,7 @@ impl Mbuf {
     }
 
     pub fn len(&self) -> usize {
-        unsafe {
-            (*self.ptr).data_len as usize
-        }
+        unsafe { (*self.ptr).data_len as usize }
     }
 
     pub unsafe fn slice_mut(&mut self) -> &mut [u8] {
@@ -555,22 +574,22 @@ impl RuntimeBuf for DPDKBuf {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-    use super::{MemoryManager, Mbuf};
+    use super::{Mbuf, MemoryManager};
     use dpdk_rs::*;
+    use std::ffi::CString;
 
     #[test]
     #[ignore]
     fn test_mbuf() {
         //  ["-c", "0xff", "-n", "4", "-w", "37:00.0","--proc-type=auto"]
         let eal_init_args: Vec<CString> = vec![
-           CString::new("-c").unwrap(),
-           CString::new("0xff").unwrap(),
-           CString::new("-n").unwrap(),
-           CString::new("4").unwrap(),
-           CString::new("-w").unwrap(),
-           CString::new("37:00.0").unwrap(),
-           CString::new("--proc-type=auto").unwrap(),
+            CString::new("-c").unwrap(),
+            CString::new("0xff").unwrap(),
+            CString::new("-n").unwrap(),
+            CString::new("4").unwrap(),
+            CString::new("-w").unwrap(),
+            CString::new("37:00.0").unwrap(),
+            CString::new("--proc-type=auto").unwrap(),
         ];
         let eal_init_refs = eal_init_args
             .iter()
@@ -582,9 +601,7 @@ mod tests {
         let mm = MemoryManager::new(Default::default()).unwrap();
 
         // Step 1: Allocate a buffer from the body pool.
-        let mbuf_ptr = unsafe {
-            rte_pktmbuf_alloc(mm.inner.body_pool)
-        };
+        let mbuf_ptr = unsafe { rte_pktmbuf_alloc(mm.inner.body_pool) };
         assert!(!mbuf_ptr.is_null());
 
         // Step 2: Set the length (potentially revealing uninitialized memory)
@@ -595,7 +612,10 @@ mod tests {
             (*mbuf_ptr).pkt_len = num_bytes as u32;
         }
 
-        let mut mbuf = Mbuf { ptr: mbuf_ptr, mm: mm.clone() };
+        let mut mbuf = Mbuf {
+            ptr: mbuf_ptr,
+            mm: mm.clone(),
+        };
 
         unsafe {
             let out_slice = std::slice::from_raw_parts_mut(mbuf.data_ptr(), mbuf.len());

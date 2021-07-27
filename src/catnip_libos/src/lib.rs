@@ -89,27 +89,27 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
                 let matches = App::new("libos-catnip")
                     .arg(
                         Arg::with_name("config")
-                            .short("c")
-                            .long("config-path")
-                            .value_name("FILE")
-                            .help("YAML file for DPDK configuration")
-                            .takes_value(true),
+                        .short("c")
+                        .long("config-path")
+                        .value_name("FILE")
+                        .help("YAML file for DPDK configuration")
+                        .takes_value(true),
                     )
                     .arg(
                         Arg::with_name("iterations")
-                            .short("i")
-                            .long("iterations")
-                            .value_name("COUNT")
-                            .help("Number of iterations")
-                            .takes_value(true),
+                        .short("i")
+                        .long("iterations")
+                        .value_name("COUNT")
+                        .help("Number of iterations")
+                        .takes_value(true),
                     )
                     .arg(
                         Arg::with_name("size")
-                            .short("s")
-                            .long("size")
-                            .value_name("BYTES")
-                            .help("Packet size")
-                            .takes_value(true),
+                        .short("s")
+                        .long("size")
+                        .value_name("BYTES")
+                        .help("Packet size")
+                        .takes_value(true),
                     )
                     .get_matches_from(&arguments);
 
@@ -167,7 +167,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
                         .ok_or_else(|| format_err!("Non string argument"))
                         .and_then(|s| CString::new(s).map_err(|e| e.into()))
                 })
-                .collect::<Result<Vec<_>, Error>>()?,
+            .collect::<Result<Vec<_>, Error>>()?,
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 

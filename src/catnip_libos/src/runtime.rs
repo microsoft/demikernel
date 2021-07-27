@@ -1,58 +1,26 @@
-use dpdk_rs::{
-    rte_eth_dev,
-    rte_eth_devices,
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_free,
-    rte_pktmbuf_alloc,
-    rte_eth_tx_burst,
-    rte_eth_rx_burst,
-    rte_pktmbuf_chain,
-};
-use crate::memory::{MemoryManager, DPDKBuf, Mbuf};
+use crate::memory::{DPDKBuf, Mbuf, MemoryManager};
 use arrayvec::ArrayVec;
 use catnip::{
+    collections::bytes::{Bytes, BytesMut},
     interop::{dmtr_sgarray_t, dmtr_sgaseg_t},
-    protocols::{
-        arp,
-        ethernet2::frame::MIN_PAYLOAD_SIZE,
-        ethernet2::MacAddress,
-        tcp,
-        udp,
-    },
-    runtime::{
-        PacketBuf,
-        Runtime,
-        RECEIVE_BATCH_SIZE,
-    },
+    protocols::{arp, ethernet2::frame::MIN_PAYLOAD_SIZE, ethernet2::MacAddress, tcp, udp},
     runtime::RuntimeBuf,
-    scheduler::{
-        Operation,
-        Scheduler,
-        SchedulerHandle,
-    },
-    collections::bytes::{
-        Bytes,
-        BytesMut,
-    },
-    timer::{
-        Timer,
-        TimerPtr,
-        WaitFuture,
-    },
+    runtime::{PacketBuf, Runtime, RECEIVE_BATCH_SIZE},
+    scheduler::{Operation, Scheduler, SchedulerHandle},
+    timer::{Timer, TimerPtr, WaitFuture},
+};
+use dpdk_rs::{
+    rte_eth_dev, rte_eth_devices, rte_eth_rx_burst, rte_eth_tx_burst, rte_mbuf, rte_mempool,
+    rte_pktmbuf_chain,
 };
 use futures::FutureExt;
-use std::collections::HashMap;
 use rand::{
-    distributions::{
-        Distribution,
-        Standard,
-    },
+    distributions::{Distribution, Standard},
     rngs::SmallRng,
     seq::SliceRandom,
-    Rng,
-    SeedableRng,
+    Rng, SeedableRng,
 };
+use std::collections::HashMap;
 use std::{
     cell::RefCell,
     future::Future,
@@ -62,10 +30,7 @@ use std::{
     ptr,
     rc::Rc,
     slice,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 #[derive(Clone)]
@@ -114,10 +79,7 @@ impl DPDKRuntime {
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
-        let mut udp_options = udp::Options::new(
-            udp_checksum_offload,
-            udp_checksum_offload,
-        );
+        let mut udp_options = udp::Options::new(udp_checksum_offload, udp_checksum_offload);
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -221,20 +183,24 @@ impl Runtime for DPDKRuntime {
                         unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
                         mbuf.trim(mbuf.len() - bytes.len());
                         mbuf
-                    },
+                    }
                 };
                 unsafe {
-                    assert_eq!(rte_pktmbuf_chain(header_mbuf.ptr(), body_mbuf.into_raw()), 0);
+                    assert_eq!(
+                        rte_pktmbuf_chain(header_mbuf.ptr(), body_mbuf.into_raw()),
+                        0
+                    );
                 }
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
-                let num_sent = unsafe {
-                    rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
-                };
+                let num_sent =
+                    unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
             // Otherwise, write in the inline space.
             else {
-                let body_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())] };
+                let body_buf = unsafe {
+                    &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())]
+                };
                 body_buf.copy_from_slice(&body[..]);
 
                 if header_size + body.len() < MIN_PAYLOAD_SIZE {
@@ -251,9 +217,8 @@ impl Runtime for DPDKRuntime {
                 header_mbuf.trim(header_mbuf.len() - frame_size);
 
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
-                let num_sent = unsafe {
-                    rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
-                };
+                let num_sent =
+                    unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
         }
@@ -261,9 +226,8 @@ impl Runtime for DPDKRuntime {
         else {
             if header_size < MIN_PAYLOAD_SIZE {
                 let padding_bytes = MIN_PAYLOAD_SIZE - header_size;
-                let padding_buf = unsafe {
-                    &mut header_mbuf.slice_mut()[header_size..][..padding_bytes]
-                };
+                let padding_buf =
+                    unsafe { &mut header_mbuf.slice_mut()[header_size..][..padding_bytes] };
                 for byte in padding_buf {
                     *byte = 0;
                 }
@@ -271,9 +235,8 @@ impl Runtime for DPDKRuntime {
             let frame_size = std::cmp::max(header_size, MIN_PAYLOAD_SIZE);
             header_mbuf.trim(header_mbuf.len() - frame_size);
             let mut header_mbuf_ptr = header_mbuf.into_raw();
-            let num_sent = unsafe {
-                rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1)
-            };
+            let num_sent =
+                unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
             assert_eq!(num_sent, 1);
         }
     }
