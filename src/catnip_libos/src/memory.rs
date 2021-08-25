@@ -49,11 +49,11 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             inline_body_size: 1024,
-            header_pool_size: 256,
-            indirect_pool_size: 256,
+            header_pool_size: 8191,
+            indirect_pool_size: 8191,
             max_body_size: 8320,
-            body_pool_size: 8192,
-            cache_size: 128,
+            body_pool_size: 8191,
+            cache_size: 250,
         }
     }
 }
