@@ -1,5 +1,6 @@
 Demikernel
 ==========
+[![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-t25ffjf9-2k7Y_594T8xn1GBWVYlQ2g)
 
 _Demikernel_ is a library operating system (libOS) architecture designed for
 use with kernel-bypass I/O devices.  The _Demikernel_ architecture
@@ -21,24 +22,23 @@ Building
 
 **1. Clone This Repository**
 ```
-export WORKDIR=$HOME                                                  # change this to whatever you want
-cd $WORKDIR                                                           # switch to working directory
-git clone --recursive https://github.com/demikernel/demikernel.git    # recursive clone
+export WORKDIR=$HOME                                                  # Change this to whatever you want.
+cd $WORKDIR                                                           # Switch to working directory.
+git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
 ```
-
 
 **2. Install Prerequisites**
 ```
-cd $WORKDIR/demikernel                                            # switch to working directory
-sudo -H scripts/setup/debian.sh                                   # install third party libraries
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # get Rust toolchain
-make dpdk                                                         # build DPDK
+cd $WORKDIR/demikernel                                            # Switch to working directory.
+sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
+make dpdk                                                         # Build DPDK.
 ```
 
-**3. Build LibOSes**
+**3. Build Demikernel**
 ```
-cd $WORKDIR/demikernel    # switch to working directory
-make demikernel           # build everything
+cd $WORKDIR/demikernel    # Switch to working directory.
+make all                  # Build everything.
 ```
 
 Code of Conduct
@@ -57,10 +57,13 @@ to this project.
 Usage Statement
 --------------
 
-The _Demikernel_ is prototype code. As such, we provide no guarantees that it will
-work and you are assuming any risks with using the code.  We welcome comments
-and feedback. Please send any questions or comments to
-[irene.zhang@microsoft.com](mailto:irene.zhang@microsoft.com) or
-[ppenna@microsoft.com](ppenna@microsoft.com).  By sending feedback, you are
-consenting to your feedback being used in the further development of this
-project.
+This project is a prototype. As such, we provide no guarantees that it will
+work and you are assuming any risks with using the code. We welcome comments
+and feedback. Please send any questions or comments to one of the following
+maintainers of the project:
+
+- [Irene Zhang](https://github.com/iyzhang) - [irene.zhang@microsoft.com](mailto:irene.zhang@microsoft.com)
+- [Pedro Henrique Penna](https://github.com/ppenna) - [ppenna@microsoft.com](mailto:ppenna@microsoft.com)
+
+> By sending feedback, you are consenting that it may be used  in the further
+> development of this project.
