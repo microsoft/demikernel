@@ -1,7 +1,6 @@
 [package]
-name = "catnip_libos"
+name = "catnip-libos"
 version = "0.1.0"
-authors = ["Sujay Jayakar <sujayakar314@gmai.com>"]
 edition = "2018"
 
 [lib]

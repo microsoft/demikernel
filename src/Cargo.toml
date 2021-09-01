@@ -8,5 +8,5 @@ debug = true
 
 [workspace]
 members = [
-    "catnip_libos",
+    "catnip-libos",
 ]
