@@ -35,10 +35,16 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust too
 make dpdk                                                         # Build DPDK.
 ```
 
-**3. Build Demikernel**
+**3. Build Demikernel with Default Drivers**
 ```
 cd $WORKDIR/demikernel    # Switch to working directory.
-make all                  # Build everything.
+make                      # Build using default drivers.
+```
+
+**4. Build Demikernel with Custom Drivers (Optional)**
+```
+cd $WORKDIR/demikernel    # Switch to working directory.
+make DRIVER=[mlx4|mlx5]   # Build using a custom driver.
 ```
 
 Code of Conduct
