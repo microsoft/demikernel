@@ -13,7 +13,9 @@ export BUILDDIR = $(CURDIR)/build
 
 #===============================================================================
 
-export CARGO_FLAGS ?= "--release"
+export DRIVER ?= 'mlx5'
+
+export CARGO_FLAGS ?= --release --features=$(DRIVER)
 
 #===============================================================================
 
