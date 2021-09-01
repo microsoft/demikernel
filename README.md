@@ -1,6 +1,5 @@
 Demikernel
 ==========
-[![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-t25ffjf9-2k7Y_594T8xn1GBWVYlQ2g)
 
 _Demikernel_ is a library operating system (libOS) architecture designed for
 use with kernel-bypass I/O devices.  The _Demikernel_ architecture
