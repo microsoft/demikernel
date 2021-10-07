@@ -18,6 +18,8 @@ rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.4"
 histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
+log = "0.4.14"
+ntest = "0.7.3"
 
 [build-dependencies]
 bindgen = "0.55.1"
