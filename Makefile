@@ -27,10 +27,6 @@ demikernel:
 	cd $(SRCDIR) && \
 	cargo build $(CARGO_FLAGS)
 
-demikernel-examples:
-	cd $(SRCDIR) && \
-	cargo build --examples $(CARGO_FLAGS)
-
 demikernel-clean:
 	cd $(SRCDIR) && \
 	cargo clean
