@@ -1,0 +1,114 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+#
+name: Build
+
+on:
+  push:
+    branches:
+      - enhancement-*
+      - feature-*
+      - bugfix-*
+  pull_request:
+    branches:
+      - master
+      - unstable
+      - dev
+
+env:
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  demikernel0:
+    name: Demikernel0
+    runs-on: ubuntu-latest
+    steps:
+    # Fetch Changes
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          git fetch origin
+          git checkout --detach $GITHUB_SHA
+    # Build
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/.cargo/env
+          cd $GITHUB_REPOSITORY
+          make clean
+          make all DRIVER='mlx4'
+    # Post Run
+    - name: Post Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          make clean
+          git checkout master
+          git remote prune origin
+
+  demikernel1:
+    name: Demikernel1
+    runs-on: ubuntu-latest
+    steps:
+    # Fetch Changes
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          git fetch origin
+          git checkout --detach $GITHUB_SHA
+    # Build
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/.cargo/env
+          cd $GITHUB_REPOSITORY
+          make clean
+          make all DRIVER='mlx4'
+    # Post Run
+    - name: Post Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          make clean
+          git checkout master
+          git remote prune origin
