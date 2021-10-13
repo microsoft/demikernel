@@ -9,11 +9,6 @@ on:
       - enhancement-*
       - feature-*
       - bugfix-*
-  pull_request:
-    branches:
-      - master
-      - unstable
-      - dev
 
 env:
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY

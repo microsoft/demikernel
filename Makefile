@@ -4,6 +4,10 @@
 export PREFIX ?= $(HOME)
 
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib -name '*pkgconfig*' -type d)
+export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib -name '*x86_64-linux-gnu*' -type d)
+export CONFIG_PATH ?= $(HOME)/config.yaml
+
+export CARGO ?= $(HOME)/.cargo/bin/cargo
 
 export SRCDIR = $(CURDIR)/src
 export BINDIR = $(CURDIR)/bin
@@ -19,17 +23,25 @@ export CARGO_FLAGS ?= --release --features=$(DRIVER)
 
 #===============================================================================
 
-all: demikernel
+all: demikernel demikernel-tests
 
 clean: demikernel-clean
 
 demikernel:
 	cd $(SRCDIR) && \
-	cargo build $(CARGO_FLAGS)
+	$(CARGO) build $(CARGO_FLAGS)
+
+demikernel-tests:
+	cd $(SRCDIR) && \
+	$(CARGO) build --tests $(CARGO_FLAGS)
 
 demikernel-clean:
 	cd $(SRCDIR) && \
-	cargo clean
+	$(CARGO) clean
+
+test:
+	cd $(SRCDIR) && \
+	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" $(CARGO) test $(CARGO_FLAGS) -- --nocapture $(TEST)
 
 dpdk:
 	cd $(CONTRIBDIR)/dpdk && \
