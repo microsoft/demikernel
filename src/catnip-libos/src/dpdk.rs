@@ -43,6 +43,8 @@ pub fn initialize_dpdk(
     udp_checksum_offload: bool,
 ) -> Result<DPDKRuntime, Error> {
     std::env::set_var("MLX5_SHUT_UP_BF", "1");
+    std::env::set_var("MLX5_SINGLE_THREADED", "1");
+    std::env::set_var("MLX4_SINGLE_THREADED", "1");
     let eal_init_refs = eal_init_args
         .iter()
         .map(|s| s.as_ptr() as *mut u8)
