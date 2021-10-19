@@ -119,8 +119,8 @@ fn initialize_dpdk_port(
     let tx_rings = 1;
     let rx_ring_size = 2048;
     let tx_ring_size = 2048;
-    let nb_rxd = 128;
-    let nb_txd = 128;
+    let nb_rxd = rx_ring_size;
+    let nb_txd = tx_ring_size;
 
     let rx_pthresh = 8;
     let rx_hthresh = 8;
