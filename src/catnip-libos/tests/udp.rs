@@ -11,7 +11,6 @@ use catnip::{libos::LibOS, operations::OperationResult};
 use catnip_libos::memory::DPDKBuf;
 use catnip_libos::runtime::DPDKRuntime;
 use dpdk_rs::load_mlx_driver;
-use ntest::timeout;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
@@ -239,7 +238,6 @@ impl Test {
 //==============================================================================
 
 #[test]
-#[timeout(60000)]
 fn udp_push_pop() {
     let mut test = Test::new();
     let payload: u8 = 'a' as u8;
