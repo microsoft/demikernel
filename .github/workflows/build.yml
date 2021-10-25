@@ -57,6 +57,7 @@ jobs:
         port: ${{ secrets.PORTNUM_A }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/.cargo/env
           cd $GITHUB_REPOSITORY
           make clean
           git checkout master
@@ -103,6 +104,7 @@ jobs:
         port: ${{ secrets.PORTNUM_B }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/.cargo/env
           cd $GITHUB_REPOSITORY
           make clean
           git checkout master
