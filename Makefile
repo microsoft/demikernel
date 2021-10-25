@@ -36,8 +36,9 @@ demikernel-tests:
 	$(CARGO) build --tests $(CARGO_FLAGS)
 
 demikernel-clean:
-	cd $(SRCDIR) && \
-	$(CARGO) clean
+	cd $(SRCDIR) &&   \
+	$(CARGO) clean && \
+	rm -f Cargo.lock
 
 test:
 	cd $(SRCDIR) && \

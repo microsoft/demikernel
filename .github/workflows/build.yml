@@ -11,6 +11,7 @@ on:
       - bugfix-*
 
 env:
+  CARGO_TERM_COLOR: always
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY
   GITHUB_SHA: $GITHUB_SHA
 
@@ -57,6 +58,7 @@ jobs:
         port: ${{ secrets.PORTNUM_A }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/.cargo/env
           cd $GITHUB_REPOSITORY
           make clean
           git checkout master
@@ -103,6 +105,7 @@ jobs:
         port: ${{ secrets.PORTNUM_B }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/.cargo/env
           cd $GITHUB_REPOSITORY
           make clean
           git checkout master
