@@ -5,8 +5,8 @@
 
 use anyhow::format_err;
 use anyhow::Error;
-use catnip::logging;
 use catnip::protocols::{ethernet2::MacAddress, ip::Port, ipv4::Endpoint};
+use catnip::{file_table::FileDescriptor, logging};
 use catnip::{libos::LibOS, operations::OperationResult};
 use catnip_libos::memory::DPDKBuf;
 use catnip_libos::runtime::DPDKRuntime;
@@ -20,7 +20,11 @@ use std::fs::File;
 use std::io::Read;
 use std::net::Ipv4Addr;
 use std::panic;
+use std::process;
 use std::str::FromStr;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 use yaml_rust::{Yaml, YamlLoader};
 
 //==============================================================================
@@ -281,6 +285,109 @@ fn udp_push_pop() {
                 .pushto2(sockfd, sendbuf.clone(), remote_addr)
                 .expect("client failed to pushto2()");
             test.libos.wait(qtoken);
+        }
+    }
+}
+
+//==============================================================================
+// Ping Pong
+//==============================================================================
+
+#[test]
+fn udp_ping_pong() {
+    let mut test = Test::new();
+    let niters: usize = 1000;
+    let mut npongs: usize = 0;
+    let payload: u8 = 'a' as u8;
+    let local_addr: Endpoint = test.local_addr();
+    let remote_addr: Endpoint = test.remote_addr();
+
+    let push_pop = |test: &mut Test, sockfd: FileDescriptor, buf: DPDKBuf| {
+        let qt_push = test
+            .libos
+            .pushto2(sockfd, buf.clone(), remote_addr)
+            .expect("client failed to pushto2()");
+        let qt_pop = test.libos.pop(sockfd).expect("client failed to pop()");
+        (qt_push, qt_pop)
+    };
+
+    // Setup peer.
+    let sockfd = test
+        .libos
+        .socket(libc::AF_INET, libc::SOCK_DGRAM, 0)
+        .unwrap();
+    test.libos.bind(sockfd, local_addr).unwrap();
+
+    // Run peers.
+    if test.is_server() {
+        loop {
+            let sendbuf = test.mkbuf(payload);
+            let mut qtoken = test.libos.pop(sockfd).expect("server failed to pop()");
+
+            // Spawn timeout thread.
+            let (sender, receiver) = mpsc::channel();
+            let t =
+                thread::spawn(
+                    move || match receiver.recv_timeout(Duration::from_millis(5000)) {
+                        Ok(_) => {}
+                        _ => process::exit(1),
+                    },
+                );
+
+            // Wait for incoming data,
+            let recvbuf = match test.libos.wait2(qtoken) {
+                (_, OperationResult::Pop(_, buf)) => buf,
+                _ => panic!("server failed to wait()"),
+            };
+
+            // Join timeout thread.
+            sender.send(0).unwrap();
+            t.join().expect("timeout");
+
+            // Sanity check contents of received buffer.
+            assert!(
+                Test::bufcmp(sendbuf.clone(), recvbuf),
+                "server sendbuf != recevbuf"
+            );
+
+            // Send data.
+            qtoken = test
+                .libos
+                .pushto2(sockfd, sendbuf.clone(), remote_addr)
+                .expect("server failed to pushto2()");
+            test.libos.wait(qtoken);
+        }
+    } else {
+        let mut qtokens = Vec::new();
+        let sendbuf = test.mkbuf(payload);
+
+        // Push pop first packet.
+        let (qt_push, qt_pop) = push_pop(&mut test, sockfd, sendbuf.clone());
+        qtokens.push(qt_push);
+        qtokens.push(qt_pop);
+
+        // Send packets.
+        while npongs < niters {
+            let (i, _, result) = test.libos.wait_any2(&qtokens);
+            qtokens.swap_remove(i);
+
+            // Parse result.
+            match result {
+                OperationResult::Push => {
+                    let (qt_push, qt_pop) = push_pop(&mut test, sockfd, sendbuf.clone());
+                    qtokens.push(qt_push);
+                    qtokens.push(qt_pop);
+                }
+                OperationResult::Pop(_, recvbuf) => {
+                    // Sanity received buffer.
+                    assert!(
+                        Test::bufcmp(sendbuf.clone(), recvbuf),
+                        "server expectbuf != recevbuf"
+                    );
+                    npongs += 1;
+                }
+                _ => panic!("unexpected result"),
+            }
         }
     }
 }
