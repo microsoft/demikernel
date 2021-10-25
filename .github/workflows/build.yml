@@ -9,6 +9,9 @@ on:
       - enhancement-*
       - feature-*
       - bugfix-*
+      - master
+      - unstable
+      - dev
 
 env:
   CARGO_TERM_COLOR: always
