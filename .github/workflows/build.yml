@@ -11,6 +11,7 @@ on:
       - bugfix-*
 
 env:
+  CARGO_TERM_COLOR: always
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY
   GITHUB_SHA: $GITHUB_SHA
 
