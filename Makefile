@@ -17,19 +17,20 @@ export BUILDDIR = $(CURDIR)/build
 
 #===============================================================================
 
-export DRIVER ?= 'mlx5'
+export DRIVER ?= mlx5
+export BUILD ?= --release
 
-export CARGO_FLAGS ?= --release --features=$(DRIVER)
+export CARGO_FLAGS ?= $(BUILD) --features=$(DRIVER)
 
 #===============================================================================
 
-all: demikernel demikernel-tests
+all: demikernel-all demikernel-tests
 
 clean: demikernel-clean
 
-demikernel:
+demikernel-all:
 	cd $(SRCDIR) && \
-	$(CARGO) build $(CARGO_FLAGS)
+	$(CARGO) build --all $(CARGO_FLAGS)
 
 demikernel-tests:
 	cd $(SRCDIR) && \
