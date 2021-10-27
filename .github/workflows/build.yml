@@ -110,7 +110,7 @@ jobs:
   cleanup-demikernel0:
     name: Cleanup Demikernel0
     runs-on: ubuntu-latest
-    needs: [build-demikernel1]
+    needs: [build-demikernel0]
     steps:
     - name: Post Run
       uses: appleboy/ssh-action@master
