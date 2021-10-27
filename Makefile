@@ -4,6 +4,10 @@
 export PREFIX ?= $(HOME)
 
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib -name '*pkgconfig*' -type d)
+export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib -name '*x86_64-linux-gnu*' -type d)
+export CONFIG_PATH ?= $(HOME)/config.yaml
+
+export CARGO ?= $(HOME)/.cargo/bin/cargo
 
 export SRCDIR = $(CURDIR)/src
 export BINDIR = $(CURDIR)/bin
@@ -13,27 +17,33 @@ export BUILDDIR = $(CURDIR)/build
 
 #===============================================================================
 
-export DRIVER ?= 'mlx5'
+export DRIVER ?= mlx5
+export BUILD ?= --release
 
-export CARGO_FLAGS ?= --release --features=$(DRIVER)
+export CARGO_FLAGS ?= $(BUILD) --features=$(DRIVER)
 
 #===============================================================================
 
-all: demikernel
+all: demikernel-all demikernel-tests
 
 clean: demikernel-clean
 
-demikernel:
+demikernel-all:
 	cd $(SRCDIR) && \
-	cargo build $(CARGO_FLAGS)
+	$(CARGO) build --all $(CARGO_FLAGS)
 
-demikernel-examples:
+demikernel-tests:
 	cd $(SRCDIR) && \
-	cargo build --examples $(CARGO_FLAGS)
+	$(CARGO) build --tests $(CARGO_FLAGS)
 
 demikernel-clean:
+	cd $(SRCDIR) &&   \
+	$(CARGO) clean && \
+	rm -f Cargo.lock
+
+test:
 	cd $(SRCDIR) && \
-	cargo clean
+	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" $(CARGO) test $(CARGO_FLAGS) -- --nocapture $(TEST)
 
 dpdk:
 	cd $(CONTRIBDIR)/dpdk && \
