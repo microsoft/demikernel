@@ -77,9 +77,10 @@ jobs:
         port: ${{ secrets.PORTNUM_A }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/setup-env.sh
           cd $GITHUB_REPOSITORY
           make clean
-          make demikernel-tests DRIVER='mlx4'
+          make demikernel-tests DRIVER=$DRIVER
 
   # Demikernel 1
   build-demikernel1:
@@ -96,9 +97,10 @@ jobs:
         port: ${{ secrets.PORTNUM_B }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
+          source $HOME/setup-env.sh
           cd $GITHUB_REPOSITORY
           make clean
-          make demikernel-tests DRIVER='mlx4'
+          make demikernel-tests DRIVER=$DRIVER
 
   #====================
   # Build
