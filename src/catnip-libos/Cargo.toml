@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", branch = "master", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", version = "0.6.0", features = ["threadunsafe"] }
 clap = "2.33.3"
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", version = "0.2" }
 futures = "0.3.15"
