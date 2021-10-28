@@ -122,7 +122,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY/src
-          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" PEER=server sudo -E nohup $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop > nohup.out 2> nohup.err < /dev/null  &
+          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PEER=server sudo -E nohup PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -140,7 +140,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY/src
-          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" PEER=client sudo -E $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop
+          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PEER=client sudo -E PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop
 
   #====================
   # Cleanup
