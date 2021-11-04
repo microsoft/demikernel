@@ -295,8 +295,7 @@ fn udp_push_pop() {
 #[test]
 fn udp_ping_pong() {
     let mut test = Test::new();
-    let niters: usize = 1000;
-    let mut npongs: usize = 0;
+    let mut npongs: usize = 1000;
     let payload: u8 = 'a' as u8;
     let local_addr: Endpoint = test.local_addr();
     let remote_addr: Endpoint = test.remote_addr();
@@ -325,13 +324,12 @@ fn udp_ping_pong() {
 
             // Spawn timeout thread.
             let (sender, receiver) = mpsc::channel();
-            let t =
-                thread::spawn(
-                    move || match receiver.recv_timeout(Duration::from_millis(5000)) {
-                        Ok(_) => {}
-                        _ => process::exit(1),
-                    },
-                );
+            let t = thread::spawn(
+                move || match receiver.recv_timeout(Duration::from_secs(60)) {
+                    Ok(_) => {}
+                    _ => process::exit(0),
+                },
+            );
 
             // Wait for incoming data,
             let recvbuf = match test.libos.wait2(qtoken) {
@@ -366,7 +364,7 @@ fn udp_ping_pong() {
         qtokens.push(qt_pop);
 
         // Send packets.
-        while npongs < niters {
+        while npongs > 0 {
             let (i, _, result) = test.libos.wait_any2(&qtokens);
             qtokens.swap_remove(i);
 
@@ -383,7 +381,7 @@ fn udp_ping_pong() {
                         Test::bufcmp(sendbuf.clone(), recvbuf),
                         "server expectbuf != recevbuf"
                     );
-                    npongs += 1;
+                    npongs -= 1;
                 }
                 _ => panic!("unexpected result"),
             }
