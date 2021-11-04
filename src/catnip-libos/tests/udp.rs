@@ -325,7 +325,7 @@ fn udp_ping_pong() {
             // Spawn timeout thread.
             let (sender, receiver) = mpsc::channel();
             let t = thread::spawn(
-                move || match receiver.recv_timeout(Duration::from_secs(10)) {
+                move || match receiver.recv_timeout(Duration::from_secs(60)) {
                     Ok(_) => {}
                     _ => process::exit(0),
                 },
