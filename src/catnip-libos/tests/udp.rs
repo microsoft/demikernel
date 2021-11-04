@@ -325,13 +325,12 @@ fn udp_ping_pong() {
 
             // Spawn timeout thread.
             let (sender, receiver) = mpsc::channel();
-            let t =
-                thread::spawn(
-                    move || match receiver.recv_timeout(Duration::from_millis(5000)) {
-                        Ok(_) => {}
-                        _ => process::exit(1),
-                    },
-                );
+            let t = thread::spawn(
+                move || match receiver.recv_timeout(Duration::from_secs(10)) {
+                    Ok(_) => {}
+                    _ => process::exit(0),
+                },
+            );
 
             // Wait for incoming data,
             let recvbuf = match test.libos.wait2(qtoken) {
