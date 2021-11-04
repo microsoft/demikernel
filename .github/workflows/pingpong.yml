@@ -1,0 +1,194 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+#
+
+name: Ping Pong
+
+on:
+  push:
+    branches:
+      - master
+      - unstable
+      - dev
+
+concurrency: azure
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  #====================
+  # Setup
+  #====================
+
+  # Demikernel 0
+  setup-demikernel0:
+    name: Setup Demikernel0
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          git fetch origin
+          git checkout --detach $GITHUB_SHA
+
+  # Demikernel 0
+  setup-demikernel1:
+    name: Setup Demikernel1
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          git fetch origin
+          git checkout --detach $GITHUB_SHA
+
+  #====================
+  # Build
+  #====================
+
+  # Demikernel 0
+  build-demikernel0:
+    name: Build Demikernel0
+    runs-on: ubuntu-latest
+    needs: setup-demikernel0
+    steps:
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          make clean
+          make demikernel-tests DRIVER=$DRIVER
+
+  # Demikernel 1
+  build-demikernel1:
+    name: Build Demikernel1
+    runs-on: ubuntu-latest
+    needs: setup-demikernel1
+    steps:
+    - name: Build
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          make clean
+          make demikernel-tests DRIVER=$DRIVER
+
+  #====================
+  # Build
+  #====================
+
+  # Demikernel 0
+  launch-demikernel0:
+    name: Launch Demikernel0
+    runs-on: ubuntu-latest
+    needs: build-demikernel0
+    steps:
+    - name: Launch
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          MSS=9000 MTU=1500 PEER=server make test TEST=udp_ping_pong DRIVER=$DRIVER TIMEOUT=600  > nohup.out 2> nohup.err < /dev/null  &
+
+  # Demikernel 1
+  launch-demikernel1:
+    name: Launch Demikernel1
+    runs-on: ubuntu-latest
+    needs: [build-demikernel1, launch-demikernel0]
+    steps:
+    - name: Launch
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          MSS=9000 MTU=1500 PEER=client make test TEST=udp_ping_pong DRIVER=$DRIVER TIMEOUT=600 2>&1
+
+  #====================
+  # Cleanup
+  #====================
+
+  # Demikernel 0
+  cleanup-demikernel0:
+    name: Cleanup Demikernel0
+    runs-on: ubuntu-latest
+    needs: [launch-demikernel1]
+    steps:
+    - name: Post Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_A }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_A }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          make clean
+          git clean fdx
+          git checkout master
+          git remote prune origin
+          sudo -E pkill -9 'udp-*'
+
+  # Demikernel 1
+  cleanup-demikernel1:
+    name: Cleanup Demikernel1
+    runs-on: ubuntu-latest
+    needs: [launch-demikernel1]
+    steps:
+    - name: Post Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM_B }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          make clean
+          git clean fdx
+          git checkout master
+          git remote prune origin
