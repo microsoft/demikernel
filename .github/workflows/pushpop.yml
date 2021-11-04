@@ -11,6 +11,8 @@ on:
       - unstable
       - dev
 
+concurrency: azure
+
 env:
   CARGO_TERM_COLOR: always
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY
