@@ -166,6 +166,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
+          cat nohup.*
           make clean
           git clean -fdx
           git checkout master
