@@ -11,6 +11,8 @@ on:
       - unstable
       - dev
 
+concurrency: azure
+
 env:
   CARGO_TERM_COLOR: always
   GITHUB_REPOSITORY: $GITHUB_REPOSITORY
@@ -121,8 +123,9 @@ jobs:
         port: ${{ secrets.PORTNUM_A }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
-          cd $GITHUB_REPOSITORY/src
-          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PEER=server sudo -E nohup PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop > nohup.out 2> nohup.err < /dev/null  &
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          MSS=9000 MTU=1500 PEER=server make test TEST=udp_push_pop DRIVER=$DRIVER TIMEOUT=600  > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -139,8 +142,9 @@ jobs:
         port: ${{ secrets.PORTNUM_B }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
-          cd $GITHUB_REPOSITORY/src
-          MSS=9000 MTU=1500 CONFIG_PATH="$HOME/config.yaml" PEER=client sudo -E PKG_CONFIG_PATH="$HOME/lib/x86_64-linux-gnu/pkgconfig" LD_LIBRARY_PATH="$HOME/lib/x86_64-linux-gnu" $HOME/.cargo/bin/cargo test --release --features=mlx4 -- udp_push_pop
+          source $HOME/setup-env.sh
+          cd $GITHUB_REPOSITORY
+          MSS=9000 MTU=1500 PEER=client make test TEST=udp_push_pop DRIVER=$DRIVER TIMEOUT=600 2>&1
 
   #====================
   # Cleanup

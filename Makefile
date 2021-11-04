@@ -3,11 +3,12 @@
 
 export PREFIX ?= $(HOME)
 
-export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib -name '*pkgconfig*' -type d)
-export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib -name '*x86_64-linux-gnu*' -type d)
+export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d)
+export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d)
 export CONFIG_PATH ?= $(HOME)/config.yaml
 
 export CARGO ?= $(HOME)/.cargo/bin/cargo
+export TIMEOUT ?= 30
 
 export SRCDIR = $(CURDIR)/src
 export BINDIR = $(CURDIR)/bin
@@ -43,7 +44,7 @@ demikernel-clean:
 
 test:
 	cd $(SRCDIR) && \
-	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" $(CARGO) test $(CARGO_FLAGS) -- --nocapture $(TEST)
+	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) -- --nocapture $(TEST)
 
 dpdk:
 	cd $(CONTRIBDIR)/dpdk && \
