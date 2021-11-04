@@ -167,7 +167,7 @@ jobs:
         script: |
           cd $GITHUB_REPOSITORY
           make clean
-          git clean fdx
+          git clean -fdx
           git checkout master
           git remote prune origin
           ! sudo -E pkill -9 'udp-*'
@@ -190,6 +190,6 @@ jobs:
         script: |
           cd $GITHUB_REPOSITORY
           make clean
-          git clean fdx
+          git clean -fdx
           git checkout master
           git remote prune origin

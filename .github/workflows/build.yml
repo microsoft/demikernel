@@ -127,7 +127,7 @@ jobs:
         script: |
           cd $GITHUB_REPOSITORY
           make clean
-          git clean fdx
+          git clean -fdx
           git checkout master
           git remote prune origin
 
@@ -148,6 +148,6 @@ jobs:
         script: |
           cd $GITHUB_REPOSITORY
           make clean
-          git clean fdx
+          git clean -fdx
           git checkout master
           git remote prune origin
