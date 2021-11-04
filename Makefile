@@ -3,8 +3,8 @@
 
 export PREFIX ?= $(HOME)
 
-export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib -name '*pkgconfig*' -type d)
-export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib -name '*x86_64-linux-gnu*' -type d)
+export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d)
+export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d)
 export CONFIG_PATH ?= $(HOME)/config.yaml
 
 export CARGO ?= $(HOME)/.cargo/bin/cargo
