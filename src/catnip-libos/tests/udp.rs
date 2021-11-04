@@ -271,6 +271,7 @@ fn udp_push_pop() {
                 Test::bufcmp(expectbuf.clone(), recvbuf),
                 "server expectbuf != recevbuf"
             );
+            print!("received {} packets", nreceives);
         }
     } else {
         let sendbuf = test.mkbuf(payload);
