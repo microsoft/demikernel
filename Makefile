@@ -18,7 +18,7 @@ export BUILDDIR = $(CURDIR)/build
 
 #===============================================================================
 
-export DRIVER ?= mlx5
+export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
 export BUILD ?= --release
 
 export CARGO_FLAGS ?= $(BUILD) --features=$(DRIVER)
