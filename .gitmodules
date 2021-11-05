@@ -1,4 +1,0 @@
-[submodule "submodules/dpdk"]
-    path = submodules/dpdk
-    url = https://github.com/dpdk/dpdk.git
-	branch = v19.11
