@@ -45,12 +45,3 @@ demikernel-clean:
 test:
 	cd $(SRCDIR) && \
 	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) -- --nocapture $(TEST)
-
-dpdk:
-	cd $(CONTRIBDIR)/dpdk && \
-	mkdir -p $(BUILDDIR)/dpdk && \
-	meson --prefix=$(PREFIX) $(BUILDDIR)/dpdk && \
-	cd $(BUILDDIR)/dpdk && \
-	ninja && \
-	ninja install && \
-	rm -rf $(BUILDDIR)/dpdk
