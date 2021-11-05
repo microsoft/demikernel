@@ -31,7 +31,7 @@ git clone --recursive https://github.com/demikernel/demikernel.git    # Recursiv
 cd $WORKDIR/demikernel                                            # Switch to working directory.
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
-make dpdk                                                         # Build DPDK.
+./scripts/setup/dpdk.sh                                           # Build DPDK.
 ```
 
 **3. Build Demikernel with Default Drivers**

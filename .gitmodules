@@ -1,4 +1,3 @@
-[submodule "submodules/dpdk"]
-    path = submodules/dpdk
-    url = https://github.com/dpdk/dpdk.git
-	branch = v19.11
+[submodule "scripts"]
+	path = scripts
+	url = https://github.com/demikernel/scripts.git
