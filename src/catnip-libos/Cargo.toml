@@ -20,7 +20,7 @@ histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 ntest = "0.7.3"
-perftools = { git = "https://github.com/ppenna/perftools", version = "0.1.0" }
+perftools = { git = "https://github.com/demikernel/perftools", version = "0.2.0" }
 
 [build-dependencies]
 bindgen = "0.55.1"
