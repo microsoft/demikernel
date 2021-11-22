@@ -14,6 +14,8 @@ post](http://irenezhang.net/blog/2019/05/21/demikernel.html).
 To get details about the system, read our [HotOS
 paper](http://irenezhang.net//papers/demikernel-hotos19.pdf).
 
+> To read more about Demikernel check out https://aka.ms/demikernel.
+
 Building
 --------
 
