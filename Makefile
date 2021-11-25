@@ -37,6 +37,7 @@ demikernel-tests:
 
 demikernel-clean:
 	cd $(SRCDIR) &&   \
+	rm -rf target &&  \
 	$(CARGO) clean && \
 	rm -f Cargo.lock
 
