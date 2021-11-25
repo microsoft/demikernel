@@ -171,8 +171,7 @@ jobs:
           git clean -fdx
           git checkout master
           git remote prune origin
-          ! sudo -E pkill -9 'udp-*'
-          exit $?
+          sudo -E pkill -9 'udp-*'
 
   # Demikernel 1
   cleanup-demikernel1:

@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", version = "0.6.0", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "0e4d095", features = ["threadunsafe"] }
 clap = "2.33.3"
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", version = "0.2" }
 futures = "0.3.15"
@@ -20,7 +20,7 @@ histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 ntest = "0.7.3"
-perftools = { git = "https://github.com/demikernel/perftools", version = "0.2.0" }
+perftools = { git = "https://github.com/demikernel/perftools", rev = "94031ae" }
 
 [build-dependencies]
 bindgen = "0.55.1"
