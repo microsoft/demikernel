@@ -32,6 +32,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     convert::TryFrom,
+    env,
     ffi::{
         CStr,
         CString,
@@ -171,11 +172,11 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 
-        let use_jumbo_frames = true;
-        let mtu = 9216;
-        let mss = 9000;
-        let tcp_checksum_offload = true;
-        let udp_checksum_offload = true;
+        let use_jumbo_frames: bool = env::var("USE_JUMBO").is_ok();
+        let mtu: u16 = env::var("MTU").unwrap_or(1500.to_string()).parse().unwrap();
+        let mss: usize = env::var("MSS").unwrap_or(9000.to_string()).parse().unwrap();
+        let tcp_checksum_offload: bool = env::var("TCP_OFFLOAD_CHECKSUM").is_ok();
+        let udp_checksum_offload: bool = env::var("UDO_OFFLOAD_CHECKSUM").is_ok();
         let runtime = self::dpdk::initialize_dpdk(
             local_ipv4_addr,
             &eal_init_args,
