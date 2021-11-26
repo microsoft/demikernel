@@ -1,6 +1,12 @@
 [package]
 name = "catnip-libos"
 version = "0.2.0"
+author = "Microsoft Corporation"
+description = "Kernel-Bypass libOS Architecture"
+homepage = "https://aka.ms/demikernel"
+repository = "https://github.com/demikernel/demikernel"
+readme = "README.md"
+license-file = "LICENSE.txt"
 edition = "2018"
 
 [lib]

@@ -1,24 +1,53 @@
 use anyhow::Error;
-use catnip::collections::bytes::{Bytes, BytesMut};
-use catnip::interop::{dmtr_sgarray_t, dmtr_sgaseg_t};
-use catnip::protocols::ethernet2::frame::ETHERNET2_HEADER_SIZE;
-use catnip::protocols::ipv4::datagram::IPV4_HEADER_SIZE;
-use catnip::protocols::tcp::segment::MAX_TCP_HEADER_SIZE;
-use catnip::runtime::RuntimeBuf;
-use dpdk_rs::{
-    rte_errno, rte_mbuf, rte_mempool, rte_mempool_calc_obj_size, rte_mempool_mem_iter,
-    rte_mempool_memhdr, rte_mempool_objhdr, rte_mempool_objsz, rte_pktmbuf_adj, rte_pktmbuf_alloc,
-    rte_pktmbuf_clone, rte_pktmbuf_free, rte_pktmbuf_headroom, rte_pktmbuf_pool_create,
-    rte_pktmbuf_tailroom, rte_pktmbuf_trim, rte_socket_id, rte_strerror,
+use catnip::{
+    collections::bytes::{
+        Bytes,
+        BytesMut,
+    },
+    interop::{
+        dmtr_sgarray_t,
+        dmtr_sgaseg_t,
+    },
+    protocols::{
+        ethernet2::frame::ETHERNET2_HEADER_SIZE,
+        ipv4::datagram::IPV4_HEADER_SIZE,
+        tcp::segment::MAX_TCP_HEADER_SIZE,
+    },
+    runtime::RuntimeBuf,
 };
-use libc::{c_uint, c_void};
-use std::ffi::CString;
-use std::mem;
-use std::ops::Deref;
-use std::ptr;
-use std::rc::Rc;
-use std::slice;
-use std::sync::Arc;
+use dpdk_rs::{
+    rte_errno,
+    rte_mbuf,
+    rte_mempool,
+    rte_mempool_calc_obj_size,
+    rte_mempool_mem_iter,
+    rte_mempool_memhdr,
+    rte_mempool_objhdr,
+    rte_mempool_objsz,
+    rte_pktmbuf_adj,
+    rte_pktmbuf_alloc,
+    rte_pktmbuf_clone,
+    rte_pktmbuf_free,
+    rte_pktmbuf_headroom,
+    rte_pktmbuf_pool_create,
+    rte_pktmbuf_tailroom,
+    rte_pktmbuf_trim,
+    rte_socket_id,
+    rte_strerror,
+};
+use libc::{
+    c_uint,
+    c_void,
+};
+use std::{
+    ffi::CString,
+    mem,
+    ops::Deref,
+    ptr,
+    rc::Rc,
+    slice,
+    sync::Arc,
+};
 
 const RTE_PKTMBUF_HEADROOM: usize = 128;
 
@@ -156,7 +185,7 @@ impl MemoryManager {
                     sgaseg_buf: ptr as *mut _,
                     sgaseg_len: bytes.len() as u32,
                 }
-            }
+            },
             DPDKBuf::Managed(mbuf) => {
                 let sgaseg = dmtr_sgaseg_t {
                     sgaseg_buf: mbuf.data_ptr() as *mut _,
@@ -164,7 +193,7 @@ impl MemoryManager {
                 };
                 mem::forget(mbuf);
                 sgaseg
-            }
+            },
         };
         dmtr_sgarray_t {
             sga_buf: ptr::null_mut(),
@@ -574,7 +603,10 @@ impl RuntimeBuf for DPDKBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mbuf, MemoryManager};
+    use super::{
+        Mbuf,
+        MemoryManager,
+    };
     use dpdk_rs::*;
     use std::ffi::CString;
 

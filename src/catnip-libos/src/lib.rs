@@ -22,7 +22,6 @@ use clap::{
     App,
     Arg,
 };
-use std::collections::HashMap;
 use libc::{
     c_char,
     c_int,
@@ -31,6 +30,7 @@ use libc::{
 };
 use std::{
     cell::RefCell,
+    collections::HashMap,
     convert::TryFrom,
     ffi::{
         CStr,
@@ -48,8 +48,8 @@ use yaml_rust::{
 };
 
 pub mod dpdk;
-pub mod runtime;
 pub mod memory;
+pub mod runtime;
 
 use crate::runtime::DPDKRuntime;
 use anyhow::{
@@ -89,27 +89,27 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
                 let matches = App::new("libos-catnip")
                     .arg(
                         Arg::with_name("config")
-                        .short("c")
-                        .long("config-path")
-                        .value_name("FILE")
-                        .help("YAML file for DPDK configuration")
-                        .takes_value(true),
+                            .short("c")
+                            .long("config-path")
+                            .value_name("FILE")
+                            .help("YAML file for DPDK configuration")
+                            .takes_value(true),
                     )
                     .arg(
                         Arg::with_name("iterations")
-                        .short("i")
-                        .long("iterations")
-                        .value_name("COUNT")
-                        .help("Number of iterations")
-                        .takes_value(true),
+                            .short("i")
+                            .long("iterations")
+                            .value_name("COUNT")
+                            .help("Number of iterations")
+                            .takes_value(true),
                     )
                     .arg(
                         Arg::with_name("size")
-                        .short("s")
-                        .long("size")
-                        .value_name("BYTES")
-                        .help("Packet size")
-                        .takes_value(true),
+                            .short("s")
+                            .long("size")
+                            .value_name("BYTES")
+                            .help("Packet size")
+                            .takes_value(true),
                     )
                     .get_matches_from(&arguments);
 
@@ -167,7 +167,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
                         .ok_or_else(|| format_err!("Non string argument"))
                         .and_then(|s| CString::new(s).map_err(|e| e.into()))
                 })
-            .collect::<Result<Vec<_>, Error>>()?,
+                .collect::<Result<Vec<_>, Error>>()?,
             _ => Err(format_err!("Malformed YAML config"))?,
         };
 
@@ -412,9 +412,7 @@ pub extern "C" fn dmtr_wait_any(
 
 #[no_mangle]
 pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
-    with_libos(|libos| {
-        libos.rt().alloc_sgarray(size)
-    })
+    with_libos(|libos| libos.rt().alloc_sgarray(size))
 }
 
 #[no_mangle]
@@ -423,7 +421,7 @@ pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
         return 0;
     }
     with_libos(|libos| {
-        libos.rt().free_sgarray(unsafe {*sga});
+        libos.rt().free_sgarray(unsafe { *sga });
         0
     })
 }
@@ -437,13 +435,20 @@ pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
 pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
     with_libos(|libos| {
         let is_valid = libos.is_qd_valid(qd as FileDescriptor);
-        unsafe { *flag_out = if is_valid { 1 } else { 0 }; }
+        unsafe {
+            *flag_out = if is_valid { 1 } else { 0 };
+        }
         0
     })
 }
 
 #[no_mangle]
-pub extern "C" fn dmtr_open2(qd_out: *mut c_int, pathname: *const c_char, flags: c_int, mode: libc::mode_t) -> c_int {
+pub extern "C" fn dmtr_open2(
+    qd_out: *mut c_int,
+    pathname: *const c_char,
+    flags: c_int,
+    mode: libc::mode_t,
+) -> c_int {
     unimplemented!();
 }
 // #[no_mangle]
