@@ -3,28 +3,45 @@
 
 #![feature(try_blocks)]
 
-use anyhow::format_err;
-use anyhow::Error;
-use catnip::protocols::{ethernet2::MacAddress, ip::Port, ipv4::Endpoint};
-use catnip::{file_table::FileDescriptor, logging};
-use catnip::{libos::LibOS, operations::OperationResult};
-use catnip_libos::memory::DPDKBuf;
-use catnip_libos::runtime::DPDKRuntime;
+use anyhow::{
+    format_err,
+    Error,
+};
+use catnip::{
+    file_table::FileDescriptor,
+    libos::LibOS,
+    logging,
+    operations::OperationResult,
+    protocols::{
+        ethernet2::MacAddress,
+        ip::Port,
+        ipv4::Endpoint,
+    },
+};
+use catnip_libos::{
+    memory::DPDKBuf,
+    runtime::DPDKRuntime,
+};
 use dpdk_rs::load_mlx_driver;
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::env;
-use std::ffi::CString;
-use std::fs::File;
-use std::io::Read;
-use std::net::Ipv4Addr;
-use std::panic;
-use std::process;
-use std::str::FromStr;
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
-use yaml_rust::{Yaml, YamlLoader};
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    env,
+    ffi::CString,
+    fs::File,
+    io::Read,
+    net::Ipv4Addr,
+    panic,
+    process,
+    str::FromStr,
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
+use yaml_rust::{
+    Yaml,
+    YamlLoader,
+};
 
 //==============================================================================
 // Config
@@ -325,7 +342,7 @@ fn udp_ping_pong() {
             let (sender, receiver) = mpsc::channel();
             let t = thread::spawn(
                 move || match receiver.recv_timeout(Duration::from_secs(60)) {
-                    Ok(_) => {}
+                    Ok(_) => {},
                     _ => process::exit(0),
                 },
             );
@@ -373,7 +390,7 @@ fn udp_ping_pong() {
                     let (qt_push, qt_pop) = push_pop(&mut test, sockfd, sendbuf.clone());
                     qtokens.push(qt_push);
                     qtokens.push(qt_pop);
-                }
+                },
                 OperationResult::Pop(_, recvbuf) => {
                     // Sanity received buffer.
                     assert!(
@@ -381,7 +398,7 @@ fn udp_ping_pong() {
                         "server expectbuf != recevbuf"
                     );
                     npongs -= 1;
-                }
+                },
                 _ => panic!("unexpected result"),
             }
         }

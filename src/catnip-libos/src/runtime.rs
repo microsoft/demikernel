@@ -1,28 +1,67 @@
-use crate::memory::{DPDKBuf, Mbuf, MemoryManager};
+use crate::memory::{
+    DPDKBuf,
+    Mbuf,
+    MemoryManager,
+};
 use arrayvec::ArrayVec;
 use catnip::{
-    collections::bytes::{Bytes, BytesMut},
-    interop::{dmtr_sgarray_t, dmtr_sgaseg_t},
-    protocols::{arp, ethernet2::frame::MIN_PAYLOAD_SIZE, ethernet2::MacAddress, tcp, udp},
-    runtime::RuntimeBuf,
-    runtime::{PacketBuf, Runtime, RECEIVE_BATCH_SIZE},
-    scheduler::{Operation, Scheduler, SchedulerHandle},
-    timer::{Timer, TimerPtr, WaitFuture},
+    collections::bytes::{
+        Bytes,
+        BytesMut,
+    },
+    interop::{
+        dmtr_sgarray_t,
+        dmtr_sgaseg_t,
+    },
+    protocols::{
+        arp,
+        ethernet2::{
+            frame::MIN_PAYLOAD_SIZE,
+            MacAddress,
+        },
+        tcp,
+        udp,
+    },
+    runtime::{
+        PacketBuf,
+        Runtime,
+        RuntimeBuf,
+        RECEIVE_BATCH_SIZE,
+    },
+    scheduler::{
+        Operation,
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::{
+        Timer,
+        TimerPtr,
+        WaitFuture,
+    },
 };
 use dpdk_rs::{
-    rte_eth_dev, rte_eth_devices, rte_eth_rx_burst, rte_eth_tx_burst, rte_mbuf, rte_mempool,
+    rte_eth_dev,
+    rte_eth_devices,
+    rte_eth_rx_burst,
+    rte_eth_tx_burst,
+    rte_mbuf,
+    rte_mempool,
     rte_pktmbuf_chain,
 };
 use futures::FutureExt;
 use rand::{
-    distributions::{Distribution, Standard},
+    distributions::{
+        Distribution,
+        Standard,
+    },
     rngs::SmallRng,
     seq::SliceRandom,
-    Rng, SeedableRng,
+    Rng,
+    SeedableRng,
 };
-use std::collections::HashMap;
 use std::{
     cell::RefCell,
+    collections::HashMap,
     future::Future,
     mem,
     mem::MaybeUninit,
@@ -30,7 +69,10 @@ use std::{
     ptr,
     rc::Rc,
     slice,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 #[derive(Clone)]
@@ -126,8 +168,8 @@ struct Inner {
 }
 
 impl Runtime for DPDKRuntime {
-    type WaitFuture = WaitFuture<TimerRc>;
     type Buf = DPDKBuf;
+    type WaitFuture = WaitFuture<TimerRc>;
 
     fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t {
         self.inner.borrow().memory_manager.into_sgarray(buf)
@@ -183,7 +225,7 @@ impl Runtime for DPDKRuntime {
                         unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
                         mbuf.trim(mbuf.len() - bytes.len());
                         mbuf
-                    }
+                    },
                 };
                 unsafe {
                     assert_eq!(
