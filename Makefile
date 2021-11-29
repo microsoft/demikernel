@@ -27,9 +27,11 @@ all: demikernel-all demikernel-tests
 
 clean: demikernel-clean
 
-demikernel-all:
+demikernel-all: demikernel-catnip
+
+demikernel-catnip:
 	cd $(SRCDIR) && \
-	$(CARGO) build --all $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS)
+	$(CARGO) build --all $(BUILD) --features=$(DRIVER) -p catnip-libos $(CARGO_FLAGS)
 
 demikernel-tests:
 	cd $(SRCDIR) && \
@@ -41,6 +43,8 @@ demikernel-clean:
 	$(CARGO) clean && \
 	rm -f Cargo.lock
 
-test:
+test: test-catnip
+
+test-catnip:
 	cd $(SRCDIR) && \
-	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -- --nocapture $(TEST)
+	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -p catnip-libos -- --nocapture $(TEST)
