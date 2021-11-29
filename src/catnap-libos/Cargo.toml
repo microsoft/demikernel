@@ -1,0 +1,29 @@
+[package]
+name = "catnap-libos"
+version = "0.1.0"
+author = "Microsoft Corporation"
+description = "Kernel-Bypass libOS Architecture"
+homepage = "https://aka.ms/demikernel"
+repository = "https://github.com/demikernel/demikernel"
+readme = "README.md"
+license-file = "LICENSE.txt"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+arrayvec = "0.7.1"
+anyhow = "1.0.32"
+catnip = { git = "https://github.com/demikernel/catnip", rev = "0e4d095", features = ["threadunsafe"] }
+futures = "0.3.15"
+libc = "0.2.97"
+rand = { version = "0.8.4", features = ["small_rng"] }
+yaml-rust = "0.4.4"
+must-let = { git = "https://github.com/sujayakar/must-let" }
+log = "0.4.14"
+perftools = { git = "https://github.com/demikernel/perftools", rev = "94031ae" }
+socket2 = { version = "0.4.1", features = ["all"] }
+
+[features]
+profiler = [ "catnip/profiler" ]

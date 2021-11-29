@@ -31,7 +31,11 @@ demikernel-all: demikernel-catnip
 
 demikernel-catnip:
 	cd $(SRCDIR) && \
-	$(CARGO) build --all $(BUILD) --features=$(DRIVER) -p catnip-libos $(CARGO_FLAGS)
+	$(CARGO) build $(BUILD) --features=$(DRIVER) -p catnip-libos $(CARGO_FLAGS)
+
+demikernel-catnap:
+	cd $(SRCDIR) && \
+	$(CARGO) build $(BUILD) -p catnap-libos $(CARGO_FLAGS)
 
 demikernel-tests:
 	cd $(SRCDIR) && \
@@ -48,3 +52,7 @@ test: test-catnip
 test-catnip:
 	cd $(SRCDIR) && \
 	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -p catnip-libos -- --nocapture $(TEST)
+
+test-catnap:
+	cd $(SRCDIR) && \
+	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) -p catnap-libos -- --nocapture $(TEST)
