@@ -27,7 +27,7 @@ all: demikernel-all demikernel-tests
 
 clean: demikernel-clean
 
-demikernel-all: demikernel-catip
+demikernel-all: demikernel-catnip
 
 demikernel-catnip:
 	cd $(SRCDIR) && \
