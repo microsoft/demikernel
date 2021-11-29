@@ -12,4 +12,5 @@ rpath = false
 [workspace]
 members = [
     "catnip-libos",
+    "catnap-libos",
 ]
