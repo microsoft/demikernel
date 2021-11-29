@@ -56,6 +56,7 @@ pub struct Config {
     pub tcp_checksum_offload: bool,
     pub local_ipv4_addr: Ipv4Addr,
     pub local_link_addr: MacAddress,
+    pub local_interface_name: String,
 }
 
 impl Config {
@@ -115,6 +116,11 @@ impl Config {
         )
         .unwrap();
 
+        let local_interface_name = config_obj["catnip"]["my_interface_name"]
+            .as_str()
+            .ok_or_else(|| format_err!("Couldn't find my_interface_name config"))
+            .unwrap();
+
         // Parse ARP table.
         let mut disable_arp: bool = false;
         if let Some(arp_disabled) = config_obj["catnip"]["disable_arp"].as_bool() {
@@ -135,6 +141,7 @@ impl Config {
             disable_arp,
             local_ipv4_addr,
             local_link_addr,
+            local_interface_name: local_interface_name.to_string(),
             mss,
             mtu,
             udp_checksum_offload,
@@ -159,7 +166,7 @@ impl Test {
         let rt: LinuxRuntime = catnap_libos::runtime::initialize_linux(
             config.local_link_addr,
             config.local_ipv4_addr,
-            "ens1",
+            &config.local_interface_name,
             config.arp_table(),
         )
         .unwrap();
