@@ -69,11 +69,6 @@ fn with_libos<T>(f: impl FnOnce(&mut LibOS<DPDKRuntime>) -> T) -> T {
 }
 
 #[no_mangle]
-pub extern "C" fn catnip_libos_noop() {
-    println!("hey there!");
-}
-
-#[no_mangle]
 pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     let r: Result<_, Error> = try {
         let config_path = match std::env::var("CONFIG_PATH") {
@@ -427,10 +422,10 @@ pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
     })
 }
 
-// #[no_mangle]
-// pub extern "C" fn dmtr_queue(qd_out: *mut c_int) -> c_int {
-//     unimplemented!()
-// }
+#[no_mangle]
+pub extern "C" fn dmtr_queue(qd_out: *mut c_int) -> c_int {
+    unimplemented!()
+}
 
 #[no_mangle]
 pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
@@ -444,15 +439,6 @@ pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn dmtr_open2(
-    qd_out: *mut c_int,
-    pathname: *const c_char,
-    flags: c_int,
-    mode: libc::mode_t,
-) -> c_int {
+pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
     unimplemented!();
 }
-// #[no_mangle]
-// pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
-//     unimplemented!();
-// }
