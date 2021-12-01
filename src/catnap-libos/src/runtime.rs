@@ -225,7 +225,7 @@ impl Runtime for LinuxRuntime {
         for i in 0..sga.sga_numsegs as usize {
             len += sga.sga_segs[i].sgaseg_len;
         }
-        let mut buf = BytesMut::zeroed(len as usize);
+        let mut buf = BytesMut::zeroed(len as usize).unwrap();
         let mut pos = 0;
         for i in 0..sga.sga_numsegs as usize {
             let seg = &sga.sga_segs[i];
@@ -242,7 +242,7 @@ impl Runtime for LinuxRuntime {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
 
-        let mut buf = BytesMut::zeroed(header_size + body_size);
+        let mut buf = BytesMut::zeroed(header_size + body_size).unwrap();
 
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {

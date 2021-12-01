@@ -293,7 +293,7 @@ impl MemoryManager {
             let mbuf = self.clone_body(ptr, len).expect("Invalid sga pointer");
             DPDKBuf::Managed(mbuf)
         } else {
-            let mut buf = BytesMut::zeroed(len);
+            let mut buf = BytesMut::zeroed(len).unwrap();
             let seg_slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
             buf.copy_from_slice(seg_slice);
             DPDKBuf::External(buf.freeze())
