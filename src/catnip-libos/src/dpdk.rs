@@ -17,14 +17,11 @@ use dpdk_rs::{
     rte_eth_conf,
     rte_eth_dev_configure,
     rte_eth_dev_count_avail,
-    rte_eth_dev_flow_ctrl_get,
-    rte_eth_dev_flow_ctrl_set,
     rte_eth_dev_get_mtu,
     rte_eth_dev_info_get,
     rte_eth_dev_is_valid_port,
     rte_eth_dev_set_mtu,
     rte_eth_dev_start,
-    rte_eth_fc_mode_RTE_FC_NONE as RTE_FC_NONE,
     rte_eth_find_next_owned_by,
     rte_eth_link,
     rte_eth_link_get_nowait,
@@ -37,10 +34,6 @@ use dpdk_rs::{
     rte_eth_tx_queue_setup,
     rte_eth_txconf,
     rte_ether_addr,
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_pool_create,
-    rte_socket_id,
     DEV_RX_OFFLOAD_JUMBO_FRAME,
     DEV_RX_OFFLOAD_TCP_CKSUM,
     DEV_RX_OFFLOAD_UDP_CKSUM,
@@ -53,8 +46,6 @@ use dpdk_rs::{
     RTE_ETHER_MAX_JUMBO_FRAME_LEN,
     RTE_ETHER_MAX_LEN,
     RTE_ETH_DEV_NO_OWNER,
-    RTE_MAX_ETHPORTS,
-    RTE_MBUF_DEFAULT_BUF_SIZE,
     RTE_PKTMBUF_HEADROOM,
 };
 use std::{
@@ -62,7 +53,6 @@ use std::{
     ffi::CString,
     mem::MaybeUninit,
     net::Ipv4Addr,
-    ptr,
     time::Duration,
 };
 

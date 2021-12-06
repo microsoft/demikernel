@@ -5,14 +5,8 @@ use crate::memory::{
 };
 use arrayvec::ArrayVec;
 use catnip::{
-    collections::bytes::{
-        Bytes,
-        BytesMut,
-    },
-    interop::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
-    },
+    self,
+    interop::dmtr_sgarray_t,
     protocols::{
         arp,
         ethernet2::{
@@ -25,7 +19,6 @@ use catnip::{
     runtime::{
         PacketBuf,
         Runtime,
-        RuntimeBuf,
         RECEIVE_BATCH_SIZE,
     },
     scheduler::{
@@ -40,12 +33,9 @@ use catnip::{
     },
 };
 use dpdk_rs::{
-    rte_eth_dev,
-    rte_eth_devices,
     rte_eth_rx_burst,
     rte_eth_tx_burst,
     rte_mbuf,
-    rte_mempool,
     rte_pktmbuf_chain,
 };
 use futures::FutureExt;
@@ -64,11 +54,8 @@ use std::{
     collections::HashMap,
     future::Future,
     mem,
-    mem::MaybeUninit,
     net::Ipv4Addr,
-    ptr,
     rc::Rc,
-    slice,
     time::{
         Duration,
         Instant,
@@ -121,7 +108,7 @@ impl DPDKRuntime {
         tcp_options.tx_checksum_offload = tcp_checksum_offload;
         tcp_options.rx_checksum_offload = tcp_checksum_offload;
 
-        let mut udp_options = udp::Options::new(udp_checksum_offload, udp_checksum_offload);
+        let udp_options = udp::Options::new(udp_checksum_offload, udp_checksum_offload);
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -284,7 +271,7 @@ impl Runtime for DPDKRuntime {
     }
 
     fn receive(&self) -> ArrayVec<DPDKBuf, RECEIVE_BATCH_SIZE> {
-        let mut inner = self.inner.borrow_mut();
+        let inner = self.inner.borrow_mut();
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
