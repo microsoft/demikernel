@@ -24,6 +24,7 @@ must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 perftools = { git = "https://github.com/demikernel/perftools", rev = "94031ae" }
 socket2 = { version = "0.4.1", features = ["all"] }
+demikernel = { path = "../demikernel" }
 
 [features]
 profiler = [ "catnip/profiler" ]
