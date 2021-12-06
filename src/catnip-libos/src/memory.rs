@@ -22,15 +22,12 @@ use dpdk_rs::{
     rte_mempool_calc_obj_size,
     rte_mempool_mem_iter,
     rte_mempool_memhdr,
-    rte_mempool_objhdr,
     rte_mempool_objsz,
     rte_pktmbuf_adj,
     rte_pktmbuf_alloc,
     rte_pktmbuf_clone,
     rte_pktmbuf_free,
-    rte_pktmbuf_headroom,
     rte_pktmbuf_pool_create,
-    rte_pktmbuf_tailroom,
     rte_pktmbuf_trim,
     rte_socket_id,
     rte_strerror,
@@ -46,10 +43,9 @@ use std::{
     ptr,
     rc::Rc,
     slice,
-    sync::Arc,
 };
 
-const RTE_PKTMBUF_HEADROOM: usize = 128;
+const _RTE_PKTMBUF_HEADROOM: usize = 128;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MemoryConfig {
@@ -396,12 +392,12 @@ impl Inner {
         let mut memory_regions: Vec<(usize, usize)> = vec![];
 
         extern "C" fn mem_cb(
-            mp: *mut rte_mempool,
+            _mp: *mut rte_mempool,
             opaque: *mut c_void,
             memhdr: *mut rte_mempool_memhdr,
-            mem_idx: c_uint,
+            _mem_idx: c_uint,
         ) {
-            let mut mr = unsafe { &mut *(opaque as *mut Vec<(usize, usize)>) };
+            let mr = unsafe { &mut *(opaque as *mut Vec<(usize, usize)>) };
             let (addr, len) = unsafe { ((*memhdr).addr, (*memhdr).len) };
             mr.push((addr as usize, len as usize));
         }
@@ -492,7 +488,7 @@ impl Mbuf {
         }
     }
 
-    pub fn split(mut self, ix: usize) -> (Self, Self) {
+    pub fn split(self, ix: usize) -> (Self, Self) {
         let n = self.len();
         if ix == n {
             let empty = Self {
