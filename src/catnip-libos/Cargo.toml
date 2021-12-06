@@ -16,7 +16,6 @@ crate-type = ["cdylib", "rlib"]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
 catnip = { git = "https://github.com/demikernel/catnip", branch = "unstable", features = ["threadunsafe"] }
-clap = "2.33.3"
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", version = "0.2" }
 futures = "0.3.15"
 libc = "0.2.97"
@@ -27,6 +26,8 @@ must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 ntest = "0.7.3"
 perftools = { git = "https://github.com/demikernel/perftools", rev = "94031ae" }
+demikernel = { path = "../demikernel" }
+
 
 [build-dependencies]
 bindgen = "0.55.1"

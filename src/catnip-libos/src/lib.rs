@@ -1,7 +1,17 @@
-#![allow(non_camel_case_types, unused)]
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+#![cfg_attr(feature = "strict", deny(warnings))]
+#![deny(clippy::all)]
 #![feature(maybe_uninit_uninit_array, new_uninit)]
 #![feature(try_blocks)]
 
+pub mod dpdk;
+pub mod memory;
+pub mod runtime;
+
+use crate::runtime::DPDKRuntime;
+use anyhow::Error;
 use catnip::{
     file_table::FileDescriptor,
     interop::{
@@ -12,15 +22,17 @@ use catnip::{
     libos::LibOS,
     logging,
     protocols::{
-        ethernet2::MacAddress,
         ip,
         ipv4,
     },
     runtime::Runtime,
 };
-use clap::{
-    App,
-    Arg,
+use demikernel::{
+    config::Config,
+    network::{
+        libos_network_init,
+        NetworkLibOS,
+    },
 };
 use libc::{
     c_char,
@@ -30,32 +42,10 @@ use libc::{
 };
 use std::{
     cell::RefCell,
-    collections::HashMap,
     convert::TryFrom,
-    env,
-    ffi::{
-        CStr,
-        CString,
-    },
-    fs::File,
-    io::Read,
     mem,
     net::Ipv4Addr,
     slice,
-};
-use yaml_rust::{
-    Yaml,
-    YamlLoader,
-};
-
-pub mod dpdk;
-pub mod memory;
-pub mod runtime;
-
-use crate::runtime::DPDKRuntime;
-use anyhow::{
-    format_err,
-    Error,
 };
 
 thread_local! {
@@ -68,124 +58,35 @@ fn with_libos<T>(f: impl FnOnce(&mut LibOS<DPDKRuntime>) -> T) -> T {
     })
 }
 
+//==============================================================================
+// init
+//==============================================================================
+
 #[no_mangle]
 pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    catnip_init(argc, argv)
+}
+
+pub fn catnip_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    logging::initialize();
     let r: Result<_, Error> = try {
-        let config_path = match std::env::var("CONFIG_PATH") {
-            Ok(s) => s,
-            Err(..) => {
-                if argc == 0 || argv.is_null() {
-                    Err(format_err!("Arguments not provided"))?;
-                }
-                let argument_ptrs = unsafe { slice::from_raw_parts(argv, argc as usize) };
-                let arguments: Vec<_> = argument_ptrs
-                    .into_iter()
-                    .map(|&p| unsafe { CStr::from_ptr(p).to_str().expect("Non-UTF8 argument") })
-                    .collect();
-                let matches = App::new("libos-catnip")
-                    .arg(
-                        Arg::with_name("config")
-                            .short("c")
-                            .long("config-path")
-                            .value_name("FILE")
-                            .help("YAML file for DPDK configuration")
-                            .takes_value(true),
-                    )
-                    .arg(
-                        Arg::with_name("iterations")
-                            .short("i")
-                            .long("iterations")
-                            .value_name("COUNT")
-                            .help("Number of iterations")
-                            .takes_value(true),
-                    )
-                    .arg(
-                        Arg::with_name("size")
-                            .short("s")
-                            .long("size")
-                            .value_name("BYTES")
-                            .help("Packet size")
-                            .takes_value(true),
-                    )
-                    .get_matches_from(&arguments);
+        // Load config file.
+        let config = Config::initialize(argc, argv)?;
 
-                matches
-                    .value_of("config")
-                    .ok_or_else(|| format_err!("--config-path argument not provided"))?
-                    .to_owned()
-            },
-        };
-
-        let mut config_s = String::new();
-        File::open(config_path)?.read_to_string(&mut config_s)?;
-        let config = YamlLoader::load_from_str(&config_s)?;
-
-        let config_obj = match &config[..] {
-            &[ref c] => c,
-            _ => Err(format_err!("Wrong number of config objects"))?,
-        };
-
-        let local_ipv4_addr: Ipv4Addr = config_obj["catnip"]["my_ipv4_addr"]
-            .as_str()
-            .ok_or_else(|| format_err!("Couldn't find my_ipv4_addr in config"))?
-            .parse()?;
-        if local_ipv4_addr.is_unspecified() || local_ipv4_addr.is_broadcast() {
-            Err(format_err!("Invalid IPv4 address"))?;
-        }
-
-        let mut arp_table = HashMap::new();
-        if let Some(arp_table_obj) = config_obj["catnip"]["arp_table"].as_hash() {
-            for (k, v) in arp_table_obj {
-                let link_addr_str = k
-                    .as_str()
-                    .ok_or_else(|| format_err!("Couldn't find ARP table link_addr in config"))?;
-                let link_addr = MacAddress::parse_str(link_addr_str)?;
-                let ipv4_addr: Ipv4Addr = v
-                    .as_str()
-                    .ok_or_else(|| format_err!("Couldn't find ARP table link_addr in config"))?
-                    .parse()?;
-                arp_table.insert(ipv4_addr, link_addr);
-            }
-            println!("Pre-populating ARP table: {:?}", arp_table);
-        }
-
-        let mut disable_arp = false;
-        if let Some(arp_disabled) = config_obj["catnip"]["disable_arp"].as_bool() {
-            disable_arp = arp_disabled;
-            println!("ARP disabled: {:?}", disable_arp);
-        }
-
-        let eal_init_args = match config_obj["dpdk"]["eal_init"] {
-            Yaml::Array(ref arr) => arr
-                .iter()
-                .map(|a| {
-                    a.as_str()
-                        .ok_or_else(|| format_err!("Non string argument"))
-                        .and_then(|s| CString::new(s).map_err(|e| e.into()))
-                })
-                .collect::<Result<Vec<_>, Error>>()?,
-            _ => Err(format_err!("Malformed YAML config"))?,
-        };
-
-        let use_jumbo_frames: bool = env::var("USE_JUMBO").is_ok();
-        let mtu: u16 = env::var("MTU").unwrap_or(1500.to_string()).parse().unwrap();
-        let mss: usize = env::var("MSS").unwrap_or(9000.to_string()).parse().unwrap();
-        let tcp_checksum_offload: bool = env::var("TCP_OFFLOAD_CHECKSUM").is_ok();
-        let udp_checksum_offload: bool = env::var("UDO_OFFLOAD_CHECKSUM").is_ok();
-        let runtime = self::dpdk::initialize_dpdk(
-            local_ipv4_addr,
-            &eal_init_args,
-            arp_table,
-            disable_arp,
-            use_jumbo_frames,
-            mtu,
-            mss,
-            tcp_checksum_offload,
-            udp_checksum_offload,
+        let rt = self::dpdk::initialize_dpdk(
+            config.local_ipv4_addr,
+            &config.eal_init_args(),
+            config.arp_table(),
+            config.disable_arp,
+            config.use_jumbo_frames,
+            config.mtu,
+            config.mss,
+            config.tcp_checksum_offload,
+            config.udp_checksum_offload,
         )?;
-        logging::initialize();
-        LibOS::new(runtime)?
+        LibOS::new(rt)?
     };
+
     let libos = match r {
         Ok(libos) => libos,
         Err(e) => {
@@ -200,11 +101,33 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         *tls_libos = Some(libos);
     });
 
+    libos_network_init(NetworkLibOS::new(
+        catnip_socket,
+        catnip_bind,
+        catnip_listen,
+        catnip_accept,
+        catnip_connect,
+        catnip_pushto,
+        catnip_drop,
+        catnip_close,
+        catnip_push,
+        catnip_wait,
+        catnip_wait_any,
+        catnip_poll,
+        catnip_pop,
+        catnip_sgaalloc,
+        catnip_sgafree,
+        catnip_getsockname,
+    ));
+
     0
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_socket(
+//==============================================================================
+// socket
+//==============================================================================
+
+pub fn catnip_socket(
     qd_out: *mut c_int,
     domain: c_int,
     socket_type: c_int,
@@ -222,8 +145,11 @@ pub extern "C" fn dmtr_socket(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+//==============================================================================
+// bind
+//==============================================================================
+
+fn catnip_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
     if saddr.is_null() {
         return libc::EINVAL;
     }
@@ -249,8 +175,11 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
+//==============================================================================
+// listen
+//==============================================================================
+
+fn catnip_listen(fd: c_int, backlog: c_int) -> c_int {
     with_libos(
         |libos| match libos.listen(fd as FileDescriptor, backlog as usize) {
             Ok(..) => 0,
@@ -262,16 +191,22 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
     )
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
+//==============================================================================
+// accept
+//==============================================================================
+
+fn catnip_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
         unsafe { *qtok_out = libos.accept(sockqd as FileDescriptor).unwrap() };
         0
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_connect(
+//==============================================================================
+// connect
+//==============================================================================
+
+fn catnip_connect(
     qtok_out: *mut dmtr_qtoken_t,
     qd: c_int,
     saddr: *const sockaddr,
@@ -294,8 +229,11 @@ pub extern "C" fn dmtr_connect(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
+//==============================================================================
+// close
+//==============================================================================
+
+fn catnip_close(qd: c_int) -> c_int {
     with_libos(|libos| match libos.close(qd as FileDescriptor) {
         Ok(..) => 0,
         Err(e) => {
@@ -305,12 +243,11 @@ pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_push(
-    qtok_out: *mut dmtr_qtoken_t,
-    qd: c_int,
-    sga: *const dmtr_sgarray_t,
-) -> c_int {
+//==============================================================================
+// push
+//==============================================================================
+
+fn catnip_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
     if sga.is_null() {
         return libc::EINVAL;
     }
@@ -321,8 +258,11 @@ pub extern "C" fn dmtr_push(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_pushto(
+//==============================================================================
+// pushto
+//==============================================================================
+
+fn catnip_pushto(
     qtok_out: *mut dmtr_qtoken_t,
     qd: c_int,
     sga: *const dmtr_sgarray_t,
@@ -349,16 +289,22 @@ pub extern "C" fn dmtr_pushto(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
+//==============================================================================
+// pop
+//==============================================================================
+
+fn catnip_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
         unsafe { *qtok_out = libos.pop(qd as FileDescriptor).unwrap() };
         0
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
+//==============================================================================
+// poll
+//==============================================================================
+
+fn catnip_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| match libos.poll(qt) {
         None => libc::EAGAIN,
         Some(r) => {
@@ -368,16 +314,22 @@ pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
+//==============================================================================
+// drop
+//==============================================================================
+
+fn catnip_drop(qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
         libos.drop_qtoken(qt);
         0
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
+//==============================================================================
+// wait
+//==============================================================================
+
+fn catnip_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
         let (qd, r) = libos.wait2(qt);
         if !qr_out.is_null() {
@@ -388,8 +340,11 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_wait_any(
+//==============================================================================
+// wait_any
+//==============================================================================
+
+fn catnip_wait_any(
     qr_out: *mut dmtr_qresult_t,
     ready_offset: *mut c_int,
     qts: *mut dmtr_qtoken_t,
@@ -406,13 +361,19 @@ pub extern "C" fn dmtr_wait_any(
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
+//==============================================================================
+// sgaalloc
+//==============================================================================
+
+fn catnip_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
     with_libos(|libos| libos.rt().alloc_sgarray(size))
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
+//==============================================================================
+// sgafree
+//==============================================================================
+
+fn catnip_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
     if sga.is_null() {
         return 0;
     }
@@ -422,23 +383,10 @@ pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
     })
 }
 
-#[no_mangle]
-pub extern "C" fn dmtr_queue(qd_out: *mut c_int) -> c_int {
-    unimplemented!()
-}
+//==============================================================================
+// getsockname
+//==============================================================================
 
-#[no_mangle]
-pub extern "C" fn dmtr_is_qd_valid(flag_out: *mut c_int, qd: c_int) -> c_int {
-    with_libos(|libos| {
-        let is_valid = libos.is_qd_valid(qd as FileDescriptor);
-        unsafe {
-            *flag_out = if is_valid { 1 } else { 0 };
-        }
-        0
-    })
-}
-
-#[no_mangle]
-pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
+fn catnip_getsockname(_qd: c_int, _saddr: *mut sockaddr, _size: *mut socklen_t) -> c_int {
     unimplemented!();
 }
