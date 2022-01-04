@@ -9,6 +9,7 @@
 
 #ifdef __cplusplus
 extern "C" {
+#endif
 
 /**
  * @brief Blocks until completion of queue operation associated with queue token
