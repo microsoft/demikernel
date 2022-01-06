@@ -101,12 +101,18 @@ impl DPDKRuntime {
             disable_arp,
         );
 
-        let mut tcp_options = tcp::Options::default();
-        tcp_options.advertised_mss = mss;
-        tcp_options.window_scale = 5;
-        tcp_options.receive_window_size = 0xffff;
-        tcp_options.tx_checksum_offload = tcp_checksum_offload;
-        tcp_options.rx_checksum_offload = tcp_checksum_offload;
+        let tcp_options = tcp::Options::new(
+            Some(mss),
+            None,
+            None,
+            None,
+            None,
+            Some(0xffff),
+            Some(0),
+            None,
+            Some(tcp_checksum_offload),
+            Some(tcp_checksum_offload),
+        );
 
         let udp_options = udp::Options::new(udp_checksum_offload, udp_checksum_offload);
 
