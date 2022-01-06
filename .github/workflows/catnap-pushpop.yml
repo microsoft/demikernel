@@ -10,6 +10,11 @@ on:
       - master
       - unstable
       - dev
+  workflow_dispatch:
+    branches:
+      - master
+      - unstable
+      - dev
 
 concurrency: azure
 

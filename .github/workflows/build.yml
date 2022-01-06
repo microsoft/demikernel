@@ -10,6 +10,11 @@ on:
       - enhancement-*
       - feature-*
       - bugfix-*
+  workflow_dispatch:
+    branches:
+      - master
+      - unstable
+      - dev
 
 concurrency: azure
 
