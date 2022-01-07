@@ -15,8 +15,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", branch = "dev", features = ["threadunsafe"] }
-dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", branch = "dev" }
+catnip = { git = "https://github.com/demikernel/catnip", branch = "unstable", features = ["threadunsafe"] }
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", branch = "unstable" }
 futures = "0.3.15"
 libc = "0.2.97"
 rand = { version = "0.8.4", features = ["small_rng"] }
@@ -25,7 +25,7 @@ histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 ntest = "0.7.3"
-perftools = { git = "https://github.com/demikernel/perftools", rev = "94031ae" }
+perftools = { git = "https://github.com/demikernel/perftools", branch = "unstable" }
 demikernel = { path = "../demikernel" }
 
 
