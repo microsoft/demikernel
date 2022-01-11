@@ -1,6 +1,6 @@
 [package]
 name = "catnap-libos"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Microsoft Corporation"]
 description = "Kernel-Bypass libOS Architecture"
 homepage = "https://aka.ms/demikernel"
