@@ -7,14 +7,30 @@ name: Catnip Ping Pong
 on:
   push:
     branches:
-      - master
-      - unstable
+      - bugfix-*
+      - enhancement-*
+      - feature-*
       - dev
+      - unstable
+      - master
+  pull_request:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
   workflow_dispatch:
     branches:
-      - master
-      - unstable
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
       - dev
+      - unstable
+      - master
 
 concurrency: azure
 
