@@ -7,14 +7,30 @@ name: Catnap Ping Pong
 on:
   push:
     branches:
-      - master
-      - unstable
+      - bugfix-*
+      - enhancement-*
+      - feature-*
       - dev
+      - unstable
+      - master
+  pull_request:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
   workflow_dispatch:
     branches:
-      - master
-      - unstable
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
       - dev
+      - unstable
+      - master
 
 concurrency: azure
 
@@ -149,7 +165,7 @@ jobs:
         script: |
           source $HOME/setup-env.sh
           cd $GITHUB_REPOSITORY
-          MSS=9000 MTU=1500 PEER=client make test-catnap TEST=udp_ping_pong TIMEOUT=600 2>&1
+          MSS=9000 MTU=1500 PEER=client make test-catnap TEST=udp_ping_pong TIMEOUT=600 > nohup.out 2> nohup.err < /dev/null
 
   #====================
   # Cleanup
@@ -171,6 +187,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
+          cat nohup.*
           make clean
           git clean fdx
           git checkout master
@@ -194,6 +211,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
+          cat nohup.*
           make clean
           git clean fdx
           git checkout master
