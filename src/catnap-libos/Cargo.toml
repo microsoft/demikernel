@@ -22,7 +22,7 @@ rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.4"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
-perftools = { git = "https://github.com/demikernel/perftools", rev = "9b1f704cc4a13b66d1f4c7e832f481c167f634ae" }
+perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
 socket2 = { version = "0.4.1", features = ["all"] }
 demikernel = { path = "../demikernel" }
 

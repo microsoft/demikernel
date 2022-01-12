@@ -25,7 +25,7 @@ histogram = "0.6.9"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
 ntest = "0.7.3"
-perftools = { git = "https://github.com/demikernel/perftools", rev = "9b1f704cc4a13b66d1f4c7e832f481c167f634ae" }
+perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
 demikernel = { path = "../demikernel" }
 
 
