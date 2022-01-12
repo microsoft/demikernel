@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", rev = "f1751fa6678be1066a62ff1718d14a31b3381693", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "587d3f1a9c07aa935e3d4078a9efe1e3575dd453", features = ["threadunsafe"] }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "5526fb9751cb973b3a3b3f69c57c8f1d0c4df7c1" }
 futures = "0.3.15"
 libc = "0.2.97"

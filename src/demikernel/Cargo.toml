@@ -12,7 +12,7 @@ license-file = "LICENSE.txt"
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", rev = "f1751fa6678be1066a62ff1718d14a31b3381693", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "587d3f1a9c07aa935e3d4078a9efe1e3575dd453", features = ["threadunsafe"] }
 clap = "2.33.3"
 futures = "0.3.15"
 libc = "0.2.97"
