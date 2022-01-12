@@ -15,14 +15,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.1"
 anyhow = "1.0.32"
-catnip = { git = "https://github.com/demikernel/catnip", rev = "f1751fa6678be1066a62ff1718d14a31b3381693", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "587d3f1a9c07aa935e3d4078a9efe1e3575dd453", features = ["threadunsafe"] }
 futures = "0.3.15"
 libc = "0.2.97"
 rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.4"
 must-let = { git = "https://github.com/sujayakar/must-let" }
 log = "0.4.14"
-perftools = { git = "https://github.com/demikernel/perftools", rev = "9b1f704cc4a13b66d1f4c7e832f481c167f634ae" }
+perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a" }
 socket2 = { version = "0.4.1", features = ["all"] }
 demikernel = { path = "../demikernel" }
 

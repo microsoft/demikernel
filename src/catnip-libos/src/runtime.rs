@@ -62,6 +62,9 @@ use std::{
     },
 };
 
+#[cfg(feature = "profiler")]
+use perftools::timer;
+
 #[derive(Clone)]
 pub struct TimerRc(Rc<Timer<TimerRc>>);
 
@@ -282,6 +285,9 @@ impl Runtime for DPDKRuntime {
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
         let nb_rx = unsafe {
+            #[cfg(feature = "profiler")]
+            timer!("catnip_libos::receive::rte_eth_rx_burst");
+
             rte_eth_rx_burst(
                 inner.dpdk_port_id,
                 0,
@@ -291,13 +297,18 @@ impl Runtime for DPDKRuntime {
         };
         assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 
-        for &packet in &packets[..nb_rx as usize] {
-            let mbuf = Mbuf {
-                ptr: packet,
-                mm: inner.memory_manager.clone(),
-            };
-            out.push(DPDKBuf::Managed(mbuf));
+        {
+            #[cfg(feature = "profiler")]
+            timer!("catnip_libos:receive::for");
+            for &packet in &packets[..nb_rx as usize] {
+                let mbuf = Mbuf {
+                    ptr: packet,
+                    mm: inner.memory_manager.clone(),
+                };
+                out.push(DPDKBuf::Managed(mbuf));
+            }
         }
+
         out
     }
 
