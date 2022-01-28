@@ -6,31 +6,31 @@ use crate::memory::{
 use arrayvec::ArrayVec;
 use catnip::{
     self,
+    futures::FutureOperation,
     interop::dmtr_sgarray_t,
     protocols::{
-        arp,
+        arp::ArpConfig,
         ethernet2::{
-            frame::MIN_PAYLOAD_SIZE,
             MacAddress,
+            MIN_PAYLOAD_SIZE,
         },
         tcp,
-        udp,
+        udp::UdpConfig,
     },
     runtime::{
         PacketBuf,
         Runtime,
         RECEIVE_BATCH_SIZE,
     },
-    scheduler::{
-        Operation,
-        Scheduler,
-        SchedulerHandle,
-    },
     timer::{
         Timer,
         TimerPtr,
         WaitFuture,
     },
+};
+use catwalk::{
+    Scheduler,
+    SchedulerHandle,
 };
 use dpdk_rs::{
     rte_eth_rx_burst,
@@ -77,7 +77,7 @@ impl TimerPtr for TimerRc {
 #[derive(Clone)]
 pub struct DPDKRuntime {
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<Operation<Self>>,
+    scheduler: Scheduler<FutureOperation<Self>>,
 }
 
 impl DPDKRuntime {
@@ -96,7 +96,7 @@ impl DPDKRuntime {
         let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
 
-        let arp_options = arp::Options::new(
+        let arp_options = ArpConfig::new(
             Duration::from_secs(15),
             Duration::from_secs(20),
             5,
@@ -117,7 +117,7 @@ impl DPDKRuntime {
             Some(tcp_checksum_offload),
         );
 
-        let udp_options = udp::Options::new(udp_checksum_offload, udp_checksum_offload);
+        let udp_options = UdpConfig::new(udp_checksum_offload, udp_checksum_offload);
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -156,9 +156,9 @@ struct Inner {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     rng: SmallRng,
-    arp_options: arp::Options,
+    arp_options: ArpConfig,
     tcp_options: tcp::Options<DPDKRuntime>,
-    udp_options: udp::Options,
+    udp_options: UdpConfig,
 
     dpdk_port_id: u16,
 }
@@ -324,11 +324,11 @@ impl Runtime for DPDKRuntime {
         self.inner.borrow().tcp_options.clone()
     }
 
-    fn udp_options(&self) -> udp::Options {
+    fn udp_options(&self) -> UdpConfig {
         self.inner.borrow().udp_options.clone()
     }
 
-    fn arp_options(&self) -> arp::Options {
+    fn arp_options(&self) -> ArpConfig {
         self.inner.borrow().arp_options.clone()
     }
 
@@ -369,10 +369,10 @@ impl Runtime for DPDKRuntime {
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.scheduler
-            .insert(Operation::Background(future.boxed_local()))
+            .insert(FutureOperation::Background(future.boxed_local()))
     }
 
-    fn scheduler(&self) -> &Scheduler<Operation<Self>> {
+    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
         &self.scheduler
     }
 }

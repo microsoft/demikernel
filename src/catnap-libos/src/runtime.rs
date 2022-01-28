@@ -5,34 +5,34 @@ use catnip::{
         Bytes,
         BytesMut,
     },
+    futures::FutureOperation,
     interop::{
         dmtr_sgarray_t,
         dmtr_sgaseg_t,
     },
     protocols::{
-        arp,
+        arp::ArpConfig,
         ethernet2::{
             Ethernet2Header,
             MacAddress,
         },
         tcp,
-        udp,
+        udp::UdpConfig,
     },
     runtime::{
         PacketBuf,
         Runtime,
         RECEIVE_BATCH_SIZE,
     },
-    scheduler::{
-        Operation,
-        Scheduler,
-        SchedulerHandle,
-    },
     timer::{
         Timer,
         TimerRc,
         WaitFuture,
     },
+};
+use catwalk::{
+    Scheduler,
+    SchedulerHandle,
 };
 use futures::{
     Future,
@@ -86,7 +86,7 @@ enum SockAddrPurpose {
 #[derive(Clone)]
 pub struct LinuxRuntime {
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<Operation<LinuxRuntime>>,
+    scheduler: Scheduler<FutureOperation<LinuxRuntime>>,
 }
 
 pub struct Inner {
@@ -97,7 +97,7 @@ pub struct Inner {
     pub link_addr: MacAddress,
     pub ipv4_addr: Ipv4Addr,
     pub tcp_options: tcp::Options<LinuxRuntime>,
-    pub arp_options: arp::Options,
+    pub arp_options: ArpConfig,
 }
 
 //==============================================================================
@@ -128,11 +128,13 @@ impl LinuxRuntime {
         interface_name: &str,
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Self {
-        let mut arp_options = arp::Options::default();
-        arp_options.retry_count = 2;
-        arp_options.cache_ttl = Duration::from_secs(600);
-        arp_options.request_timeout = Duration::from_secs(1);
-        arp_options.initial_values = arp;
+        let arp_options: ArpConfig = ArpConfig::new(
+            Duration::from_secs(600),
+            Duration::from_secs(1),
+            2,
+            arp,
+            false,
+        );
 
         let socket = Socket::new(
             Domain::PACKET,
@@ -251,7 +253,7 @@ impl Runtime for LinuxRuntime {
 
         let buf = buf.freeze();
         let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
-        let dest_addr_arr = header.dst_addr.to_array();
+        let dest_addr_arr = header.dst_addr().to_array();
         let dest_sockaddr = raw_sockaddr(
             SockAddrPurpose::Send,
             self.inner.borrow().ifindex,
@@ -282,7 +284,7 @@ impl Runtime for LinuxRuntime {
         }
     }
 
-    fn scheduler(&self) -> &Scheduler<Operation<Self>> {
+    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
         &self.scheduler
     }
 
@@ -298,11 +300,11 @@ impl Runtime for LinuxRuntime {
         self.inner.borrow().tcp_options.clone()
     }
 
-    fn udp_options(&self) -> udp::Options {
-        udp::Options::default()
+    fn udp_options(&self) -> UdpConfig {
+        UdpConfig::default()
     }
 
-    fn arp_options(&self) -> arp::Options {
+    fn arp_options(&self) -> ArpConfig {
         self.inner.borrow().arp_options.clone()
     }
 
@@ -343,7 +345,7 @@ impl Runtime for LinuxRuntime {
 
     fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
         self.scheduler
-            .insert(Operation::Background(future.boxed_local()))
+            .insert(FutureOperation::Background(future.boxed_local()))
     }
 }
 

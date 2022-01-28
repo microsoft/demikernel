@@ -10,7 +10,6 @@ pub mod runtime;
 
 use anyhow::Error;
 use catnip::{
-    file_table::FileDescriptor,
     interop::{
         dmtr_qresult_t,
         dmtr_qtoken_t,
@@ -20,7 +19,7 @@ use catnip::{
     logging,
     protocols::{
         ip,
-        ipv4,
+        ipv4::Ipv4Endpoint,
     },
     runtime::Runtime,
 };
@@ -124,7 +123,7 @@ pub fn catnap_socket(
 ) -> c_int {
     with_libos(|libos| match libos.socket(domain, socket_type, protocol) {
         Ok(fd) => {
-            unsafe { *qd_out = fd as c_int };
+            unsafe { *qd_out = fd.into() };
             0
         },
         Err(e) => {
@@ -153,8 +152,8 @@ fn catnap_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
         if addr.is_unspecified() {
             addr = libos.rt().local_ipv4_addr();
         }
-        let endpoint = ipv4::Endpoint::new(addr, port);
-        match libos.bind(qd as FileDescriptor, endpoint) {
+        let endpoint = Ipv4Endpoint::new(addr, port);
+        match libos.bind(qd.into(), endpoint) {
             Ok(..) => 0,
             Err(e) => {
                 eprintln!("dmtr_bind failed: {:?}", e);
@@ -169,15 +168,13 @@ fn catnap_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
 //==============================================================================
 
 fn catnap_listen(fd: c_int, backlog: c_int) -> c_int {
-    with_libos(
-        |libos| match libos.listen(fd as FileDescriptor, backlog as usize) {
-            Ok(..) => 0,
-            Err(e) => {
-                eprintln!("listen failed: {:?}", e);
-                e.errno()
-            },
+    with_libos(|libos| match libos.listen(fd.into(), backlog as usize) {
+        Ok(..) => 0,
+        Err(e) => {
+            eprintln!("listen failed: {:?}", e);
+            e.errno()
         },
-    )
+    })
 }
 
 //==============================================================================
@@ -186,7 +183,7 @@ fn catnap_listen(fd: c_int, backlog: c_int) -> c_int {
 
 fn catnap_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.accept(sockqd as FileDescriptor).unwrap() };
+        unsafe { *qtok_out = libos.accept(sockqd.into()).unwrap() };
         0
     })
 }
@@ -210,10 +207,10 @@ fn catnap_connect(
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
     let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
-    let endpoint = ipv4::Endpoint::new(addr, port);
+    let endpoint = Ipv4Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.connect(qd as FileDescriptor, endpoint).unwrap() };
+        unsafe { *qtok_out = libos.connect(qd.into(), endpoint).unwrap() };
         0
     })
 }
@@ -223,7 +220,7 @@ fn catnap_connect(
 //==============================================================================
 
 fn catnap_close(qd: c_int) -> c_int {
-    with_libos(|libos| match libos.close(qd as FileDescriptor) {
+    with_libos(|libos| match libos.close(qd.into()) {
         Ok(..) => 0,
         Err(e) => {
             eprintln!("dmtr_close failed: {:?}", e);
@@ -242,7 +239,7 @@ fn catnap_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray
     }
     let sga = unsafe { &*sga };
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.push(qd as FileDescriptor, sga).unwrap() };
+        unsafe { *qtok_out = libos.push(qd.into(), sga).unwrap() };
         0
     })
 }
@@ -271,9 +268,9 @@ fn catnap_pushto(
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
     let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
-    let endpoint = ipv4::Endpoint::new(addr, port);
+    let endpoint = Ipv4Endpoint::new(addr, port);
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pushto(qd as FileDescriptor, sga, endpoint).unwrap() };
+        unsafe { *qtok_out = libos.pushto(qd.into(), sga, endpoint).unwrap() };
         0
     })
 }
@@ -284,7 +281,7 @@ fn catnap_pushto(
 
 fn catnap_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pop(qd as FileDescriptor).unwrap() };
+        unsafe { *qtok_out = libos.pop(qd.into()).unwrap() };
         0
     })
 }
