@@ -8,13 +8,13 @@ use anyhow::{
     Error,
 };
 use catnip::{
-    file_table::FileDescriptor,
     libos::LibOS,
     operations::OperationResult,
     protocols::{
         ip::Port,
-        ipv4::Endpoint,
+        ipv4::Ipv4Endpoint,
     },
+    queue::IoQueueDescriptor,
 };
 use catnip_libos::{
     memory::DPDKBuf,
@@ -64,7 +64,7 @@ impl Test {
         Self { config, libos }
     }
 
-    fn addr(&self, k1: &str, k2: &str) -> Result<Endpoint, Error> {
+    fn addr(&self, k1: &str, k2: &str) -> Result<Ipv4Endpoint, Error> {
         let addr = &self.config.config_obj[k1][k2];
         let host_s = addr["host"]
             .as_str()
@@ -76,7 +76,7 @@ impl Test {
             .ok_or(format_err!("Missing port"))
             .unwrap();
         let port = Port::try_from(port_i as u16).unwrap();
-        Ok(Endpoint::new(host, port))
+        Ok(Ipv4Endpoint::new(host, port))
     }
 
     pub fn is_server(&self) -> bool {
@@ -89,7 +89,7 @@ impl Test {
         }
     }
 
-    pub fn local_addr(&self) -> Endpoint {
+    pub fn local_addr(&self) -> Ipv4Endpoint {
         if self.is_server() {
             self.addr("server", "bind").unwrap()
         } else {
@@ -97,7 +97,7 @@ impl Test {
         }
     }
 
-    pub fn remote_addr(&self) -> Endpoint {
+    pub fn remote_addr(&self) -> Ipv4Endpoint {
         if self.is_server() {
             self.addr("server", "client").unwrap()
         } else {
@@ -142,8 +142,8 @@ fn udp_push_pop() {
     let payload: u8 = 'a' as u8;
     let nsends: usize = 1000;
     let nreceives: usize = (10 * nsends) / 100;
-    let local_addr: Endpoint = test.local_addr();
-    let remote_addr: Endpoint = test.remote_addr();
+    let local_addr: Ipv4Endpoint = test.local_addr();
+    let remote_addr: Ipv4Endpoint = test.remote_addr();
 
     // Setup peer.
     let sockfd = test
@@ -195,10 +195,10 @@ fn udp_ping_pong() {
     let mut test = Test::new();
     let mut npongs: usize = 1000;
     let payload: u8 = 'a' as u8;
-    let local_addr: Endpoint = test.local_addr();
-    let remote_addr: Endpoint = test.remote_addr();
+    let local_addr: Ipv4Endpoint = test.local_addr();
+    let remote_addr: Ipv4Endpoint = test.remote_addr();
 
-    let push_pop = |test: &mut Test, sockfd: FileDescriptor, buf: DPDKBuf| {
+    let push_pop = |test: &mut Test, sockfd: IoQueueDescriptor, buf: DPDKBuf| {
         let qt_push = test
             .libos
             .pushto2(sockfd, buf.clone(), remote_addr)

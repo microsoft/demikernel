@@ -9,9 +9,9 @@ use catnip::{
         dmtr_sgaseg_t,
     },
     protocols::{
-        ethernet2::frame::ETHERNET2_HEADER_SIZE,
-        ipv4::datagram::IPV4_HEADER_SIZE,
-        tcp::segment::MAX_TCP_HEADER_SIZE,
+        ethernet2::ETHERNET2_HEADER_SIZE,
+        ipv4::IPV4_HEADER_SIZE,
+        tcp::MAX_TCP_HEADER_SIZE,
     },
     runtime::RuntimeBuf,
 };
