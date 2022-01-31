@@ -10,17 +10,14 @@ readme = "README.md"
 license-file = "LICENSE.txt"
 
 [dependencies]
-arrayvec = "0.7.1"
-anyhow = "1.0.32"
-clap = "2.33.3"
-futures = "0.3.15"
-libc = "0.2.97"
+arrayvec = "0.7.2"
+anyhow = "1.0.53"
+clap = "3.0.13"
+futures = "0.3.19"
+libc = "0.2.116"
 rand = { version = "0.8.4", features = ["small_rng"] }
-yaml-rust = "0.4.4"
-histogram = "0.6.9"
-must-let = { git = "https://github.com/sujayakar/must-let" }
+yaml-rust = "0.4.5"
 log = "0.4.14"
-ntest = "0.7.3"
 
 catnip = { git = "https://github.com/demikernel/catnip", rev = "48dfa1c2cc8b6c769cf38c94abdf8fbc45360cbf", features = ["threadunsafe"] }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6" }

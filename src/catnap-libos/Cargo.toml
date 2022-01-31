@@ -13,13 +13,12 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-arrayvec = "0.7.1"
-anyhow = "1.0.32"
-futures = "0.3.15"
-libc = "0.2.97"
+arrayvec = "0.7.2"
+anyhow = "1.0.53"
+futures = "0.3.19"
+libc = "0.2.116"
 rand = { version = "0.8.4", features = ["small_rng"] }
-yaml-rust = "0.4.4"
-must-let = { git = "https://github.com/sujayakar/must-let" }
+yaml-rust = "0.4.5"
 log = "0.4.14"
 socket2 = { version = "0.4.1", features = ["all"] }
 
