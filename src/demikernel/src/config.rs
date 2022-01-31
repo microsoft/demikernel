@@ -171,14 +171,14 @@ impl Config {
                     .into_iter()
                     .map(|&p| unsafe { CStr::from_ptr(p).to_str().expect("Non-UTF8 argument") })
                     .collect();
-                let matches = App::new("libos-catnap")
+                let matches = App::new("Demikernel")
                     .arg(
-                        Arg::with_name("config")
-                            .short("c")
-                            .long("config-path")
+                        Arg::new("config")
+                            .short('c')
+                            .long("config")
+                            .takes_value(true)
                             .value_name("FILE")
-                            .help("YAML file for DPDK configuration")
-                            .takes_value(true),
+                            .help("Sets configuration file for Demikernel"),
                     )
                     .get_matches_from(&arguments);
 
