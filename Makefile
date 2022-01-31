@@ -7,19 +7,27 @@ export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type 
 export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d)
 export CONFIG_PATH ?= $(HOME)/config.yaml
 
-export CARGO ?= $(HOME)/.cargo/bin/cargo
 export TIMEOUT ?= 30
+
+#===============================================================================
+# Directories
+#===============================================================================
 
 export SRCDIR = $(CURDIR)/src
 export BINDIR = $(CURDIR)/bin
 export LIBDIR = $(CURDIR)/lib
-export CONTRIBDIR = $(CURDIR)/submodules
-export BUILDDIR = $(CURDIR)/build
+
+#===============================================================================
+# Toolchain Configuration
+#===============================================================================
+
+# Rust Toolchain
+export BUILD ?= --release
+export CARGO ?= $(HOME)/.cargo/bin/cargo
 
 #===============================================================================
 
 export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
-export BUILD ?= --release
 
 #===============================================================================
 
@@ -46,6 +54,8 @@ demikernel-clean:
 	rm -rf target &&  \
 	$(CARGO) clean && \
 	rm -f Cargo.lock
+
+#===============================================================================
 
 test: test-catnip
 
