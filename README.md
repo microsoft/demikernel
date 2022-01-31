@@ -58,7 +58,7 @@ or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any addi
 Contributing
 ------------
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for details regarding how to contribute
+See [CONTRIBUTING](./CONTRIBUTING) for details regarding how to contribute
 to this project.
 
 Usage Statement
