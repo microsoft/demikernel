@@ -1,45 +1,32 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use crate::memory::{
     DPDKBuf,
     Mbuf,
     MemoryManager,
 };
-use arrayvec::ArrayVec;
-use catnip::{
-    self,
-    futures::FutureOperation,
-    interop::dmtr_sgarray_t,
-    protocols::{
-        arp::ArpConfig,
-        ethernet2::{
-            MacAddress,
-            MIN_PAYLOAD_SIZE,
-        },
-        tcp,
-        udp::UdpConfig,
-    },
-    runtime::{
-        PacketBuf,
-        Runtime,
-        RECEIVE_BATCH_SIZE,
-    },
+use ::arrayvec::ArrayVec;
+use ::catnip::{
+    protocols::ethernet2::MIN_PAYLOAD_SIZE,
     timer::{
         Timer,
         TimerPtr,
         WaitFuture,
     },
 };
-use catwalk::{
+use ::catwalk::{
     Scheduler,
+    SchedulerFuture,
     SchedulerHandle,
 };
-use dpdk_rs::{
+use ::dpdk_rs::{
     rte_eth_rx_burst,
     rte_eth_tx_burst,
     rte_mbuf,
     rte_pktmbuf_chain,
 };
-use futures::FutureExt;
-use rand::{
+use ::rand::{
     distributions::{
         Distribution,
         Standard,
@@ -49,10 +36,27 @@ use rand::{
     Rng,
     SeedableRng,
 };
-use std::{
+use ::runtime::{
+    memory::MemoryRuntime,
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
+        consts::RECEIVE_BATCH_SIZE,
+        types::MacAddress,
+        NetworkRuntime,
+        PacketBuf,
+    },
+    task::SchedulerRuntime,
+    types::dmtr_sgarray_t,
+    utils::UtilsRuntime,
+    Runtime,
+};
+use ::std::{
     cell::RefCell,
     collections::HashMap,
-    future::Future,
     mem,
     net::Ipv4Addr,
     rc::Rc,
@@ -77,7 +81,7 @@ impl TimerPtr for TimerRc {
 #[derive(Clone)]
 pub struct DPDKRuntime {
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<FutureOperation<Self>>,
+    scheduler: Scheduler,
 }
 
 impl DPDKRuntime {
@@ -104,10 +108,8 @@ impl DPDKRuntime {
             disable_arp,
         );
 
-        let tcp_options = tcp::Options::new(
+        let tcp_options = TcpConfig::new(
             Some(mss),
-            None,
-            None,
             None,
             None,
             Some(0xffff),
@@ -157,15 +159,14 @@ struct Inner {
     ipv4_addr: Ipv4Addr,
     rng: SmallRng,
     arp_options: ArpConfig,
-    tcp_options: tcp::Options<DPDKRuntime>,
+    tcp_options: TcpConfig,
     udp_options: UdpConfig,
 
     dpdk_port_id: u16,
 }
 
-impl Runtime for DPDKRuntime {
+impl MemoryRuntime for DPDKRuntime {
     type Buf = DPDKBuf;
-    type WaitFuture = WaitFuture<TimerRc>;
 
     fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t {
         self.inner.borrow().memory_manager.into_sgarray(buf)
@@ -182,7 +183,9 @@ impl Runtime for DPDKRuntime {
     fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf {
         self.inner.borrow().memory_manager.clone_sgarray(sga)
     }
+}
 
+impl NetworkRuntime for DPDKRuntime {
     fn transmit(&self, buf: impl PacketBuf<DPDKBuf>) {
         // Alloc header mbuf, check header size.
         // Serialize header.
@@ -320,7 +323,7 @@ impl Runtime for DPDKRuntime {
         self.inner.borrow().ipv4_addr.clone()
     }
 
-    fn tcp_options(&self) -> tcp::Options<Self> {
+    fn tcp_options(&self) -> TcpConfig {
         self.inner.borrow().tcp_options.clone()
     }
 
@@ -331,6 +334,10 @@ impl Runtime for DPDKRuntime {
     fn arp_options(&self) -> ArpConfig {
         self.inner.borrow().arp_options.clone()
     }
+}
+
+impl SchedulerRuntime for DPDKRuntime {
+    type WaitFuture = WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
         self.inner.borrow_mut().timer.0.advance_clock(now);
@@ -354,6 +361,28 @@ impl Runtime for DPDKRuntime {
         self.inner.borrow().timer.0.now()
     }
 
+    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
+        self.scheduler.from_raw_handle(key)
+    }
+
+    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
+        self.scheduler.take(handle)
+    }
+
+    fn poll(&self) {
+        self.scheduler.poll()
+    }
+}
+
+impl UtilsRuntime for DPDKRuntime {
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>,
@@ -366,13 +395,6 @@ impl Runtime for DPDKRuntime {
         let mut inner = self.inner.borrow_mut();
         slice.shuffle(&mut inner.rng);
     }
-
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler
-            .insert(FutureOperation::Background(future.boxed_local()))
-    }
-
-    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
-        &self.scheduler
-    }
 }
+
+impl Runtime for DPDKRuntime {}

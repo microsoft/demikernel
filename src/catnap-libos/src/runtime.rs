@@ -1,45 +1,19 @@
-use anyhow::Error;
-use arrayvec::ArrayVec;
-use catnip::{
-    collections::bytes::{
-        Bytes,
-        BytesMut,
-    },
-    futures::FutureOperation,
-    interop::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
-    },
-    protocols::{
-        arp::ArpConfig,
-        ethernet2::{
-            Ethernet2Header,
-            MacAddress,
-        },
-        tcp,
-        udp::UdpConfig,
-    },
-    runtime::{
-        PacketBuf,
-        Runtime,
-        RECEIVE_BATCH_SIZE,
-    },
+use ::anyhow::Error;
+use ::arrayvec::ArrayVec;
+use ::catnip::{
+    protocols::ethernet2::Ethernet2Header,
     timer::{
         Timer,
         TimerRc,
         WaitFuture,
     },
 };
-use catwalk::{
+use ::catwalk::{
     Scheduler,
     SchedulerHandle,
 };
-use futures::{
-    Future,
-    FutureExt,
-};
-use libc;
-use rand::{
+use ::libc;
+use ::rand::{
     distributions::Standard,
     prelude::Distribution,
     rngs::SmallRng,
@@ -47,13 +21,36 @@ use rand::{
     Rng,
     SeedableRng,
 };
-use socket2::{
+use ::runtime::{
+    memory::{
+        Bytes,
+        BytesMut,
+        MemoryRuntime,
+    },
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
+        consts::RECEIVE_BATCH_SIZE,
+        types::MacAddress,
+        NetworkRuntime,
+        PacketBuf,
+    },
+    task::SchedulerRuntime,
+    types::{
+        dmtr_sgarray_t,
+        dmtr_sgaseg_t,
+    },
+};
+use ::socket2::{
     Domain,
     SockAddr,
     Socket,
     Type,
 };
-use std::{
+use ::std::{
     cell::RefCell,
     collections::HashMap,
     convert::TryInto,
@@ -71,6 +68,11 @@ use std::{
         Instant,
     },
 };
+use catwalk::SchedulerFuture;
+use runtime::{
+    utils::UtilsRuntime,
+    Runtime,
+};
 
 //==============================================================================
 // Constants & Structures
@@ -86,7 +88,7 @@ enum SockAddrPurpose {
 #[derive(Clone)]
 pub struct LinuxRuntime {
     inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler<FutureOperation<LinuxRuntime>>,
+    scheduler: Scheduler,
 }
 
 pub struct Inner {
@@ -96,7 +98,7 @@ pub struct Inner {
     pub ifindex: i32,
     pub link_addr: MacAddress,
     pub ipv4_addr: Ipv4Addr,
-    pub tcp_options: tcp::Options<LinuxRuntime>,
+    pub tcp_options: TcpConfig,
     pub arp_options: ArpConfig,
 }
 
@@ -160,7 +162,7 @@ impl LinuxRuntime {
             ifindex,
             link_addr,
             ipv4_addr,
-            tcp_options: tcp::Options::default(),
+            tcp_options: TcpConfig::default(),
             arp_options,
         };
         Self {
@@ -174,9 +176,8 @@ impl LinuxRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl Runtime for LinuxRuntime {
+impl MemoryRuntime for LinuxRuntime {
     type Buf = Bytes;
-    type WaitFuture = WaitFuture<TimerRc>;
 
     fn into_sgarray(&self, buf: Bytes) -> dmtr_sgarray_t {
         let buf_copy: Box<[u8]> = (&buf[..]).into();
@@ -239,7 +240,55 @@ impl Runtime for LinuxRuntime {
         }
         buf.freeze()
     }
+}
 
+impl SchedulerRuntime for LinuxRuntime {
+    type WaitFuture = WaitFuture<TimerRc>;
+
+    fn advance_clock(&self, now: Instant) {
+        self.inner.borrow_mut().timer.0.advance_clock(now);
+    }
+
+    fn wait(&self, duration: Duration) -> Self::WaitFuture {
+        let inner = self.inner.borrow_mut();
+        let now = inner.timer.0.now();
+        inner
+            .timer
+            .0
+            .wait_until(inner.timer.clone(), now + duration)
+    }
+
+    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
+        let inner = self.inner.borrow_mut();
+        inner.timer.0.wait_until(inner.timer.clone(), when)
+    }
+
+    fn now(&self) -> Instant {
+        self.inner.borrow().timer.0.now()
+    }
+
+    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
+        self.scheduler.insert(future)
+    }
+
+    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
+        self.scheduler.from_raw_handle(key)
+    }
+
+    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
+        self.scheduler.take(handle)
+    }
+
+    fn poll(&self) {
+        self.scheduler.poll()
+    }
+}
+
+impl NetworkRuntime for LinuxRuntime {
     fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
         let header_size = pkt.header_size();
         let body_size = pkt.body_size();
@@ -284,10 +333,6 @@ impl Runtime for LinuxRuntime {
         }
     }
 
-    fn scheduler(&self) -> &Scheduler<FutureOperation<Self>> {
-        &self.scheduler
-    }
-
     fn local_link_addr(&self) -> MacAddress {
         self.inner.borrow().link_addr.clone()
     }
@@ -296,7 +341,7 @@ impl Runtime for LinuxRuntime {
         self.inner.borrow().ipv4_addr.clone()
     }
 
-    fn tcp_options(&self) -> tcp::Options<Self> {
+    fn tcp_options(&self) -> TcpConfig {
         self.inner.borrow().tcp_options.clone()
     }
 
@@ -307,29 +352,9 @@ impl Runtime for LinuxRuntime {
     fn arp_options(&self) -> ArpConfig {
         self.inner.borrow().arp_options.clone()
     }
+}
 
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        let now = inner.timer.0.now();
-        inner
-            .timer
-            .0
-            .wait_until(inner.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let inner = self.inner.borrow_mut();
-        inner.timer.0.wait_until(inner.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
-
+impl UtilsRuntime for LinuxRuntime {
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>,
@@ -342,12 +367,9 @@ impl Runtime for LinuxRuntime {
         let mut inner = self.inner.borrow_mut();
         slice.shuffle(&mut inner.rng);
     }
-
-    fn spawn<F: Future<Output = ()> + 'static>(&self, future: F) -> SchedulerHandle {
-        self.scheduler
-            .insert(FutureOperation::Background(future.boxed_local()))
-    }
 }
+
+impl Runtime for LinuxRuntime {}
 
 //==============================================================================
 // Helper Functions

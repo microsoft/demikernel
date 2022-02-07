@@ -8,36 +8,40 @@
 
 pub mod runtime;
 
-use anyhow::Error;
-use catnip::{
-    interop::{
-        dmtr_qresult_t,
-        dmtr_qtoken_t,
-        dmtr_sgarray_t,
-    },
+use self::runtime::LinuxRuntime;
+use ::anyhow::Error;
+use ::catnip::{
+    interop::pack_result,
     libos::LibOS,
     logging,
     protocols::{
         ip,
         ipv4::Ipv4Endpoint,
     },
-    runtime::Runtime,
 };
-use demikernel::{
+use ::demikernel::{
     config::Config,
     network::{
         libos_network_init,
         NetworkLibOS,
     },
 };
-use libc::{
+use ::libc::{
     c_char,
     c_int,
     sockaddr,
     socklen_t,
 };
-use runtime::LinuxRuntime;
-use std::{
+use ::runtime::{
+    memory::MemoryRuntime,
+    network::NetworkRuntime,
+    types::{
+        dmtr_qresult_t,
+        dmtr_qtoken_t,
+        dmtr_sgarray_t,
+    },
+};
+use ::std::{
     cell::RefCell,
     convert::TryFrom,
     mem,
@@ -319,7 +323,7 @@ fn catnap_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
         let (qd, r) = libos.wait2(qt);
         if !qr_out.is_null() {
-            let packed = dmtr_qresult_t::pack(libos.rt(), r, qd, qt);
+            let packed = pack_result(libos.rt(), r, qd, qt);
             unsafe { *qr_out = packed };
         }
         0

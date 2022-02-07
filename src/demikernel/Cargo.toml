@@ -19,5 +19,6 @@ rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.14"
 
-catnip = { git = "https://github.com/demikernel/catnip", rev = "48dfa1c2cc8b6c769cf38c94abdf8fbc45360cbf", features = ["threadunsafe"] }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "53b00587e48adcdf37e804d06fd1af62eeae1d5e", features = ["threadunsafe"] }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "da03e96b82d9ee8c64045e3552eaead60c67fed7" }

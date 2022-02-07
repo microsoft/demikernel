@@ -9,17 +9,21 @@ use anyhow::{
 };
 use catnap_libos::runtime::LinuxRuntime;
 use catnip::{
-    collections::bytes::Bytes,
     libos::LibOS,
     operations::OperationResult,
     protocols::{
         ip::Port,
         ipv4::Ipv4Endpoint,
     },
-    queue::IoQueueDescriptor,
-    runtime::RuntimeBuf,
 };
 use demikernel::config::Config;
+use runtime::{
+    memory::{
+        Buffer,
+        Bytes,
+    },
+    queue::IoQueueDescriptor,
+};
 use std::{
     convert::TryFrom,
     env,

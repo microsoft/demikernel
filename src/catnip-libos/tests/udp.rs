@@ -14,7 +14,6 @@ use catnip::{
         ip::Port,
         ipv4::Ipv4Endpoint,
     },
-    queue::IoQueueDescriptor,
 };
 use catnip_libos::{
     memory::DPDKBuf,
@@ -22,6 +21,7 @@ use catnip_libos::{
 };
 use demikernel::config::Config;
 use dpdk_rs::load_mlx_driver;
+use runtime::queue::IoQueueDescriptor;
 use std::{
     convert::TryFrom,
     env,
