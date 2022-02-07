@@ -5,12 +5,12 @@ use crate::{
     },
     runtime::DPDKRuntime,
 };
+use ::runtime::network::types::MacAddress;
 use anyhow::{
     bail,
     format_err,
     Error,
 };
-use catnip::protocols::ethernet2::MacAddress;
 use dpdk_rs::{
     rte_delay_us_block,
     rte_eal_init,

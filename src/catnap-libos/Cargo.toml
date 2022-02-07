@@ -15,7 +15,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.2"
 anyhow = "1.0.53"
-futures = "0.3.19"
 libc = "0.2.116"
 rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.5"
@@ -23,9 +22,10 @@ log = "0.4.14"
 socket2 = { version = "0.4.1", features = ["all"] }
 
 demikernel = { path = "../demikernel" }
-catnip = { git = "https://github.com/demikernel/catnip", rev = "48dfa1c2cc8b6c769cf38c94abdf8fbc45360cbf", features = ["threadunsafe"] }
-catwalk = { git = "https://github.com/demikernel/catwalk", rev = "9e8d33a199ecfa0c4cbe41e8b83fa3ef6d7793e7" }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "53b00587e48adcdf37e804d06fd1af62eeae1d5e", features = ["threadunsafe"] }
+catwalk = { git = "https://github.com/demikernel/catwalk", rev = "4c4ca5ff4c4f32792ba26234e009daf8275ea7e7" }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "da03e96b82d9ee8c64045e3552eaead60c67fed7" }
 
 [features]
 profiler = [ "catnip/profiler" ]

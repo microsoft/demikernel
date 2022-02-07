@@ -1,19 +1,20 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+pub use super::{
+    config::MemoryConfig,
+    dpdkbuf::DPDKBuf,
+    mbuf::Mbuf,
+};
+use ::runtime::types::{
+    dmtr_sgarray_t,
+    dmtr_sgaseg_t,
+};
 use anyhow::Error;
-use catnip::{
-    collections::bytes::{
-        Bytes,
-        BytesMut,
-    },
-    interop::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
-    },
-    protocols::{
-        ethernet2::ETHERNET2_HEADER_SIZE,
-        ipv4::IPV4_HEADER_SIZE,
-        tcp::MAX_TCP_HEADER_SIZE,
-    },
-    runtime::RuntimeBuf,
+use catnip::protocols::{
+    ethernet2::ETHERNET2_HEADER_SIZE,
+    ipv4::IPV4_HEADER_SIZE,
+    tcp::MAX_TCP_HEADER_SIZE,
 };
 use dpdk_rs::{
     rte_errno,
@@ -23,12 +24,10 @@ use dpdk_rs::{
     rte_mempool_mem_iter,
     rte_mempool_memhdr,
     rte_mempool_objsz,
-    rte_pktmbuf_adj,
     rte_pktmbuf_alloc,
     rte_pktmbuf_clone,
     rte_pktmbuf_free,
     rte_pktmbuf_pool_create,
-    rte_pktmbuf_trim,
     rte_socket_id,
     rte_strerror,
 };
@@ -36,10 +35,10 @@ use libc::{
     c_uint,
     c_void,
 };
+use runtime::memory::BytesMut;
 use std::{
     ffi::CString,
     mem,
-    ops::Deref,
     ptr,
     rc::Rc,
     slice,
@@ -47,45 +46,9 @@ use std::{
 
 const _RTE_PKTMBUF_HEADROOM: usize = 128;
 
-#[derive(Clone, Copy, Debug)]
-pub struct MemoryConfig {
-    /// What is the cutoff point for copying application buffers into reserved body space within a
-    /// header `mbuf`? Smaller values copy less but incur the fixed cost of chaining together
-    /// `mbuf`s earlier.
-    pub inline_body_size: usize,
-
-    /// How many buffers are within the header pool?
-    pub header_pool_size: usize,
-
-    /// How many buffers are within the indirect pool?
-    pub indirect_pool_size: usize,
-
-    /// What is the maximum body size? This should effectively be the MSS + RTE_PKTMBUF_HEADROOM.
-    pub max_body_size: usize,
-
-    /// How many buffers are within the body pool?
-    pub body_pool_size: usize,
-
-    /// How many buffers should remain within `rte_mempool`'s per-thread cache?
-    pub cache_size: usize,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self {
-            inline_body_size: 1024,
-            header_pool_size: 8191,
-            indirect_pool_size: 8191,
-            max_body_size: 8320,
-            body_pool_size: 8191,
-            cache_size: 250,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct MemoryManager {
-    inner: Rc<Inner>,
+    pub inner: Rc<Inner>,
 }
 
 impl MemoryManager {
@@ -95,7 +58,7 @@ impl MemoryManager {
         })
     }
 
-    fn clone_mbuf(&self, mbuf: &Mbuf) -> Mbuf {
+    pub fn clone_mbuf(&self, mbuf: &Mbuf) -> Mbuf {
         Mbuf {
             ptr: self.inner.clone_mbuf(mbuf.ptr),
             mm: self.clone(),
@@ -302,7 +265,7 @@ impl MemoryManager {
 }
 
 #[derive(Debug)]
-struct Inner {
+pub struct Inner {
     config: MemoryConfig,
 
     // Used by networking stack for protocol headers + inline bodies. These buffers are only used
@@ -452,231 +415,15 @@ impl Inner {
         64 + 128 + self.config.max_body_size
     }
 
-    fn alloc_indirect_empty(&self) -> *mut rte_mbuf {
+    pub fn alloc_indirect_empty(&self) -> *mut rte_mbuf {
         let ptr = unsafe { rte_pktmbuf_alloc(self.indirect_pool) };
         assert!(!ptr.is_null());
         ptr
     }
 
-    fn clone_mbuf(&self, ptr: *mut rte_mbuf) -> *mut rte_mbuf {
+    pub fn clone_mbuf(&self, ptr: *mut rte_mbuf) -> *mut rte_mbuf {
         let ptr = unsafe { rte_pktmbuf_clone(ptr, self.indirect_pool) };
         assert!(!ptr.is_null());
         ptr
-    }
-}
-
-#[derive(Debug)]
-pub struct Mbuf {
-    pub ptr: *mut rte_mbuf,
-    pub mm: MemoryManager,
-}
-
-impl Mbuf {
-    /// Remove `len` bytes at the beginning of the mbuf.
-    pub fn adjust(&mut self, len: usize) {
-        assert!(len <= self.len());
-        if unsafe { rte_pktmbuf_adj(self.ptr, len as u16) } == ptr::null_mut() {
-            panic!("rte_pktmbuf_adj failed");
-        }
-    }
-
-    /// Remove `len` bytes at the end of the mbuf.
-    pub fn trim(&mut self, len: usize) {
-        assert!(len <= self.len());
-        if unsafe { rte_pktmbuf_trim(self.ptr, len as u16) } != 0 {
-            panic!("rte_pktmbuf_trim failed");
-        }
-    }
-
-    pub fn split(self, ix: usize) -> (Self, Self) {
-        let n = self.len();
-        if ix == n {
-            let empty = Self {
-                ptr: self.mm.inner.alloc_indirect_empty(),
-                mm: self.mm.clone(),
-            };
-            return (self, empty);
-        }
-
-        let mut suffix = self.clone();
-        let mut prefix = self;
-
-        prefix.trim(n - ix);
-        suffix.adjust(ix);
-        (prefix, suffix)
-    }
-
-    pub fn data_ptr(&self) -> *mut u8 {
-        unsafe {
-            let buf_ptr = (*self.ptr).buf_addr as *mut u8;
-            buf_ptr.offset((*self.ptr).data_off as isize)
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        unsafe { (*self.ptr).data_len as usize }
-    }
-
-    pub unsafe fn slice_mut(&mut self) -> &mut [u8] {
-        slice::from_raw_parts_mut(self.data_ptr(), self.len())
-    }
-
-    pub fn into_raw(mut self) -> *mut rte_mbuf {
-        mem::replace(&mut self.ptr, ptr::null_mut())
-    }
-
-    pub fn ptr(&mut self) -> *mut rte_mbuf {
-        self.ptr
-    }
-}
-
-impl Clone for Mbuf {
-    fn clone(&self) -> Self {
-        self.mm.clone_mbuf(self)
-    }
-}
-
-impl Deref for Mbuf {
-    type Target = [u8];
-
-    fn deref(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.data_ptr(), self.len()) }
-    }
-}
-
-impl Drop for Mbuf {
-    fn drop(&mut self) {
-        if self.ptr.is_null() {
-            return;
-        }
-        unsafe {
-            rte_pktmbuf_free(self.ptr);
-        }
-        self.ptr = ptr::null_mut();
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum DPDKBuf {
-    External(Bytes),
-    Managed(Mbuf),
-}
-
-impl Deref for DPDKBuf {
-    type Target = [u8];
-
-    fn deref(&self) -> &[u8] {
-        match self {
-            DPDKBuf::External(ref buf) => buf.deref(),
-            DPDKBuf::Managed(ref mbuf) => mbuf.deref(),
-        }
-    }
-}
-
-impl RuntimeBuf for DPDKBuf {
-    fn empty() -> Self {
-        DPDKBuf::External(Bytes::empty())
-    }
-
-    fn from_slice(_: &[u8]) -> Self {
-        todo!()
-    }
-
-    fn adjust(&mut self, num_bytes: usize) {
-        match self {
-            DPDKBuf::External(ref mut buf) => buf.adjust(num_bytes),
-            DPDKBuf::Managed(ref mut mbuf) => mbuf.adjust(num_bytes),
-        }
-    }
-
-    fn trim(&mut self, num_bytes: usize) {
-        match self {
-            DPDKBuf::External(ref mut buf) => buf.trim(num_bytes),
-            DPDKBuf::Managed(ref mut mbuf) => mbuf.trim(num_bytes),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        Mbuf,
-        MemoryManager,
-    };
-    use dpdk_rs::*;
-    use std::ffi::CString;
-
-    #[test]
-    #[ignore]
-    fn test_mbuf() {
-        //  ["-c", "0xff", "-n", "4", "-w", "37:00.0","--proc-type=auto"]
-        let eal_init_args: Vec<CString> = vec![
-            CString::new("-c").unwrap(),
-            CString::new("0xff").unwrap(),
-            CString::new("-n").unwrap(),
-            CString::new("4").unwrap(),
-            CString::new("-w").unwrap(),
-            CString::new("37:00.0").unwrap(),
-            CString::new("--proc-type=auto").unwrap(),
-        ];
-        let eal_init_refs = eal_init_args
-            .iter()
-            .map(|s| s.as_ptr() as *mut u8)
-            .collect::<Vec<_>>();
-        unsafe {
-            rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _);
-        }
-        let mm = MemoryManager::new(Default::default()).unwrap();
-
-        // Step 1: Allocate a buffer from the body pool.
-        let mbuf_ptr = unsafe { rte_pktmbuf_alloc(mm.inner.body_pool) };
-        assert!(!mbuf_ptr.is_null());
-
-        // Step 2: Set the length (potentially revealing uninitialized memory)
-        // TODO: Provide a "safe" writer interface.
-        unsafe {
-            let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
-            (*mbuf_ptr).data_len = num_bytes as u16;
-            (*mbuf_ptr).pkt_len = num_bytes as u32;
-        }
-
-        let mut mbuf = Mbuf {
-            ptr: mbuf_ptr,
-            mm: mm.clone(),
-        };
-
-        unsafe {
-            let out_slice = std::slice::from_raw_parts_mut(mbuf.data_ptr(), mbuf.len());
-            for (i, byte) in out_slice.into_iter().enumerate() {
-                *byte = (i % 256) as u8;
-            }
-        }
-
-        // Consider the mbuf "frozen" at this point. Let's try stripping off some of the "headers"
-        // and coming up with a smaller body buffer we'll pass up to the application.
-        assert_eq!(mbuf.len(), 2048);
-        mbuf.trim(13);
-        assert_eq!(mbuf.len(), 2035);
-        assert_eq!(mbuf[0], 0);
-        mbuf.adjust(22);
-        assert_eq!(mbuf.len(), 2013);
-        assert_eq!(mbuf[0], 22);
-        let (prefix, suffix) = mbuf.split(2012);
-        assert_eq!(&suffix[..], &[242]);
-        assert_eq!(unsafe { (*prefix.ptr).ol_flags }, 0);
-        assert_eq!(unsafe { (*suffix.ptr).ol_flags }, 1 << 62); // IND_ATTACHED_MBUF
-        drop(suffix);
-
-        // Let's hold on to this mbuf (as if the application is retaining it) and try to recover
-        // its mbuf header from an interior data pointer.
-        let data_ptr = unsafe { prefix.data_ptr().offset(10) as *mut libc::c_void };
-        let data_len = 17;
-
-        let cloned_mbuf = mm.clone_body(data_ptr, data_len).unwrap();
-        assert_eq!(cloned_mbuf[0], 32);
-        assert_eq!(cloned_mbuf.len(), 17);
-        assert_eq!(unsafe { (*cloned_mbuf.ptr).ol_flags }, 1 << 62);
-        drop(cloned_mbuf);
-        drop(prefix);
     }
 }

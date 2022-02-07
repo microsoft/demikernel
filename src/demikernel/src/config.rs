@@ -1,23 +1,21 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use anyhow::{
+use ::anyhow::{
     format_err,
     Error,
 };
-use catnip::{
-    logging,
-    protocols::ethernet2::MacAddress,
-};
-use clap::{
+use ::catnip::logging;
+use ::clap::{
     App,
     Arg,
 };
-use libc::{
+use ::libc::{
     c_char,
     c_int,
 };
-use std::{
+use ::runtime::network::types::MacAddress;
+use ::std::{
     collections::HashMap,
     env,
     ffi::{
@@ -29,7 +27,7 @@ use std::{
     net::Ipv4Addr,
     slice,
 };
-use yaml_rust::{
+use ::yaml_rust::{
     Yaml,
     YamlLoader,
 };

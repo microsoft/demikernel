@@ -3,15 +3,15 @@
 
 #![allow(non_camel_case_types, unused)]
 
-use catnip::interop::{
-    dmtr_qresult_t,
-    dmtr_qtoken_t,
-    dmtr_sgarray_t,
-};
 use libc::{
     c_int,
     sockaddr,
     socklen_t,
+};
+use runtime::types::{
+    dmtr_qresult_t,
+    dmtr_qtoken_t,
+    dmtr_sgarray_t,
 };
 use std::cell::{
     RefCell,
