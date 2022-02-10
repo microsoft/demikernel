@@ -68,11 +68,11 @@ jobs:
       username: ${{ secrets.USERNAME }}
 
   #====================
-  # Compile
+  # Compile Defaults
   #====================
 
   # Demikernel 0
-  build-demikernel0:
+  build-defaults-demikernel0:
     name: Demikernel 0
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
@@ -85,12 +85,72 @@ jobs:
       username: ${{ secrets.USERNAME }}
 
   # Demikernel 1
-  build-demikernel1:
+  build-defaults-demikernel1:
     name: Demikernel 1
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
       target: all-libs-default
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile Catnap
+  #====================
+
+  # Demikernel 0
+  build-catnap-demikernel0:
+    name: Demikernel 0
+    needs: [build-defaults-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-catnap-demikernel1:
+    name: Demikernel 1
+    needs: [build-defaults-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile Catnip
+  #====================
+
+  # Demikernel 0
+  build-catnip-demikernel0:
+    name: Demikernel 0
+    needs: [build-catnap-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-catnip
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-catnip-demikernel1:
+    name: Demikernel 1
+    needs: [build-catnap-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-catnip
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -104,7 +164,7 @@ jobs:
   # Demikernel 0
   cleanup-demikernel0:
     name: Demikernel 0
-    needs: [build-demikernel0]
+    needs: [build-catnip-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
@@ -115,7 +175,7 @@ jobs:
   # Demikernel 1
   cleanup-demikernel1:
     name: Demikernel 1
-    needs: [build-demikernel1]
+    needs: [build-catnip-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
