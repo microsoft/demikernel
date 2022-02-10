@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Build
+name: Build Libs
 
 concurrency:
   group: azure

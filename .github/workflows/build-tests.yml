@@ -1,0 +1,184 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Build Tests
+
+concurrency:
+  group: azure
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+  pull_request:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+  workflow_dispatch:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  #====================
+  # Setup
+  #====================
+
+  # Demikernel 0
+  setup-demikernel0:
+    name: Setup
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  setup-demikernel1:
+    name: Setup
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile Defaults
+  #====================
+
+  # Demikernel 0
+  build-defaults-demikernel0:
+    name: Build Defaults
+    needs: [setup-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-default
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-defaults-demikernel1:
+    name: Build Defaults
+    needs: [setup-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-default
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile Catnap
+  #====================
+
+  # Demikernel 0
+  build-catnap-demikernel0:
+    name: Build Catnap
+    needs: [build-defaults-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-catnap-demikernel1:
+    name: Build Catnap
+    needs: [build-defaults-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile Catnip
+  #====================
+
+  # Demikernel 0
+  build-catnip-demikernel0:
+    name: Build Catnip
+    needs: [build-catnap-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnip
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-catnip-demikernel1:
+    name: Build Catnip
+    needs: [build-catnap-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnip
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Cleanup
+  #====================
+
+  # Demikernel 0
+  cleanup-demikernel0:
+    name: Cleanup
+    needs: [build-catnip-demikernel0]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  cleanup-demikernel1:
+    name: Cleanup
+    needs: [build-catnip-demikernel1]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
