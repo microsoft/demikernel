@@ -49,7 +49,7 @@ jobs:
 
   # Demikernel 0
   setup-demikernel0:
-    name: Demikernel 0
+    name: Setup
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
@@ -59,7 +59,7 @@ jobs:
 
   # Demikernel 1
   setup-demikernel1:
-    name: Demikernel 1
+    name: Setup
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
@@ -73,7 +73,7 @@ jobs:
 
   # Demikernel 0
   build-defaults-demikernel0:
-    name: Demikernel 0
+    name: Build Defaults
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -86,7 +86,7 @@ jobs:
 
   # Demikernel 1
   build-defaults-demikernel1:
-    name: Demikernel 1
+    name: Build Defaults
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -103,7 +103,7 @@ jobs:
 
   # Demikernel 0
   build-catnap-demikernel0:
-    name: Demikernel 0
+    name: Build Catnap
     needs: [build-defaults-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -116,7 +116,7 @@ jobs:
 
   # Demikernel 1
   build-catnap-demikernel1:
-    name: Demikernel 1
+    name: Build Catnap
     needs: [build-defaults-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -133,7 +133,7 @@ jobs:
 
   # Demikernel 0
   build-catnip-demikernel0:
-    name: Demikernel 0
+    name: Build Catnip
     needs: [build-catnap-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -146,7 +146,7 @@ jobs:
 
   # Demikernel 1
   build-catnip-demikernel1:
-    name: Demikernel 1
+    name: Build Catnip
     needs: [build-catnap-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
@@ -163,7 +163,7 @@ jobs:
 
   # Demikernel 0
   cleanup-demikernel0:
-    name: Demikernel 0
+    name: Cleanup
     needs: [build-catnip-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
@@ -174,7 +174,7 @@ jobs:
 
   # Demikernel 1
   cleanup-demikernel1:
-    name: Demikernel 1
+    name: Cleanup
     needs: [build-catnip-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
