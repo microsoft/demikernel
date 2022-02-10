@@ -76,6 +76,8 @@ jobs:
     name: Demikernel 0
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-default
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -87,6 +89,8 @@ jobs:
     name: Demikernel 1
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-libs-default
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
