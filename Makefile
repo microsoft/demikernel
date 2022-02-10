@@ -38,25 +38,37 @@ export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo m
 
 all: all-libs all-tests
 
-all-libs:
+all-libs: all-libs-catnap all-libs-catnip
+
+all-libs-default:
 	$(CARGO) build --lib $(BUILD) $(CARGO_FLAGS)
 
-all-tests:
+all-libs-catnap: all-libs-default
+	$(CARGO) build --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
+
+all-libs-catnip: all-libs-default
+	$(CARGO) build --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
+
+all-tests: all-tests-catnap all-tests-catnip
+
+all-tests-default:
 	$(CARGO) build --tests $(BUILD) $(CARGO_FLAGS)
 
-clean: demikernel-clean
+all-tests-catnap: all-tests-default
+	$(CARGO) build --tests --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
 
-demikernel-clean:
+all-tests-catnip: all-tests-default
+	$(CARGO) build --tests --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
+
+clean:
 	rm -rf target &&  \
 	$(CARGO) clean && \
 	rm -f Cargo.lock
 
 #===============================================================================
 
-test: test-catnip
-
-test-catnip:
+test-catnip: all-tets-catnip
 	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -p catnip-libos -- --nocapture $(TEST)
 
-test-catnap:
+test-catnap: all-tests-catnap
 	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnap-libos -- --nocapture $(TEST)
