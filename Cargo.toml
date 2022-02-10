@@ -1,13 +1,13 @@
 [package]
-name = "catnap-libos"
+name = "demikernel"
 version = "0.3.0"
+edition = "2018"
 authors = ["Microsoft Corporation"]
 description = "Kernel-Bypass libOS Architecture"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
 readme = "README.md"
 license-file = "LICENSE.txt"
-edition = "2018"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -15,17 +15,35 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.2"
 anyhow = "1.0.53"
+clap = "3.0.13"
 libc = "0.2.116"
 rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.14"
 socket2 = { version = "0.4.1", features = ["all"] }
 
-demikernel = { path = "../demikernel" }
 catnip = { git = "https://github.com/demikernel/catnip", rev = "53b00587e48adcdf37e804d06fd1af62eeae1d5e", features = ["threadunsafe"] }
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "4c4ca5ff4c4f32792ba26234e009daf8275ea7e7" }
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39" }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6" }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "da03e96b82d9ee8c64045e3552eaead60c67fed7" }
 
 [features]
+default = [ "profiler", "catnap-libos" ]
+catnap-libos = [ ]
+catnip-libos = [ ]
+mlx4 = ["dpdk-rs/mlx4"]
+mlx5 = ["dpdk-rs/mlx5"]
 profiler = [ "catnip/profiler" ]
+
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+rpath = false

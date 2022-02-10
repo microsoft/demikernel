@@ -31,26 +31,16 @@ export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo m
 
 #===============================================================================
 
-all: demikernel-all demikernel-tests
+all:
+	$(CARGO) build $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS)
 
 clean: demikernel-clean
-
-demikernel-all: demikernel-catnip
-
-demikernel-catnip:
-	cd $(SRCDIR) && \
-	$(CARGO) build $(BUILD) --features=$(DRIVER) -p catnip-libos $(CARGO_FLAGS)
-
-demikernel-catnap:
-	cd $(SRCDIR) && \
-	$(CARGO) build $(BUILD) -p catnap-libos $(CARGO_FLAGS)
 
 demikernel-tests:
 	cd $(SRCDIR) && \
 	$(CARGO) build --tests $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS)
 
 demikernel-clean:
-	cd $(SRCDIR) &&   \
 	rm -rf target &&  \
 	$(CARGO) clean && \
 	rm -f Cargo.lock
