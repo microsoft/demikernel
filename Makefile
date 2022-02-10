@@ -7,6 +7,11 @@ export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type 
 export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d)
 export CONFIG_PATH ?= $(HOME)/config.yaml
 
+export MTU ?= 1500
+export MSS ?= 9000
+export PEER ?= server
+export TEST ?= udp_push_pop
+
 export TIMEOUT ?= 30
 
 #===============================================================================
@@ -31,14 +36,15 @@ export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo m
 
 #===============================================================================
 
-all:
-	$(CARGO) build $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS)
+all: all-libs all-tests
+
+all-libs:
+	$(CARGO) build --lib $(BUILD) $(CARGO_FLAGS)
+
+all-tests:
+	$(CARGO) build --tests $(BUILD) $(CARGO_FLAGS)
 
 clean: demikernel-clean
-
-demikernel-tests:
-	cd $(SRCDIR) && \
-	$(CARGO) build --tests $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS)
 
 demikernel-clean:
 	rm -rf target &&  \
@@ -50,9 +56,7 @@ demikernel-clean:
 test: test-catnip
 
 test-catnip:
-	cd $(SRCDIR) && \
 	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -p catnip-libos -- --nocapture $(TEST)
 
 test-catnap:
-	cd $(SRCDIR) && \
-	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) -p catnap-libos -- --nocapture $(TEST)
+	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnap-libos -- --nocapture $(TEST)
