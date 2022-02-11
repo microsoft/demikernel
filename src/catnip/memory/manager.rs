@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 pub use super::{
     config::MemoryConfig,
     dpdkbuf::DPDKBuf,
     mbuf::Mbuf,
 };
-use ::runtime::types::{
-    dmtr_sgarray_t,
-    dmtr_sgaseg_t,
-};
-use anyhow::Error;
-use catnip::protocols::{
+use ::anyhow::Error;
+use ::catnip::protocols::{
     ethernet2::ETHERNET2_HEADER_SIZE,
     ipv4::IPV4_HEADER_SIZE,
     tcp::MAX_TCP_HEADER_SIZE,
 };
-use dpdk_rs::{
+use ::dpdk_rs::{
     rte_errno,
     rte_mbuf,
     rte_mempool,
@@ -31,12 +31,18 @@ use dpdk_rs::{
     rte_socket_id,
     rte_strerror,
 };
-use libc::{
+use ::libc::{
     c_uint,
     c_void,
 };
-use runtime::memory::BytesMut;
-use std::{
+use ::runtime::{
+    memory::BytesMut,
+    types::{
+        dmtr_sgarray_t,
+        dmtr_sgaseg_t,
+    },
+};
+use ::std::{
     ffi::CString,
     mem,
     ptr,
@@ -44,12 +50,55 @@ use std::{
     slice,
 };
 
+//==============================================================================
+// Constants
+//==============================================================================
+
 const _RTE_PKTMBUF_HEADROOM: usize = 128;
+
+//==============================================================================
+// Structures
+//==============================================================================
+
+#[derive(Debug)]
+pub struct Inner {
+    config: MemoryConfig,
+
+    // Used by networking stack for protocol headers + inline bodies. These buffers are only used
+    // internally within the network stack.
+    header_pool: *mut rte_mempool,
+
+    // Used by networking stack for cloning buffers passed in from the application. There buffers
+    // are also only used internally within the networking stack.
+    indirect_pool: *mut rte_mempool,
+
+    // Large body pool for buffers given to the application for zero-copy.
+    body_pool: *mut rte_mempool,
+
+    // We assert that the body pool's memory region is in a single, contiguous virtual memory
+    // region. Here is a diagram of the memory layout of `body_pool`.
+    //
+    //     |- rte_mempool_objhdr (64 bytes) -|- rte_mbuf (128 bytes) -|- data -| - rte_mempool_objhdr - |- ...
+    //     ^                                                                   ^
+    //     body_region_addr                                                    body_region_addr + Self::body_alloc_size()
+    //
+    // This way, we can easily test to see if an arbitrary pointer is within our `body_pool` via
+    // pointer arithmetic. Then, by understanding the layout of each allocation, we can take a
+    // pointer to somewhere *within* an allocation and work backwards to a pointer to its
+    // `rte_mbuf`, which we can then clone for use within our network stack.
+    //
+    body_region_addr: usize,
+    body_region_len: usize,
+}
 
 #[derive(Clone, Debug)]
 pub struct MemoryManager {
     pub inner: Rc<Inner>,
 }
+
+//==============================================================================
+// Associate Functions
+//==============================================================================
 
 impl MemoryManager {
     pub fn new(config: MemoryConfig) -> Result<Self, Error> {
@@ -262,37 +311,6 @@ impl MemoryManager {
     pub fn body_pool(&self) -> *mut rte_mempool {
         self.inner.body_pool
     }
-}
-
-#[derive(Debug)]
-pub struct Inner {
-    config: MemoryConfig,
-
-    // Used by networking stack for protocol headers + inline bodies. These buffers are only used
-    // internally within the network stack.
-    header_pool: *mut rte_mempool,
-
-    // Used by networking stack for cloning buffers passed in from the application. There buffers
-    // are also only used internally within the networking stack.
-    indirect_pool: *mut rte_mempool,
-
-    // Large body pool for buffers given to the application for zero-copy.
-    body_pool: *mut rte_mempool,
-
-    // We assert that the body pool's memory region is in a single, contiguous virtual memory
-    // region. Here is a diagram of the memory layout of `body_pool`.
-    //
-    //     |- rte_mempool_objhdr (64 bytes) -|- rte_mbuf (128 bytes) -|- data -| - rte_mempool_objhdr - |- ...
-    //     ^                                                                   ^
-    //     body_region_addr                                                    body_region_addr + Self::body_alloc_size()
-    //
-    // This way, we can easily test to see if an arbitrary pointer is within our `body_pool` via
-    // pointer arithmetic. Then, by understanding the layout of each allocation, we can take a
-    // pointer to somewhere *within* an allocation and work backwards to a pointer to its
-    // `rte_mbuf`, which we can then clone for use within our network stack.
-    //
-    body_region_addr: usize,
-    body_region_len: usize,
 }
 
 impl Inner {

@@ -1,25 +1,37 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use super::MemoryManager;
-use dpdk_rs::{
+use ::dpdk_rs::{
     rte_mbuf,
     rte_pktmbuf_adj,
     rte_pktmbuf_free,
     rte_pktmbuf_trim,
 };
-use std::{
+use ::std::{
     mem,
     ops::Deref,
     ptr,
     slice,
 };
 
+//==============================================================================
+// Structures
+//==============================================================================
+
 #[derive(Debug)]
 pub struct Mbuf {
     pub ptr: *mut rte_mbuf,
     pub mm: MemoryManager,
 }
+
+//==============================================================================
+// Associate Functions
+//==============================================================================
 
 impl Mbuf {
     /// Remove `len` bytes at the beginning of the mbuf.
@@ -79,6 +91,10 @@ impl Mbuf {
         self.ptr
     }
 }
+
+//==============================================================================
+// Trait Implementations
+//==============================================================================
 
 impl Clone for Mbuf {
     fn clone(&self) -> Self {

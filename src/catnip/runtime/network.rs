@@ -1,190 +1,47 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
+use super::DPDKRuntime;
 use crate::catnip::memory::{
     DPDKBuf,
     Mbuf,
-    MemoryManager,
 };
 use ::arrayvec::ArrayVec;
-use ::catnip::{
-    protocols::ethernet2::MIN_PAYLOAD_SIZE,
-    timer::{
-        Timer,
-        TimerPtr,
-        WaitFuture,
-    },
-};
-use ::catwalk::{
-    Scheduler,
-    SchedulerFuture,
-    SchedulerHandle,
-};
+use ::catnip::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::dpdk_rs::{
     rte_eth_rx_burst,
     rte_eth_tx_burst,
     rte_mbuf,
     rte_pktmbuf_chain,
 };
-use ::rand::{
-    distributions::{
-        Distribution,
-        Standard,
+use ::runtime::network::{
+    config::{
+        ArpConfig,
+        TcpConfig,
+        UdpConfig,
     },
-    rngs::SmallRng,
-    seq::SliceRandom,
-    Rng,
-    SeedableRng,
-};
-use ::runtime::{
-    memory::MemoryRuntime,
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
-        },
-        consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
-        NetworkRuntime,
-        PacketBuf,
-    },
-    task::SchedulerRuntime,
-    types::dmtr_sgarray_t,
-    utils::UtilsRuntime,
-    Runtime,
+    consts::RECEIVE_BATCH_SIZE,
+    types::MacAddress,
+    NetworkRuntime,
+    PacketBuf,
 };
 use ::std::{
-    cell::RefCell,
-    collections::HashMap,
     mem,
     net::Ipv4Addr,
-    rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
 };
 
 #[cfg(feature = "profiler")]
 use perftools::timer;
 
-#[derive(Clone)]
-pub struct TimerRc(Rc<Timer<TimerRc>>);
+//==============================================================================
+// Trait Implementations
+//==============================================================================
 
-impl TimerPtr for TimerRc {
-    fn timer(&self) -> &Timer<Self> {
-        &*self.0
-    }
-}
-
-#[derive(Clone)]
-pub struct DPDKRuntime {
-    inner: Rc<RefCell<Inner>>,
-    scheduler: Scheduler,
-}
-
-impl DPDKRuntime {
-    pub fn new(
-        link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
-        dpdk_port_id: u16,
-        memory_manager: MemoryManager,
-        arp_table: HashMap<Ipv4Addr, MacAddress>,
-        disable_arp: bool,
-        mss: usize,
-        tcp_checksum_offload: bool,
-        udp_checksum_offload: bool,
-    ) -> Self {
-        let mut rng = rand::thread_rng();
-        let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
-        let now = Instant::now();
-
-        let arp_options = ArpConfig::new(
-            Some(Duration::from_secs(15)),
-            Some(Duration::from_secs(20)),
-            Some(5),
-            Some(arp_table),
-            Some(disable_arp),
-        );
-
-        let tcp_options = TcpConfig::new(
-            Some(mss),
-            None,
-            None,
-            Some(0xffff),
-            Some(0),
-            None,
-            Some(tcp_checksum_offload),
-            Some(tcp_checksum_offload),
-        );
-
-        let udp_options = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
-
-        let inner = Inner {
-            timer: TimerRc(Rc::new(Timer::new(now))),
-            link_addr,
-            ipv4_addr,
-            rng,
-            arp_options,
-            tcp_options,
-            udp_options,
-
-            dpdk_port_id,
-            memory_manager,
-        };
-        Self {
-            inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
-        }
-    }
-
-    pub fn alloc_body_mbuf(&self) -> Mbuf {
-        self.inner.borrow().memory_manager.alloc_body_mbuf()
-    }
-
-    pub fn port_id(&self) -> u16 {
-        self.inner.borrow().dpdk_port_id
-    }
-
-    pub fn memory_manager(&self) -> MemoryManager {
-        self.inner.borrow().memory_manager.clone()
-    }
-}
-
-struct Inner {
-    timer: TimerRc,
-    memory_manager: MemoryManager,
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
-    rng: SmallRng,
-    arp_options: ArpConfig,
-    tcp_options: TcpConfig,
-    udp_options: UdpConfig,
-
-    dpdk_port_id: u16,
-}
-
-impl MemoryRuntime for DPDKRuntime {
-    type Buf = DPDKBuf;
-
-    fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t {
-        self.inner.borrow().memory_manager.into_sgarray(buf)
-    }
-
-    fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
-        self.inner.borrow().memory_manager.alloc_sgarray(size)
-    }
-
-    fn free_sgarray(&self, sga: dmtr_sgarray_t) {
-        self.inner.borrow().memory_manager.free_sgarray(sga)
-    }
-
-    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf {
-        self.inner.borrow().memory_manager.clone_sgarray(sga)
-    }
-}
-
+/// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for DPDKRuntime {
     fn transmit(&self, buf: impl PacketBuf<DPDKBuf>) {
         // Alloc header mbuf, check header size.
@@ -335,66 +192,3 @@ impl NetworkRuntime for DPDKRuntime {
         self.inner.borrow().arp_options.clone()
     }
 }
-
-impl SchedulerRuntime for DPDKRuntime {
-    type WaitFuture = WaitFuture<TimerRc>;
-
-    fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
-    }
-
-    fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let self_ = self.inner.borrow_mut();
-        let now = self_.timer.0.now();
-        self_
-            .timer
-            .0
-            .wait_until(self_.timer.clone(), now + duration)
-    }
-
-    fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let self_ = self.inner.borrow_mut();
-        self_.timer.0.wait_until(self_.timer.clone(), when)
-    }
-
-    fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
-    }
-
-    fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
-    }
-
-    fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
-    }
-
-    fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        self.scheduler.from_raw_handle(key)
-    }
-
-    fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        self.scheduler.take(handle)
-    }
-
-    fn poll(&self) {
-        self.scheduler.poll()
-    }
-}
-
-impl UtilsRuntime for DPDKRuntime {
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        let mut self_ = self.inner.borrow_mut();
-        self_.rng.gen()
-    }
-
-    fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
-    }
-}
-
-impl Runtime for DPDKRuntime {}

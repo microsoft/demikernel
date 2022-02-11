@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//==============================================================================
+// Imports
+//==============================================================================
+
 use crate::catnip::{
     memory::{
         MemoryConfig,
@@ -5,13 +12,12 @@ use crate::catnip::{
     },
     runtime::DPDKRuntime,
 };
-use ::runtime::network::types::MacAddress;
-use anyhow::{
+use ::anyhow::{
     bail,
     format_err,
     Error,
 };
-use dpdk_rs::{
+use ::dpdk_rs::{
     rte_delay_us_block,
     rte_eal_init,
     rte_eth_conf,
@@ -48,13 +54,18 @@ use dpdk_rs::{
     RTE_ETH_DEV_NO_OWNER,
     RTE_PKTMBUF_HEADROOM,
 };
-use std::{
+use ::runtime::network::types::MacAddress;
+use ::std::{
     collections::HashMap,
     ffi::CString,
     mem::MaybeUninit,
     net::Ipv4Addr,
     time::Duration,
 };
+
+//==============================================================================
+// Macros
+//==============================================================================
 
 macro_rules! expect_zero {
     ($name:ident ( $($arg: expr),* $(,)* )) => {{
@@ -66,6 +77,10 @@ macro_rules! expect_zero {
         }
     }};
 }
+
+//==============================================================================
+// Standalone Functions
+//==============================================================================
 
 pub fn initialize_dpdk(
     local_ipv4_addr: Ipv4Addr,
