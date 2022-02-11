@@ -4,9 +4,11 @@
 mod config;
 
 #[cfg(feature = "catnap-libos")]
+#[allow(dead_code)]
 mod catnap;
 
 #[cfg(feature = "catnip-libos")]
+#[allow(dead_code)]
 mod catnip;
 
 //==============================================================================
