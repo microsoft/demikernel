@@ -1,18 +1,30 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use super::mbuf::Mbuf;
-use runtime::memory::{
+use ::runtime::memory::{
     Buffer,
     Bytes,
 };
-use std::ops::Deref;
+use ::std::ops::Deref;
+
+//==============================================================================
+// Enumerations
+//==============================================================================
 
 #[derive(Clone, Debug)]
 pub enum DPDKBuf {
     External(Bytes),
     Managed(Mbuf),
 }
+
+//==============================================================================
+// Trait Implementations
+//==============================================================================
 
 impl Deref for DPDKBuf {
     type Target = [u8];

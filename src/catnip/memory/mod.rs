@@ -6,6 +6,10 @@ mod dpdkbuf;
 mod manager;
 mod mbuf;
 
+//==============================================================================
+// Exports
+//==============================================================================
+
 pub use config::MemoryConfig;
 pub use dpdkbuf::DPDKBuf;
 pub use manager::MemoryManager;

@@ -5,6 +5,10 @@ pub mod dpdk;
 pub mod memory;
 pub mod runtime;
 
+//==============================================================================
+// Imports
+//==============================================================================
+
 use crate::{
     catnip::runtime::DPDKRuntime,
     demikernel::{
@@ -51,6 +55,11 @@ use ::std::{
 thread_local! {
     static LIBOS: RefCell<Option<LibOS<DPDKRuntime>>> = RefCell::new(None);
 }
+
+//==============================================================================
+// Standalone Functions
+//==============================================================================
+
 fn with_libos<T>(f: impl FnOnce(&mut LibOS<DPDKRuntime>) -> T) -> T {
     LIBOS.with(|l| {
         let mut tls_libos = l.borrow_mut();
