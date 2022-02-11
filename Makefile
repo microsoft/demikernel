@@ -65,7 +65,7 @@ clean:
 
 #===============================================================================
 
-test-catnip: all-tets-catnip
+test-catnip: all-tests-catnip
 	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
 
 test-catnap: all-tests-catnap
