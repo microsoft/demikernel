@@ -68,7 +68,7 @@ clean:
 #===============================================================================
 
 test-catnip: all-tets-catnip
-	sudo -E LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) --features=$(DRIVER) $(CARGO_FLAGS) -p catnip-libos -- --nocapture $(TEST)
+	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
 
 test-catnap: all-tests-catnap
 	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnap-libos -- --nocapture $(TEST)
