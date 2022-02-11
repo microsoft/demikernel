@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::memory::{
+use crate::catnip::memory::{
     DPDKBuf,
     Mbuf,
     MemoryManager,

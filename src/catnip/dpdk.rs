@@ -1,4 +1,4 @@
-use crate::{
+use crate::catnip::{
     memory::{
         MemoryConfig,
         MemoryManager,
