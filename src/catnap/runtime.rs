@@ -131,11 +131,11 @@ impl LinuxRuntime {
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Self {
         let arp_options: ArpConfig = ArpConfig::new(
-            Duration::from_secs(600),
-            Duration::from_secs(1),
-            2,
-            arp,
-            false,
+            Some(Duration::from_secs(600)),
+            Some(Duration::from_secs(1)),
+            Some(2),
+            Some(arp),
+            Some(false),
         );
 
         let socket = Socket::new(
@@ -167,7 +167,7 @@ impl LinuxRuntime {
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::default(),
         }
     }
 }
