@@ -40,24 +40,22 @@ all: all-libs all-tests
 
 all-libs: all-libs-catnap all-libs-catnip
 
-all-libs-default:
-	$(CARGO) build --lib $(BUILD) $(CARGO_FLAGS)
+all-libs-default: all-libs-catnap
 
-all-libs-catnap: all-libs-default
+all-libs-catnap:
 	$(CARGO) build --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
 
-all-libs-catnip: all-libs-default
+all-libs-catnip:
 	$(CARGO) build --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
 
 all-tests: all-tests-catnap all-tests-catnip
 
-all-tests-default:
-	$(CARGO) build --tests $(BUILD) $(CARGO_FLAGS)
+all-tests-default: all-tests-catnap
 
-all-tests-catnap: all-tests-default
+all-tests-catnap:
 	$(CARGO) build --tests --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
 
-all-tests-catnip: all-tests-default
+all-tests-catnip:
 	$(CARGO) build --tests --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
 
 clean:
