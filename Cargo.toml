@@ -30,9 +30,9 @@ perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad282
 runtime = { git = "https://github.com/demikernel/runtime", rev = "da03e96b82d9ee8c64045e3552eaead60c67fed7" }
 
 [features]
-default = [ "profiler", "catnap-libos" ]
+default = [  ]
 catnap-libos = [ ]
-catnip-libos = [ ]
+catnip-libos = [ "dpdk-rs" ]
 mlx4 = ["dpdk-rs", "dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs", "dpdk-rs/mlx5"]
 profiler = [ "perftools", "catnip/profiler" ]
