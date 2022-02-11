@@ -1,52 +1,37 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use anyhow::{
-    format_err,
-    Error,
-};
+use super::config::TestConfig;
 use catnip::{
     libos::LibOS,
-    protocols::{
-        ip::Port,
-        ipv4::Ipv4Endpoint,
-    },
+    protocols::ipv4::Ipv4Endpoint,
 };
-use demikernel::{
-    catnap::runtime::{
-        initialize_linux,
-        LinuxRuntime,
-    },
-    demikernel::config::Config,
+use demikernel::catnap::runtime::{
+    initialize_linux,
+    LinuxRuntime,
 };
 use runtime::memory::{
     Buffer,
     Bytes,
 };
-use std::{
-    convert::TryFrom,
-    env,
-    net::Ipv4Addr,
-    panic,
-    str::FromStr,
-};
+
 //==============================================================================
 // Test
 //==============================================================================
 
 pub struct Test {
-    config: Config,
+    config: TestConfig,
     pub libos: LibOS<LinuxRuntime>,
 }
 
 impl Test {
     pub fn new() -> Self {
-        let config = Config::new(std::env::var("CONFIG_PATH").unwrap());
+        let config: TestConfig = TestConfig::new();
         let rt: LinuxRuntime = initialize_linux(
-            config.local_link_addr,
-            config.local_ipv4_addr,
-            &config.local_interface_name,
-            config.arp_table(),
+            config.0.local_link_addr,
+            config.0.local_ipv4_addr,
+            &config.0.local_interface_name,
+            config.0.arp_table(),
         )
         .unwrap();
         let libos = LibOS::new(rt).unwrap();
@@ -54,54 +39,25 @@ impl Test {
         Self { config, libos }
     }
 
-    fn addr(&self, k1: &str, k2: &str) -> Result<Ipv4Endpoint, Error> {
-        let addr = &self.config.config_obj[k1][k2];
-        let host_s = addr["host"]
-            .as_str()
-            .ok_or(format_err!("Missing host"))
-            .unwrap();
-        let host = Ipv4Addr::from_str(host_s).unwrap();
-        let port_i = addr["port"]
-            .as_i64()
-            .ok_or(format_err!("Missing port"))
-            .unwrap();
-        let port = Port::try_from(port_i as u16).unwrap();
-        Ok(Ipv4Endpoint::new(host, port))
-    }
-
     pub fn is_server(&self) -> bool {
-        if env::var("PEER").unwrap().eq("server") {
-            true
-        } else if env::var("PEER").unwrap().eq("client") {
-            false
-        } else {
-            panic!("either PEER=server or PEER=client must be exported")
-        }
+        self.config.is_server()
     }
 
     pub fn local_addr(&self) -> Ipv4Endpoint {
-        if self.is_server() {
-            self.addr("server", "bind").unwrap()
-        } else {
-            self.addr("client", "client").unwrap()
-        }
+        self.config.local_addr()
     }
 
     pub fn remote_addr(&self) -> Ipv4Endpoint {
-        if self.is_server() {
-            self.addr("server", "client").unwrap()
-        } else {
-            self.addr("client", "connect_to").unwrap()
-        }
+        self.config.remote_addr()
     }
 
     pub fn mkbuf(&self, fill_char: u8) -> Bytes {
-        assert!(self.config.buffer_size <= self.config.mss);
+        assert!(self.config.0.buffer_size <= self.config.0.mss);
 
-        let mut data: Vec<u8> = Vec::<u8>::with_capacity(self.config.buffer_size);
+        let mut data: Vec<u8> = Vec::<u8>::with_capacity(self.config.0.buffer_size);
 
-        println!("buffer_size: {:?}", self.config.buffer_size);
-        for _ in 0..self.config.buffer_size {
+        println!("buffer_size: {:?}", self.config.0.buffer_size);
+        for _ in 0..self.config.0.buffer_size {
             data.push(fill_char);
         }
 
