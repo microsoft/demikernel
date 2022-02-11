@@ -141,13 +141,43 @@ jobs:
           PEER=client TIMEOUT=300 TEST=udp_ping_pong sudo -E make test-catnap > nohup.out 2> nohup.err < /dev/null
 
   #====================
+  # Post-Run
+  #====================
+
+  # Demikernel 0
+  postrun-demikernel0:
+    name: Demikernel 0
+    needs: [launch-demikernel1]
+    uses: demikernel/workflows/.github/workflows/postrun.yml@dev
+    with:
+      process-name: pingpong
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  postrun-demikernel1:
+    name: Demikernel 1
+    needs: [launch-demikernel1]
+    uses: demikernel/workflows/.github/workflows/postrun.yml@dev
+    with:
+      process-name: pingpong
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
   # Cleanup
   #====================
 
   # Demikernel 0
   cleanup-demikernel0:
     name: Demikernel 0
-    needs: [launch-demikernel1]
+    needs: [postrun-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
@@ -158,7 +188,7 @@ jobs:
   # Demikernel 1
   cleanup-demikernel1:
     name: Demikernel 1
-    needs: [launch-demikernel1]
+    needs: [postrun-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
