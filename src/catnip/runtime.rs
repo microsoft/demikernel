@@ -101,11 +101,11 @@ impl DPDKRuntime {
         let now = Instant::now();
 
         let arp_options = ArpConfig::new(
-            Duration::from_secs(15),
-            Duration::from_secs(20),
-            5,
-            arp_table,
-            disable_arp,
+            Some(Duration::from_secs(15)),
+            Some(Duration::from_secs(20)),
+            Some(5),
+            Some(arp_table),
+            Some(disable_arp),
         );
 
         let tcp_options = TcpConfig::new(
@@ -119,7 +119,7 @@ impl DPDKRuntime {
             Some(tcp_checksum_offload),
         );
 
-        let udp_options = UdpConfig::new(udp_checksum_offload, udp_checksum_offload);
+        let udp_options = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
 
         let inner = Inner {
             timer: TimerRc(Rc::new(Timer::new(now))),
@@ -135,7 +135,7 @@ impl DPDKRuntime {
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::default(),
         }
     }
 
