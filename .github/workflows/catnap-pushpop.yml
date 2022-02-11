@@ -1,6 +1,5 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
-#
 
 name: Catnap Push Pop
 
@@ -77,6 +76,8 @@ jobs:
     name: Demikernel 0
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -88,6 +89,8 @@ jobs:
     name: Demikernel 1
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -100,7 +103,7 @@ jobs:
 
   # Demikernel 0
   launch-demikernel0:
-    name: Launch Demikernel0
+    name: Demikernel 0
     runs-on: ubuntu-latest
     needs: build-demikernel0
     steps:
@@ -119,7 +122,7 @@ jobs:
 
   # Demikernel 1
   launch-demikernel1:
-    name: Launch Demikernel1
+    name: Demikernel 1
     runs-on: ubuntu-latest
     needs: [build-demikernel1, launch-demikernel0]
     steps:
