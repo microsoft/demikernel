@@ -105,7 +105,7 @@ jobs:
   launch-demikernel0:
     name: Demikernel 0
     runs-on: ubuntu-latest
-    needs: build-demikernel0
+    needs: [build-demikernel0, build-demikernel1]
     steps:
     - name: Launch
       uses: appleboy/ssh-action@master
