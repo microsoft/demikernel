@@ -6,16 +6,18 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use ::catnip::timer::{
-    Timer,
-    TimerPtr,
-    WaitFuture,
-};
 use ::catwalk::{
     SchedulerFuture,
     SchedulerHandle,
 };
-use ::runtime::task::SchedulerRuntime;
+use ::runtime::{
+    task::SchedulerRuntime,
+    timer::{
+        Timer,
+        TimerPtr,
+        WaitFuture,
+    },
+};
 use ::std::{
     rc::Rc,
     time::{
@@ -46,25 +48,20 @@ impl SchedulerRuntime for DPDKRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
 
     fn advance_clock(&self, now: Instant) {
-        self.inner.borrow_mut().timer.0.advance_clock(now);
+        self.timer.0.advance_clock(now);
     }
 
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let self_ = self.inner.borrow_mut();
-        let now = self_.timer.0.now();
-        self_
-            .timer
-            .0
-            .wait_until(self_.timer.clone(), now + duration)
+        let now = self.timer.0.now();
+        self.timer.0.wait_until(self.timer.clone(), now + duration)
     }
 
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        let self_ = self.inner.borrow_mut();
-        self_.timer.0.wait_until(self_.timer.clone(), when)
+        self.timer.0.wait_until(self.timer.clone(), when)
     }
 
     fn now(&self) -> Instant {
-        self.inner.borrow().timer.0.now()
+        self.timer.0.now()
     }
 
     fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
