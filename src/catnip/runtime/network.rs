@@ -6,10 +6,7 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::catnip::memory::{
-    DPDKBuf,
-    Mbuf,
-};
+use crate::catnip::runtime::memory::DPDKBuf;
 use ::arrayvec::ArrayVec;
 use ::catnip::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::dpdk_rs::{
@@ -56,8 +53,7 @@ impl NetworkRuntime for DPDKRuntime {
         // Chain body buffer.
 
         // First, allocate a header mbuf and write the header into it.
-        let inner = self.inner.borrow_mut();
-        let mut header_mbuf = inner.memory_manager.alloc_header_mbuf();
+        let mut header_mbuf = self.mm.alloc_header_mbuf();
         let header_size = buf.header_size();
         assert!(header_size <= header_mbuf.len());
         buf.write_header(unsafe { &mut header_mbuf.slice_mut()[..header_size] });
@@ -76,7 +72,7 @@ impl NetworkRuntime for DPDKRuntime {
                 let body_mbuf = match body {
                     DPDKBuf::Managed(mbuf) => mbuf,
                     DPDKBuf::External(bytes) => {
-                        let mut mbuf = inner.memory_manager.alloc_body_mbuf();
+                        let mut mbuf = self.mm.alloc_body_mbuf();
                         assert!(mbuf.len() >= bytes.len());
                         unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
                         mbuf.trim(mbuf.len() - bytes.len());
@@ -85,13 +81,13 @@ impl NetworkRuntime for DPDKRuntime {
                 };
                 unsafe {
                     assert_eq!(
-                        rte_pktmbuf_chain(header_mbuf.ptr(), body_mbuf.into_raw()),
+                        rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()),
                         0
                     );
                 }
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
                 let num_sent =
-                    unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
+                    unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
             // Otherwise, write in the inline space.
@@ -116,7 +112,7 @@ impl NetworkRuntime for DPDKRuntime {
 
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
                 let num_sent =
-                    unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
+                    unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
         }
@@ -133,14 +129,12 @@ impl NetworkRuntime for DPDKRuntime {
             let frame_size = std::cmp::max(header_size, MIN_PAYLOAD_SIZE);
             header_mbuf.trim(header_mbuf.len() - frame_size);
             let mut header_mbuf_ptr = header_mbuf.into_raw();
-            let num_sent =
-                unsafe { rte_eth_tx_burst(inner.dpdk_port_id, 0, &mut header_mbuf_ptr, 1) };
+            let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
             assert_eq!(num_sent, 1);
         }
     }
 
     fn receive(&self) -> ArrayVec<DPDKBuf, RECEIVE_BATCH_SIZE> {
-        let inner = self.inner.borrow_mut();
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
@@ -149,7 +143,7 @@ impl NetworkRuntime for DPDKRuntime {
             timer!("catnip_libos::receive::rte_eth_rx_burst");
 
             rte_eth_rx_burst(
-                inner.dpdk_port_id,
+                self.port_id,
                 0,
                 packets.as_mut_ptr(),
                 RECEIVE_BATCH_SIZE as u16,
@@ -161,11 +155,7 @@ impl NetworkRuntime for DPDKRuntime {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos:receive::for");
             for &packet in &packets[..nb_rx as usize] {
-                let mbuf = Mbuf {
-                    ptr: packet,
-                    mm: inner.memory_manager.clone(),
-                };
-                out.push(DPDKBuf::Managed(mbuf));
+                out.push(self.mm.make_buffer(packet));
             }
         }
 
@@ -173,22 +163,22 @@ impl NetworkRuntime for DPDKRuntime {
     }
 
     fn local_link_addr(&self) -> MacAddress {
-        self.inner.borrow().link_addr.clone()
+        self.link_addr.clone()
     }
 
     fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.inner.borrow().ipv4_addr.clone()
+        self.ipv4_addr.clone()
     }
 
     fn tcp_options(&self) -> TcpConfig {
-        self.inner.borrow().tcp_options.clone()
+        self.tcp_options.clone()
     }
 
     fn udp_options(&self) -> UdpConfig {
-        self.inner.borrow().udp_options.clone()
+        self.udp_options.clone()
     }
 
     fn arp_options(&self) -> ArpConfig {
-        self.inner.borrow().arp_options.clone()
+        self.arp_options.clone()
     }
 }

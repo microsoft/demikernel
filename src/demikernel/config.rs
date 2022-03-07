@@ -5,27 +5,14 @@ use ::anyhow::{
     format_err,
     Error,
 };
-use ::catnip::logging;
-use ::clap::{
-    App,
-    Arg,
-};
-use ::libc::{
-    c_char,
-    c_int,
-};
 use ::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
     env,
-    ffi::{
-        CStr,
-        CString,
-    },
+    ffi::CString,
     fs::File,
     io::Read,
     net::Ipv4Addr,
-    slice,
 };
 use ::yaml_rust::{
     Yaml,
@@ -153,40 +140,5 @@ impl Config {
             tcp_checksum_offload,
             config_obj: config_obj.clone(),
         }
-    }
-
-    pub fn initialize(argc: c_int, argv: *mut *mut c_char) -> Result<Self, Error> {
-        logging::initialize();
-
-        let config_path = match std::env::var("CONFIG_PATH") {
-            Ok(s) => s,
-            Err(..) => {
-                if argc == 0 || argv.is_null() {
-                    Err(format_err!("Arguments not provided"))?;
-                }
-                let argument_ptrs = unsafe { slice::from_raw_parts(argv, argc as usize) };
-                let arguments: Vec<_> = argument_ptrs
-                    .into_iter()
-                    .map(|&p| unsafe { CStr::from_ptr(p).to_str().expect("Non-UTF8 argument") })
-                    .collect();
-                let matches = App::new("Demikernel")
-                    .arg(
-                        Arg::new("config")
-                            .short('c')
-                            .long("config")
-                            .takes_value(true)
-                            .value_name("FILE")
-                            .help("Sets configuration file for Demikernel"),
-                    )
-                    .get_matches_from(&arguments);
-
-                matches
-                    .value_of("config")
-                    .ok_or_else(|| format_err!("--config-path argument not provided"))?
-                    .to_owned()
-            },
-        };
-
-        Ok(Self::new(config_path))
     }
 }

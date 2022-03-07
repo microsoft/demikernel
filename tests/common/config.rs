@@ -1,22 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use anyhow::{
+use ::anyhow::{
     format_err,
     Error,
 };
-use catnip::protocols::{
-    ip::Port,
-    ipv4::Ipv4Endpoint,
-};
-use demikernel::demikernel::config::Config;
-use std::{
+use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use ::demikernel::demikernel::config::Config;
+use ::std::{
     convert::TryFrom,
     env,
     net::Ipv4Addr,
     panic,
     str::FromStr,
 };
+use runtime::network::types::Port16;
 
 //==============================================================================
 // Test
@@ -42,7 +40,7 @@ impl TestConfig {
             .as_i64()
             .ok_or(format_err!("Missing port"))
             .unwrap();
-        let port = Port::try_from(port_i as u16).unwrap();
+        let port = Port16::try_from(port_i as u16).unwrap();
         Ok(Ipv4Endpoint::new(host, port))
     }
 

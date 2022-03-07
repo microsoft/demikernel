@@ -1,12 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+mod config;
+pub mod consts;
+mod dpdkbuf;
+mod manager;
+mod mbuf;
+
+//==============================================================================
+// Exports
+//==============================================================================
+
+pub use dpdkbuf::DPDKBuf;
+pub use manager::MemoryManager;
+
 //==============================================================================
 // Imports
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::catnip::memory::DPDKBuf;
 use ::runtime::{
     memory::MemoryRuntime,
     types::dmtr_sgarray_t,
@@ -20,19 +32,23 @@ use ::runtime::{
 impl MemoryRuntime for DPDKRuntime {
     type Buf = DPDKBuf;
 
+    /// Casts a [DPDKBuf] into an [dmtr_sgarray_t].
     fn into_sgarray(&self, buf: Self::Buf) -> dmtr_sgarray_t {
-        self.inner.borrow().memory_manager.into_sgarray(buf)
+        self.mm.into_sgarray(buf)
     }
 
+    /// Allocates a [dmtr_sgarray_t].
     fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
-        self.inner.borrow().memory_manager.alloc_sgarray(size)
+        self.mm.alloc_sgarray(size)
     }
 
+    /// Releases a [dmtr_sgarray_t].
     fn free_sgarray(&self, sga: dmtr_sgarray_t) {
-        self.inner.borrow().memory_manager.free_sgarray(sga)
+        self.mm.free_sgarray(sga)
     }
 
+    /// Clones a [dmtr_sgarray_t].
     fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Self::Buf {
-        self.inner.borrow().memory_manager.clone_sgarray(sga)
+        self.mm.clone_sgarray(sga)
     }
 }

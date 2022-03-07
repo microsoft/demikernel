@@ -23,18 +23,27 @@ use ::std::{
 // Structures
 //==============================================================================
 
+/// DPDK-Managed Buffer
 #[derive(Debug)]
 pub struct Mbuf {
-    pub ptr: *mut rte_mbuf,
-    pub mm: MemoryManager,
+    /// Underlying DPDK buffer.
+    ptr: *mut rte_mbuf,
+    /// TODO: drop the following field.
+    mm: MemoryManager,
 }
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
+/// Associate Functions for DPDK-Managed Buffers
 impl Mbuf {
-    /// Remove `len` bytes at the beginning of the mbuf.
+    /// Creates a [Mbuf].
+    pub fn new(ptr: *mut rte_mbuf, mm: MemoryManager) -> Self {
+        Mbuf { ptr, mm }
+    }
+
+    /// Removes `len` bytes at the beginning of the target [Mbuf].
     pub fn adjust(&mut self, len: usize) {
         assert!(len <= self.len());
         if unsafe { rte_pktmbuf_adj(self.ptr, len as u16) } == ptr::null_mut() {
@@ -42,7 +51,7 @@ impl Mbuf {
         }
     }
 
-    /// Remove `len` bytes at the end of the mbuf.
+    /// Removes `len` bytes at the end of the target [Mbuf].
     pub fn trim(&mut self, len: usize) {
         assert!(len <= self.len());
         if unsafe { rte_pktmbuf_trim(self.ptr, len as u16) } != 0 {
@@ -50,24 +59,7 @@ impl Mbuf {
         }
     }
 
-    pub fn split(self, ix: usize) -> (Self, Self) {
-        let n = self.len();
-        if ix == n {
-            let empty = Self {
-                ptr: self.mm.inner.alloc_indirect_empty(),
-                mm: self.mm.clone(),
-            };
-            return (self, empty);
-        }
-
-        let mut suffix = self.clone();
-        let mut prefix = self;
-
-        prefix.trim(n - ix);
-        suffix.adjust(ix);
-        (prefix, suffix)
-    }
-
+    /// Returns a pointer to the data stored in the target [Mbuf].
     pub fn data_ptr(&self) -> *mut u8 {
         unsafe {
             let buf_ptr = (*self.ptr).buf_addr as *mut u8;
@@ -75,19 +67,23 @@ impl Mbuf {
         }
     }
 
+    /// Returns the length of the data stored in the target [Mbuf].
     pub fn len(&self) -> usize {
         unsafe { (*self.ptr).data_len as usize }
     }
 
+    /// Converts the target [Mbuf] into a mutable [u8] slice.
     pub unsafe fn slice_mut(&mut self) -> &mut [u8] {
         slice::from_raw_parts_mut(self.data_ptr(), self.len())
     }
 
+    /// Converts the target [Mbuf] into a raw DPDK buffer.
     pub fn into_raw(mut self) -> *mut rte_mbuf {
         mem::replace(&mut self.ptr, ptr::null_mut())
     }
 
-    pub fn ptr(&mut self) -> *mut rte_mbuf {
+    /// Returns a pointer to the underlying DPDK buffer stored in the target [Mbuf].
+    pub fn get_ptr(&self) -> *mut rte_mbuf {
         self.ptr
     }
 }
@@ -96,12 +92,14 @@ impl Mbuf {
 // Trait Implementations
 //==============================================================================
 
+/// Clone Trait Implementation for DPDK-Managed Buffers
 impl Clone for Mbuf {
     fn clone(&self) -> Self {
         self.mm.clone_mbuf(self)
     }
 }
 
+/// De-Reference Trait Implementation for DPDK-Managed Buffers
 impl Deref for Mbuf {
     type Target = [u8];
 
@@ -110,6 +108,7 @@ impl Deref for Mbuf {
     }
 }
 
+/// Drop Trait Implementation for DPDK-Managed Buffers
 impl Drop for Mbuf {
     fn drop(&mut self) {
         if self.ptr.is_null() {

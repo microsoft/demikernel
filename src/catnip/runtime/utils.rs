@@ -22,16 +22,17 @@ use ::runtime::utils::UtilsRuntime;
 
 /// Utils Runtime Trait Implementation for DPDK Runtime
 impl UtilsRuntime for DPDKRuntime {
+    /// Returns a random value supporting the [Standard] distribution.
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>,
     {
-        let mut self_ = self.inner.borrow_mut();
-        self_.rng.gen()
+        self.rng.borrow_mut().gen()
     }
 
+    /// Shuffles a mutable slice in place.
     fn rng_shuffle<T>(&self, slice: &mut [T]) {
-        let mut inner = self.inner.borrow_mut();
-        slice.shuffle(&mut inner.rng);
+        let rng = self.rng.borrow_mut();
+        slice.shuffle(&mut rng.to_owned());
     }
 }

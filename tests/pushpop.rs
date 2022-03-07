@@ -10,10 +10,12 @@ mod common;
 //==============================================================================
 
 use self::common::Test;
-use ::catnip::{
-    operations::OperationResult,
-    protocols::ipv4::Ipv4Endpoint,
-};
+#[cfg(feature = "catpowder-libos")]
+use ::catnip::operations::OperationResult;
+#[cfg(feature = "catnip-libos")]
+use ::catnip::operations::OperationResult;
+use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use ::runtime::QToken;
 use ::std::panic;
 
 //==============================================================================
@@ -38,35 +40,35 @@ fn udp_push_pop() {
 
     // Run peers.
     if test.is_server() {
-        let expectbuf = test.mkbuf(payload);
+        let expectbuf: Vec<u8> = test.mkbuf(payload);
 
         // Get at least nreceives.
         for i in 0..nreceives {
             // Receive data.
-            let qtoken = test.libos.pop(sockfd).expect("server failed to pop()");
+            let qtoken: QToken = test.libos.pop(sockfd).expect("server failed to pop()");
             let recvbuf = match test.libos.wait2(qtoken) {
-                (_, OperationResult::Pop(_, buf)) => buf,
+                Ok((_, OperationResult::Pop(_, buf))) => buf,
                 _ => panic!("server failed to wait()"),
             };
 
             // Sanity received buffer.
             assert!(
-                Test::bufcmp(expectbuf.clone(), recvbuf),
+                Test::bufcmp(&expectbuf, recvbuf),
                 "server expectbuf != recevbuf"
             );
             println!("pop ({:?})", i);
         }
     } else {
-        let sendbuf = test.mkbuf(payload);
+        let sendbuf: Vec<u8> = test.mkbuf(payload);
 
         // Issue n sends.
         for i in 0..nsends {
             // Send data.
             let qtoken = test
                 .libos
-                .pushto2(sockfd, sendbuf.clone(), remote_addr)
+                .pushto2(sockfd, sendbuf.as_slice(), remote_addr)
                 .expect("client failed to pushto2()");
-            test.libos.wait(qtoken);
+            test.libos.wait(qtoken).unwrap();
             println!("push ({:?})", i);
         }
     }

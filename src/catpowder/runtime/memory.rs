@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//==============================================================================
+// Imports
+//==============================================================================
+
+use super::LinuxRuntime;
 use ::runtime::{
     memory::{
         Bytes,
@@ -13,23 +18,24 @@ use ::runtime::{
     },
 };
 use ::std::{
-    mem::{self,},
+    mem,
     ptr,
     slice,
 };
-
-use super::LinuxRuntime;
 
 //==============================================================================
 // Trait Implementations
 //==============================================================================
 
+/// Memory Runtime Trait Implementation for Linux Runtime
 impl MemoryRuntime for LinuxRuntime {
+    /// Memory Buffer
     type Buf = Bytes;
 
+    /// Creates a [dmtr_sgarray_t] from a memory buffer.
     fn into_sgarray(&self, buf: Bytes) -> dmtr_sgarray_t {
         let buf_copy: Box<[u8]> = (&buf[..]).into();
-        let ptr = Box::into_raw(buf_copy);
+        let ptr: *mut [u8] = Box::into_raw(buf_copy);
         let sgaseg = dmtr_sgaseg_t {
             sgaseg_buf: ptr as *mut _,
             sgaseg_len: buf.len() as u32,
@@ -42,9 +48,10 @@ impl MemoryRuntime for LinuxRuntime {
         }
     }
 
+    /// Allocates a [dmtr_sgarray_t].
     fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
         let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-        let ptr = Box::into_raw(allocation);
+        let ptr: *mut [u8] = Box::into_raw(allocation);
         let sgaseg = dmtr_sgaseg_t {
             sgaseg_buf: ptr as *mut _,
             sgaseg_len: size as u32,
@@ -57,10 +64,11 @@ impl MemoryRuntime for LinuxRuntime {
         }
     }
 
+    /// Releases a [dmtr_sgarray_t].
     fn free_sgarray(&self, sga: dmtr_sgarray_t) {
         assert_eq!(sga.sga_numsegs, 1);
         for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
+            let seg: &dmtr_sgaseg_t = &sga.sga_segs[i];
             let allocation: Box<[u8]> = unsafe {
                 Box::from_raw(slice::from_raw_parts_mut(
                     seg.sgaseg_buf as *mut _,
@@ -71,15 +79,16 @@ impl MemoryRuntime for LinuxRuntime {
         }
     }
 
+    /// Clones a [dmtr_sgarray_t] into a memory buffer.
     fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Bytes {
-        let mut len = 0;
+        let mut len: u32 = 0;
         for i in 0..sga.sga_numsegs as usize {
             len += sga.sga_segs[i].sgaseg_len;
         }
-        let mut buf = BytesMut::zeroed(len as usize).unwrap();
-        let mut pos = 0;
+        let mut buf: BytesMut = BytesMut::zeroed(len as usize).unwrap();
+        let mut pos: usize = 0;
         for i in 0..sga.sga_numsegs as usize {
-            let seg = &sga.sga_segs[i];
+            let seg: &dmtr_sgaseg_t = &sga.sga_segs[i];
             let seg_slice = unsafe {
                 slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize)
             };

@@ -101,17 +101,25 @@ pub struct MemoryManager {
 //==============================================================================
 
 impl MemoryManager {
-    pub fn new(config: MemoryConfig) -> Result<Self, Error> {
+    pub fn new(max_body_size: usize) -> Result<Self, Error> {
+        let memory_config: MemoryConfig =
+            MemoryConfig::new(None, None, None, Some(max_body_size), None, None);
+
+        MemoryManager::new_from_config(memory_config)
+    }
+
+    fn new_from_config(config: MemoryConfig) -> Result<Self, Error> {
         Ok(Self {
             inner: Rc::new(Inner::new(config)?),
         })
     }
 
+    pub fn make_buffer(&self, packet: *mut rte_mbuf) -> DPDKBuf {
+        DPDKBuf::Managed(Mbuf::new(packet, self.clone()))
+    }
+
     pub fn clone_mbuf(&self, mbuf: &Mbuf) -> Mbuf {
-        Mbuf {
-            ptr: self.inner.clone_mbuf(mbuf.ptr),
-            mm: self.clone(),
-        }
+        Mbuf::new(self.inner.clone_mbuf(mbuf.get_ptr()), self.clone())
     }
 
     /// Given a pointer and length into a body `mbuf`, return a fresh indirect `mbuf` that points to
@@ -121,10 +129,7 @@ impl MemoryManager {
         let body_clone = self.inner.clone_mbuf(mbuf_ptr);
 
         // Wrap the mbuf first so we free it on early exit.
-        let mut mbuf = Mbuf {
-            ptr: body_clone,
-            mm: self.clone(),
-        };
+        let mut mbuf = Mbuf::new(body_clone, self.clone());
 
         let orig_ptr = mbuf.data_ptr();
         let orig_len = mbuf.len();
@@ -219,10 +224,7 @@ impl MemoryManager {
             (*mbuf_ptr).data_len = num_bytes as u16;
             (*mbuf_ptr).pkt_len = num_bytes as u32;
         }
-        Mbuf {
-            ptr: mbuf_ptr,
-            mm: self.clone(),
-        }
+        Mbuf::new(mbuf_ptr, self.clone())
     }
 
     pub fn alloc_body_mbuf(&self) -> Mbuf {
@@ -233,17 +235,14 @@ impl MemoryManager {
             (*mbuf_ptr).data_len = num_bytes as u16;
             (*mbuf_ptr).pkt_len = num_bytes as u32;
         }
-        Mbuf {
-            ptr: mbuf_ptr,
-            mm: self.clone(),
-        }
+        Mbuf::new(mbuf_ptr, self.clone())
     }
 
     pub fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
-        assert!(size <= self.inner.config.max_body_size);
+        assert!(size <= self.inner.config.get_max_body_size());
 
-        let sgaseg = if self.inner.config.inline_body_size < size
-            && size <= self.inner.config.max_body_size
+        let sgaseg = if self.inner.config.get_inline_body_size() < size
+            && size <= self.inner.config.get_max_body_size()
         {
             let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
             assert!(!mbuf_ptr.is_null());
@@ -316,7 +315,7 @@ impl MemoryManager {
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
         let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + MAX_TCP_HEADER_SIZE;
-        let header_mbuf_size = header_size + config.inline_body_size;
+        let header_mbuf_size = header_size + config.get_inline_body_size();
         let priv_size = 0;
         assert_eq!(
             priv_size, 0,
@@ -326,8 +325,8 @@ impl Inner {
             let name = CString::new("header_pool")?;
             rte_pktmbuf_pool_create(
                 name.as_ptr(),
-                config.header_pool_size as u32,
-                config.cache_size as u32,
+                config.get_header_pool_size() as u32,
+                config.get_cache_size() as u32,
                 priv_size,
                 header_mbuf_size as u16,
                 rte_socket_id() as i32,
@@ -342,8 +341,8 @@ impl Inner {
             let name = CString::new("indirect_pool")?;
             rte_pktmbuf_pool_create(
                 name.as_ptr(),
-                config.indirect_pool_size as u32,
-                config.cache_size as u32,
+                config.get_indirect_pool_size() as u32,
+                config.get_cache_size() as u32,
                 priv_size,
                 // These mbufs have no body -- they're just for indirect mbufs to point to
                 // allocations from the body pool.
@@ -359,10 +358,10 @@ impl Inner {
             let name = CString::new("body_pool")?;
             rte_pktmbuf_pool_create(
                 name.as_ptr(),
-                config.body_pool_size as u32,
-                config.cache_size as u32,
+                config.get_body_pool_size() as u32,
+                config.get_cache_size() as u32,
                 priv_size,
-                config.max_body_size as u16,
+                config.get_max_body_size() as u16,
                 rte_socket_id() as i32,
             )
         };
@@ -409,13 +408,13 @@ impl Inner {
         // Check our assumptions in `body_alloc_size` for how each object in the mempool is laid
         // out in the mempool ring.
         let mut sz: rte_mempool_objsz = unsafe { mem::zeroed() };
-        let elt_size = mem::size_of::<rte_mbuf>() + priv_size as usize + config.max_body_size;
+        let elt_size = mem::size_of::<rte_mbuf>() + priv_size as usize + config.get_max_body_size();
         let flags = 0;
         unsafe {
             rte_mempool_calc_obj_size(elt_size as u32, flags, &mut sz as *mut _);
         }
         assert_eq!(sz.header_size, 64);
-        assert_eq!(sz.elt_size as usize, 128 + config.max_body_size);
+        assert_eq!(sz.elt_size as usize, 128 + config.get_max_body_size());
         assert_eq!(sz.trailer_size, 0);
 
         Ok(Self {
@@ -430,7 +429,7 @@ impl Inner {
     }
 
     fn body_alloc_size(&self) -> usize {
-        64 + 128 + self.config.max_body_size
+        64 + 128 + self.config.get_max_body_size()
     }
 
     pub fn alloc_indirect_empty(&self) -> *mut rte_mbuf {

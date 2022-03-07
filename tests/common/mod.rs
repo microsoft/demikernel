@@ -3,9 +3,9 @@
 
 mod config;
 
-#[cfg(feature = "catnap-libos")]
+#[cfg(feature = "catpowder-libos")]
 #[allow(dead_code)]
-mod catnap;
+mod catpowder;
 
 #[cfg(feature = "catnip-libos")]
 #[allow(dead_code)]
@@ -18,6 +18,8 @@ mod catnip;
 cfg_if::cfg_if! {
     if #[cfg(feature = "catnip-libos")] {
         pub use self::catnip::Test;
+    } else if #[cfg(feature = "catpowder-libos")] {
+        pub use self::catpowder::Test;
     } else {
         pub use self::catnap::Test;
     }

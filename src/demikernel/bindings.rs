@@ -1,23 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-pub mod runtime;
+#![allow(non_camel_case_types, unused)]
 
-use self::runtime::LinuxRuntime;
-use crate::demikernel::{
-    config::Config,
-    network::{
-        libos_network_init,
-        NetworkLibOS,
-    },
-};
-use ::anyhow::Error;
+use super::libos::LibOS;
 use ::catnip::{
     interop::pack_result,
-    libos::LibOS,
-    logging,
     protocols::{
         ip,
+        ip::EphemeralPorts,
         ipv4::Ipv4Endpoint,
     },
 };
@@ -28,26 +19,41 @@ use ::libc::{
     socklen_t,
 };
 use ::runtime::{
+    logging,
     memory::MemoryRuntime,
-    network::NetworkRuntime,
+    network::{
+        types::Port16,
+        NetworkRuntime,
+    },
     types::{
         dmtr_qresult_t,
         dmtr_qtoken_t,
         dmtr_sgarray_t,
     },
+    QToken,
 };
 use ::std::{
-    cell::RefCell,
+    cell::{
+        RefCell,
+        RefMut,
+    },
     convert::TryFrom,
     mem,
     net::Ipv4Addr,
     slice,
 };
 
+//==============================================================================
+
+//==============================================================================
+//
+//==============================================================================
+
 thread_local! {
-    static LIBOS: RefCell<Option<LibOS<LinuxRuntime>>> = RefCell::new(None);
+    static LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
 }
-fn with_libos<T>(f: impl FnOnce(&mut LibOS<LinuxRuntime>) -> T) -> T {
+
+fn with_libos<T>(f: impl FnOnce(&mut LibOS) -> T) -> T {
     LIBOS.with(|l| {
         let mut tls_libos = l.borrow_mut();
         f(tls_libos.as_mut().expect("Uninitialized engine"))
@@ -58,29 +64,11 @@ fn with_libos<T>(f: impl FnOnce(&mut LibOS<LinuxRuntime>) -> T) -> T {
 // init
 //==============================================================================
 
-pub fn catnap_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     logging::initialize();
-    let r: Result<_, Error> = try {
-        // Load config file.
-        let config = Config::initialize(argc, argv)?;
-
-        let rt = runtime::initialize_linux(
-            config.local_link_addr,
-            config.local_ipv4_addr,
-            &config.local_interface_name,
-            config.arp_table(),
-        )
-        .unwrap();
-        LibOS::new(rt)?
-    };
-
-    let libos = match r {
-        Ok(libos) => libos,
-        Err(e) => {
-            eprintln!("Initialization failure: {:?}", e);
-            return libc::EINVAL;
-        },
-    };
+    trace!("dmtr_init()");
+    let libos: LibOS = LibOS::new();
 
     LIBOS.with(move |l| {
         let mut tls_libos = l.borrow_mut();
@@ -88,46 +76,28 @@ pub fn catnap_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         *tls_libos = Some(libos);
     });
 
-    libos_network_init(NetworkLibOS::new(
-        catnap_socket,
-        catnap_bind,
-        catnap_listen,
-        catnap_accept,
-        catnap_connect,
-        catnap_pushto,
-        catnap_drop,
-        catnap_close,
-        catnap_push,
-        catnap_wait,
-        catnap_wait_any,
-        catnap_poll,
-        catnap_pop,
-        catnap_sgaalloc,
-        catnap_sgafree,
-        catnap_getsockname,
-    ));
-
     0
 }
-
 //==============================================================================
 // socket
 //==============================================================================
 
-pub fn catnap_socket(
+#[no_mangle]
+pub extern "C" fn dmtr_socket(
     qd_out: *mut c_int,
     domain: c_int,
     socket_type: c_int,
     protocol: c_int,
 ) -> c_int {
+    trace!("dmtr_socket()");
     with_libos(|libos| match libos.socket(domain, socket_type, protocol) {
         Ok(fd) => {
             unsafe { *qd_out = fd.into() };
             0
         },
         Err(e) => {
-            eprintln!("dmtr_socket failed: {:?}", e);
-            e.errno()
+            trace!("dmtr_socket failed: {:?}", e);
+            e.errno
         },
     })
 }
@@ -136,7 +106,9 @@ pub fn catnap_socket(
 // bind
 //==============================================================================
 
-fn catnap_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+    trace!("dmtr_bind()");
     if saddr.is_null() {
         return libc::EINVAL;
     }
@@ -144,19 +116,20 @@ fn catnap_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
         return libc::EINVAL;
     }
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
-    let mut addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
-    let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
+    let mut addr: Ipv4Addr =
+        Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
+    let port = Port16::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
 
     with_libos(|libos| {
         if addr.is_unspecified() {
-            addr = libos.rt().local_ipv4_addr();
+            addr = libos.local_ipv4_addr();
         }
         let endpoint = Ipv4Endpoint::new(addr, port);
         match libos.bind(qd.into(), endpoint) {
             Ok(..) => 0,
             Err(e) => {
-                eprintln!("dmtr_bind failed: {:?}", e);
-                e.errno()
+                trace!("dmtr_bind failed: {:?}", e);
+                e.errno
             },
         }
     })
@@ -166,12 +139,14 @@ fn catnap_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
 // listen
 //==============================================================================
 
-fn catnap_listen(fd: c_int, backlog: c_int) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
+    trace!("dmtr_listen()");
     with_libos(|libos| match libos.listen(fd.into(), backlog as usize) {
         Ok(..) => 0,
         Err(e) => {
-            eprintln!("listen failed: {:?}", e);
-            e.errno()
+            trace!("listen failed: {:?}", e);
+            e.errno
         },
     })
 }
@@ -180,9 +155,11 @@ fn catnap_listen(fd: c_int, backlog: c_int) -> c_int {
 // accept
 //==============================================================================
 
-fn catnap_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
+    trace!("dmtr_accept()");
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.accept(sockqd.into()).unwrap() };
+        unsafe { *qtok_out = libos.accept(sockqd.into()).unwrap().into() };
         0
     })
 }
@@ -191,12 +168,14 @@ fn catnap_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
 // connect
 //==============================================================================
 
-fn catnap_connect(
+#[no_mangle]
+pub extern "C" fn dmtr_connect(
     qtok_out: *mut dmtr_qtoken_t,
     qd: c_int,
     saddr: *const sockaddr,
     size: socklen_t,
 ) -> c_int {
+    trace!("dmtr_connect()");
     if saddr.is_null() {
         return libc::EINVAL;
     }
@@ -205,11 +184,11 @@ fn catnap_connect(
     }
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
-    let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
+    let port = Port16::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
     let endpoint = Ipv4Endpoint::new(addr, port);
 
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.connect(qd.into(), endpoint).unwrap() };
+        unsafe { *qtok_out = libos.connect(qd.into(), endpoint).unwrap().into() };
         0
     })
 }
@@ -218,28 +197,15 @@ fn catnap_connect(
 // close
 //==============================================================================
 
-fn catnap_close(qd: c_int) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
+    trace!("dmtr_close()");
     with_libos(|libos| match libos.close(qd.into()) {
         Ok(..) => 0,
         Err(e) => {
-            eprintln!("dmtr_close failed: {:?}", e);
-            e.errno()
+            trace!("dmtr_close failed: {:?}", e);
+            e.errno
         },
-    })
-}
-
-//==============================================================================
-// push
-//==============================================================================
-
-fn catnap_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
-    if sga.is_null() {
-        return libc::EINVAL;
-    }
-    let sga = unsafe { &*sga };
-    with_libos(|libos| {
-        unsafe { *qtok_out = libos.push(qd.into(), sga).unwrap() };
-        0
     })
 }
 
@@ -247,13 +213,15 @@ fn catnap_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray
 // pushto
 //==============================================================================
 
-fn catnap_pushto(
+#[no_mangle]
+pub extern "C" fn dmtr_pushto(
     qtok_out: *mut dmtr_qtoken_t,
     qd: c_int,
     sga: *const dmtr_sgarray_t,
     saddr: *const sockaddr,
     size: socklen_t,
 ) -> c_int {
+    trace!("dmtr_pushto()");
     if sga.is_null() {
         return libc::EINVAL;
     }
@@ -265,11 +233,32 @@ fn catnap_pushto(
         return libc::EINVAL;
     }
     let saddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
-    let addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
-    let port = ip::Port::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
+    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be_bytes(saddr_in.sin_addr.s_addr.to_le_bytes()));
+    let port: Port16 = Port16::try_from(u16::from_be(saddr_in.sin_port)).unwrap();
     let endpoint = Ipv4Endpoint::new(addr, port);
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pushto(qd.into(), sga, endpoint).unwrap() };
+        unsafe { *qtok_out = libos.pushto(qd.into(), sga, endpoint).unwrap().into() };
+        0
+    })
+}
+
+//==============================================================================
+// push
+//==============================================================================
+
+#[no_mangle]
+pub extern "C" fn dmtr_push(
+    qtok_out: *mut dmtr_qtoken_t,
+    qd: c_int,
+    sga: *const dmtr_sgarray_t,
+) -> c_int {
+    trace!("dmtr_push()");
+    if sga.is_null() {
+        return libc::EINVAL;
+    }
+    let sga = unsafe { &*sga };
+    with_libos(|libos| {
+        unsafe { *qtok_out = libos.push(qd.into(), sga).unwrap().into() };
         0
     })
 }
@@ -278,9 +267,11 @@ fn catnap_pushto(
 // pop
 //==============================================================================
 
-fn catnap_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
+    trace!("dmtr_pop()");
     with_libos(|libos| {
-        unsafe { *qtok_out = libos.pop(qd.into()).unwrap() };
+        unsafe { *qtok_out = libos.pop(qd.into()).unwrap().into() };
         0
     })
 }
@@ -289,13 +280,16 @@ fn catnap_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 // poll
 //==============================================================================
 
-fn catnap_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    with_libos(|libos| match libos.poll(qt) {
-        None => libc::EAGAIN,
-        Some(r) => {
+#[no_mangle]
+pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
+    trace!("dmtr_poll()");
+    with_libos(|libos| match libos.poll(qt.into()) {
+        Ok(None) => libc::EAGAIN,
+        Ok(Some(r)) => {
             unsafe { *qr_out = r };
             0
         },
+        _ => libc::ENOTSUP,
     })
 }
 
@@ -303,9 +297,11 @@ fn catnap_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
 // drop
 //==============================================================================
 
-fn catnap_drop(qt: dmtr_qtoken_t) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
+    trace!("dmtr_drop()");
     with_libos(|libos| {
-        libos.drop_qtoken(qt);
+        libos.drop(qt.into());
         0
     })
 }
@@ -314,14 +310,17 @@ fn catnap_drop(qt: dmtr_qtoken_t) -> c_int {
 // wait
 //==============================================================================
 
-fn catnap_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    with_libos(|libos| {
-        let (qd, r) = libos.wait2(qt);
-        if !qr_out.is_null() {
-            let packed = pack_result(libos.rt(), r, qd, qt);
-            unsafe { *qr_out = packed };
-        }
-        0
+#[no_mangle]
+pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
+    trace!("dmtr_wait()");
+    with_libos(|libos| match libos.wait(qt.into()) {
+        Ok(r) => {
+            if !qr_out.is_null() {
+                unsafe { *qr_out = r };
+            }
+            0
+        },
+        _ => libc::ENOTSUP,
     })
 }
 
@@ -329,15 +328,20 @@ fn catnap_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
 // wait_any
 //==============================================================================
 
-fn catnap_wait_any(
+#[no_mangle]
+pub extern "C" fn dmtr_wait_any(
     qr_out: *mut dmtr_qresult_t,
     ready_offset: *mut c_int,
     qts: *mut dmtr_qtoken_t,
     num_qts: c_int,
 ) -> c_int {
-    let qts = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
+    trace!("dmtr_wait_any()");
+    let qts: Vec<QToken> = unsafe {
+        let raw_qts = slice::from_raw_parts(qts, num_qts as usize);
+        raw_qts.iter().map(|i| QToken::from(*i)).collect()
+    };
     with_libos(|libos| {
-        let (ix, qr) = libos.wait_any(qts);
+        let (ix, qr) = libos.wait_any(&qts).unwrap();
         unsafe {
             *qr_out = qr;
             *ready_offset = ix as c_int;
@@ -350,27 +354,33 @@ fn catnap_wait_any(
 // sgaalloc
 //==============================================================================
 
-fn catnap_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
-    with_libos(|libos| libos.rt().alloc_sgarray(size))
+#[no_mangle]
+pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
+    trace!("dmtr_sgalloc()");
+    with_libos(|libos| libos.sgaalloc(size)).unwrap()
 }
 
 //==============================================================================
 // sgafree
 //==============================================================================
 
-fn catnap_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
+#[no_mangle]
+pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
+    trace!("dmtr_sgfree()");
     if sga.is_null() {
         return 0;
     }
     with_libos(|libos| {
-        libos.rt().free_sgarray(unsafe { *sga });
+        libos.sgafree(unsafe { *sga }).unwrap();
         0
     })
 }
+
 //==============================================================================
 // getsockname
 //==============================================================================
 
-fn catnap_getsockname(_qd: c_int, _saddr: *mut sockaddr, _size: *mut socklen_t) -> c_int {
-    unimplemented!();
+#[no_mangle]
+pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
+    unimplemented!()
 }

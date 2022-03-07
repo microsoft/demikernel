@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use super::DPDKRuntime;
+use super::LinuxRuntime;
 use ::catwalk::{
     SchedulerFuture,
     SchedulerHandle,
@@ -13,73 +13,65 @@ use ::catwalk::{
 use ::runtime::{
     task::SchedulerRuntime,
     timer::{
-        Timer,
-        TimerPtr,
+        TimerRc,
         WaitFuture,
     },
 };
-use ::std::{
-    rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
+use ::std::time::{
+    Duration,
+    Instant,
 };
-
-//==============================================================================
-// Structures
-//==============================================================================
-
-#[derive(Clone)]
-pub struct TimerRc(pub Rc<Timer<TimerRc>>);
 
 //==============================================================================
 // Trait Implementations
 //==============================================================================
 
-impl TimerPtr for TimerRc {
-    fn timer(&self) -> &Timer<Self> {
-        &*self.0
-    }
-}
-
-/// Scheduler Runtime Trait Implementation for DPDK Runtime
-impl SchedulerRuntime for DPDKRuntime {
+/// Scheduler Runtime Trait Implementation for Linux Runtime
+impl SchedulerRuntime for LinuxRuntime {
     type WaitFuture = WaitFuture<TimerRc>;
 
-    fn advance_clock(&self, now: Instant) {
-        self.timer.0.advance_clock(now);
-    }
-
+    /// Creates a future on which one should wait a given duration.
     fn wait(&self, duration: Duration) -> Self::WaitFuture {
-        let now = self.timer.0.now();
-        self.timer.0.wait_until(self.timer.clone(), now + duration)
+        let now: Instant = self.timer.now();
+        self.timer.wait_until(self.timer.clone(), now + duration)
     }
 
+    /// Creates a future on which one should until a given point in time.
     fn wait_until(&self, when: Instant) -> Self::WaitFuture {
-        self.timer.0.wait_until(self.timer.clone(), when)
+        self.timer.wait_until(self.timer.clone(), when)
     }
 
+    /// Returns the current runtime clock.
     fn now(&self) -> Instant {
-        self.timer.0.now()
+        self.timer.now()
     }
 
+    /// Advances the runtime clock to some point in time.
+    fn advance_clock(&self, now: Instant) {
+        self.timer.advance_clock(now);
+    }
+
+    /// Spawns a new task.
     fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
         self.scheduler.insert(future)
     }
 
+    /// Schedules a task for execution.
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
         self.scheduler.insert(future)
     }
 
+    /// Gets the handle of a task.
     fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {
         self.scheduler.from_raw_handle(key)
     }
 
+    /// Takes out a given task from the scheduler.
     fn take(&self, handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
         self.scheduler.take(handle)
     }
 
+    /// Polls the scheduler.
     fn poll(&self) {
         self.scheduler.poll()
     }
