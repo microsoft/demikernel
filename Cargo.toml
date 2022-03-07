@@ -23,11 +23,11 @@ log = "0.4.14"
 socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
 
-catnip = { git = "https://github.com/demikernel/catnip", rev = "a4c7f76bacbe6015bccdad3ffafeeae10d0f9094", features = ["threadunsafe"] }
-catwalk = { git = "https://github.com/demikernel/catwalk", rev = "063cf220c3e81beb6562f798ebadab3d9c24f336" }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "1875040b59c22d8104e681ffe168684313267e2b", features = ["threadunsafe"] }
+catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b3afd7c02de69045f423563228f" }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983a91d85516bd39f0a1d49486597" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "aa12b1366c723537334cc924df8ecbb8e29c5453" }
 
 [features]
 default = [  ]
