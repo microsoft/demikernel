@@ -38,22 +38,22 @@ export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo m
 
 all: all-libs all-tests
 
-all-libs: all-libs-catnap all-libs-catnip
+all-libs: all-libs-catpowder all-libs-catnip
 
-all-libs-default: all-libs-catnap
+all-libs-default: all-libs-catpowder
 
-all-libs-catnap:
-	$(CARGO) build --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
+all-libs-catpowder:
+	$(CARGO) build --features=catpowder-libos $(BUILD) $(CARGO_FLAGS)
 
 all-libs-catnip:
 	$(CARGO) build --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
 
-all-tests: all-tests-catnap all-tests-catnip
+all-tests: all-tests-catpowder all-tests-catnip
 
-all-tests-default: all-tests-catnap
+all-tests-default: all-tests-catpowder
 
-all-tests-catnap:
-	$(CARGO) build --tests --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
+all-tests-catpowder:
+	$(CARGO) build --tests --features=catpowder-libos $(BUILD) $(CARGO_FLAGS)
 
 all-tests-catnip:
 	$(CARGO) build --tests --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
@@ -68,5 +68,5 @@ clean:
 test-catnip: all-tests-catnip
 	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
 
-test-catnap: all-tests-catnap
-	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnap-libos -- --nocapture $(TEST)
+test-catpowder: all-tests-catpowder
+	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catpowder-libos -- --nocapture $(TEST)

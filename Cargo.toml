@@ -32,6 +32,7 @@ runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983
 [features]
 default = [  ]
 catnap-libos = [ ]
+catpowder-libos = [ ]
 catnip-libos = [ "dpdk-rs" ]
 mlx4 = ["dpdk-rs", "dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs", "dpdk-rs/mlx5"]
