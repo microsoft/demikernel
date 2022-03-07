@@ -20,6 +20,7 @@ libc = "0.2.116"
 rand = { version = "0.8.4", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.14"
+nix = "0.23.1"
 socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
 
