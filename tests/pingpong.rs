@@ -10,10 +10,12 @@ mod common;
 //==============================================================================
 
 use self::common::Test;
-use ::catnip::{
-    operations::OperationResult,
-    protocols::ipv4::Ipv4Endpoint,
-};
+
+#[cfg(feature = "catpowder-libos")]
+use ::catnip::operations::OperationResult;
+#[cfg(feature = "catnip-libos")]
+use ::catnip::operations::OperationResult;
+use ::catnip::protocols::ipv4::Ipv4Endpoint;
 use ::std::{
     panic,
     process,
@@ -58,7 +60,7 @@ fn udp_ping_pong() {
 
             // Wait for incoming data,
             let recvbuf = match test.libos.wait2(qtoken) {
-                (_, OperationResult::Pop(_, buf)) => buf,
+                Ok((_, OperationResult::Pop(_, buf))) => buf,
                 _ => panic!("server failed to wait()"),
             };
 
@@ -68,16 +70,16 @@ fn udp_ping_pong() {
 
             // Sanity check contents of received buffer.
             assert!(
-                Test::bufcmp(sendbuf.clone(), recvbuf),
+                Test::bufcmp(&sendbuf, recvbuf),
                 "server sendbuf != recevbuf"
             );
 
             // Send data.
             qtoken = test
                 .libos
-                .pushto2(sockfd, sendbuf.clone(), remote_addr)
+                .pushto2(sockfd, sendbuf.as_slice(), remote_addr)
                 .expect("server failed to pushto2()");
-            test.libos.wait(qtoken);
+            test.libos.wait(qtoken).unwrap();
         }
     } else {
         let mut qtokens = Vec::new();
@@ -87,7 +89,7 @@ fn udp_ping_pong() {
         let (qt_push, qt_pop) = {
             let qt_push = test
                 .libos
-                .pushto2(sockfd, sendbuf.clone(), remote_addr)
+                .pushto2(sockfd, sendbuf.as_slice(), remote_addr)
                 .expect("client failed to pushto2()");
             let qt_pop = test.libos.pop(sockfd).expect("client failed to pop()");
             (qt_push, qt_pop)
@@ -106,7 +108,7 @@ fn udp_ping_pong() {
                     let (qt_push, qt_pop) = {
                         let qt_push = test
                             .libos
-                            .pushto2(sockfd, sendbuf.clone(), remote_addr)
+                            .pushto2(sockfd, sendbuf.as_slice(), remote_addr)
                             .expect("client failed to pushto2()");
                         let qt_pop = test.libos.pop(sockfd).expect("client failed to pop()");
                         (qt_push, qt_pop)
@@ -117,7 +119,7 @@ fn udp_ping_pong() {
                 OperationResult::Pop(_, recvbuf) => {
                     // Sanity received buffer.
                     assert!(
-                        Test::bufcmp(sendbuf.clone(), recvbuf),
+                        Test::bufcmp(&sendbuf, recvbuf),
                         "server expectbuf != recevbuf"
                     );
                     npongs -= 1;
