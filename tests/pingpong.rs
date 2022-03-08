@@ -47,6 +47,7 @@ fn udp_ping_pong() {
 
     // Run peers.
     if test.is_server() {
+        let mut npongs: usize = 0;
         loop {
             let sendbuf = test.mkbuf(payload);
             let mut qtoken = test.libos.pop(sockfd).expect("server failed to pop()");
@@ -82,8 +83,12 @@ fn udp_ping_pong() {
                 .pushto2(sockfd, sendbuf.as_slice(), remote_addr)
                 .expect("server failed to pushto2()");
             test.libos.wait(qtoken).unwrap();
+
+            npongs += 1;
+            println!("pong {:?}", npongs);
         }
     } else {
+        let mut npings: usize = 0;
         let mut qtokens = Vec::new();
         let sendbuf = test.mkbuf(payload);
 
@@ -101,8 +106,10 @@ fn udp_ping_pong() {
 
         // Send packets.
         while npongs > 0 {
-            let (i, _, result) = test.libos.wait_any2(&qtokens);
-            qtokens.swap_remove(i);
+            // FIXME: If any packet is lost this will hang.
+
+            let (ix, _, result) = test.libos.wait_any2(&qtokens);
+            qtokens.swap_remove(ix);
 
             // Parse result.
             match result {
@@ -117,6 +124,7 @@ fn udp_ping_pong() {
                     };
                     qtokens.push(qt_push);
                     qtokens.push(qt_pop);
+                    println!("ping {:?}", npings);
                 },
                 OperationResult::Pop(_, recvbuf) => {
                     // Sanity received buffer.
@@ -124,6 +132,7 @@ fn udp_ping_pong() {
                         Test::bufcmp(&sendbuf, recvbuf),
                         "server expectbuf != recevbuf"
                     );
+                    npings += 1;
                     npongs -= 1;
                 },
                 _ => panic!("unexpected result"),

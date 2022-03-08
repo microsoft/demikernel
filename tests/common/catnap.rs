@@ -47,7 +47,6 @@ impl Test {
 
         let mut data: Vec<u8> = Vec::<u8>::with_capacity(self.config.0.buffer_size);
 
-        println!("buffer_size: {:?}", self.config.0.buffer_size);
         for _ in 0..self.config.0.buffer_size {
             data.push(fill_char);
         }
