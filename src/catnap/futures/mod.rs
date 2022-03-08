@@ -60,11 +60,16 @@ pub enum OperationResult {
 }
 
 /// Operations Descriptor
-pub enum FutureOperation {
+pub enum Operation {
+    /// Accept operation.
     Accept(FutureResult<AcceptFuture>),
+    /// Connection operation
     Connect(FutureResult<ConnectFuture>),
+    /// Push operation
     Push(FutureResult<PushFuture>),
+    /// Pushto operation.
     Pushto(FutureResult<PushtoFuture>),
+    /// Pop operation.
     Pop(FutureResult<PopFuture>),
 }
 
@@ -73,55 +78,56 @@ pub enum FutureOperation {
 //==============================================================================
 
 /// Associate Functions for Operation Descriptor
-impl FutureOperation {
-    pub fn expect_result(self) -> (QDesc, OperationResult) {
+impl Operation {
+    /// Gets the [OperationResult] output by the target [Operation].
+    pub fn get_result(self) -> (QDesc, OperationResult) {
         match self {
             // Accept operation.
-            FutureOperation::Accept(FutureResult {
+            Operation::Accept(FutureResult {
                 future,
                 done: Some(Ok(fd)),
             }) => (future.get_qd(), OperationResult::Accept(fd)),
-            FutureOperation::Accept(FutureResult {
+            Operation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
             // Connect operation.
-            FutureOperation::Connect(FutureResult {
+            Operation::Connect(FutureResult {
                 future,
                 done: Some(Ok(())),
             }) => (future.get_qd(), OperationResult::Connect),
-            FutureOperation::Connect(FutureResult {
+            Operation::Connect(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
             // Push operation.
-            FutureOperation::Push(FutureResult {
+            Operation::Push(FutureResult {
                 future,
                 done: Some(Ok(())),
             }) => (future.get_qd(), OperationResult::Push),
-            FutureOperation::Push(FutureResult {
+            Operation::Push(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
             // Pushto operation.
-            FutureOperation::Pushto(FutureResult {
+            Operation::Pushto(FutureResult {
                 future,
                 done: Some(Ok(())),
             }) => (future.get_qd(), OperationResult::Push),
-            FutureOperation::Pushto(FutureResult {
+            Operation::Pushto(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
             // Pop operation.
-            FutureOperation::Pop(FutureResult {
+            Operation::Pop(FutureResult {
                 future,
                 done: Some(Ok(buf)),
             }) => (future.get_qd(), OperationResult::Pop(None, buf)),
-            FutureOperation::Pop(FutureResult {
+            Operation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
@@ -136,7 +142,7 @@ impl FutureOperation {
 //==============================================================================
 
 /// Scheduler Future Trait Implementation for Operation Descriptors
-impl SchedulerFuture for FutureOperation {
+impl SchedulerFuture for Operation {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
@@ -147,53 +153,53 @@ impl SchedulerFuture for FutureOperation {
 }
 
 /// Future Trait Implementation for Operation Descriptors
-impl Future for FutureOperation {
+impl Future for Operation {
     type Output = ();
 
     /// Polls the target [FutureOperation].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         trace!("polling...");
         match self.get_mut() {
-            FutureOperation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
-            FutureOperation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
-            FutureOperation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
-            FutureOperation::Pushto(ref mut f) => Future::poll(Pin::new(f), ctx),
-            FutureOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Pushto(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<AcceptFuture> for FutureOperation {
+impl From<AcceptFuture> for Operation {
     fn from(f: AcceptFuture) -> Self {
-        FutureOperation::Accept(FutureResult::new(f, None))
+        Operation::Accept(FutureResult::new(f, None))
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<ConnectFuture> for FutureOperation {
+impl From<ConnectFuture> for Operation {
     fn from(f: ConnectFuture) -> Self {
-        FutureOperation::Connect(FutureResult::new(f, None))
+        Operation::Connect(FutureResult::new(f, None))
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<PushFuture> for FutureOperation {
+impl From<PushFuture> for Operation {
     fn from(f: PushFuture) -> Self {
-        FutureOperation::Push(FutureResult::new(f, None))
+        Operation::Push(FutureResult::new(f, None))
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<PushtoFuture> for FutureOperation {
+impl From<PushtoFuture> for Operation {
     fn from(f: PushtoFuture) -> Self {
-        FutureOperation::Pushto(FutureResult::new(f, None))
+        Operation::Pushto(FutureResult::new(f, None))
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<PopFuture> for FutureOperation {
+impl From<PopFuture> for Operation {
     fn from(f: PopFuture) -> Self {
-        FutureOperation::Pop(FutureResult::new(f, None))
+        Operation::Pop(FutureResult::new(f, None))
     }
 }

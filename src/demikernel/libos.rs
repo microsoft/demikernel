@@ -12,8 +12,8 @@ cfg_if::cfg_if! {
         use ::catnip::operations::OperationResult;
     } else {
         use crate::catnap::CatnapLibOS as NetworkLibOS;
-        use crate::catnap::runtime::PosixRuntime as Runtime;
-        use crate::catnap::futures::OperationResult;
+        use crate::catnap::PosixRuntime as Runtime;
+        use crate::catnap::OperationResult;
     }
 }
 
