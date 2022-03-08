@@ -66,7 +66,7 @@ clean:
 #===============================================================================
 
 test-catnip: all-tests-catnip
-	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
+	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
 
 test-catpowder: all-tests-catpowder
-	timeout $(TIMEOUT) $(CARGO) test $(CARGO_FLAGS) --features=catpowder-libos -- --nocapture $(TEST)
+	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) --features=catpowder-libos -- --nocapture $(TEST)
