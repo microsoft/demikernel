@@ -98,13 +98,43 @@ jobs:
       username: ${{ secrets.USERNAME }}
 
   #====================
+  # Compile Catnap
+  #====================
+
+  # Demikernel 0
+  build-catnap-demikernel0:
+    name: Build Catnap
+    needs: [build-defaults-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM_A }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-catnap-demikernel1:
+    name: Build Catnap
+    needs: [build-defaults-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: all-tests-catnap
+    secrets:
+      host: ${{ secrets.HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM_B }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
   # Compile Catpowder
   #====================
 
   # Demikernel 0
   build-catpowder-demikernel0:
     name: Build Catpowder
-    needs: [build-defaults-demikernel0]
+    needs: [build-catnap-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
       target: all-tests-catpowder
@@ -117,7 +147,7 @@ jobs:
   # Demikernel 1
   build-catpowder-demikernel1:
     name: Build Catpowder
-    needs: [build-defaults-demikernel1]
+    needs: [build-catnap-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
       target: all-tests-catpowder

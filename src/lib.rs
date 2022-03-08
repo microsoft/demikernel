@@ -9,6 +9,9 @@
 #[macro_use]
 extern crate log;
 
+#[cfg(feature = "catnap-libos")]
+pub mod catnap;
+
 #[cfg(feature = "catpowder-libos")]
 pub mod catpowder;
 

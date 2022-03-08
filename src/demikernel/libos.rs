@@ -6,10 +6,14 @@ cfg_if::cfg_if! {
         use crate::catnip::CatnipLibOS as NetworkLibOS;
         use crate::catnip::runtime::DPDKRuntime as Runtime;
         use ::catnip::operations::OperationResult as OperationResult;
-    } else {
+    } else if  #[cfg(feature = "catpowder-libos")] {
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
         use ::catnip::operations::OperationResult;
+    } else {
+        use crate::catnap::CatnapLibOS as NetworkLibOS;
+        use crate::catnap::runtime::PosixRuntime as Runtime;
+        use crate::catnap::futures::OperationResult;
     }
 }
 
@@ -44,15 +48,35 @@ pub enum LibOS {
 
 /// Associate Functions for Network LibOSes
 impl LibOS {
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Runtime>), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "catnap-libos")] {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
+                match self {
+                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                }
+            }
+        } else {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Runtime>), Fail> {
+                match self {
+                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                }
+            }
         }
     }
 
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<Runtime>) {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "catnap-libos")] {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult) {
+                match self {
+                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
+                }
+            }
+        } else {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<Runtime>) {
+                match self {
+                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
+                }
+            }
         }
     }
 
