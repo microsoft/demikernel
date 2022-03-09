@@ -11,6 +11,7 @@ use ::catwalk::{
     SchedulerFuture,
     SchedulerHandle,
 };
+use ::libc::c_void;
 use ::rand::{
     distributions::Standard,
     prelude::Distribution,
@@ -52,7 +53,6 @@ use ::std::{
     slice,
     time::Instant,
 };
-use libc::c_void;
 
 //==============================================================================
 // Structures
@@ -61,7 +61,9 @@ use libc::c_void;
 /// POSIX Runtime
 #[derive(Clone)]
 pub struct PosixRuntime {
+    /// Timer.
     timer: TimerRc,
+    /// Scheduler
     scheduler: Scheduler,
 }
 
@@ -208,30 +210,37 @@ impl SchedulerRuntime for PosixRuntime {
 
 /// Network Runtime Trait Implementation for POSIX Runtime
 impl NetworkRuntime for PosixRuntime {
+    // TODO: Rely on a default implementation for this.
     fn transmit(&self, _pkt: impl runtime::network::PacketBuf<Self::Buf>) {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn receive(&self) -> ArrayVec<Self::Buf, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn local_link_addr(&self) -> MacAddress {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn local_ipv4_addr(&self) -> Ipv4Addr {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn arp_options(&self) -> ArpConfig {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn tcp_options(&self) -> TcpConfig {
         unreachable!()
     }
 
+    // TODO: Rely on a default implementation for this.
     fn udp_options(&self) -> UdpConfig {
         unreachable!()
     }
@@ -239,7 +248,7 @@ impl NetworkRuntime for PosixRuntime {
 
 /// Utilities Runtime Trait Implementation for POSIX Runtime
 impl UtilsRuntime for PosixRuntime {
-    /// Returns a random value supporting the [Standard] distribution.
+    // TODO: Rely on a default implementation for this.
     fn rng_gen<T>(&self) -> T
     where
         Standard: Distribution<T>,
@@ -247,7 +256,7 @@ impl UtilsRuntime for PosixRuntime {
         unreachable!()
     }
 
-    /// Shuffles a mutable slice in place.
+    // TODO: Rely on a default implementation for this.
     fn rng_shuffle<T>(&self, _slice: &mut [T]) {
         unreachable!()
     }

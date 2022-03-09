@@ -16,7 +16,7 @@ use ::catnip::operations::OperationResult;
 use ::catnip::operations::OperationResult;
 use ::catnip::protocols::ipv4::Ipv4Endpoint;
 #[cfg(feature = "catnap-libos")]
-use ::demikernel::catnap::futures::OperationResult;
+use ::demikernel::catnap::OperationResult;
 use ::runtime::QToken;
 use ::std::panic;
 
