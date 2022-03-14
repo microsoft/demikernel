@@ -9,13 +9,14 @@
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "catnap-libos")]
-pub mod catnap;
-
-#[cfg(feature = "catpowder-libos")]
-pub mod catpowder;
-
-#[cfg(feature = "catnip-libos")]
-pub mod catnip;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "catnip-libos")] {
+        mod catnip;
+    } else if  #[cfg(feature = "catpowder-libos")] {
+        mod catpowder;
+    } else {
+        mod catnap;
+    }
+}
 
 pub mod demikernel;
