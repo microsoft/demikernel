@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 use super::config::TestConfig;
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
 use demikernel::{
-    catnip::DPDKBuf,
-    demikernel::libos::LibOS,
+    DPDKBuf,
+    Ipv4Endpoint,
+    LibOS,
 };
 use runtime::memory::Buffer;
 
