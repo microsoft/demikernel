@@ -2,8 +2,10 @@
 // Licensed under the MIT license.
 
 use super::config::TestConfig;
-use catnip::protocols::ipv4::Ipv4Endpoint;
-use demikernel::demikernel::libos::LibOS;
+use demikernel::{
+    Ipv4Endpoint,
+    LibOS,
+};
 use runtime::memory::{
     Buffer,
     Bytes,

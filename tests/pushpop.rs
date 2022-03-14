@@ -10,14 +10,11 @@ mod common;
 //==============================================================================
 
 use self::common::Test;
-#[cfg(feature = "catpowder-libos")]
-use ::catnip::operations::OperationResult;
-#[cfg(feature = "catnip-libos")]
-use ::catnip::operations::OperationResult;
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
-#[cfg(feature = "catnap-libos")]
-use ::demikernel::catnap::OperationResult;
-use ::runtime::QToken;
+use ::demikernel::{
+    Ipv4Endpoint,
+    OperationResult,
+    QToken,
+};
 use ::std::panic;
 
 //==============================================================================

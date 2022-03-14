@@ -5,8 +5,11 @@ use ::anyhow::{
     format_err,
     Error,
 };
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
-use ::demikernel::demikernel::config::Config;
+use ::demikernel::{
+    demikernel::config::Config,
+    Ipv4Endpoint,
+    Port16,
+};
 use ::std::{
     convert::TryFrom,
     env,
@@ -14,7 +17,6 @@ use ::std::{
     panic,
     str::FromStr,
 };
-use runtime::network::types::Port16;
 
 //==============================================================================
 // Test

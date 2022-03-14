@@ -9,13 +9,32 @@
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "catnap-libos")]
-pub mod catnap;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "catnip-libos")] {
+        mod catnip;
+        pub use self::catnip::DPDKBuf;
+        pub use ::catnip::operations::OperationResult as OperationResult;
+    } else if  #[cfg(feature = "catpowder-libos")] {
+        mod catpowder;
+        pub use ::catnip::operations::OperationResult;
+    } else {
+        mod catnap;
+        pub use catnap::OperationResult;
+    }
+}
 
-#[cfg(feature = "catpowder-libos")]
-pub mod catpowder;
-
-#[cfg(feature = "catnip-libos")]
-pub mod catnip;
+pub use self::demikernel::libos::LibOS;
+pub use ::catnip::protocols::ipv4::Ipv4Endpoint;
+pub use ::runtime::{
+    network::types::{
+        Ipv4Addr,
+        MacAddress,
+        Port16,
+    },
+    QDesc,
+    QResult,
+    QToken,
+    QType,
+};
 
 pub mod demikernel;
