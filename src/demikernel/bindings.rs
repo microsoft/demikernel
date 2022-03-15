@@ -277,23 +277,6 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 }
 
 //==============================================================================
-// poll
-//==============================================================================
-
-#[no_mangle]
-pub extern "C" fn dmtr_poll(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
-    trace!("dmtr_poll()");
-    with_libos(|libos| match libos.poll(qt.into()) {
-        Ok(None) => libc::EAGAIN,
-        Ok(Some(r)) => {
-            unsafe { *qr_out = r };
-            0
-        },
-        _ => libc::ENOTSUP,
-    })
-}
-
-//==============================================================================
 // drop
 //==============================================================================
 

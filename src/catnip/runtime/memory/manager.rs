@@ -13,7 +13,7 @@ pub use super::{
 use ::anyhow::Error;
 use ::catnip::protocols::{
     ethernet2::ETHERNET2_HEADER_SIZE,
-    ipv4::IPV4_HEADER_SIZE,
+    ipv4::IPV4_HEADER_DEFAULT_SIZE,
     tcp::MAX_TCP_HEADER_SIZE,
 };
 use ::dpdk_rs::{
@@ -314,7 +314,7 @@ impl MemoryManager {
 
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
-        let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_SIZE + MAX_TCP_HEADER_SIZE;
+        let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size = header_size + config.get_inline_body_size();
         let priv_size = 0;
         assert_eq!(
