@@ -3,10 +3,12 @@
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "catnip-libos")] {
+        use crate::DPDKBuf;
         use crate::catnip::CatnipLibOS as NetworkLibOS;
         use crate::catnip::runtime::DPDKRuntime as Runtime;
         use ::catnip::operations::OperationResult as OperationResult;
     } else if  #[cfg(feature = "catpowder-libos")] {
+        use ::runtime::memory::Bytes;
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
         use ::catnip::operations::OperationResult;
@@ -49,14 +51,20 @@ pub enum LibOS {
 /// Associate Functions for Network LibOSes
 impl LibOS {
     cfg_if::cfg_if! {
-        if #[cfg(feature = "catnap-libos")] {
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
+        if #[cfg(feature = "catnip-libos")] {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<DPDKBuf>), Fail> {
+                match self {
+                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                }
+            }
+        } else if  #[cfg(feature = "catpowder-libos")] {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Bytes>), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
                 }
             }
         } else {
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Runtime>), Fail> {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
                 }
@@ -65,14 +73,20 @@ impl LibOS {
     }
 
     cfg_if::cfg_if! {
-        if #[cfg(feature = "catnap-libos")] {
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult) {
+        if #[cfg(feature = "catnip-libos")] {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<DPDKBuf>) {
+                match self {
+                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
+                }
+            }
+        } else if  #[cfg(feature = "catpowder-libos")] {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<Bytes>) {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
             }
         } else {
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<Runtime>) {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult) {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
@@ -159,12 +173,6 @@ impl LibOS {
     pub fn pop(&mut self, fd: QDesc) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pop(fd),
-        }
-    }
-
-    pub fn poll(&mut self, qt: QToken) -> Result<Option<dmtr_qresult_t>, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => Ok(libos.poll(qt)),
         }
     }
 
