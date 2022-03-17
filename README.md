@@ -1,11 +1,14 @@
 Demikernel
 ==========
 
-_Demikernel_ is a library operating system (libOS) architecture designed for
-use with kernel-bypass I/O devices.  The _Demikernel_ architecture
-offers a uniform system call API across kernel-bypass technologies
-(e.g., RDMA, DPDK) and OS functionality (e.g., a user-level networking
-stack for DPDK).
+[![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-11i6lgaw5-HFE_IAls7gUX3kp1XSab0g)
+[![Build Libs](https://github.com/demikernel/demikernel/actions/workflows/build-libs.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/build-libs.yml)
+[![Build Tests](https://github.com/demikernel/demikernel/actions/workflows/build-tests.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/build-tests.yml)
+
+_Demikernel_ is a library operating system (LibOS) architecture designed for use
+with kernel-bypass I/O devices. This architecture offers a uniform system call
+API across kernel-bypass technologies (e.g., RDMA, DPDK) and OS functionality
+(e.g., a user-level networking stack for DPDK).
 
 To read more about the motivation behind the _Demikernel_, check out
 this [blog
@@ -19,33 +22,68 @@ paper](http://irenezhang.net//papers/demikernel-hotos19.pdf).
 Building
 --------
 
-> **Follow these instructions to build Demikernel on a fresh Ubuntu 18.04 system.**
+> **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
 
 **1. Clone This Repository**
 ```
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
 git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
+cd $WORKDIR/demikernel                                                # Switch to working directory.
 ```
 
-**2. Install Prerequisites**
+**2. Install Prerequisites (Only Once)**
 ```
-cd $WORKDIR/demikernel                                            # Switch to working directory.
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ./scripts/setup/dpdk.sh                                           # Build DPDK.
 ```
 
-**3. Build Demikernel with Default Drivers**
+**3. Build Demikernel with Default Parameters**
 ```
-cd $WORKDIR/demikernel    # Switch to working directory.
-make                      # Build using default drivers.
+make
 ```
 
-**4. Build Demikernel with Custom Drivers (Optional)**
+**4. Build Demikernel with Custom Parameters (Optional)**
 ```
-cd $WORKDIR/demikernel    # Switch to working directory.
-make DRIVER=[mlx4|mlx5]   # Build using a custom driver.
+make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
+make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
+```
+
+Running
+--------
+> **Follow these instructions to run examples that are shipped in the source tree**.
+
+**1. Setup Configuration File (Only Once)**
+
+- Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
+- Open the file in `$HOME/config.yaml` for editing and do the following:
+    - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
+    - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
+    - Change `PPPP` to the port number that you will expose in the server host.
+    - Change `ZZ.ZZ.ZZ.ZZ` to match the IPv4 address that in the local host.
+    - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.
+    - Change `abcde` to match the name of the interface in the local host.
+    - Change the `arp_table` according to your setup.
+    - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
+- Save the file.
+
+**2. Run UDP Push-Pop Demo**
+```
+# Server-Side
+PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+
+# Client-Side
+PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+```
+
+**3. Run UDP Ping-Pong Demo**
+```
+# Server-Side
+PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+
+# Client-Side
+PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
 ```
 
 Documentation
