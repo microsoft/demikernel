@@ -198,11 +198,11 @@ impl LibOS {
     }
 
     pub fn sgaalloc(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
-        Ok(self.rt().alloc_sgarray(size))
+        self.rt().alloc_sgarray(size)
     }
 
     pub fn sgafree(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
-        Ok(self.rt().free_sgarray(sga))
+        self.rt().free_sgarray(sga)
     }
 
     pub fn local_ipv4_addr(&self) -> Ipv4Addr {
