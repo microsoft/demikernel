@@ -1,11 +1,10 @@
 Demikernel
 ==========
 
-_Demikernel_ is a library operating system (libOS) architecture designed for
-use with kernel-bypass I/O devices.  The _Demikernel_ architecture
-offers a uniform system call API across kernel-bypass technologies
-(e.g., RDMA, DPDK) and OS functionality (e.g., a user-level networking
-stack for DPDK).
+_Demikernel_ is a library operating system (LibOS) architecture designed for use
+with kernel-bypass I/O devices. This architecture offers a uniform system call
+API across kernel-bypass technologies (e.g., RDMA, DPDK) and OS functionality
+(e.g., a user-level networking stack for DPDK).
 
 To read more about the motivation behind the _Demikernel_, check out
 this [blog
