@@ -50,6 +50,42 @@ make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
 make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
 ```
 
+Running
+--------
+> **Follow these instructions to run examples that are shipped in the source tree**.
+
+**1. Setup Configuration File (Only Once)**
+
+- Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
+- Open the file in `$HOME/config.yaml` for editing and do the following:
+    - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
+    - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
+    - Change `PPPP` to the port number that you will expose in the server host.
+    - Change `ZZ.ZZ.ZZ.ZZ` to match the IPv4 address that in the local host.
+    - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.
+    - Change `abcde` to match the name of the interface in the local host.
+    - Change the `arp_table` according to your setup.
+    - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
+- Save the file.
+
+**2. Run UDP Push-Pop Demo**
+```
+# Server-Side
+PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+
+# Client-Side
+PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+```
+
+**3. Run UDP Ping-Pong Demo**
+```
+# Server-Side
+PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+
+# Client-Side
+PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+```
+
 Documentation
 --------------
 
