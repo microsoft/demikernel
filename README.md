@@ -19,7 +19,7 @@ paper](http://irenezhang.net//papers/demikernel-hotos19.pdf).
 Building
 --------
 
-> **Follow these instructions to build Demikernel on a fresh Ubuntu 18.04 system.**
+> **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
 
 **1. Clone This Repository**
 ```
