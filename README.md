@@ -26,26 +26,25 @@ Building
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
 git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
+cd $WORKDIR/demikernel                                                # Switch to working directory.
 ```
 
-**2. Install Prerequisites**
+**2. Install Prerequisites (Only Once)**
 ```
-cd $WORKDIR/demikernel                                            # Switch to working directory.
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ./scripts/setup/dpdk.sh                                           # Build DPDK.
 ```
 
-**3. Build Demikernel with Default Drivers**
+**3. Build Demikernel with Default Parameters**
 ```
-cd $WORKDIR/demikernel    # Switch to working directory.
-make                      # Build using default drivers.
+make
 ```
 
-**4. Build Demikernel with Custom Drivers (Optional)**
+**4. Build Demikernel with Custom Parameters (Optional)**
 ```
-cd $WORKDIR/demikernel    # Switch to working directory.
-make DRIVER=[mlx4|mlx5]   # Build using a custom driver.
+make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
+make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
 ```
 
 Documentation
