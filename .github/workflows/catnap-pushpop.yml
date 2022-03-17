@@ -77,7 +77,7 @@ jobs:
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnap
+      target: "all-tests LIBOS=catnap"
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -90,7 +90,7 @@ jobs:
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnap
+      target: "all-tests LIBOS=catnap"
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -118,7 +118,7 @@ jobs:
         script: |
           source $HOME/setup-env-catnap.sh
           cd $GITHUB_REPOSITORY
-          PEER=server TIMEOUT=300 TEST=udp_push_pop sudo -E make test-catnap > nohup.out 2> nohup.err < /dev/null  &
+          PEER=server TIMEOUT=300 TEST=udp_push_pop sudo -E make LIBOS=catnap test-system > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -137,7 +137,7 @@ jobs:
         script: |
           source $HOME/setup-env-catnap.sh
           cd $GITHUB_REPOSITORY
-          PEER=client TIMEOUT=300 TEST=udp_push_pop sudo -E make test-catnap > nohup.out 2> nohup.err < /dev/null
+          PEER=client TIMEOUT=300 TEST=udp_push_pop sudo -E make LIBOS=catnap test-system > nohup.out 2> nohup.err < /dev/null
 
   #====================
   # Post-Run

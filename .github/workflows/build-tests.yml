@@ -77,7 +77,7 @@ jobs:
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-default
+      target: all-tests
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -90,7 +90,7 @@ jobs:
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-default
+      target: all-tests
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -107,7 +107,7 @@ jobs:
     needs: [build-defaults-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnap
+      target: "all-tests LIBOS=catnap"
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -120,7 +120,7 @@ jobs:
     needs: [build-defaults-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnap
+      target: "all-tests LIBOS=catnap"
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -137,7 +137,7 @@ jobs:
     needs: [build-catnap-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catpowder
+      target: "all-tests LIBOS=catpowder"
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -150,7 +150,7 @@ jobs:
     needs: [build-catnap-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catpowder
+      target: "all-tests LIBOS=catpowder"
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}
@@ -167,7 +167,7 @@ jobs:
     needs: [build-catpowder-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnip
+      target: "all-tests LIBOS=catnip"
     secrets:
       host: ${{ secrets.HOSTNAME_A }}
       port: ${{ secrets.PORTNUM_A }}
@@ -180,7 +180,7 @@ jobs:
     needs: [build-catpowder-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: all-tests-catnip
+      target: "all-tests LIBOS=catnip"
     secrets:
       host: ${{ secrets.HOSTNAME_B }}
       port: ${{ secrets.PORTNUM_B }}

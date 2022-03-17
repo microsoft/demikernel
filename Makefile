@@ -1,81 +1,63 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-export PREFIX ?= $(HOME)
+#===============================================================================
+# System Directories
+#===============================================================================
 
+export PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d)
 export LD_LIBRARY_PATH ?= $(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d)
-export CONFIG_PATH ?= $(HOME)/config.yaml
-
-export MTU ?= 1500
-export MSS ?= 9000
-export PEER ?= server
-export TEST ?= udp_push_pop
-
-export TIMEOUT ?= 30
 
 #===============================================================================
-# Directories
+# Project Directories
 #===============================================================================
 
 export SRCDIR = $(CURDIR)/src
-export BINDIR = $(CURDIR)/bin
-export LIBDIR = $(CURDIR)/lib
 
 #===============================================================================
 # Toolchain Configuration
 #===============================================================================
 
-# Rust Toolchain
 export BUILD ?= --release
 export CARGO ?= $(HOME)/.cargo/bin/cargo
+export CARGO_FLAGS ?=
 
 #===============================================================================
+# Build Parameters
+#===============================================================================
 
-export DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
+export LIBOS ?= catnap
+export CARGO_FEATURES := --features=$(LIBOS)-libos
+
+ifeq ($(LIBOS),catnip)
+DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
+CARGO_FEATURES += --features=$(DRIVER)
+endif
 
 #===============================================================================
 
 all: all-libs all-tests
 
-all-libs: all-libs-catpowder all-libs-catnip all-libs-catnap
+all-libs:
+	$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
-all-libs-default: all-libs-catpowder
-
-all-libs-catnap:
-	$(CARGO) build --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
-
-all-libs-catpowder:
-	$(CARGO) build --features=catpowder-libos $(BUILD) $(CARGO_FLAGS)
-
-all-libs-catnip:
-	$(CARGO) build --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
-
-all-tests: all-tests-catpowder all-tests-catnip all-tests-catnap
-
-all-tests-default: all-tests-catpowder
-
-all-tests-catnap:
-	$(CARGO) build --tests --features=catnap-libos $(BUILD) $(CARGO_FLAGS)
-
-all-tests-catpowder:
-	$(CARGO) build --tests --features=catpowder-libos $(BUILD) $(CARGO_FLAGS)
-
-all-tests-catnip:
-	$(CARGO) build --tests --features=catnip-libos --features=$(DRIVER) $(BUILD) $(CARGO_FLAGS)
+all-tests:
+	$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
 clean:
-	rm -rf target &&  \
-	$(CARGO) clean && \
-	rm -f Cargo.lock
+	rm -rf target ; \
+	rm -f Cargo.lock ; \
+	$(CARGO) clean
 
 #===============================================================================
 
-test-catnip: all-tests-catnip
-	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH)" timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) --features=catnip-libos --features=$(DRIVER) -- --nocapture $(TEST)
+export CONFIG_PATH ?= $(HOME)/config.yaml
+export MTU ?= 1500
+export MSS ?= 9000
+export PEER ?= server
+export TEST ?= udp_push_pop
+export TIMEOUT ?= 30
 
-test-catnap: all-tests-catnap
-	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) --features=catnap-libos -- --nocapture $(TEST)
-
-test-catpowder: all-tests-catpowder
-	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FLAGS) --features=catpowder-libos -- --nocapture $(TEST)
+test-system: all-tests
+	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
