@@ -248,7 +248,7 @@ impl MemoryManager {
         {
             let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
             if mbuf_ptr.is_null() {
-                return Err(Fail::new(ENOMEM, "cannot allocate more mbufs"));
+                return Err(Fail::new(ENOMEM, "mbuf allocation failed"));
             }
             unsafe {
                 let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
