@@ -14,8 +14,7 @@ To read more about the motivation behind the _Demikernel_, check out
 this [blog
 post](http://irenezhang.net/blog/2019/05/21/demikernel.html).
 
-To get details about the system, read our [HotOS
-paper](http://irenezhang.net//papers/demikernel-hotos19.pdf).
+To get details about the system, read our paper in [SOSP '21](https://doi.org/10.1145/3477132.3483569).
 
 > To read more about Demikernel check out https://aka.ms/demikernel.
 
