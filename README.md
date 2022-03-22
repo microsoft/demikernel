@@ -35,15 +35,19 @@ cd $WORKDIR/demikernel                                                # Switch t
 ```
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
-./scripts/setup/dpdk.sh                                           # Build DPDK.
 ```
 
-**3. Build Demikernel with Default Parameters**
+**3. Build DPDK Libraries (For Catnip and Only Once)**
+```
+./scripts/setup/dpdk.sh
+```
+
+**4. Build Demikernel with Default Parameters**
 ```
 make
 ```
 
-**4. Build Demikernel with Custom Parameters (Optional)**
+**5. Build Demikernel with Custom Parameters (Optional)**
 ```
 make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
 make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
