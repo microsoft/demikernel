@@ -73,7 +73,7 @@ Running
 PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 
 # Client-Side
-PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 ```
 
 **3. Run UDP Ping-Pong Demo**
@@ -82,7 +82,7 @@ PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
 
 # Client-Side
-PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+PEER=client TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
 ```
 
 Documentation
