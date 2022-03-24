@@ -336,11 +336,6 @@ impl CatnapLibOS {
         Some(pack_result(&self.runtime, r, qd, qt.into()))
     }
 
-    #[deprecated]
-    pub fn drop_qtoken(&mut self, _qt: QToken) {
-        todo!()
-    }
-
     /// Handles a wait operation.
     fn do_wait(&mut self, qt: QToken) -> (QDesc, OperationResult) {
         let handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
