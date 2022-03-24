@@ -25,9 +25,9 @@ use self::futures::{
     pushto::PushtoFuture,
     Operation,
 };
-use catnip::protocols::ipv4::Ipv4Endpoint;
-use catwalk::SchedulerHandle;
-use libc::{
+use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use ::catwalk::SchedulerHandle;
+use ::libc::{
     c_int,
     AF_INET,
     EBADF,
@@ -36,21 +36,7 @@ use libc::{
     SOCK_DGRAM,
     SOCK_STREAM,
 };
-use nix::{
-    sys::{
-        socket,
-        socket::{
-            AddressFamily,
-            InetAddr,
-            SockAddr,
-            SockFlag,
-            SockProtocol,
-            SockType,
-        },
-    },
-    unistd,
-};
-use runtime::{
+use ::runtime::{
     fail::Fail,
     logging,
     memory::{
@@ -75,12 +61,26 @@ use runtime::{
     QToken,
     QType,
 };
-use std::{
+use ::std::{
     any::Any,
     collections::HashMap,
     mem,
     os::unix::prelude::RawFd,
     time::Instant,
+};
+use nix::{
+    sys::{
+        socket,
+        socket::{
+            AddressFamily,
+            InetAddr,
+            SockAddr,
+            SockFlag,
+            SockProtocol,
+            SockType,
+        },
+    },
+    unistd,
 };
 
 //==============================================================================
