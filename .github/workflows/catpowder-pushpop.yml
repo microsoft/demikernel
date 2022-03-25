@@ -17,15 +17,6 @@ on:
       - dev
       - unstable
       - master
-  pull_request:
-    branches:
-      - bugfix-*
-      - enhancement-*
-      - feature-*
-      - workaround-*
-      - dev
-      - unstable
-      - master
   workflow_dispatch:
     branches:
       - bugfix-*
