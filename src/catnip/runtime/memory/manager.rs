@@ -34,8 +34,10 @@ use ::dpdk_rs::{
 use ::libc::{
     c_uint,
     c_void,
+    ENOMEM,
 };
 use ::runtime::{
+    fail::Fail,
     memory::BytesMut,
     types::{
         dmtr_sgarray_t,
@@ -186,7 +188,7 @@ impl MemoryManager {
         ptr_int >= self.inner.body_region_addr && ptr_int < body_end
     }
 
-    pub fn into_sgarray(&self, buf: DPDKBuf) -> dmtr_sgarray_t {
+    pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<dmtr_sgarray_t, Fail> {
         let sgaseg = match buf {
             DPDKBuf::External(bytes) => {
                 // We have to do a copy here since `Bytes` uses an `Arc<[u8]>` internally and has
@@ -208,12 +210,12 @@ impl MemoryManager {
                 sgaseg
             },
         };
-        dmtr_sgarray_t {
+        Ok(dmtr_sgarray_t {
             sga_buf: ptr::null_mut(),
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
-        }
+        })
     }
 
     pub fn alloc_header_mbuf(&self) -> Mbuf {
@@ -238,14 +240,16 @@ impl MemoryManager {
         Mbuf::new(mbuf_ptr, self.clone())
     }
 
-    pub fn alloc_sgarray(&self, size: usize) -> dmtr_sgarray_t {
+    pub fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
         assert!(size <= self.inner.config.get_max_body_size());
 
         let sgaseg = if self.inner.config.get_inline_body_size() < size
             && size <= self.inner.config.get_max_body_size()
         {
             let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
-            assert!(!mbuf_ptr.is_null());
+            if mbuf_ptr.is_null() {
+                return Err(Fail::new(ENOMEM, "mbuf allocation failed"));
+            }
             unsafe {
                 let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
                 // We don't strictly have to set these fields, since we don't directly hand off body
@@ -268,15 +272,15 @@ impl MemoryManager {
                 sgaseg_len: size as u32,
             }
         };
-        dmtr_sgarray_t {
+        Ok(dmtr_sgarray_t {
             sga_buf: ptr::null_mut(),
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
-        }
+        })
     }
 
-    pub fn free_sgarray(&self, sga: dmtr_sgarray_t) {
+    pub fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
         assert_eq!(sga.sga_numsegs, 1);
         let sgaseg = sga.sga_segs[0];
         let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
@@ -289,14 +293,16 @@ impl MemoryManager {
                 unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
             drop(allocation);
         }
+
+        Ok(())
     }
 
-    pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> DPDKBuf {
+    pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DPDKBuf, Fail> {
         assert_eq!(sga.sga_numsegs, 1);
         let sgaseg = sga.sga_segs[0];
         let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
-        if self.is_body_ptr(ptr) {
+        let buf: DPDKBuf = if self.is_body_ptr(ptr) {
             let mbuf = self.clone_body(ptr, len).expect("Invalid sga pointer");
             DPDKBuf::Managed(mbuf)
         } else {
@@ -304,7 +310,9 @@ impl MemoryManager {
             let seg_slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
             buf.copy_from_slice(seg_slice);
             DPDKBuf::External(buf.freeze())
-        }
+        };
+
+        Ok(buf)
     }
 
     pub fn body_pool(&self) -> *mut rte_mempool {

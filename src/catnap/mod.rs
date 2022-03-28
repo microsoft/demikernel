@@ -36,20 +36,6 @@ use ::libc::{
     SOCK_DGRAM,
     SOCK_STREAM,
 };
-use ::nix::{
-    sys::{
-        socket,
-        socket::{
-            AddressFamily,
-            InetAddr,
-            SockAddr,
-            SockFlag,
-            SockProtocol,
-            SockType,
-        },
-    },
-    unistd,
-};
 use ::runtime::{
     fail::Fail,
     logging,
@@ -81,6 +67,20 @@ use ::std::{
     mem,
     os::unix::prelude::RawFd,
     time::Instant,
+};
+use nix::{
+    sys::{
+        socket,
+        socket::{
+            AddressFamily,
+            InetAddr,
+            SockAddr,
+            SockFlag,
+            SockProtocol,
+            SockType,
+        },
+    },
+    unistd,
 };
 
 //==============================================================================
@@ -231,19 +231,23 @@ impl CatnapLibOS {
     pub fn push(&mut self, qd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
-        let buf: Bytes = self.runtime.clone_sgarray(sga);
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
+        match self.runtime.clone_sgarray(sga) {
+            Ok(buf) => {
+                if buf.len() == 0 {
+                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                }
 
-        // Issue push operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
-                Ok(handle.into_raw().into())
+                // Issue push operation.
+                match self.sockets.get(&qd) {
+                    Some(&fd) => {
+                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
+                        let handle: SchedulerHandle = self.runtime.schedule(future);
+                        Ok(handle.into_raw().into())
+                    },
+                    _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+                }
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            Err(e) => Err(e),
         }
     }
 
@@ -269,13 +273,17 @@ impl CatnapLibOS {
     ) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        let buf: Bytes = self.runtime.clone_sgarray(sga);
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
+        match self.runtime.clone_sgarray(sga) {
+            Ok(buf) => {
+                if buf.len() == 0 {
+                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                }
 
-        // Issue pushto operation.
-        self.do_pushto(qd, buf, remote)
+                // Issue pushto operation.
+                self.do_pushto(qd, buf, remote)
+            },
+            Err(e) => Err(e),
+        }
     }
 
     /// Pushes raw data to a socket.
@@ -381,14 +389,13 @@ impl CatnapLibOS {
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
         trace!("sgalloc() size={:?}", size);
-        Ok(self.runtime.alloc_sgarray(size))
+        self.runtime.alloc_sgarray(size)
     }
 
     /// Frees a scatter-gather array.
     pub fn sgafree(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
         trace!("sgafree()");
-        self.runtime.free_sgarray(sga);
-        Ok(())
+        self.runtime.free_sgarray(sga)
     }
 
     #[deprecated]
@@ -453,19 +460,29 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Pop(addr, bytes) => {
-            let mut sga: dmtr_sgarray_t = rt.into_sgarray(bytes);
-            if let Some((ipv4, port16)) = addr {
-                sga.sga_addr.sin_port = port16.into();
-                sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(ipv4.octets());
-            }
-            let qr_value: dmtr_qr_value_t = dmtr_qr_value_t { sga };
-            dmtr_qresult_t {
-                qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
-                qr_qd: qd.into(),
-                qr_qt: qt,
-                qr_value,
-            }
+        OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
+            Ok(mut sga) => {
+                if let Some((ipv4, port16)) = addr {
+                    sga.sga_addr.sin_port = port16.into();
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(ipv4.octets());
+                }
+                let qr_value: dmtr_qr_value_t = dmtr_qr_value_t { sga };
+                dmtr_qresult_t {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_value,
+                }
+            },
+            Err(e) => {
+                warn!("Operation Failed: {:?}", e);
+                dmtr_qresult_t {
+                    qr_opcode: dmtr_opcode_t::DMTR_OPC_FAILED,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_value: unsafe { mem::zeroed() },
+                }
+            },
         },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);

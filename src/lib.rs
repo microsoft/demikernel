@@ -31,6 +31,10 @@ pub use ::runtime::{
         MacAddress,
         Port16,
     },
+    types::{
+        dmtr_sgarray_t,
+        dmtr_sgaseg_t,
+    },
     QDesc,
     QResult,
     QToken,
