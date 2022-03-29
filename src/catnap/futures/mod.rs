@@ -50,7 +50,7 @@ use ::std::{
 /// Operation Result
 pub enum OperationResult {
     Connect,
-    Accept(RawFd),
+    Accept(QDesc),
     Push,
     Pop(Option<Ipv4Endpoint>, Bytes),
     Failed(Fail),
@@ -77,57 +77,67 @@ pub enum Operation {
 /// Associate Functions for Operation Descriptor
 impl Operation {
     /// Gets the [OperationResult] output by the target [Operation].
-    pub fn get_result(self) -> (QDesc, OperationResult) {
+    pub fn get_result(self) -> (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) {
         match self {
             // Accept operation.
             Operation::Accept(FutureResult {
                 future,
-                done: Some(Ok(fd)),
-            }) => (future.get_qd(), OperationResult::Accept(fd)),
+                done: Some(Ok(new_fd)),
+            }) => (
+                future.get_qd(),
+                Some(future.get_new_qd()),
+                Some(new_fd),
+                OperationResult::Accept(future.get_new_qd()),
+            ),
             Operation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            }) => (
+                future.get_qd(),
+                Some(future.get_new_qd()),
+                None,
+                OperationResult::Failed(e),
+            ),
 
             // Connect operation.
             Operation::Connect(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.get_qd(), OperationResult::Connect),
+            }) => (future.get_qd(), None, None, OperationResult::Connect),
             Operation::Connect(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
             // Push operation.
             Operation::Push(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.get_qd(), OperationResult::Push),
+            }) => (future.get_qd(), None, None, OperationResult::Push),
             Operation::Push(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
             // Pushto operation.
             Operation::Pushto(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.get_qd(), OperationResult::Push),
+            }) => (future.get_qd(), None, None, OperationResult::Push),
             Operation::Pushto(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
             // Pop operation.
             Operation::Pop(FutureResult {
                 future,
                 done: Some(Ok(buf)),
-            }) => (future.get_qd(), OperationResult::Pop(None, buf)),
+            }) => (future.get_qd(), None, None, OperationResult::Pop(None, buf)),
             Operation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
             _ => panic!("future not ready"),
         }

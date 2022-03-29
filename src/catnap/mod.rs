@@ -191,7 +191,8 @@ impl CatnapLibOS {
         // Issue accept operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let future: Operation = Operation::from(AcceptFuture::new(qd, fd));
+                let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
+                let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
                 let handle: SchedulerHandle = self.runtime.schedule(future);
                 Ok(handle.into_raw().into())
             },
@@ -392,7 +393,22 @@ impl CatnapLibOS {
         let boxed_future: Box<dyn Any> = self.runtime.take(handle).as_any();
         let boxed_concrete_type: Operation =
             *boxed_future.downcast::<Operation>().expect("Wrong type!");
-        boxed_concrete_type.get_result()
+
+        let (qd, new_qd, new_fd, qr): (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) =
+            boxed_concrete_type.get_result();
+
+        // Handle accept operation.
+        if let Some(new_qd) = new_qd {
+            // Associate raw file descriptor with queue descriptor.
+            if let Some(new_fd) = new_fd {
+                assert!(self.sockets.insert(new_qd, new_fd).is_none());
+            } else {
+                // Release entry in queue table.
+                self.qtable.free(new_qd);
+            }
+        }
+
+        (qd, qr)
     }
 }
 
