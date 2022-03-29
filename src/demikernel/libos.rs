@@ -148,6 +148,12 @@ impl LibOS {
         }
     }
 
+    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.push2(qd, data),
+        }
+    }
+
     pub fn pushto(
         &mut self,
         fd: QDesc,
