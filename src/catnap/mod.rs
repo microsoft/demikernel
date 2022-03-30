@@ -462,9 +462,10 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
         },
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
-                if let Some((ipv4, port16)) = addr {
-                    sga.sga_addr.sin_port = port16.into();
-                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(ipv4.octets());
+                if let Some(endpoint) = addr {
+                    sga.sga_addr.sin_port = endpoint.get_port().into();
+                    sga.sga_addr.sin_addr.s_addr =
+                        u32::from_le_bytes(endpoint.get_address().octets());
                 }
                 let qr_value: dmtr_qr_value_t = dmtr_qr_value_t { sga };
                 dmtr_qresult_t {

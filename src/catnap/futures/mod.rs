@@ -22,6 +22,7 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
+use crate::Ipv4Endpoint;
 use ::catwalk::{
     FutureResult,
     SchedulerFuture,
@@ -29,10 +30,6 @@ use ::catwalk::{
 use ::runtime::{
     fail::Fail,
     memory::Bytes,
-    network::types::{
-        Ipv4Addr,
-        Port16,
-    },
     QDesc,
 };
 use ::std::{
@@ -55,7 +52,7 @@ pub enum OperationResult {
     Connect,
     Accept(RawFd),
     Push,
-    Pop(Option<(Ipv4Addr, Port16)>, Bytes),
+    Pop(Option<Ipv4Endpoint>, Bytes),
     Failed(Fail),
 }
 
