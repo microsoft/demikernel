@@ -320,22 +320,6 @@ impl CatnapLibOS {
         }
     }
 
-    #[deprecated]
-    pub fn poll(&mut self, qt: QToken) -> Option<dmtr_qresult_t> {
-        trace!("poll(): qt={:?}", qt);
-
-        let handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
-        self.runtime.poll();
-
-        self.runtime.poll();
-        if !handle.has_completed() {
-            return None;
-        };
-
-        let (qd, r) = self.take_result(handle);
-        Some(pack_result(&self.runtime, r, qd, qt.into()))
-    }
-
     /// Handles a wait operation.
     fn do_wait(&mut self, qt: QToken) -> (QDesc, OperationResult) {
         let handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
