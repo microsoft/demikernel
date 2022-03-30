@@ -28,6 +28,7 @@ use self::futures::{
 use ::catnip::protocols::ipv4::Ipv4Endpoint;
 use ::catwalk::SchedulerHandle;
 use ::libc::{
+    c_char,
     c_int,
     AF_INET,
     EBADF,
@@ -64,8 +65,14 @@ use ::runtime::{
 use ::std::{
     any::Any,
     collections::HashMap,
+    ffi::CString,
     mem,
     os::unix::prelude::RawFd,
+    ptr::{
+        self,
+        null,
+        null_mut,
+    },
     time::Instant,
 };
 use nix::{
@@ -81,6 +88,7 @@ use nix::{
         },
     },
     unistd,
+    NixPath,
 };
 
 //==============================================================================
@@ -339,6 +347,75 @@ impl CatnapLibOS {
     #[deprecated]
     pub fn drop_qtoken(&mut self, _qt: QToken) {
         todo!()
+    }
+
+    // Gets address information.
+    pub fn getaddrinfo(
+        &self,
+        node: Option<&str>,
+        service: Option<&str>,
+        hints: Option<&libc::addrinfo>,
+    ) -> Result<*mut libc::addrinfo, Fail> {
+        // TODO: cleanup the hard casting below.
+
+        // Cast node.
+        let node_str: CString = if node.is_some() {
+            CString::new(node.unwrap()).unwrap()
+        } else {
+            CString::new("").unwrap()
+        };
+        let node_ptr: *const c_char = if node_str.is_empty() {
+            null()
+        } else {
+            node_str.as_ptr()
+        };
+
+        // Cast service.
+        let service_str: CString = if service.is_some() {
+            CString::new(service.unwrap()).unwrap()
+        } else {
+            CString::new("").unwrap()
+        };
+        let service_ptr: *const c_char = if service_str.is_empty() {
+            null()
+        } else {
+            service_str.as_ptr()
+        };
+
+        // Cast hints.
+        let hints_ptr: *const libc::addrinfo = if hints.is_some() {
+            hints.unwrap()
+        } else {
+            null()
+        };
+
+        // Do it.
+        let mut res_ptr: *mut libc::addrinfo = null_mut();
+        let res_ptr_ptr: *mut *mut libc::addrinfo = ptr::addr_of_mut!(res_ptr);
+        unsafe {
+            let errcode: i32 = libc::getaddrinfo(node_ptr, service_ptr, hints_ptr, res_ptr_ptr);
+            if errcode != 0 {
+                let msg: *mut i8 = libc::gai_strerror(errcode) as *mut i8;
+                let strerror: CString = CString::from_raw(msg);
+                let cause: &str = strerror
+                    .to_str()
+                    .unwrap_or("failed to get address information");
+                warn!("{:?}", cause);
+                return Err(Fail::new(libc::EAGAIN, cause));
+            }
+        }
+
+        return Ok(res_ptr);
+    }
+
+    // Releases address information.
+    pub fn freeaddrinfo(&self, ai: *mut libc::addrinfo) -> Result<(), Fail> {
+        // Do it.
+        unsafe {
+            libc::freeaddrinfo(ai);
+        }
+
+        Ok(())
     }
 
     /// Handles a wait operation.
