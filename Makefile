@@ -61,3 +61,6 @@ export TIMEOUT ?= 30
 
 test-system: all-tests
 	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
+
+test-unit:
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --test-threads=1 test_unit_getaddrinfo
