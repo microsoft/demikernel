@@ -11,6 +11,7 @@ use self::runtime::DPDKRuntime;
 use crate::demikernel::config::Config;
 use ::catnip::Catnip;
 use ::dpdk_rs::load_mlx_driver;
+use ::runtime::fail::Fail;
 use ::std::ops::{
     Deref,
     DerefMut,
@@ -52,6 +53,21 @@ impl CatnipLibOS {
         );
         let libos: Catnip<DPDKRuntime> = Catnip::new(rt).unwrap();
         CatnipLibOS(libos)
+    }
+
+    // Gets address information.
+    pub fn getaddrinfo(
+        &self,
+        _node: Option<&str>,
+        _service: Option<&str>,
+        _hints: Option<&libc::addrinfo>,
+    ) -> Result<*mut libc::addrinfo, Fail> {
+        unimplemented!();
+    }
+
+    // Releases address information.
+    pub fn freeaddrinfo(&self, _ai: *mut libc::addrinfo) -> Result<(), Fail> {
+        unimplemented!();
     }
 }
 
