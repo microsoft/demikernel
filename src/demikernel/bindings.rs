@@ -44,6 +44,37 @@ use ::std::{
 };
 
 //==============================================================================
+// Macros
+//==============================================================================
+
+// Asserts an expression or returns.
+macro_rules! valid_or_return {
+    ( $e:expr, $c:expr ) => {
+        if !$e {
+            return $c;
+        };
+    };
+}
+
+// Unwraps a result or returns.
+macro_rules! ok_or_return {
+    ( $e:expr, $c:expr ) => {
+        match $e {
+            Ok(x) => x,
+            Err(_) => return $c,
+        }
+    };
+}
+
+/// Unwraps an option or returns.
+macro_rules! some_or_return {
+    ( $e:expr, $c:expr ) => {
+        match $e {
+            Some(x) => x,
+            None => return $c,
+        }
+    };
+}
 
 //==============================================================================
 //
