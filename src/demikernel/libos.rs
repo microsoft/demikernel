@@ -185,6 +185,25 @@ impl LibOS {
         }
     }
 
+    /// Gets address information.
+    pub fn getaddrinfo(
+        &self,
+        node: Option<&str>,
+        service: Option<&str>,
+        hints: Option<&libc::addrinfo>,
+    ) -> Result<*mut libc::addrinfo, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.getaddrinfo(node, service, hints),
+        }
+    }
+
+    /// Releases address information.
+    pub fn freeaddrinfo(&self, ai: *mut libc::addrinfo) -> Result<(), Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.freeaddrinfo(ai),
+        }
+    }
+
     pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => Ok(libos.wait(qt)),
