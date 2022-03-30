@@ -11,6 +11,7 @@ mod socket;
 use self::runtime::LinuxRuntime;
 use crate::demikernel::config::Config;
 use ::catnip::Catnip;
+use ::runtime::fail::Fail;
 use ::std::{
     ops::{
         Deref,
@@ -45,6 +46,21 @@ impl CatpowderLibOS {
         );
         let libos: Catnip<LinuxRuntime> = Catnip::new(rt).unwrap();
         CatpowderLibOS(libos)
+    }
+
+    // Gets address information.
+    pub fn getaddrinfo(
+        &self,
+        _node: Option<&str>,
+        _service: Option<&str>,
+        _hints: Option<&libc::addrinfo>,
+    ) -> Result<*mut libc::addrinfo, Fail> {
+        unimplemented!();
+    }
+
+    // Releases address information.
+    pub fn freeaddrinfo(&self, _ai: *mut libc::addrinfo) -> Result<(), Fail> {
+        unimplemented!();
     }
 }
 
