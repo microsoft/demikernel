@@ -43,6 +43,14 @@ use ::std::{
     slice,
 };
 
+use ::std::{
+    collections::LinkedList,
+    ffi::{
+        CStr,
+        CString,
+    },
+};
+
 //==============================================================================
 // Macros
 //==============================================================================
@@ -317,6 +325,72 @@ pub extern "C" fn dmtr_drop(qt: dmtr_qtoken_t) -> c_int {
     with_libos(|libos| {
         libos.drop(qt.into());
         0
+    })
+}
+
+//==============================================================================
+// getaddrinfo
+//==============================================================================
+
+#[no_mangle]
+pub extern "C" fn dmtr_getaddrinfo(
+    node: *const c_char,
+    service: *const c_char,
+    hints: *const libc::addrinfo,
+    res: *mut *mut libc::addrinfo,
+) -> c_int {
+    trace!("dmtr_drop()");
+    with_libos(|libos| unsafe {
+        // Invalid store location.
+        valid_or_return!(!res.is_null(), libc::EINVAL);
+
+        // Cast parameters.
+        let node_str: Option<&str> = if !node.is_null() {
+            Some(ok_or_return!(CStr::from_ptr(node).to_str(), libc::EINVAL))
+        } else {
+            None
+        };
+        let service_str: Option<&str> = if !service.is_null() {
+            Some(ok_or_return!(
+                CStr::from_ptr(service).to_str(),
+                libc::EINVAL
+            ))
+        } else {
+            None
+        };
+        let hints_ref: Option<&libc::addrinfo> = if !hints.is_null() {
+            Some(some_or_return!(hints.as_ref(), libc::EINVAL))
+        } else {
+            None
+        };
+
+        // Do it.
+        match libos.getaddrinfo(node_str, service_str, hints_ref) {
+            Ok(res_ptr) => {
+                (*res) = res_ptr;
+                return 0;
+            },
+
+            // Something bad happened.
+            Err(e) => e.errno,
+        }
+    })
+}
+
+//==============================================================================
+// freeaddrinfo
+//==============================================================================
+
+#[no_mangle]
+pub extern "C" fn dmtr_freeaddrinfo(ai: *mut libc::addrinfo) -> c_int {
+    with_libos(|libos| {
+        // Invalid parameter
+        valid_or_return!(!ai.is_null(), libc::EINVAL);
+
+        match libos.freeaddrinfo(ai) {
+            Ok(_) => 0,
+            Err(e) => e.errno,
+        }
     })
 }
 

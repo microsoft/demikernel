@@ -6,6 +6,8 @@
 
 #include <dmtr/sys/gcc.h>
 #include <dmtr/types.h>
+#include <netdb.h>
+#include <sys/socket.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -211,6 +213,30 @@ DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
  * is returned instead.
  */
 DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
+
+    /**
+     * @brief Gets address information
+     *
+     * @param node Internet host.
+     * @param service Internet service.
+     * @param hints Socket purpose hints.
+     * @param res Store location for address information
+     *
+     * @return On successful completion zero is returned. On failure, an error code
+     * is returned instead.
+     */
+    DMTR_EXPORT int dmtr_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints,
+                                     struct addrinfo **res);
+
+    /**
+     * @brief Releases address information
+     *
+     * @param ai List of address information to release.
+     *
+     * @return On successful completion zero is returned. On failure, an error code
+     * is returned instead.
+     */
+    DMTR_EXPORT int dmtr_freeaddrinfo(struct addrinfo *ai);
 
 #ifdef __cplusplus
 }
