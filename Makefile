@@ -19,6 +19,11 @@ export SRCDIR = $(CURDIR)/src
 # Toolchain Configuration
 #===============================================================================
 
+export VERBOSE = yes
+ifeq ($(VERBOSE),yes)
+export CARGO_VERBOSE = --nocapture
+endif
+
 export BUILD ?= --release
 export CARGO ?= $(HOME)/.cargo/bin/cargo
 export CARGO_FLAGS ?=
@@ -60,7 +65,7 @@ export TEST ?= udp_push_pop
 export TIMEOUT ?= 30
 
 test-system: all-tests
-	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
+	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- $(CARGO_VERBOSE) $(TEST)
 
 test-unit:
-	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --test-threads=1 test_unit_getaddrinfo
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- $(CARGO_VERBOSE) --test-threads=1 test_unit_getaddrinfo
