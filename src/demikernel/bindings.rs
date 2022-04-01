@@ -4,13 +4,10 @@
 #![allow(non_camel_case_types, unused)]
 
 use super::libos::LibOS;
-use ::catnip::{
-    interop::pack_result,
-    protocols::{
-        ip,
-        ip::EphemeralPorts,
-        ipv4::Ipv4Endpoint,
-    },
+use ::catnip::protocols::{
+    ip,
+    ip::EphemeralPorts,
+    ipv4::Ipv4Endpoint,
 };
 use ::libc::{
     c_char,
@@ -44,9 +41,7 @@ use ::std::{
 };
 
 //==============================================================================
-
-//==============================================================================
-//
+// Thread Local Storage
 //==============================================================================
 
 thread_local! {
