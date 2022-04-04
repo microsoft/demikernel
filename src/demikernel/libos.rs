@@ -176,15 +176,6 @@ impl LibOS {
         }
     }
 
-    pub fn drop(&mut self, qt: QToken) -> Result<(), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => {
-                libos.drop_qtoken(qt);
-                Ok(())
-            },
-        }
-    }
-
     pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => Ok(libos.wait(qt)),
