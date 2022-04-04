@@ -17,6 +17,9 @@ cfg_if::cfg_if! {
     } else if  #[cfg(feature = "catpowder-libos")] {
         mod catpowder;
         pub use ::catnip::operations::OperationResult;
+    } else if  #[cfg(feature = "catcollar-libos")] {
+        mod catcollar;
+        pub use catcollar::OperationResult;
     } else {
         mod catnap;
         pub use catnap::OperationResult;
