@@ -15,6 +15,9 @@ mod catnip;
 #[allow(dead_code)]
 mod catnap;
 
+#[cfg(feature = "catcollar-libos")]
+mod catcollar;
+
 //==============================================================================
 // Exports
 //==============================================================================
@@ -24,6 +27,8 @@ cfg_if::cfg_if! {
         pub use self::catnip::Test;
     } else if #[cfg(feature = "catpowder-libos")] {
         pub use self::catpowder::Test;
+    } else if #[cfg(feature = "catcollar-libos")] {
+        pub use self::catcollar::Test;
     } else {
         pub use self::catnap::Test;
     }
