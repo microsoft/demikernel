@@ -24,7 +24,7 @@ nix = "0.23.1"
 socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
 
-catnip = { git = "https://github.com/demikernel/catnip", rev = "f9aded580771bc7ab88fc588d791c7eaf8e141c4" }
+catnip = { git = "https://github.com/demikernel/catnip", rev = "f69da720f9964f5958c730e64a4e713812401e9a" }
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b3afd7c02de69045f423563228f" }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
