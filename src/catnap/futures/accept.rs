@@ -33,6 +33,8 @@ pub struct AcceptFuture {
     qd: QDesc,
     /// Underlying file descriptor.
     fd: RawFd,
+    /// Queue descriptor of incoming connection.
+    new_qd: QDesc,
 }
 
 //==============================================================================
@@ -42,13 +44,18 @@ pub struct AcceptFuture {
 /// Associate Functions for Accept Operation Descriptors
 impl AcceptFuture {
     /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, fd: RawFd) -> Self {
-        Self { qd, fd }
+    pub fn new(qd: QDesc, fd: RawFd, new_qd: QDesc) -> Self {
+        Self { qd, fd, new_qd }
     }
 
     /// Returns the queue descriptor associated to the target [AcceptFuture].
     pub fn get_qd(&self) -> QDesc {
         self.qd
+    }
+
+    /// Returns the new queue descriptor associated to the target [AcceptFuture].
+    pub fn get_new_qd(&self) -> QDesc {
+        self.new_qd
     }
 }
 
@@ -65,9 +72,9 @@ impl Future for AcceptFuture {
         let self_: &AcceptFuture = self.get_mut();
         match socket::accept(self_.fd as i32) {
             // Operation completed.
-            Ok(newfd) => {
-                trace!("connection accepted ({:?})", newfd);
-                Poll::Ready(Ok(newfd))
+            Ok(new_fd) => {
+                trace!("connection accepted ({:?})", new_fd);
+                Poll::Ready(Ok(new_fd))
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
