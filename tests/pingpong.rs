@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![feature(try_blocks)]
-
 mod common;
 
 //==============================================================================
