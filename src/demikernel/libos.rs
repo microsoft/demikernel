@@ -223,10 +223,12 @@ impl LibOS {
         self.rt().free_sgarray(sga)
     }
 
+    #[deprecated]
     pub fn local_ipv4_addr(&self) -> Ipv4Addr {
         self.rt().local_ipv4_addr()
     }
 
+    #[deprecated]
     fn rt(&self) -> &Runtime {
         match self {
             LibOS::NetworkLibOS(libos) => libos.rt(),
