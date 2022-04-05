@@ -364,8 +364,30 @@ impl CatnapLibOS {
     }
 
     /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, _qts: &[QToken]) -> (usize, dmtr_qresult_t) {
-        todo!() // TODO: implement this function.
+    pub fn wait_any(&mut self, qts: &[QToken]) -> (usize, dmtr_qresult_t) {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::wait_any");
+        trace!("wait_any(): qts={:?}", qts);
+
+        loop {
+            // Poll first, so as to give a chance of pending operations to complete.
+            self.runtime.poll();
+
+            // Search for any operation that has completed.
+            for (i, &qt) in qts.iter().enumerate() {
+                let mut handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
+
+                // Found one, so extract the result and return.
+                if handle.has_completed() {
+                    let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
+                    return (i, pack_result(self.rt(), r, qd, qt.into()));
+                }
+
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+            }
+        }
     }
 
     /// Waits for any operation to complete.
