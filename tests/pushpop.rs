@@ -17,7 +17,7 @@ use ::demikernel::{
 use ::std::panic;
 
 //==============================================================================
-// Push Pop
+// UDP Push Pop
 //==============================================================================
 
 #[test]
@@ -82,4 +82,93 @@ fn udp_push_pop() {
     }
 
     // TODO: close socket when we get close working properly in catnip.
+}
+
+//==============================================================================
+// TCP Push Pop
+//==============================================================================
+
+#[test]
+fn tcp_push_pop() {
+    let mut test: Test = Test::new();
+    let fill_char: u8 = 'a' as u8;
+    let nbytes: usize = 64 * 1024;
+    let local_addr: Ipv4Endpoint = test.local_addr();
+    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let expectbuf: Vec<u8> = test.mkbuf(fill_char);
+
+    // Setup peer.
+    let sockqd: QDesc = test
+        .libos
+        .socket(libc::AF_INET, libc::SOCK_STREAM, 0)
+        .unwrap();
+    test.libos.bind(sockqd, local_addr).unwrap();
+
+    // Run peers.
+    if test.is_server() {
+        // Mark as a passive one.
+        match test.libos.listen(sockqd, 16) {
+            Ok(()) => (),
+            Err(e) => panic!("listen failed: {:?}", e.cause),
+        };
+
+        // Accept incoming connections.
+        let qt: QToken = test.libos.accept(sockqd).unwrap();
+        let qd: QDesc = match test.libos.wait2(qt) {
+            Ok((_, OperationResult::Accept(qd))) => qd,
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+            _ => unreachable!(),
+        };
+
+        // Perform multiple ping-pong rounds.
+        let mut i: usize = 0;
+        while i < nbytes {
+            // Pop data.
+            let qtoken: QToken = match test.libos.pop(qd) {
+                Ok(qt) => qt,
+                Err(e) => panic!("pop failed: {:?}", e.cause),
+            };
+            // TODO: add type annotation to the following variable once we have a common buffer abstraction across all libOSes.
+            let recvbuf = match test.libos.wait2(qtoken) {
+                Ok((_, OperationResult::Pop(_, buf))) => buf,
+                Err(e) => panic!("operation failed: {:?}", e.cause),
+                _ => unreachable!(),
+            };
+
+            // Sanity check received data.
+            assert!(
+                Test::bufcmp(&expectbuf, recvbuf.clone()),
+                "server expectbuf != recevbuf"
+            );
+
+            i += recvbuf.len();
+            println!("pong {:?}", i);
+        }
+    } else {
+        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let qt: QToken = test.libos.connect(sockqd, remote_addr).unwrap();
+        match test.libos.wait2(qt) {
+            Ok((_, OperationResult::Connect)) => (),
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+            _ => unreachable!(),
+        };
+
+        // Issue n sends.
+        let mut i: usize = 0;
+        while i < nbytes {
+            // Push data.
+            let qt: QToken = match test.libos.push2(sockqd, &sendbuf[..]) {
+                Ok(qt) => qt,
+                Err(e) => panic!("push failed: {:?}", e.cause),
+            };
+            match test.libos.wait2(qt) {
+                Ok((_, OperationResult::Push)) => (),
+                Err(e) => panic!("operation failed: {:?}", e.cause),
+                _ => unreachable!(),
+            };
+
+            i += sendbuf.len();
+            println!("push {:?}", i);
+        }
+    }
 }
