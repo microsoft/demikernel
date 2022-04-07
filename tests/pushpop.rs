@@ -98,11 +98,14 @@ fn tcp_push_pop() {
     let expectbuf: Vec<u8> = test.mkbuf(fill_char);
 
     // Setup peer.
-    let sockqd: QDesc = test
-        .libos
-        .socket(libc::AF_INET, libc::SOCK_STREAM, 0)
-        .unwrap();
-    test.libos.bind(sockqd, local_addr).unwrap();
+    let sockqd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
+        Ok(qd) => qd,
+        Err(e) => panic!("failed to create socket: {:?}", e.cause),
+    };
+    match test.libos.bind(sockqd, local_addr) {
+        Ok(()) => (),
+        Err(e) => panic!("bind failed: {:?}", e.cause),
+    };
 
     // Run peers.
     if test.is_server() {
@@ -113,7 +116,10 @@ fn tcp_push_pop() {
         };
 
         // Accept incoming connections.
-        let qt: QToken = test.libos.accept(sockqd).unwrap();
+        let qt: QToken = match test.libos.accept(sockqd) {
+            Ok(qt) => qt,
+            Err(e) => panic!("accept failed: {:?}", e.cause),
+        };
         let qd: QDesc = match test.libos.wait2(qt) {
             Ok((_, OperationResult::Accept(qd))) => qd,
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -138,7 +144,7 @@ fn tcp_push_pop() {
             // Sanity check received data.
             assert!(
                 Test::bufcmp(&expectbuf, recvbuf.clone()),
-                "server expectbuf != recevbuf"
+                "server expectbuf != recvbuf"
             );
 
             i += recvbuf.len();
@@ -146,7 +152,10 @@ fn tcp_push_pop() {
         }
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
-        let qt: QToken = test.libos.connect(sockqd, remote_addr).unwrap();
+        let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
+            Ok(qt) => qt,
+            Err(e) => panic!("connect failed: {:?}", e.cause),
+        };
         match test.libos.wait2(qt) {
             Ok((_, OperationResult::Connect)) => (),
             Err(e) => panic!("operation failed: {:?}", e.cause),
@@ -171,4 +180,6 @@ fn tcp_push_pop() {
             println!("push {:?}", i);
         }
     }
+
+    // TODO: close socket when we get close working properly in catnip.
 }
