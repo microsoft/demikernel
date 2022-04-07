@@ -15,12 +15,16 @@ use self::{
 };
 use crate::demikernel::config::Config;
 use ::catnip::{
+    operations::OperationResult,
     protocols::ipv4::Ipv4Endpoint,
     Catnip,
 };
 use ::runtime::{
     fail::Fail,
-    memory::MemoryRuntime,
+    memory::{
+        Bytes,
+        MemoryRuntime,
+    },
     task::SchedulerRuntime,
     types::{
         dmtr_qresult_t,
@@ -105,32 +109,24 @@ impl CatpowderLibOS {
         }
     }
 
-    /// Block until request represented by `qt` is finished returning the results of this request.
-    pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
+    /// Waits for an operation to complete.
+    pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::wait");
+        timer!("catpowder::wait");
         trace!("wait(): qt={:?}", qt);
-        let (qd, result) = self.wait2(qt);
-        pack_result(self.rt(), result, qd, qt.into())
+
+        let (qd, result): (QDesc, OperationResult<Bytes>) = self.wait2(qt)?;
+        Ok(pack_result(self.rt(), result, qd, qt.into()))
     }
 
-    /// Given a list of queue tokens, run all ready tasks and return the first task which has
-    /// finished.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> (usize, dmtr_qresult_t) {
+    /// Waits for any operation to complete.
+    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
-        timer!("catnip::wait_any");
+        timer!("catpowder::wait_any");
         trace!("wait_any(): qts={:?}", qts);
-        loop {
-            self.poll_bg_work();
-            for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.rt().get_handle(qt.into()).unwrap();
-                if handle.has_completed() {
-                    let (qd, r) = self.take_operation(handle);
-                    return (i, pack_result(self.rt(), r, qd, qt.into()));
-                }
-                handle.into_raw();
-            }
-        }
+
+        let (i, qd, r): (usize, QDesc, OperationResult<Bytes>) = self.wait_any2(qts)?;
+        Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
     }
 }
 
