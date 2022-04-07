@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Catnip Push Pop
+name: Catnip UDP Push Pop
 
 concurrency:
   group: azure
@@ -185,4 +185,3 @@ jobs:
       port: ${{ secrets.PORTNUM_B }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
-
