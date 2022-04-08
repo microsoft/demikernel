@@ -55,21 +55,21 @@ impl LibOS {
             /// Waits on a pending operation in an I/O queue.
             pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<DPDKBuf>), Fail> {
                 match self {
-                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
             pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Bytes>), Fail> {
                 match self {
-                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
             }
         } else {
             /// Waits on a pending operation in an I/O queue.
             pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
                 match self {
-                    LibOS::NetworkLibOS(libos) => Ok(libos.wait2(qt)),
+                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
             }
         }
@@ -78,21 +78,21 @@ impl LibOS {
     cfg_if::cfg_if! {
         if #[cfg(feature = "catnip-libos")] {
             /// Waits an a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<DPDKBuf>) {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<DPDKBuf>), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult<Bytes>) {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<Bytes>), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
             }
         } else {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult) {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
@@ -202,14 +202,14 @@ impl LibOS {
     /// Waits for a pending operation in an I/O queue.
     pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => Ok(libos.wait(qt)),
+            LibOS::NetworkLibOS(libos) => libos.wait(qt),
         }
     }
 
     /// Waits for any operation in an I/O queue.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => Ok(libos.wait_any(qts)),
+            LibOS::NetworkLibOS(libos) => libos.wait_any(qts),
         }
     }
 

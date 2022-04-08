@@ -339,69 +339,77 @@ impl CatnapLibOS {
         }
     }
 
-    /// Handles a wait operation.
-    fn do_wait(&mut self, qt: QToken) -> (QDesc, OperationResult) {
-        let handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
+    /// Waits for an operation to complete.
+    pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::wait");
+        trace!("wait() qt={:?}", qt);
+
+        let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
+        Ok(pack_result(&self.runtime, result, qd, qt.into()))
+    }
+
+    /// Waits for an operation to complete.
+    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::wait2");
+        trace!("wait2() qt={:?}", qt);
+
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
 
         loop {
+            // Poll first, so as to give pending operations a chance to complete.
             self.runtime.poll();
+
+            // The operation has completed, so extract the result and return.
             if handle.has_completed() {
-                return self.take_result(handle);
+                return Ok(self.take_result(handle));
             }
         }
     }
 
-    /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> dmtr_qresult_t {
-        trace!("wait() qt={:?}", qt);
-        let (qd, result): (QDesc, OperationResult) = self.do_wait(qt);
-        pack_result(&self.runtime, result, qd, qt.into())
-    }
-
-    /// Waits for an operation to complete.
-    pub fn wait2(&mut self, qt: QToken) -> (QDesc, OperationResult) {
-        self.do_wait(qt)
-    }
-
     /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> (usize, dmtr_qresult_t) {
+    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::wait_any");
         trace!("wait_any(): qts={:?}", qts);
 
+        let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
+        Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
+    }
+
+    /// Waits for any operation to complete.
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::wait_any2");
+        trace!("wait_any2() {:?}", qts);
+
         loop {
-            // Poll first, so as to give a chance of pending operations to complete.
+            // Poll first, so as to give pending operations a chance to complete.
             self.runtime.poll();
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
-                let mut handle: SchedulerHandle = self.runtime.get_handle(qt.into()).unwrap();
+                // Retrieve associated schedule handle.
+                // TODO: move this out of the loop.
+                let mut handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+                };
 
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
                     let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-                    return (i, pack_result(self.rt(), r, qd, qt.into()));
+                    return Ok((i, qd, r));
                 }
 
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
                 handle.take_key();
-            }
-        }
-    }
-
-    /// Waits for any operation to complete.
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> (usize, QDesc, OperationResult) {
-        trace!("wait_any2 {:?}", qts);
-        loop {
-            self.runtime.poll();
-            for (i, &qt) in qts.iter().enumerate() {
-                let handle = self.runtime.get_handle(qt.into()).unwrap();
-                if handle.has_completed() {
-                    let (qd, r) = self.take_result(handle);
-                    return (i, qd, r);
-                }
-                handle.into_raw();
             }
         }
     }

@@ -127,7 +127,10 @@ fn udp_ping_pong() {
             // FIXME: If any packet is lost this will hang.
 
             // TODO: add type annotation to the following variable once we drop generics on OperationResult.
-            let (ix, _, result) = test.libos.wait_any2(&qtokens);
+            let (ix, _, result) = match test.libos.wait_any2(&qtokens) {
+                Ok(result) => result,
+                Err(e) => panic!("operation failed: {:?}", e.cause),
+            };
             qtokens.swap_remove(ix);
 
             // Parse result.
