@@ -53,7 +53,10 @@ impl NetworkRuntime for DPDKRuntime {
         // Chain body buffer.
 
         // First, allocate a header mbuf and write the header into it.
-        let mut header_mbuf = self.mm.alloc_header_mbuf();
+        let mut header_mbuf = match self.mm.alloc_header_mbuf() {
+            Ok(mbuf) => mbuf,
+            Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
+        };
         let header_size = buf.header_size();
         assert!(header_size <= header_mbuf.len());
         buf.write_header(unsafe { &mut header_mbuf.slice_mut()[..header_size] });
@@ -72,7 +75,10 @@ impl NetworkRuntime for DPDKRuntime {
                 let body_mbuf = match body {
                     DPDKBuf::Managed(mbuf) => mbuf,
                     DPDKBuf::External(bytes) => {
-                        let mut mbuf = self.mm.alloc_body_mbuf();
+                        let mut mbuf = match self.mm.alloc_body_mbuf() {
+                            Ok(mbuf) => mbuf,
+                            Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
+                        };
                         assert!(mbuf.len() >= bytes.len());
                         unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
                         mbuf.trim(mbuf.len() - bytes.len());
