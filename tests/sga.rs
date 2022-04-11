@@ -12,17 +12,18 @@ use ::runtime::types::dmtr_sgarray_t;
 // Constants
 //==============================================================================
 
-/// Size of scatter-gather arrays.
-const SGA_MAX_SIZE: usize = 1280;
+/// Size for small scatter-gather arrays.
+const SGA_SIZE_SMALL: usize = 64;
+
+/// Size for big scatter-gather arrays.
+const SGA_SIZE_BIG: usize = 1280;
 
 //==============================================================================
-// Unit Tests for Memory Allocation
+// test_unit_sga_alloc_free_single()
 //==============================================================================
 
 /// Tests for a single scatter-gather array allocation and deallocation.
-#[test]
-fn test_unit_sga_alloc_free_single() {
-    let size: usize = SGA_MAX_SIZE;
+fn do_test_unit_sga_alloc_free_single(size: usize) {
     let libos: LibOS = LibOS::new();
 
     let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
@@ -35,10 +36,24 @@ fn test_unit_sga_alloc_free_single() {
     };
 }
 
-/// Tests looped allocation and deallocation of scatter-gather arrays.
+/// Tests a single allocation and deallocation of a small scatter-gather array.
 #[test]
-fn test_unit_sga_alloc_free_loop_tight() {
-    let size: usize = SGA_MAX_SIZE;
+fn test_unit_sga_alloc_free_single_small() {
+    do_test_unit_sga_alloc_free_single(SGA_SIZE_SMALL)
+}
+
+/// Tests a single allocation and deallocation of a big scatter-gather array.
+#[test]
+fn test_unit_sga_alloc_free_single_big() {
+    do_test_unit_sga_alloc_free_single(SGA_SIZE_BIG)
+}
+
+//==============================================================================
+// test_unit_sga_alloc_free_loop_tight()
+//==============================================================================
+
+/// Tests looped allocation and deallocation of scatter-gather arrays.
+fn do_test_unit_sga_alloc_free_loop_tight(size: usize) {
     let libos: LibOS = LibOS::new();
 
     // Allocate and deallocate several times.
@@ -54,10 +69,24 @@ fn test_unit_sga_alloc_free_loop_tight() {
     }
 }
 
-/// Tests decoupled looped allocation and deallocation of scatter-gather arrays.
+/// Tests looped allocation and deallocation of small scatter-gather arrays.
 #[test]
-fn test_unit_sga_alloc_free_loop_decoupled() {
-    let size: usize = SGA_MAX_SIZE;
+fn test_unit_sga_alloc_free_loop_tight_small() {
+    do_test_unit_sga_alloc_free_loop_tight(SGA_SIZE_SMALL)
+}
+
+/// Tests looped allocation and deallocation of big scatter-gather arrays.
+#[test]
+fn test_unit_sga_alloc_free_loop_tight_big() {
+    do_test_unit_sga_alloc_free_loop_tight(SGA_SIZE_BIG)
+}
+
+//==============================================================================
+// test_unit_sga_alloc_free_loop_decoupled()
+//==============================================================================
+
+/// Tests decoupled looped allocation and deallocation of scatter-gather arrays.
+fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) {
     let mut sgas: Vec<dmtr_sgarray_t> = Vec::with_capacity(1_000);
     let libos: LibOS = LibOS::new();
 
@@ -81,4 +110,16 @@ fn test_unit_sga_alloc_free_loop_decoupled() {
             };
         }
     }
+}
+
+/// Tests decoupled looped allocation and deallocation of small scatter-gather arrays.
+#[test]
+fn test_unit_sga_alloc_free_loop_decoupled_small() {
+    do_test_unit_sga_alloc_free_loop_decoupled(SGA_SIZE_SMALL)
+}
+
+/// Tests decoupled looped allocation and deallocation of big scatter-gather arrays.
+#[test]
+fn test_unit_sga_alloc_free_loop_decoupled_big() {
+    do_test_unit_sga_alloc_free_loop_decoupled(SGA_SIZE_BIG)
 }
