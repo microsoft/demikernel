@@ -124,28 +124,6 @@ impl MemoryManager {
         Mbuf::new(self.inner.clone_mbuf(mbuf.get_ptr()), self.clone())
     }
 
-
-    fn recover_body_mbuf(&self, ptr: *mut c_void) -> Result<*mut rte_mbuf, Error> {
-        if !self.is_body_ptr(ptr) {
-            anyhow::bail!("Out of bounds ptr {:?}", ptr);
-        }
-
-        let ptr_int = ptr as usize;
-        let ptr_offset = ptr_int - self.inner.body_region_addr;
-        let offset_within_alloc = ptr_offset % self.inner.body_alloc_size();
-
-        if offset_within_alloc < (64 + 128) {
-            anyhow::bail!(
-                "Data pointer within allocation header: {:?} in {:?}",
-                ptr,
-                self.inner
-            );
-        }
-
-        let mbuf_ptr = (ptr_int - offset_within_alloc + 64) as *mut rte_mbuf;
-        Ok(mbuf_ptr)
-    }
-
     fn is_body_ptr(&self, ptr: *mut c_void) -> bool {
         let ptr_int = ptr as usize;
         let body_end = self.inner.body_region_addr + self.inner.body_region_len;
