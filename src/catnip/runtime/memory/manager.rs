@@ -124,42 +124,6 @@ impl MemoryManager {
         Mbuf::new(self.inner.clone_mbuf(mbuf.get_ptr()), self.clone())
     }
 
-    /// Given a pointer and length into a body `mbuf`, return a fresh indirect `mbuf` that points to
-    /// the same memory region, incrementing the refcount of the body `mbuf`.
-    pub fn clone_body(&self, ptr: *mut c_void, len: usize) -> Result<Mbuf, Error> {
-        let mbuf_ptr = self.recover_body_mbuf(ptr)?;
-        let body_clone = self.inner.clone_mbuf(mbuf_ptr);
-
-        // Wrap the mbuf first so we free it on early exit.
-        let mut mbuf = Mbuf::new(body_clone, self.clone());
-
-        let orig_ptr = mbuf.data_ptr();
-        let orig_len = mbuf.len();
-
-        if (ptr as usize) < (orig_ptr as usize) {
-            anyhow::bail!(
-                "Trying to recover data pointer outside original body: {:?} vs. {:?}",
-                ptr,
-                orig_ptr
-            );
-        }
-        let adjust = ptr as usize - orig_ptr as usize;
-
-        if adjust + len > orig_len {
-            anyhow::bail!(
-                "Recovering too many bytes: {} + {} > {}",
-                adjust,
-                len,
-                orig_len
-            );
-        }
-        let trim = orig_len - (adjust + len);
-
-        mbuf.adjust(adjust);
-        mbuf.trim(trim);
-
-        Ok(mbuf)
-    }
 
     fn recover_body_mbuf(&self, ptr: *mut c_void) -> Result<*mut rte_mbuf, Error> {
         if !self.is_body_ptr(ptr) {
