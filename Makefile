@@ -59,5 +59,13 @@ export PEER ?= server
 export TEST ?= udp_push_pop
 export TIMEOUT ?= 30
 
+# Runs system tests.
 test-system: all-tests
 	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
+
+# Runs unit tests.
+# TODO: Find out a way of launching all unit tests without having to explicity state all of them.
+test-unit:
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled
