@@ -54,7 +54,7 @@ clean:
 
 export CONFIG_PATH ?= $(HOME)/config.yaml
 export MTU ?= 1500
-export MSS ?= 9000
+export MSS ?= 1500
 export PEER ?= server
 export TEST ?= udp_push_pop
 export TIMEOUT ?= 30
