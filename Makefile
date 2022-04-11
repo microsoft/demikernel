@@ -54,10 +54,21 @@ clean:
 
 export CONFIG_PATH ?= $(HOME)/config.yaml
 export MTU ?= 1500
-export MSS ?= 9000
+export MSS ?= 1500
 export PEER ?= server
 export TEST ?= udp_push_pop
 export TIMEOUT ?= 30
 
+# Runs system tests.
 test-system: all-tests
 	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
+
+# Runs unit tests.
+# TODO: Find out a way of launching all unit tests without having to explicity state all of them.
+test-unit:
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
+	$(CARGO) test $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big

@@ -34,7 +34,6 @@ use ::dpdk_rs::{
 use ::libc::{
     c_uint,
     c_void,
-    ENOMEM,
 };
 use ::runtime::{
     fail::Fail,
@@ -124,70 +123,6 @@ impl MemoryManager {
         Mbuf::new(self.inner.clone_mbuf(mbuf.get_ptr()), self.clone())
     }
 
-    /// Given a pointer and length into a body `mbuf`, return a fresh indirect `mbuf` that points to
-    /// the same memory region, incrementing the refcount of the body `mbuf`.
-    pub fn clone_body(&self, ptr: *mut c_void, len: usize) -> Result<Mbuf, Error> {
-        let mbuf_ptr = self.recover_body_mbuf(ptr)?;
-        let body_clone = self.inner.clone_mbuf(mbuf_ptr);
-
-        // Wrap the mbuf first so we free it on early exit.
-        let mut mbuf = Mbuf::new(body_clone, self.clone());
-
-        let orig_ptr = mbuf.data_ptr();
-        let orig_len = mbuf.len();
-
-        if (ptr as usize) < (orig_ptr as usize) {
-            anyhow::bail!(
-                "Trying to recover data pointer outside original body: {:?} vs. {:?}",
-                ptr,
-                orig_ptr
-            );
-        }
-        let adjust = ptr as usize - orig_ptr as usize;
-
-        if adjust + len > orig_len {
-            anyhow::bail!(
-                "Recovering too many bytes: {} + {} > {}",
-                adjust,
-                len,
-                orig_len
-            );
-        }
-        let trim = orig_len - (adjust + len);
-
-        mbuf.adjust(adjust);
-        mbuf.trim(trim);
-
-        Ok(mbuf)
-    }
-
-    fn recover_body_mbuf(&self, ptr: *mut c_void) -> Result<*mut rte_mbuf, Error> {
-        if !self.is_body_ptr(ptr) {
-            anyhow::bail!("Out of bounds ptr {:?}", ptr);
-        }
-
-        let ptr_int = ptr as usize;
-        let ptr_offset = ptr_int - self.inner.body_region_addr;
-        let offset_within_alloc = ptr_offset % self.inner.body_alloc_size();
-
-        if offset_within_alloc < (64 + 128) {
-            anyhow::bail!(
-                "Data pointer within allocation header: {:?} in {:?}",
-                ptr,
-                self.inner
-            );
-        }
-
-        let mbuf_ptr = (ptr_int - offset_within_alloc + 64) as *mut rte_mbuf;
-        Ok(mbuf_ptr)
-    }
-
-    fn is_body_ptr(&self, ptr: *mut c_void) -> bool {
-        let ptr_int = ptr as usize;
-        let body_end = self.inner.body_region_addr + self.inner.body_region_len;
-        ptr_int >= self.inner.body_region_addr && ptr_int < body_end
-    }
-
     pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<dmtr_sgarray_t, Fail> {
         let sgaseg = match buf {
             DPDKBuf::External(bytes) => {
@@ -240,55 +175,80 @@ impl MemoryManager {
         Mbuf::new(mbuf_ptr, self.clone())
     }
 
+    /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
-        assert!(size <= self.inner.config.get_max_body_size());
-
-        let sgaseg = if self.inner.config.get_inline_body_size() < size
+        // Allocate underlying buffer.
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) = if size
+            > self.inner.config.get_inline_body_size()
             && size <= self.inner.config.get_max_body_size()
         {
-            let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
+            // Allocate a DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
             if mbuf_ptr.is_null() {
-                return Err(Fail::new(ENOMEM, "mbuf allocation failed"));
+                return Err(Fail::new(libc::ENOMEM, "mbuf allocation failed"));
             }
+
+            // TODO: Drop the following warning once DPDK memory management is more stable.
+            warn!("allocating mbuf from DPDK pool");
+
+            // Adjust various fields in the mbuf and create a scatter-gather segment out of it.
             unsafe {
-                let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
-                // We don't strictly have to set these fields, since we don't directly hand off body
-                // `mbuf`s to `rte_eth_tx_burst`, but it's nice to have the original allocation size around.
-                assert!(size as u16 <= num_bytes);
+                let num_bytes: u16 = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+                debug_assert!((size as u16) < num_bytes);
                 (*mbuf_ptr).data_len = size as u16;
                 (*mbuf_ptr).pkt_len = size as u32;
-                let buf_ptr = (*mbuf_ptr).buf_addr as *mut u8;
-                let data_ptr = buf_ptr.offset((*mbuf_ptr).data_off as isize);
-                dmtr_sgaseg_t {
-                    sgaseg_buf: data_ptr as *mut _,
-                    sgaseg_len: size as u32,
-                }
+                let buf_ptr: *mut u8 = (*mbuf_ptr).buf_addr as *mut u8;
+                let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
+                (
+                    mbuf_ptr,
+                    dmtr_sgaseg_t {
+                        sgaseg_buf: data_ptr as *mut c_void,
+                        sgaseg_len: size as u32,
+                    },
+                )
             }
         } else {
+            // Allocate a heap-managed buffer.
             let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-            let ptr = Box::into_raw(allocation);
-            dmtr_sgaseg_t {
-                sgaseg_buf: ptr as *mut _,
-                sgaseg_len: size as u32,
-            }
+            let ptr: *mut [u8] = Box::into_raw(allocation);
+            (
+                ptr::null_mut(),
+                dmtr_sgaseg_t {
+                    sgaseg_buf: ptr as *mut c_void,
+                    sgaseg_len: size as u32,
+                },
+            )
         };
+
+        // TODO: Drop the sga_addr field in the scatter-gather array.
         Ok(dmtr_sgarray_t {
-            sga_buf: ptr::null_mut(),
+            sga_buf: mbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
         })
     }
 
+    /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        let sgaseg = sga.sga_segs[0];
-        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        // Bad scatter-gather.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "scatter-gather array with invalid size",
+            ));
+        }
 
-        if self.is_body_ptr(ptr) {
-            let mbuf_ptr = self.recover_body_mbuf(ptr).expect("Invalid sga pointer");
+        // Release underlying buffer.
+        if !sga.sga_buf.is_null() {
+            // Release DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
             unsafe { rte_pktmbuf_free(mbuf_ptr) };
         } else {
+            // Release heap-managed buffer.
+            let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+            let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
             let allocation: Box<[u8]> =
                 unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
             drop(allocation);
@@ -297,17 +257,36 @@ impl MemoryManager {
         Ok(())
     }
 
+    /// Clones a scatter-gather array.
     pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DPDKBuf, Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        let sgaseg = sga.sga_segs[0];
-        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        // Bad scatter-gather.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "scatter-gather array with invalid size",
+            ));
+        }
 
-        let buf: DPDKBuf = if self.is_body_ptr(ptr) {
-            let mbuf = self.clone_body(ptr, len).expect("Invalid sga pointer");
+        let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+        let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+
+        // Clone underlying buffer.
+        let buf: DPDKBuf = if !sga.sga_buf.is_null() {
+            // Clone DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
+            let body_clone: *mut rte_mbuf = self.inner.clone_mbuf(mbuf_ptr);
+            let mut mbuf: Mbuf = Mbuf::new(body_clone, self.clone());
+            // Adjust buffer length.
+            // TODO: Replace the following method for computing the length of a mbuf once we have a proper Mbuf abstraction.
+            let orig_len: usize = unsafe { ((*mbuf_ptr).buf_len - (*mbuf_ptr).data_off).into() };
+            let trim: usize = orig_len - len;
+            mbuf.trim(trim);
             DPDKBuf::Managed(mbuf)
         } else {
-            let mut buf = BytesMut::zeroed(len).unwrap();
-            let seg_slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
+            // Clone heap-managed buffer.
+            let mut buf: BytesMut = BytesMut::zeroed(len).unwrap();
+            let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
             buf.copy_from_slice(seg_slice);
             DPDKBuf::External(buf.freeze())
         };
@@ -434,10 +413,6 @@ impl Inner {
             body_region_addr: base_addr,
             body_region_len: total_len,
         })
-    }
-
-    fn body_alloc_size(&self) -> usize {
-        64 + 128 + self.config.get_max_body_size()
     }
 
     pub fn alloc_indirect_empty(&self) -> *mut rte_mbuf {
