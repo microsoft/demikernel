@@ -148,7 +148,7 @@ fn tcp_push_pop() {
             );
 
             i += recvbuf.len();
-            println!("pong {:?}", i);
+            println!("pop {:?}", i);
         }
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
