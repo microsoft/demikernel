@@ -20,10 +20,6 @@ use ::dpdk_rs::{
     rte_errno,
     rte_mbuf,
     rte_mempool,
-    rte_mempool_calc_obj_size,
-    rte_mempool_mem_iter,
-    rte_mempool_memhdr,
-    rte_mempool_objsz,
     rte_pktmbuf_alloc,
     rte_pktmbuf_clone,
     rte_pktmbuf_free,
@@ -31,10 +27,7 @@ use ::dpdk_rs::{
     rte_socket_id,
     rte_strerror,
 };
-use ::libc::{
-    c_uint,
-    c_void,
-};
+use ::libc::c_void;
 use ::runtime::{
     fail::Fail,
     memory::BytesMut,
@@ -75,21 +68,6 @@ pub struct Inner {
 
     // Large body pool for buffers given to the application for zero-copy.
     body_pool: *mut rte_mempool,
-
-    // We assert that the body pool's memory region is in a single, contiguous virtual memory
-    // region. Here is a diagram of the memory layout of `body_pool`.
-    //
-    //     |- rte_mempool_objhdr (64 bytes) -|- rte_mbuf (128 bytes) -|- data -| - rte_mempool_objhdr - |- ...
-    //     ^                                                                   ^
-    //     body_region_addr                                                    body_region_addr + Self::body_alloc_size()
-    //
-    // This way, we can easily test to see if an arbitrary pointer is within our `body_pool` via
-    // pointer arithmetic. Then, by understanding the layout of each allocation, we can take a
-    // pointer to somewhere *within* an allocation and work backwards to a pointer to its
-    // `rte_mbuf`, which we can then clone for use within our network stack.
-    //
-    body_region_addr: usize,
-    body_region_len: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -356,62 +334,11 @@ impl Inner {
             anyhow::bail!("Failed to create body pool");
         }
 
-        let mut memory_regions: Vec<(usize, usize)> = vec![];
-
-        extern "C" fn mem_cb(
-            _mp: *mut rte_mempool,
-            opaque: *mut c_void,
-            memhdr: *mut rte_mempool_memhdr,
-            _mem_idx: c_uint,
-        ) {
-            let mr = unsafe { &mut *(opaque as *mut Vec<(usize, usize)>) };
-            let (addr, len) = unsafe { ((*memhdr).addr, (*memhdr).len) };
-            mr.push((addr as usize, len as usize));
-        }
-        unsafe {
-            rte_mempool_mem_iter(
-                body_pool,
-                Some(mem_cb),
-                &mut memory_regions as *mut _ as *mut c_void,
-            );
-        }
-        memory_regions.sort();
-
-        if memory_regions.is_empty() {
-            anyhow::bail!("Allocated body pool without any memory regions?");
-        }
-
-        let (base_addr, base_len) = memory_regions[0];
-        let mut cur_addr = base_addr + base_len;
-
-        for &(addr, len) in &memory_regions[1..] {
-            if addr != cur_addr {
-                anyhow::bail!("Non-contiguous memory regions {} vs. {}", cur_addr, addr);
-            }
-            cur_addr += len;
-        }
-        let total_len = cur_addr - base_addr;
-
-        // Check our assumptions in `body_alloc_size` for how each object in the mempool is laid
-        // out in the mempool ring.
-        let mut sz: rte_mempool_objsz = unsafe { mem::zeroed() };
-        let elt_size = mem::size_of::<rte_mbuf>() + priv_size as usize + config.get_max_body_size();
-        let flags = 0;
-        unsafe {
-            rte_mempool_calc_obj_size(elt_size as u32, flags, &mut sz as *mut _);
-        }
-        assert_eq!(sz.header_size, 64);
-        assert_eq!(sz.elt_size as usize, 128 + config.get_max_body_size());
-        assert_eq!(sz.trailer_size, 0);
-
         Ok(Self {
             config,
             header_pool,
             indirect_pool,
             body_pool,
-
-            body_region_addr: base_addr,
-            body_region_len: total_len,
         })
     }
 
