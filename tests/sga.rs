@@ -28,7 +28,7 @@ fn do_test_unit_sga_alloc_free_single(size: usize) {
 
     let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
         Ok(sga) => sga,
-        Err(e) => panic!("failed to allocated sga: {:?}", e.cause),
+        Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
     };
     match libos.sgafree(sga) {
         Ok(()) => (),
@@ -60,7 +60,7 @@ fn do_test_unit_sga_alloc_free_loop_tight(size: usize) {
     for _ in 0..1_000_000 {
         let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
             Ok(sga) => sga,
-            Err(e) => panic!("failed to allocated sga: {:?}", e.cause),
+            Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
         };
         match libos.sgafree(sga) {
             Ok(()) => (),
@@ -96,7 +96,7 @@ fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) {
         for _ in 0..1_000 {
             let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
                 Ok(sga) => sga,
-                Err(e) => panic!("failed to allocated sga: {:?}", e.cause),
+                Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
             };
             sgas.push(sga);
         }
