@@ -240,40 +240,54 @@ impl MemoryManager {
         Mbuf::new(mbuf_ptr, self.clone())
     }
 
+    /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
-        assert!(size <= self.inner.config.get_max_body_size());
-
-        let sgaseg = if self.inner.config.get_inline_body_size() < size
+        // Allocate underlying buffer.
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) = if size
+            > self.inner.config.get_inline_body_size()
             && size <= self.inner.config.get_max_body_size()
         {
-            let mbuf_ptr = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
+            // Allocate a DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.inner.body_pool) };
             if mbuf_ptr.is_null() {
-                return Err(Fail::new(ENOMEM, "mbuf allocation failed"));
+                return Err(Fail::new(libc::ENOMEM, "mbuf allocation failed"));
             }
+
+            // TODO: Drop the following warning once DPDK memory management is more stable.
+            warn!("allocating mbuf from DPDK pool");
+
+            // Adjust various fields in the mbuf and create a scatter-gather segment out of it.
             unsafe {
-                let num_bytes = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
-                // We don't strictly have to set these fields, since we don't directly hand off body
-                // `mbuf`s to `rte_eth_tx_burst`, but it's nice to have the original allocation size around.
-                assert!(size as u16 <= num_bytes);
+                let num_bytes: u16 = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+                debug_assert!((size as u16) < num_bytes);
                 (*mbuf_ptr).data_len = size as u16;
                 (*mbuf_ptr).pkt_len = size as u32;
-                let buf_ptr = (*mbuf_ptr).buf_addr as *mut u8;
-                let data_ptr = buf_ptr.offset((*mbuf_ptr).data_off as isize);
-                dmtr_sgaseg_t {
-                    sgaseg_buf: data_ptr as *mut _,
-                    sgaseg_len: size as u32,
-                }
+                let buf_ptr: *mut u8 = (*mbuf_ptr).buf_addr as *mut u8;
+                let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
+                (
+                    mbuf_ptr,
+                    dmtr_sgaseg_t {
+                        sgaseg_buf: data_ptr as *mut c_void,
+                        sgaseg_len: size as u32,
+                    },
+                )
             }
         } else {
+            // Allocate a heap-managed buffer.
             let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-            let ptr = Box::into_raw(allocation);
-            dmtr_sgaseg_t {
-                sgaseg_buf: ptr as *mut _,
-                sgaseg_len: size as u32,
-            }
+            let ptr: *mut [u8] = Box::into_raw(allocation);
+            (
+                ptr::null_mut(),
+                dmtr_sgaseg_t {
+                    sgaseg_buf: ptr as *mut c_void,
+                    sgaseg_len: size as u32,
+                },
+            )
         };
+
+        // TODO: Drop the sga_addr field in the scatter-gather array.
         Ok(dmtr_sgarray_t {
-            sga_buf: ptr::null_mut(),
+            sga_buf: mbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
