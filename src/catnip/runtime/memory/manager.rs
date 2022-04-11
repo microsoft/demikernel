@@ -34,7 +34,6 @@ use ::dpdk_rs::{
 use ::libc::{
     c_uint,
     c_void,
-    ENOMEM,
 };
 use ::runtime::{
     fail::Fail,
