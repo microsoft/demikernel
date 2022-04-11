@@ -322,17 +322,36 @@ impl MemoryManager {
         Ok(())
     }
 
+    /// Clones a scatter-gather array.
     pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DPDKBuf, Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        let sgaseg = sga.sga_segs[0];
-        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        // Bad scatter-gather.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "scatter-gather array with invalid size",
+            ));
+        }
 
-        let buf: DPDKBuf = if self.is_body_ptr(ptr) {
-            let mbuf = self.clone_body(ptr, len).expect("Invalid sga pointer");
+        let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+        let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+
+        // Clone underlying buffer.
+        let buf: DPDKBuf = if !sga.sga_buf.is_null() {
+            // Clone DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
+            let body_clone: *mut rte_mbuf = self.inner.clone_mbuf(mbuf_ptr);
+            let mut mbuf: Mbuf = Mbuf::new(body_clone, self.clone());
+            // Adjust buffer length.
+            // TODO: Replace the following method for computing the length of a mbuf once we have a propor Mbuf abstraction.
+            let orig_len: usize = unsafe { ((*mbuf_ptr).buf_len - (*mbuf_ptr).data_off).into() };
+            let trim: usize = orig_len - len;
+            mbuf.trim(trim);
             DPDKBuf::Managed(mbuf)
         } else {
-            let mut buf = BytesMut::zeroed(len).unwrap();
-            let seg_slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
+            // Clone heap-managed buffer.
+            let mut buf: BytesMut = BytesMut::zeroed(len).unwrap();
+            let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
             buf.copy_from_slice(seg_slice);
             DPDKBuf::External(buf.freeze())
         };
