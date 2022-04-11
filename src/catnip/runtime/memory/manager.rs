@@ -278,7 +278,7 @@ impl MemoryManager {
             let body_clone: *mut rte_mbuf = self.inner.clone_mbuf(mbuf_ptr);
             let mut mbuf: Mbuf = Mbuf::new(body_clone, self.clone());
             // Adjust buffer length.
-            // TODO: Replace the following method for computing the length of a mbuf once we have a propor Mbuf abstraction.
+            // TODO: Replace the following method for computing the length of a mbuf once we have a proper Mbuf abstraction.
             let orig_len: usize = unsafe { ((*mbuf_ptr).buf_len - (*mbuf_ptr).data_off).into() };
             let trim: usize = orig_len - len;
             mbuf.trim(trim);
