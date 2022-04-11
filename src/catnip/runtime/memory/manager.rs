@@ -416,10 +416,6 @@ impl Inner {
         })
     }
 
-    fn body_alloc_size(&self) -> usize {
-        64 + 128 + self.config.get_max_body_size()
-    }
-
     pub fn alloc_indirect_empty(&self) -> *mut rte_mbuf {
         let ptr = unsafe { rte_pktmbuf_alloc(self.indirect_pool) };
         assert!(!ptr.is_null());
