@@ -124,12 +124,6 @@ impl MemoryManager {
         Mbuf::new(self.inner.clone_mbuf(mbuf.get_ptr()), self.clone())
     }
 
-    fn is_body_ptr(&self, ptr: *mut c_void) -> bool {
-        let ptr_int = ptr as usize;
-        let body_end = self.inner.body_region_addr + self.inner.body_region_len;
-        ptr_int >= self.inner.body_region_addr && ptr_int < body_end
-    }
-
     pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<dmtr_sgarray_t, Fail> {
         let sgaseg = match buf {
             DPDKBuf::External(bytes) => {
