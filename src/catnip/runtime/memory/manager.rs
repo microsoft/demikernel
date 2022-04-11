@@ -294,15 +294,26 @@ impl MemoryManager {
         })
     }
 
+    /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        let sgaseg = sga.sga_segs[0];
-        let (ptr, len) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        // Bad scatter-gather.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "scatter-gather array with invalid size",
+            ));
+        }
 
-        if self.is_body_ptr(ptr) {
-            let mbuf_ptr = self.recover_body_mbuf(ptr).expect("Invalid sga pointer");
+        // Release underlying buffer.
+        if !sga.sga_buf.is_null() {
+            // Release DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
             unsafe { rte_pktmbuf_free(mbuf_ptr) };
         } else {
+            // Release heap-managed buffer.
+            let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+            let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
             let allocation: Box<[u8]> =
                 unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
             drop(allocation);
