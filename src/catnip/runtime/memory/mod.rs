@@ -6,6 +6,7 @@ pub mod consts;
 mod dpdkbuf;
 mod manager;
 mod mbuf;
+mod mempool;
 
 //==============================================================================
 // Exports
