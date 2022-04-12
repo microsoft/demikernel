@@ -6,7 +6,10 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::catnip::runtime::memory::DPDKBuf;
+use crate::catnip::runtime::memory::{
+    DPDKBuf,
+    Mbuf,
+};
 use ::arrayvec::ArrayVec;
 use ::catnip::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::dpdk_rs::{
@@ -161,7 +164,9 @@ impl NetworkRuntime for DPDKRuntime {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos:receive::for");
             for &packet in &packets[..nb_rx as usize] {
-                out.push(self.mm.make_buffer(packet));
+                let mbuf: Mbuf = Mbuf::new(packet);
+                let dpdkbuf: DPDKBuf = DPDKBuf::Managed(mbuf);
+                out.push(dpdkbuf);
             }
         }
 

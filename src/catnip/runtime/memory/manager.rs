@@ -65,7 +65,7 @@ pub struct Inner {
 
 #[derive(Clone, Debug)]
 pub struct MemoryManager {
-    pub inner: Rc<Inner>,
+    inner: Rc<Inner>,
 }
 
 //==============================================================================
@@ -80,10 +80,6 @@ impl MemoryManager {
         Ok(Self {
             inner: Rc::new(Inner::new(memory_config)?),
         })
-    }
-
-    pub fn make_buffer(&self, packet: *mut rte_mbuf) -> DPDKBuf {
-        DPDKBuf::Managed(Mbuf::new(packet))
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
@@ -291,19 +287,5 @@ impl Inner {
             indirect_pool: Rc::new(indirect_pool),
             body_pool: Rc::new(body_pool),
         })
-    }
-
-    pub fn alloc_indirect_empty(&self) -> *mut rte_mbuf {
-        match self.indirect_pool.alloc_mbuf(None) {
-            Ok(mbuf_ptr) => mbuf_ptr,
-            Err(e) => panic!("failed to allocate mbuf: {:?}", e.cause),
-        }
-    }
-
-    pub fn clone_mbuf(&self, ptr: *mut rte_mbuf) -> *mut rte_mbuf {
-        match MemoryPool::clone_mbuf(ptr) {
-            Ok(mbuf_ptr) => mbuf_ptr,
-            Err(e) => panic!("failed to clone mbuf: {:?}", e.cause),
-        }
     }
 }
