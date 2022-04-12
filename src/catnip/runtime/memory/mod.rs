@@ -6,13 +6,17 @@ pub mod consts;
 mod dpdkbuf;
 mod manager;
 mod mbuf;
+mod mempool;
 
 //==============================================================================
 // Exports
 //==============================================================================
 
 pub use dpdkbuf::DPDKBuf;
-pub use manager::MemoryManager;
+pub use manager::{
+    Mbuf,
+    MemoryManager,
+};
 
 //==============================================================================
 // Imports

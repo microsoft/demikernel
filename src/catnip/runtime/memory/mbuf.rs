@@ -5,11 +5,10 @@
 // Imports
 //==============================================================================
 
-use super::MemoryManager;
+use super::mempool::MemoryPool;
 use ::dpdk_rs::{
     rte_mbuf,
     rte_pktmbuf_adj,
-    rte_pktmbuf_free,
     rte_pktmbuf_trim,
 };
 use ::std::{
@@ -28,8 +27,6 @@ use ::std::{
 pub struct Mbuf {
     /// Underlying DPDK buffer.
     ptr: *mut rte_mbuf,
-    /// TODO: drop the following field.
-    mm: MemoryManager,
 }
 
 //==============================================================================
@@ -39,8 +36,8 @@ pub struct Mbuf {
 /// Associate Functions for DPDK-Managed Buffers
 impl Mbuf {
     /// Creates a [Mbuf].
-    pub fn new(ptr: *mut rte_mbuf, mm: MemoryManager) -> Self {
-        Mbuf { ptr, mm }
+    pub fn new(ptr: *mut rte_mbuf) -> Self {
+        Mbuf { ptr }
     }
 
     /// Removes `len` bytes at the beginning of the target [Mbuf].
@@ -95,7 +92,12 @@ impl Mbuf {
 /// Clone Trait Implementation for DPDK-Managed Buffers
 impl Clone for Mbuf {
     fn clone(&self) -> Self {
-        self.mm.clone_mbuf(self)
+        let mbuf_ptr: *mut rte_mbuf = match MemoryPool::clone_mbuf(self.ptr) {
+            Ok(mbuf_ptr) => mbuf_ptr,
+            Err(e) => panic!("failed to clone mbuf: {:?}", e.cause),
+        };
+
+        Mbuf::new(mbuf_ptr)
     }
 }
 
@@ -114,9 +116,7 @@ impl Drop for Mbuf {
         if self.ptr.is_null() {
             return;
         }
-        unsafe {
-            rte_pktmbuf_free(self.ptr);
-        }
+        MemoryPool::free_mbuf(self.ptr);
         self.ptr = ptr::null_mut();
     }
 }
