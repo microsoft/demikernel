@@ -248,8 +248,9 @@ impl MemoryManager {
 
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
-        let header_size = ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
-        let header_mbuf_size = header_size + config.get_inline_body_size();
+        let header_size: usize =
+            ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
+        let header_mbuf_size: usize = header_size + config.get_inline_body_size();
 
         // Create memory pool for holding packet headers.
         let header_pool: MemoryPool = MemoryPool::new(
