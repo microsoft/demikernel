@@ -55,10 +55,6 @@ pub struct Inner {
     // internally within the network stack.
     header_pool: Rc<MemoryPool>,
 
-    // Used by networking stack for cloning buffers passed in from the application. There buffers
-    // are also only used internally within the networking stack.
-    indirect_pool: Rc<MemoryPool>,
-
     // Large body pool for buffers given to the application for zero-copy.
     body_pool: Rc<MemoryPool>,
 }
@@ -75,7 +71,7 @@ pub struct MemoryManager {
 impl MemoryManager {
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
         let memory_config: MemoryConfig =
-            MemoryConfig::new(None, None, None, Some(max_body_size), None, None);
+            MemoryConfig::new(None, None, Some(max_body_size), None, None);
 
         Ok(Self {
             inner: Rc::new(Inner::new(memory_config)?),
@@ -263,16 +259,6 @@ impl Inner {
             config.get_cache_size(),
         )?;
 
-        // Create memory pool for holding indirect buffers.
-        let indirect_pool: MemoryPool = MemoryPool::new(
-            CString::new("indirect_pool")?,
-            // These mbufs have no body -- they're just for indirect mbufs to point to
-            // allocations from the body pool.
-            0,
-            config.get_indirect_pool_size(),
-            config.get_cache_size(),
-        )?;
-
         // Create memory pool for holding packet bodies.
         let body_pool: MemoryPool = MemoryPool::new(
             CString::new("body_pool")?,
@@ -284,7 +270,6 @@ impl Inner {
         Ok(Self {
             config,
             header_pool: Rc::new(header_pool),
-            indirect_pool: Rc::new(indirect_pool),
             body_pool: Rc::new(body_pool),
         })
     }

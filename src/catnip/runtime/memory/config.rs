@@ -9,7 +9,6 @@ use super::consts::{
     DEFAULT_BODY_POOL_SIZE,
     DEFAULT_CACHE_SIZE,
     DEFAULT_HEADER_POOL_SIZE,
-    DEFAULT_INDIRECT_POOL_SIZE,
     DEFAULT_INLINE_BODY_SIZE,
     DEFAULT_MAX_BODY_SIZE,
 };
@@ -19,8 +18,6 @@ use super::consts::{
 //==============================================================================
 
 //// Memory Configuration Descriptor
-///
-/// TODO: Introduce Setters for field member of this structure.
 #[derive(Debug)]
 pub struct MemoryConfig {
     /// What is the cutoff point for copying application buffers into reserved body space within a
@@ -30,9 +27,6 @@ pub struct MemoryConfig {
 
     /// How many buffers are within the header pool?
     header_pool_size: usize,
-
-    /// How many buffers are within the indirect pool?
-    indirect_pool_size: usize,
 
     /// What is the maximum body size? This should effectively be the MSS + RTE_PKTMBUF_HEADROOM.
     max_body_size: usize,
@@ -53,7 +47,6 @@ impl MemoryConfig {
     pub fn new(
         inline_body_size: Option<usize>,
         header_pool_size: Option<usize>,
-        indirect_pool_size: Option<usize>,
         max_body_size: Option<usize>,
         body_pool_size: Option<usize>,
         cache_size: Option<usize>,
@@ -68,11 +61,6 @@ impl MemoryConfig {
         // Sets the header pool size config option.
         if let Some(header_pool_size) = header_pool_size {
             config.header_pool_size = header_pool_size;
-        }
-
-        // Sets the indirect pool size config option.
-        if let Some(indirect_pool_size) = indirect_pool_size {
-            config.indirect_pool_size = indirect_pool_size;
         }
 
         // Sets the max body pool size config option.
@@ -103,11 +91,6 @@ impl MemoryConfig {
         self.header_pool_size
     }
 
-    /// Returns the indirect pool size config stored in the target [MemoryConfig].
-    pub fn get_indirect_pool_size(&self) -> usize {
-        self.indirect_pool_size
-    }
-
     /// Returns the max body size config stored in the target [MemoryConfig].
     pub fn get_max_body_size(&self) -> usize {
         self.max_body_size
@@ -134,7 +117,6 @@ impl Default for MemoryConfig {
         Self {
             inline_body_size: DEFAULT_INLINE_BODY_SIZE,
             header_pool_size: DEFAULT_HEADER_POOL_SIZE,
-            indirect_pool_size: DEFAULT_INDIRECT_POOL_SIZE,
             max_body_size: DEFAULT_MAX_BODY_SIZE,
             body_pool_size: DEFAULT_BODY_POOL_SIZE,
             cache_size: DEFAULT_CACHE_SIZE,
