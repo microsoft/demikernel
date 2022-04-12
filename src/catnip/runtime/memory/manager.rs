@@ -47,6 +47,7 @@ pub use super::{
 // Structures
 //==============================================================================
 
+// TODO: Drop this structure.
 #[derive(Debug)]
 pub struct Inner {
     config: MemoryConfig,
@@ -59,6 +60,7 @@ pub struct Inner {
     body_pool: Rc<MemoryPool>,
 }
 
+/// Memory Manager
 #[derive(Clone, Debug)]
 pub struct MemoryManager {
     inner: Rc<Inner>,
@@ -68,7 +70,9 @@ pub struct MemoryManager {
 // Associate Functions
 //==============================================================================
 
+/// Associated Functions for Memory Managers
 impl MemoryManager {
+    /// Instantiates a memory manager.
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
         let memory_config: MemoryConfig =
             MemoryConfig::new(None, None, Some(max_body_size), None, None);
@@ -118,12 +122,14 @@ impl MemoryManager {
     }
 
     /// Allocates a header mbuf.
+    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn alloc_header_mbuf(&self) -> Result<Mbuf, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.header_pool.alloc_mbuf(None)?;
         Ok(Mbuf::new(mbuf_ptr))
     }
 
     /// Allocates a body mbuf.
+    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn alloc_body_mbuf(&self) -> Result<Mbuf, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(None)?;
         Ok(Mbuf::new(mbuf_ptr))
@@ -241,13 +247,17 @@ impl MemoryManager {
         Ok(buf)
     }
 
+    /// Returns a raw pointer to the underlying body pool.
+    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn body_pool(&self) -> *mut rte_mempool {
         self.inner.body_pool.into_raw()
     }
 }
 
+/// Associated Functions for Memory Managers
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
+        // TODO: The following computation for header size is bad. It should be fixed to maximum possible size.
         let header_size: usize =
             ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size: usize = header_size + config.get_inline_body_size();

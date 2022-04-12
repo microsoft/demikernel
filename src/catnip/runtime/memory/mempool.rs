@@ -70,7 +70,7 @@ impl MemoryPool {
         // TODO: Drop the following warning once DPDK memory management is more stable.
         warn!("allocating mbuf from DPDK pool");
 
-        // Allocated mbuf.
+        // Allocate mbuf.
         let mut mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.pool) };
         if mbuf_ptr.is_null() {
             return Err(Fail::new(libc::ENOMEM, "cannot allocate more mbufs"));
@@ -81,9 +81,9 @@ impl MemoryPool {
             let mut num_bytes: u16 = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
 
             if let Some(size) = size {
-                // Allocated buffer is not  big enough.
+                // Check if allocated buffer is big enough.
                 if (size as u16) > num_bytes {
-                    // Rollback allocation.
+                    // Allocated buffer is not big enough, rollback allocation.
                     rte_pktmbuf_free(mbuf_ptr);
                     return Err(Fail::new(libc::EFAULT, "cannot allocate a mbuf this big"));
                 }
@@ -99,7 +99,6 @@ impl MemoryPool {
     /// Releases a mbuf in the target memory pool.
     pub fn free_mbuf(mbuf_ptr: *mut rte_mbuf) {
         unsafe {
-            // Do it.
             rte_pktmbuf_free(mbuf_ptr);
         }
     }
@@ -107,7 +106,6 @@ impl MemoryPool {
     /// Clones a mbuf into a memory pool.
     pub fn clone_mbuf(mbuf_ptr: *mut rte_mbuf) -> Result<*mut rte_mbuf, Fail> {
         unsafe {
-            // Do it.
             let mempool_ptr: *mut rte_mempool = (*mbuf_ptr).pool;
             let mbuf_ptr_clone: *mut rte_mbuf = rte_pktmbuf_clone(mbuf_ptr, mempool_ptr);
             if mbuf_ptr_clone.is_null() {
