@@ -22,14 +22,16 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use crate::Ipv4Endpoint;
+use crate::{
+    demikernel::dbuf::DataBuffer,
+    Ipv4Endpoint,
+};
 use ::catwalk::{
     FutureResult,
     SchedulerFuture,
 };
 use ::runtime::{
     fail::Fail,
-    memory::Bytes,
     QDesc,
 };
 use ::std::{
@@ -52,7 +54,7 @@ pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, Bytes),
+    Pop(Option<Ipv4Endpoint>, DataBuffer),
     Failed(Fail),
 }
 
