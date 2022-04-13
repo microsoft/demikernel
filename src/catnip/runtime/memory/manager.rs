@@ -6,6 +6,7 @@
 //==============================================================================
 
 use super::mempool::MemoryPool;
+use crate::demikernel::dbuf::DataBuffer;
 use ::anyhow::Error;
 use ::catnip::protocols::{
     ethernet2::ETHERNET2_HEADER_SIZE,
@@ -19,7 +20,7 @@ use ::dpdk_rs::{
 use ::libc::c_void;
 use ::runtime::{
     fail::Fail,
-    memory::BytesMut,
+    memory::Buffer,
     types::{
         dmtr_sgarray_t,
         dmtr_sgaseg_t,
@@ -86,17 +87,14 @@ impl MemoryManager {
     pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<dmtr_sgarray_t, Fail> {
         let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) = match buf {
             // Heap-managed buffer.
-            DPDKBuf::External(bytes) => {
-                // We have to do a copy here since `Bytes` uses an `Arc<[u8]>` internally and has
-                // some additional bookkeeping for an offset and length, but we want to be able to
-                // hand off a raw pointer up the application that they can free later.
-                let buf_copy: Box<[u8]> = (&bytes[..]).into();
-                let ptr: *mut [u8] = Box::into_raw(buf_copy);
+            DPDKBuf::External(dbuf) => {
+                let len: usize = dbuf.len();
+                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
                 (
                     ptr::null_mut(),
                     dmtr_sgaseg_t {
-                        sgaseg_buf: ptr as *mut c_void,
-                        sgaseg_len: bytes.len() as u32,
+                        sgaseg_buf: dbuf_ptr as *mut c_void,
+                        sgaseg_len: len as u32,
                     },
                 )
             },
@@ -159,12 +157,12 @@ impl MemoryManager {
             }
         } else {
             // Allocate a heap-managed buffer.
-            let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-            let ptr: *mut [u8] = Box::into_raw(allocation);
+            let dbuf: DataBuffer = DataBuffer::new(size)?;
+            let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
             (
                 ptr::null_mut(),
                 dmtr_sgaseg_t {
-                    sgaseg_buf: ptr as *mut c_void,
+                    sgaseg_buf: dbuf_ptr as *mut c_void,
                     sgaseg_len: size as u32,
                 },
             )
@@ -181,7 +179,7 @@ impl MemoryManager {
 
     /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
-        // Bad scatter-gather.
+        // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(
@@ -198,10 +196,11 @@ impl MemoryManager {
         } else {
             // Release heap-managed buffer.
             let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
-            let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
-            let allocation: Box<[u8]> =
-                unsafe { Box::from_raw(slice::from_raw_parts_mut(ptr as *mut _, len)) };
-            drop(allocation);
+            let (data_ptr, length): (*mut u8, usize) =
+                (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
+
+            // Convert back to a heap buffer and drop allocation.
+            DataBuffer::from_raw_parts(data_ptr, length)?;
         }
 
         Ok(())
@@ -209,7 +208,7 @@ impl MemoryManager {
 
     /// Clones a scatter-gather array.
     pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DPDKBuf, Fail> {
-        // Bad scatter-gather.
+        // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(
@@ -238,10 +237,9 @@ impl MemoryManager {
             DPDKBuf::Managed(mbuf)
         } else {
             // Clone heap-managed buffer.
-            let mut buf: BytesMut = BytesMut::zeroed(len).unwrap();
             let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
-            buf.copy_from_slice(seg_slice);
-            DPDKBuf::External(buf.freeze())
+            let buf: DataBuffer = DataBuffer::from_slice(seg_slice);
+            DPDKBuf::External(buf)
         };
 
         Ok(buf)
