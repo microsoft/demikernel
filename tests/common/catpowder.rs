@@ -3,13 +3,11 @@
 
 use super::config::TestConfig;
 use ::demikernel::{
+    demikernel::dbuf::DataBuffer,
     Ipv4Endpoint,
     LibOS,
 };
-use ::runtime::memory::{
-    Buffer,
-    Bytes,
-};
+use ::runtime::memory::Buffer;
 
 //==============================================================================
 // Test
@@ -53,8 +51,8 @@ impl Test {
         data
     }
 
-    pub fn bufcmp(x: &[u8], b: Bytes) -> bool {
-        let a: Bytes = Bytes::from_slice(x);
+    pub fn bufcmp(x: &[u8], b: DataBuffer) -> bool {
+        let a: DataBuffer = DataBuffer::from_slice(x);
         if a.len() != b.len() {
             return false;
         }

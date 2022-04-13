@@ -6,17 +6,17 @@
 //==============================================================================
 
 use super::LinuxRuntime;
-use crate::catpowder::socket::{
-    RawSocket,
-    RawSocketType,
-};
-use ::arrayvec::ArrayVec;
-use ::catnip::protocols::ethernet2::Ethernet2Header;
-use ::runtime::{
-    memory::{
-        Bytes,
-        BytesMut,
+use crate::{
+    catpowder::socket::{
+        RawSocket,
+        RawSocketType,
     },
+    demikernel::dbuf::DataBuffer,
+};
+use arrayvec::ArrayVec;
+use catnip::protocols::ethernet2::Ethernet2Header;
+use runtime::{
+    memory::Buffer,
     network::{
         config::{
             ArpConfig,
@@ -29,7 +29,7 @@ use ::runtime::{
         PacketBuf,
     },
 };
-use ::std::{
+use std::{
     mem::{
         self,
         MaybeUninit,
@@ -44,18 +44,17 @@ use ::std::{
 /// Network Runtime Trait Implementation for Linux Runtime
 impl NetworkRuntime for LinuxRuntime {
     /// Transmits a single [PacketBuf].
-    fn transmit(&self, pkt: impl PacketBuf<Bytes>) {
+    fn transmit(&self, pkt: impl PacketBuf<DataBuffer>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
-        let mut buf: BytesMut = BytesMut::zeroed(header_size + body_size).unwrap();
+        let mut buf: DataBuffer = DataBuffer::new(header_size + body_size).unwrap();
 
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
 
-        let buf = buf.freeze();
         let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
         let dest_addr_arr = header.dst_addr().to_array();
         let dest_sockaddr: RawSocket =
@@ -71,16 +70,18 @@ impl NetworkRuntime for LinuxRuntime {
     }
 
     /// Receives a batch of [PacketBuf].
-    fn receive(&self) -> ArrayVec<Bytes, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DataBuffer, RECEIVE_BATCH_SIZE> {
         // 4096B buffer size chosen arbitrarily, seems fine for now.
         // This use-case is an example for MaybeUninit in the docs
         let mut out: [MaybeUninit<u8>; 4096] =
             [unsafe { MaybeUninit::uninit().assume_init() }; 4096];
-        if let Ok((bytes_read, _origin_addr)) = self.socket.borrow().recv_from(&mut out[..]) {
+        if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recv_from(&mut out[..]) {
             let mut ret = ArrayVec::new();
             unsafe {
-                let out = mem::transmute::<[MaybeUninit<u8>; 4096], [u8; 4096]>(out);
-                ret.push(BytesMut::from(&out[..bytes_read]).freeze());
+                let bytes: [u8; 4096] = mem::transmute::<[MaybeUninit<u8>; 4096], [u8; 4096]>(out);
+                let mut dbuf: DataBuffer = DataBuffer::from_slice(&bytes);
+                dbuf.trim(4096 - nbytes);
+                ret.push(dbuf);
             }
             ret
         } else {
