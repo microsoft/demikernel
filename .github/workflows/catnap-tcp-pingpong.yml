@@ -4,7 +4,7 @@
 name: Catnap TCP Ping Pong
 
 concurrency:
-  group: azure
+  group: azure-catnap
   cancel-in-progress: true
 
 on:
@@ -43,8 +43,8 @@ jobs:
     name: Demikernel 0
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNAP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -53,8 +53,8 @@ jobs:
     name: Demikernel 1
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNAP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -71,8 +71,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnap"
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNAP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -84,8 +84,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnap"
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNAP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -102,15 +102,14 @@ jobs:
     - name: Launch
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.HOSTNAME_A }}
+        host: ${{ secrets.CATNAP_HOSTNAME_A }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
+        port: ${{ secrets.PORTNUM }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
-          source $HOME/setup-env-catnap.sh
           cd $GITHUB_REPOSITORY
-          PEER=server TIMEOUT=300 TEST=tcp_ping_pong sudo -E make LIBOS=catnap test-system > nohup.out 2> nohup.err < /dev/null  &
+          RUST_LOG=trace make test-system LIBOS=catnap TEST=tcp_ping_pong PEER=server > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -121,15 +120,14 @@ jobs:
     - name: Launch
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.HOSTNAME_B }}
+        host: ${{ secrets.CATNAP_HOSTNAME_B }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
+        port: ${{ secrets.PORTNUM }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
-          source $HOME/setup-env-catnap.sh
           cd $GITHUB_REPOSITORY
-          PEER=client TIMEOUT=300 TEST=tcp_ping_pong sudo -E make LIBOS=catnap test-system > nohup.out 2> nohup.err < /dev/null
+          RUST_LOG=trace make test-system LIBOS=catnap TEST=tcp_ping_pong PEER=client > nohup.out 2> nohup.err < /dev/null
 
   #====================
   # Post-Run
@@ -143,8 +141,8 @@ jobs:
     with:
       process-name: pingpong
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNAP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -156,8 +154,8 @@ jobs:
     with:
       process-name: pingpong
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNAP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -171,8 +169,8 @@ jobs:
     needs: [postrun-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNAP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -182,7 +180,7 @@ jobs:
     needs: [postrun-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNAP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
