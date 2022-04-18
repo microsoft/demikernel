@@ -110,7 +110,7 @@ jobs:
         script: |
           source $HOME/setup-env.sh
           cd $GITHUB_REPOSITORY
-          PEER=server TIMEOUT=300 TEST=tcp_ping_pong sudo -E make LIBOS=catnip test-system > nohup.out 2> nohup.err < /dev/null  &
+          PEER=server TIMEOUT=300 TEST=tcp_ping_pong_single sudo -E make LIBOS=catnip test-system > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -129,7 +129,7 @@ jobs:
         script: |
           source $HOME/setup-env.sh
           cd $GITHUB_REPOSITORY
-          PEER=client TIMEOUT=300 TEST=tcp_ping_pong sudo -E make LIBOS=catnip test-system > nohup.out 2> nohup.err < /dev/null
+          PEER=client TIMEOUT=300 TEST=tcp_ping_pong_single sudo -E make LIBOS=catnip test-system > nohup.out 2> nohup.err < /dev/null
 
   #====================
   # Post-Run
