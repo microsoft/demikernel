@@ -4,7 +4,7 @@
 name: Catnip TCP Push Pop
 
 concurrency:
-  group: azure
+  group: azure-catnip
   cancel-in-progress: true
 
 on:
@@ -43,8 +43,8 @@ jobs:
     name: Demikernel 0
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -53,8 +53,8 @@ jobs:
     name: Demikernel 1
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -70,8 +70,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnip"
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -83,8 +83,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnip"
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -101,10 +101,10 @@ jobs:
     - name: Launch
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.HOSTNAME_A }}
+        host: ${{ secrets.CATNIP_HOSTNAME_A }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_A }}
+        port: ${{ secrets.PORTNUM }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           source $HOME/setup-env.sh
@@ -120,10 +120,10 @@ jobs:
     - name: Launch
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.HOSTNAME_B }}
+        host: ${{ secrets.CATNIP_HOSTNAME_B }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM_B }}
+        port: ${{ secrets.PORTNUM }}
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           source $HOME/setup-env.sh
@@ -142,8 +142,8 @@ jobs:
     with:
       process-name: pushpop
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -155,8 +155,8 @@ jobs:
     with:
       process-name: pushpop
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -170,8 +170,8 @@ jobs:
     needs: [postrun-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -181,7 +181,7 @@ jobs:
     needs: [postrun-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
