@@ -80,7 +80,6 @@ impl Future for PushtoFuture {
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                trace!("push in progress ({:?})", e);
                 ctx.waker().wake_by_ref();
                 Poll::Pending
             },
