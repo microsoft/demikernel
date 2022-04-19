@@ -76,7 +76,6 @@ impl Future for ConnectFuture {
             },
             // Operation not ready yet.
             Err(e) if e == Errno::EINPROGRESS || e == Errno::EALREADY => {
-                trace!("connect in progress ({:?})", e);
                 ctx.waker().wake_by_ref();
                 Poll::Pending
             },

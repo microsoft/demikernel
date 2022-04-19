@@ -94,7 +94,6 @@ impl Future for AcceptFuture {
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                trace!("listening for connections ({:?})", e);
                 ctx.waker().wake_by_ref();
                 Poll::Pending
             },

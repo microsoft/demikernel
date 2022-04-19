@@ -84,7 +84,6 @@ impl Future for PopFuture {
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                trace!("pop in progress ({:?})", e);
                 ctx.waker().wake_by_ref();
                 Poll::Pending
             },

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Catpowder TCP Ping Pong
+name: Catpowder Unit Tests
 
 concurrency:
   group: azure

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Catnip TCP Ping Pong
+name: Catnip Unit Tests
 
 concurrency:
   group: azure

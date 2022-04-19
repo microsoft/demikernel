@@ -165,7 +165,6 @@ impl Future for Operation {
 
     /// Polls the target [FutureOperation].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        trace!("polling...");
         match self.get_mut() {
             Operation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
