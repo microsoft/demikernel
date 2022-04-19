@@ -4,7 +4,7 @@
 name: Build Tests
 
 concurrency:
-  group: azure
+  group: azure-catnip
   cancel-in-progress: true
 
 on:
@@ -43,8 +43,8 @@ jobs:
     name: Setup
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -53,8 +53,8 @@ jobs:
     name: Setup
     uses: demikernel/workflows/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -70,8 +70,8 @@ jobs:
     with:
       target: all-tests
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -83,8 +83,8 @@ jobs:
     with:
       target: all-tests
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -100,8 +100,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnap"
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -113,8 +113,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnap"
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -130,8 +130,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catpowder"
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -143,8 +143,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catpowder"
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -160,8 +160,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnip"
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -173,8 +173,8 @@ jobs:
     with:
       target: "all-tests LIBOS=catnip"
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -188,8 +188,8 @@ jobs:
     needs: [build-catnip-demikernel0]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM_A }}
+      host: ${{ secrets.CATNIP_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
@@ -199,7 +199,7 @@ jobs:
     needs: [build-catnip-demikernel1]
     uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM_B }}
+      host: ${{ secrets.CATNIP_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
