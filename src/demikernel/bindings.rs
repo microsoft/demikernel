@@ -479,6 +479,23 @@ pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut s
 }
 
 //==============================================================================
+// setsockopt
+//==============================================================================
+
+#[allow(unused)]
+#[no_mangle]
+pub extern "C" fn dmtr_setsockopt(
+    qd: c_int,
+    level: c_int,
+    optname: c_int,
+    optval: *const c_void,
+    optlen: socklen_t,
+) -> c_int {
+    // TODO: Implement this system call.
+    libc::ENOSYS
+}
+
+//==============================================================================
 // Standalone Functions
 //==============================================================================
 
