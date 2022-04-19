@@ -496,6 +496,23 @@ pub extern "C" fn dmtr_setsockopt(
 }
 
 //==============================================================================
+// getsockopt
+//==============================================================================
+
+#[allow(unused)]
+#[no_mangle]
+pub extern "C" fn dmtr_getsockopt(
+    qd: c_int,
+    level: c_int,
+    optname: c_int,
+    optval: *mut c_void,
+    optlen: *mut socklen_t,
+) -> c_int {
+    // TODO: Implement this system call.
+    libc::ENOSYS
+}
+
+//==============================================================================
 // Standalone Functions
 //==============================================================================
 
