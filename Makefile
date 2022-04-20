@@ -45,6 +45,11 @@ all-libs:
 all-tests:
 	$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
+check-fmt: check-fmt-rust
+
+check-fmt-rust:
+	$(CARGO) fmt -- --check
+
 clean:
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
