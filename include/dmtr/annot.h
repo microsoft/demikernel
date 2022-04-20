@@ -13,18 +13,18 @@
 #define DMTR_NULL(Error, Value) DMTR_TRUE((Error), NULL == (Value))
 #define DMTR_NOTNULL(Error, Value) DMTR_TRUE((Error), NULL != (Value))
 
-#define DMTR_UNREACHABLE() \
-    do { \
-        DMTR_PANIC("unreachable code"); \
-        return -1; \
+#define DMTR_UNREACHABLE()                                                                                             \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        DMTR_PANIC("unreachable code");                                                                                \
+        return -1;                                                                                                     \
     } while (0)
 
-#define DMTR_FAIL(Error) \
-    do { \
-        DMTR_OK(Error); \
-        DMTR_UNREACHABLE(); \
+#define DMTR_FAIL(Error)                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        DMTR_OK(Error);                                                                                                \
+        DMTR_UNREACHABLE();                                                                                            \
     } while (0)
-
-
 
 #endif /* DMTR_ANNOT_H_IS_INCLUDED */
