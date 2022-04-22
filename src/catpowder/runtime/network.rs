@@ -10,9 +10,9 @@ use crate::catpowder::socket::{
     RawSocket,
     RawSocketType,
 };
-use arrayvec::ArrayVec;
-use catnip::protocols::ethernet2::Ethernet2Header;
-use runtime::{
+use ::arrayvec::ArrayVec;
+use ::catnip::protocols::ethernet2::Ethernet2Header;
+use ::runtime::{
     memory::{
         Bytes,
         BytesMut,
@@ -29,7 +29,7 @@ use runtime::{
         PacketBuf,
     },
 };
-use std::{
+use ::std::{
     mem::{
         self,
         MaybeUninit,
@@ -61,10 +61,13 @@ impl NetworkRuntime for LinuxRuntime {
         let dest_sockaddr: RawSocket =
             RawSocket::new(RawSocketType::Active, self.ifindex, &dest_addr_arr);
 
-        self.socket
-            .borrow()
-            .send_to(&buf, dest_sockaddr.get_addr())
-            .unwrap();
+        // Send packet.
+        match self.socket.borrow().send_to(&buf, dest_sockaddr.get_addr()) {
+            // Operation succeeded.
+            Ok(_) => (),
+            // Operation failed, drop packet.
+            Err(e) => warn!("dropping packet: {:?}", e),
+        };
     }
 
     /// Receives a batch of [PacketBuf].
