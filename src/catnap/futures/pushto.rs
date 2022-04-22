@@ -9,7 +9,7 @@ use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
     sys::socket::{
-        sendto,
+        self,
         MsgFlags,
         SockAddr,
     },
@@ -72,10 +72,10 @@ impl Future for PushtoFuture {
     /// Polls the target [PushtoFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushtoFuture = self.get_mut();
-        match sendto(self_.fd, &self_.buf[..], &self_.addr, MsgFlags::empty()) {
+        match socket::sendto(self_.fd, &self_.buf[..], &self_.addr, MsgFlags::empty()) {
             // Operation completed.
-            Ok(_) => {
-                trace!("data pushed ({:?} bytes)", self_.buf.len());
+            Ok(nbytes) => {
+                trace!("data pushed ({:?}/{:?} bytes)", nbytes, self_.buf.len());
                 Poll::Ready(Ok(()))
             },
             // Operation in progress.

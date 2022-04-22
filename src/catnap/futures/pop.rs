@@ -8,7 +8,7 @@
 use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
-    unistd,
+    sys::socket,
 };
 use ::runtime::{
     fail::Fail,
@@ -73,10 +73,10 @@ impl Future for PopFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
         let mut bytes: [u8; POP_SIZE] = [0; POP_SIZE];
-        match unistd::read(self_.fd as i32, &mut bytes[..]) {
+        match socket::recv(self_.fd, &mut bytes[..], socket::MsgFlags::empty()) {
             // Operation completed.
             Ok(nbytes) => {
-                trace!("data received ({:?} bytes)", nbytes);
+                trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
                 let buf: DataBuffer = DataBuffer::from_slice(&bytes[0..nbytes]);
                 Poll::Ready(Ok(buf))
             },
