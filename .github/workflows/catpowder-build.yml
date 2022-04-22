@@ -1,0 +1,115 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Build Catpowder LibOS
+
+concurrency:
+  group: azure-catpowder
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+  workflow_dispatch:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  #====================
+  # Setup
+  #====================
+
+  # Demikernel 0
+  setup-demikernel0:
+    name: Setup
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  setup-demikernel1:
+    name: Setup
+    uses: demikernel/workflows/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Compile
+  #====================
+
+  # Demikernel 0
+  build-demikernel0:
+    name: Build Catpowder
+    needs: [setup-demikernel0]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: "all-libs LIBOS=catpowder"
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  build-demikernel1:
+    name: Build Catpowder
+    needs: [setup-demikernel1]
+    uses: demikernel/workflows/.github/workflows/compile.yml@dev
+    with:
+      target: "all-libs LIBOS=catpowder"
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #====================
+  # Cleanup
+  #====================
+
+  # Demikernel 0
+  cleanup-demikernel0:
+    name: Cleanup
+    needs: [build-demikernel0]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  # Demikernel 1
+  cleanup-demikernel1:
+    name: Cleanup
+    needs: [build-demikernel1]
+    uses: demikernel/workflows/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
