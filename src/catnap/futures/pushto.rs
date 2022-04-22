@@ -8,7 +8,7 @@
 use ::nix::{
     errno::Errno,
     sys::socket::{
-        sendto,
+        self,
         MsgFlags,
         SockAddr,
     },
@@ -72,11 +72,16 @@ impl Future for PushtoFuture {
     /// Polls the target [PushtoFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushtoFuture = self.get_mut();
-        match sendto(self_.fd, &self_.buf[..], &self_.addr, MsgFlags::empty()) {
-            // Operation completed.
-            Ok(_) => {
-                trace!("data pushed ({:?} bytes)", self_.buf.len());
+        match socket::sendto(self_.fd, &self_.buf[..], &self_.addr, MsgFlags::empty()) {
+            // Some bytes were sent, operation completed.
+            Ok(nbytes) if nbytes > 0 => {
+                trace!("data pushed ({:?}/{:?} bytes)", nbytes, self_.buf.len());
                 Poll::Ready(Ok(()))
+            },
+            // No bytes were sent, let the user know about this.
+            Ok(nbytes) if nbytes == 0 => {
+                warn!("no data pushed");
+                Poll::Ready(Err(Fail::new(libc::EAGAIN, "no data pushed")))
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
@@ -88,6 +93,8 @@ impl Future for PushtoFuture {
                 warn!("push failed ({:?})", e);
                 Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
             },
+            // Should not happen.
+            _ => panic!("unexpected error for sendto()"),
         }
     }
 }

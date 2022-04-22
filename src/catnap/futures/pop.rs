@@ -7,7 +7,7 @@
 
 use ::nix::{
     errno::Errno,
-    unistd,
+    sys::socket,
 };
 use ::runtime::{
     fail::Fail,
@@ -75,12 +75,17 @@ impl Future for PopFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
         let mut bytes: [u8; POP_SIZE] = [0; POP_SIZE];
-        match unistd::read(self_.fd as i32, &mut bytes[..]) {
-            // Operation completed.
-            Ok(nbytes) => {
-                trace!("data received ({:?} bytes)", nbytes);
+        match socket::recv(self_.fd, &mut bytes[..], socket::MsgFlags::empty()) {
+            // Some bytes were received, operation completed.
+            Ok(nbytes) if nbytes > 0 => {
+                trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
                 let buf: Bytes = Bytes::from_slice(&bytes[0..nbytes]);
                 Poll::Ready(Ok(buf))
+            },
+            // No bytes were received, let the user know about this.
+            Ok(nbytes) if nbytes == 0 => {
+                warn!("no data received");
+                Poll::Ready(Err(Fail::new(libc::EAGAIN, "no data received")))
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
@@ -92,6 +97,8 @@ impl Future for PopFuture {
                 trace!("pop failed ({:?})", e);
                 Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
             },
+            // Should not happen.
+            _ => panic!("unexpected error for recv()"),
         }
     }
 }

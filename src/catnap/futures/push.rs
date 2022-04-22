@@ -7,7 +7,7 @@
 
 use ::nix::{
     errno::Errno,
-    unistd,
+    sys::socket,
 };
 use ::runtime::{
     fail::Fail,
@@ -66,11 +66,16 @@ impl Future for PushFuture {
     /// Polls the target [PushFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushFuture = self.get_mut();
-        match unistd::write(self_.fd, &self_.buf[..]) {
-            // Operation completed.
-            Ok(_) => {
-                trace!("data pushed ({:?} bytes)", self_.buf.len());
+        match socket::send(self_.fd, &self_.buf[..], socket::MsgFlags::empty()) {
+            // Some bytes were sent, operation completed.
+            Ok(nbytes) if nbytes > 0 => {
+                trace!("data pushed ({:?}/{:?} bytes)", nbytes, self_.buf.len());
                 Poll::Ready(Ok(()))
+            },
+            // No bytes were sent, let the user know about this.
+            Ok(nbytes) if nbytes == 0 => {
+                warn!("no data pushed");
+                Poll::Ready(Err(Fail::new(libc::EAGAIN, "no data pushed")))
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
@@ -82,6 +87,8 @@ impl Future for PushFuture {
                 warn!("push failed ({:?})", e);
                 Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
             },
+            // Should not happen.
+            _ => panic!("unexpected error for send()"),
         }
     }
 }
