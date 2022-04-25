@@ -68,7 +68,7 @@ jobs:
     needs: [setup-demikernel0]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: "all LIBOS=catnap"
+      target: "all PROFILER=yes LIBOS=catnap"
     secrets:
       host: ${{ secrets.CATNAP_HOSTNAME_A }}
       port: ${{ secrets.PORTNUM }}
@@ -81,7 +81,7 @@ jobs:
     needs: [setup-demikernel1]
     uses: demikernel/workflows/.github/workflows/compile.yml@dev
     with:
-      target: "all LIBOS=catnap"
+      target: "all PROFILER=yes LIBOS=catnap"
     secrets:
       host: ${{ secrets.CATNAP_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
