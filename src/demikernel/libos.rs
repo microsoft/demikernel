@@ -8,7 +8,7 @@ cfg_if::cfg_if! {
         use crate::catnip::runtime::DPDKRuntime as Runtime;
         use ::catnip::operations::OperationResult as OperationResult;
     } else if  #[cfg(feature = "catpowder-libos")] {
-        use ::runtime::memory::Bytes;
+        use super::dbuf::DataBuffer;
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
         use ::catnip::operations::OperationResult;
@@ -60,7 +60,7 @@ impl LibOS {
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<Bytes>), Fail> {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<DataBuffer>), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
@@ -85,7 +85,7 @@ impl LibOS {
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<Bytes>), Fail> {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<DataBuffer>), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }

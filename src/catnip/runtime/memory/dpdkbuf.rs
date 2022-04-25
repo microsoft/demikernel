@@ -6,10 +6,8 @@
 //==============================================================================
 
 use super::mbuf::Mbuf;
-use ::runtime::memory::{
-    Buffer,
-    Bytes,
-};
+use crate::demikernel::dbuf::DataBuffer;
+use ::runtime::memory::Buffer;
 use ::std::ops::Deref;
 
 //==============================================================================
@@ -19,7 +17,7 @@ use ::std::ops::Deref;
 /// DPDK Buffer
 #[derive(Clone, Debug)]
 pub enum DPDKBuf {
-    External(Bytes),
+    External(DataBuffer),
     Managed(Mbuf),
 }
 
@@ -31,12 +29,12 @@ pub enum DPDKBuf {
 impl Buffer for DPDKBuf {
     /// Creates an empty [DPDKBuf].
     fn empty() -> Self {
-        DPDKBuf::External(Bytes::empty())
+        DPDKBuf::External(DataBuffer::empty())
     }
 
     /// Creates a [DPDKBuf] from a [u8] slice.
     fn from_slice(bytes: &[u8]) -> Self {
-        DPDKBuf::External(Bytes::from_slice(bytes))
+        DPDKBuf::External(DataBuffer::from_slice(bytes))
     }
 
     /// Removes `len` bytes at the beginning of the target [DPDKBuf].

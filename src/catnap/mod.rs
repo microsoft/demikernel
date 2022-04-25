@@ -25,6 +25,7 @@ use self::futures::{
     pushto::PushtoFuture,
     Operation,
 };
+use crate::demikernel::dbuf::DataBuffer;
 use ::catnip::protocols::ipv4::Ipv4Endpoint;
 use ::catwalk::SchedulerHandle;
 use ::libc::{
@@ -36,12 +37,25 @@ use ::libc::{
     SOCK_DGRAM,
     SOCK_STREAM,
 };
+use ::nix::{
+    sys::{
+        socket,
+        socket::{
+            AddressFamily,
+            InetAddr,
+            SockAddr,
+            SockFlag,
+            SockProtocol,
+            SockType,
+        },
+    },
+    unistd,
+};
 use ::runtime::{
     fail::Fail,
     logging,
     memory::{
         Buffer,
-        Bytes,
         MemoryRuntime,
     },
     network::types::{
@@ -67,20 +81,6 @@ use ::std::{
     mem,
     os::unix::prelude::RawFd,
     time::Instant,
-};
-use nix::{
-    sys::{
-        socket,
-        socket::{
-            AddressFamily,
-            InetAddr,
-            SockAddr,
-            SockFlag,
-            SockProtocol,
-            SockType,
-        },
-    },
-    unistd,
 };
 
 //==============================================================================
@@ -229,7 +229,7 @@ impl CatnapLibOS {
     }
 
     // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Bytes) -> Result<QToken, Fail> {
+    fn do_push(&mut self, qd: QDesc, buf: DataBuffer) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
@@ -261,7 +261,7 @@ impl CatnapLibOS {
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         trace!("push2() qd={:?}", qd);
 
-        let buf: Bytes = Bytes::from_slice(data);
+        let buf: DataBuffer = DataBuffer::from_slice(data);
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -271,7 +271,12 @@ impl CatnapLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Bytes, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    fn do_pushto(
+        &mut self,
+        qd: QDesc,
+        buf: DataBuffer,
+        remote: Ipv4Endpoint,
+    ) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let addr: SockAddr = parse_addr(remote);
@@ -314,7 +319,7 @@ impl CatnapLibOS {
     ) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
-        let buf: Bytes = Bytes::from_slice(data);
+        let buf: DataBuffer = DataBuffer::from_slice(data);
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }

@@ -13,7 +13,10 @@ use self::{
     interop::pack_result,
     runtime::LinuxRuntime,
 };
-use crate::demikernel::config::Config;
+use crate::demikernel::{
+    config::Config,
+    dbuf::DataBuffer,
+};
 use ::catnip::{
     operations::OperationResult,
     protocols::ipv4::Ipv4Endpoint,
@@ -21,10 +24,7 @@ use ::catnip::{
 };
 use ::runtime::{
     fail::Fail,
-    memory::{
-        Bytes,
-        MemoryRuntime,
-    },
+    memory::MemoryRuntime,
     task::SchedulerRuntime,
     types::{
         dmtr_qresult_t,
@@ -115,7 +115,7 @@ impl CatpowderLibOS {
         timer!("catpowder::wait");
         trace!("wait(): qt={:?}", qt);
 
-        let (qd, result): (QDesc, OperationResult<Bytes>) = self.wait2(qt)?;
+        let (qd, result): (QDesc, OperationResult<DataBuffer>) = self.wait2(qt)?;
         Ok(pack_result(self.rt(), result, qd, qt.into()))
     }
 
@@ -125,7 +125,7 @@ impl CatpowderLibOS {
         timer!("catpowder::wait_any");
         trace!("wait_any(): qts={:?}", qts);
 
-        let (i, qd, r): (usize, QDesc, OperationResult<Bytes>) = self.wait_any2(qts)?;
+        let (i, qd, r): (usize, QDesc, OperationResult<DataBuffer>) = self.wait_any2(qts)?;
         Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
     }
 }

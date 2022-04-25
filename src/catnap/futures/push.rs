@@ -5,13 +5,13 @@
 // Imports
 //==============================================================================
 
+use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
     unistd,
 };
 use ::runtime::{
     fail::Fail,
-    memory::Bytes,
     QDesc,
 };
 use ::std::{
@@ -35,7 +35,7 @@ pub struct PushFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
-    buf: Bytes,
+    buf: DataBuffer,
 }
 
 //==============================================================================
@@ -45,7 +45,7 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a push operation.
-    pub fn new(qd: QDesc, fd: RawFd, buf: Bytes) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, buf: DataBuffer) -> Self {
         Self { qd, fd, buf }
     }
 

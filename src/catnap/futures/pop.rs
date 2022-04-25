@@ -5,16 +5,14 @@
 // Imports
 //==============================================================================
 
+use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
     unistd,
 };
 use ::runtime::{
     fail::Fail,
-    memory::{
-        Buffer,
-        Bytes,
-    },
+    memory::Buffer,
     QDesc,
 };
 use ::std::{
@@ -69,7 +67,7 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<Bytes, Fail>;
+    type Output = Result<DataBuffer, Fail>;
 
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -79,7 +77,7 @@ impl Future for PopFuture {
             // Operation completed.
             Ok(nbytes) => {
                 trace!("data received ({:?} bytes)", nbytes);
-                let buf: Bytes = Bytes::from_slice(&bytes[0..nbytes]);
+                let buf: DataBuffer = DataBuffer::from_slice(&bytes[0..nbytes]);
                 Poll::Ready(Ok(buf))
             },
             // Operation in progress.

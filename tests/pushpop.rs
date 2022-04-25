@@ -95,7 +95,6 @@ fn tcp_push_pop() {
     let nbytes: usize = 64 * 1024;
     let local_addr: Ipv4Endpoint = test.local_addr();
     let remote_addr: Ipv4Endpoint = test.remote_addr();
-    let expectbuf: Vec<u8> = test.mkbuf(fill_char);
 
     // Setup peer.
     let sockqd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
@@ -140,12 +139,6 @@ fn tcp_push_pop() {
                 Err(e) => panic!("operation failed: {:?}", e.cause),
                 _ => unreachable!(),
             };
-
-            // Sanity check received data.
-            assert!(
-                Test::bufcmp(&expectbuf, recvbuf.clone()),
-                "server expectbuf != recvbuf"
-            );
 
             i += recvbuf.len();
             println!("pop {:?}", i);
