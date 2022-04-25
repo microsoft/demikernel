@@ -28,7 +28,7 @@ Building
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
 git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
-cd $WORKDIR/demikernel                                                # Switch to working directory.
+cd $WORKDIR/demikernel                                                # Switch to repository's source tree.
 ```
 
 **2. Install Prerequisites (Only Once)**
