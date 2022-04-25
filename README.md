@@ -71,7 +71,12 @@ Running
     - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
 - Save the file.
 
-**2. Run UDP Push-Pop Demo**
+**2. Enable Huge Pages (For Catnip at Every System Reboot)**
+```
+sudo -E ./scripts/setup/hugepages.sh
+```
+
+**3. Run UDP Push-Pop Demo**
 ```
 # Server-Side
 PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
@@ -80,7 +85,7 @@ PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 ```
 
-**3. Run UDP Ping-Pong Demo**
+**4. Run UDP Ping-Pong Demo**
 ```
 # Server-Side
 PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
