@@ -35,6 +35,8 @@ DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || 
 CARGO_FEATURES += --features=$(DRIVER)
 endif
 
+CARGO_FEATURES += $(FEATURES)
+
 #===============================================================================
 
 all: all-libs all-tests
