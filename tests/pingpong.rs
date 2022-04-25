@@ -29,6 +29,9 @@ use ::std::{
     time::Duration,
 };
 
+#[cfg(feature = "profiler")]
+use perftools::profiler;
+
 //==============================================================================
 // UDP Ping Pong
 //==============================================================================
@@ -153,6 +156,9 @@ fn udp_ping_pong() {
                 _ => panic!("unexpected result"),
             }
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     }
 
     // TODO: close socket when we get close working properly in catnip.
@@ -230,6 +236,9 @@ fn tcp_ping_pong_single() {
 
             println!("pong {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
@@ -272,6 +281,9 @@ fn tcp_ping_pong_single() {
 
             println!("ping {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     }
 
     // TODO: close socket when we get close working properly in catnip.
@@ -364,6 +376,9 @@ fn tcp_ping_pong_multiple() {
                 _ => unreachable!(),
             };
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
@@ -406,6 +421,9 @@ fn tcp_ping_pong_multiple() {
 
             println!("ping {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     }
 
     // TODO: close socket when we get close working properly in catnip.
