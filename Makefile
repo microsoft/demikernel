@@ -35,6 +35,11 @@ DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || 
 CARGO_FEATURES += --features=$(DRIVER)
 endif
 
+export PROFILER=no
+ifeq ($(PROFILER),yes)
+CARGO_FEATURES += --features=profiler
+endif
+
 CARGO_FEATURES += $(FEATURES)
 
 #===============================================================================
