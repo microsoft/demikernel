@@ -41,6 +41,7 @@ typedef enum dmtr_opcode {
     DMTR_OPC_POP,
     DMTR_OPC_ACCEPT,
     DMTR_OPC_CONNECT,
+    DMTR_OPC_FAILED,
 } dmtr_opcode_t;
 
 typedef struct dmtr_accept_result {
