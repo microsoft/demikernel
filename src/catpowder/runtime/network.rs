@@ -57,8 +57,7 @@ impl NetworkRuntime for LinuxRuntime {
 
         let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
         let dest_addr_arr = header.dst_addr().to_array();
-        let dest_sockaddr: RawSocket =
-            RawSocket::new(RawSocketType::Active, self.ifindex, &dest_addr_arr);
+        let dest_sockaddr: RawSocket = RawSocket::new(RawSocketType::Active, self.ifindex, &dest_addr_arr);
 
         // Send packet.
         match self.socket.borrow().send_to(&buf, dest_sockaddr.get_addr()) {
@@ -73,8 +72,7 @@ impl NetworkRuntime for LinuxRuntime {
     fn receive(&self) -> ArrayVec<DataBuffer, RECEIVE_BATCH_SIZE> {
         // 4096B buffer size chosen arbitrarily, seems fine for now.
         // This use-case is an example for MaybeUninit in the docs
-        let mut out: [MaybeUninit<u8>; 4096] =
-            [unsafe { MaybeUninit::uninit().assume_init() }; 4096];
+        let mut out: [MaybeUninit<u8>; 4096] = [unsafe { MaybeUninit::uninit().assume_init() }; 4096];
         if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recv_from(&mut out[..]) {
             let mut ret = ArrayVec::new();
             unsafe {

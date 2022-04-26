@@ -199,10 +199,7 @@ impl DPDKRuntime {
         std::env::set_var("MLX5_SHUT_UP_BF", "1");
         std::env::set_var("MLX5_SINGLE_THREADED", "1");
         std::env::set_var("MLX4_SINGLE_THREADED", "1");
-        let eal_init_refs = eal_init_args
-            .iter()
-            .map(|s| s.as_ptr() as *mut u8)
-            .collect::<Vec<_>>();
+        let eal_init_refs = eal_init_args.iter().map(|s| s.as_ptr() as *mut u8).collect::<Vec<_>>();
         unsafe {
             rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _);
         }
@@ -210,10 +207,7 @@ impl DPDKRuntime {
         if nb_ports == 0 {
             bail!("No ethernet ports available");
         }
-        eprintln!(
-            "DPDK reports that {} ports (interfaces) are available.",
-            nb_ports
-        );
+        eprintln!("DPDK reports that {} ports (interfaces) are available.", nb_ports);
 
         let max_body_size: usize = if use_jumbo_frames {
             (RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM) as usize

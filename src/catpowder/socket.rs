@@ -69,10 +69,7 @@ impl RawSocket {
         let sockaddr: SockAddr = unsafe {
             let sockaddr_ptr: *const sockaddr_storage =
                 mem::transmute::<*const sockaddr_ll, *const sockaddr_storage>(&sockaddr_ll);
-            SockAddr::new(
-                *sockaddr_ptr,
-                mem::size_of::<sockaddr_ll>().try_into().unwrap(),
-            )
+            SockAddr::new(*sockaddr_ptr, mem::size_of::<sockaddr_ll>().try_into().unwrap())
         };
 
         RawSocket(sockaddr)

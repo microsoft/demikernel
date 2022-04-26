@@ -92,12 +92,7 @@ impl CatnipLibOS {
         }
     }
 
-    pub fn pushto(
-        &mut self,
-        qd: QDesc,
-        sga: &dmtr_sgarray_t,
-        to: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &dmtr_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);

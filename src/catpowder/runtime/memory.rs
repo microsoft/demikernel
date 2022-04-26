@@ -72,16 +72,12 @@ impl MemoryRuntime for LinuxRuntime {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "scatter-gather array with invalid size",
-            ));
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
         // Release heap-managed buffer.
         let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
-        let (data_ptr, length): (*mut u8, usize) =
-            (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
+        let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
 
         // Convert back raw slice to a heap buffer and drop allocation.
         DataBuffer::from_raw_parts(data_ptr, length)?;
@@ -94,10 +90,7 @@ impl MemoryRuntime for LinuxRuntime {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "scatter-gather array with invalid size",
-            ));
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
         let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];

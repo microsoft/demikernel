@@ -118,12 +118,7 @@ impl CatnapLibOS {
 
     /// Creates a socket.
     pub fn socket(&mut self, domain: c_int, typ: c_int, _protocol: c_int) -> Result<QDesc, Fail> {
-        trace!(
-            "socket() domain={:?}, type={:?}, protocol={:?}",
-            domain,
-            typ,
-            _protocol
-        );
+        trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // All operations are asynchronous.
         let flags: SockFlag = SockFlag::SOCK_NONBLOCK;
@@ -271,12 +266,7 @@ impl CatnapLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(
-        &mut self,
-        qd: QDesc,
-        buf: DataBuffer,
-        remote: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: DataBuffer, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let addr: SockAddr = parse_addr(remote);
@@ -289,12 +279,7 @@ impl CatnapLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn pushto(
-        &mut self,
-        qd: QDesc,
-        sga: &dmtr_sgarray_t,
-        remote: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &dmtr_sgarray_t, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
         match self.runtime.clone_sgarray(sga) {
@@ -311,12 +296,7 @@ impl CatnapLibOS {
     }
 
     /// Pushes raw data to a socket.
-    pub fn pushto2(
-        &mut self,
-        qd: QDesc,
-        data: &[u8],
-        remote: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
         let buf: DataBuffer = DataBuffer::from_slice(data);
@@ -444,8 +424,7 @@ impl CatnapLibOS {
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
     fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
         let boxed_future: Box<dyn Any> = self.runtime.take(handle).as_any();
-        let boxed_concrete_type: Operation =
-            *boxed_future.downcast::<Operation>().expect("Wrong type!");
+        let boxed_concrete_type: Operation = *boxed_future.downcast::<Operation>().expect("Wrong type!");
 
         let (qd, new_qd, new_fd, qr): (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) =
             boxed_concrete_type.get_result();
@@ -512,8 +491,7 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
             Ok(mut sga) => {
                 if let Some(endpoint) = addr {
                     sga.sga_addr.sin_port = endpoint.get_port().into();
-                    sga.sga_addr.sin_addr.s_addr =
-                        u32::from_le_bytes(endpoint.get_address().octets());
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(endpoint.get_address().octets());
                 }
                 let qr_value: dmtr_qr_value_t = dmtr_qr_value_t { sga };
                 dmtr_qresult_t {
