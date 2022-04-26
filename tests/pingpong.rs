@@ -62,13 +62,10 @@ fn udp_ping_pong() {
 
             // Spawn timeout thread.
             let (sender, receiver): (Sender<i32>, Receiver<i32>) = mpsc::channel();
-            let t: JoinHandle<()> =
-                thread::spawn(
-                    move || match receiver.recv_timeout(Duration::from_secs(60)) {
-                        Ok(_) => {},
-                        _ => process::exit(0),
-                    },
-                );
+            let t: JoinHandle<()> = thread::spawn(move || match receiver.recv_timeout(Duration::from_secs(60)) {
+                Ok(_) => {},
+                _ => process::exit(0),
+            });
 
             // Wait for incoming data.
             // TODO: add type annotation to the following variable once we drop generics on OperationResult.
@@ -82,10 +79,7 @@ fn udp_ping_pong() {
             t.join().expect("failed to join thread");
 
             // Sanity check contents of received buffer.
-            assert!(
-                Test::bufcmp(&sendbuf, recvbuf),
-                "server sendbuf != recevbuf"
-            );
+            assert!(Test::bufcmp(&sendbuf, recvbuf), "server sendbuf != recevbuf");
 
             // Send data.
             qt = match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr) {
@@ -108,8 +102,7 @@ fn udp_ping_pong() {
 
         // Push pop first packet.
         let (qt_push, qt_pop): (QToken, QToken) = {
-            let qt_push: QToken = match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr)
-            {
+            let qt_push: QToken = match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr) {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to push: {:?}", e.cause),
             };
@@ -137,11 +130,10 @@ fn udp_ping_pong() {
             match result {
                 OperationResult::Push => {
                     let (qt_push, qt_pop): (QToken, QToken) = {
-                        let qt_push: QToken =
-                            match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr) {
-                                Ok(qt) => qt,
-                                Err(e) => panic!("failed to push: {:?}", e.cause),
-                            };
+                        let qt_push: QToken = match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr) {
+                            Ok(qt) => qt,
+                            Err(e) => panic!("failed to push: {:?}", e.cause),
+                        };
                         let qt_pop: QToken = match test.libos.pop(sockfd) {
                             Ok(qt) => qt,
                             Err(e) => panic!("failed to pop: {:?}", e.cause),
@@ -154,10 +146,7 @@ fn udp_ping_pong() {
                 },
                 OperationResult::Pop(_, recvbuf) => {
                     // Sanity received buffer.
-                    assert!(
-                        Test::bufcmp(&sendbuf, recvbuf),
-                        "server expectbuf != recevbuf"
-                    );
+                    assert!(Test::bufcmp(&sendbuf, recvbuf), "server expectbuf != recevbuf");
                     npings += 1;
                     npongs -= 1;
                 },
@@ -226,10 +215,7 @@ fn tcp_ping_pong_single() {
             };
 
             // Sanity check received data.
-            assert!(
-                Test::bufcmp(&expectbuf, recvbuf.clone()),
-                "server expectbuf != recvbuf"
-            );
+            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
 
             // Push data.
             let qt: QToken = match test.libos.push2(qd, &recvbuf[..]) {
@@ -282,10 +268,7 @@ fn tcp_ping_pong_single() {
             };
 
             // Sanity check received data.
-            assert!(
-                Test::bufcmp(&expectbuf, recvbuf.clone()),
-                "server expectbuf != recvbuf"
-            );
+            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
 
             println!("ping {:?}", i);
         }
@@ -361,10 +344,7 @@ fn tcp_ping_pong_multiple() {
                 },
                 OperationResult::Pop(_, buf) => {
                     // Sanity check received data.
-                    assert!(
-                        Test::bufcmp(&expectbuf, buf.clone()),
-                        "server expectbuf != recvbuf"
-                    );
+                    assert!(Test::bufcmp(&expectbuf, buf.clone()), "server expectbuf != recvbuf");
                     let qt: QToken = match test.libos.push2(qd, &buf[..]) {
                         Ok(qt) => qt,
                         Err(e) => panic!("push failed: {:?}", e.cause),
@@ -422,10 +402,7 @@ fn tcp_ping_pong_multiple() {
             };
 
             // Sanity check received data.
-            assert!(
-                Test::bufcmp(&expectbuf, recvbuf.clone()),
-                "server expectbuf != recvbuf"
-            );
+            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
 
             println!("ping {:?}", i);
         }

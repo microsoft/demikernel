@@ -14,12 +14,7 @@ use ::runtime::{
 };
 use ::std::mem;
 
-pub fn pack_result<RT: Runtime>(
-    rt: &RT,
-    result: OperationResult<RT::Buf>,
-    qd: QDesc,
-    qt: u64,
-) -> dmtr_qresult_t {
+pub fn pack_result<RT: Runtime>(rt: &RT, result: OperationResult<RT::Buf>, qd: QDesc, qt: u64) -> dmtr_qresult_t {
     match result {
         OperationResult::Connect => dmtr_qresult_t {
             qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,

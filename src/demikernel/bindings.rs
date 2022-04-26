@@ -81,12 +81,7 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_socket(
-    qd_out: *mut c_int,
-    domain: c_int,
-    socket_type: c_int,
-    protocol: c_int,
-) -> c_int {
+pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_int, protocol: c_int) -> c_int {
     trace!("dmtr_socket()");
 
     // Issue socket operation.
@@ -305,11 +300,7 @@ pub extern "C" fn dmtr_pushto(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_push(
-    qtok_out: *mut dmtr_qtoken_t,
-    qd: c_int,
-    sga: *const dmtr_sgarray_t,
-) -> c_int {
+pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
     trace!("dmtr_push()");
 
     // Check if scatter-gather array is invalid.
@@ -519,8 +510,7 @@ pub extern "C" fn dmtr_getsockopt(
 /// Converts a [sockaddr] into a [Ipv4Endpoint].
 fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<Ipv4Endpoint, Fail> {
     // TODO: Review why we need byte ordering conversion here.
-    let sin: libc::sockaddr_in =
-        unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
+    let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let addr: Ipv4Addr = { Ipv4Addr::from(u32::from_be_bytes(sin.sin_addr.s_addr.to_le_bytes())) };
     let port: Port16 = Port16::try_from(u16::from_be(sin.sin_port))?;
     Ok(Ipv4Endpoint::new(addr, port))

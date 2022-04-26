@@ -75,8 +75,7 @@ pub struct MemoryManager {
 impl MemoryManager {
     /// Instantiates a memory manager.
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
-        let memory_config: MemoryConfig =
-            MemoryConfig::new(None, None, Some(max_body_size), None, None);
+        let memory_config: MemoryConfig = MemoryConfig::new(None, None, Some(max_body_size), None, None);
 
         Ok(Self {
             inner: Rc::new(Inner::new(memory_config)?),
@@ -136,37 +135,35 @@ impl MemoryManager {
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
         // Allocate underlying buffer.
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) = if size
-            > self.inner.config.get_inline_body_size()
-            && size <= self.inner.config.get_max_body_size()
-        {
-            // Allocate a DPDK-managed buffer.
-            let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(Some(size))?;
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) =
+            if size > self.inner.config.get_inline_body_size() && size <= self.inner.config.get_max_body_size() {
+                // Allocate a DPDK-managed buffer.
+                let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(Some(size))?;
 
-            // Adjust various fields in the mbuf and create a scatter-gather segment out of it.
-            unsafe {
-                let buf_ptr: *mut u8 = (*mbuf_ptr).buf_addr as *mut u8;
-                let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
+                // Adjust various fields in the mbuf and create a scatter-gather segment out of it.
+                unsafe {
+                    let buf_ptr: *mut u8 = (*mbuf_ptr).buf_addr as *mut u8;
+                    let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
+                    (
+                        mbuf_ptr,
+                        dmtr_sgaseg_t {
+                            sgaseg_buf: data_ptr as *mut c_void,
+                            sgaseg_len: size as u32,
+                        },
+                    )
+                }
+            } else {
+                // Allocate a heap-managed buffer.
+                let dbuf: DataBuffer = DataBuffer::new(size)?;
+                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
                 (
-                    mbuf_ptr,
+                    ptr::null_mut(),
                     dmtr_sgaseg_t {
-                        sgaseg_buf: data_ptr as *mut c_void,
+                        sgaseg_buf: dbuf_ptr as *mut c_void,
                         sgaseg_len: size as u32,
                     },
                 )
-            }
-        } else {
-            // Allocate a heap-managed buffer.
-            let dbuf: DataBuffer = DataBuffer::new(size)?;
-            let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
-            (
-                ptr::null_mut(),
-                dmtr_sgaseg_t {
-                    sgaseg_buf: dbuf_ptr as *mut c_void,
-                    sgaseg_len: size as u32,
-                },
-            )
-        };
+            };
 
         // TODO: Drop the sga_addr field in the scatter-gather array.
         Ok(dmtr_sgarray_t {
@@ -182,10 +179,7 @@ impl MemoryManager {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "scatter-gather array with invalid size",
-            ));
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
         // Release underlying buffer.
@@ -196,8 +190,7 @@ impl MemoryManager {
         } else {
             // Release heap-managed buffer.
             let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
-            let (data_ptr, length): (*mut u8, usize) =
-                (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
+            let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
 
             // Convert back to a heap buffer and drop allocation.
             DataBuffer::from_raw_parts(data_ptr, length)?;
@@ -211,10 +204,7 @@ impl MemoryManager {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "scatter-gather array with invalid size",
-            ));
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
         let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
@@ -256,8 +246,7 @@ impl MemoryManager {
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
         // TODO: The following computation for header size is bad. It should be fixed to maximum possible size.
-        let header_size: usize =
-            ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
+        let header_size: usize = ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size: usize = header_size + config.get_inline_body_size();
 
         // Create memory pool for holding packet headers.

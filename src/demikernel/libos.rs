@@ -108,12 +108,7 @@ impl LibOS {
     }
 
     /// Creates a socket.
-    pub fn socket(
-        &mut self,
-        domain: c_int,
-        socket_type: c_int,
-        protocol: c_int,
-    ) -> Result<QDesc, Fail> {
+    pub fn socket(&mut self, domain: c_int, socket_type: c_int, protocol: c_int) -> Result<QDesc, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
         }
@@ -169,24 +164,14 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(
-        &mut self,
-        fd: QDesc,
-        sga: &dmtr_sgarray_t,
-        to: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, fd: QDesc, sga: &dmtr_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(fd, sga, to),
         }
     }
 
     /// Pushes raw data to a UDP socket.
-    pub fn pushto2(
-        &mut self,
-        qd: QDesc,
-        data: &[u8],
-        remote: Ipv4Endpoint,
-    ) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto2(qd, data, remote),
         }

@@ -94,12 +94,7 @@ impl LinuxRuntime {
             Some(false),
         );
 
-        let socket: Socket = Socket::new(
-            Domain::PACKET,
-            Type::RAW.nonblocking(),
-            Some((ETH_P_ALL).into()),
-        )
-        .unwrap();
+        let socket: Socket = Socket::new(Domain::PACKET, Type::RAW.nonblocking(), Some((ETH_P_ALL).into())).unwrap();
 
         let mac_addr: [u8; 6] = [0; 6];
         let ifindex: i32 = Self::get_ifindex(ifname).expect("could not parse ifindex");
@@ -124,10 +119,7 @@ impl LinuxRuntime {
     /// Gets the interface index of the network interface named `ifname`.
     fn get_ifindex(ifname: &str) -> Result<i32, ParseIntError> {
         let path: String = format!("/sys/class/net/{}/ifindex", ifname);
-        fs::read_to_string(path)
-            .expect("could not read ifname")
-            .trim()
-            .parse()
+        fs::read_to_string(path).expect("could not read ifname").trim().parse()
     }
 }
 

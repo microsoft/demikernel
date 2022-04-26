@@ -182,10 +182,7 @@ impl Buffer for DataBuffer {
     /// Removes bytes from the end of the target data buffer.
     fn trim(&mut self, nbytes: usize) {
         if nbytes > self.len {
-            panic!(
-                "trimming past beginning of buffer: {} vs {}",
-                nbytes, self.len
-            );
+            panic!("trimming past beginning of buffer: {} vs {}", nbytes, self.len);
         }
         self.len -= nbytes;
     }

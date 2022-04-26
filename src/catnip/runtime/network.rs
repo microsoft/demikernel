@@ -89,28 +89,21 @@ impl NetworkRuntime for DPDKRuntime {
                     },
                 };
                 unsafe {
-                    assert_eq!(
-                        rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()),
-                        0
-                    );
+                    assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()), 0);
                 }
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
-                let num_sent =
-                    unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
+                let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
             // Otherwise, write in the inline space.
             else {
-                let body_buf = unsafe {
-                    &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())]
-                };
+                let body_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())] };
                 body_buf.copy_from_slice(&body[..]);
 
                 if header_size + body.len() < MIN_PAYLOAD_SIZE {
                     let padding_bytes = MIN_PAYLOAD_SIZE - (header_size + body.len());
-                    let padding_buf = unsafe {
-                        &mut header_mbuf.slice_mut()[(header_size + body.len())..][..padding_bytes]
-                    };
+                    let padding_buf =
+                        unsafe { &mut header_mbuf.slice_mut()[(header_size + body.len())..][..padding_bytes] };
                     for byte in padding_buf {
                         *byte = 0;
                     }
@@ -120,8 +113,7 @@ impl NetworkRuntime for DPDKRuntime {
                 header_mbuf.trim(header_mbuf.len() - frame_size);
 
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
-                let num_sent =
-                    unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
+                let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
         }
@@ -129,8 +121,7 @@ impl NetworkRuntime for DPDKRuntime {
         else {
             if header_size < MIN_PAYLOAD_SIZE {
                 let padding_bytes = MIN_PAYLOAD_SIZE - header_size;
-                let padding_buf =
-                    unsafe { &mut header_mbuf.slice_mut()[header_size..][..padding_bytes] };
+                let padding_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..][..padding_bytes] };
                 for byte in padding_buf {
                     *byte = 0;
                 }
@@ -151,12 +142,7 @@ impl NetworkRuntime for DPDKRuntime {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos::receive::rte_eth_rx_burst");
 
-            rte_eth_rx_burst(
-                self.port_id,
-                0,
-                packets.as_mut_ptr(),
-                RECEIVE_BATCH_SIZE as u16,
-            )
+            rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16)
         };
         assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 

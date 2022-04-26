@@ -78,10 +78,7 @@ impl Config {
 
     pub fn new(config_path: String) -> Self {
         let mut config_s = String::new();
-        File::open(config_path)
-            .unwrap()
-            .read_to_string(&mut config_s)
-            .unwrap();
+        File::open(config_path).unwrap().read_to_string(&mut config_s).unwrap();
         let config = YamlLoader::load_from_str(&config_s).unwrap();
         let config_obj = match &config[..] {
             &[ref c] => c,

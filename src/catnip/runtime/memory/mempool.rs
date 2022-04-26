@@ -35,12 +35,7 @@ pub struct MemoryPool {
 /// Associated functions for memory pool.
 impl MemoryPool {
     /// Creates a new memory pool.
-    pub fn new(
-        name: CString,
-        data_room_size: usize,
-        pool_size: usize,
-        cache_size: usize,
-    ) -> Result<Self, Fail> {
+    pub fn new(name: CString, data_room_size: usize, pool_size: usize, cache_size: usize) -> Result<Self, Fail> {
         let pool: *mut rte_mempool = unsafe {
             rte_pktmbuf_pool_create(
                 name.as_ptr(),

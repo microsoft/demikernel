@@ -39,11 +39,20 @@ endif
 
 all: all-libs all-tests
 
-all-libs:
+all-libs: check-fmt
 	$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
-all-tests:
+all-tests: check-fmt
 	$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
+
+check-fmt: check-fmt-c check-fmt-rust
+
+check-fmt-c:
+	$(shell find include/ -name "*.h" -name "*.hxx" -name "*.c" -name "*.cpp" -type f -print0 | xargs -0 clang-format --fallback-style=Microsoft --dry-run -Werror )
+	@exit $(.SHELLSTATUS)
+
+check-fmt-rust:
+	$(CARGO) fmt -- --check
 
 clean:
 	rm -rf target ; \

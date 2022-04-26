@@ -33,15 +33,9 @@ impl TestConfig {
 
     fn addr(&self, k1: &str, k2: &str) -> Result<Ipv4Endpoint, Error> {
         let addr = &self.0.config_obj[k1][k2];
-        let host_s = addr["host"]
-            .as_str()
-            .ok_or(format_err!("Missing host"))
-            .unwrap();
+        let host_s = addr["host"].as_str().ok_or(format_err!("Missing host")).unwrap();
         let host = Ipv4Addr::from_str(host_s).unwrap();
-        let port_i = addr["port"]
-            .as_i64()
-            .ok_or(format_err!("Missing port"))
-            .unwrap();
+        let port_i = addr["port"].as_i64().ok_or(format_err!("Missing port")).unwrap();
         let port = Port16::try_from(port_i as u16).unwrap();
         Ok(Ipv4Endpoint::new(host, port))
     }
