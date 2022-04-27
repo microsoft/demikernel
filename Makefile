@@ -35,14 +35,23 @@ DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || 
 CARGO_FEATURES += --features=$(DRIVER)
 endif
 
+export PROFILER=no
+ifeq ($(PROFILER),yes)
+CARGO_FEATURES += --features=profiler
+endif
+
+CARGO_FEATURES += $(FEATURES)
+
 #===============================================================================
 
 all: all-libs all-tests
 
 all-libs: check-fmt
+	@echo "$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
 all-tests: check-fmt
+	@echo "$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
 
 check-fmt: check-fmt-c check-fmt-rust

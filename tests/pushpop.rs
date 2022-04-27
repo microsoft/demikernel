@@ -16,6 +16,9 @@ use ::demikernel::{
 };
 use ::std::panic;
 
+#[cfg(feature = "profiler")]
+use perftools::profiler;
+
 //==============================================================================
 // UDP Push Pop
 //==============================================================================
@@ -60,6 +63,9 @@ fn udp_push_pop() {
             assert!(Test::bufcmp(&expectbuf, recvbuf), "server expectbuf != recvbuf");
             println!("pop ({:?})", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
 
@@ -76,6 +82,9 @@ fn udp_push_pop() {
             };
             println!("push ({:?})", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     }
 
     // TODO: close socket when we get close working properly in catnip.
@@ -140,6 +149,9 @@ fn tcp_push_pop() {
             i += recvbuf.len();
             println!("pop {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
         let sendbuf: Vec<u8> = test.mkbuf(fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
@@ -169,6 +181,9 @@ fn tcp_push_pop() {
             i += sendbuf.len();
             println!("push {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     }
 
     // TODO: close socket when we get close working properly in catnip.
