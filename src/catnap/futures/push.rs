@@ -8,7 +8,7 @@
 use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
-    unistd,
+    sys::socket,
 };
 use ::runtime::{
     fail::Fail,
@@ -66,10 +66,10 @@ impl Future for PushFuture {
     /// Polls the target [PushFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushFuture = self.get_mut();
-        match unistd::write(self_.fd, &self_.buf[..]) {
+        match socket::send(self_.fd, &self_.buf[..], socket::MsgFlags::empty()) {
             // Operation completed.
-            Ok(_) => {
-                trace!("data pushed ({:?} bytes)", self_.buf.len());
+            Ok(nbytes) => {
+                trace!("data pushed ({:?}/{:?} bytes)", nbytes, self_.buf.len());
                 Poll::Ready(Ok(()))
             },
             // Operation in progress.
