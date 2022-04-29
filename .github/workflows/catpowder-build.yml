@@ -17,15 +17,6 @@ on:
       - dev
       - unstable
       - master
-  workflow_dispatch:
-    branches:
-      - bugfix-*
-      - enhancement-*
-      - feature-*
-      - workaround-*
-      - dev
-      - unstable
-      - master
 
 env:
   CARGO_TERM_COLOR: always
