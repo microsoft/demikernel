@@ -380,6 +380,11 @@ pub extern "C" fn dmtr_wait_any(
 ) -> c_int {
     trace!("dmtr_wait_any()");
 
+    // Check arguments.
+    if num_qts < 0 {
+        return libc::EINVAL;
+    }
+
     // Get queue tokens.
     let qts: Vec<QToken> = {
         let raw_qts: &[u64] = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
