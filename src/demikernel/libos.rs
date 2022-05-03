@@ -12,6 +12,10 @@ cfg_if::cfg_if! {
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
         use ::catnip::operations::OperationResult;
+    } else if  #[cfg(feature = "catcollar-libos")] {
+        use crate::catcollar::CatcollarLibOS as NetworkLibOS;
+        use crate::catcollar::IoUringRuntime as Runtime;
+        use crate::catcollar::OperationResult;
     } else {
         use crate::catnap::CatnapLibOS as NetworkLibOS;
         use crate::catnap::PosixRuntime as Runtime;

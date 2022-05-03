@@ -29,11 +29,13 @@ catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "96b0f942af74417a96063794884af6450a5b6675" }
+liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "e80e6238f47498b7c4e37194e896a39713c61cd9", optional = true }
 
 [features]
 default = [  ]
 catnap-libos = [ ]
 catpowder-libos = [ ]
+catcollar-libos = [ "liburing" ]
 catnip-libos = [ "dpdk-rs" ]
 mlx4 = ["dpdk-rs", "dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs", "dpdk-rs/mlx5"]
