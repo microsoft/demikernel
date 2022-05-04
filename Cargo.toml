@@ -31,6 +31,18 @@ perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad282
 runtime = { git = "https://github.com/demikernel/runtime", rev = "96b0f942af74417a96063794884af6450a5b6675" }
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "e80e6238f47498b7c4e37194e896a39713c61cd9", optional = true }
 
+[[test]]
+name = "sga"
+path = "tests/rust/sga.rs"
+
+[[test]]
+name = "pushpop"
+path = "tests/rust/pushpop.rs"
+
+[[test]]
+name = "pingpong"
+path = "tests/rust/pingpong.rs"
+
 [features]
 default = [  ]
 catnap-libos = [ ]
