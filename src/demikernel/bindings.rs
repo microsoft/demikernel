@@ -6,7 +6,7 @@
 //==============================================================================
 
 use super::libos::LibOS;
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use crate::Ipv4Endpoint;
 use ::libc::{
     c_char,
     c_int,

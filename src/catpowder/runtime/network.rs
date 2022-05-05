@@ -13,8 +13,15 @@ use crate::{
     },
     demikernel::dbuf::DataBuffer,
 };
-use arrayvec::ArrayVec;
-use catnip::protocols::ethernet2::Ethernet2Header;
+use ::arrayvec::ArrayVec;
+use ::inetstack::protocols::ethernet2::Ethernet2Header;
+use ::std::{
+    mem::{
+        self,
+        MaybeUninit,
+    },
+    net::Ipv4Addr,
+};
 use runtime::{
     memory::Buffer,
     network::{
@@ -28,13 +35,6 @@ use runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-};
-use std::{
-    mem::{
-        self,
-        MaybeUninit,
-    },
-    net::Ipv4Addr,
 };
 
 //==============================================================================

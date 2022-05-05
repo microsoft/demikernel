@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::catnip::operations::OperationResult;
+use crate::OperationResult;
 use ::runtime::{
     types::{
         dmtr_accept_result_t,

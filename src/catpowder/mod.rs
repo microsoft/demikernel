@@ -17,10 +17,10 @@ use crate::demikernel::{
     config::Config,
     dbuf::DataBuffer,
 };
-use ::catnip::{
+use ::inetstack::{
     operations::OperationResult,
     protocols::ipv4::Ipv4Endpoint,
-    Catnip,
+    InetStack,
 };
 use ::runtime::{
     fail::Fail,
@@ -49,7 +49,7 @@ use ::perftools::timer;
 //==============================================================================
 
 /// Catpowder LibOS
-pub struct CatpowderLibOS(Catnip<LinuxRuntime>);
+pub struct CatpowderLibOS(InetStack<LinuxRuntime>);
 
 //==============================================================================
 // Associate Functions
@@ -68,7 +68,7 @@ impl CatpowderLibOS {
             &config.local_interface_name,
             config.arp_table(),
         );
-        let libos: Catnip<LinuxRuntime> = Catnip::new(rt).unwrap();
+        let libos: InetStack<LinuxRuntime> = InetStack::new(rt).unwrap();
         CatpowderLibOS(libos)
     }
 
@@ -134,7 +134,7 @@ impl CatpowderLibOS {
 
 /// De-Reference Trait Implementation for Catpowder LibOS
 impl Deref for CatpowderLibOS {
-    type Target = Catnip<LinuxRuntime>;
+    type Target = InetStack<LinuxRuntime>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

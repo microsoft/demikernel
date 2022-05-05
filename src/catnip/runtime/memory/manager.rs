@@ -8,14 +8,14 @@
 use super::mempool::MemoryPool;
 use crate::demikernel::dbuf::DataBuffer;
 use ::anyhow::Error;
-use ::catnip::protocols::{
-    ethernet2::ETHERNET2_HEADER_SIZE,
-    ipv4::IPV4_HEADER_DEFAULT_SIZE,
-    tcp::MAX_TCP_HEADER_SIZE,
-};
 use ::dpdk_rs::{
     rte_mbuf,
     rte_mempool,
+};
+use ::inetstack::protocols::{
+    ethernet2::ETHERNET2_HEADER_SIZE,
+    ipv4::IPV4_HEADER_DEFAULT_SIZE,
+    tcp::MAX_TCP_HEADER_SIZE,
 };
 use ::libc::c_void;
 use ::runtime::{

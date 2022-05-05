@@ -25,8 +25,10 @@ use self::futures::{
     pushto::PushtoFuture,
     Operation,
 };
-use crate::demikernel::dbuf::DataBuffer;
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use crate::{
+    demikernel::dbuf::DataBuffer,
+    Ipv4Endpoint,
+};
 use ::catwalk::SchedulerHandle;
 use ::libc::{
     c_int,
