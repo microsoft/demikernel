@@ -35,7 +35,7 @@ use self::{
 // Imports
 //==============================================================================
 
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use crate::Ipv4Endpoint;
 use ::catwalk::SchedulerHandle;
 use ::libc::c_int;
 use ::nix::{

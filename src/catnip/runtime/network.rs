@@ -11,13 +11,13 @@ use crate::catnip::runtime::memory::{
     Mbuf,
 };
 use ::arrayvec::ArrayVec;
-use ::catnip::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::dpdk_rs::{
     rte_eth_rx_burst,
     rte_eth_tx_burst,
     rte_mbuf,
     rte_pktmbuf_chain,
 };
+use ::inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::runtime::network::{
     config::{
         ArpConfig,

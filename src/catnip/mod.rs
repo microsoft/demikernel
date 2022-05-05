@@ -13,12 +13,12 @@ use self::{
     runtime::DPDKRuntime,
 };
 use crate::demikernel::config::Config;
-use ::catnip::{
+use ::dpdk_rs::load_mlx_driver;
+use ::inetstack::{
     operations::OperationResult,
     protocols::ipv4::Ipv4Endpoint,
-    Catnip,
+    InetStack,
 };
-use ::dpdk_rs::load_mlx_driver;
 use ::runtime::{
     fail::Fail,
     memory::MemoryRuntime,
@@ -49,7 +49,7 @@ pub use self::runtime::memory::DPDKBuf;
 //==============================================================================
 
 /// Catnip LibOS
-pub struct CatnipLibOS(Catnip<DPDKRuntime>);
+pub struct CatnipLibOS(InetStack<DPDKRuntime>);
 
 //==============================================================================
 // Associate Functions
@@ -72,7 +72,7 @@ impl CatnipLibOS {
             config.tcp_checksum_offload,
             config.udp_checksum_offload,
         );
-        let libos: Catnip<DPDKRuntime> = Catnip::new(rt).unwrap();
+        let libos: InetStack<DPDKRuntime> = InetStack::new(rt).unwrap();
         CatnipLibOS(libos)
     }
 
@@ -138,7 +138,7 @@ impl CatnipLibOS {
 
 /// De-Reference Trait Implementation for Catnip LibOS
 impl Deref for CatnipLibOS {
-    type Target = Catnip<DPDKRuntime>;
+    type Target = InetStack<DPDKRuntime>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

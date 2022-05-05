@@ -6,12 +6,12 @@ cfg_if::cfg_if! {
         use crate::DPDKBuf;
         use crate::catnip::CatnipLibOS as NetworkLibOS;
         use crate::catnip::runtime::DPDKRuntime as Runtime;
-        use ::catnip::operations::OperationResult as OperationResult;
+        use ::inetstack::operations::OperationResult as OperationResult;
     } else if  #[cfg(feature = "catpowder-libos")] {
         use super::dbuf::DataBuffer;
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
-        use ::catnip::operations::OperationResult;
+        use ::inetstack::operations::OperationResult;
     } else if  #[cfg(feature = "catcollar-libos")] {
         use crate::catcollar::CatcollarLibOS as NetworkLibOS;
         use crate::catcollar::IoUringRuntime as Runtime;
@@ -23,7 +23,7 @@ cfg_if::cfg_if! {
     }
 }
 
-use ::catnip::protocols::ipv4::Ipv4Endpoint;
+use crate::Ipv4Endpoint;
 use ::libc::c_int;
 use ::runtime::{
     fail::Fail,
