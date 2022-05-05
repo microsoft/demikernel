@@ -7,11 +7,6 @@
 
 use crate::demikernel::dbuf::DataBuffer;
 use ::arrayvec::ArrayVec;
-use ::catwalk::{
-    Scheduler,
-    SchedulerFuture,
-    SchedulerHandle,
-};
 use ::libc::c_void;
 use ::rand::{
     distributions::Standard,
@@ -45,6 +40,11 @@ use ::runtime::{
     },
     utils::UtilsRuntime,
     Runtime,
+};
+use ::scheduler::{
+    Scheduler,
+    SchedulerFuture,
+    SchedulerHandle,
 };
 use ::std::{
     mem,
@@ -187,12 +187,18 @@ impl SchedulerRuntime for PosixRuntime {
 
     /// Spawns a new task.
     fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     /// Schedules a task for execution.
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     /// Gets the handle of a task.

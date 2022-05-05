@@ -12,7 +12,6 @@ mod utils;
 
 use super::iouring::IoUring;
 use crate::demikernel::dbuf::DataBuffer;
-use ::catwalk::Scheduler;
 use ::nix::sys::socket::SockAddr;
 use ::runtime::{
     fail::Fail,
@@ -22,6 +21,7 @@ use ::runtime::{
     },
     Runtime,
 };
+use ::scheduler::Scheduler;
 use ::std::{
     cell::RefCell,
     collections::HashMap,

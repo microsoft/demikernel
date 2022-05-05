@@ -22,7 +22,6 @@ use ::anyhow::{
     format_err,
     Error,
 };
-use ::catwalk::Scheduler;
 use ::dpdk_rs::{
     rte_delay_us_block,
     rte_eal_init,
@@ -76,6 +75,7 @@ use ::runtime::{
     timer::Timer,
     Runtime,
 };
+use ::scheduler::Scheduler;
 use ::std::{
     cell::RefCell,
     collections::HashMap,

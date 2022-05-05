@@ -24,11 +24,11 @@ nix = "0.23.1"
 socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "fcb2f986c743cc826d004b7ce29ca0716bac7860" }
-catwalk = { git = "https://github.com/demikernel/catwalk", rev = "05201a072b4d6b3afd7c02de69045f423563228f" }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "1e1504c5e6309e32d78e38c32c3c55ccb4ae1304" }
+scheduler = { git = "https://github.com/demikernel/scheduler", rev = "fa95977f399eebfcfcd63aae506d72c1cb1756ec" }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "96b0f942af74417a96063794884af6450a5b6675" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "14cf60cd89f491af4c539d20810f9b898828b631" }
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "e80e6238f47498b7c4e37194e896a39713c61cd9", optional = true }
 
 [[test]]
