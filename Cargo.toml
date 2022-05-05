@@ -25,7 +25,7 @@ socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
 
 inetstack = { git = "https://github.com/demikernel/inetstack", rev = "532a7d0f37380188508f5a86add606d810137401" }
-scheduler = { git = "https://github.com/demikernel/scheduler", rev = "fa95977f399eebfcfcd63aae506d72c1cb1756ec" }
+scheduler = { git = "https://github.com/demikernel/scheduler", rev = "9583bfd7ceae1c0ee62cef0e69b37752d8475ccc" }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "14cf60cd89f491af4c539d20810f9b898828b631" }
