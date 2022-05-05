@@ -29,7 +29,6 @@ use crate::{
     demikernel::dbuf::DataBuffer,
     Ipv4Endpoint,
 };
-use ::catwalk::SchedulerHandle;
 use ::libc::{
     c_int,
     AF_INET,
@@ -77,6 +76,7 @@ use ::runtime::{
     QToken,
     QType,
 };
+use ::scheduler::SchedulerHandle;
 use ::std::{
     any::Any,
     collections::HashMap,

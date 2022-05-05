@@ -167,7 +167,7 @@ static bool inval_sgafree(void)
 /**
  * @brief Issues an invalid system call to dmtr_wait().
  *
- * TODO: Enable this test once we fix https://github.com/demikernel/catwalk/issues/6.
+ * TODO: Enable this test once we fix https://github.com/demikernel/scheduler/issues/6.
  */
 static bool inval_wait(void)
 {

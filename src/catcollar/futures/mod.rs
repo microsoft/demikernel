@@ -26,13 +26,13 @@ use crate::{
     demikernel::dbuf::DataBuffer,
     Ipv4Endpoint,
 };
-use ::catwalk::{
-    FutureResult,
-    SchedulerFuture,
-};
 use ::runtime::{
     fail::Fail,
     QDesc,
+};
+use ::scheduler::{
+    FutureResult,
+    SchedulerFuture,
 };
 use ::std::{
     any::Any,

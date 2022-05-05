@@ -6,16 +6,16 @@
 //==============================================================================
 
 use super::IoUringRuntime;
-use ::catwalk::{
-    SchedulerFuture,
-    SchedulerHandle,
-};
 use ::runtime::{
     task::SchedulerRuntime,
     timer::{
         TimerRc,
         WaitFuture,
     },
+};
+use ::scheduler::{
+    SchedulerFuture,
+    SchedulerHandle,
 };
 use ::std::time::Instant;
 
@@ -50,12 +50,18 @@ impl SchedulerRuntime for IoUringRuntime {
 
     /// Spawns a new task.
     fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     /// Schedules a task for execution.
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     /// Gets the handle of a task.

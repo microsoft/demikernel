@@ -14,18 +14,12 @@ use crate::catpowder::socket::{
     RawSocket,
     RawSocketType,
 };
-use ::catwalk::Scheduler;
 use ::libc::ETH_P_ALL;
 use ::rand::{
     rngs::SmallRng,
     SeedableRng,
 };
-use ::socket2::{
-    Domain,
-    Socket,
-    Type,
-};
-use runtime::{
+use ::runtime::{
     network::{
         config::{
             ArpConfig,
@@ -40,7 +34,13 @@ use runtime::{
     },
     Runtime,
 };
-use std::{
+use ::scheduler::Scheduler;
+use ::socket2::{
+    Domain,
+    Socket,
+    Type,
+};
+use ::std::{
     cell::RefCell,
     collections::HashMap,
     fs,

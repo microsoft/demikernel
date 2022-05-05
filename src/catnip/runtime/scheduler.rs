@@ -6,10 +6,6 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use ::catwalk::{
-    SchedulerFuture,
-    SchedulerHandle,
-};
 use ::runtime::{
     task::SchedulerRuntime,
     timer::{
@@ -17,6 +13,10 @@ use ::runtime::{
         TimerPtr,
         WaitFuture,
     },
+};
+use ::scheduler::{
+    SchedulerFuture,
+    SchedulerHandle,
 };
 use ::std::{
     rc::Rc,
@@ -65,11 +65,17 @@ impl SchedulerRuntime for DPDKRuntime {
     }
 
     fn spawn<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     fn schedule<F: SchedulerFuture>(&self, future: F) -> SchedulerHandle {
-        self.scheduler.insert(future)
+        match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => panic!("failed to insert future in the scheduler"),
+        }
     }
 
     fn get_handle(&self, key: u64) -> Option<SchedulerHandle> {

@@ -36,7 +36,6 @@ use self::{
 //==============================================================================
 
 use crate::Ipv4Endpoint;
-use ::catwalk::SchedulerHandle;
 use ::libc::c_int;
 use ::nix::{
     sys::socket::{
@@ -74,6 +73,7 @@ use ::runtime::{
     QToken,
     QType,
 };
+use ::scheduler::SchedulerHandle;
 use ::std::{
     any::Any,
     collections::HashMap,
