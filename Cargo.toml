@@ -1,9 +1,9 @@
 [package]
 name = "demikernel"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2018"
 authors = ["Microsoft Corporation"]
-description = "Kernel-Bypass libOS Architecture"
+description = "Kernel-Bypass LibOS Architecture"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
 readme = "README.md"
