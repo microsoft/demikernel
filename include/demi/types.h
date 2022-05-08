@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_TYPES_H_IS_INCLUDED
-#define DMTR_TYPES_H_IS_INCLUDED
+#ifndef DEMI_TYPES_H_IS_INCLUDED
+#define DEMI_TYPES_H_IS_INCLUDED
 
 #include <netinet/in.h>
 #include <stddef.h>
@@ -65,7 +65,7 @@ extern "C"
         } qr_value;
     } demi_qresult_t;
 
-    // todo: move to <dmtr/dmtr/libos/types.hh>
+    // todo: move to <demi/libos/types.hh>
     typedef struct dmtr_header
     {
         uint32_t h_magic;
@@ -77,4 +77,4 @@ extern "C"
 }
 #endif
 
-#endif /* DMTR_TYPES_H_IS_INCLUDED */
+#endif /* DEMI_TYPES_H_IS_INCLUDED */

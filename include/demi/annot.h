@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_ANNOT_H_IS_INCLUDED
-#define DMTR_ANNOT_H_IS_INCLUDED
+#ifndef DEMI_ANNOT_H_IS_INCLUDED
+#define DEMI_ANNOT_H_IS_INCLUDED
 
-#include "fail.h"
-#include "meta.h"
+#include <demi/fail.h>
+#include <demi/meta.h>
 
 #define DMTR_UNUSEDARG(ArgName) (void)(ArgName)
 #define DMTR_ZERO(Error, Value) DMTR_TRUE((Error), 0 == (Value))
@@ -27,4 +27,4 @@
         DMTR_UNREACHABLE();                                                                                            \
     } while (0)
 
-#endif /* DMTR_ANNOT_H_IS_INCLUDED */
+#endif /* DEMI_ANNOT_H_IS_INCLUDED */

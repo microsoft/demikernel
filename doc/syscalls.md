@@ -14,7 +14,7 @@ Finally, some system calls may be tagged to indicate some point of attention:
 - `missing`: the underlying implementation of that system call is not yet exposed
 
 
-System Calls in `include/dmtr/libos.h`
+System Calls in `include/demi/libos.h`
 --------------------------------------
 
 This file contains most of the system calls that operate on the control and data
@@ -182,7 +182,7 @@ pop operation, `qr` returns incoming data on the queue.
 `(deprecated)` Signals that the application is no longer waiting on the queue
 token `qtok`.
 
-System Calls in `include/dmtr/sga.h`
+System Calls in `include/demi/sga.h`
 --------------------------------------
 
 This file contains system calls for allocating and releasing scatter-gather
@@ -207,7 +207,7 @@ structure.
 Releases underlying resources associated to the scatter-gather array pointed to
 by `sga`.
 
-System Calls in `include/dmtr/wait.h`
+System Calls in `include/demi/wait.h`
 --------------------------------------
 
 This file includes blocking operations on queue tokens for use with blocking

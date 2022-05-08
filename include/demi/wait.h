@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_WAIT_H_IS_INCLUDED
-#define DMTR_WAIT_H_IS_INCLUDED
+#ifndef DEMI_WAIT_H_IS_INCLUDED
+#define DEMI_WAIT_H_IS_INCLUDED
 
-#include <dmtr/sys/gcc.h>
-#include <dmtr/types.h>
+#include <demi/sys/gcc.h>
+#include <demi/types.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -51,4 +51,4 @@ extern "C"
 }
 #endif
 
-#endif /* DMTR_WAIT_H_IS_INCLUDED */
+#endif /* DEMI_WAIT_H_IS_INCLUDED */

@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_FAIL_H_IS_INCLUDED
-#define DMTR_FAIL_H_IS_INCLUDED
+#ifndef DEMI_FAIL_H_IS_INCLUDED
+#define DEMI_FAIL_H_IS_INCLUDED
 
-#include "meta.h"
-#include "sys/gcc.h"
+#include <demi/meta.h>
+#include <demi/sys/gcc.h>
 #include <errno.h>
 #include <stdlib.h>
 
@@ -53,4 +53,4 @@ extern "C"
 }
 #endif
 
-#endif /* DMTR_FAIL_H_IS_INCLUDED */
+#endif /* DEMI_FAIL_H_IS_INCLUDED */

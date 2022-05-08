@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_META_H_IS_INCLUDED
-#define DMTR_META_H_IS_INCLUDED
+#ifndef DEMI_META_H_IS_INCLUDED
+#define DEMI_META_H_IS_INCLUDED
 
 #define DMTR_META_CONCAT2(A, B) A##B
 #define DMTR_CONCAT(A, B) DMTR_META_CONCAT2(A, B)
@@ -13,4 +13,4 @@
     {                                                                                                                  \
     } while (0)
 
-#endif /* DMTR_META_H_IS_INCLUDED */
+#endif /* DEMI_META_H_IS_INCLUDED */
