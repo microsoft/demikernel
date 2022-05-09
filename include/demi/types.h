@@ -13,9 +13,9 @@ extern "C"
 {
 #endif
 
-#define DMTR_SGARRAY_MAXSIZE 1
+#define DEMI_SGARRAY_MAXSIZE 1
 
-    typedef uint64_t dmtr_qtoken_t;
+    typedef uint64_t demi_qtoken_t;
 
     typedef struct demi_sgaseg
     {
@@ -27,7 +27,7 @@ extern "C"
     {
         void *sga_buf;
         uint32_t sga_numsegs;
-        demi_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
+        demi_sgaseg_t sga_segs[DEMI_SGARRAY_MAXSIZE];
         // TODO: Drop the following field.
         struct sockaddr_in sga_addr;
     } demi_sgarray_t;
@@ -52,7 +52,7 @@ extern "C"
     {
         enum demi_opcode qr_opcode;
         int qr_qd;
-        dmtr_qtoken_t qr_qt;
+        demi_qtoken_t qr_qt;
         union {
             demi_sgarray_t sga;
             demi_accept_result_t ares;

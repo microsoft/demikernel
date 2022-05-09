@@ -59,9 +59,9 @@ fn with_libos<T>(f: impl FnOnce(&mut LibOS) -> T) -> T {
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
+pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     logging::initialize();
-    trace!("dmtr_init()");
+    trace!("demi_init()");
 
     // TODO: Pass arguments to the underlying libOS.
     let libos: LibOS = LibOS::new();
@@ -81,8 +81,8 @@ pub extern "C" fn dmtr_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_int, protocol: c_int) -> c_int {
-    trace!("dmtr_socket()");
+pub extern "C" fn demi_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_int, protocol: c_int) -> c_int {
+    trace!("demi_socket()");
 
     // Issue socket operation.
     with_libos(|libos| match libos.socket(domain, socket_type, protocol) {
@@ -102,8 +102,8 @@ pub extern "C" fn dmtr_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
-    trace!("dmtr_bind()");
+pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+    trace!("demi_bind()");
 
     // Check if socket address is invalid.
     if saddr.is_null() {
@@ -139,8 +139,8 @@ pub extern "C" fn dmtr_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
-    trace!("dmtr_listen()");
+pub extern "C" fn demi_listen(fd: c_int, backlog: c_int) -> c_int {
+    trace!("demi_listen()");
 
     // Check if socket backlog is invalid.
     if backlog < 1 {
@@ -162,8 +162,8 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_int {
-    trace!("dmtr_accept()");
+pub extern "C" fn demi_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_int {
+    trace!("demi_accept()");
 
     // Issue accept operation.
     with_libos(|libos| {
@@ -185,13 +185,13 @@ pub extern "C" fn dmtr_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_connect(
+pub extern "C" fn demi_connect(
     qtok_out: *mut demi_qtoken_t,
     qd: c_int,
     saddr: *const sockaddr,
     size: socklen_t,
 ) -> c_int {
-    trace!("dmtr_connect()");
+    trace!("demi_connect()");
 
     // Check if socket address is invalid.
     if saddr.is_null() {
@@ -230,8 +230,8 @@ pub extern "C" fn dmtr_connect(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
-    trace!("dmtr_close()");
+pub extern "C" fn demi_close(qd: c_int) -> c_int {
+    trace!("demi_close()");
 
     // Issue close operation.
     with_libos(|libos| match libos.close(qd.into()) {
@@ -248,14 +248,14 @@ pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_pushto(
+pub extern "C" fn demi_pushto(
     qtok_out: *mut demi_qtoken_t,
     qd: c_int,
     sga: *const demi_sgarray_t,
     saddr: *const sockaddr,
     size: socklen_t,
 ) -> c_int {
-    trace!("dmtr_pushto()");
+    trace!("demi_pushto()");
 
     // Check if scatter-gather array is invalid.
     if sga.is_null() {
@@ -300,8 +300,8 @@ pub extern "C" fn dmtr_pushto(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const demi_sgarray_t) -> c_int {
-    trace!("dmtr_push()");
+pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const demi_sgarray_t) -> c_int {
+    trace!("demi_push()");
 
     // Check if scatter-gather array is invalid.
     if sga.is_null() {
@@ -328,8 +328,8 @@ pub extern "C" fn dmtr_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
-    trace!("dmtr_pop()");
+pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
+    trace!("demi_pop()");
 
     // Issue pop operation.
     with_libos(|libos| match libos.pop(qd.into()) {
@@ -349,8 +349,8 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c_int {
-    trace!("dmtr_wait()");
+pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c_int {
+    trace!("demi_wait()");
 
     // Issue wait operation.
     with_libos(|libos| match libos.wait(qt.into()) {
@@ -372,13 +372,13 @@ pub extern "C" fn dmtr_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_wait_any(
+pub extern "C" fn demi_wait_any(
     qr_out: *mut demi_qresult_t,
     ready_offset: *mut c_int,
     qts: *mut demi_qtoken_t,
     num_qts: c_int,
 ) -> c_int {
-    trace!("dmtr_wait_any()");
+    trace!("demi_wait_any()");
 
     // Check arguments.
     if num_qts < 0 {
@@ -412,8 +412,8 @@ pub extern "C" fn dmtr_wait_any(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
-    trace!("dmtr_sgalloc()");
+pub extern "C" fn demi_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
+    trace!("demi_sgalloc()");
 
     // Issue sgaalloc operation.
     with_libos(|libos| -> demi_sgarray_t {
@@ -445,8 +445,8 @@ pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_sgafree(sga: *mut demi_sgarray_t) -> c_int {
-    trace!("dmtr_sgfree()");
+pub extern "C" fn demi_sgafree(sga: *mut demi_sgarray_t) -> c_int {
+    trace!("demi_sgfree()");
 
     // Check if scatter-gather array is invalid.
     if sga.is_null() {
@@ -469,7 +469,7 @@ pub extern "C" fn dmtr_sgafree(sga: *mut demi_sgarray_t) -> c_int {
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
+pub extern "C" fn demi_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
     // TODO: Implement this system call.
     libc::ENOSYS
 }
@@ -480,7 +480,7 @@ pub extern "C" fn dmtr_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut s
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn dmtr_setsockopt(
+pub extern "C" fn demi_setsockopt(
     qd: c_int,
     level: c_int,
     optname: c_int,
@@ -497,7 +497,7 @@ pub extern "C" fn dmtr_setsockopt(
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn dmtr_getsockopt(
+pub extern "C" fn demi_getsockopt(
     qd: c_int,
     level: c_int,
     optname: c_int,

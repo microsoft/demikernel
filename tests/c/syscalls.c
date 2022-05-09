@@ -17,7 +17,7 @@
  *===================================================================================================================*/
 
 /**
- * @brief Issues an invalid call to dmtr_socket().
+ * @brief Issues an invalid call to demi_socket().
  */
 static bool inval_socket(void)
 {
@@ -26,11 +26,11 @@ static bool inval_socket(void)
     int type = -1;
     int protocol = -1;
 
-    return (dmtr_socket(qd, domain, type, protocol) != 0);
+    return (demi_socket(qd, domain, type, protocol) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_getsockname().
+ * @brief Issues an invalid call to demi_getsockname().
  */
 static bool inval_getsockname(void)
 {
@@ -38,22 +38,22 @@ static bool inval_getsockname(void)
     struct sockaddr *saddr = NULL;
     socklen_t *size = NULL;
 
-    return (dmtr_getsockname(qd, saddr, size) != 0);
+    return (demi_getsockname(qd, saddr, size) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_listen().
+ * @brief Issues an invalid call to demi_listen().
  */
 static bool inval_listen(void)
 {
     int qd = -1;
     int backlog = -1;
 
-    return (dmtr_listen(qd, backlog) != 0);
+    return (demi_listen(qd, backlog) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_bind().
+ * @brief Issues an invalid call to demi_bind().
  */
 static bool inval_bind(void)
 {
@@ -61,78 +61,78 @@ static bool inval_bind(void)
     struct sockaddr *saddr = NULL;
     socklen_t size = 0;
 
-    return (dmtr_bind(qd, saddr, size) != 0);
+    return (demi_bind(qd, saddr, size) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_accept().
+ * @brief Issues an invalid call to demi_accept().
  */
 static bool inval_accept(void)
 {
-    dmtr_qtoken_t *qt = NULL;
+    demi_qtoken_t *qt = NULL;
     int sockqd = -1;
 
-    return (dmtr_accept(qt, sockqd) != 0);
+    return (demi_accept(qt, sockqd) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_connect().
+ * @brief Issues an invalid call to demi_connect().
  */
 static bool inval_connect(void)
 {
-    dmtr_qtoken_t *qt = NULL;
+    demi_qtoken_t *qt = NULL;
     int qd = -1;
     struct sockaddr *saddr = NULL;
     socklen_t size = -1;
 
-    return (dmtr_connect(qt, qd, saddr, size) != 0);
+    return (demi_connect(qt, qd, saddr, size) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_close().
+ * @brief Issues an invalid call to demi_close().
  */
 static bool inval_close(void)
 {
     int qd = -1;
 
-    return (dmtr_close(qd) != 0);
+    return (demi_close(qd) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_push().
+ * @brief Issues an invalid call to demi_push().
  */
 static bool inval_push(void)
 {
-    dmtr_qtoken_t *qt = NULL;
+    demi_qtoken_t *qt = NULL;
     int qd = -1;
     demi_sgarray_t *sga = NULL;
 
-    return (dmtr_push(qt, qd, sga) != 0);
+    return (demi_push(qt, qd, sga) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_pushto().
+ * @brief Issues an invalid call to demi_pushto().
  */
 static bool inval_pushto(void)
 {
-    dmtr_qtoken_t *qt = NULL;
+    demi_qtoken_t *qt = NULL;
     int qd = -1;
     demi_sgarray_t *sga = NULL;
     struct sockaddr *saddr = NULL;
     socklen_t size = -1;
 
-    return (dmtr_pushto(qt, qd, sga, saddr, size) != 0);
+    return (demi_pushto(qt, qd, sga, saddr, size) != 0);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_pop().
+ * @brief Issues an invalid call to demi_pop().
  */
 static bool inval_pop(void)
 {
-    dmtr_qtoken_t *qt = NULL;
+    demi_qtoken_t *qt = NULL;
     int qd = -1;
 
-    return (dmtr_pop(qt, qd) != 0);
+    return (demi_pop(qt, qd) != 0);
 }
 
 /*===================================================================================================================*
@@ -140,24 +140,24 @@ static bool inval_pop(void)
  *===================================================================================================================*/
 
 /**
- * @brief Issues an invalid call to dmtr_sgaalloc().
+ * @brief Issues an invalid call to demi_sgaalloc().
  */
 static bool inval_sgaalloc(void)
 {
     size_t len = 0;
 
-    demi_sgarray_t sga = dmtr_sgaalloc(len);
+    demi_sgarray_t sga = demi_sgaalloc(len);
     return (sga.sga_buf == NULL);
 }
 
 /**
- * @brief Issues an invalid call to dmtr_sgafree().
+ * @brief Issues an invalid call to demi_sgafree().
  */
 static bool inval_sgafree(void)
 {
     demi_sgarray_t *sga = NULL;
 
-    return (dmtr_sgafree(sga) != 0);
+    return (demi_sgafree(sga) != 0);
 }
 
 /*===================================================================================================================*
@@ -165,7 +165,7 @@ static bool inval_sgafree(void)
  *===================================================================================================================*/
 
 /**
- * @brief Issues an invalid system call to dmtr_wait().
+ * @brief Issues an invalid system call to demi_wait().
  *
  * TODO: Enable this test once we fix https://github.com/demikernel/scheduler/issues/6.
  */
@@ -173,25 +173,25 @@ static bool inval_wait(void)
 {
 #if 0
     demi_qresult_t *qr = NULL;
-    dmtr_qtoken_t qt = -1;
+    demi_qtoken_t qt = -1;
 
-    return (dmtr_wait(qr, qt) != 0);
+    return (demi_wait(qr, qt) != 0);
 #else
     return (true);
 #endif
 }
 
 /**
- * @brief Issues an invalid system call to dmtr_wait_any().
+ * @brief Issues an invalid system call to demi_wait_any().
  */
 static bool inval_wait_any(void)
 {
     demi_qresult_t *qr = NULL;
     int *ready_offset = NULL;
-    dmtr_qtoken_t *qts = NULL;
+    demi_qtoken_t *qts = NULL;
     int num_qts = -1;
 
-    return (dmtr_wait_any(qr, ready_offset, qts, num_qts) != 0);
+    return (demi_wait_any(qr, ready_offset, qts, num_qts) != 0);
 }
 
 /*===================================================================================================================*
@@ -208,25 +208,25 @@ struct test
 };
 
 /**
- * @brief Tests for system calls in dmtr/libos.h
+ * @brief Tests for system calls in demi/libos.h
  */
 static struct test tests_libos[] = {
-    {inval_socket, "invalid dmtr_socket()"},   {inval_accept, "invalid dmtr_accept()"},
-    {inval_bind, "invalid dmtr_bind()"},       {inval_close, "invalid_dmtr_close()"},
-    {inval_connect, "invalid dmtr_connect()"}, {inval_getsockname, "invalid dmtr_getsockname()"},
-    {inval_listen, "invalid dmtr_listen()"},   {inval_pop, "invalid dmtr_pop()"},
-    {inval_push, "invalid dmtr_push()"},       {inval_pushto, "invalid dmtr_pushto()"}};
+    {inval_socket, "invalid demi_socket()"},   {inval_accept, "invalid demi_accept()"},
+    {inval_bind, "invalid demi_bind()"},       {inval_close, "invalid_demi_close()"},
+    {inval_connect, "invalid demi_connect()"}, {inval_getsockname, "invalid demi_getsockname()"},
+    {inval_listen, "invalid demi_listen()"},   {inval_pop, "invalid demi_pop()"},
+    {inval_push, "invalid demi_push()"},       {inval_pushto, "invalid demi_pushto()"}};
 
 /**
- * @brief Tests for system calls in dmtr/sga.h
+ * @brief Tests for system calls in demi/sga.h
  */
-static struct test tests_sga[] = {{inval_sgaalloc, "invalid dmtr_sgaalloc()"},
-                                  {inval_sgafree, "invalid dmtr_sgafree()"}};
+static struct test tests_sga[] = {{inval_sgaalloc, "invalid demi_sgaalloc()"},
+                                  {inval_sgafree, "invalid demi_sgafree()"}};
 
 /**
- * @brief Tests for system calls in dmtr/wait.h
+ * @brief Tests for system calls in demi/wait.h
  */
-static struct test tests_wait[] = {{inval_wait, "invalid dmtr_wait()"}, {inval_wait_any, "invalid dmtr_wait_any()"}};
+static struct test tests_wait[] = {{inval_wait, "invalid demi_wait()"}, {inval_wait_any, "invalid demi_wait_any()"}};
 
 /**
  * @brief Drives the application.
@@ -247,9 +247,9 @@ int main(int argc, char **argv)
     ((void)argv);
 
     /* This shall never fail. */
-    assert(dmtr_init(argc, argv) == 0);
+    assert(demi_init(argc, argv) == 0);
 
-    /* System calls in dmtr/libos.h */
+    /* System calls in demi/libos.h */
     for (size_t i = 0; i < sizeof(tests_libos) / sizeof(struct test); i++)
     {
         if (tests_libos[i].fn() == true)
@@ -261,7 +261,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* System calls in dmtr/sga.h */
+    /* System calls in demi/sga.h */
     for (size_t i = 0; i < sizeof(tests_sga) / sizeof(struct test); i++)
     {
         if (tests_sga[i].fn() == true)
@@ -273,7 +273,7 @@ int main(int argc, char **argv)
         }
     }
 
-    /* System calls in dmtr/wait.h */
+    /* System calls in demi/wait.h */
     for (size_t i = 0; i < sizeof(tests_wait) / sizeof(struct test); i++)
     {
         if (tests_wait[i].fn() == true)

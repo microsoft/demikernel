@@ -11,8 +11,8 @@ extern "C"
 {
 #endif
 
-    DMTR_EXPORT int dmtr_sgafree(demi_sgarray_t *sga);
-    DMTR_EXPORT demi_sgarray_t dmtr_sgaalloc(size_t len);
+    extern int demi_sgafree(demi_sgarray_t *sga);
+    extern demi_sgarray_t demi_sgaalloc(size_t len);
 
 #ifdef __cplusplus
 }
