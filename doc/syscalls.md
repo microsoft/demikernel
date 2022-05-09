@@ -110,13 +110,6 @@ Closes the I/O queue `qd` and associated I/O connection/file.
 
 ----
 
-* `int dmtr_is_qd_valid(int *flag_out, int qd);`
-  * `flag_out` (out) : set to true if `qd` is a valid queue
-
-`(deprecated)` Check if queue descriptor `qd` references a valid queue.
-
-----
-
 * `int dmtr_push(dmtr_qtoken_t *qt, int qd, const demi_sgarray_t *sga);`
   * `qt` (out) : token for waiting for push to complete
   * `qd` (in) : queue descriptor for queue to push to
@@ -162,26 +155,6 @@ Asynchronously pops incoming data from socket/file.  If network queue, retrieve
 data from socket associated with queue.  Returns a queue token `qt` to check or
 wait for incoming data.
 
-----
-
-* `int dmtr_poll(demi_qresult_t *qr, dmtr_qtoken_t qtok);`
-  * `qr` (out) : result of completed queue operation
-  * `qtok` (in) : queue token from requested queue operation
-
-`(deprecated)` Checks for completion of queue operation associated with queue
-token `qtok`.  If token is from an accept operation, `qr` returns queue
-descriptor associated with the new connection in `qr`.  If token is from push
-operation, `qr` returns status of completed push operation.  If token is from
-pop operation, `qr` returns incoming data on the queue.
-
-----
-
-* `int dmtr_drop(dmtr_qtoken_t qtok);`
-  * `qtok` (in) : queue token the app no longer needs
-
-`(deprecated)` Signals that the application is no longer waiting on the queue
-token `qtok`.
-
 System Calls in `include/demi/sga.h`
 --------------------------------------
 
@@ -197,7 +170,6 @@ Allocates a scatter-gather array with `len` bytes long. Depending on the
 underlying libOS, memory is allocated from a zero-copy memory pool. Refer to
 `include/dmtr/types.h` for more information on the `demi_sgarray_t` data
 structure.
-
 
 ----
 

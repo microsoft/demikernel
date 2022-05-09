@@ -138,17 +138,6 @@ extern "C"
     DMTR_EXPORT int dmtr_close(int qd);
 
     /**
-     * @brief Checks if queue descriptor qd references a valid queue.
-     *
-     * @param flag_out Set to true if qd is a valid queue.
-     * @param qd Queue to check.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    DMTR_EXPORT int dmtr_is_qd_valid(int *flag_out, int qd);
-
-    /**
      * @brief Asynchronously pushes scatter-gather array sga to queue qd and perform associated I/O.
      *
      * @details If network queue, send data over the socket. If file queue, write to
@@ -186,32 +175,6 @@ extern "C"
      * is returned instead.
      */
     DMTR_EXPORT int dmtr_pop(dmtr_qtoken_t *qt_out, int qd);
-
-    /**
-     * @brief Checks for completion of queue operation associated with queue token qtok.
-     *
-     * @details If token is from an accept operation, qr_out returns queue
-     * descriptor associated with the new connection in qr_out. If token is from
-     * push operation, qr_out returns status of completed push operation. If token
-     * is from pop operation, qr_out returns incoming data on the queue.
-     *
-     * @param qr_out Result of completed queue operation.
-     * @param qt Queue token from requested queue operation.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    DMTR_EXPORT int dmtr_poll(demi_qresult_t *qr_out, dmtr_qtoken_t qt);
-
-    /**
-     * @brief Signals that the application is no longer waiting on the queue token qtok.
-     *
-     * @param qt Queue token the app no longer needs.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    DMTR_EXPORT int dmtr_drop(dmtr_qtoken_t qt);
 
 #ifdef __cplusplus
 }

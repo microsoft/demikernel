@@ -12,7 +12,6 @@ extern "C"
 {
 #endif
 
-    DMTR_EXPORT int dmtr_sgalen(size_t *len_out, const demi_sgarray_t *sga);
     DMTR_EXPORT int dmtr_sgafree(demi_sgarray_t *sga);
     DMTR_EXPORT demi_sgarray_t dmtr_sgaalloc(size_t len);
 
