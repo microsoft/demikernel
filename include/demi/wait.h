@@ -4,7 +4,6 @@
 #ifndef DEMI_WAIT_H_IS_INCLUDED
 #define DEMI_WAIT_H_IS_INCLUDED
 
-#include <demi/sys/gcc.h>
 #include <demi/types.h>
 
 #ifdef __cplusplus
