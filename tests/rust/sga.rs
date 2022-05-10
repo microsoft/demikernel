@@ -6,7 +6,7 @@
 //==============================================================================
 
 use ::demikernel::LibOS;
-use ::runtime::types::dmtr_sgarray_t;
+use ::runtime::types::demi_sgarray_t;
 
 //==============================================================================
 // Constants
@@ -26,7 +26,7 @@ const SGA_SIZE_BIG: usize = 1280;
 fn do_test_unit_sga_alloc_free_single(size: usize) {
     let libos: LibOS = LibOS::new();
 
-    let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
+    let sga: demi_sgarray_t = match libos.sgaalloc(size) {
         Ok(sga) => sga,
         Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
     };
@@ -58,7 +58,7 @@ fn do_test_unit_sga_alloc_free_loop_tight(size: usize) {
 
     // Allocate and deallocate several times.
     for _ in 0..1_000_000 {
-        let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
+        let sga: demi_sgarray_t = match libos.sgaalloc(size) {
             Ok(sga) => sga,
             Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
         };
@@ -87,14 +87,14 @@ fn test_unit_sga_alloc_free_loop_tight_big() {
 
 /// Tests decoupled looped allocation and deallocation of scatter-gather arrays.
 fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) {
-    let mut sgas: Vec<dmtr_sgarray_t> = Vec::with_capacity(1_000);
+    let mut sgas: Vec<demi_sgarray_t> = Vec::with_capacity(1_000);
     let libos: LibOS = LibOS::new();
 
     // Allocate and deallocate several times.
     for _ in 0..1_000 {
         // Allocate many scatter-gather arrays.
         for _ in 0..1_000 {
-            let sga: dmtr_sgarray_t = match libos.sgaalloc(size) {
+            let sga: demi_sgarray_t = match libos.sgaalloc(size) {
                 Ok(sga) => sga,
                 Err(e) => panic!("failed to allocate sga: {:?}", e.cause),
             };
@@ -103,7 +103,7 @@ fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) {
 
         // Deallocate all scatter-gather arrays.
         for _ in 0..1_000 {
-            let sga: dmtr_sgarray_t = sgas.pop().expect("pop from empty vector?");
+            let sga: demi_sgarray_t = sgas.pop().expect("pop from empty vector?");
             match libos.sgafree(sga) {
                 Ok(()) => (),
                 Err(e) => panic!("failed to release sga: {:?}", e.cause),

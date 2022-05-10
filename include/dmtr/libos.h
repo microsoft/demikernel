@@ -167,9 +167,9 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_push(dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga);
+    DMTR_EXPORT int dmtr_push(dmtr_qtoken_t *qtok_out, int qd, const demi_sgarray_t *sga);
 
-    DMTR_EXPORT int dmtr_pushto(dmtr_qtoken_t *qtok_out, int qd, const dmtr_sgarray_t *sga,
+    DMTR_EXPORT int dmtr_pushto(dmtr_qtoken_t *qtok_out, int qd, const demi_sgarray_t *sga,
                                 const struct sockaddr *saddr, socklen_t size);
 
     /**
@@ -201,7 +201,7 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_poll(dmtr_qresult_t *qr_out, dmtr_qtoken_t qt);
+    DMTR_EXPORT int dmtr_poll(demi_qresult_t *qr_out, dmtr_qtoken_t qt);
 
     /**
      * @brief Signals that the application is no longer waiting on the queue token qtok.

@@ -15,8 +15,8 @@ use ::runtime::{
         MemoryRuntime,
     },
     types::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
+        demi_sgarray_t,
+        demi_sgaseg_t,
     },
 };
 use ::std::{
@@ -35,14 +35,14 @@ impl MemoryRuntime for LinuxRuntime {
     type Buf = DataBuffer;
 
     /// Converts a runtime buffer into a scatter-gather array.
-    fn into_sgarray(&self, dbuf: DataBuffer) -> Result<dmtr_sgarray_t, Fail> {
+    fn into_sgarray(&self, dbuf: DataBuffer) -> Result<demi_sgarray_t, Fail> {
         let len: usize = dbuf.len();
         let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
-        let sgaseg: dmtr_sgaseg_t = dmtr_sgaseg_t {
+        let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
             sgaseg_buf: dbuf_ptr as *mut c_void,
             sgaseg_len: len as u32,
         };
-        Ok(dmtr_sgarray_t {
+        Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),
             sga_numsegs: 1,
             sga_segs: [sgaseg],
@@ -51,15 +51,15 @@ impl MemoryRuntime for LinuxRuntime {
     }
 
     /// Allocates a scatter-gather array.
-    fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
+    fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // Allocate a heap-managed buffer.
         let dbuf: DataBuffer = DataBuffer::new(size)?;
         let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
-        let sgaseg: dmtr_sgaseg_t = dmtr_sgaseg_t {
+        let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
             sgaseg_buf: dbuf_ptr as *mut c_void,
             sgaseg_len: size as u32,
         };
-        Ok(dmtr_sgarray_t {
+        Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),
             sga_numsegs: 1,
             sga_segs: [sgaseg],
@@ -68,7 +68,7 @@ impl MemoryRuntime for LinuxRuntime {
     }
 
     /// Releases a scatter-gather array.
-    fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
+    fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -76,7 +76,7 @@ impl MemoryRuntime for LinuxRuntime {
         }
 
         // Release heap-managed buffer.
-        let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
         let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
 
         // Convert back raw slice to a heap buffer and drop allocation.
@@ -86,14 +86,14 @@ impl MemoryRuntime for LinuxRuntime {
     }
 
     /// Clones a scatter-gather array.
-    fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DataBuffer, Fail> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DataBuffer, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
-        let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
         let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
         // Clone heap-managed buffer.

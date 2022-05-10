@@ -19,10 +19,10 @@ use ::runtime::{
     logging,
     network::types::Port16,
     types::{
-        dmtr_qresult_t,
-        dmtr_qtoken_t,
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
+        demi_qresult_t,
+        demi_qtoken_t,
+        demi_sgarray_t,
+        demi_sgaseg_t,
     },
     QToken,
 };
@@ -162,7 +162,7 @@ pub extern "C" fn dmtr_listen(fd: c_int, backlog: c_int) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_int {
+pub extern "C" fn dmtr_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_int {
     trace!("dmtr_accept()");
 
     // Issue accept operation.
@@ -186,7 +186,7 @@ pub extern "C" fn dmtr_accept(qtok_out: *mut dmtr_qtoken_t, sockqd: c_int) -> c_
 
 #[no_mangle]
 pub extern "C" fn dmtr_connect(
-    qtok_out: *mut dmtr_qtoken_t,
+    qtok_out: *mut demi_qtoken_t,
     qd: c_int,
     saddr: *const sockaddr,
     size: socklen_t,
@@ -249,9 +249,9 @@ pub extern "C" fn dmtr_close(qd: c_int) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn dmtr_pushto(
-    qtok_out: *mut dmtr_qtoken_t,
+    qtok_out: *mut demi_qtoken_t,
     qd: c_int,
-    sga: *const dmtr_sgarray_t,
+    sga: *const demi_sgarray_t,
     saddr: *const sockaddr,
     size: socklen_t,
 ) -> c_int {
@@ -272,7 +272,7 @@ pub extern "C" fn dmtr_pushto(
         return libc::EINVAL;
     }
 
-    let sga: &dmtr_sgarray_t = unsafe { &*sga };
+    let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Get socket address.
     let endpoint: Ipv4Endpoint = match sockaddr_to_ipv4endpoint(saddr) {
@@ -300,7 +300,7 @@ pub extern "C" fn dmtr_pushto(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const dmtr_sgarray_t) -> c_int {
+pub extern "C" fn dmtr_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const demi_sgarray_t) -> c_int {
     trace!("dmtr_push()");
 
     // Check if scatter-gather array is invalid.
@@ -308,7 +308,7 @@ pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const
         return libc::EINVAL;
     }
 
-    let sga: &dmtr_sgarray_t = unsafe { &*sga };
+    let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Issue push operation.
     with_libos(|libos| match libos.push(qd.into(), sga) {
@@ -328,7 +328,7 @@ pub extern "C" fn dmtr_push(qtok_out: *mut dmtr_qtoken_t, qd: c_int, sga: *const
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
+pub extern "C" fn dmtr_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
     trace!("dmtr_pop()");
 
     // Issue pop operation.
@@ -349,7 +349,7 @@ pub extern "C" fn dmtr_pop(qtok_out: *mut dmtr_qtoken_t, qd: c_int) -> c_int {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c_int {
+pub extern "C" fn dmtr_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c_int {
     trace!("dmtr_wait()");
 
     // Issue wait operation.
@@ -373,9 +373,9 @@ pub extern "C" fn dmtr_wait(qr_out: *mut dmtr_qresult_t, qt: dmtr_qtoken_t) -> c
 
 #[no_mangle]
 pub extern "C" fn dmtr_wait_any(
-    qr_out: *mut dmtr_qresult_t,
+    qr_out: *mut demi_qresult_t,
     ready_offset: *mut c_int,
-    qts: *mut dmtr_qtoken_t,
+    qts: *mut demi_qtoken_t,
     num_qts: c_int,
 ) -> c_int {
     trace!("dmtr_wait_any()");
@@ -412,19 +412,19 @@ pub extern "C" fn dmtr_wait_any(
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
+pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
     trace!("dmtr_sgalloc()");
 
     // Issue sgaalloc operation.
-    with_libos(|libos| -> dmtr_sgarray_t {
+    with_libos(|libos| -> demi_sgarray_t {
         match libos.sgaalloc(size) {
             Ok(sga) => sga,
             Err(e) => {
                 warn!("sgaalloc() failed: {:?}", e);
-                dmtr_sgarray_t {
+                demi_sgarray_t {
                     sga_buf: ptr::null_mut() as *mut _,
                     sga_numsegs: 0,
-                    sga_segs: [dmtr_sgaseg_t {
+                    sga_segs: [demi_sgaseg_t {
                         sgaseg_buf: ptr::null_mut() as *mut c_void,
                         sgaseg_len: 0,
                     }; 1],
@@ -445,7 +445,7 @@ pub extern "C" fn dmtr_sgaalloc(size: libc::size_t) -> dmtr_sgarray_t {
 //==============================================================================
 
 #[no_mangle]
-pub extern "C" fn dmtr_sgafree(sga: *mut dmtr_sgarray_t) -> c_int {
+pub extern "C" fn dmtr_sgafree(sga: *mut demi_sgarray_t) -> c_int {
     trace!("dmtr_sgfree()");
 
     // Check if scatter-gather array is invalid.

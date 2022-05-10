@@ -22,8 +22,8 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     types::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
+        demi_sgarray_t,
+        demi_sgaseg_t,
     },
 };
 use ::std::{
@@ -83,15 +83,15 @@ impl MemoryManager {
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
-    pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<dmtr_sgarray_t, Fail> {
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) = match buf {
+    pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<demi_sgarray_t, Fail> {
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf {
             // Heap-managed buffer.
             DPDKBuf::External(dbuf) => {
                 let len: usize = dbuf.len();
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
                 (
                     ptr::null_mut(),
-                    dmtr_sgaseg_t {
+                    demi_sgaseg_t {
                         sgaseg_buf: dbuf_ptr as *mut c_void,
                         sgaseg_len: len as u32,
                     },
@@ -100,7 +100,7 @@ impl MemoryManager {
             // DPDK-managed buffer.
             DPDKBuf::Managed(mbuf) => {
                 let mbuf_ptr: *mut rte_mbuf = mbuf.get_ptr();
-                let sgaseg: dmtr_sgaseg_t = dmtr_sgaseg_t {
+                let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
                     sgaseg_buf: mbuf.data_ptr() as *mut c_void,
                     sgaseg_len: mbuf.len() as u32,
                 };
@@ -110,7 +110,7 @@ impl MemoryManager {
         };
 
         // TODO: Drop the sga_addr field in the scatter-gather array.
-        Ok(dmtr_sgarray_t {
+        Ok(demi_sgarray_t {
             sga_buf: mbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
@@ -133,9 +133,9 @@ impl MemoryManager {
     }
 
     /// Allocates a scatter-gather array.
-    pub fn alloc_sgarray(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
+    pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // Allocate underlying buffer.
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, dmtr_sgaseg_t) =
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) =
             if size > self.inner.config.get_inline_body_size() && size <= self.inner.config.get_max_body_size() {
                 // Allocate a DPDK-managed buffer.
                 let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(Some(size))?;
@@ -146,7 +146,7 @@ impl MemoryManager {
                     let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
                     (
                         mbuf_ptr,
-                        dmtr_sgaseg_t {
+                        demi_sgaseg_t {
                             sgaseg_buf: data_ptr as *mut c_void,
                             sgaseg_len: size as u32,
                         },
@@ -158,7 +158,7 @@ impl MemoryManager {
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
                 (
                     ptr::null_mut(),
-                    dmtr_sgaseg_t {
+                    demi_sgaseg_t {
                         sgaseg_buf: dbuf_ptr as *mut c_void,
                         sgaseg_len: size as u32,
                     },
@@ -166,7 +166,7 @@ impl MemoryManager {
             };
 
         // TODO: Drop the sga_addr field in the scatter-gather array.
-        Ok(dmtr_sgarray_t {
+        Ok(demi_sgarray_t {
             sga_buf: mbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
@@ -175,7 +175,7 @@ impl MemoryManager {
     }
 
     /// Releases a scatter-gather array.
-    pub fn free_sgarray(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
+    pub fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -189,7 +189,7 @@ impl MemoryManager {
             MemoryPool::free_mbuf(mbuf_ptr);
         } else {
             // Release heap-managed buffer.
-            let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+            let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
             let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
 
             // Convert back to a heap buffer and drop allocation.
@@ -200,14 +200,14 @@ impl MemoryManager {
     }
 
     /// Clones a scatter-gather array.
-    pub fn clone_sgarray(&self, sga: &dmtr_sgarray_t) -> Result<DPDKBuf, Fail> {
+    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DPDKBuf, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
 
-        let sgaseg: dmtr_sgaseg_t = sga.sga_segs[0];
+        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
         let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
         // Clone underlying buffer.

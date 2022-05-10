@@ -31,8 +31,8 @@ use ::runtime::{
     memory::MemoryRuntime,
     network::NetworkRuntime,
     types::{
-        dmtr_qresult_t,
-        dmtr_sgarray_t,
+        demi_qresult_t,
+        demi_sgarray_t,
     },
     QDesc,
     QToken,
@@ -154,7 +154,7 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a TCP socket.
-    pub fn push(&mut self, fd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, fd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.push(fd, sga),
         }
@@ -168,7 +168,7 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, fd: QDesc, sga: &dmtr_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, fd: QDesc, sga: &demi_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(fd, sga, to),
         }
@@ -189,26 +189,26 @@ impl LibOS {
     }
 
     /// Waits for a pending operation in an I/O queue.
-    pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait(qt),
         }
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
+    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait_any(qts),
         }
     }
 
     /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
+    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         self.rt().alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
-    pub fn sgafree(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
+    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         self.rt().free_sgarray(sga)
     }
 

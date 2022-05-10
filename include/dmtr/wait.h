@@ -25,7 +25,7 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_wait(dmtr_qresult_t *qr_out, dmtr_qtoken_t qtok);
+    DMTR_EXPORT int dmtr_wait(demi_qresult_t *qr_out, dmtr_qtoken_t qtok);
 
     /**
      * @brief Blocks until completion of at first queue operation in the set of
@@ -43,9 +43,9 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_wait_any(dmtr_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qtoks[], int num_qtoks);
+    DMTR_EXPORT int dmtr_wait_any(demi_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qtoks[], int num_qtoks);
 
-    DMTR_EXPORT int dmtr_wait_all(dmtr_qresult_t *qr_out, dmtr_qtoken_t qtoks[], int num_qtoks);
+    DMTR_EXPORT int dmtr_wait_all(demi_qresult_t *qr_out, dmtr_qtoken_t qtoks[], int num_qtoks);
 
 #ifdef __cplusplus
 }
