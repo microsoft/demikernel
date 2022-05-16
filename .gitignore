@@ -7,7 +7,7 @@
 *.swp
 
 # vscode
-.vscode/*
+.vscode/
 
 # gdb
 .gdb.*
