@@ -5,6 +5,7 @@ Demikernel
 [![Build Catnip LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnip-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnip-build.yml)
 [![Build Catnap LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnap-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnap-build.yml)
 [![Build Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder-build.yml)
+[![Build Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar-build.yml)
 
 _Demikernel_ is a library operating system (LibOS) architecture designed for use
 with kernel-bypass I/O devices. This architecture offers a uniform system call
