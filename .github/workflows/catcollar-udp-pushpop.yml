@@ -99,7 +99,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
-          make test-system LIBOS=catcollar TEST=udp_push_pop PEER=server > nohup.out 2> nohup.err < /dev/null  &
+          make test-system-rust LIBOS=catcollar TEST=udp_push_pop PEER=server > nohup.out 2> nohup.err < /dev/null  &
 
   # Demikernel 1
   launch-demikernel1:
@@ -117,7 +117,7 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
-          make test-system LIBOS=catcollar TEST=udp_push_pop PEER=client > nohup.out 2> nohup.err < /dev/null
+          make test-system-rust LIBOS=catcollar TEST=udp_push_pop PEER=client > nohup.out 2> nohup.err < /dev/null
 
   #====================
   # Post-Run
