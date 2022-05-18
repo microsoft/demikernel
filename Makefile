@@ -6,6 +6,7 @@
 #===============================================================================
 
 export PREFIX ?= $(HOME)
+export INSTALL_PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d | xargs | sed -e 's/\s/:/g')
 export LD_LIBRARY_PATH ?= $(HOME)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d | xargs | sed -e 's/\s/:/g')
 
@@ -31,10 +32,11 @@ export CARGO_FLAGS ?=
 #===============================================================================
 
 ifeq ($(BUILD),--release)
-export LIBS := $(CURDIR)/target/release/libdemikernel.so
+export DEMIKERNEL_LIB := $(CURDIR)/target/release/libdemikernel.so
 else
-export LIBS := $(CURDIR)/target/debug/libdemikernel.so
+export DEMIKERNEL_LIB := $(CURDIR)/target/debug/libdemikernel.so
 endif
+export LIBS := $(DEMIKERNEL_LIB)
 
 #===============================================================================
 # Build Parameters
@@ -80,6 +82,12 @@ check-fmt-c:
 
 check-fmt-rust:
 	$(CARGO) fmt -- --check
+
+# Copies demikernel artifacts to a INSTALL_PREFIX directory.
+install:
+	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
+	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
+	cp -f  $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
 
 make-dirs:
 	mkdir -p $(BINDIR)

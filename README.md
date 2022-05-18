@@ -55,6 +55,12 @@ make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
 make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
 ```
 
+**6. Install Artifacts (Optional)**
+```
+make install                                     # Copies build artifacts to your $HOME directory.
+make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a specific location.
+```
+
 Running
 --------
 > **Follow these instructions to run examples that are shipped in the source tree**.
