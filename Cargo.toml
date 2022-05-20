@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.2"
 anyhow = "1.0.57"
-libc = "0.2.125"
+libc = "0.2.126"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
