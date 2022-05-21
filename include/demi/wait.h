@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#ifndef DMTR_WAIT_H_IS_INCLUDED
-#define DMTR_WAIT_H_IS_INCLUDED
+#ifndef DEMI_WAIT_H_IS_INCLUDED
+#define DEMI_WAIT_H_IS_INCLUDED
 
-#include <dmtr/sys/gcc.h>
-#include <dmtr/types.h>
+#include <demi/types.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -17,7 +16,7 @@ extern "C"
      * qtok and destroys the queue token.
      *
      * @details Returns result of I/O operation in qr_out. The application does not
-     * need to drop the token with dmtr_drop afterwards.
+     * need to drop the token with demi_drop() afterwards.
      *
      * @param qr_out Result of completed queue operation.
      * @param qtok Queue token from requested queue operation.
@@ -25,7 +24,7 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_wait(demi_qresult_t *qr_out, dmtr_qtoken_t qtok);
+    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qtok);
 
     /**
      * @brief Blocks until completion of at first queue operation in the set of
@@ -33,7 +32,7 @@ extern "C"
      *
      * @details Returns result of first completed I/O operation in qr_out and index
      * of completed queue token in ready_offset. Destroys queue token so application
-     * does not need to call dmtr_drop. ready_offset must be less than num_qtoks.
+     * does not need to call demi_drop(). ready_offset must be less than num_qtoks.
      *
      * @param qr_out Result of completed queue operation.
      * @param ready_offset Offset in list of queue tokens qtoks that is complete.
@@ -43,12 +42,12 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    DMTR_EXPORT int dmtr_wait_any(demi_qresult_t *qr_out, int *ready_offset, dmtr_qtoken_t qtoks[], int num_qtoks);
+    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qtoks[], int num_qtoks);
 
-    DMTR_EXPORT int dmtr_wait_all(demi_qresult_t *qr_out, dmtr_qtoken_t qtoks[], int num_qtoks);
+    extern int demi_wait_all(demi_qresult_t *qr_out, demi_qtoken_t qtoks[], int num_qtoks);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* DMTR_WAIT_H_IS_INCLUDED */
+#endif /* DEMI_WAIT_H_IS_INCLUDED */

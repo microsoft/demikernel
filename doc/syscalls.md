@@ -14,7 +14,7 @@ Finally, some system calls may be tagged to indicate some point of attention:
 - `missing`: the underlying implementation of that system call is not yet exposed
 
 
-System Calls in `include/dmtr/libos.h`
+System Calls in `include/demi/libos.h`
 --------------------------------------
 
 This file contains most of the system calls that operate on the control and data
@@ -22,7 +22,7 @@ paths.
 
 ----
 
-* `int dmtr_init(int argc, char *argv[]);`
+* `int demi_init(int argc, char *argv[]);`
   * `argc` (in) : number of command line arguments, passed on to the libOS
   * `argv` (in) : values of command line arguments, passed on to the libOS
 
@@ -31,7 +31,7 @@ general initialization tasks.
 
 ----
 
-* `int dmtr_queue(int *qd_out);`
+* `int demi_queue(int *qd_out);`
   * `qd_out`(out) : queue descriptor for newly allocated memory queue
     if successful; otherwise invalid
 
@@ -41,7 +41,7 @@ general initialization tasks.
 
 ----
 
-* `int dmtr_socket(int *qd_out, int domain, int type, int protocol);`
+* `int demi_socket(int *qd_out, int domain, int type, int protocol);`
   * `qd_out` (out) : queue descriptor for newly allocated network
     queue connected to the socket if successful; otherwise invalid
   * `domain` (in) : communication domain for the newly allocated
@@ -55,7 +55,7 @@ Allocates Demikernel queue associated with a socket. Returns queue descriptor.
 
 ----
 
-* `int dmtr_getsockname(int qd, struct sockaddr *saddr, socklen_t *size);`
+* `int demi_getsockname(int qd, struct sockaddr *saddr, socklen_t *size);`
   * `qd` (in) : queue descriptor
   * `saddr` (out) : socket address data structure
   * `size` (out) : size (in bytes) of socket address data structure
@@ -64,7 +64,7 @@ Allocates Demikernel queue associated with a socket. Returns queue descriptor.
 
 ----
 
-* `int dmtr_listen(int qd, int backlog);`
+* `int demi_listen(int qd, int backlog);`
   * `fd` (in) : queue descriptor to listen on
   * `backlog` (in) : depth of back log to keep
 
@@ -73,7 +73,7 @@ application calls `accept`.
 
 ----
 
-* `int dmtr_bind(int qd, const struct sockaddr *saddr, socklen_t size);`
+* `int demi_bind(int qd, const struct sockaddr *saddr, socklen_t size);`
   * `qd` (in) : queue descriptor of socket to bind
   * `saddr` (in) : address to bind to
   * `size` (in) : size of `saddr` data structure
@@ -82,7 +82,7 @@ Binds socket associated with queue `qd` to address `saddr`.
 
 ----
 
-* `int dmtr_accept(dmtr_qtoken_t *qt, int sockqd);`
+* `int demi_accept(demi_qtoken_t *qt, int sockqd);`
   * `qt` (out) : token for waiting on new connections
   * `sockqd` (in) : queue descriptor associated with listening socket
 
@@ -92,7 +92,7 @@ block until a new connection request arrives.
 
 ----
 
-* `int dmtr_connect(int qd, const struct sockaddr *saddr, socklen_t size);`
+* `int demi_connect(int qd, const struct sockaddr *saddr, socklen_t size);`
   * `qd` (in) : queue descriptor for socket to connect
   * `saddr` (in) : address to connect to
   * `size` (in) : size of `saddr` data structure
@@ -103,21 +103,14 @@ remote host.
 
 ----
 
-* `int dmtr_close(int qd);`
+* `int demi_close(int qd);`
   * `qd` (in) : queue to close
 
 Closes the I/O queue `qd` and associated I/O connection/file.
 
 ----
 
-* `int dmtr_is_qd_valid(int *flag_out, int qd);`
-  * `flag_out` (out) : set to true if `qd` is a valid queue
-
-`(deprecated)` Check if queue descriptor `qd` references a valid queue.
-
-----
-
-* `int dmtr_push(dmtr_qtoken_t *qt, int qd, const demi_sgarray_t *sga);`
+* `int demi_push(demi_qtoken_t *qt, int qd, const demi_sgarray_t *sga);`
   * `qt` (out) : token for waiting for push to complete
   * `qd` (in) : queue descriptor for queue to push to
   * `sga` (in) : scatter-gather array with pointers to data to push
@@ -134,7 +127,7 @@ applications should not rely on this feature.
 
 ----
 
-* `int dmtr_pushto(dmtr_qtoken_t *qt, int qd, const demi_sgarray_t *sga, const struct sockaddr *saddr, socklen_t size);`
+* `int demi_pushto(demi_qtoken_t *qt, int qd, const demi_sgarray_t *sga, const struct sockaddr *saddr, socklen_t size);`
   * `qt` (out) : token for waiting for push to complete
   * `qd` (in) : queue descriptor for queue to push to
   * `sga` (in) : scatter-gather array with pointers to data to push
@@ -153,7 +146,7 @@ applications should not rely on this feature.
 
 ----
 
-* `int dmtr_pop(dmtr_qtoken_t *qt, int qd);`
+* `int demi_pop(demi_qtoken_t *qt, int qd);`
   * `qt` (out) : token for waiting for pop to complete (when
     data arrives)
   * `qd` (in) : queue to wait on incoming data
@@ -162,27 +155,7 @@ Asynchronously pops incoming data from socket/file.  If network queue, retrieve
 data from socket associated with queue.  Returns a queue token `qt` to check or
 wait for incoming data.
 
-----
-
-* `int dmtr_poll(demi_qresult_t *qr, dmtr_qtoken_t qtok);`
-  * `qr` (out) : result of completed queue operation
-  * `qtok` (in) : queue token from requested queue operation
-
-`(deprecated)` Checks for completion of queue operation associated with queue
-token `qtok`.  If token is from an accept operation, `qr` returns queue
-descriptor associated with the new connection in `qr`.  If token is from push
-operation, `qr` returns status of completed push operation.  If token is from
-pop operation, `qr` returns incoming data on the queue.
-
-----
-
-* `int dmtr_drop(dmtr_qtoken_t qtok);`
-  * `qtok` (in) : queue token the app no longer needs
-
-`(deprecated)` Signals that the application is no longer waiting on the queue
-token `qtok`.
-
-System Calls in `include/dmtr/sga.h`
+System Calls in `include/demi/sga.h`
 --------------------------------------
 
 This file contains system calls for allocating and releasing scatter-gather
@@ -190,24 +163,23 @@ arrays.
 
 ----
 
-* `demi_sgarray_t dmtr_sgaalloc(size_t len);`
+* `demi_sgarray_t demi_sgaalloc(size_t len);`
   * `len` (in): length (in bytes) of scatter-gather array entries
 
 Allocates a scatter-gather array with `len` bytes long. Depending on the
 underlying libOS, memory is allocated from a zero-copy memory pool. Refer to
-`include/dmtr/types.h` for more information on the `demi_sgarray_t` data
+`include/demi/types.h` for more information on the `demi_sgarray_t` data
 structure.
-
 
 ----
 
-* `int dmtr_sgafree(demi_sgarray_t *sga);`
+* `int demi_sgafree(demi_sgarray_t *sga);`
   * `sga` (in): scatter-gather array that shall be released
 
 Releases underlying resources associated to the scatter-gather array pointed to
 by `sga`.
 
-System Calls in `include/dmtr/wait.h`
+System Calls in `include/demi/wait.h`
 --------------------------------------
 
 This file includes blocking operations on queue tokens for use with blocking
@@ -215,17 +187,17 @@ I/O.
 
 ----
 
-* `int dmtr_wait(demi_qresult_t *qr, dmtr_qtoken_t qt);`
+* `int demi_wait(demi_qresult_t *qr, demi_qtoken_t qt);`
   * `qr` (out) : result of completed queue operation
   * `qtok` (in) : queue token from requested queue operation
 
 Blocks until completion of queue operation associated with queue token `qtok`
 and destroys the queue token.  Returns result of I/O operation in `qr`.  The
-application does not need to drop the token with `dmtr_drop` afterwards.
+application does not need to drop the token with `demi_drop` afterwards.
 
 ----
 
-* `int dmtr_wait_any(demi_qresult_t *qr, int *ready_offset, dmtr_qtoken_t qts[], int num_qts);`
+* `int demi_wait_any(demi_qresult_t *qr, int *ready_offset, demi_qtoken_t qts[], int num_qts);`
   * `qr` (out) : result of completed queue operation
   * `ready_offset` (out) : offset in list of queue tokens `qts` that
     is complete
@@ -235,5 +207,5 @@ application does not need to drop the token with `dmtr_drop` afterwards.
 Blocks until completion of at first queue operation in the set of queue tokens,
 indicated by `qts` up to `num_qts`.  Returns result of first completed I/O
 operation in `qr` and index of completed queue token in `ready_offset`. Destroys
-queue token so application does not need to call `dmtr_drop`.  `ready_offset`
+queue token so application does not need to call `demi_drop`.  `ready_offset`
 must be less than `num_qts`.
