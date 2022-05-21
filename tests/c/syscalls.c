@@ -105,7 +105,7 @@ static bool inval_push(void)
 {
     dmtr_qtoken_t *qt = NULL;
     int qd = -1;
-    dmtr_sgarray_t *sga = NULL;
+    demi_sgarray_t *sga = NULL;
 
     return (dmtr_push(qt, qd, sga) != 0);
 }
@@ -117,7 +117,7 @@ static bool inval_pushto(void)
 {
     dmtr_qtoken_t *qt = NULL;
     int qd = -1;
-    dmtr_sgarray_t *sga = NULL;
+    demi_sgarray_t *sga = NULL;
     struct sockaddr *saddr = NULL;
     socklen_t size = -1;
 
@@ -146,7 +146,7 @@ static bool inval_sgaalloc(void)
 {
     size_t len = 0;
 
-    dmtr_sgarray_t sga = dmtr_sgaalloc(len);
+    demi_sgarray_t sga = dmtr_sgaalloc(len);
     return (sga.sga_buf == NULL);
 }
 
@@ -155,7 +155,7 @@ static bool inval_sgaalloc(void)
  */
 static bool inval_sgafree(void)
 {
-    dmtr_sgarray_t *sga = NULL;
+    demi_sgarray_t *sga = NULL;
 
     return (dmtr_sgafree(sga) != 0);
 }
@@ -172,7 +172,7 @@ static bool inval_sgafree(void)
 static bool inval_wait(void)
 {
 #if 0
-    dmtr_qresult_t *qr = NULL;
+    demi_qresult_t *qr = NULL;
     dmtr_qtoken_t qt = -1;
 
     return (dmtr_wait(qr, qt) != 0);
@@ -186,7 +186,7 @@ static bool inval_wait(void)
  */
 static bool inval_wait_any(void)
 {
-    dmtr_qresult_t *qr = NULL;
+    demi_qresult_t *qr = NULL;
     int *ready_offset = NULL;
     dmtr_qtoken_t *qts = NULL;
     int num_qts = -1;

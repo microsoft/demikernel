@@ -117,7 +117,7 @@ Closes the I/O queue `qd` and associated I/O connection/file.
 
 ----
 
-* `int dmtr_push(dmtr_qtoken_t *qt, int qd, const dmtr_sgarray_t *sga);`
+* `int dmtr_push(dmtr_qtoken_t *qt, int qd, const demi_sgarray_t *sga);`
   * `qt` (out) : token for waiting for push to complete
   * `qd` (in) : queue descriptor for queue to push to
   * `sga` (in) : scatter-gather array with pointers to data to push
@@ -134,7 +134,7 @@ applications should not rely on this feature.
 
 ----
 
-* `int dmtr_pushto(dmtr_qtoken_t *qt, int qd, const dmtr_sgarray_t *sga, const struct sockaddr *saddr, socklen_t size);`
+* `int dmtr_pushto(dmtr_qtoken_t *qt, int qd, const demi_sgarray_t *sga, const struct sockaddr *saddr, socklen_t size);`
   * `qt` (out) : token for waiting for push to complete
   * `qd` (in) : queue descriptor for queue to push to
   * `sga` (in) : scatter-gather array with pointers to data to push
@@ -164,7 +164,7 @@ wait for incoming data.
 
 ----
 
-* `int dmtr_poll(dmtr_qresult_t *qr, dmtr_qtoken_t qtok);`
+* `int dmtr_poll(demi_qresult_t *qr, dmtr_qtoken_t qtok);`
   * `qr` (out) : result of completed queue operation
   * `qtok` (in) : queue token from requested queue operation
 
@@ -190,18 +190,18 @@ arrays.
 
 ----
 
-* `dmtr_sgarray_t dmtr_sgaalloc(size_t len);`
+* `demi_sgarray_t dmtr_sgaalloc(size_t len);`
   * `len` (in): length (in bytes) of scatter-gather array entries
 
 Allocates a scatter-gather array with `len` bytes long. Depending on the
 underlying libOS, memory is allocated from a zero-copy memory pool. Refer to
-`include/dmtr/types.h` for more information on the `dmtr_sgarray_t` data
+`include/dmtr/types.h` for more information on the `demi_sgarray_t` data
 structure.
 
 
 ----
 
-* `int dmtr_sgafree(dmtr_sgarray_t *sga);`
+* `int dmtr_sgafree(demi_sgarray_t *sga);`
   * `sga` (in): scatter-gather array that shall be released
 
 Releases underlying resources associated to the scatter-gather array pointed to
@@ -215,7 +215,7 @@ I/O.
 
 ----
 
-* `int dmtr_wait(dmtr_qresult_t *qr, dmtr_qtoken_t qt);`
+* `int dmtr_wait(demi_qresult_t *qr, dmtr_qtoken_t qt);`
   * `qr` (out) : result of completed queue operation
   * `qtok` (in) : queue token from requested queue operation
 
@@ -225,7 +225,7 @@ application does not need to drop the token with `dmtr_drop` afterwards.
 
 ----
 
-* `int dmtr_wait_any(dmtr_qresult_t *qr, int *ready_offset, dmtr_qtoken_t qts[], int num_qts);`
+* `int dmtr_wait_any(demi_qresult_t *qr, int *ready_offset, dmtr_qtoken_t qts[], int num_qts);`
   * `qr` (out) : result of completed queue operation
   * `ready_offset` (out) : offset in list of queue tokens `qts` that
     is complete

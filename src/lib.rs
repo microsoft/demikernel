@@ -35,8 +35,8 @@ pub use ::runtime::{
         Port16,
     },
     types::{
-        dmtr_sgarray_t,
-        dmtr_sgaseg_t,
+        demi_sgarray_t,
+        demi_sgaseg_t,
     },
     QDesc,
     QResult,

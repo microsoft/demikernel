@@ -24,8 +24,8 @@ use ::runtime::{
     memory::MemoryRuntime,
     task::SchedulerRuntime,
     types::{
-        dmtr_qresult_t,
-        dmtr_sgarray_t,
+        demi_qresult_t,
+        demi_sgarray_t,
     },
     QDesc,
     QToken,
@@ -79,7 +79,7 @@ impl CatnipLibOS {
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
     /// IO connection represented by `qd`. This operation returns immediately with a `QToken`.
     /// The data has been written when [`wait`ing](Self::wait) on the QToken returns.
-    pub fn push(&mut self, qd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
@@ -95,7 +95,7 @@ impl CatnipLibOS {
         }
     }
 
-    pub fn pushto(&mut self, qd: QDesc, sga: &dmtr_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
@@ -112,7 +112,7 @@ impl CatnipLibOS {
     }
 
     /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait");
         trace!("wait(): qt={:?}", qt);
@@ -122,7 +122,7 @@ impl CatnipLibOS {
     }
 
     /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
+    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::wait_any");
         trace!("wait_any(): qts={:?}", qts);

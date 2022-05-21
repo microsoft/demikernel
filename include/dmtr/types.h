@@ -22,48 +22,48 @@ extern "C"
 
     typedef uint64_t dmtr_qtoken_t;
 
-    typedef struct dmtr_sgaseg
+    typedef struct demi_sgaseg
     {
         void *sgaseg_buf;
         uint32_t sgaseg_len;
-    } dmtr_sgaseg_t;
+    } demi_sgaseg_t;
 
-    typedef struct dmtr_sgarray
+    typedef struct demi_sgarray
     {
         void *sga_buf;
         uint32_t sga_numsegs;
-        dmtr_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
+        demi_sgaseg_t sga_segs[DMTR_SGARRAY_MAXSIZE];
         // todo: to be removed when LWIP libOS is retired in favor of
         // `dpdk-catnip`.
         struct sockaddr_in sga_addr;
-    } dmtr_sgarray_t;
+    } demi_sgarray_t;
 
-    typedef enum dmtr_opcode
+    typedef enum demi_opcode
     {
-        DMTR_OPC_INVALID = 0,
-        DMTR_OPC_PUSH,
-        DMTR_OPC_POP,
-        DMTR_OPC_ACCEPT,
-        DMTR_OPC_CONNECT,
-        DMTR_OPC_FAILED,
-    } dmtr_opcode_t;
+        DEMI_OPC_INVALID = 0,
+        DEMI_OPC_PUSH,
+        DEMI_OPC_POP,
+        DEMI_OPC_ACCEPT,
+        DEMI_OPC_CONNECT,
+        DEMI_OPC_FAILED,
+    } demi_opcode_t;
 
-    typedef struct dmtr_accept_result
+    typedef struct demi_accept_result
     {
         int qd;
         struct sockaddr_in addr;
-    } dmtr_accept_result_t;
+    } demi_accept_result_t;
 
-    typedef struct dmtr_qresult
+    typedef struct demi_qresult
     {
-        enum dmtr_opcode qr_opcode;
+        enum demi_opcode qr_opcode;
         int qr_qd;
         dmtr_qtoken_t qr_qt;
         union {
-            dmtr_sgarray_t sga;
-            dmtr_accept_result_t ares;
+            demi_sgarray_t sga;
+            demi_accept_result_t ares;
         } qr_value;
-    } dmtr_qresult_t;
+    } demi_qresult_t;
 
     // todo: move to <dmtr/dmtr/libos/types.hh>
     typedef struct dmtr_header

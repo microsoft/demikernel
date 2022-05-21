@@ -66,11 +66,11 @@ use ::runtime::{
     queue::IoQueueTable,
     task::SchedulerRuntime,
     types::{
-        dmtr_accept_result_t,
-        dmtr_opcode_t,
-        dmtr_qr_value_t,
-        dmtr_qresult_t,
-        dmtr_sgarray_t,
+        demi_accept_result_t,
+        demi_opcode_t,
+        demi_qr_value_t,
+        demi_qresult_t,
+        demi_sgarray_t,
     },
     QDesc,
     QToken,
@@ -241,7 +241,7 @@ impl CatnapLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn push(&mut self, qd: QDesc, sga: &dmtr_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
         match self.runtime.clone_sgarray(sga) {
@@ -284,7 +284,7 @@ impl CatnapLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn pushto(&mut self, qd: QDesc, sga: &dmtr_sgarray_t, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
         match self.runtime.clone_sgarray(sga) {
@@ -330,7 +330,7 @@ impl CatnapLibOS {
     }
 
     /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> Result<dmtr_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::wait");
         trace!("wait() qt={:?}", qt);
@@ -363,7 +363,7 @@ impl CatnapLibOS {
     }
 
     /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, dmtr_qresult_t), Fail> {
+    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::wait_any");
         trace!("wait_any(): qts={:?}", qts);
@@ -405,13 +405,13 @@ impl CatnapLibOS {
     }
 
     /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<dmtr_sgarray_t, Fail> {
+    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         trace!("sgalloc() size={:?}", size);
         self.runtime.alloc_sgarray(size)
     }
 
     /// Frees a scatter-gather array.
-    pub fn sgafree(&self, sga: dmtr_sgarray_t) -> Result<(), Fail> {
+    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         trace!("sgafree()");
         self.runtime.free_sgarray(sga)
     }
@@ -462,32 +462,32 @@ fn parse_addr(endpoint: Ipv4Endpoint) -> SockAddr {
     SockAddr::new_inet(inet)
 }
 
-/// Packs a [OperationResult] into a [dmtr_qresult_t].
-fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -> dmtr_qresult_t {
+/// Packs a [OperationResult] into a [demi_qresult_t].
+fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
-        OperationResult::Connect => dmtr_qresult_t {
-            qr_opcode: dmtr_opcode_t::DMTR_OPC_CONNECT,
+        OperationResult::Connect => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
             qr_qd: qd.into(),
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept(new_qd) => {
             let sin = unsafe { mem::zeroed() };
-            let qr_value = dmtr_qr_value_t {
-                ares: dmtr_accept_result_t {
+            let qr_value = demi_qr_value_t {
+                ares: demi_accept_result_t {
                     qd: new_qd.into(),
                     addr: sin,
                 },
             };
-            dmtr_qresult_t {
-                qr_opcode: dmtr_opcode_t::DMTR_OPC_ACCEPT,
+            demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
                 qr_qd: qd.into(),
                 qr_qt: qt,
                 qr_value,
             }
         },
-        OperationResult::Push => dmtr_qresult_t {
-            qr_opcode: dmtr_opcode_t::DMTR_OPC_PUSH,
+        OperationResult::Push => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
             qr_qd: qd.into(),
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
@@ -498,9 +498,9 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                     sga.sga_addr.sin_port = endpoint.get_port().into();
                     sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(endpoint.get_address().octets());
                 }
-                let qr_value: dmtr_qr_value_t = dmtr_qr_value_t { sga };
-                dmtr_qresult_t {
-                    qr_opcode: dmtr_opcode_t::DMTR_OPC_POP,
+                let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_POP,
                     qr_qd: qd.into(),
                     qr_qt: qt,
                     qr_value,
@@ -508,8 +508,8 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
             },
             Err(e) => {
                 warn!("Operation Failed: {:?}", e);
-                dmtr_qresult_t {
-                    qr_opcode: dmtr_opcode_t::DMTR_OPC_FAILED,
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt,
                     qr_value: unsafe { mem::zeroed() },
@@ -518,8 +518,8 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
         },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
-            dmtr_qresult_t {
-                qr_opcode: dmtr_opcode_t::DMTR_OPC_FAILED,
+            demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                 qr_qd: qd.into(),
                 qr_qt: qt,
                 qr_value: unsafe { mem::zeroed() },

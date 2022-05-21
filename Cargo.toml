@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 arrayvec = "0.7.2"
 anyhow = "1.0.57"
-libc = "0.2.125"
+libc = "0.2.126"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
@@ -23,12 +23,12 @@ nix = "0.23.1"
 socket2 = { version = "0.4.4", features = ["all"] }
 cfg-if = "1.0.0"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "39e99b46b7ee2376a5e6a4e39a0568990d932a2b" }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "a917c973064ffebcce6f453c76b141371d4aa51a" }
 scheduler = { git = "https://github.com/demikernel/scheduler", rev = "9583bfd7ceae1c0ee62cef0e69b37752d8475ccc" }
-dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "a53027171bf38da8d776235693458acdcf979632", optional = true }
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "b1d6e4c2f3eebb35c582e8b24c0d99e5987e9a2b" }
-liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "e80e6238f47498b7c4e37194e896a39713c61cd9", optional = true }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "a6551e787cbeeecbac95195626306a82cb37e119" }
+liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "0b9d8a681f123adb60367ff72aa6e3cc198b3dd6", optional = true }
 
 [[test]]
 name = "sga"
