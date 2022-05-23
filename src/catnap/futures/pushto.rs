@@ -11,7 +11,7 @@ use ::nix::{
     sys::socket::{
         self,
         MsgFlags,
-        SockAddr,
+        SockaddrStorage,
     },
 };
 use ::runtime::{
@@ -37,7 +37,7 @@ pub struct PushtoFuture {
     /// Associated queue descriptor.
     qd: QDesc,
     /// Destination address.
-    addr: SockAddr,
+    addr: SockaddrStorage,
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
@@ -51,7 +51,7 @@ pub struct PushtoFuture {
 /// Associate Functions for Pushto Operation Descriptors
 impl PushtoFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SockAddr, buf: DataBuffer) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage, buf: DataBuffer) -> Self {
         Self { qd, addr, fd, buf }
     }
 

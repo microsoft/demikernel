@@ -15,7 +15,11 @@ use ::liburing::{
 };
 use ::nix::{
     errno,
-    sys::socket::SockAddr,
+    sys::socket::{
+        SockaddrIn,
+        SockaddrLike,
+        SockaddrStorage,
+    },
 };
 use ::runtime::fail::Fail;
 use ::std::{
@@ -98,12 +102,16 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn pushto(&mut self, sockfd: RawFd, addr: SockAddr, buf: DataBuffer) -> Result<u64, Fail> {
+    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: DataBuffer) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
-        let (sockaddr, addrlen): (&libc::sockaddr, socklen_t) = addr.as_ffi_pair();
-        let sockaddr_ptr: *const libc::sockaddr = sockaddr as *const libc::sockaddr;
+        let saddr: &SockaddrIn = match addr.as_sockaddr_in() {
+            Some(addr) => addr,
+            None => return Err(Fail::new(libc::EINVAL, "invalid socket address")),
+        };
+        let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) = (saddr.as_ref(), saddr.len());
+        let sockaddr_ptr: *const libc::sockaddr_in = sockaddr as *const libc::sockaddr_in;
         let io_uring: &mut io_uring = &mut self.io_uring;
 
         unsafe {

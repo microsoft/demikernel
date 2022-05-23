@@ -43,11 +43,10 @@ use ::nix::{
         socket,
         socket::{
             AddressFamily,
-            InetAddr,
-            SockAddr,
             SockFlag,
             SockProtocol,
             SockType,
+            SockaddrStorage,
         },
     },
     unistd,
@@ -59,10 +58,7 @@ use ::runtime::{
         Buffer,
         MemoryRuntime,
     },
-    network::types::{
-        Ipv4Addr,
-        Port16,
-    },
+    network::types::Ipv4Addr,
     queue::IoQueueTable,
     task::SchedulerRuntime,
     types::{
@@ -81,6 +77,7 @@ use ::std::{
     any::Any,
     collections::HashMap,
     mem,
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     time::Instant,
 };
@@ -162,7 +159,7 @@ impl CatnapLibOS {
         // Issue bind operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let addr: SockAddr = parse_addr(local);
+                let addr: SockaddrStorage = parse_addr(local);
                 socket::bind(fd, &addr).unwrap();
                 Ok(())
             },
@@ -207,7 +204,7 @@ impl CatnapLibOS {
         // Issue connect operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let addr: SockAddr = parse_addr(remote);
+                let addr: SockaddrStorage = parse_addr(remote);
                 let future: Operation = Operation::from(ConnectFuture::new(qd, fd, addr));
                 let handle: SchedulerHandle = self.runtime.schedule(future);
                 Ok(handle.into_raw().into())
@@ -274,7 +271,7 @@ impl CatnapLibOS {
     fn do_pushto(&mut self, qd: QDesc, buf: DataBuffer, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let addr: SockAddr = parse_addr(remote);
+                let addr: SockaddrStorage = parse_addr(remote);
                 let future: Operation = Operation::from(PushtoFuture::new(qd, fd, addr, buf));
                 let handle: SchedulerHandle = self.runtime.schedule(future);
                 Ok(handle.into_raw().into())
@@ -453,13 +450,12 @@ impl CatnapLibOS {
 // Standalone Functions
 //==============================================================================
 
-/// Parses a [Ipv4Endpoint] into a [SockAddr].
-fn parse_addr(endpoint: Ipv4Endpoint) -> SockAddr {
-    let ipv4: std::net::IpAddr = std::net::IpAddr::V4(endpoint.get_address());
-    let ip: socket::IpAddr = socket::IpAddr::from_std(&ipv4);
-    let portnum: Port16 = endpoint.get_port();
-    let inet: InetAddr = InetAddr::new(ip, portnum.into());
-    SockAddr::new_inet(inet)
+/// Parses a [Ipv4Endpoint] into a [SockaddrStorage].
+fn parse_addr(endpoint: Ipv4Endpoint) -> SockaddrStorage {
+    let addr: Ipv4Addr = endpoint.get_address();
+    let port: u16 = endpoint.get_port().into();
+    let ipv4: SocketAddrV4 = SocketAddrV4::new(addr, port);
+    SockaddrStorage::from(ipv4)
 }
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
