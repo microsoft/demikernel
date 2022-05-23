@@ -12,7 +12,7 @@ mod utils;
 
 use super::iouring::IoUring;
 use crate::demikernel::dbuf::DataBuffer;
-use ::nix::sys::socket::SockAddr;
+use ::nix::sys::socket::SockaddrStorage;
 use ::runtime::{
     fail::Fail,
     timer::{
@@ -124,7 +124,7 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn pushto(&self, sockfd: i32, addr: SockAddr, buf: DataBuffer) -> Result<RequestId, Fail> {
+    pub fn pushto(&self, sockfd: i32, addr: SockaddrStorage, buf: DataBuffer) -> Result<RequestId, Fail> {
         let request_id: RequestId = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?.into();
         Ok(request_id)
     }
