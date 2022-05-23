@@ -9,7 +9,7 @@ use ::nix::{
     errno::Errno,
     sys::{
         socket,
-        socket::SockAddr,
+        socket::SockaddrStorage,
     },
 };
 use ::runtime::{
@@ -37,7 +37,7 @@ pub struct ConnectFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Destination address.
-    addr: SockAddr,
+    addr: SockaddrStorage,
 }
 
 //==============================================================================
@@ -47,7 +47,7 @@ pub struct ConnectFuture {
 /// Associate Functions for Connect Operation Descriptors
 impl ConnectFuture {
     /// Creates a descriptor for a connect operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SockAddr) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage) -> Self {
         Self { qd, fd, addr }
     }
 
