@@ -20,7 +20,6 @@ rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
 nix = "0.24.0"
-socket2 = { version = "0.4.4", features = ["all"] }
 cfg-if = "1.0.0"
 
 inetstack = { git = "https://github.com/demikernel/inetstack", rev = "a917c973064ffebcce6f453c76b141371d4aa51a" }

@@ -3,6 +3,7 @@
 
 mod memory;
 mod network;
+mod rawsocket;
 mod scheduler;
 mod utils;
 
@@ -10,11 +11,10 @@ mod utils;
 // Imports
 //==============================================================================
 
-use crate::catpowder::socket::{
+use self::rawsocket::{
     RawSocket,
-    RawSocketType,
+    RawSocketAddr,
 };
-use ::libc::ETH_P_ALL;
 use ::rand::{
     rngs::SmallRng,
     SeedableRng,
@@ -35,11 +35,6 @@ use ::runtime::{
     Runtime,
 };
 use ::scheduler::Scheduler;
-use ::socket2::{
-    Domain,
-    Socket,
-    Type,
-};
 use ::std::{
     cell::RefCell,
     collections::HashMap,
@@ -68,7 +63,7 @@ pub struct LinuxRuntime {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     ifindex: i32,
-    socket: Rc<RefCell<Socket>>,
+    socket: Rc<RefCell<RawSocket>>,
     rng: Rc<RefCell<SmallRng>>,
 }
 
@@ -94,13 +89,12 @@ impl LinuxRuntime {
             Some(false),
         );
 
-        let socket: Socket = Socket::new(Domain::PACKET, Type::RAW.nonblocking(), Some((ETH_P_ALL).into())).unwrap();
-
+        // TODO: Make this constructor return a Result and drop expect() calls bellow.
         let mac_addr: [u8; 6] = [0; 6];
         let ifindex: i32 = Self::get_ifindex(ifname).expect("could not parse ifindex");
-
-        let raw_socket: RawSocket = RawSocket::new(RawSocketType::Passive, ifindex, &mac_addr);
-        socket.bind(raw_socket.get_addr()).unwrap();
+        let socket: RawSocket = RawSocket::new().expect("could not create raw socket");
+        let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
+        socket.bind(&sockaddr).expect("could not bind raw socket");
 
         Self {
             scheduler: Scheduler::default(),

@@ -5,14 +5,11 @@
 // Imports
 //==============================================================================
 
-use super::LinuxRuntime;
-use crate::{
-    catpowder::socket::{
-        RawSocket,
-        RawSocketType,
-    },
-    demikernel::dbuf::DataBuffer,
+use super::{
+    rawsocket::RawSocketAddr,
+    LinuxRuntime,
 };
+use crate::demikernel::dbuf::DataBuffer;
 use ::arrayvec::ArrayVec;
 use ::inetstack::protocols::ethernet2::Ethernet2Header;
 use ::std::{
@@ -56,11 +53,11 @@ impl NetworkRuntime for LinuxRuntime {
         }
 
         let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
-        let dest_addr_arr = header.dst_addr().to_array();
-        let dest_sockaddr: RawSocket = RawSocket::new(RawSocketType::Active, self.ifindex, &dest_addr_arr);
+        let dest_addr_arr: [u8; 6] = header.dst_addr().to_array();
+        let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
 
         // Send packet.
-        match self.socket.borrow().send_to(&buf, dest_sockaddr.get_addr()) {
+        match self.socket.borrow().sendto(&buf, &dest_sockaddr) {
             // Operation succeeded.
             Ok(_) => (),
             // Operation failed, drop packet.
@@ -73,7 +70,7 @@ impl NetworkRuntime for LinuxRuntime {
         // 4096B buffer size chosen arbitrarily, seems fine for now.
         // This use-case is an example for MaybeUninit in the docs
         let mut out: [MaybeUninit<u8>; 4096] = [unsafe { MaybeUninit::uninit().assume_init() }; 4096];
-        if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recv_from(&mut out[..]) {
+        if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recvfrom(&mut out[..]) {
             let mut ret = ArrayVec::new();
             unsafe {
                 let bytes: [u8; 4096] = mem::transmute::<[MaybeUninit<u8>; 4096], [u8; 4096]>(out);
