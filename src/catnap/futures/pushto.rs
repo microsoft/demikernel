@@ -5,7 +5,6 @@
 // Imports
 //==============================================================================
 
-use crate::demikernel::dbuf::DataBuffer;
 use ::nix::{
     errno::Errno,
     sys::socket::{
@@ -16,6 +15,7 @@ use ::nix::{
 };
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     QDesc,
 };
 use ::std::{
@@ -41,7 +41,7 @@ pub struct PushtoFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
-    buf: DataBuffer,
+    buf: Box<dyn Buffer>,
 }
 
 //==============================================================================
@@ -51,7 +51,7 @@ pub struct PushtoFuture {
 /// Associate Functions for Pushto Operation Descriptors
 impl PushtoFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage, buf: DataBuffer) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage, buf: Box<dyn Buffer>) -> Self {
         Self { qd, addr, fd, buf }
     }
 

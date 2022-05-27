@@ -11,10 +11,10 @@ mod utils;
 //==============================================================================
 
 use super::iouring::IoUring;
-use crate::demikernel::dbuf::DataBuffer;
 use ::nix::sys::socket::SockaddrStorage;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     timer::{
         Timer,
         TimerRc,
@@ -76,13 +76,13 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: DataBuffer) -> Result<RequestId, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<RequestId, Fail> {
         let request_id: RequestId = self.io_uring.borrow_mut().push(sockfd, buf)?.into();
         Ok(request_id)
     }
 
     /// Pops a buffer from the target I/O user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: DataBuffer) -> Result<RequestId, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<RequestId, Fail> {
         let request_id: RequestId = self.io_uring.borrow_mut().pop(sockfd, buf)?.into();
         Ok(request_id)
     }
@@ -124,7 +124,7 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn pushto(&self, sockfd: i32, addr: SockaddrStorage, buf: DataBuffer) -> Result<RequestId, Fail> {
+    pub fn pushto(&self, sockfd: i32, addr: SockaddrStorage, buf: Box<dyn Buffer>) -> Result<RequestId, Fail> {
         let request_id: RequestId = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?.into();
         Ok(request_id)
     }

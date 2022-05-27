@@ -13,7 +13,6 @@ use self::{
     runtime::DPDKRuntime,
 };
 use crate::demikernel::config::Config;
-use ::dpdk_rs::load_mlx_driver;
 use ::inetstack::{
     operations::OperationResult,
     protocols::ipv4::Ipv4Endpoint,
@@ -21,6 +20,7 @@ use ::inetstack::{
 };
 use ::runtime::{
     fail::Fail,
+    libdpdk::load_mlx_driver,
     memory::MemoryRuntime,
     task::SchedulerRuntime,
     types::{
@@ -117,7 +117,7 @@ impl CatnipLibOS {
         timer!("catnip::wait");
         trace!("wait(): qt={:?}", qt);
 
-        let (qd, result): (QDesc, OperationResult<DPDKBuf>) = self.wait2(qt)?;
+        let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
         Ok(pack_result(self.rt(), result, qd, qt.into()))
     }
 
@@ -127,7 +127,7 @@ impl CatnipLibOS {
         timer!("catnip::wait_any");
         trace!("wait_any(): qts={:?}", qts);
 
-        let (i, qd, r): (usize, QDesc, OperationResult<DPDKBuf>) = self.wait_any2(qts)?;
+        let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
         Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
     }
 }

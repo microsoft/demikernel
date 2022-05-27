@@ -60,7 +60,7 @@ fn udp_push_pop() {
             };
 
             // Sanity received buffer.
-            assert!(Test::bufcmp(&expectbuf, recvbuf), "server expectbuf != recvbuf");
+            assert_eq!(expectbuf[..], recvbuf[..], "server expectbuf != recvbuf");
             println!("pop ({:?})", i);
         }
 

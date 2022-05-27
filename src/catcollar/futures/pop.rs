@@ -5,12 +5,9 @@
 // Imports
 //==============================================================================
 
-use crate::{
-    catcollar::{
-        runtime::RequestId,
-        IoUringRuntime,
-    },
-    demikernel::dbuf::DataBuffer,
+use crate::catcollar::{
+    runtime::RequestId,
+    IoUringRuntime,
 };
 use ::runtime::{
     fail::Fail,
@@ -37,7 +34,7 @@ pub struct PopFuture {
     /// Associated queue descriptor.
     qd: QDesc,
     /// Associated receive buffer.
-    buf: DataBuffer,
+    buf: Box<dyn Buffer>,
     /// Associated request.
     request_id: RequestId,
 }
@@ -49,7 +46,7 @@ pub struct PopFuture {
 /// Associate Functions for Pop Operation Descriptors
 impl PopFuture {
     /// Creates a descriptor for a pop operation.
-    pub fn new(rt: IoUringRuntime, request_id: RequestId, qd: QDesc, buf: DataBuffer) -> Self {
+    pub fn new(rt: IoUringRuntime, request_id: RequestId, qd: QDesc, buf: Box<dyn Buffer>) -> Self {
         Self {
             rt,
             qd,
@@ -70,7 +67,7 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<DataBuffer, Fail>;
+    type Output = Result<Box<dyn Buffer>, Fail>;
 
     /// Polls the underlying pop operation.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -80,7 +77,7 @@ impl Future for PopFuture {
             Ok(Some(size)) if size >= 0 => {
                 trace!("data received ({:?} bytes)", size);
                 let trim_size: usize = self_.buf.len() - (size as usize);
-                let mut buf: DataBuffer = self_.buf.clone();
+                let mut buf: Box<dyn Buffer> = self_.buf.clone();
                 buf.trim(trim_size);
                 Poll::Ready(Ok(buf))
             },

@@ -7,7 +7,6 @@ use demikernel::{
     Ipv4Endpoint,
     LibOS,
 };
-use runtime::memory::Buffer;
 
 //==============================================================================
 // Test

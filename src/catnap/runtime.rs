@@ -5,7 +5,6 @@
 // Imports
 //==============================================================================
 
-use crate::demikernel::dbuf::DataBuffer;
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::rand::{
@@ -16,6 +15,7 @@ use ::runtime::{
     fail::Fail,
     memory::{
         Buffer,
+        DataBuffer,
         MemoryRuntime,
     },
     network::{
@@ -88,16 +88,18 @@ impl PosixRuntime {
 
 /// Memory Runtime Trait Implementation for POSIX Runtime
 impl MemoryRuntime for PosixRuntime {
-    /// Memory Buffer
-    type Buf = DataBuffer;
-
     /// Converts a runtime buffer into a scatter-gather array.
-    fn into_sgarray(&self, dbuf: DataBuffer) -> Result<demi_sgarray_t, Fail> {
-        let len: usize = dbuf.len();
-        let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
-        let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
-            sgaseg_buf: dbuf_ptr as *mut c_void,
-            sgaseg_len: len as u32,
+    fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
+        let len: usize = buf.len();
+        let sgaseg: demi_sgaseg_t = match buf.as_any().downcast_ref::<DataBuffer>() {
+            Some(dbuf) => {
+                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
+                demi_sgaseg_t {
+                    sgaseg_buf: dbuf_ptr as *mut c_void,
+                    sgaseg_len: len as u32,
+                }
+            },
+            _ => panic!("cannot downcast"),
         };
         Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),
@@ -143,7 +145,7 @@ impl MemoryRuntime for PosixRuntime {
     }
 
     /// Clones a scatter-gather array.
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DataBuffer, Fail> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -153,10 +155,9 @@ impl MemoryRuntime for PosixRuntime {
         let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
         let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
-        // Clone heap-managed buffer.
-        Ok(DataBuffer::from_slice(unsafe {
+        Ok(Box::new(DataBuffer::from_slice(unsafe {
             slice::from_raw_parts(ptr as *const u8, len)
-        }))
+        })))
     }
 }
 
@@ -220,12 +221,12 @@ impl SchedulerRuntime for PosixRuntime {
 /// Network Runtime Trait Implementation for POSIX Runtime
 impl NetworkRuntime for PosixRuntime {
     // TODO: Rely on a default implementation for this.
-    fn transmit(&self, _pkt: impl runtime::network::PacketBuf<Self::Buf>) {
+    fn transmit(&self, _pkt: impl runtime::network::PacketBuf) {
         unreachable!()
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<Self::Buf, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 

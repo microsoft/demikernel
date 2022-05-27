@@ -22,12 +22,10 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use crate::{
-    demikernel::dbuf::DataBuffer,
-    Ipv4Endpoint,
-};
+use crate::Ipv4Endpoint;
 use ::runtime::{
     fail::Fail,
+    memory::Buffer,
     QDesc,
 };
 use ::scheduler::{
@@ -54,7 +52,7 @@ pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, DataBuffer),
+    Pop(Option<Ipv4Endpoint>, Box<dyn Buffer>),
     Failed(Fail),
 }
 

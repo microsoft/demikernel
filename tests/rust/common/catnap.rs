@@ -3,11 +3,10 @@
 
 use super::config::TestConfig;
 use ::demikernel::{
-    demikernel::dbuf::DataBuffer,
     Ipv4Endpoint,
     LibOS,
 };
-use ::runtime::memory::Buffer;
+use ::runtime::memory::DataBuffer;
 
 //==============================================================================
 // Test

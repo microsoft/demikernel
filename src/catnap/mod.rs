@@ -25,10 +25,7 @@ use self::futures::{
     pushto::PushtoFuture,
     Operation,
 };
-use crate::{
-    demikernel::dbuf::DataBuffer,
-    Ipv4Endpoint,
-};
+use crate::Ipv4Endpoint;
 use ::libc::{
     c_int,
     AF_INET,
@@ -56,6 +53,7 @@ use ::runtime::{
     logging,
     memory::{
         Buffer,
+        DataBuffer,
         MemoryRuntime,
     },
     network::types::Ipv4Addr,
@@ -226,7 +224,7 @@ impl CatnapLibOS {
     }
 
     // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: DataBuffer) -> Result<QToken, Fail> {
+    fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
@@ -258,7 +256,7 @@ impl CatnapLibOS {
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         trace!("push2() qd={:?}", qd);
 
-        let buf: DataBuffer = DataBuffer::from_slice(data);
+        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -268,7 +266,7 @@ impl CatnapLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: DataBuffer, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let addr: SockaddrStorage = parse_addr(remote);
@@ -301,7 +299,7 @@ impl CatnapLibOS {
     pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
-        let buf: DataBuffer = DataBuffer::from_slice(data);
+        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }

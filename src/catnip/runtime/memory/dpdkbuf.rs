@@ -6,9 +6,15 @@
 //==============================================================================
 
 use super::mbuf::Mbuf;
-use crate::demikernel::dbuf::DataBuffer;
-use ::runtime::memory::Buffer;
+use ::runtime::memory::{
+    Buffer,
+    DataBuffer,
+};
 use ::std::ops::Deref;
+use std::{
+    any::Any,
+    ops::DerefMut,
+};
 
 //==============================================================================
 // Enumerations
@@ -22,21 +28,27 @@ pub enum DPDKBuf {
 }
 
 //==============================================================================
+// Associated Functions
+//==============================================================================
+
+/// Associated functions for DPDK buffers.
+impl DPDKBuf {
+    pub fn empty() -> Self {
+        DPDKBuf::External(DataBuffer::empty())
+    }
+
+    /// Creates a [DPDKBuf] from a [u8] slice.
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        DPDKBuf::External(DataBuffer::from_slice(bytes))
+    }
+}
+
+//==============================================================================
 // Trait Implementations
 //==============================================================================
 
 /// Buffer Trait Implementation for DPDK Buffers
 impl Buffer for DPDKBuf {
-    /// Creates an empty [DPDKBuf].
-    fn empty() -> Self {
-        DPDKBuf::External(DataBuffer::empty())
-    }
-
-    /// Creates a [DPDKBuf] from a [u8] slice.
-    fn from_slice(bytes: &[u8]) -> Self {
-        DPDKBuf::External(DataBuffer::from_slice(bytes))
-    }
-
     /// Removes `len` bytes at the beginning of the target [DPDKBuf].
     fn adjust(&mut self, num_bytes: usize) {
         match self {
@@ -52,6 +64,14 @@ impl Buffer for DPDKBuf {
             DPDKBuf::Managed(ref mut mbuf) => mbuf.trim(num_bytes),
         }
     }
+
+    fn clone(&self) -> Box<dyn Buffer> {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 /// De-Reference Trait Implementation for DPDK Buffers
@@ -62,6 +82,15 @@ impl Deref for DPDKBuf {
         match self {
             DPDKBuf::External(ref buf) => buf.deref(),
             DPDKBuf::Managed(ref mbuf) => mbuf.deref(),
+        }
+    }
+}
+
+impl DerefMut for DPDKBuf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            DPDKBuf::External(ref mut buf) => buf.deref_mut(),
+            DPDKBuf::Managed(ref mut mbuf) => mbuf.deref_mut(),
         }
     }
 }

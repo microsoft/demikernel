@@ -6,12 +6,7 @@
 //==============================================================================
 
 use super::mempool::MemoryPool;
-use crate::demikernel::dbuf::DataBuffer;
 use ::anyhow::Error;
-use ::dpdk_rs::{
-    rte_mbuf,
-    rte_mempool,
-};
 use ::inetstack::protocols::{
     ethernet2::ETHERNET2_HEADER_SIZE,
     ipv4::IPV4_HEADER_DEFAULT_SIZE,
@@ -20,7 +15,14 @@ use ::inetstack::protocols::{
 use ::libc::c_void;
 use ::runtime::{
     fail::Fail,
-    memory::Buffer,
+    libdpdk::{
+        rte_mbuf,
+        rte_mempool,
+    },
+    memory::{
+        Buffer,
+        DataBuffer,
+    },
     types::{
         demi_sgarray_t,
         demi_sgaseg_t,
@@ -83,12 +85,12 @@ impl MemoryManager {
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
-    pub fn into_sgarray(&self, buf: DPDKBuf) -> Result<demi_sgarray_t, Fail> {
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf {
+    pub fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf.as_any().downcast_ref::<DPDKBuf>() {
             // Heap-managed buffer.
-            DPDKBuf::External(dbuf) => {
+            Some(DPDKBuf::External(dbuf)) => {
                 let len: usize = dbuf.len();
-                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
+                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
                 (
                     ptr::null_mut(),
                     demi_sgaseg_t {
@@ -98,7 +100,7 @@ impl MemoryManager {
                 )
             },
             // DPDK-managed buffer.
-            DPDKBuf::Managed(mbuf) => {
+            Some(DPDKBuf::Managed(mbuf)) => {
                 let mbuf_ptr: *mut rte_mbuf = mbuf.get_ptr();
                 let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
                     sgaseg_buf: mbuf.data_ptr() as *mut c_void,
@@ -106,6 +108,9 @@ impl MemoryManager {
                 };
                 mem::forget(mbuf);
                 (mbuf_ptr, sgaseg)
+            },
+            _ => {
+                panic!("failed to downcast");
             },
         };
 
@@ -200,7 +205,7 @@ impl MemoryManager {
     }
 
     /// Clones a scatter-gather array.
-    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DPDKBuf, Fail> {
+    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -232,7 +237,7 @@ impl MemoryManager {
             DPDKBuf::External(buf)
         };
 
-        Ok(buf)
+        Ok(Box::new(buf))
     }
 
     /// Returns a raw pointer to the underlying body pool.

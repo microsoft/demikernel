@@ -82,7 +82,7 @@ fn udp_ping_pong() {
             t.join().expect("failed to join thread");
 
             // Sanity check contents of received buffer.
-            assert!(Test::bufcmp(&sendbuf, recvbuf), "server sendbuf != recevbuf");
+            assert_eq!(sendbuf[..], recvbuf[..], "server sendbuf != recevbuf");
 
             // Send data.
             qt = match test.libos.pushto2(sockfd, sendbuf.as_slice(), remote_addr) {
@@ -149,7 +149,7 @@ fn udp_ping_pong() {
                 },
                 OperationResult::Pop(_, recvbuf) => {
                     // Sanity received buffer.
-                    assert!(Test::bufcmp(&sendbuf, recvbuf), "server expectbuf != recevbuf");
+                    assert_eq!(sendbuf[..], recvbuf[..], "server expectbuf != recevbuf");
                     npings += 1;
                     npongs -= 1;
                 },
@@ -221,7 +221,7 @@ fn tcp_ping_pong_single() {
             };
 
             // Sanity check received data.
-            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
+            assert_eq!(expectbuf[..], recvbuf[..], "server expectbuf != recvbuf");
 
             // Push data.
             let qt: QToken = match test.libos.push2(qd, &recvbuf[..]) {
@@ -277,7 +277,7 @@ fn tcp_ping_pong_single() {
             };
 
             // Sanity check received data.
-            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
+            assert_eq!(expectbuf[..], recvbuf[..], "server expectbuf != recvbuf");
 
             println!("ping {:?}", i);
         }
@@ -356,7 +356,7 @@ fn tcp_ping_pong_multiple() {
                 },
                 OperationResult::Pop(_, buf) => {
                     // Sanity check received data.
-                    assert!(Test::bufcmp(&expectbuf, buf.clone()), "server expectbuf != recvbuf");
+                    assert_eq!(expectbuf[..], buf[..], "server expectbuf != recvbuf");
                     let qt: QToken = match test.libos.push2(qd, &buf[..]) {
                         Ok(qt) => qt,
                         Err(e) => panic!("push failed: {:?}", e.cause),
@@ -417,7 +417,7 @@ fn tcp_ping_pong_multiple() {
             };
 
             // Sanity check received data.
-            assert!(Test::bufcmp(&expectbuf, recvbuf.clone()), "server expectbuf != recvbuf");
+            assert_eq!(expectbuf[..], recvbuf[..], "server expectbuf != recvbuf");
 
             println!("ping {:?}", i);
         }
