@@ -8,15 +8,19 @@
 use super::IoUringRuntime;
 use crate::Ipv4Addr;
 use ::arrayvec::ArrayVec;
-use ::runtime::network::{
-    config::{
-        ArpConfig,
-        TcpConfig,
-        UdpConfig,
+use ::runtime::{
+    memory::Buffer,
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
+        consts::RECEIVE_BATCH_SIZE,
+        types::MacAddress,
+        NetworkRuntime,
+        PacketBuf,
     },
-    consts::RECEIVE_BATCH_SIZE,
-    types::MacAddress,
-    NetworkRuntime,
 };
 
 //==============================================================================
@@ -26,12 +30,12 @@ use ::runtime::network::{
 /// Network Runtime Trait Implementation for I/O User Ring Runtime
 impl NetworkRuntime for IoUringRuntime {
     // TODO: Rely on a default implementation for this.
-    fn transmit(&self, _pkt: impl runtime::network::PacketBuf<Self::Buf>) {
+    fn transmit(&self, _pkt: impl PacketBuf) {
         unreachable!()
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<Self::Buf, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 

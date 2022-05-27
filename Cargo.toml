@@ -19,15 +19,13 @@ libc = "0.2.126"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
-nix = "0.24.0"
+nix = "0.24.1"
 cfg-if = "1.0.0"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "a917c973064ffebcce6f453c76b141371d4aa51a" }
-scheduler = { git = "https://github.com/demikernel/scheduler", rev = "9583bfd7ceae1c0ee62cef0e69b37752d8475ccc" }
-dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "a53027171bf38da8d776235693458acdcf979632", optional = true }
-perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "a6551e787cbeeecbac95195626306a82cb37e119" }
-liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "0b9d8a681f123adb60367ff72aa6e3cc198b3dd6", optional = true }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "2410e40245a3f04e84b1c3a6b5d08e633d2dd2fa" }
+scheduler = { git = "https://github.com/demikernel/scheduler", rev = "7bd71378a6121e33bf55f79248f2a2a812815d6e" }
+perftools = { git = "https://github.com/demikernel/perftools", rev = "10740b3c46440f4eef740c401d8fd2385998c16a", optional = true }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "7d9c21f9b48036e690964cd64bc4c75abc7b0255" }
 
 [[test]]
 name = "sga"
@@ -45,10 +43,10 @@ path = "tests/rust/pingpong.rs"
 default = [  ]
 catnap-libos = [ ]
 catpowder-libos = [ ]
-catcollar-libos = [ "liburing" ]
-catnip-libos = [ "dpdk-rs" ]
-mlx4 = ["dpdk-rs", "dpdk-rs/mlx4"]
-mlx5 = ["dpdk-rs", "dpdk-rs/mlx5"]
+catcollar-libos = [ "runtime/liburing" ]
+catnip-libos = [ "runtime/libdpdk" ]
+mlx4 = ["runtime/libdpdk", "runtime/mlx4"]
+mlx5 = ["runtime/libdpdk", "runtime/mlx5"]
 profiler = [ "perftools", "inetstack/profiler" ]
 
 

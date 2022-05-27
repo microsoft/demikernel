@@ -5,16 +5,18 @@
 // Imports
 //==============================================================================
 
-use ::dpdk_rs::{
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_alloc,
-    rte_pktmbuf_clone,
-    rte_pktmbuf_free,
-    rte_pktmbuf_pool_create,
-    rte_socket_id,
+use ::runtime::{
+    fail::Fail,
+    libdpdk::{
+        rte_mbuf,
+        rte_mempool,
+        rte_pktmbuf_alloc,
+        rte_pktmbuf_clone,
+        rte_pktmbuf_free,
+        rte_pktmbuf_pool_create,
+        rte_socket_id,
+    },
 };
-use ::runtime::fail::Fail;
 use ::std::ffi::CString;
 
 //==============================================================================

@@ -11,23 +11,26 @@ use crate::catnip::runtime::memory::{
     Mbuf,
 };
 use ::arrayvec::ArrayVec;
-use ::dpdk_rs::{
-    rte_eth_rx_burst,
-    rte_eth_tx_burst,
-    rte_mbuf,
-    rte_pktmbuf_chain,
-};
 use ::inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE;
-use ::runtime::network::{
-    config::{
-        ArpConfig,
-        TcpConfig,
-        UdpConfig,
+use ::runtime::{
+    libdpdk::{
+        rte_eth_rx_burst,
+        rte_eth_tx_burst,
+        rte_mbuf,
+        rte_pktmbuf_chain,
     },
-    consts::RECEIVE_BATCH_SIZE,
-    types::MacAddress,
-    NetworkRuntime,
-    PacketBuf,
+    memory::Buffer,
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
+        consts::RECEIVE_BATCH_SIZE,
+        types::MacAddress,
+        NetworkRuntime,
+        PacketBuf,
+    },
 };
 use ::std::{
     mem,
@@ -43,7 +46,7 @@ use perftools::timer;
 
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for DPDKRuntime {
-    fn transmit(&self, buf: impl PacketBuf<DPDKBuf>) {
+    fn transmit(&self, buf: impl PacketBuf) {
         // Alloc header mbuf, check header size.
         // Serialize header.
         // Decide if we can inline the data --
@@ -75,9 +78,9 @@ impl NetworkRuntime for DPDKRuntime {
                 // We're only using the header_mbuf for, well, the header.
                 header_mbuf.trim(header_mbuf.len() - header_size);
 
-                let body_mbuf = match body {
-                    DPDKBuf::Managed(mbuf) => mbuf,
-                    DPDKBuf::External(bytes) => {
+                let body_mbuf = match body.as_any().downcast_ref::<DPDKBuf>() {
+                    Some(DPDKBuf::Managed(mbuf)) => mbuf.clone(),
+                    Some(DPDKBuf::External(bytes)) => {
                         let mut mbuf = match self.mm.alloc_body_mbuf() {
                             Ok(mbuf) => mbuf,
                             Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
@@ -87,6 +90,7 @@ impl NetworkRuntime for DPDKRuntime {
                         mbuf.trim(mbuf.len() - bytes.len());
                         mbuf
                     },
+                    _ => panic!("failed to downcast"),
                 };
                 unsafe {
                     assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()), 0);
@@ -134,7 +138,7 @@ impl NetworkRuntime for DPDKRuntime {
         }
     }
 
-    fn receive(&self) -> ArrayVec<DPDKBuf, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
@@ -152,7 +156,8 @@ impl NetworkRuntime for DPDKRuntime {
             for &packet in &packets[..nb_rx as usize] {
                 let mbuf: Mbuf = Mbuf::new(packet);
                 let dpdkbuf: DPDKBuf = DPDKBuf::Managed(mbuf);
-                out.push(dpdkbuf);
+                let buf: Box<dyn Buffer> = Box::new(dpdkbuf);
+                out.push(buf);
             }
         }
 

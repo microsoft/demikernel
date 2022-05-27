@@ -3,12 +3,10 @@
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "catnip-libos")] {
-        use crate::DPDKBuf;
         use crate::catnip::CatnipLibOS as NetworkLibOS;
         use crate::catnip::runtime::DPDKRuntime as Runtime;
         use ::inetstack::operations::OperationResult as OperationResult;
     } else if  #[cfg(feature = "catpowder-libos")] {
-        use super::dbuf::DataBuffer;
         use crate::catpowder::CatpowderLibOS as NetworkLibOS;
         use crate::catpowder::runtime::LinuxRuntime as Runtime;
         use ::inetstack::operations::OperationResult;
@@ -57,14 +55,14 @@ impl LibOS {
     cfg_if::cfg_if! {
         if #[cfg(feature = "catnip-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<DPDKBuf>), Fail> {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult<DataBuffer>), Fail> {
+            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait2(qt),
                 }
@@ -82,14 +80,14 @@ impl LibOS {
     cfg_if::cfg_if! {
         if #[cfg(feature = "catnip-libos")] {
             /// Waits an a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<DPDKBuf>), Fail> {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }
             }
         } else if  #[cfg(feature = "catpowder-libos")] {
             /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult<DataBuffer>), Fail> {
+            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
                 match self {
                     LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
                 }

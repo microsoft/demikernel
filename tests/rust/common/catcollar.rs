@@ -3,7 +3,6 @@
 
 use super::config::TestConfig;
 use ::demikernel::{
-    demikernel::dbuf::DataBuffer,
     Ipv4Endpoint,
     LibOS,
 };
@@ -47,22 +46,5 @@ impl Test {
         }
 
         data
-    }
-
-    pub fn bufcmp(x: &[u8], b: DataBuffer) -> bool {
-        let a: DataBuffer = DataBuffer::from(x);
-        if a.len() != b.len() {
-            println!("length mismatch {:?} != {:?}", a.len(), b.len());
-            return false;
-        }
-
-        for i in 0..a.len() {
-            if a[i] != b[i] {
-                println!("{:?} != {:?} (idx={:?})", a[i], b[i], i);
-                return false;
-            }
-        }
-
-        true
     }
 }

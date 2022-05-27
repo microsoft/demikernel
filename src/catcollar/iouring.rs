@@ -5,14 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::demikernel::dbuf::DataBuffer;
 use ::libc::socklen_t;
-use ::liburing::{
-    io_uring,
-    io_uring_sqe,
-    iovec,
-    msghdr,
-};
 use ::nix::{
     errno,
     sys::socket::{
@@ -21,7 +14,11 @@ use ::nix::{
         SockaddrStorage,
     },
 };
-use ::runtime::fail::Fail;
+use ::runtime::{
+    fail::Fail,
+    liburing,
+    memory::Buffer,
+};
 use ::std::{
     ffi::{
         c_void,
@@ -45,7 +42,7 @@ use ::std::{
 /// IO User Ring
 pub struct IoUring {
     /// Underlying io_uring.
-    io_uring: io_uring,
+    io_uring: liburing::io_uring,
 }
 
 //==============================================================================
@@ -57,7 +54,7 @@ impl IoUring {
     pub fn new(nentries: u32) -> Result<Self, Fail> {
         unsafe {
             let mut params: MaybeUninit<liburing::io_uring_params> = MaybeUninit::zeroed();
-            let mut io_uring: MaybeUninit<io_uring> = MaybeUninit::zeroed();
+            let mut io_uring: MaybeUninit<liburing::io_uring> = MaybeUninit::zeroed();
             let ret: c_int = liburing::io_uring_queue_init_params(nentries, io_uring.as_mut_ptr(), params.as_mut_ptr());
             // Failed to initialize io_uring structure.
             if ret < 0 {
@@ -74,15 +71,15 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: DataBuffer) -> Result<u64, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
-        let io_uring: &mut io_uring = &mut self.io_uring;
+        let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
             // Allocate a submission queue entry.
-            let sqe: *mut io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
+            let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
                 let errno: i32 = errno::errno();
                 let strerror: CString = CString::from_raw(libc::strerror(errno));
@@ -102,7 +99,7 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: DataBuffer) -> Result<u64, Fail> {
+    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -112,11 +109,11 @@ impl IoUring {
         };
         let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) = (saddr.as_ref(), saddr.len());
         let sockaddr_ptr: *const libc::sockaddr_in = sockaddr as *const libc::sockaddr_in;
-        let io_uring: &mut io_uring = &mut self.io_uring;
+        let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
             // Allocate a submission queue entry.
-            let sqe: *mut io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
+            let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
                 let errno: i32 = errno::errno();
                 let strerror: CString = CString::from_raw(libc::strerror(errno));
@@ -126,12 +123,12 @@ impl IoUring {
 
             // Submit operation.
             liburing::io_uring_sqe_set_data(sqe, data_ptr as *mut c_void);
-            let mut iov: iovec = iovec {
+            let mut iov: liburing::iovec = liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
                 iov_len: len as u64,
             };
-            let iov_ptr: *mut iovec = &mut iov as *mut iovec;
-            let msg: msghdr = msghdr {
+            let iov_ptr: *mut liburing::iovec = &mut iov as *mut liburing::iovec;
+            let msg: liburing::msghdr = liburing::msghdr {
                 msg_name: sockaddr_ptr as *mut c_void,
                 msg_namelen: addrlen as u32,
                 msg_iov: iov_ptr,
@@ -150,15 +147,15 @@ impl IoUring {
     }
 
     /// Pops a buffer from the target IO user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: DataBuffer) -> Result<u64, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
-        let io_uring: &mut io_uring = &mut self.io_uring;
+        let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
             // Allocate a submission queue entry.
-            let sqe: *mut io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
+            let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
                 let errno: i32 = errno::errno();
                 let strerror: CString = CString::from_raw(libc::strerror(errno));
@@ -179,7 +176,7 @@ impl IoUring {
 
     /// Waits for an operation to complete in the target IO user ring.
     pub fn wait(&mut self) -> Result<(u64, i32), Fail> {
-        let io_uring: &mut io_uring = &mut self.io_uring;
+        let io_uring: &mut liburing::io_uring = &mut self.io_uring;
         unsafe {
             let mut cqe_ptr: *mut liburing::io_uring_cqe = null_mut();
             let cqe_ptr_ptr: *mut *mut liburing::io_uring_cqe = ptr::addr_of_mut!(cqe_ptr);

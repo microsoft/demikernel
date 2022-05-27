@@ -6,14 +6,17 @@
 //==============================================================================
 
 use super::mempool::MemoryPool;
-use ::dpdk_rs::{
+use ::runtime::libdpdk::{
     rte_mbuf,
     rte_pktmbuf_adj,
     rte_pktmbuf_trim,
 };
 use ::std::{
     mem,
-    ops::Deref,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     ptr,
     slice,
 };
@@ -107,6 +110,13 @@ impl Deref for Mbuf {
 
     fn deref(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.data_ptr(), self.len()) }
+    }
+}
+
+// Mutable De-Reference Trait Implementation for DPDK-Managed Buffers
+impl DerefMut for Mbuf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { slice::from_raw_parts_mut(self.data_ptr(), self.len()) }
     }
 }
 
