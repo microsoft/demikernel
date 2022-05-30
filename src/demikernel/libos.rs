@@ -1,27 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "catnip-libos")] {
-        use crate::catnip::CatnipLibOS as NetworkLibOS;
-        use crate::catnip::runtime::DPDKRuntime as Runtime;
-        use ::inetstack::operations::OperationResult as OperationResult;
-    } else if  #[cfg(feature = "catpowder-libos")] {
-        use crate::catpowder::CatpowderLibOS as NetworkLibOS;
-        use crate::catpowder::runtime::LinuxRuntime as Runtime;
-        use ::inetstack::operations::OperationResult;
-    } else if  #[cfg(feature = "catcollar-libos")] {
-        use crate::catcollar::CatcollarLibOS as NetworkLibOS;
-        use crate::catcollar::IoUringRuntime as Runtime;
-        use crate::catcollar::OperationResult;
-    } else {
-        use crate::catnap::CatnapLibOS as NetworkLibOS;
-        use crate::catnap::PosixRuntime as Runtime;
-        use crate::catnap::OperationResult;
-    }
-}
-
-use crate::Ipv4Endpoint;
+use crate::{
+    Ipv4Endpoint,
+    NetworkLibOS,
+    OperationResult,
+    Runtime,
+};
 use ::libc::c_int;
 use ::runtime::{
     fail::Fail,
@@ -52,53 +37,17 @@ pub enum LibOS {
 
 /// Associate Functions for Network LibOSes
 impl LibOS {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "catnip-libos")] {
-            /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
-                }
-            }
-        } else if  #[cfg(feature = "catpowder-libos")] {
-            /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
-                }
-            }
-        } else {
-            /// Waits on a pending operation in an I/O queue.
-            pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait2(qt),
-                }
-            }
+    /// Waits on a pending operation in an I/O queue.
+    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
         }
     }
 
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "catnip-libos")] {
-            /// Waits an a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
-                }
-            }
-        } else if  #[cfg(feature = "catpowder-libos")] {
-            /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
-                }
-            }
-        } else {
-            /// Waits on a pending operation in an I/O queue.
-            pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-                match self {
-                    LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
-                }
-            }
+    /// Waits on a pending operation in an I/O queue.
+    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.wait2(qt),
         }
     }
 
@@ -130,7 +79,7 @@ impl LibOS {
         }
     }
 
-    /// Accepts an incomming connection on a TCP socket.
+    /// Accepts an incoming connection on a TCP socket.
     pub fn accept(&mut self, fd: QDesc) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.accept(fd),

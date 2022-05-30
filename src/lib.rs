@@ -9,22 +9,60 @@
 #[macro_use]
 extern crate log;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "catnip-libos")] {
-        mod catnip;
-        pub use self::catnip::DPDKBuf;
-        pub use ::inetstack::operations::OperationResult as OperationResult;
-    } else if  #[cfg(feature = "catpowder-libos")] {
-        mod catpowder;
-        pub use ::inetstack::operations::OperationResult;
-    } else if  #[cfg(feature = "catcollar-libos")] {
-        mod catcollar;
-        pub use catcollar::OperationResult;
-    } else {
-        mod catnap;
-        pub use catnap::OperationResult;
-    }
+#[cfg(feature = "catnip-libos")]
+mod catnip;
+
+#[cfg(feature = "catpowder-libos")]
+mod catpowder;
+
+#[cfg(feature = "catcollar-libos")]
+mod catcollar;
+
+#[cfg(feature = "catnap-libos")]
+mod catnap;
+
+#[cfg(feature = "catnip-libos")]
+#[path = ""]
+mod libos_export {
+    pub use crate::catnip::DPDKBuf;
+    pub(crate) use crate::catnip::{
+        runtime::DPDKRuntime as Runtime,
+        CatnipLibOS as NetworkLibOS,
+    };
+    pub use ::inetstack::operations::OperationResult;
 }
+
+#[cfg(feature = "catpowder-libos")]
+#[path = ""]
+mod libos_export {
+    mod catpowder;
+    pub(crate) use crate::catpowder::{
+        runtime::LinuxRuntime as Runtime,
+        CatpowderLibOS as NetworkLibOS,
+    };
+    pub use ::inetstack::operations::OperationResult;
+}
+#[cfg(feature = "catcollar-libos")]
+#[path = ""]
+mod libos_export {
+    pub use crate::catcollar::OperationResult;
+    pub(crate) use crate::catcollar::{
+        CatcollarLibOS as NetworkLibOS,
+        IoUringRuntime as Runtime,
+    };
+}
+
+#[cfg(feature = "catnap-libos")]
+#[path = ""]
+mod libos_export {
+    pub use crate::catnap::OperationResult;
+    pub(crate) use crate::catnap::{
+        CatnapLibOS as NetworkLibOS,
+        PosixRuntime as Runtime,
+    };
+}
+
+pub use libos_export::*;
 
 pub use self::demikernel::libos::LibOS;
 pub use ::inetstack::protocols::ipv4::Ipv4Endpoint;
