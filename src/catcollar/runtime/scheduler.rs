@@ -7,15 +7,15 @@
 
 use super::IoUringRuntime;
 use ::runtime::{
+    scheduler::{
+        SchedulerFuture,
+        SchedulerHandle,
+    },
     task::SchedulerRuntime,
     timer::{
         TimerRc,
         WaitFuture,
     },
-};
-use ::scheduler::{
-    SchedulerFuture,
-    SchedulerHandle,
 };
 use ::std::time::Instant;
 
