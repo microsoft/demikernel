@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::{
-    Ipv4Endpoint,
     NetworkLibOS,
     OperationResult,
     Runtime,
@@ -20,7 +19,10 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::net::Ipv4Addr;
+use ::std::net::{
+    Ipv4Addr,
+    SocketAddrV4,
+};
 
 //==============================================================================
 // Structures
@@ -66,7 +68,7 @@ impl LibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, fd: QDesc, local: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&mut self, fd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.bind(fd, local),
         }
@@ -87,7 +89,7 @@ impl LibOS {
     }
 
     /// Initiates a connection with a remote TCP pper.
-    pub fn connect(&mut self, fd: QDesc, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, fd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.connect(fd, remote),
         }
@@ -115,14 +117,14 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, fd: QDesc, sga: &demi_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, fd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(fd, sga, to),
         }
     }
 
     /// Pushes raw data to a UDP socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto2(qd, data, remote),
         }

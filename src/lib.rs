@@ -35,7 +35,6 @@ mod libos_export {
 #[cfg(feature = "catpowder-libos")]
 #[path = ""]
 mod libos_export {
-    mod catpowder;
     pub(crate) use crate::catpowder::{
         runtime::LinuxRuntime as Runtime,
         CatpowderLibOS as NetworkLibOS,
@@ -65,7 +64,6 @@ mod libos_export {
 pub use libos_export::*;
 
 pub use self::demikernel::libos::LibOS;
-pub use ::inetstack::protocols::ipv4::Ipv4Endpoint;
 pub use ::runtime::{
     network::types::{
         Ipv4Addr,
