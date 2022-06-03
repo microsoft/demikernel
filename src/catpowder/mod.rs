@@ -15,7 +15,6 @@ use self::{
 use crate::demikernel::config::Config;
 use ::inetstack::{
     operations::OperationResult,
-    protocols::ipv4::Ipv4Endpoint,
     InetStack,
 };
 use ::runtime::{
@@ -36,6 +35,7 @@ use ::std::{
     },
     time::Instant,
 };
+use std::net::SocketAddrV4;
 
 #[cfg(feature = "profiler")]
 use ::perftools::timer;
@@ -87,7 +87,7 @@ impl CatpowderLibOS {
         }
     }
 
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);

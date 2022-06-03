@@ -2,11 +2,8 @@
 // Licensed under the MIT license.
 
 use super::config::TestConfig;
-use ::demikernel::{
-    Ipv4Endpoint,
-    LibOS,
-};
-use ::runtime::memory::DataBuffer;
+use ::demikernel::LibOS;
+use ::std::net::SocketAddrV4;
 
 //==============================================================================
 // Test
@@ -29,11 +26,11 @@ impl Test {
         self.config.is_server()
     }
 
-    pub fn local_addr(&self) -> Ipv4Endpoint {
+    pub fn local_addr(&self) -> SocketAddrV4 {
         self.config.local_addr()
     }
 
-    pub fn remote_addr(&self) -> Ipv4Endpoint {
+    pub fn remote_addr(&self) -> SocketAddrV4 {
         self.config.remote_addr()
     }
 
@@ -48,20 +45,5 @@ impl Test {
         }
 
         data
-    }
-
-    pub fn bufcmp(x: &[u8], b: DataBuffer) -> bool {
-        let a: DataBuffer = DataBuffer::from_slice(x);
-        if a.len() != b.len() {
-            return false;
-        }
-
-        for i in 0..a.len() {
-            if a[i] != b[i] {
-                return false;
-            }
-        }
-
-        true
     }
 }
