@@ -9,12 +9,14 @@ mod common;
 
 use self::common::Test;
 use ::demikernel::{
-    Ipv4Endpoint,
     OperationResult,
     QDesc,
     QToken,
 };
-use ::std::panic;
+use ::std::{
+    net::SocketAddrV4,
+    panic,
+};
 
 #[cfg(feature = "profiler")]
 use perftools::profiler;
@@ -29,8 +31,8 @@ fn udp_push_pop() {
     let fill_char: u8 = 'a' as u8;
     let nsends: usize = 1000;
     let nreceives: usize = (10 * nsends) / 100;
-    let local_addr: Ipv4Endpoint = test.local_addr();
-    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let local_addr: SocketAddrV4 = test.local_addr();
+    let remote_addr: SocketAddrV4 = test.remote_addr();
 
     // Setup peer.
     let sockfd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
@@ -99,8 +101,8 @@ fn tcp_push_pop() {
     let mut test: Test = Test::new();
     let fill_char: u8 = 'a' as u8;
     let nbytes: usize = 64 * 1024;
-    let local_addr: Ipv4Endpoint = test.local_addr();
-    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let local_addr: SocketAddrV4 = test.local_addr();
+    let remote_addr: SocketAddrV4 = test.remote_addr();
 
     // Setup peer.
     let sockqd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
