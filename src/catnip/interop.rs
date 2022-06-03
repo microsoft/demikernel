@@ -46,8 +46,8 @@ pub fn pack_result<RT: Runtime>(rt: &RT, result: OperationResult, qd: QDesc, qt:
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
                 if let Some(addr) = addr {
-                    sga.sga_addr.sin_port = addr.get_port().into();
-                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.get_address().octets());
+                    sga.sga_addr.sin_port = addr.port().into();
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(addr.ip().octets());
                 }
                 let qr_value = demi_qr_value_t { sga };
                 demi_qresult_t {

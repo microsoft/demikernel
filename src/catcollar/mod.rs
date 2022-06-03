@@ -32,7 +32,6 @@ use self::{
 // Imports
 //==============================================================================
 
-use crate::Ipv4Endpoint;
 use ::libc::c_int;
 use ::nix::{
     sys::socket::{
@@ -55,6 +54,7 @@ use ::runtime::{
     },
     network::types::Ipv4Addr,
     queue::IoQueueTable,
+    scheduler::SchedulerHandle,
     task::SchedulerRuntime,
     types::{
         demi_accept_result_t,
@@ -67,7 +67,6 @@ use ::runtime::{
     QToken,
     QType,
 };
-use ::scheduler::SchedulerHandle;
 use ::std::{
     any::Any,
     collections::HashMap,
@@ -154,7 +153,7 @@ impl CatcollarLibOS {
     }
 
     /// Binds a socket to a local endpoint.
-    pub fn bind(&mut self, qd: QDesc, local: Ipv4Endpoint) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // Issue bind operation.
@@ -199,7 +198,7 @@ impl CatcollarLibOS {
     }
 
     /// Establishes a connection to a remote endpoint.
-    pub fn connect(&mut self, qd: QDesc, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
@@ -269,7 +268,7 @@ impl CatcollarLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
@@ -285,7 +284,7 @@ impl CatcollarLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
         match self.runtime.clone_sgarray(sga) {
@@ -302,7 +301,7 @@ impl CatcollarLibOS {
     }
 
     /// Pushes raw data to a socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: Ipv4Endpoint) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
         let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
@@ -459,11 +458,11 @@ impl CatcollarLibOS {
 // Standalone Functions
 //==============================================================================
 
-/// Parses a [Ipv4Endpoint] into a [SockaddrStorage].
-fn parse_addr(endpoint: Ipv4Endpoint) -> SockaddrStorage {
-    let addr: Ipv4Addr = endpoint.get_address();
-    let port: u16 = endpoint.get_port().into();
-    let ipv4: SocketAddrV4 = SocketAddrV4::new(addr, port);
+/// Parses a [SocketAddrV4] into a [SockaddrStorage].
+fn parse_addr(endpoint: SocketAddrV4) -> SockaddrStorage {
+    let addr: &Ipv4Addr = endpoint.ip();
+    let port: u16 = endpoint.port().into();
+    let ipv4: SocketAddrV4 = SocketAddrV4::new(*addr, port);
     SockaddrStorage::from(ipv4)
 }
 
@@ -500,8 +499,8 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
                 if let Some(endpoint) = addr {
-                    sga.sga_addr.sin_port = endpoint.get_port().into();
-                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(endpoint.get_address().octets());
+                    sga.sga_addr.sin_port = endpoint.port().into();
+                    sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(endpoint.ip().octets());
                 }
                 let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                 demi_qresult_t {

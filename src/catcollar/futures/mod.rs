@@ -22,15 +22,14 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use crate::Ipv4Endpoint;
 use ::runtime::{
     fail::Fail,
     memory::Buffer,
+    scheduler::{
+        FutureResult,
+        SchedulerFuture,
+    },
     QDesc,
-};
-use ::scheduler::{
-    FutureResult,
-    SchedulerFuture,
 };
 use ::std::{
     any::Any,
@@ -42,6 +41,7 @@ use ::std::{
         Poll,
     },
 };
+use std::net::SocketAddrV4;
 
 //==============================================================================
 // Structures
@@ -52,7 +52,7 @@ pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<Ipv4Endpoint>, Box<dyn Buffer>),
+    Pop(Option<SocketAddrV4>, Box<dyn Buffer>),
     Failed(Fail),
 }
 

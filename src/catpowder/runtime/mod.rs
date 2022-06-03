@@ -28,13 +28,13 @@ use ::runtime::{
         },
         types::MacAddress,
     },
+    scheduler::Scheduler,
     timer::{
         Timer,
         TimerRc,
     },
     Runtime,
 };
-use ::scheduler::Scheduler;
 use ::std::{
     cell::RefCell,
     collections::HashMap,

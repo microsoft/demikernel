@@ -6,7 +6,6 @@
 //==============================================================================
 
 use super::libos::LibOS;
-use crate::Ipv4Endpoint;
 use ::libc::{
     c_char,
     c_int,
@@ -17,7 +16,6 @@ use ::libc::{
 use ::runtime::{
     fail::Fail,
     logging,
-    network::types::Port16,
     types::{
         demi_qresult_t,
         demi_qtoken_t,
@@ -31,9 +29,11 @@ use ::std::{
         RefCell,
         RefMut,
     },
-    convert::TryFrom,
     mem,
-    net::Ipv4Addr,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     ptr,
     slice,
 };
@@ -116,7 +116,7 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     }
 
     // Get socket address.
-    let endpoint: Ipv4Endpoint = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("bind() failed: {:?}", e);
@@ -204,7 +204,7 @@ pub extern "C" fn demi_connect(
     }
 
     // Get socket address.
-    let endpoint: Ipv4Endpoint = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("connect() failed: {:?}", e);
@@ -275,7 +275,7 @@ pub extern "C" fn demi_pushto(
     let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Get socket address.
-    let endpoint: Ipv4Endpoint = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("pushto() failed: {:?}", e);
@@ -513,10 +513,9 @@ pub extern "C" fn demi_getsockopt(
 //==============================================================================
 
 /// Converts a [sockaddr] into a [Ipv4Endpoint].
-fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<Ipv4Endpoint, Fail> {
+fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     // TODO: Review why we need byte ordering conversion here.
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     let addr: Ipv4Addr = { Ipv4Addr::from(u32::from_be_bytes(sin.sin_addr.s_addr.to_le_bytes())) };
-    let port: Port16 = Port16::try_from(u16::from_be(sin.sin_port))?;
-    Ok(Ipv4Endpoint::new(addr, port))
+    Ok(SocketAddrV4::new(addr, sin.sin_port))
 }

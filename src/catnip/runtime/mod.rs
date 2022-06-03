@@ -72,10 +72,10 @@ use ::runtime::{
         },
         types::MacAddress,
     },
+    scheduler::Scheduler,
     timer::Timer,
     Runtime,
 };
-use ::scheduler::Scheduler;
 use ::std::{
     cell::RefCell,
     collections::HashMap,

@@ -28,6 +28,11 @@ use ::runtime::{
         types::MacAddress,
         NetworkRuntime,
     },
+    scheduler::{
+        Scheduler,
+        SchedulerFuture,
+        SchedulerHandle,
+    },
     task::SchedulerRuntime,
     timer::{
         Timer,
@@ -40,11 +45,6 @@ use ::runtime::{
     },
     utils::UtilsRuntime,
     Runtime,
-};
-use ::scheduler::{
-    Scheduler,
-    SchedulerFuture,
-    SchedulerHandle,
 };
 use ::std::{
     mem,

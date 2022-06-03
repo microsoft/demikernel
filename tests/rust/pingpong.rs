@@ -9,12 +9,12 @@ mod common;
 
 use self::common::Test;
 use ::demikernel::{
-    Ipv4Endpoint,
     OperationResult,
     QDesc,
     QToken,
 };
 use ::std::{
+    net::SocketAddrV4,
     panic,
     process,
     sync::{
@@ -40,8 +40,8 @@ use perftools::profiler;
 fn udp_ping_pong() {
     let mut test: Test = Test::new();
     let fill_char: u8 = 'a' as u8;
-    let local_addr: Ipv4Endpoint = test.local_addr();
-    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let local_addr: SocketAddrV4 = test.local_addr();
+    let remote_addr: SocketAddrV4 = test.remote_addr();
 
     // Setup peer.
     let sockfd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
@@ -173,8 +173,8 @@ fn tcp_ping_pong_single() {
     let mut test: Test = Test::new();
     let fill_char: u8 = 'a' as u8;
     let nrounds: usize = 1024;
-    let local_addr: Ipv4Endpoint = test.local_addr();
-    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let local_addr: SocketAddrV4 = test.local_addr();
+    let remote_addr: SocketAddrV4 = test.remote_addr();
     let expectbuf: Vec<u8> = test.mkbuf(fill_char);
 
     // Setup peer.
@@ -298,8 +298,8 @@ fn tcp_ping_pong_multiple() {
     let mut test: Test = Test::new();
     let fill_char: u8 = 'a' as u8;
     let nrounds: usize = 1024;
-    let local_addr: Ipv4Endpoint = test.local_addr();
-    let remote_addr: Ipv4Endpoint = test.remote_addr();
+    let local_addr: SocketAddrV4 = test.local_addr();
+    let remote_addr: SocketAddrV4 = test.remote_addr();
     let expectbuf: Vec<u8> = test.mkbuf(fill_char);
 
     // Setup peer.

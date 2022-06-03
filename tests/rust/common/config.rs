@@ -5,15 +5,13 @@ use ::anyhow::{
     format_err,
     Error,
 };
-use ::demikernel::{
-    demikernel::config::Config,
-    Ipv4Endpoint,
-    Port16,
-};
+use ::demikernel::demikernel::config::Config;
 use ::std::{
-    convert::TryFrom,
     env,
-    net::Ipv4Addr,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     panic,
     str::FromStr,
 };
@@ -31,13 +29,12 @@ impl TestConfig {
         Self(config)
     }
 
-    fn addr(&self, k1: &str, k2: &str) -> Result<Ipv4Endpoint, Error> {
+    fn addr(&self, k1: &str, k2: &str) -> Result<SocketAddrV4, Error> {
         let addr = &self.0.config_obj[k1][k2];
         let host_s = addr["host"].as_str().ok_or(format_err!("Missing host")).unwrap();
         let host = Ipv4Addr::from_str(host_s).unwrap();
         let port_i = addr["port"].as_i64().ok_or(format_err!("Missing port")).unwrap();
-        let port = Port16::try_from(port_i as u16).unwrap();
-        Ok(Ipv4Endpoint::new(host, port))
+        Ok(SocketAddrV4::new(host, port_i as u16))
     }
 
     pub fn is_server(&self) -> bool {
@@ -50,7 +47,7 @@ impl TestConfig {
         }
     }
 
-    pub fn local_addr(&self) -> Ipv4Endpoint {
+    pub fn local_addr(&self) -> SocketAddrV4 {
         if self.is_server() {
             self.addr("server", "bind").unwrap()
         } else {
@@ -58,7 +55,7 @@ impl TestConfig {
         }
     }
 
-    pub fn remote_addr(&self) -> Ipv4Endpoint {
+    pub fn remote_addr(&self) -> SocketAddrV4 {
         if self.is_server() {
             self.addr("server", "client").unwrap()
         } else {
