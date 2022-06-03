@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::net::SocketAddrV4;
+
 use super::config::TestConfig;
-use demikernel::{
-    DPDKBuf,
-    Ipv4Endpoint,
-    LibOS,
-};
+use demikernel::LibOS;
 
 //==============================================================================
 // Test
@@ -29,31 +27,16 @@ impl Test {
         self.config.is_server()
     }
 
-    pub fn local_addr(&self) -> Ipv4Endpoint {
+    pub fn local_addr(&self) -> SocketAddrV4 {
         self.config.local_addr()
     }
 
-    pub fn remote_addr(&self) -> Ipv4Endpoint {
+    pub fn remote_addr(&self) -> SocketAddrV4 {
         self.config.remote_addr()
     }
 
     pub fn mkbuf(&self, fill_char: u8) -> Vec<u8> {
         let a: Vec<u8> = (0..self.config.0.buffer_size).map(|_| fill_char).collect();
         a
-    }
-
-    pub fn bufcmp(x: &[u8], b: DPDKBuf) -> bool {
-        let a = DPDKBuf::from_slice(x);
-        if a.len() != b.len() {
-            return false;
-        }
-
-        for i in 0..a.len() {
-            if a[i] != b[i] {
-                return false;
-            }
-        }
-
-        true
     }
 }

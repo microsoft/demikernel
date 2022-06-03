@@ -7,16 +7,16 @@
 
 use super::DPDKRuntime;
 use ::runtime::{
+    scheduler::{
+        SchedulerFuture,
+        SchedulerHandle,
+    },
     task::SchedulerRuntime,
     timer::{
         Timer,
         TimerPtr,
         WaitFuture,
     },
-};
-use ::scheduler::{
-    SchedulerFuture,
-    SchedulerHandle,
 };
 use ::std::{
     rc::Rc,
