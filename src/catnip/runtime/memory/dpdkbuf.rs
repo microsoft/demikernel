@@ -21,7 +21,7 @@ use std::{
 //==============================================================================
 
 /// DPDK Buffer
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum DPDKBuf {
     External(DataBuffer),
     Managed(Mbuf),
@@ -66,7 +66,14 @@ impl Buffer for DPDKBuf {
     }
 
     fn clone(&self) -> Box<dyn Buffer> {
-        todo!()
+        match self {
+            DPDKBuf::External(buf) => Buffer::clone(buf),
+            DPDKBuf::Managed(mbuf) => {
+                let mbuf = Clone::clone(mbuf);
+                let dpdkbuf = DPDKBuf::Managed(mbuf);
+                Box::new(dpdkbuf)
+            },
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
