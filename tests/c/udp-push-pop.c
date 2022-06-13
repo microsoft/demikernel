@@ -71,13 +71,13 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
 
-    /* Setup peer. */
+    /* Setup socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
     assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
 
     memset(expected_buf, 1, DATA_SIZE);
 
-    /* Run peer. */
+    /* Run. */
     for (int it = 0; it < MAX_ITERATIONS; it++)
     {
         demi_qtoken_t qt = -1;
@@ -120,11 +120,11 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
 
-    /* Setup peer. */
+    /* Setup socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
     assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
 
-    /* Run peer. */
+    /* Run. */
     for (int it = 0; it < MAX_ITERATIONS; it++)
     {
         demi_qtoken_t qt = -1;
@@ -180,7 +180,7 @@ static void usage(const char *progname)
 /**
  * @brief Exercises a one-way direction communication through UDP.
  *
- * This system-level test instantiates two demikernel peers: a client and a server. The client sends UDP packets to the
+ * This system-level test instantiates two demikernel nodes: a client and a server. The client sends UDP packets to the
  * server in a tight loop. The server process in a tight loop received UDP packets from the client.
  *
  * @param argc Argument count.
