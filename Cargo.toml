@@ -29,6 +29,11 @@ dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc22
 perftools = { git = "https://github.com/demikernel/perftools", rev = "02f07ad28218c182bbf82e5f8eaf22f7de3f34c6", optional = true }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "8f7c48f568d983a91d85516bd39f0a1d49486597" }
 
+[patch."https://github.com/demikernel/catnip"]
+catnip = { git = "https://github.com//demikernel/catnip", branch = "tcp-migration"}
+[patch."https://github.com/demikernel/runtime"]
+runtime = { git = "https://github.com//demikernel/runtime", branch = "tcp-migration"}
+
 [features]
 default = [  ]
 catnap-libos = [ ]
