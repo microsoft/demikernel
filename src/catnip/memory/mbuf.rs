@@ -29,6 +29,16 @@ pub struct Mbuf {
     pub mm: MemoryManager,
 }
 
+impl PartialEq for Mbuf {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref() == other.deref()
+    }
+}
+
+impl Eq for Mbuf {
+
+}
+
 //==============================================================================
 // Associate Functions
 //==============================================================================

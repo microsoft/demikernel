@@ -22,7 +22,7 @@ yaml-rust = "0.4.5"
 log = "0.4.14"
 socket2 = { version = "0.4.1", features = ["all"] }
 cfg-if = "1.0.0"
-
+serde = { version = "1.0", features = ["derive"]}
 catnip = { git = "https://github.com/demikernel/catnip", rev = "a4c7f76bacbe6015bccdad3ffafeeae10d0f9094", features = ["threadunsafe"] }
 catwalk = { git = "https://github.com/demikernel/catwalk", rev = "063cf220c3e81beb6562f798ebadab3d9c24f336" }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "f6619d5313fc224e6bf8620df7485517efea0e39", optional = true }

@@ -11,12 +11,16 @@ use ::runtime::memory::{
     Bytes,
 };
 use ::std::ops::Deref;
+use serde::{Serialize, Deserialize};
+use std::fmt::Formatter;
+use serde::{Deserializer, Serializer};
+use serde::de::{self, EnumAccess, Error, MapAccess, SeqAccess, Visitor};
 
 //==============================================================================
 // Enumerations
 //==============================================================================
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DPDKBuf {
     External(Bytes),
     Managed(Mbuf),
@@ -34,6 +38,33 @@ impl Deref for DPDKBuf {
             DPDKBuf::External(ref buf) => buf.deref(),
             DPDKBuf::Managed(ref mbuf) => mbuf.deref(),
         }
+    }
+}
+
+impl Serialize for DPDKBuf {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer {
+        serializer.serialize_bytes(self.deref())
+    }
+}
+struct ByteSliceVisitor;
+
+impl<'de> Visitor<'de> for ByteSliceVisitor {
+    type Value = DPDKBuf;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("Expecting a byte slice only!")
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: Error {
+        Ok(DPDKBuf::External(Bytes::from_slice(v)))
+    }
+}
+
+impl<'de> Deserialize<'de> for DPDKBuf {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de> {
+        deserializer.deserialize_bytes(ByteSliceVisitor)
     }
 }
 
