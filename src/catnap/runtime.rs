@@ -7,10 +7,6 @@
 
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
-use ::rand::{
-    distributions::Standard,
-    prelude::Distribution,
-};
 use ::runtime::{
     fail::Fail,
     memory::{
@@ -43,7 +39,6 @@ use ::runtime::{
         demi_sgarray_t,
         demi_sgaseg_t,
     },
-    utils::UtilsRuntime,
     Runtime,
 };
 use ::std::{
@@ -252,22 +247,6 @@ impl NetworkRuntime for PosixRuntime {
 
     // TODO: Rely on a default implementation for this.
     fn udp_options(&self) -> UdpConfig {
-        unreachable!()
-    }
-}
-
-/// Utilities Runtime Trait Implementation for POSIX Runtime
-impl UtilsRuntime for PosixRuntime {
-    // TODO: Rely on a default implementation for this.
-    fn rng_gen<T>(&self) -> T
-    where
-        Standard: Distribution<T>,
-    {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn rng_shuffle<T>(&self, _slice: &mut [T]) {
         unreachable!()
     }
 }

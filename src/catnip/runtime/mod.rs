@@ -4,7 +4,6 @@
 pub mod memory;
 mod network;
 mod scheduler;
-mod utils;
 
 //==============================================================================
 // Imports
@@ -21,10 +20,6 @@ use ::anyhow::{
     bail,
     format_err,
     Error,
-};
-use ::rand::{
-    rngs::SmallRng,
-    SeedableRng,
 };
 use ::runtime::{
     libdpdk::{
@@ -77,7 +72,6 @@ use ::runtime::{
     Runtime,
 };
 use ::std::{
-    cell::RefCell,
     collections::HashMap,
     ffi::CString,
     mem::MaybeUninit,
@@ -120,7 +114,6 @@ pub struct DPDKRuntime {
     tcp_options: TcpConfig,
     udp_options: UdpConfig,
     scheduler: Scheduler,
-    rng: Rc<RefCell<SmallRng>>,
 }
 
 //==============================================================================
@@ -149,8 +142,6 @@ impl DPDKRuntime {
         )
         .unwrap();
 
-        let mut rng = rand::thread_rng();
-        let rng = SmallRng::from_rng(&mut rng).expect("Failed to initialize RNG");
         let now = Instant::now();
 
         let arp_options = ArpConfig::new(
@@ -184,7 +175,6 @@ impl DPDKRuntime {
             arp_options,
             tcp_options,
             udp_options,
-            rng: Rc::new(RefCell::new(rng)),
         }
     }
 

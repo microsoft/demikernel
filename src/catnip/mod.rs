@@ -36,7 +36,7 @@ use ::std::ops::{
 use std::net::SocketAddrV4;
 
 #[cfg(feature = "profiler")]
-use ::perftools::timer;
+use ::runtime::perftools::timer;
 
 //==============================================================================
 // Exports
@@ -72,7 +72,8 @@ impl CatnipLibOS {
             config.tcp_checksum_offload,
             config.udp_checksum_offload,
         );
-        let libos: InetStack<DPDKRuntime> = InetStack::new(rt).unwrap();
+        let rng_seed: [u8; 32] = [0; 32];
+        let libos: InetStack<DPDKRuntime> = InetStack::new(rt, rng_seed).unwrap();
         CatnipLibOS(libos)
     }
 

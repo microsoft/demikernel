@@ -38,7 +38,7 @@ use ::std::{
 use std::net::SocketAddrV4;
 
 #[cfg(feature = "profiler")]
-use ::perftools::timer;
+use ::runtime::perftools::timer;
 
 //==============================================================================
 // Structures
@@ -64,7 +64,8 @@ impl CatpowderLibOS {
             &config.local_interface_name,
             config.arp_table(),
         );
-        let libos: InetStack<LinuxRuntime> = InetStack::new(rt).unwrap();
+        let rng_seed: [u8; 32] = [0; 32];
+        let libos: InetStack<LinuxRuntime> = InetStack::new(rt, rng_seed).unwrap();
         CatpowderLibOS(libos)
     }
 

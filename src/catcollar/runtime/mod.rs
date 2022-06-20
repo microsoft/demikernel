@@ -4,7 +4,6 @@
 mod memory;
 mod network;
 mod scheduler;
-mod utils;
 
 //==============================================================================
 // Imports
