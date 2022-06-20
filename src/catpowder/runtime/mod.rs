@@ -5,7 +5,6 @@ mod memory;
 mod network;
 mod rawsocket;
 mod scheduler;
-mod utils;
 
 //==============================================================================
 // Imports
@@ -14,10 +13,6 @@ mod utils;
 use self::rawsocket::{
     RawSocket,
     RawSocketAddr,
-};
-use ::rand::{
-    rngs::SmallRng,
-    SeedableRng,
 };
 use ::runtime::{
     network::{
@@ -64,7 +59,6 @@ pub struct LinuxRuntime {
     ipv4_addr: Ipv4Addr,
     ifindex: i32,
     socket: Rc<RefCell<RawSocket>>,
-    rng: Rc<RefCell<SmallRng>>,
 }
 
 //==============================================================================
@@ -106,7 +100,6 @@ impl LinuxRuntime {
             ipv4_addr,
             ifindex,
             socket: Rc::new(RefCell::new(socket)),
-            rng: Rc::new(RefCell::new(SmallRng::from_seed([0; 32]))),
         }
     }
 

@@ -30,7 +30,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use perftools::profiler;
+use ::runtime::perftools::profiler;
 
 //==============================================================================
 // UDP Ping Pong
