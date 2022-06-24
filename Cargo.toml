@@ -1,12 +1,12 @@
 [package]
 name = "demikernel"
 version = "1.0.7"
-edition = "2021"
 authors = ["Microsoft Corporation"]
+edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
+readme = "README.md"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
-readme = "README.md"
 license-file = "LICENSE.txt"
 
 [lib]
