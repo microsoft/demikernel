@@ -1,55 +1,67 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-#===============================================================================
-# System Directories
-#===============================================================================
+#=======================================================================================================================
+# Default Paths
+#=======================================================================================================================
 
 export PREFIX ?= $(HOME)
 export INSTALL_PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d | xargs | sed -e 's/\s/:/g')
 export LD_LIBRARY_PATH ?= $(HOME)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d | xargs | sed -e 's/\s/:/g')
 
-#===============================================================================
+#=======================================================================================================================
 # Project Directories
-#===============================================================================
+#=======================================================================================================================
 
 export BINDIR ?= $(CURDIR)/bin
 export INCDIR ?= $(CURDIR)/include
 export SRCDIR = $(CURDIR)/src
 
-#===============================================================================
+#=======================================================================================================================
 # Toolchain Configuration
-#===============================================================================
+#=======================================================================================================================
 
-# Rust
-export BUILD ?= --release
 export CARGO ?= $(HOME)/.cargo/bin/cargo
-export CARGO_FLAGS ?=
 
-#===============================================================================
+# Switches:
+# - TEST    Test to run.
+# - BENCH   Microbenchmark to run.
+# - FLAGS   Flags passed to cargo.
+
+# Set build mode.
+ifneq ($(DEBUG),yes)
+export BUILD = release
+else
+export BUILD = dev
+endif
+export CARGO_FLAGS += --profile $(BUILD)
+
+#=======================================================================================================================
 # Libraries
-#===============================================================================
+#=======================================================================================================================
 
-ifeq ($(BUILD),--release)
+ifeq ($(BUILD),release)
 export DEMIKERNEL_LIB := $(CURDIR)/target/release/libdemikernel.so
 else
 export DEMIKERNEL_LIB := $(CURDIR)/target/debug/libdemikernel.so
 endif
 export LIBS := $(DEMIKERNEL_LIB)
 
-#===============================================================================
+#=======================================================================================================================
 # Build Parameters
-#===============================================================================
+#=======================================================================================================================
 
 export LIBOS ?= catnap
 export CARGO_FEATURES := --features=$(LIBOS)-libos
 
+# Switch for DPDK
 ifeq ($(LIBOS),catnip)
 DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
 CARGO_FEATURES += --features=$(DRIVER)
 endif
 
+# Switch for profiler.
 export PROFILER=no
 ifeq ($(PROFILER),yes)
 CARGO_FEATURES += --features=profiler
@@ -57,31 +69,42 @@ endif
 
 CARGO_FEATURES += $(FEATURES)
 
-#===============================================================================
+#=======================================================================================================================
 
 all: all-libs all-tests
 
-all-libs: check-fmt
-	@echo "$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)"
-	$(CARGO) build $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
+# Builds all libraries.
+all-libs:
+	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 
+# Builds regression tests.
 all-tests: all-tests-rust all-tests-c
 
+# Runs regression tests for Rust.
 all-tests-rust: make-dirs all-libs
-	@echo "$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)"
-	$(CARGO) build  --tests $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS)
+	@echo "$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
 
+# Runs regression tests for C.
 all-tests-c: make-dirs all-libs
 	$(MAKE) -C tests all
 
+# Check code style formatting.
 check-fmt: check-fmt-c check-fmt-rust
 
+# Check code style formatting for C.
 check-fmt-c:
 	$(shell find include/ -name "*.h" -name "*.hxx" -name "*.c" -name "*.cpp" -type f -print0 | xargs -0 clang-format --fallback-style=Microsoft --dry-run -Werror )
 	@exit $(.SHELLSTATUS)
 
+# Check code style formatting for Rust.
 check-fmt-rust:
-	$(CARGO) fmt -- --check
+	$(CARGO) fmt --all -- --check
+
+# Builds documentation.
+doc:
+	$(CARGO) doc $(FLAGS) --no-deps
 
 # Copies demikernel artifacts to a INSTALL_PREFIX directory.
 install:
@@ -92,13 +115,16 @@ install:
 make-dirs:
 	mkdir -p $(BINDIR)
 
+# Cleans up all build artifacts.
 clean: clean-rust clean-c
 
+# Cleans up Rust build artifacts.
 clean-rust:
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
 
+# Cleans up C build artifacts.
 clean-c:
 	$(MAKE) -C tests clean
 
