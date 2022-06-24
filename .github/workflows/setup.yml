@@ -1,0 +1,44 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Setup
+
+on:
+  workflow_call:
+    secrets:
+      host:
+        required: true
+      port:
+        required: true
+      key:
+        required: true
+      username:
+        required: true
+
+env:
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  #=====================================================================================================================
+  # Setup
+  #=====================================================================================================================
+
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.host }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+          git checkout master
+          git pull
+          git checkout --detach $GITHUB_SHA

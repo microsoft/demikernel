@@ -1,0 +1,106 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Test No Wait
+
+on:
+  workflow_call:
+    inputs:
+      targetA:
+        required: true
+        type: string
+      targetB:
+        required: true
+        type: string
+    secrets:
+      hostA:
+        required: true
+      hostB:
+        required: true
+      port:
+        required: true
+      key:
+        required: true
+      username:
+        required: true
+
+env:
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+
+jobs:
+
+  #=====================================================================================================================
+  # Run
+  #=====================================================================================================================
+
+  run-hostA:
+    name: Node 0 / Run
+    runs-on: ubuntu-latest
+    steps:
+    - name: Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostA }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY
+        script: |
+          cd $GITHUB_REPOSITORY
+          sudo -E make ${{ inputs.targetA }} > nohup.out 2> nohup.err < /dev/null
+
+  run-hostB:
+    name: Node 1 / Run
+    runs-on: ubuntu-latest
+    steps:
+    - name: Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostB }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY
+        script: |
+          cd $GITHUB_REPOSITORY
+          sudo -E make ${{ inputs.targetB }} > nohup.out 2> nohup.err < /dev/null
+
+  #=====================================================================================================================
+  # Post Run
+  #=====================================================================================================================
+
+  postrun-hostA:
+    name: Node 0 / Post-Run
+    needs: [run-hostA]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Post-Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostA }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY
+        script: |
+          echo repository: $GITHUB_REPOSITORY
+          cd $GITHUB_REPOSITORY
+          cat nohup.out nohup.err
+
+  postrun-hostB:
+    name: Node 1 / Post-Run
+    needs: [run-hostB]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Post-Run
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.hostB }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY
+        script: |
+          echo repository: $GITHUB_REPOSITORY
+          cd $GITHUB_REPOSITORY
+          cat nohup.out nohup.err

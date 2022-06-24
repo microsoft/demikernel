@@ -1,0 +1,46 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Cleanup
+
+on:
+  workflow_call:
+    secrets:
+      host:
+        required: true
+      port:
+        required: true
+      key:
+        required: true
+      username:
+        required: true
+
+env:
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  GITHUB_SHA: $GITHUB_SHA
+
+jobs:
+
+  #=====================================================================================================================
+  # Cleanup
+  #=====================================================================================================================
+
+  setup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Cleanup Source Tree
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.host }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.port }}
+        envs: GITHUB_REPOSITORY,GITHUB_SHA
+        script: |
+          cd $GITHUB_REPOSITORY
+            make clean
+            git clean -fdx
+            git checkout master
+            git remote prune origin
+
