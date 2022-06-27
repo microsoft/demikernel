@@ -72,6 +72,7 @@ jobs:
 
   postrun-hostA:
     name: Node 0 / Post-Run
+    if: always()
     needs: [run-hostB]
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +91,7 @@ jobs:
 
   postrun-hostB:
     name: Node 1 / Post-Run
+    if: always()
     needs: [run-hostB]
     runs-on: ubuntu-latest
     steps:
