@@ -141,14 +141,14 @@ export TIMEOUT ?= 30
 test-system: test-system-rust
 
 # Rust system tests.
-test-system-rust: all-tests-rust
+test-system-rust:
 	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
 
 # Runs unit tests.
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: all-tests-c
+test-unit-c:
 	@for f in $(shell ls $(BINDIR)); do $(BINDIR)/$${f}; done
 
 # Rust unit tests.
