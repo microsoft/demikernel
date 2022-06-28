@@ -2,10 +2,10 @@ Demikernel
 ==========
 
 [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-11i6lgaw5-HFE_IAls7gUX3kp1XSab0g)
-[![Build Catnip LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnip-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnip-build.yml)
-[![Build Catnap LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnap-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnap-build.yml)
-[![Build Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder-build.yml)
-[![Build Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar-build.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar-build.yml)
+[![Catnip LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml)
+[![Catnap LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnap.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnap.yml)
+[![Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml)
+[![Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml)
 
 _Demikernel_ is a library operating system (LibOS) architecture designed for use
 with kernel-bypass I/O devices. This architecture offers a uniform system call
@@ -18,7 +18,7 @@ post](http://irenezhang.net/blog/2019/05/21/demikernel.html).
 
 To get details about the system, read our paper in [SOSP '21](https://doi.org/10.1145/3477132.3483569).
 
-> To read more about Demikernel check out https://aka.ms/demikernel.
+> To read more about Demikernel check out <https://aka.ms/demikernel>.
 
 Building
 --------
@@ -26,6 +26,7 @@ Building
 > **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
 
 **1. Clone This Repository**
+
 ```
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
@@ -34,28 +35,33 @@ cd $WORKDIR/demikernel                                                # Switch t
 ```
 
 **2. Install Prerequisites (Only Once)**
+
 ```
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ```
 
 **3. Build DPDK Libraries (For Catnip and Only Once)**
+
 ```
 ./scripts/setup/dpdk.sh
 ```
 
 **4. Build Demikernel with Default Parameters**
+
 ```
 make
 ```
 
 **5. Build Demikernel with Custom Parameters (Optional)**
+
 ```
 make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
 make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
 ```
 
 **6. Install Artifacts (Optional)**
+
 ```
 make install                                     # Copies build artifacts to your $HOME directory.
 make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a specific location.
@@ -63,28 +69,31 @@ make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a s
 
 Running
 --------
+
 > **Follow these instructions to run examples that are shipped in the source tree**.
 
 **1. Setup Configuration File (Only Once)**
 
 - Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
 - Open the file in `$HOME/config.yaml` for editing and do the following:
-    - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
-    - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
-    - Change `PPPP` to the port number that you will expose in the server host.
-    - Change `ZZ.ZZ.ZZ.ZZ` to match the IPv4 address that in the local host.
-    - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.
-    - Change `abcde` to match the name of the interface in the local host.
-    - Change the `arp_table` according to your setup.
-    - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
+  - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
+  - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
+  - Change `PPPP` to the port number that you will expose in the server host.
+  - Change `ZZ.ZZ.ZZ.ZZ` to match the IPv4 address that in the local host.
+  - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.
+  - Change `abcde` to match the name of the interface in the local host.
+  - Change the `arp_table` according to your setup.
+  - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
 - Save the file.
 
 **2. Enable Huge Pages (For Catnip at Every System Reboot)**
+
 ```
 sudo -E ./scripts/setup/hugepages.sh
 ```
 
 **3. Run UDP Push-Pop Demo**
+
 ```
 # Server-Side
 PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
@@ -94,6 +103,7 @@ PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
 ```
 
 **4. Run UDP Ping-Pong Demo**
+
 ```
 # Server-Side
 PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
@@ -109,6 +119,7 @@ Documentation
 - Checkout API Documentation (see instructions bellow)
 
 **1. Build API Documentation (Optional)**
+
 ```
 cargo doc --no-deps    # Build API Documentation
 cargo doc --open       # Open API Documentation
