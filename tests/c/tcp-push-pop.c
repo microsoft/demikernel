@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <demi/libos.h>
 #include <demi/sga.h>
+#include <demi/wait.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -121,10 +122,10 @@ static void run_client(const struct sockaddr_in *const addr)
 
 static void usage(const char *const progname)
 {
-    fprintf(stderr, "Usage: %s MODE local-ipv4 local-port [remote-ipv4] [remote-port]\n", progname);
-    fprintf(stderr, "Modes:\n");
-    fprintf(stderr, "  --client    Launch program in client mode.\n");
-    fprintf(stderr, "  --server    Launch program in server mode.\n");
+    fprintf(stderr, "Usage: %s MODE ipv4-address port\n", progname);
+    fprintf(stderr, "MODE:\n");
+    fprintf(stderr, "  --client    Run in client mode.\n");
+    fprintf(stderr, "  --server    Run in server mode.\n");
 }
 
 void build_addr(const char *const ip_str, const char *const port_str, struct sockaddr_in *const addr)
@@ -144,22 +145,28 @@ int main(int argc, const char *argv[])
 {
     struct sockaddr_in addr = {0};
 
-    reg_sighandlers();
-    assert(demi_init(argc, argv) == 0); // needed by both server and client
-
-    if (argc == 4 && !strcmp(argv[1], "--server"))
+    if (argc != 4)
     {
-        build_addr(argv[2], argv[3], &addr);
+        usage(argv[0]);
+        return (EXIT_FAILURE);
+    }
+
+    reg_sighandlers();
+    assert(demi_init(argc, (char **)argv) == 0);
+    build_addr(argv[2], argv[3], &addr);
+
+    if (!strcmp(argv[1], "--server"))
+    {
         run_server(&addr);
     }
-    else if (argc == 6 && !strcmp(argv[1], "--client"))
+    else if (!strcmp(argv[1], "--client"))
     {
-        build_addr(argv[4], argv[5], &addr);
         run_client(&addr);
     }
     else
     {
         usage(argv[0]);
+        return (EXIT_FAILURE);
     }
 
     return (EXIT_SUCCESS);
