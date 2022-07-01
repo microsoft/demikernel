@@ -461,7 +461,7 @@ impl CatcollarLibOS {
 /// Parses a [SocketAddrV4] into a [SockaddrStorage].
 fn parse_addr(endpoint: SocketAddrV4) -> SockaddrStorage {
     let addr: &Ipv4Addr = endpoint.ip();
-    let port: u16 = endpoint.port().into();
+    let port: u16 = endpoint.port();
     let ipv4: SocketAddrV4 = SocketAddrV4::new(*addr, port);
     SockaddrStorage::from(ipv4)
 }
@@ -499,7 +499,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
                 if let Some(endpoint) = addr {
-                    sga.sga_addr.sin_port = endpoint.port().into();
+                    sga.sga_addr.sin_port = endpoint.port();
                     sga.sga_addr.sin_addr.s_addr = u32::from_le_bytes(endpoint.ip().octets());
                 }
                 let qr_value: demi_qr_value_t = demi_qr_value_t { sga };

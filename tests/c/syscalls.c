@@ -241,7 +241,7 @@ static struct test tests_wait[] = {{inval_wait, "invalid demi_wait()"}, {inval_w
  *
  * @return On successful completion EXIT_SUCCESS is returned.
  */
-int main(int argc, char **argv)
+int main(int argc, char *const argv[])
 {
     ((void)argc);
     ((void)argv);

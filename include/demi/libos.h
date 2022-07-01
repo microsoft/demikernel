@@ -23,7 +23,7 @@ extern "C"
      * @return On successful completion zero is returned. On failure, an error code
      * is returned instead.
      */
-    extern int demi_init(int argc, char *argv[]);
+    extern int demi_init(int argc, char *const argv[]);
 
     /**
      * @brief Allocates an in-memory Demikernel queue.
