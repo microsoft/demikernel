@@ -21,6 +21,9 @@ export OBJ := $(SRC_C:.c=.o)
 # Suffix for executable files.
 export EXEC_SUFFIX := elf
 
+# Compiles several object files into a binary.
+export COMPILE_CMD = $(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
+
 #=======================================================================================================================
 
 # Builds everything.
@@ -28,15 +31,15 @@ all: $(OBJ) syscalls udp-push-pop tcp-push-pop
 
 # Builds system call test.
 syscalls: syscalls.o
-	$(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
+	$(COMPILE_CMD)
 
 # Builds UDP push pop test.
 udp-push-pop: udp-push-pop.o
-	$(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
+	$(COMPILE_CMD)
 
 # Builds TCP push pop test.
 tcp-push-pop: tcp-push-pop.o
-	$(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
+	$(COMPILE_CMD)
 
 # Cleans up all build artifacts.
 clean:
