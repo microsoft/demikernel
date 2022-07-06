@@ -1,5 +1,7 @@
 # Build Artifacts
 *.a
+*.elf
+*.o
 *.so
 
 # vim
