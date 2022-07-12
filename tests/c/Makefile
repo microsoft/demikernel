@@ -1,29 +1,53 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-#===============================================================================
+#=======================================================================================================================
 # Toolchain Configuration
-#===============================================================================
+#=======================================================================================================================
 
 export CC := gcc
-export CFLAGS := -Wall -Wextra -O3 -I $(INCDIR) -std=c99
+export CFLAGS := -Werror -Wall -Wextra -O3 -I $(INCDIR) -std=c99
 
-#===============================================================================
+#=======================================================================================================================
+# Build Artifacts
+#=======================================================================================================================
 
-all: all-syscalls all-udp-push-pop all-tcp-push-pop
+# C source files.
+export SRC_C := $(wildcard *.c)
 
-all-syscalls:
-	$(CC) $(CFLAGS) syscalls.c -o $(BINDIR)/syscalls $(LIBS)
+# Object files.
+export OBJ := $(SRC_C:.c=.o)
 
-all-udp-push-pop:
-	$(CC) $(CFLAGS) udp-push-pop.c -o $(BINDIR)/udp-push-pop $(LIBS)
+# Suffix for executable files.
+export EXEC_SUFFIX := elf
 
-all-tcp-push-pop:
-	$(CC) $(CFLAGS) tcp-push-pop.c -o $(BINDIR)/tcp-push-pop $(LIBS)
+# Compiles several object files into a binary.
+export COMPILE_CMD = $(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
 
-clean: clean-syscalls
+#=======================================================================================================================
 
-clean-syscalls:
-	@rm -rf $(BINDIR)/syscalls
-	@rm -rf $(BINDIR)/udp-push-pop
-	@rm -rf $(BINDIR)/tcp-push-pop
+# Builds everything.
+all: $(OBJ) syscalls udp-push-pop tcp-push-pop
+
+# Builds system call test.
+syscalls: syscalls.o
+	$(COMPILE_CMD)
+
+# Builds UDP push pop test.
+udp-push-pop: udp-push-pop.o
+	$(COMPILE_CMD)
+
+# Builds TCP push pop test.
+tcp-push-pop: tcp-push-pop.o
+	$(COMPILE_CMD)
+
+# Cleans up all build artifacts.
+clean:
+	@rm -rf $(OBJ)
+	@rm -rf $(BINDIR)/syscalls.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/udp-push-pop.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/tcp-push-pop.$(EXEC_SUFFIX)
+
+# Builds a C source file.
+%.o: %.c
+	$(CC) $(CFLAGS) $< -c -o $@

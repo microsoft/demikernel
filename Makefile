@@ -128,7 +128,7 @@ clean-rust:
 clean-c:
 	$(MAKE) -C tests clean
 
-#===============================================================================
+#=======================================================================================================================
 
 export CONFIG_PATH ?= $(HOME)/config.yaml
 export MTU ?= 1500
@@ -148,8 +148,8 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c:
-	@for f in $(shell ls $(BINDIR)); do $(BINDIR)/$${f}; done
+test-unit-c: $(BINDIR)/syscalls.elf
+	$(BINDIR)/syscalls.elf
 
 # Rust unit tests.
 # TODO: Find out a way of launching all unit tests without having to explicity state all of them.
