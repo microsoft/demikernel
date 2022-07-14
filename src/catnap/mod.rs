@@ -223,7 +223,7 @@ impl CatnapLibOS {
     }
 
     // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<QToken, Fail> {
+    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
@@ -255,7 +255,7 @@ impl CatnapLibOS {
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         trace!("push2() qd={:?}", qd);
 
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -265,7 +265,7 @@ impl CatnapLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: Buffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let addr: SockaddrStorage = parse_addr(remote);
@@ -298,7 +298,7 @@ impl CatnapLibOS {
     pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
         if buf.len() == 0 {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -363,7 +363,7 @@ impl CatnapLibOS {
         trace!("wait_any(): qts={:?}", qts);
 
         let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
-        Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
+        Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())))
     }
 
     /// Waits for any operation to complete.

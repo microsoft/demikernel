@@ -35,7 +35,7 @@ impl NetworkRuntime for IoUringRuntime {
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 

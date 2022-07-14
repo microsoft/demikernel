@@ -24,7 +24,6 @@ mod catnap;
 #[cfg(feature = "catnip-libos")]
 #[path = ""]
 mod libos_export {
-    pub use crate::catnip::DPDKBuf;
     pub(crate) use crate::catnip::{
         runtime::DPDKRuntime as Runtime,
         CatnipLibOS as NetworkLibOS,

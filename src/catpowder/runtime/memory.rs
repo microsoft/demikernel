@@ -33,17 +33,16 @@ use ::std::{
 impl MemoryRuntime for LinuxRuntime {
     /// Memory Buffer
     /// Converts a runtime buffer into a scatter-gather array.
-    fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
+    fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
         let len: usize = buf.len();
-        let sgaseg: demi_sgaseg_t = match buf.as_any().downcast_ref::<DataBuffer>() {
-            Some(dbuf) => {
+        let sgaseg: demi_sgaseg_t = match buf {
+            Buffer::Heap(dbuf) => {
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
                 demi_sgaseg_t {
                     sgaseg_buf: dbuf_ptr as *mut c_void,
                     sgaseg_len: len as u32,
                 }
             },
-            _ => panic!("cannot downcast"),
         };
         Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),
@@ -89,7 +88,7 @@ impl MemoryRuntime for LinuxRuntime {
     }
 
     /// Clones a scatter-gather array.
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -101,6 +100,6 @@ impl MemoryRuntime for LinuxRuntime {
 
         // Clone heap-managed buffer.
         let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
-        Ok(Box::new(DataBuffer::from_slice(seg_slice)))
+        Ok(Buffer::Heap(DataBuffer::from_slice(seg_slice)))
     }
 }

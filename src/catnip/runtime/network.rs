@@ -6,10 +6,6 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::catnip::runtime::memory::{
-    DPDKBuf,
-    Mbuf,
-};
 use ::arrayvec::ArrayVec;
 use ::inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE;
 use ::runtime::{
@@ -19,7 +15,10 @@ use ::runtime::{
         rte_mbuf,
         rte_pktmbuf_chain,
     },
-    memory::Buffer,
+    memory::{
+        Buffer,
+        DPDKBuffer,
+    },
     network::{
         config::{
             ArpConfig,
@@ -78,9 +77,9 @@ impl NetworkRuntime for DPDKRuntime {
                 // We're only using the header_mbuf for, well, the header.
                 header_mbuf.trim(header_mbuf.len() - header_size);
 
-                let body_mbuf = match body.as_any().downcast_ref::<DPDKBuf>() {
-                    Some(DPDKBuf::Managed(mbuf)) => mbuf.clone(),
-                    Some(DPDKBuf::External(bytes)) => {
+                let body_mbuf = match body {
+                    Buffer::DPDK(mbuf) => mbuf.clone(),
+                    Buffer::Heap(bytes) => {
                         let mut mbuf = match self.mm.alloc_body_mbuf() {
                             Ok(mbuf) => mbuf,
                             Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
@@ -90,7 +89,6 @@ impl NetworkRuntime for DPDKRuntime {
                         mbuf.trim(mbuf.len() - bytes.len());
                         mbuf
                     },
-                    _ => panic!("failed to downcast"),
                 };
                 unsafe {
                     assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()), 0);
@@ -138,7 +136,7 @@ impl NetworkRuntime for DPDKRuntime {
         }
     }
 
-    fn receive(&self) -> ArrayVec<Box<dyn Buffer>, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
@@ -154,9 +152,8 @@ impl NetworkRuntime for DPDKRuntime {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos:receive::for");
             for &packet in &packets[..nb_rx as usize] {
-                let mbuf: Mbuf = Mbuf::new(packet);
-                let dpdkbuf: DPDKBuf = DPDKBuf::Managed(mbuf);
-                let buf: Box<dyn Buffer> = Box::new(dpdkbuf);
+                let mbuf: DPDKBuffer = DPDKBuffer::new(packet);
+                let buf: Buffer = Buffer::DPDK(mbuf);
                 out.push(buf);
             }
         }

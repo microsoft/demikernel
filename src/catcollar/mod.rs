@@ -226,7 +226,7 @@ impl CatcollarLibOS {
     }
 
     // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Box<dyn Buffer>) -> Result<QToken, Fail> {
+    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
@@ -244,7 +244,7 @@ impl CatcollarLibOS {
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
-        let buf: Box<dyn Buffer> = self.runtime.clone_sgarray(sga)?;
+        let buf: Buffer = self.runtime.clone_sgarray(sga)?;
 
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -258,7 +258,7 @@ impl CatcollarLibOS {
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         trace!("push2() qd={:?}", qd);
 
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from(data));
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
@@ -268,7 +268,7 @@ impl CatcollarLibOS {
     }
 
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Box<dyn Buffer>, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: Buffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
@@ -304,7 +304,7 @@ impl CatcollarLibOS {
     pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
 
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::from_slice(data));
+        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
@@ -317,7 +317,7 @@ impl CatcollarLibOS {
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}", qd);
 
-        let buf: Box<dyn Buffer> = Box::new(DataBuffer::new(CATCOLLAR_RECVBUF_SIZE)?);
+        let buf: Buffer = Buffer::Heap(DataBuffer::new(CATCOLLAR_RECVBUF_SIZE)?);
 
         // Issue pop operation.
         match self.sockets.get(&qd) {

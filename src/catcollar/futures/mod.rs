@@ -52,7 +52,7 @@ pub enum OperationResult {
     Connect,
     Accept(QDesc),
     Push,
-    Pop(Option<SocketAddrV4>, Box<dyn Buffer>),
+    Pop(Option<SocketAddrV4>, Buffer),
     Failed(Fail),
 }
 

@@ -41,7 +41,7 @@ pub struct PushtoFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
-    buf: Box<dyn Buffer>,
+    buf: Buffer,
 }
 
 //==============================================================================
@@ -51,7 +51,7 @@ pub struct PushtoFuture {
 /// Associate Functions for Pushto Operation Descriptors
 impl PushtoFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage, buf: Box<dyn Buffer>) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage, buf: Buffer) -> Self {
         Self { qd, addr, fd, buf }
     }
 

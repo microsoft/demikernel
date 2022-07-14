@@ -32,17 +32,16 @@ use ::std::{
 /// Memory Runtime Trait Implementation for I/O User Ring Runtime
 impl MemoryRuntime for IoUringRuntime {
     /// Creates a scatter-gather array from a memory buffer.
-    fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
+    fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
         let len: usize = buf.len();
-        let sgaseg: demi_sgaseg_t = match buf.as_any().downcast_ref::<DataBuffer>() {
-            Some(dbuf) => {
+        let sgaseg: demi_sgaseg_t = match buf {
+            Buffer::Heap(dbuf) => {
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
                 demi_sgaseg_t {
                     sgaseg_buf: dbuf_ptr as *mut c_void,
                     sgaseg_len: len as u32,
                 }
             },
-            _ => panic!("cannot downcast"),
         };
         Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),
@@ -86,12 +85,12 @@ impl MemoryRuntime for IoUringRuntime {
     }
 
     /// Clones a scatter-gather array into a memory buffer.
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
         let mut len: u32 = 0;
         for i in 0..sga.sga_numsegs as usize {
             len += sga.sga_segs[i].sgaseg_len;
         }
-        let mut buf: Box<dyn Buffer> = Box::new(DataBuffer::new(len as usize).unwrap());
+        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(len as usize).unwrap());
         let mut pos: usize = 0;
         for i in 0..sga.sga_numsegs as usize {
             let seg: &demi_sgaseg_t = &sga.sga_segs[i];
