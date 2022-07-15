@@ -21,6 +21,7 @@ use ::runtime::{
     },
     memory::{
         Buffer,
+        DPDKBuffer,
         DataBuffer,
     },
     types::{
@@ -40,11 +41,7 @@ use ::std::{
 // Exports
 //==============================================================================
 
-pub use super::{
-    config::MemoryConfig,
-    dpdkbuf::DPDKBuf,
-    mbuf::Mbuf,
-};
+pub use super::config::MemoryConfig;
 
 //==============================================================================
 // Structures
@@ -85,10 +82,10 @@ impl MemoryManager {
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
-    pub fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf.as_any().downcast_ref::<DPDKBuf>() {
+    pub fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
+        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf {
             // Heap-managed buffer.
-            Some(DPDKBuf::External(dbuf)) => {
+            Buffer::Heap(dbuf) => {
                 let len: usize = dbuf.len();
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
                 (
@@ -100,7 +97,7 @@ impl MemoryManager {
                 )
             },
             // DPDK-managed buffer.
-            Some(DPDKBuf::Managed(mbuf)) => {
+            Buffer::DPDK(mbuf) => {
                 let mbuf_ptr: *mut rte_mbuf = mbuf.get_ptr();
                 let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
                     sgaseg_buf: mbuf.data_ptr() as *mut c_void,
@@ -108,9 +105,6 @@ impl MemoryManager {
                 };
                 mem::forget(mbuf);
                 (mbuf_ptr, sgaseg)
-            },
-            _ => {
-                panic!("failed to downcast");
             },
         };
 
@@ -125,16 +119,16 @@ impl MemoryManager {
 
     /// Allocates a header mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_header_mbuf(&self) -> Result<Mbuf, Fail> {
+    pub fn alloc_header_mbuf(&self) -> Result<DPDKBuffer, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.header_pool.alloc_mbuf(None)?;
-        Ok(Mbuf::new(mbuf_ptr))
+        Ok(DPDKBuffer::new(mbuf_ptr))
     }
 
     /// Allocates a body mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_body_mbuf(&self) -> Result<Mbuf, Fail> {
+    pub fn alloc_body_mbuf(&self) -> Result<DPDKBuffer, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(None)?;
-        Ok(Mbuf::new(mbuf_ptr))
+        Ok(DPDKBuffer::new(mbuf_ptr))
     }
 
     /// Allocates a scatter-gather array.
@@ -205,7 +199,7 @@ impl MemoryManager {
     }
 
     /// Clones a scatter-gather array.
-    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
+    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
@@ -216,28 +210,28 @@ impl MemoryManager {
         let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
         // Clone underlying buffer.
-        let buf: DPDKBuf = if !sga.sga_buf.is_null() {
+        let buf: Buffer = if !sga.sga_buf.is_null() {
             // Clone DPDK-managed buffer.
             let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
             let body_clone: *mut rte_mbuf = match MemoryPool::clone_mbuf(mbuf_ptr) {
                 Ok(mbuf_ptr) => mbuf_ptr,
                 Err(e) => panic!("failed to clone mbuf: {:?}", e.cause),
             };
-            let mut mbuf: Mbuf = Mbuf::new(body_clone);
+            let mut mbuf: DPDKBuffer = DPDKBuffer::new(body_clone);
             // Adjust buffer length.
-            // TODO: Replace the following method for computing the length of a mbuf once we have a proper Mbuf abstraction.
+            // TODO: Replace the following method for computing the length of a mbuf once we have a proper DPDKBuffer abstraction.
             let orig_len: usize = unsafe { ((*mbuf_ptr).buf_len - (*mbuf_ptr).data_off).into() };
             let trim: usize = orig_len - len;
             mbuf.trim(trim);
-            DPDKBuf::Managed(mbuf)
+            Buffer::DPDK(mbuf)
         } else {
             // Clone heap-managed buffer.
             let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
             let buf: DataBuffer = DataBuffer::from_slice(seg_slice);
-            DPDKBuf::External(buf)
+            Buffer::Heap(buf)
         };
 
-        Ok(Box::new(buf))
+        Ok(buf)
     }
 
     /// Returns a raw pointer to the underlying body pool.

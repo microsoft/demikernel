@@ -1,8 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::OperationResult;
+use crate::{
+    catpowder::LinuxRuntime,
+    OperationResult,
+};
 use ::runtime::{
+    memory::MemoryRuntime,
     types::{
         demi_accept_result_t,
         demi_opcode_t,
@@ -10,11 +14,10 @@ use ::runtime::{
         demi_qresult_t,
     },
     QDesc,
-    Runtime,
 };
 use ::std::mem;
 
-pub fn pack_result<RT: Runtime>(rt: &RT, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+pub fn pack_result(rt: &LinuxRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

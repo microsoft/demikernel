@@ -3,22 +3,14 @@
 
 mod config;
 pub mod consts;
-mod dpdkbuf;
 mod manager;
-mod mbuf;
 mod mempool;
 
 //==============================================================================
 // Exports
 //==============================================================================
 
-pub use self::{
-    dpdkbuf::DPDKBuf,
-    manager::{
-        Mbuf,
-        MemoryManager,
-    },
-};
+pub use self::manager::MemoryManager;
 use ::runtime::memory::Buffer;
 
 //==============================================================================
@@ -39,7 +31,7 @@ use ::runtime::{
 /// Memory Runtime Trait Implementation for DPDK Runtime
 impl MemoryRuntime for DPDKRuntime {
     /// Casts a [DPDKBuf] into an [demi_sgarray_t].
-    fn into_sgarray(&self, buf: Box<dyn Buffer>) -> Result<demi_sgarray_t, Fail> {
+    fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
         self.mm.into_sgarray(buf)
     }
 
@@ -54,7 +46,7 @@ impl MemoryRuntime for DPDKRuntime {
     }
 
     /// Clones a [demi_sgarray_t].
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Box<dyn Buffer>, Fail> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
         self.mm.clone_sgarray(sga)
     }
 }

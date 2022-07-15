@@ -71,7 +71,7 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -99,7 +99,7 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
+    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: Buffer) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -147,7 +147,7 @@ impl IoUring {
     }
 
     /// Pops a buffer from the target IO user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: Box<dyn Buffer>) -> Result<u64, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<u64, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
