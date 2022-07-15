@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 [package]
 name = "demikernel"
 version = "1.0.8"
