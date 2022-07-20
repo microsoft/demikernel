@@ -166,19 +166,13 @@ static bool inval_sgafree(void)
 
 /**
  * @brief Issues an invalid system call to demi_wait().
- *
- * TODO: Enable this test once we fix https://github.com/demikernel/scheduler/issues/6.
  */
 static bool inval_wait(void)
 {
-#if 0
     demi_qresult_t *qr = NULL;
     demi_qtoken_t qt = -1;
 
     return (demi_wait(qr, qt) != 0);
-#else
-    return (true);
-#endif
 }
 
 /**
