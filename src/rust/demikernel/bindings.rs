@@ -514,12 +514,11 @@ pub extern "C" fn demi_getsockopt(
 
 /// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
-    // TODO: Review why we need byte ordering conversion here.
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     if sin.sin_family != libc::AF_INET as u16 {
         return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
     };
-    let addr: Ipv4Addr = { Ipv4Addr::from(u32::from_be_bytes(sin.sin_addr.s_addr.to_le_bytes())) };
+    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
     Ok(SocketAddrV4::new(addr, sin.sin_port))
 }
 
