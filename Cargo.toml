@@ -14,6 +14,7 @@ license-file = "LICENSE.txt"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+path = "src/rust/lib.rs"
 
 [dependencies]
 arrayvec = "0.7.2"
