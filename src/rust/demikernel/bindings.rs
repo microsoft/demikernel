@@ -512,10 +512,31 @@ pub extern "C" fn demi_getsockopt(
 // Standalone Functions
 //==============================================================================
 
-/// Converts a [sockaddr] into a [Ipv4Endpoint].
+/// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     // TODO: Review why we need byte ordering conversion here.
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
+    if sin.sin_family != libc::AF_INET as u16 {
+        return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
+    };
     let addr: Ipv4Addr = { Ipv4Addr::from(u32::from_be_bytes(sin.sin_addr.s_addr.to_le_bytes())) };
     Ok(SocketAddrV4::new(addr, sin.sin_port))
+}
+
+#[test]
+fn test_sockaddr_to_ipv4endpoint() {
+    // SocketAddrV4: 127.0.0.1:80
+    let saddr: libc::sockaddr = {
+        sockaddr {
+            sa_family: libc::AF_INET as u16,
+            sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        }
+    };
+    match sockaddr_to_ipv4endpoint(&saddr) {
+        Ok(addr) => {
+            assert_eq!(addr.port(), 80);
+            assert_eq!(addr.ip(), &Ipv4Addr::new(127, 0, 0, 1));
+        },
+        _ => panic!("failed to convert"),
+    }
 }
