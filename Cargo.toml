@@ -23,7 +23,7 @@ libc = "0.2.126"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
-nix = "0.24.1"
+nix = "0.24.2"
 
 inetstack = { git = "https://github.com/demikernel/inetstack", rev = "57f8bd3e01f251305b9b2ae1728bbb0aad3c6e06" }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "6840b8d9472207edc61c01c79f2d33ebfaf5aa8c" }
