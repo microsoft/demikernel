@@ -21,7 +21,14 @@ use ::runtime::{
     fail::Fail,
     libdpdk::load_mlx_driver,
     memory::MemoryRuntime,
-    task::SchedulerRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::{
+        Timer,
+        TimerRc,
+    },
     types::{
         demi_qresult_t,
         demi_sgarray_t,
@@ -29,11 +36,15 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::ops::{
-    Deref,
-    DerefMut,
+use ::std::{
+    net::SocketAddrV4,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+    rc::Rc,
+    time::Instant,
 };
-use std::net::SocketAddrV4;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -43,7 +54,10 @@ use ::runtime::perftools::timer;
 //==============================================================================
 
 /// Catnip LibOS
-pub struct CatnipLibOS(InetStack<DPDKRuntime>);
+pub struct CatnipLibOS {
+    scheduler: Scheduler,
+    inetstack: InetStack<DPDKRuntime>,
+}
 
 //==============================================================================
 // Associate Functions
@@ -66,9 +80,12 @@ impl CatnipLibOS {
             config.tcp_checksum_offload,
             config.udp_checksum_offload,
         );
+        let now: Instant = Instant::now();
+        let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
+        let scheduler: Scheduler = Scheduler::default();
         let rng_seed: [u8; 32] = [0; 32];
-        let libos: InetStack<DPDKRuntime> = InetStack::new(rt, rng_seed).unwrap();
-        CatnipLibOS(libos)
+        let inetstack: InetStack<DPDKRuntime> = InetStack::new(rt, scheduler.clone(), clock, rng_seed).unwrap();
+        CatnipLibOS { inetstack, scheduler }
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
@@ -84,7 +101,12 @@ impl CatnipLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_push(qd, buf)?;
-                Ok(self.rt().schedule(future).into_raw().into())
+                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
+                let qt: QToken = handle.into_raw().into();
+                Ok(qt)
             },
             Err(e) => Err(e),
         }
@@ -100,7 +122,12 @@ impl CatnipLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_pushto(qd, buf, to)?;
-                Ok(self.rt().schedule(future).into_raw().into())
+                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
+                let qt: QToken = handle.into_raw().into();
+                Ok(qt)
             },
             Err(e) => Err(e),
         }
@@ -136,13 +163,13 @@ impl Deref for CatnipLibOS {
     type Target = InetStack<DPDKRuntime>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.inetstack
     }
 }
 
 /// Mutable De-Reference Trait Implementation for Catnip LibOS
 impl DerefMut for CatnipLibOS {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.inetstack
     }
 }

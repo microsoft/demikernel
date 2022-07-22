@@ -20,7 +20,14 @@ use ::inetstack::{
 use ::runtime::{
     fail::Fail,
     memory::MemoryRuntime,
-    task::SchedulerRuntime,
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
+    },
+    timer::{
+        Timer,
+        TimerRc,
+    },
     types::{
         demi_qresult_t,
         demi_sgarray_t,
@@ -29,13 +36,14 @@ use ::runtime::{
     QToken,
 };
 use ::std::{
+    net::SocketAddrV4,
     ops::{
         Deref,
         DerefMut,
     },
+    rc::Rc,
     time::Instant,
 };
-use std::net::SocketAddrV4;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -45,7 +53,10 @@ use ::runtime::perftools::timer;
 //==============================================================================
 
 /// Catpowder LibOS
-pub struct CatpowderLibOS(InetStack<LinuxRuntime>);
+pub struct CatpowderLibOS {
+    scheduler: Scheduler,
+    inetstack: InetStack<LinuxRuntime>,
+}
 
 //==============================================================================
 // Associate Functions
@@ -58,15 +69,17 @@ impl CatpowderLibOS {
         let config_path: String = std::env::var("CONFIG_PATH").unwrap();
         let config: Config = Config::new(config_path);
         let rt: LinuxRuntime = LinuxRuntime::new(
-            Instant::now(),
             config.local_link_addr,
             config.local_ipv4_addr,
             &config.local_interface_name,
             config.arp_table(),
         );
+        let now: Instant = Instant::now();
+        let scheduler: Scheduler = Scheduler::default();
+        let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let rng_seed: [u8; 32] = [0; 32];
-        let libos: InetStack<LinuxRuntime> = InetStack::new(rt, rng_seed).unwrap();
-        CatpowderLibOS(libos)
+        let inetstack: InetStack<LinuxRuntime> = InetStack::new(rt, scheduler.clone(), clock, rng_seed).unwrap();
+        CatpowderLibOS { scheduler, inetstack }
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
@@ -82,7 +95,12 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_push(qd, buf)?;
-                Ok(self.rt().schedule(future).into_raw().into())
+                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
+                let qt: QToken = handle.into_raw().into();
+                Ok(qt)
             },
             Err(e) => Err(e),
         }
@@ -98,7 +116,12 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_pushto(qd, buf, to)?;
-                Ok(self.rt().schedule(future).into_raw().into())
+                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
+                let qt: QToken = handle.into_raw().into();
+                Ok(qt)
             },
             Err(e) => Err(e),
         }
@@ -134,13 +157,13 @@ impl Deref for CatpowderLibOS {
     type Target = InetStack<LinuxRuntime>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.inetstack
     }
 }
 
 /// Mutable De-Reference Trait Implementation for Catpowder LibOS
 impl DerefMut for CatpowderLibOS {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.inetstack
     }
 }
