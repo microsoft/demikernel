@@ -55,7 +55,6 @@ use ::runtime::{
     network::types::Ipv4Addr,
     queue::IoQueueTable,
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
     types::{
         demi_accept_result_t,
         demi_opcode_t,
@@ -73,7 +72,6 @@ use ::std::{
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
-    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -110,7 +108,7 @@ impl CatcollarLibOS {
         logging::initialize();
         let qtable: IoQueueTable = IoQueueTable::new();
         let sockets: HashMap<QDesc, RawFd> = HashMap::new();
-        let runtime: IoUringRuntime = IoUringRuntime::new(Instant::now());
+        let runtime: IoUringRuntime = IoUringRuntime::new();
         Self {
             qtable,
             sockets,
@@ -190,7 +188,13 @@ impl CatcollarLibOS {
             Some(&fd) => {
                 let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
                 let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => {
+                        self.qtable.free(new_qd);
+                        return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
+                    },
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
@@ -206,7 +210,10 @@ impl CatcollarLibOS {
             Some(&fd) => {
                 let addr: SockaddrStorage = parse_addr(remote);
                 let future: Operation = Operation::from(ConnectFuture::new(qd, fd, addr));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
@@ -233,7 +240,10 @@ impl CatcollarLibOS {
                 let request_id: RequestId = self.runtime.push(fd, buf.clone())?;
 
                 let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), request_id, qd));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
@@ -276,7 +286,10 @@ impl CatcollarLibOS {
                 let request_id: RequestId = self.runtime.pushto(fd, addr, buf.clone())?;
 
                 let future: Operation = Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
@@ -324,7 +337,10 @@ impl CatcollarLibOS {
             Some(&fd) => {
                 let request_id: RequestId = self.runtime.pop(fd, buf.clone())?;
                 let future: Operation = Operation::from(PopFuture::new(self.runtime.clone(), request_id, qd, buf));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 let qt: QToken = handle.into_raw().into();
                 Ok(qt)
             },
@@ -349,14 +365,14 @@ impl CatcollarLibOS {
         trace!("wait2() qt={:?}", qt);
 
         // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         };
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll();
+            self.runtime.scheduler.poll();
 
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
@@ -383,13 +399,13 @@ impl CatcollarLibOS {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll();
+            self.runtime.scheduler.poll();
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+                let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
                 };
@@ -431,7 +447,7 @@ impl CatcollarLibOS {
 
     /// Takes out the operation result descriptor associated with the target scheduler handle.
     fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let boxed_future: Box<dyn Any> = self.runtime.take(handle).as_any();
+        let boxed_future: Box<dyn Any> = self.runtime.scheduler.take(handle).as_any();
         let boxed_concrete_type: Operation = *boxed_future.downcast::<Operation>().expect("Wrong type!");
 
         let (qd, new_qd, new_fd, qr): (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) =

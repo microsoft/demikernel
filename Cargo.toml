@@ -25,8 +25,8 @@ yaml-rust = "0.4.5"
 log = "0.4.17"
 nix = "0.24.2"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "57f8bd3e01f251305b9b2ae1728bbb0aad3c6e06" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "6840b8d9472207edc61c01c79f2d33ebfaf5aa8c" }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "8992a849adf045dbac82c156edfe8790417ddb41" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "0addd02918cc50e4f9c5210ecbfea89bea3227b5" }
 
 [[test]]
 name = "sga"

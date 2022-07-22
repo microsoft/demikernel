@@ -3,18 +3,14 @@
 
 pub mod memory;
 mod network;
-mod scheduler;
 
 //==============================================================================
 // Imports
 //==============================================================================
 
-use self::{
-    memory::{
-        consts::DEFAULT_MAX_BODY_SIZE,
-        MemoryManager,
-    },
-    scheduler::TimerRc,
+use self::memory::{
+    consts::DEFAULT_MAX_BODY_SIZE,
+    MemoryManager,
 };
 use ::anyhow::{
     bail,
@@ -67,8 +63,6 @@ use ::runtime::{
         },
         types::MacAddress,
     },
-    scheduler::Scheduler,
-    timer::Timer,
     Runtime,
 };
 use ::std::{
@@ -76,11 +70,7 @@ use ::std::{
     ffi::CString,
     mem::MaybeUninit,
     net::Ipv4Addr,
-    rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 //==============================================================================
@@ -106,14 +96,12 @@ macro_rules! expect_zero {
 #[derive(Clone)]
 pub struct DPDKRuntime {
     mm: MemoryManager,
-    timer: TimerRc,
     port_id: u16,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     arp_options: ArpConfig,
     tcp_options: TcpConfig,
     udp_options: UdpConfig,
-    scheduler: Scheduler,
 }
 
 //==============================================================================
@@ -142,8 +130,6 @@ impl DPDKRuntime {
         )
         .unwrap();
 
-        let now = Instant::now();
-
         let arp_options = ArpConfig::new(
             Some(Duration::from_secs(15)),
             Some(Duration::from_secs(20)),
@@ -166,9 +152,7 @@ impl DPDKRuntime {
         let udp_options = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
 
         Self {
-            timer: TimerRc(Rc::new(Timer::new(now))),
             mm,
-            scheduler: Scheduler::default(),
             port_id,
             link_addr,
             ipv4_addr,

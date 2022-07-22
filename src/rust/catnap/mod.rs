@@ -58,7 +58,6 @@ use ::runtime::{
     network::types::Ipv4Addr,
     queue::IoQueueTable,
     scheduler::SchedulerHandle,
-    task::SchedulerRuntime,
     types::{
         demi_accept_result_t,
         demi_opcode_t,
@@ -76,7 +75,6 @@ use ::std::{
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
-    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -107,7 +105,7 @@ impl CatnapLibOS {
         logging::initialize();
         let qtable: IoQueueTable = IoQueueTable::new();
         let sockets: HashMap<QDesc, RawFd> = HashMap::new();
-        let runtime: PosixRuntime = PosixRuntime::new(Instant::now());
+        let runtime: PosixRuntime = PosixRuntime::new();
         Self {
             qtable,
             sockets,
@@ -187,7 +185,13 @@ impl CatnapLibOS {
             Some(&fd) => {
                 let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
                 let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => {
+                        self.qtable.free(new_qd);
+                        return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
+                    },
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
@@ -203,7 +207,10 @@ impl CatnapLibOS {
             Some(&fd) => {
                 let addr: SockaddrStorage = parse_addr(remote);
                 let future: Operation = Operation::from(ConnectFuture::new(qd, fd, addr));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
@@ -227,7 +234,10 @@ impl CatnapLibOS {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
@@ -270,7 +280,10 @@ impl CatnapLibOS {
             Some(&fd) => {
                 let addr: SockaddrStorage = parse_addr(remote);
                 let future: Operation = Operation::from(PushtoFuture::new(qd, fd, addr, buf));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 Ok(handle.into_raw().into())
             },
             _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
@@ -315,7 +328,10 @@ impl CatnapLibOS {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 let future: Operation = Operation::from(PopFuture::new(qd, fd));
-                let handle: SchedulerHandle = self.runtime.schedule(future);
+                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                };
                 let qt: QToken = handle.into_raw().into();
                 Ok(qt)
             },
@@ -340,14 +356,14 @@ impl CatnapLibOS {
         trace!("wait2() qt={:?}", qt);
 
         // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         };
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll();
+            self.runtime.scheduler.poll();
 
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
@@ -374,13 +390,13 @@ impl CatnapLibOS {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll();
+            self.runtime.scheduler.poll();
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.runtime.get_handle(qt.into()) {
+                let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
                 };
@@ -422,7 +438,7 @@ impl CatnapLibOS {
 
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
     fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let boxed_future: Box<dyn Any> = self.runtime.take(handle).as_any();
+        let boxed_future: Box<dyn Any> = self.runtime.scheduler.take(handle).as_any();
         let boxed_concrete_type: Operation = *boxed_future.downcast::<Operation>().expect("Wrong type!");
 
         let (qd, new_qd, new_fd, qr): (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) =

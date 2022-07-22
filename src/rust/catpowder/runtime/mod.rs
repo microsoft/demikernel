@@ -4,7 +4,6 @@
 mod memory;
 mod network;
 mod rawsocket;
-mod scheduler;
 
 //==============================================================================
 // Imports
@@ -23,11 +22,6 @@ use ::runtime::{
         },
         types::MacAddress,
     },
-    scheduler::Scheduler,
-    timer::{
-        Timer,
-        TimerRc,
-    },
     Runtime,
 };
 use ::std::{
@@ -37,10 +31,7 @@ use ::std::{
     net::Ipv4Addr,
     num::ParseIntError,
     rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 //==============================================================================
@@ -50,8 +41,6 @@ use ::std::{
 /// Linux Runtime
 #[derive(Clone)]
 pub struct LinuxRuntime {
-    timer: TimerRc,
-    scheduler: Scheduler,
     tcp_options: TcpConfig,
     udp_options: UdpConfig,
     arp_options: ArpConfig,
@@ -68,13 +57,7 @@ pub struct LinuxRuntime {
 /// Associate Functions for Linux Runtime
 impl LinuxRuntime {
     /// Instantiates a Linux Runtime.
-    pub fn new(
-        now: Instant,
-        link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
-        ifname: &str,
-        arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Self {
+    pub fn new(link_addr: MacAddress, ipv4_addr: Ipv4Addr, ifname: &str, arp: HashMap<Ipv4Addr, MacAddress>) -> Self {
         let arp_options: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
             Some(Duration::from_secs(1)),
@@ -91,8 +74,6 @@ impl LinuxRuntime {
         socket.bind(&sockaddr).expect("could not bind raw socket");
 
         Self {
-            scheduler: Scheduler::default(),
-            timer: TimerRc(Rc::new(Timer::new(now))),
             tcp_options: TcpConfig::default(),
             udp_options: UdpConfig::default(),
             arp_options,

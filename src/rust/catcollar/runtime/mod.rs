@@ -3,7 +3,6 @@
 
 mod memory;
 mod network;
-mod scheduler;
 
 //==============================================================================
 // Imports
@@ -15,10 +14,6 @@ use ::runtime::{
     fail::Fail,
     memory::Buffer,
     scheduler::Scheduler,
-    timer::{
-        Timer,
-        TimerRc,
-    },
     Runtime,
 };
 use ::std::{
@@ -26,7 +21,6 @@ use ::std::{
     collections::HashMap,
     os::unix::prelude::RawFd,
     rc::Rc,
-    time::Instant,
 };
 
 //==============================================================================
@@ -47,10 +41,8 @@ pub struct RequestId(u64);
 /// I/O User Ring Runtime
 #[derive(Clone)]
 pub struct IoUringRuntime {
-    /// Timer.
-    timer: TimerRc,
     /// Scheduler
-    scheduler: Scheduler,
+    pub scheduler: Scheduler,
     /// Underlying io_uring.
     io_uring: Rc<RefCell<IoUring>>,
     /// Pending requests.
@@ -64,10 +56,9 @@ pub struct IoUringRuntime {
 /// Associate Functions for I/O User Ring Runtime
 impl IoUringRuntime {
     /// Creates an I/O user ring runtime.
-    pub fn new(now: Instant) -> Self {
+    pub fn new() -> Self {
         let io_uring: IoUring = IoUring::new(CATCOLLAR_NUM_RINGS).expect("cannot create io_uring");
         Self {
-            timer: TimerRc(Rc::new(Timer::new(now))),
             scheduler: Scheduler::default(),
             io_uring: Rc::new(RefCell::new(io_uring)),
             pending: HashMap::new(),
