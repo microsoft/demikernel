@@ -116,7 +116,7 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     }
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("bind() failed: {:?}", e);
@@ -204,7 +204,7 @@ pub extern "C" fn demi_connect(
     }
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("connect() failed: {:?}", e);
@@ -275,7 +275,7 @@ pub extern "C" fn demi_pushto(
     let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_ipv4endpoint(saddr) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             warn!("pushto() failed: {:?}", e);
@@ -513,7 +513,7 @@ pub extern "C" fn demi_getsockopt(
 //==============================================================================
 
 /// Converts a [sockaddr] into a [SocketAddrV4].
-fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
+fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     if sin.sin_family != libc::AF_INET as u16 {
         return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
@@ -524,7 +524,7 @@ fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
 }
 
 #[test]
-fn test_sockaddr_to_ipv4endpoint() {
+fn test_sockaddr_to_socketaddrv4() {
     // SocketAddrV4: 127.0.0.1:80
     let saddr: libc::sockaddr = {
         sockaddr {
@@ -532,7 +532,7 @@ fn test_sockaddr_to_ipv4endpoint() {
             sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         }
     };
-    match sockaddr_to_ipv4endpoint(&saddr) {
+    match sockaddr_to_socketaddrv4(&saddr) {
         Ok(addr) => {
             assert_eq!(addr.port(), 80);
             assert_eq!(addr.ip(), &Ipv4Addr::new(127, 0, 0, 1));
