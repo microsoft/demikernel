@@ -519,7 +519,8 @@ fn sockaddr_to_ipv4endpoint(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
         return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
     };
     let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
-    Ok(SocketAddrV4::new(addr, sin.sin_port))
+    let port: u16 = u16::from_be(sin.sin_port);
+    Ok(SocketAddrV4::new(addr, port))
 }
 
 #[test]
