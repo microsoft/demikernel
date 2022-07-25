@@ -514,6 +514,7 @@ pub extern "C" fn demi_getsockopt(
 
 /// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
+    // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     if sin.sin_family != libc::AF_INET as u16 {
         return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
@@ -525,6 +526,8 @@ fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
 
 #[test]
 fn test_sockaddr_to_socketaddrv4() {
+    // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
+
     // SocketAddrV4: 127.0.0.1:80
     let saddr: libc::sockaddr = {
         sockaddr {
