@@ -395,7 +395,6 @@ impl CatnapLibOS {
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
-                // TODO: move this out of the loop.
                 let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
