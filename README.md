@@ -56,8 +56,10 @@ make
 **5. Build Demikernel with Custom Parameters (Optional)**
 
 ```
-make LIBOS=[catnap|catnip|catpowder]   # Build using a specific LibOS.
-make DRIVER=[mlx4|mlx5]                # Build using a specific driver.
+make LIBOS=[catnap|catnip|catpowder]    # Build using a specific LibOS.
+make DRIVER=[mlx4|mlx5]                 # Build using a specific driver.
+make LD_LIBRARY_PATH=/path/to/libs      # Override path to shared libraries. Applicable to Catnap and Catcollar.
+make PKG_CONFIG_PATH=/path/to/pkgconfig # Override path to config files. Applicable to Catnap and Catcollar.
 ```
 
 **6. Install Artifacts (Optional)**
