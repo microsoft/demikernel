@@ -75,6 +75,8 @@ all: all-libs all-tests
 
 # Builds all libraries.
 all-libs:
+	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
+	@echo "PKG_CONFIG_PATH: $(PKG_CONFIG_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 
