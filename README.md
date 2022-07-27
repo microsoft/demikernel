@@ -1,5 +1,4 @@
-Demikernel
-==========
+# Demikernel
 
 [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-11i6lgaw5-HFE_IAls7gUX3kp1XSab0g)
 [![Catnip LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml)
@@ -20,61 +19,59 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 > To read more about Demikernel check out <https://aka.ms/demikernel>.
 
-Building
---------
+## Building
 
 > **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
 
-**1. Clone This Repository**
+### 1. Clone This Repository
 
-```
+```bash
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
 git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
 cd $WORKDIR/demikernel                                                # Switch to repository's source tree.
 ```
 
-**2. Install Prerequisites (Only Once)**
+### 2. Install Prerequisites (Only Once)
 
-```
+```bash
 sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
 ```
 
-**3. Build DPDK Libraries (For Catnip and Only Once)**
+### 3. Build DPDK Libraries (For Catnip and Only Once)
 
-```
+```bash
 ./scripts/setup/dpdk.sh
 ```
 
-**4. Build Demikernel with Default Parameters**
+### 4. Build Demikernel with Default Parameters
 
-```
+```bash
 make
 ```
 
-**5. Build Demikernel with Custom Parameters (Optional)**
+### 5. Build Demikernel with Custom Parameters (Optional)
 
-```
-make LIBOS=[catnap|catnip|catpowder]    # Build using a specific LibOS.
-make DRIVER=[mlx4|mlx5]                 # Build using a specific driver.
-make LD_LIBRARY_PATH=/path/to/libs      # Override path to shared libraries. Applicable to Catnap and Catcollar.
-make PKG_CONFIG_PATH=/path/to/pkgconfig # Override path to config files. Applicable to Catnap and Catcollar.
+```bash
+make LIBOS=[catnap|catnip|catpowder|catcollar]    # Build using a specific LibOS.
+make DRIVER=[mlx4|mlx5]                           # Build using a specific driver.
+make LD_LIBRARY_PATH=/path/to/libs                # Override path to shared libraries. Applicable to Catnap and Catcollar.
+make PKG_CONFIG_PATH=/path/to/pkgconfig           # Override path to config files. Applicable to Catnap and Catcollar.
 ```
 
-**6. Install Artifacts (Optional)**
+### 6. Install Artifacts (Optional)
 
-```
+```bash
 make install                                     # Copies build artifacts to your $HOME directory.
 make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a specific location.
 ```
 
-Running
---------
+## Running
 
 > **Follow these instructions to run examples that are shipped in the source tree**.
 
-**1. Setup Configuration File (Only Once)**
+### 1. Setup Configuration File (Only Once)
 
 - Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
 - Open the file in `$HOME/config.yaml` for editing and do the following:
@@ -88,60 +85,60 @@ Running
   - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
 - Save the file.
 
-**2. Enable Huge Pages (For Catnip at Every System Reboot)**
+### 2. Enable Huge Pages (For Catnip at Every System Reboot)
 
-```
+```bash
 sudo -E ./scripts/setup/hugepages.sh
 ```
 
-**3. Run UDP Push-Pop Demo**
+### 3. Run UDP Push-Pop Demo
 
-```
+> For Catnap and Catcollar, you don't need to run with super-user privileges.
+
+```bash
 # Server-Side
-PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnip test-system
 
 # Client-Side
-PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnap test-system
+PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnip test-system
 ```
 
-**4. Run UDP Ping-Pong Demo**
+### 4. Run UDP Ping-Pong Demo
 
-```
+> For Catnap and Catcollar, you don't need to run with super-user privileges.
+
+```bash
 # Server-Side
-PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnip test-system
 
 # Client-Side
-PEER=client TEST=udp_ping_pong sudo -E make LIBOS=catnap test-system
+PEER=client TEST=udp_ping_pong sudo -E make LIBOS=catnip test-system
 ```
 
-Documentation
---------------
+## Documentation
 
 - Checkout UML Documentation in [`etc/README.md`](./etc/README.md)
 - Checkout API Documentation (see instructions bellow)
 
-**1. Build API Documentation (Optional)**
+### 1. Build API Documentation (Optional)
 
-```
+```bash
 cargo doc --no-deps    # Build API Documentation
 cargo doc --open       # Open API Documentation
 ```
 
-Code of Conduct
----------------
+## Code of Conduct
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-Contributing
-------------
+## Contributing
 
 See [CONTRIBUTING](./CONTRIBUTING) for details regarding how to contribute
 to this project.
 
-Usage Statement
---------------
+## Usage Statement
 
 This project is a prototype. As such, we provide no guarantees that it will
 work and you are assuming any risks with using the code. We welcome comments
