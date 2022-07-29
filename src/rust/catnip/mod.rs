@@ -56,7 +56,8 @@ use ::runtime::perftools::timer;
 /// Catnip LibOS
 pub struct CatnipLibOS {
     scheduler: Scheduler,
-    inetstack: InetStack<DPDKRuntime>,
+    inetstack: InetStack,
+    rt: Rc<DPDKRuntime>,
 }
 
 //==============================================================================
@@ -69,7 +70,7 @@ impl CatnipLibOS {
         load_mlx_driver();
         let config_path: String = std::env::var("CONFIG_PATH").unwrap();
         let config: Config = Config::new(config_path);
-        let rt: DPDKRuntime = DPDKRuntime::new(
+        let rt: Rc<DPDKRuntime> = Rc::new(DPDKRuntime::new(
             config.local_ipv4_addr,
             &config.eal_init_args(),
             config.arp_table(),
@@ -79,13 +80,28 @@ impl CatnipLibOS {
             config.mss,
             config.tcp_checksum_offload,
             config.udp_checksum_offload,
-        );
+        ));
         let now: Instant = Instant::now();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let scheduler: Scheduler = Scheduler::default();
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: InetStack<DPDKRuntime> = InetStack::new(rt, scheduler.clone(), clock, rng_seed).unwrap();
-        CatnipLibOS { inetstack, scheduler }
+        let inetstack: InetStack = InetStack::new(
+            rt.clone(),
+            scheduler.clone(),
+            clock,
+            rt.link_addr,
+            rt.ipv4_addr,
+            rt.udp_options.clone(),
+            rt.tcp_options.clone(),
+            rng_seed,
+            rt.arp_options.clone(),
+        )
+        .unwrap();
+        CatnipLibOS {
+            inetstack,
+            scheduler,
+            rt,
+        }
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
@@ -95,7 +111,7 @@ impl CatnipLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
-        match self.rt().clone_sgarray(sga) {
+        match self.rt.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -116,7 +132,7 @@ impl CatnipLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
-        match self.rt().clone_sgarray(sga) {
+        match self.rt.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -140,7 +156,7 @@ impl CatnipLibOS {
         trace!("wait(): qt={:?}", qt);
 
         let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
-        Ok(pack_result(self.rt(), result, qd, qt.into()))
+        Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
     }
 
     /// Waits for any operation to complete.
@@ -150,7 +166,17 @@ impl CatnipLibOS {
         trace!("wait_any(): qts={:?}", qts);
 
         let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
-        Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
+        Ok((i, pack_result(self.rt.clone(), r, qd, qts[i].into())))
+    }
+
+    /// Allocates a scatter-gather array.
+    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.rt.alloc_sgarray(size)
+    }
+
+    /// Releases a scatter-gather array.
+    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.rt.free_sgarray(sga)
     }
 }
 
@@ -160,7 +186,7 @@ impl CatnipLibOS {
 
 /// De-Reference Trait Implementation for Catnip LibOS
 impl Deref for CatnipLibOS {
-    type Target = InetStack<DPDKRuntime>;
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack

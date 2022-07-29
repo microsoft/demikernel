@@ -55,7 +55,8 @@ use ::runtime::perftools::timer;
 /// Catpowder LibOS
 pub struct CatpowderLibOS {
     scheduler: Scheduler,
-    inetstack: InetStack<LinuxRuntime>,
+    inetstack: InetStack,
+    rt: Rc<LinuxRuntime>,
 }
 
 //==============================================================================
@@ -68,18 +69,33 @@ impl CatpowderLibOS {
     pub fn new() -> Self {
         let config_path: String = std::env::var("CONFIG_PATH").unwrap();
         let config: Config = Config::new(config_path);
-        let rt: LinuxRuntime = LinuxRuntime::new(
+        let rt: Rc<LinuxRuntime> = Rc::new(LinuxRuntime::new(
             config.local_link_addr,
             config.local_ipv4_addr,
             &config.local_interface_name,
             config.arp_table(),
-        );
+        ));
         let now: Instant = Instant::now();
         let scheduler: Scheduler = Scheduler::default();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: InetStack<LinuxRuntime> = InetStack::new(rt, scheduler.clone(), clock, rng_seed).unwrap();
-        CatpowderLibOS { scheduler, inetstack }
+        let inetstack: InetStack = InetStack::new(
+            rt.clone(),
+            scheduler.clone(),
+            clock,
+            rt.link_addr,
+            rt.ipv4_addr,
+            rt.udp_options.clone(),
+            rt.tcp_options.clone(),
+            rng_seed,
+            rt.arp_options.clone(),
+        )
+        .unwrap();
+        CatpowderLibOS {
+            scheduler,
+            inetstack,
+            rt,
+        }
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
@@ -89,7 +105,7 @@ impl CatpowderLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
-        match self.rt().clone_sgarray(sga) {
+        match self.rt.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -110,7 +126,7 @@ impl CatpowderLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
-        match self.rt().clone_sgarray(sga) {
+        match self.rt.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -134,7 +150,7 @@ impl CatpowderLibOS {
         trace!("wait(): qt={:?}", qt);
 
         let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
-        Ok(pack_result(self.rt(), result, qd, qt.into()))
+        Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
     }
 
     /// Waits for any operation to complete.
@@ -144,7 +160,17 @@ impl CatpowderLibOS {
         trace!("wait_any(): qts={:?}", qts);
 
         let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
-        Ok((i, pack_result(self.rt(), r, qd, qts[i].into())))
+        Ok((i, pack_result(self.rt.clone(), r, qd, qts[i].into())))
+    }
+
+    /// Allocates a scatter-gather array.
+    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.rt.alloc_sgarray(size)
+    }
+
+    /// Releases a scatter-gather array.
+    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.rt.free_sgarray(sga)
     }
 }
 
@@ -154,7 +180,7 @@ impl CatpowderLibOS {
 
 /// De-Reference Trait Implementation for Catpowder LibOS
 impl Deref for CatpowderLibOS {
-    type Target = InetStack<LinuxRuntime>;
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack

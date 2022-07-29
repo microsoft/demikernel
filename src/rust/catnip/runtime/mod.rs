@@ -97,11 +97,11 @@ macro_rules! expect_zero {
 pub struct DPDKRuntime {
     mm: MemoryManager,
     port_id: u16,
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
-    arp_options: ArpConfig,
-    tcp_options: TcpConfig,
-    udp_options: UdpConfig,
+    pub link_addr: MacAddress,
+    pub ipv4_addr: Ipv4Addr,
+    pub arp_options: ArpConfig,
+    pub tcp_options: TcpConfig,
+    pub udp_options: UdpConfig,
 }
 
 //==============================================================================

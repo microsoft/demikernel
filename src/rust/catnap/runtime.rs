@@ -5,7 +5,6 @@
 // Imports
 //==============================================================================
 
-use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::runtime::{
     fail::Fail,
@@ -13,16 +12,6 @@ use ::runtime::{
         Buffer,
         DataBuffer,
         MemoryRuntime,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
-        },
-        consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
-        NetworkRuntime,
     },
     scheduler::Scheduler,
     types::{
@@ -33,7 +22,6 @@ use ::runtime::{
 };
 use ::std::{
     mem,
-    net::Ipv4Addr,
     ptr,
     slice,
 };
@@ -137,44 +125,6 @@ impl MemoryRuntime for PosixRuntime {
         Ok(Buffer::Heap(DataBuffer::from_slice(unsafe {
             slice::from_raw_parts(ptr as *const u8, len)
         })))
-    }
-}
-
-/// Network Runtime Trait Implementation for POSIX Runtime
-impl NetworkRuntime for PosixRuntime {
-    // TODO: Rely on a default implementation for this.
-    fn transmit(&self, _pkt: impl runtime::network::PacketBuf) {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn local_link_addr(&self) -> MacAddress {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn arp_options(&self) -> ArpConfig {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn tcp_options(&self) -> TcpConfig {
-        unreachable!()
-    }
-
-    // TODO: Rely on a default implementation for this.
-    fn udp_options(&self) -> UdpConfig {
-        unreachable!()
     }
 }
 
