@@ -7,7 +7,10 @@
 
 use ::nix::{
     errno::Errno,
-    sys::socket,
+    sys::{
+        socket,
+        socket::SockaddrStorage,
+    },
 };
 use ::runtime::{
     fail::Fail,
@@ -19,6 +22,10 @@ use ::runtime::{
 };
 use ::std::{
     future::Future,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
@@ -69,18 +76,29 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<Buffer, Fail>;
+    type Output = Result<(Option<SocketAddrV4>, Buffer), Fail>;
 
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
         let mut bytes: [u8; POP_SIZE] = [0; POP_SIZE];
-        match socket::recv(self_.fd, &mut bytes[..], socket::MsgFlags::empty()) {
+        match socket::recvfrom::<SockaddrStorage>(self_.fd, &mut bytes[..]) {
             // Operation completed.
-            Ok(nbytes) => {
+            Ok((nbytes, socketaddr)) => {
                 trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
                 let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(&bytes[0..nbytes]));
-                Poll::Ready(Ok(buf))
+                let addr: Option<SocketAddrV4> = match socketaddr {
+                    Some(addr) => match addr.as_sockaddr_in() {
+                        Some(sin) => {
+                            let ip: Ipv4Addr = Ipv4Addr::from(sin.ip());
+                            let port: u16 = sin.port();
+                            Some(SocketAddrV4::new(ip, port))
+                        },
+                        None => None,
+                    },
+                    _ => None,
+                };
+                Poll::Ready(Ok((addr, buf)))
             },
             // Operation in progress.
             Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
