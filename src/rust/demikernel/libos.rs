@@ -4,14 +4,11 @@
 use crate::{
     NetworkLibOS,
     OperationResult,
-    Runtime,
 };
 use ::libc::c_int;
 use ::runtime::{
     fail::Fail,
     logging,
-    memory::MemoryRuntime,
-    network::NetworkRuntime,
     types::{
         demi_qresult_t,
         demi_sgarray_t,
@@ -19,10 +16,7 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::net::{
-    Ipv4Addr,
-    SocketAddrV4,
-};
+use ::std::net::SocketAddrV4;
 
 //==============================================================================
 // Structures
@@ -153,23 +147,15 @@ impl LibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.rt().alloc_sgarray(size)
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
+        }
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.rt().free_sgarray(sga)
-    }
-
-    #[deprecated]
-    pub fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.rt().local_ipv4_addr()
-    }
-
-    #[deprecated]
-    fn rt(&self) -> &Runtime {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.rt(),
+            LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
         }
     }
 }

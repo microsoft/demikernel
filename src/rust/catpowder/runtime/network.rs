@@ -17,23 +17,14 @@ use ::runtime::{
         DataBuffer,
     },
     network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
-        },
         consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
         NetworkRuntime,
         PacketBuf,
     },
 };
-use ::std::{
-    mem::{
-        self,
-        MaybeUninit,
-    },
-    net::Ipv4Addr,
+use ::std::mem::{
+    self,
+    MaybeUninit,
 };
 
 //==============================================================================
@@ -43,7 +34,7 @@ use ::std::{
 /// Network Runtime Trait Implementation for Linux Runtime
 impl NetworkRuntime for LinuxRuntime {
     /// Transmits a single [PacketBuf].
-    fn transmit(&self, pkt: impl PacketBuf) {
+    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -84,30 +75,5 @@ impl NetworkRuntime for LinuxRuntime {
         } else {
             ArrayVec::new()
         }
-    }
-
-    /// Returns the [MacAddress] of the local endpoint.
-    fn local_link_addr(&self) -> MacAddress {
-        self.link_addr.clone()
-    }
-
-    /// Returns the [Ipv4Addr] of the local endpoint.
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr.clone()
-    }
-
-    /// Returns the TCP Configuration Descriptor of the target [LinuxRuntime].
-    fn tcp_options(&self) -> TcpConfig {
-        self.tcp_options.clone()
-    }
-
-    /// Returns the UDP Configuration Descriptor of the target [LinuxRuntime].
-    fn udp_options(&self) -> UdpConfig {
-        self.udp_options.clone()
-    }
-
-    /// Returns the ARP Configuration Descriptor of the target [LinuxRuntime].
-    fn arp_options(&self) -> ArpConfig {
-        self.arp_options.clone()
     }
 }

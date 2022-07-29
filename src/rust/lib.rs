@@ -24,40 +24,28 @@ mod catnap;
 #[cfg(feature = "catnip-libos")]
 #[path = ""]
 mod libos_export {
-    pub(crate) use crate::catnip::{
-        runtime::DPDKRuntime as Runtime,
-        CatnipLibOS as NetworkLibOS,
-    };
+    pub(crate) use crate::catnip::CatnipLibOS as NetworkLibOS;
     pub use ::inetstack::operations::OperationResult;
 }
 
 #[cfg(feature = "catpowder-libos")]
 #[path = ""]
 mod libos_export {
-    pub(crate) use crate::catpowder::{
-        runtime::LinuxRuntime as Runtime,
-        CatpowderLibOS as NetworkLibOS,
-    };
+    pub(crate) use crate::catpowder::CatpowderLibOS as NetworkLibOS;
     pub use ::inetstack::operations::OperationResult;
 }
 #[cfg(feature = "catcollar-libos")]
 #[path = ""]
 mod libos_export {
+    pub(crate) use crate::catcollar::CatcollarLibOS as NetworkLibOS;
     pub use crate::catcollar::OperationResult;
-    pub(crate) use crate::catcollar::{
-        CatcollarLibOS as NetworkLibOS,
-        IoUringRuntime as Runtime,
-    };
 }
 
 #[cfg(feature = "catnap-libos")]
 #[path = ""]
 mod libos_export {
+    pub(crate) use crate::catnap::CatnapLibOS as NetworkLibOS;
     pub use crate::catnap::OperationResult;
-    pub(crate) use crate::catnap::{
-        CatnapLibOS as NetworkLibOS,
-        PosixRuntime as Runtime,
-    };
 }
 
 pub use libos_export::*;

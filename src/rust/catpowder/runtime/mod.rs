@@ -41,11 +41,11 @@ use ::std::{
 /// Linux Runtime
 #[derive(Clone)]
 pub struct LinuxRuntime {
-    tcp_options: TcpConfig,
-    udp_options: UdpConfig,
-    arp_options: ArpConfig,
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
+    pub tcp_options: TcpConfig,
+    pub udp_options: UdpConfig,
+    pub arp_options: ArpConfig,
+    pub link_addr: MacAddress,
+    pub ipv4_addr: Ipv4Addr,
     ifindex: i32,
     socket: Rc<RefCell<RawSocket>>,
 }

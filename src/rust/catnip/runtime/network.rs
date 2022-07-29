@@ -20,21 +20,12 @@ use ::runtime::{
         DPDKBuffer,
     },
     network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
-        },
         consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
         NetworkRuntime,
         PacketBuf,
     },
 };
-use ::std::{
-    mem,
-    net::Ipv4Addr,
-};
+use ::std::mem;
 
 #[cfg(feature = "profiler")]
 use ::runtime::perftools::timer;
@@ -45,7 +36,7 @@ use ::runtime::perftools::timer;
 
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for DPDKRuntime {
-    fn transmit(&self, buf: impl PacketBuf) {
+    fn transmit(&self, buf: Box<dyn PacketBuf>) {
         // Alloc header mbuf, check header size.
         // Serialize header.
         // Decide if we can inline the data --
@@ -159,25 +150,5 @@ impl NetworkRuntime for DPDKRuntime {
         }
 
         out
-    }
-
-    fn local_link_addr(&self) -> MacAddress {
-        self.link_addr.clone()
-    }
-
-    fn local_ipv4_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr.clone()
-    }
-
-    fn tcp_options(&self) -> TcpConfig {
-        self.tcp_options.clone()
-    }
-
-    fn udp_options(&self) -> UdpConfig {
-        self.udp_options.clone()
-    }
-
-    fn arp_options(&self) -> ArpConfig {
-        self.arp_options.clone()
     }
 }
