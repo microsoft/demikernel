@@ -23,6 +23,7 @@ use ::std::{
     mem,
     ptr,
     slice,
+    sync::Arc,
 };
 
 //==============================================================================
@@ -53,8 +54,8 @@ impl MemoryRuntime for IoUringRuntime {
 
     /// Allocates a scatter-gather array.
     fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-        let ptr: *mut [u8] = Box::into_raw(allocation);
+        let allocation: Arc<[u8]> = unsafe { Arc::new_uninit_slice(size).assume_init() };
+        let ptr: *const [u8] = Arc::into_raw(allocation);
         let sgaseg = demi_sgaseg_t {
             sgaseg_buf: ptr as *mut _,
             sgaseg_len: size as u32,
@@ -72,8 +73,8 @@ impl MemoryRuntime for IoUringRuntime {
         assert_eq!(sga.sga_numsegs, 1);
         for i in 0..sga.sga_numsegs as usize {
             let seg: &demi_sgaseg_t = &sga.sga_segs[i];
-            let allocation: Box<[u8]> = unsafe {
-                Box::from_raw(slice::from_raw_parts_mut(
+            let allocation: Arc<[u8]> = unsafe {
+                Arc::from_raw(slice::from_raw_parts_mut(
                     seg.sgaseg_buf as *mut _,
                     seg.sgaseg_len as usize,
                 ))
@@ -94,8 +95,13 @@ impl MemoryRuntime for IoUringRuntime {
         let mut pos: usize = 0;
         for i in 0..sga.sga_numsegs as usize {
             let seg: &demi_sgaseg_t = &sga.sga_segs[i];
-            let seg_slice = unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
+            let seg_slice: Arc<[u8]> = unsafe {
+                Arc::from_raw(slice::from_raw_parts(
+                    seg.sgaseg_buf as *mut u8,
+                    seg.sgaseg_len as usize,
+                ))
+            };
+            buf[pos..(pos + seg_slice.len())].copy_from_slice(&seg_slice[..]);
             pos += seg_slice.len();
         }
         Ok(buf)
