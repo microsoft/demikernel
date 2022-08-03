@@ -218,8 +218,8 @@ static void usage(const char *progname)
 {
     fprintf(stderr, "Usage: %s MODE local-ipv4 local-port remote-ipv4 remote-port\n", progname);
     fprintf(stderr, "Modes:\n");
-    fprintf(stderr, "  --client    Launch program in client mode.\n");
-    fprintf(stderr, "  --server    Launch program in server mode.\n");
+    fprintf(stderr, "  --client    Run program in client mode.\n");
+    fprintf(stderr, "  --server    Run program in server mode.\n");
 
     exit(EXIT_SUCCESS);
 }
