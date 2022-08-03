@@ -27,7 +27,7 @@ export COMPILE_CMD = $(CC) $(CFLAGS) $< -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
 #=======================================================================================================================
 
 # Builds everything.
-all: $(OBJ) syscalls udp-push-pop udp-ping-pong tcp-push-pop
+all: $(OBJ) syscalls udp-push-pop udp-ping-pong tcp-push-pop tcp-ping-pong
 
 # Builds system call test.
 syscalls: syscalls.o
@@ -45,6 +45,10 @@ udp-ping-pong: udp-ping-pong.o
 tcp-push-pop: tcp-push-pop.o
 	$(COMPILE_CMD)
 
+# Builds TCP ping pong test.
+tcp-ping-pong: tcp-ping-pong.o
+	$(COMPILE_CMD)
+
 # Cleans up all build artifacts.
 clean:
 	@rm -rf $(OBJ)
@@ -52,6 +56,7 @@ clean:
 	@rm -rf $(BINDIR)/udp-push-pop.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/udp-ping-pong.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/tcp-push-pop.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/tcp-ping-pong.$(EXEC_SUFFIX)
 
 # Builds a C source file.
 %.o: %.c
