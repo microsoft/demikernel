@@ -132,8 +132,8 @@ impl Operation {
             // Pop operation.
             Operation::Pop(FutureResult {
                 future,
-                done: Some(Ok(buf)),
-            }) => (future.get_qd(), None, None, OperationResult::Pop(None, buf)),
+                done: Some(Ok((addr, buf))),
+            }) => (future.get_qd(), None, None, OperationResult::Pop(addr, buf)),
             Operation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),

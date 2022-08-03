@@ -33,6 +33,7 @@ use ::std::{
         self,
         null_mut,
     },
+    rc::Rc,
 };
 
 //==============================================================================
@@ -71,7 +72,7 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<u64, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -88,18 +89,38 @@ impl IoUring {
             }
 
             // Submit operation.
-            liburing::io_uring_sqe_set_data(sqe, data_ptr as *mut c_void);
-            liburing::io_uring_prep_send(sqe, sockfd, data_ptr as *const c_void, len, 0);
+            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
+                iov_base: data_ptr as *mut c_void,
+                iov_len: len as u64,
+            });
+            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
+                msg_name: ptr::null_mut() as *mut _,
+                msg_namelen: 0,
+                msg_iov: iov_ptr,
+                msg_iovlen: 1,
+                msg_control: ptr::null_mut() as *mut _,
+                msg_controllen: 0,
+                msg_flags: 0,
+            });
+            let msg_ptr: *const liburing::msghdr = Rc::into_raw(msg);
+            liburing::io_uring_sqe_set_data(sqe, msg_ptr as *mut c_void);
+            liburing::io_uring_prep_sendmsg(sqe, sockfd, msg_ptr, 0);
             if liburing::io_uring_submit(io_uring) < 1 {
                 return Err(Fail::new(libc::EAGAIN, "failed to submit push operation"));
             }
-        }
 
-        Ok(data_ptr as u64)
+            Ok(msg_ptr)
+        }
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn pushto(&mut self, sockfd: RawFd, addr: SockaddrStorage, buf: Buffer) -> Result<u64, Fail> {
+    pub fn pushto(
+        &mut self,
+        sockfd: RawFd,
+        addr: SockaddrStorage,
+        buf: Buffer,
+    ) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -122,13 +143,12 @@ impl IoUring {
             }
 
             // Submit operation.
-            liburing::io_uring_sqe_set_data(sqe, data_ptr as *mut c_void);
-            let mut iov: liburing::iovec = liburing::iovec {
+            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
                 iov_len: len as u64,
-            };
-            let iov_ptr: *mut liburing::iovec = &mut iov as *mut liburing::iovec;
-            let msg: liburing::msghdr = liburing::msghdr {
+            });
+            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
                 msg_name: sockaddr_ptr as *mut c_void,
                 msg_namelen: addrlen as u32,
                 msg_iov: iov_ptr,
@@ -136,18 +156,20 @@ impl IoUring {
                 msg_control: ptr::null_mut() as *mut _,
                 msg_controllen: 0,
                 msg_flags: 0,
-            };
-            liburing::io_uring_prep_sendmsg(sqe, sockfd, &msg, 0);
+            });
+            let msg_ptr: *const liburing::msghdr = Rc::into_raw(msg);
+            liburing::io_uring_sqe_set_data(sqe, msg_ptr as *mut c_void);
+            liburing::io_uring_prep_sendmsg(sqe, sockfd, msg_ptr, 0);
             if liburing::io_uring_submit(io_uring) < 1 {
                 return Err(Fail::new(libc::EAGAIN, "failed to submit push operation"));
             }
-        }
 
-        Ok(data_ptr as u64)
+            Ok(msg_ptr)
+        }
     }
 
     /// Pops a buffer from the target IO user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<u64, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -164,18 +186,33 @@ impl IoUring {
             }
 
             // Submit operation.
-            liburing::io_uring_sqe_set_data(sqe, data_ptr as *mut c_void);
-            liburing::io_uring_prep_recv(sqe, sockfd, data_ptr as *mut c_void, len, 0);
+            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
+                iov_base: data_ptr as *mut c_void,
+                iov_len: len as u64,
+            });
+            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
+                msg_name: ptr::null_mut() as *mut _,
+                msg_namelen: 0,
+                msg_iov: iov_ptr,
+                msg_iovlen: 1,
+                msg_control: ptr::null_mut() as *mut _,
+                msg_controllen: 0,
+                msg_flags: 0,
+            });
+            let msg_ptr: *const liburing::msghdr = Rc::into_raw(msg);
+            liburing::io_uring_sqe_set_data(sqe, msg_ptr as *mut c_void);
+            liburing::io_uring_prep_recvmsg(sqe, sockfd, msg_ptr as *mut liburing::msghdr, 0);
             if liburing::io_uring_submit(io_uring) < 1 {
                 return Err(Fail::new(libc::EAGAIN, "failed to submit pop operation"));
             }
 
-            Ok(data_ptr as u64)
+            Ok(msg_ptr)
         }
     }
 
     /// Waits for an operation to complete in the target IO user ring.
-    pub fn wait(&mut self) -> Result<(u64, i32), Fail> {
+    pub fn wait(&mut self) -> Result<(*mut liburing::msghdr, i32), Fail> {
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
         unsafe {
             let mut cqe_ptr: *mut liburing::io_uring_cqe = null_mut();
@@ -187,9 +224,9 @@ impl IoUring {
                 return Err(Fail::new(errno, "operation in progress"));
             } else if wait_nr == 0 {
                 let size: i32 = (*cqe_ptr).res;
-                let buf_addr: u64 = liburing::io_uring_cqe_get_data(cqe_ptr) as u64;
+                let msg_ptr: *mut liburing::msghdr = liburing::io_uring_cqe_get_data(cqe_ptr) as *mut liburing::msghdr;
                 liburing::io_uring_cqe_seen(io_uring, cqe_ptr);
-                return Ok((buf_addr, size));
+                return Ok((msg_ptr, size));
             }
         }
 

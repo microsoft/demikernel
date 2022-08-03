@@ -12,13 +12,22 @@ use super::iouring::IoUring;
 use ::nix::sys::socket::SockaddrStorage;
 use ::runtime::{
     fail::Fail,
+    liburing,
     memory::Buffer,
     scheduler::Scheduler,
     Runtime,
 };
 use ::std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{
+        HashMap,
+        HashSet,
+    },
+    mem,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     os::unix::prelude::RawFd,
     rc::Rc,
 };
@@ -36,7 +45,7 @@ const CATCOLLAR_NUM_RINGS: u32 = 128;
 
 /// Request ID
 #[derive(Clone, Copy, Hash, Debug, Eq, PartialEq)]
-pub struct RequestId(u64);
+pub struct RequestId(pub *const liburing::msghdr);
 
 /// I/O User Ring Runtime
 #[derive(Clone)]
@@ -46,7 +55,9 @@ pub struct IoUringRuntime {
     /// Underlying io_uring.
     io_uring: Rc<RefCell<IoUring>>,
     /// Pending requests.
-    pending: HashMap<RequestId, i32>,
+    pending: HashSet<RequestId>,
+    /// Completed requests.
+    completed: HashMap<RequestId, i32>,
 }
 
 //==============================================================================
@@ -61,28 +72,56 @@ impl IoUringRuntime {
         Self {
             scheduler: Scheduler::default(),
             io_uring: Rc::new(RefCell::new(io_uring)),
-            pending: HashMap::new(),
+            pending: HashSet::new(),
+            completed: HashMap::new(),
         }
     }
 
     /// Pushes a buffer to the target I/O user ring.
     pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<RequestId, Fail> {
-        let request_id: RequestId = self.io_uring.borrow_mut().push(sockfd, buf)?.into();
+        let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().push(sockfd, buf)?;
+        let request_id: RequestId = RequestId(msg_ptr);
+        self.pending.insert(request_id);
+        Ok(request_id)
+    }
+
+    /// Pushes a buffer to the target I/O user ring.
+    pub fn pushto(&mut self, sockfd: i32, addr: SockaddrStorage, buf: Buffer) -> Result<RequestId, Fail> {
+        let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?;
+        let request_id: RequestId = RequestId(msg_ptr);
+        self.pending.insert(request_id);
         Ok(request_id)
     }
 
     /// Pops a buffer from the target I/O user ring.
     pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<RequestId, Fail> {
-        let request_id: RequestId = self.io_uring.borrow_mut().pop(sockfd, buf)?.into();
+        let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().pop(sockfd, buf)?;
+        let request_id: RequestId = RequestId(msg_ptr);
+        self.pending.insert(request_id);
         Ok(request_id)
     }
 
     /// Peeks for the completion of an operation in the target I/O user ring.
-    pub fn peek(&mut self, request_id: RequestId) -> Result<Option<i32>, Fail> {
+    pub fn peek(&mut self, request_id: RequestId) -> Result<(Option<SocketAddrV4>, Option<i32>), Fail> {
         // Check if pending request has completed.
-        match self.pending.remove(&request_id) {
+        match self.completed.remove(&request_id) {
             // The target request has already completed.
-            Some(size) => Ok(Some(size)),
+            Some(size) => {
+                let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
+                let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
+                    None
+                } else {
+                    let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
+                    let sin: libc::sockaddr_in =
+                        unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
+                    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+                    let port: u16 = u16::from_be(sin.sin_port);
+                    Some(SocketAddrV4::new(addr, port))
+                };
+
+                // Done.
+                Ok((addr, Some(size)))
+            },
             // The target request may not be completed.
             None => {
                 // Peek the underlying io_uring.
@@ -90,20 +129,34 @@ impl IoUringRuntime {
                     // Some operation has completed.
                     Ok((other_request_id, size)) => {
                         // This is not the request that we are waiting for.
-                        // So, queue this request and return.
-                        if request_id != other_request_id.into() {
-                            self.pending.insert(other_request_id.into(), size);
-                            return Ok(None);
+                        if request_id.0 != other_request_id {
+                            let other_request_id: RequestId = RequestId(other_request_id);
+                            match self.pending.remove(&other_request_id) {
+                                true => self.completed.insert(other_request_id, size),
+                                false => None,
+                            };
+                            return Ok((None, None));
                         }
+                        let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
+                        let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
+                            None
+                        } else {
+                            let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
+                            let sin: libc::sockaddr_in =
+                                unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
+                            let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+                            let port: u16 = u16::from_be(sin.sin_port);
+                            Some(SocketAddrV4::new(addr, port))
+                        };
 
                         // Done.
-                        Ok(Some(size))
+                        Ok((addr, Some(size)))
                     },
                     // Something bad has happened.
                     Err(e) => {
                         match e.errno {
                             // Operation in progress.
-                            libc::EAGAIN => Ok(None),
+                            libc::EAGAIN => Ok((None, None)),
                             // Operation failed.
                             _ => Err(e),
                         }
@@ -111,12 +164,6 @@ impl IoUringRuntime {
                 }
             },
         }
-    }
-
-    /// Pushes a buffer to the target I/O user ring.
-    pub fn pushto(&self, sockfd: i32, addr: SockaddrStorage, buf: Buffer) -> Result<RequestId, Fail> {
-        let request_id: RequestId = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?.into();
-        Ok(request_id)
     }
 }
 
@@ -126,10 +173,3 @@ impl IoUringRuntime {
 
 /// Runtime Trait Implementation for I/O User Ring Runtime
 impl Runtime for IoUringRuntime {}
-
-/// Conversion Trait Implementation for Request IDs
-impl From<u64> for RequestId {
-    fn from(val: u64) -> Self {
-        RequestId(val)
-    }
-}

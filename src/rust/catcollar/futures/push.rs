@@ -66,18 +66,18 @@ impl Future for PushFuture {
         let self_: &mut PushFuture = self.get_mut();
         match self_.rt.peek(self_.request_id) {
             // Operation completed.
-            Ok(Some(size)) if size >= 0 => {
+            Ok((_, Some(size))) if size >= 0 => {
                 trace!("data pushed ({:?} bytes)", size);
                 Poll::Ready(Ok(()))
             },
             // Operation in progress, re-schedule future.
-            Ok(None) => {
+            Ok((None, None)) => {
                 trace!("push in progress");
                 ctx.waker().wake_by_ref();
                 Poll::Pending
             },
             // Underlying asynchronous operation failed.
-            Ok(Some(size)) if size < 0 => {
+            Ok((None, Some(size))) if size < 0 => {
                 let errno: i32 = -size;
                 warn!("push failed ({:?})", errno);
                 Poll::Ready(Err(Fail::new(errno, "I/O error")))
