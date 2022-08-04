@@ -35,12 +35,12 @@ impl Test {
         self.config.remote_addr()
     }
 
-    pub fn mkbuf(&self, fill_char: u8) -> Vec<u8> {
-        assert!(self.config.0.buffer_size <= self.config.0.mss);
+    pub fn mkbuf(&self, buffer_size: usize, fill_char: u8) -> Vec<u8> {
+        assert!(buffer_size <= self.config.0.mss);
 
-        let mut data: Vec<u8> = Vec::<u8>::with_capacity(self.config.0.buffer_size);
+        let mut data: Vec<u8> = Vec::<u8>::with_capacity(buffer_size);
 
-        for _ in 0..self.config.0.buffer_size {
+        for _ in 0..buffer_size {
             data.push(fill_char);
         }
 

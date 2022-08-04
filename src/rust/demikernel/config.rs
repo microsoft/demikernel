@@ -25,7 +25,6 @@ use ::yaml_rust::{
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub buffer_size: usize,
     pub config_obj: Yaml,
     pub mtu: u16,
     pub mss: usize,
@@ -122,10 +121,7 @@ impl Config {
         let udp_checksum_offload = env::var("UDP_CHECKSUM_OFFLOAD").is_ok();
         let tcp_checksum_offload = env::var("TCP_CHECKSUM_OFFLOAD").is_ok();
 
-        let buffer_size: usize = 64;
-
         Self {
-            buffer_size,
             use_jumbo_frames,
             disable_arp,
             local_ipv4_addr,
