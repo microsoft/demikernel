@@ -18,14 +18,14 @@ path = "src/rust/lib.rs"
 
 [dependencies]
 arrayvec = "0.7.2"
-anyhow = "1.0.58"
-libc = "0.2.126"
+anyhow = "1.0.59"
+libc = "0.2.127"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
 nix = "0.24.2"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "448f1d542089d7dc2d3d7dc974583023ee7663d3" }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "e05647ff9332ef0aee4812f2eb66c831842d6b74" }
 runtime = { git = "https://github.com/demikernel/runtime", rev = "8362132e2476fb7b0825b3f8ae976ded8a98b956" }
 
 [[test]]
