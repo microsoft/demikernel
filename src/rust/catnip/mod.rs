@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+mod config;
 mod interop;
 pub mod runtime;
 
@@ -71,15 +72,15 @@ impl CatnipLibOS {
         let config_path: String = std::env::var("CONFIG_PATH").unwrap();
         let config: Config = Config::new(config_path);
         let rt: Rc<DPDKRuntime> = Rc::new(DPDKRuntime::new(
-            config.local_ipv4_addr,
+            config.local_ipv4_addr(),
             &config.eal_init_args(),
             config.arp_table(),
-            config.disable_arp,
-            config.use_jumbo_frames,
-            config.mtu,
-            config.mss,
-            config.tcp_checksum_offload,
-            config.udp_checksum_offload,
+            config.disable_arp(),
+            config.use_jumbo_frames(),
+            config.mtu(),
+            config.mss(),
+            config.tcp_checksum_offload(),
+            config.udp_checksum_offload(),
         ));
         let now: Instant = Instant::now();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));

@@ -33,6 +33,12 @@ use ::std::{
 use ::runtime::perftools::profiler;
 
 //==============================================================================
+// Constants
+//==============================================================================
+
+const BUFFER_SIZE: usize = 64;
+
+//==============================================================================
 // UDP Ping Pong
 //==============================================================================
 
@@ -57,7 +63,7 @@ fn udp_ping_pong() {
     if test.is_server() {
         let mut npongs: usize = 0;
         loop {
-            let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+            let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
             let mut qt: QToken = match test.libos.pop(sockfd) {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to pop: {:?}", e.cause),
@@ -101,7 +107,7 @@ fn udp_ping_pong() {
         let mut npongs: usize = 1000;
         let mut npings: usize = 0;
         let mut qtokens: Vec<QToken> = Vec::new();
-        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
 
         // Push pop first packet.
         let (qt_push, qt_pop): (QToken, QToken) = {
@@ -175,7 +181,7 @@ fn tcp_ping_pong_single() {
     let nrounds: usize = 1024;
     let local_addr: SocketAddrV4 = test.local_addr();
     let remote_addr: SocketAddrV4 = test.remote_addr();
-    let expectbuf: Vec<u8> = test.mkbuf(fill_char);
+    let expectbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
 
     // Setup peer.
     let sockqd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
@@ -240,7 +246,7 @@ fn tcp_ping_pong_single() {
         #[cfg(feature = "profiler")]
         profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
-        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
             Ok(qt) => qt,
             Err(e) => panic!("connect failed: {:?}", e.cause),
@@ -300,7 +306,7 @@ fn tcp_ping_pong_multiple() {
     let nrounds: usize = 1024;
     let local_addr: SocketAddrV4 = test.local_addr();
     let remote_addr: SocketAddrV4 = test.remote_addr();
-    let expectbuf: Vec<u8> = test.mkbuf(fill_char);
+    let expectbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
 
     // Setup peer.
     let sockqd: QDesc = match test.libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
@@ -380,7 +386,7 @@ fn tcp_ping_pong_multiple() {
         #[cfg(feature = "profiler")]
         profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
-        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
             Ok(qt) => qt,
             Err(e) => panic!("connect failed: {:?}", e.cause),

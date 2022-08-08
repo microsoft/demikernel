@@ -35,8 +35,8 @@ impl Test {
         self.config.remote_addr()
     }
 
-    pub fn mkbuf(&self, fill_char: u8) -> Vec<u8> {
-        let a: Vec<u8> = (0..self.config.0.buffer_size).map(|_| fill_char).collect();
+    pub fn mkbuf(&self, buffer_size: usize, fill_char: u8) -> Vec<u8> {
+        let a: Vec<u8> = (0..buffer_size).map(|_| fill_char).collect();
         a
     }
 }

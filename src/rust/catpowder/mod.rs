@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+mod config;
 mod interop;
 pub mod runtime;
 
@@ -36,6 +37,7 @@ use ::runtime::{
     QToken,
 };
 use ::std::{
+    collections::HashMap,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -70,10 +72,10 @@ impl CatpowderLibOS {
         let config_path: String = std::env::var("CONFIG_PATH").unwrap();
         let config: Config = Config::new(config_path);
         let rt: Rc<LinuxRuntime> = Rc::new(LinuxRuntime::new(
-            config.local_link_addr,
-            config.local_ipv4_addr,
-            &config.local_interface_name,
-            config.arp_table(),
+            config.local_link_addr(),
+            config.local_ipv4_addr(),
+            &config.local_interface_name(),
+            HashMap::default(),
         ));
         let now: Instant = Instant::now();
         let scheduler: Scheduler = Scheduler::default();

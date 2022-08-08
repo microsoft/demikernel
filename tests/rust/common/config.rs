@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use ::anyhow::{
     format_err,
     Error,
 };
-use ::demikernel::demikernel::config::Config;
 use ::std::{
     env,
+    fs::File,
+    io::Read,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -15,25 +20,40 @@ use ::std::{
     panic,
     str::FromStr,
 };
+use ::yaml_rust::{
+    Yaml,
+    YamlLoader,
+};
 
-//==============================================================================
-// Test
-//==============================================================================
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
-pub struct TestConfig(pub Config);
+pub struct TestConfig(Yaml);
+
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
 
 impl TestConfig {
     pub fn new() -> Self {
-        let config = Config::new(std::env::var("CONFIG_PATH").unwrap());
+        let config_path: String = std::env::var("CONFIG_PATH").unwrap();
+        let mut config_s: String = String::new();
+        File::open(config_path).unwrap().read_to_string(&mut config_s).unwrap();
+        let config: Vec<Yaml> = YamlLoader::load_from_str(&config_s).unwrap();
+        let config_obj: &Yaml = match &config[..] {
+            &[ref c] => c,
+            _ => Err(anyhow::format_err!("Wrong number of config objects")).unwrap(),
+        };
 
-        Self(config)
+        Self(config_obj.clone())
     }
 
     fn addr(&self, k1: &str, k2: &str) -> Result<SocketAddrV4, Error> {
-        let addr = &self.0.config_obj[k1][k2];
-        let host_s = addr["host"].as_str().ok_or(format_err!("Missing host")).unwrap();
-        let host = Ipv4Addr::from_str(host_s).unwrap();
-        let port_i = addr["port"].as_i64().ok_or(format_err!("Missing port")).unwrap();
+        let addr: &Yaml = &self.0[k1][k2];
+        let host_s: &str = addr["host"].as_str().ok_or(format_err!("Missing host")).unwrap();
+        let host: Ipv4Addr = Ipv4Addr::from_str(host_s).unwrap();
+        let port_i: i64 = addr["port"].as_i64().ok_or(format_err!("Missing port")).unwrap();
         Ok(SocketAddrV4::new(host, port_i as u16))
     }
 

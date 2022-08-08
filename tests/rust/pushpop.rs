@@ -22,6 +22,12 @@ use ::std::{
 use ::runtime::perftools::profiler;
 
 //==============================================================================
+// Constants
+//==============================================================================
+
+const BUFFER_SIZE: usize = 64;
+
+//==============================================================================
 // UDP Push Pop
 //==============================================================================
 
@@ -46,7 +52,7 @@ fn udp_push_pop() {
 
     // Run peers.
     if test.is_server() {
-        let expectbuf: Vec<u8> = test.mkbuf(fill_char);
+        let expectbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
 
         // Get at least nreceives.
         for i in 0..nreceives {
@@ -69,7 +75,7 @@ fn udp_push_pop() {
         #[cfg(feature = "profiler")]
         profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
-        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
 
         // Issue n sends.
         for i in 0..nsends {
@@ -155,7 +161,7 @@ fn tcp_push_pop() {
         #[cfg(feature = "profiler")]
         profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
     } else {
-        let sendbuf: Vec<u8> = test.mkbuf(fill_char);
+        let sendbuf: Vec<u8> = test.mkbuf(BUFFER_SIZE, fill_char);
         let qt: QToken = match test.libos.connect(sockqd, remote_addr) {
             Ok(qt) => qt,
             Err(e) => panic!("connect failed: {:?}", e.cause),
