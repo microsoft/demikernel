@@ -1,8 +1,16 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 # Build Artifacts
+contrib/
+target/
+bin/
 *.a
 *.elf
 *.o
 *.so
+*.stderr
+*.stdout
 
 # vim
 *.swo
@@ -20,8 +28,3 @@ tags.*
 
 # rust
 Cargo.lock
-
-# Build Artifacts
-contrib/
-target/
-bin/
