@@ -53,10 +53,11 @@ impl MemoryRuntime for IoUringRuntime {
 
     /// Allocates a scatter-gather array.
     fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        let allocation: Box<[u8]> = unsafe { Box::new_uninit_slice(size).assume_init() };
-        let ptr: *mut [u8] = Box::into_raw(allocation);
-        let sgaseg = demi_sgaseg_t {
-            sgaseg_buf: ptr as *mut _,
+        // Allocate a heap-managed buffer.
+        let dbuf: DataBuffer = DataBuffer::new(size)?;
+        let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
+        let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
+            sgaseg_buf: dbuf_ptr as *mut c_void,
             sgaseg_len: size as u32,
         };
         Ok(demi_sgarray_t {
@@ -69,35 +70,35 @@ impl MemoryRuntime for IoUringRuntime {
 
     /// Releases a scatter-gather array.
     fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        assert_eq!(sga.sga_numsegs, 1);
-        for i in 0..sga.sga_numsegs as usize {
-            let seg: &demi_sgaseg_t = &sga.sga_segs[i];
-            let allocation: Box<[u8]> = unsafe {
-                Box::from_raw(slice::from_raw_parts_mut(
-                    seg.sgaseg_buf as *mut _,
-                    seg.sgaseg_len as usize,
-                ))
-            };
-            drop(allocation);
+        // Check arguments.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
+
+        // Release heap-managed buffer.
+        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
+        let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
+
+        // Convert back raw slice to a heap buffer and drop allocation.
+        DataBuffer::from_raw_parts(data_ptr, length)?;
 
         Ok(())
     }
 
-    /// Clones a scatter-gather array into a memory buffer.
+    /// Clones a scatter-gather array.
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
-        let mut len: u32 = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            len += sga.sga_segs[i].sgaseg_len;
+        // Check arguments.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
         }
-        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(len as usize).unwrap());
-        let mut pos: usize = 0;
-        for i in 0..sga.sga_numsegs as usize {
-            let seg: &demi_sgaseg_t = &sga.sga_segs[i];
-            let seg_slice = unsafe { slice::from_raw_parts(seg.sgaseg_buf as *mut u8, seg.sgaseg_len as usize) };
-            buf[pos..(pos + seg_slice.len())].copy_from_slice(seg_slice);
-            pos += seg_slice.len();
-        }
-        Ok(buf)
+
+        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
+        let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+
+        Ok(Buffer::Heap(DataBuffer::from_slice(unsafe {
+            slice::from_raw_parts(ptr as *const u8, len)
+        })))
     }
 }
