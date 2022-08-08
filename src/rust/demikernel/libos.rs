@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
+    demikernel::config::Config,
     NetworkLibOS,
     OperationResult,
 };
@@ -16,23 +21,37 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::net::SocketAddrV4;
+use ::std::{
+    env,
+    net::SocketAddrV4,
+};
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
-/// Network LibOS
+/// LibOS
 pub enum LibOS {
+    /// Network LibOS
     NetworkLibOS(NetworkLibOS),
 }
 
-//==============================================================================
-// Associate Functions
-//==============================================================================
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
 
-/// Associate Functions for Network LibOSes
+/// Associated functions for LibOS.
 impl LibOS {
+    /// Instantiates a new LibOS.
+    pub fn new() -> Self {
+        logging::initialize();
+        let config_path: String = env::var("CONFIG_PATH").unwrap();
+        let config: Config = Config::new(config_path);
+        let libos: NetworkLibOS = NetworkLibOS::new(&config);
+
+        Self::NetworkLibOS(libos)
+    }
+
     /// Waits on a pending operation in an I/O queue.
     pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         match self {
@@ -45,13 +64,6 @@ impl LibOS {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait2(qt),
         }
-    }
-
-    pub fn new() -> Self {
-        logging::initialize();
-        let libos = NetworkLibOS::new();
-
-        Self::NetworkLibOS(libos)
     }
 
     /// Creates a socket.

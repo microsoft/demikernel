@@ -39,10 +39,6 @@ endif
 export CARGO ?= $(HOME)/.cargo/bin/cargo
 export CARGO_FLAGS += --profile $(BUILD)
 
-# C
-export CC := gcc
-export CFLAGS := -Werror -Wall -Wextra -O3 -I $(INCDIR) -std=c99
-
 #=======================================================================================================================
 # Libraries
 #=======================================================================================================================
@@ -124,18 +120,26 @@ clean-tests-c:
 #=======================================================================================================================
 
 # Builds all examples.
-all-examples: all-examples-c
+all-examples: all-examples-c all-examples-rust
 
 # Builds all C examples.
 all-examples-c:
 	$(MAKE) -C examples/c all
 
+# Builds all Rust examples.
+all-examples-rust:
+	$(MAKE) -C examples/rust all
+
 # Cleans all examples.
-clean-examples: clean-examples-c
+clean-examples: clean-examples-c clean-examples-rust
 
 # Cleans all C examples.
 clean-examples-c:
 	$(MAKE) -C examples/c clean
+
+# Cleans all Rust examples.
+clean-examples-rust:
+	$(MAKE) -C examples/rust clean
 
 #=======================================================================================================================
 # Check
@@ -177,7 +181,7 @@ test-system: test-system-rust
 
 # Rust system tests.
 test-system-rust:
-	timeout $(TIMEOUT) $(CARGO) test $(BUILD) $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture $(TEST)
+	timeout $(TIMEOUT) $(BINDIR)/examples/rust/$(TEST).elf $(ARGS)
 
 # Runs unit tests.
 test-unit: test-unit-rust

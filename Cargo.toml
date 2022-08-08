@@ -32,13 +32,22 @@ runtime = { git = "https://github.com/demikernel/runtime", rev = "8362132e2476fb
 name = "sga"
 path = "tests/rust/sga.rs"
 
-[[test]]
-name = "pushpop"
-path = "tests/rust/pushpop.rs"
+[[example]]
+name = "udp-push-pop"
+path = "examples/rust/udp-push-pop.rs"
 
-[[test]]
-name = "pingpong"
-path = "tests/rust/pingpong.rs"
+[[example]]
+name = "udp-ping-pong"
+path = "examples/rust/udp-ping-pong.rs"
+
+[[example]]
+name = "tcp-push-pop"
+path = "examples/rust/tcp-push-pop.rs"
+
+[[example]]
+name = "tcp-ping-pong"
+path = "examples/rust/tcp-ping-pong.rs"
+
 
 [features]
 default = [ ]

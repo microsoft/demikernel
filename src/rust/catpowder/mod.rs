@@ -68,9 +68,7 @@ pub struct CatpowderLibOS {
 /// Associate Functions for Catpowder LibOS
 impl CatpowderLibOS {
     /// Instantiates a Catpowder LibOS.
-    pub fn new() -> Self {
-        let config_path: String = std::env::var("CONFIG_PATH").unwrap();
-        let config: Config = Config::new(config_path);
+    pub fn new(config: &Config) -> Self {
         let rt: Rc<LinuxRuntime> = Rc::new(LinuxRuntime::new(
             config.local_link_addr(),
             config.local_ipv4_addr(),

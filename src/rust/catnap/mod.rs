@@ -25,6 +25,7 @@ use self::futures::{
     pushto::PushtoFuture,
     Operation,
 };
+use crate::demikernel::config::Config;
 use ::libc::{
     c_int,
     AF_INET,
@@ -49,7 +50,6 @@ use ::nix::{
 };
 use ::runtime::{
     fail::Fail,
-    logging,
     memory::{
         Buffer,
         DataBuffer,
@@ -101,8 +101,7 @@ pub struct CatnapLibOS {
 /// Associate Functions for Catnap LibOS
 impl CatnapLibOS {
     /// Instantiates a Catnap LibOS.
-    pub fn new() -> Self {
-        logging::initialize();
+    pub fn new(_config: &Config) -> Self {
         let qtable: IoQueueTable = IoQueueTable::new();
         let sockets: HashMap<QDesc, RawFd> = HashMap::new();
         let runtime: PosixRuntime = PosixRuntime::new();

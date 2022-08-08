@@ -198,8 +198,8 @@ jobs:
     needs: [test-unit-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catnip TEST=udp_ping_pong PEER=server"
-      targetB: "test-system-rust LIBOS=catnip TEST=udp_ping_pong PEER=client"
+      targetA: "test-system-rust TEST=udp-ping-pong ARGS='--server 10.6.0.10:12345 10.6.0.11:23456'"
+      targetB: "test-system-rust TEST=udp-ping-pong ARGS='--client 10.6.0.11:23456 10.6.0.10:12345'"
     secrets:
       hostA: ${{ secrets.CATNIP_HOSTNAME_A }}
       hostB: ${{ secrets.CATNIP_HOSTNAME_B }}
@@ -230,8 +230,8 @@ jobs:
     needs: [test-udp-ping-pong-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catnip TEST=udp_push_pop PEER=server"
-      targetB: "test-system-rust LIBOS=catnip TEST=udp_push_pop PEER=client"
+      targetA: "test-system-rust TEST=udp-push-pop ARGS='--server 10.6.0.10:12345'"
+      targetB: "test-system-rust TEST=udp-push-pop ARGS='--client 10.6.0.11:23456 10.6.0.10:12345'"
     secrets:
       hostA: ${{ secrets.CATNIP_HOSTNAME_A }}
       hostB: ${{ secrets.CATNIP_HOSTNAME_B }}
@@ -262,8 +262,8 @@ jobs:
     needs: [test-udp-push-pop-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catnip TEST=tcp_ping_pong_single PEER=server"
-      targetB: "test-system-rust LIBOS=catnip TEST=tcp_ping_pong_single PEER=client"
+      targetA: "test-system-rust TEST=tcp-ping-pong ARGS='--server 10.6.0.10:12345'"
+      targetB: "test-system-rust TEST=tcp-ping-pong ARGS='--client 10.6.0.10:12345'"
     secrets:
       hostA: ${{ secrets.CATNIP_HOSTNAME_A }}
       hostB: ${{ secrets.CATNIP_HOSTNAME_B }}
@@ -294,8 +294,8 @@ jobs:
     needs: [test-tcp-ping-pong-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catnip TEST=tcp_push_pop PEER=server"
-      targetB: "test-system-rust LIBOS=catnip TEST=tcp_push_pop PEER=client"
+      targetA: "test-system-rust TEST=tcp-push-pop ARGS='--server 10.6.0.10:12345'"
+      targetB: "test-system-rust TEST=tcp-push-pop ARGS='--client 10.6.0.10:12345'"
     secrets:
       hostA: ${{ secrets.CATNIP_HOSTNAME_A }}
       hostB: ${{ secrets.CATNIP_HOSTNAME_B }}
