@@ -22,8 +22,11 @@ export COMPILE_CMD = $(CC) $(CFLAGS) $@.o -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
 # Builds everything.
 all: syscalls
 
+make-dirs:
+	mkdir -p $(BINDIR)
+
 # Builds system call test.
-syscalls: syscalls.o
+syscalls: make-dirs syscalls.o
 	$(COMPILE_CMD)
 
 # Cleans up all build artifacts.

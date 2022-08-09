@@ -75,6 +75,20 @@ CARGO_FEATURES += $(FEATURES)
 
 all: all-libs all-tests all-examples
 
+# Builds documentation.
+doc:
+	$(CARGO) doc $(FLAGS) --no-deps
+
+# Copies demikernel artifacts to a INSTALL_PREFIX directory.
+install:
+	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
+	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
+	cp -f  $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
+
+#=======================================================================================================================
+# Libs
+#=======================================================================================================================
+
 # Builds all libraries.
 all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
@@ -82,24 +96,50 @@ all-libs:
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 
-# Builds regression tests.
+#=======================================================================================================================
+# Tests
+#=======================================================================================================================
+
+# Builds all tests.
 all-tests: all-tests-rust all-tests-c
 
-# Runs regression tests for Rust.
-all-tests-rust: make-dirs all-libs
+# Builds all Rust tests.
+all-tests-rust: all-libs
 	@echo "$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
 
-# Runs regression tests for C.
-all-tests-c: make-dirs all-libs
+# Builds all C tests.
+all-tests-c: all-libs
 	$(MAKE) -C tests all
+
+# Cleans up all build artifactos for tests.
+clean-tests: clean-tests-c
+
+# Cleans up all C build artifacts for tests.
+clean-tests-c:
+	$(MAKE) -C tests clean
+
+#=======================================================================================================================
+# Examples
+#=======================================================================================================================
 
 # Builds all examples.
 all-examples: all-examples-c
 
 # Builds all C examples.
-all-examples-c: make-dirs
+all-examples-c:
 	$(MAKE) -C examples/c all
+
+# Cleans all examples.
+clean-examples: clean-examples-c
+
+# Cleans all C examples.
+clean-examples-c:
+	$(MAKE) -C examples/c clean
+
+#=======================================================================================================================
+# Check
+#=======================================================================================================================
 
 # Check code style formatting.
 check-fmt: check-fmt-c check-fmt-rust
@@ -113,42 +153,15 @@ check-fmt-c:
 check-fmt-rust:
 	$(CARGO) fmt --all -- --check
 
-# Builds documentation.
-doc:
-	$(CARGO) doc $(FLAGS) --no-deps
-
-# Copies demikernel artifacts to a INSTALL_PREFIX directory.
-install:
-	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
-	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
-	cp -f  $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
-
-make-dirs:
-	mkdir -p $(BINDIR)
-
 #=======================================================================================================================
 # Clean
 #=======================================================================================================================
 
 # Cleans up all build artifacts.
-clean: clean-rust clean-c
-
-# Cleans up Rust build artifacts.
-clean-rust: clean-examples
+clean: clean-examples clean-tests
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
-
-# Cleans all examples.
-clean-examples: clean-examples-c
-
-# Cleans all C examples.
-clean-examples-c:
-	$(MAKE) -C examples/c clean
-
-# Cleans up C build artifacts.
-clean-c:
-	$(MAKE) -C tests clean
 
 #=======================================================================================================================
 
