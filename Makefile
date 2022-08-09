@@ -35,14 +35,13 @@ endif
 # Toolchain Configuration
 #=======================================================================================================================
 
+# Rust
 export CARGO ?= $(HOME)/.cargo/bin/cargo
-
-# Switches:
-# - TEST    Test to run.
-# - BENCH   Microbenchmark to run.
-# - FLAGS   Flags passed to cargo.
-
 export CARGO_FLAGS += --profile $(BUILD)
+
+# C
+export CC := gcc
+export CFLAGS := -Werror -Wall -Wextra -O3 -I $(INCDIR) -std=c99
 
 #=======================================================================================================================
 # Libraries
@@ -74,7 +73,7 @@ CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
 
-all: all-libs all-tests
+all: all-libs all-tests all-examples
 
 # Builds all libraries.
 all-libs:
@@ -94,6 +93,13 @@ all-tests-rust: make-dirs all-libs
 # Runs regression tests for C.
 all-tests-c: make-dirs all-libs
 	$(MAKE) -C tests all
+
+# Builds all examples.
+all-examples: all-examples-c
+
+# Builds all C examples.
+all-examples-c: make-dirs
+	$(MAKE) -C examples/c all
 
 # Check code style formatting.
 check-fmt: check-fmt-c check-fmt-rust
@@ -120,14 +126,25 @@ install:
 make-dirs:
 	mkdir -p $(BINDIR)
 
+#=======================================================================================================================
+# Clean
+#=======================================================================================================================
+
 # Cleans up all build artifacts.
 clean: clean-rust clean-c
 
 # Cleans up Rust build artifacts.
-clean-rust:
+clean-rust: clean-examples
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
+
+# Cleans all examples.
+clean-examples: clean-examples-c
+
+# Cleans all C examples.
+clean-examples-c:
+	$(MAKE) -C examples/c clean
 
 # Cleans up C build artifacts.
 clean-c:
