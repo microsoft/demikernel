@@ -11,12 +11,25 @@ export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type 
 export LD_LIBRARY_PATH ?= $(HOME)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
 
 #=======================================================================================================================
+# Build Configuration
+#=======================================================================================================================
+
+export BUILD := release
+ifeq ($(DEBUG),yes)
+export BUILD := dev
+endif
+
+#=======================================================================================================================
 # Project Directories
 #=======================================================================================================================
 
 export BINDIR ?= $(CURDIR)/bin
 export INCDIR ?= $(CURDIR)/include
 export SRCDIR = $(CURDIR)/src
+export BUILD_DIR := $(CURDIR)/target/release
+ifeq ($(BUILD),dev)
+export BUILD_DIR := $(CURDIR)/target/debug
+endif
 
 #=======================================================================================================================
 # Toolchain Configuration
@@ -29,23 +42,13 @@ export CARGO ?= $(HOME)/.cargo/bin/cargo
 # - BENCH   Microbenchmark to run.
 # - FLAGS   Flags passed to cargo.
 
-# Set build mode.
-ifneq ($(DEBUG),yes)
-export BUILD = release
-else
-export BUILD = dev
-endif
 export CARGO_FLAGS += --profile $(BUILD)
 
 #=======================================================================================================================
 # Libraries
 #=======================================================================================================================
 
-ifeq ($(BUILD),release)
-export DEMIKERNEL_LIB := $(CURDIR)/target/release/libdemikernel.so
-else
-export DEMIKERNEL_LIB := $(CURDIR)/target/debug/libdemikernel.so
-endif
+export DEMIKERNEL_LIB := $(BUILD_DIR)/libdemikernel.so
 export LIBS := $(DEMIKERNEL_LIB)
 
 #=======================================================================================================================
