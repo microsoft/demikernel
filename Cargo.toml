@@ -18,15 +18,15 @@ path = "src/rust/lib.rs"
 
 [dependencies]
 arrayvec = "0.7.2"
-anyhow = "1.0.59"
-libc = "0.2.127"
+anyhow = "1.0.61"
+libc = "0.2.131"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
 log = "0.4.17"
 nix = "0.24.2"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "e05647ff9332ef0aee4812f2eb66c831842d6b74" }
-runtime = { git = "https://github.com/demikernel/runtime", rev = "8362132e2476fb7b0825b3f8ae976ded8a98b956" }
+inetstack = { git = "https://github.com/demikernel/inetstack", rev = "0754923ca899dd24e9d0f20b6ff2a0aa8bf2c382" }
+runtime = { git = "https://github.com/demikernel/runtime", rev = "2ce0ed6d29a3aa831eefe6dc10ef2f843df275c1" }
 
 [[test]]
 name = "sga"

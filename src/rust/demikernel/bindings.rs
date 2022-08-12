@@ -421,6 +421,12 @@ pub extern "C" fn demi_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
             Ok(sga) => sga,
             Err(e) => {
                 warn!("sgaalloc() failed: {:?}", e);
+                let saddr: libc::sockaddr_in = libc::sockaddr_in {
+                    sin_family: 0,
+                    sin_port: 0,
+                    sin_addr: libc::in_addr { s_addr: 0 },
+                    sin_zero: [0; 8],
+                };
                 demi_sgarray_t {
                     sga_buf: ptr::null_mut() as *mut _,
                     sga_numsegs: 0,
@@ -428,12 +434,7 @@ pub extern "C" fn demi_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
                         sgaseg_buf: ptr::null_mut() as *mut c_void,
                         sgaseg_len: 0,
                     }; 1],
-                    sga_addr: libc::sockaddr_in {
-                        sin_family: 0,
-                        sin_port: 0,
-                        sin_addr: libc::in_addr { s_addr: 0 },
-                        sin_zero: [0; 8],
-                    },
+                    sga_addr: unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(saddr) },
                 }
             },
         }
