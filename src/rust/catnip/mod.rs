@@ -67,10 +67,8 @@ pub struct CatnipLibOS {
 
 /// Associate Functions for Catnip LibOS
 impl CatnipLibOS {
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
         load_mlx_driver();
-        let config_path: String = std::env::var("CONFIG_PATH").unwrap();
-        let config: Config = Config::new(config_path);
         let rt: Rc<DPDKRuntime> = Rc::new(DPDKRuntime::new(
             config.local_ipv4_addr(),
             &config.eal_init_args(),
