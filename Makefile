@@ -124,22 +124,30 @@ clean-tests-c:
 #=======================================================================================================================
 
 # Builds all examples.
-all-examples: all-examples-c all-examples-rust
+all-examples: all-examples-c all-examples-cs all-examples-rust
 
 # Builds all C examples.
 all-examples-c:
 	$(MAKE) -C examples/c all
+
+# Builds all C# examples.
+all-examples-cs:
+	$(MAKE) -C examples/cs all
 
 # Builds all Rust examples.
 all-examples-rust:
 	$(MAKE) -C examples/rust all
 
 # Cleans all examples.
-clean-examples: clean-examples-c clean-examples-rust
+clean-examples: clean-examples-c clean-examples-cs clean-examples-rust
 
 # Cleans all C examples.
 clean-examples-c:
 	$(MAKE) -C examples/c clean
+
+# Cleans all C# examples.
+clean-examples-cs:
+	$(MAKE) -C examples/cs clean
 
 # Cleans all Rust examples.
 clean-examples-rust:
