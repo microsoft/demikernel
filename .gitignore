@@ -6,7 +6,10 @@ contrib/
 target/
 bin/
 *.a
+*.blob
 *.elf
+*.exe
+*.json
 *.o
 *.so
 *.stderr
