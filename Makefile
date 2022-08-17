@@ -108,6 +108,10 @@ all-tests-rust: all-libs
 all-tests-c: all-libs
 	$(MAKE) -C tests all
 
+# Builds all C# tests.
+all-tests-cs: all-libs
+	$(MAKE) -C tets/all
+
 # Cleans up all build artifactos for tests.
 clean-tests: clean-tests-c
 
