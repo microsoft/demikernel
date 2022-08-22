@@ -53,7 +53,6 @@ pub use libos_export::*;
 pub use self::demikernel::libos::LibOS;
 pub use ::runtime::{
     network::types::{
-        Ipv4Addr,
         MacAddress,
         Port16,
     },
@@ -66,5 +65,6 @@ pub use ::runtime::{
     QToken,
     QType,
 };
+pub use ::std::net::Ipv4Addr;
 
 pub mod demikernel;
