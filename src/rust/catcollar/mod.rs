@@ -54,7 +54,6 @@ use ::runtime::{
         DataBuffer,
         MemoryRuntime,
     },
-    network::types::Ipv4Addr,
     queue::IoQueueTable,
     scheduler::SchedulerHandle,
     types::{
@@ -72,7 +71,10 @@ use ::std::{
     any::Any,
     collections::HashMap,
     mem,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     os::unix::prelude::RawFd,
 };
 
