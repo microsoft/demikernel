@@ -22,9 +22,8 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
+use ::inetstack::operations::OperationResult;
 use ::runtime::{
-    fail::Fail,
-    memory::Buffer,
     scheduler::{
         FutureResult,
         SchedulerFuture,
@@ -41,20 +40,10 @@ use ::std::{
         Poll,
     },
 };
-use std::net::SocketAddrV4;
 
 //==============================================================================
 // Structures
 //==============================================================================
-
-/// Operation Result
-pub enum OperationResult {
-    Connect,
-    Accept(QDesc),
-    Push,
-    Pop(Option<SocketAddrV4>, Buffer),
-    Failed(Fail),
-}
 
 /// Operations Descriptor
 pub enum Operation {

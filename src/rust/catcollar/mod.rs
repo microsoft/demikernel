@@ -9,19 +9,7 @@ mod runtime;
 // Exports
 //======================================================================================================================
 
-use crate::{
-    catcollar::futures::{
-        accept::AcceptFuture,
-        connect::ConnectFuture,
-        pop::PopFuture,
-    },
-    demikernel::config::Config,
-};
-
-pub use self::{
-    futures::OperationResult,
-    runtime::IoUringRuntime,
-};
+pub use self::runtime::IoUringRuntime;
 
 //======================================================================================================================
 // Imports
@@ -29,12 +17,17 @@ pub use self::{
 
 use self::{
     futures::{
+        accept::AcceptFuture,
+        connect::ConnectFuture,
+        pop::PopFuture,
         push::PushFuture,
         pushto::PushtoFuture,
         Operation,
     },
     runtime::RequestId,
 };
+use crate::demikernel::config::Config;
+use ::inetstack::operations::OperationResult;
 use ::libc::c_int;
 use ::nix::{
     sys::socket::{
