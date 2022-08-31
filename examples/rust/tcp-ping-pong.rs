@@ -47,7 +47,10 @@ fn mkbuf(buffer_size: usize, fill_char: u8) -> Vec<u8> {
 //======================================================================================================================
 
 fn server(local: SocketAddrV4) -> Result<()> {
-    let mut libos: LibOS = LibOS::new();
+    let mut libos: LibOS = match LibOS::new() {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
     let fill_char: u8 = 'a' as u8;
     let nrounds: usize = 1024;
     let expectbuf: Vec<u8> = mkbuf(BUFFER_SIZE, fill_char);
@@ -122,7 +125,10 @@ fn server(local: SocketAddrV4) -> Result<()> {
 //======================================================================================================================
 
 fn client(remote: SocketAddrV4) -> Result<()> {
-    let mut libos: LibOS = LibOS::new();
+    let mut libos: LibOS = match LibOS::new() {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
     let fill_char: u8 = 'a' as u8;
     let nrounds: usize = 1024;
     let expectbuf: Vec<u8> = mkbuf(BUFFER_SIZE, fill_char);

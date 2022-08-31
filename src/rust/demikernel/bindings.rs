@@ -64,7 +64,13 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     trace!("demi_init()");
 
     // TODO: Pass arguments to the underlying libOS.
-    let libos: LibOS = LibOS::new();
+    let libos: LibOS = match LibOS::new() {
+        Ok(libos) => libos,
+        Err(e) => {
+            warn!("failed to initialize libos: {:?}", e.cause);
+            return -e.errno;
+        },
+    };
 
     // Initialize thread local storage.
     LIBOS.with(move |l| {
