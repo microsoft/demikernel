@@ -18,7 +18,7 @@ path = "src/rust/lib.rs"
 
 [dependencies]
 arrayvec = "0.7.2"
-anyhow = "1.0.62"
+anyhow = "1.0.64"
 libc = "0.2.132"
 rand = { version = "0.8.5", features = ["small_rng"] }
 yaml-rust = "0.4.5"
