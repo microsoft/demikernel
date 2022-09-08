@@ -17,7 +17,7 @@ use ::anyhow::{
     format_err,
     Error,
 };
-use ::runtime::{
+use ::inetstack::runtime::{
     libdpdk::{
         rte_delay_us_block,
         rte_eal_init,

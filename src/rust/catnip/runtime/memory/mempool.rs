@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     libdpdk::{
         rte_mbuf,

@@ -9,7 +9,7 @@ use ::demikernel::{
     LibOS,
     LibOSName,
 };
-use ::runtime::types::demi_sgarray_t;
+use ::inetstack::runtime::types::demi_sgarray_t;
 
 //==============================================================================
 // Constants

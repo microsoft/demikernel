@@ -7,7 +7,7 @@
 
 use crate::demikernel::config::Config;
 use ::anyhow::Error;
-use ::runtime::network::types::MacAddress;
+use ::inetstack::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
     ffi::CString,

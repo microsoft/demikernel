@@ -9,14 +9,7 @@ use crate::demikernel::libos::{
     name::LibOSName,
     LibOS,
 };
-use ::libc::{
-    c_char,
-    c_int,
-    c_void,
-    sockaddr,
-    socklen_t,
-};
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     logging,
     types::{
@@ -26,6 +19,13 @@ use ::runtime::{
         demi_sgaseg_t,
     },
     QToken,
+};
+use ::libc::{
+    c_char,
+    c_int,
+    c_void,
+    sockaddr,
+    socklen_t,
 };
 use ::std::{
     cell::{

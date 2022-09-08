@@ -9,7 +9,7 @@ use crate::catcollar::{
     runtime::RequestId,
     IoUringRuntime,
 };
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     QDesc,
 };

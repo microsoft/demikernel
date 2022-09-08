@@ -5,6 +5,11 @@
 // Imports
 //==============================================================================
 
+use ::inetstack::runtime::{
+    fail::Fail,
+    memory::Buffer,
+    QDesc,
+};
 use ::nix::{
     errno::Errno,
     sys::socket::{
@@ -12,11 +17,6 @@ use ::nix::{
         MsgFlags,
         SockaddrStorage,
     },
-};
-use ::runtime::{
-    fail::Fail,
-    memory::Buffer,
-    QDesc,
 };
 use ::std::{
     future::Future,

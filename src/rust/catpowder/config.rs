@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::demikernel::config::Config;
-use ::runtime::network::types::MacAddress;
+use ::inetstack::runtime::network::types::MacAddress;
 
 //======================================================================================================================
 // Associated Functions

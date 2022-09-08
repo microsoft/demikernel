@@ -7,28 +7,30 @@
 
 use super::DPDKRuntime;
 use ::arrayvec::ArrayVec;
-use ::inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE;
-use ::runtime::{
-    libdpdk::{
-        rte_eth_rx_burst,
-        rte_eth_tx_burst,
-        rte_mbuf,
-        rte_pktmbuf_chain,
-    },
-    memory::{
-        Buffer,
-        DPDKBuffer,
-    },
-    network::{
-        consts::RECEIVE_BATCH_SIZE,
-        NetworkRuntime,
-        PacketBuf,
+use ::inetstack::{
+    protocols::ethernet2::MIN_PAYLOAD_SIZE,
+    runtime::{
+        libdpdk::{
+            rte_eth_rx_burst,
+            rte_eth_tx_burst,
+            rte_mbuf,
+            rte_pktmbuf_chain,
+        },
+        memory::{
+            Buffer,
+            DPDKBuffer,
+        },
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+            PacketBuf,
+        },
     },
 };
 use ::std::mem;
 
 #[cfg(feature = "profiler")]
-use ::runtime::timer;
+use ::inetstack::timer;
 
 //==============================================================================
 // Trait Implementations

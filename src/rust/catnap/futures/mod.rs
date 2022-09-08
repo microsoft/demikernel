@@ -22,13 +22,15 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use ::inetstack::operations::OperationResult;
-use ::runtime::{
-    scheduler::scheduler::{
-        FutureResult,
-        SchedulerFuture,
+use ::inetstack::{
+    operations::OperationResult,
+    runtime::{
+        scheduler::scheduler::{
+            FutureResult,
+            SchedulerFuture,
+        },
+        QDesc,
     },
-    QDesc,
 };
 use ::std::{
     any::Any,
