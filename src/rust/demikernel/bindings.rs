@@ -5,7 +5,10 @@
 // Imports
 //==============================================================================
 
-use super::libos::LibOS;
+use crate::demikernel::libos::{
+    name::LibOSName,
+    LibOS,
+};
 use ::libc::{
     c_char,
     c_int,
@@ -63,8 +66,19 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     logging::initialize();
     trace!("demi_init()");
 
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+
     // TODO: Pass arguments to the underlying libOS.
-    let libos: LibOS = LibOS::new();
+    let libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => {
+            warn!("failed to initialize libos: {:?}", e.cause);
+            return -e.errno;
+        },
+    };
 
     // Initialize thread local storage.
     LIBOS.with(move |l| {

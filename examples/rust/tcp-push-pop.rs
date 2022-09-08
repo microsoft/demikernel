@@ -8,6 +8,7 @@
 use ::anyhow::Result;
 use ::demikernel::{
     LibOS,
+    LibOSName,
     OperationResult,
     QDesc,
     QToken,
@@ -47,7 +48,14 @@ fn mkbuf(buffer_size: usize, fill_char: u8) -> Vec<u8> {
 //======================================================================================================================
 
 fn server(local: SocketAddrV4) -> Result<()> {
-    let mut libos: LibOS = LibOS::new();
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+    let mut libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
     let nbytes: usize = 64 * 1024;
 
     // Setup peer.
@@ -108,7 +116,14 @@ fn server(local: SocketAddrV4) -> Result<()> {
 //======================================================================================================================
 
 fn client(remote: SocketAddrV4) -> Result<()> {
-    let mut libos: LibOS = LibOS::new();
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+    let mut libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
     let fill_char: u8 = 'a' as u8;
     let nbytes: usize = 64 * 1024;
 

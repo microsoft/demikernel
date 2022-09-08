@@ -21,36 +21,12 @@ mod catcollar;
 #[cfg(feature = "catnap-libos")]
 mod catnap;
 
-#[cfg(feature = "catnip-libos")]
-#[path = ""]
-mod libos_export {
-    pub(crate) use crate::catnip::CatnipLibOS as NetworkLibOS;
-    pub use ::inetstack::operations::OperationResult;
-}
+pub use crate::demikernel::libos::network::OperationResult;
 
-#[cfg(feature = "catpowder-libos")]
-#[path = ""]
-mod libos_export {
-    pub(crate) use crate::catpowder::CatpowderLibOS as NetworkLibOS;
-    pub use ::inetstack::operations::OperationResult;
-}
-#[cfg(feature = "catcollar-libos")]
-#[path = ""]
-mod libos_export {
-    pub(crate) use crate::catcollar::CatcollarLibOS as NetworkLibOS;
-    pub use crate::catcollar::OperationResult;
-}
-
-#[cfg(feature = "catnap-libos")]
-#[path = ""]
-mod libos_export {
-    pub(crate) use crate::catnap::CatnapLibOS as NetworkLibOS;
-    pub use crate::catnap::OperationResult;
-}
-
-pub use libos_export::*;
-
-pub use self::demikernel::libos::LibOS;
+pub use self::demikernel::libos::{
+    name::LibOSName,
+    LibOS,
+};
 pub use ::runtime::{
     network::types::{
         MacAddress,
@@ -65,6 +41,5 @@ pub use ::runtime::{
     QToken,
     QType,
 };
-pub use ::std::net::Ipv4Addr;
 
 pub mod demikernel;

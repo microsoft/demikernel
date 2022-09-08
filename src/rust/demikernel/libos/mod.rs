@@ -1,16 +1,21 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+pub mod name;
+pub mod network;
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use crate::{
-    demikernel::config::Config,
-    NetworkLibOS,
-    OperationResult,
+use self::{
+    name::LibOSName,
+    network::{
+        NetworkLibOS,
+        OperationResult,
+    },
 };
-use ::libc::c_int;
+use crate::demikernel::config::Config;
 use ::runtime::{
     fail::Fail,
     logging,
@@ -21,10 +26,19 @@ use ::runtime::{
     QDesc,
     QToken,
 };
-use ::std::{
+use std::{
     env,
     net::SocketAddrV4,
 };
+
+#[cfg(feature = "catcollar-libos")]
+use crate::catcollar::CatcollarLibOS;
+#[cfg(feature = "catnap-libos")]
+use crate::catnap::CatnapLibOS;
+#[cfg(feature = "catnip-libos")]
+use crate::catnip::CatnipLibOS;
+#[cfg(feature = "catpowder-libos")]
+use crate::catpowder::CatpowderLibOS;
 
 //======================================================================================================================
 // Structures
@@ -43,13 +57,36 @@ pub enum LibOS {
 /// Associated functions for LibOS.
 impl LibOS {
     /// Instantiates a new LibOS.
-    pub fn new() -> Self {
+    pub fn new(libos_name: LibOSName) -> Result<Self, Fail> {
         logging::initialize();
-        let config_path: String = env::var("CONFIG_PATH").unwrap();
-        let config: Config = Config::new(config_path);
-        let libos: NetworkLibOS = NetworkLibOS::new(&config);
 
-        Self::NetworkLibOS(libos)
+        // Read in configuration file.
+        let config_path: String = match env::var("CONFIG_PATH") {
+            Ok(config_path) => config_path,
+            Err(_) => {
+                return Err(Fail::new(
+                    libc::EINVAL,
+                    "missing value for CONFIG_PATH environment variable",
+                ))
+            },
+        };
+        let config: Config = Config::new(config_path);
+
+        // Instantiate LibOS.
+        #[allow(unreachable_patterns)]
+        let libos: LibOS = match libos_name {
+            #[cfg(feature = "catnap-libos")]
+            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap(CatnapLibOS::new(&config))),
+            #[cfg(feature = "catcollar-libos")]
+            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config))),
+            #[cfg(feature = "catpowder-libos")]
+            LibOSName::Catpowder => Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config))),
+            #[cfg(feature = "catnip-libos")]
+            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
+            _ => panic!("unsupported libos"),
+        };
+
+        Ok(libos)
     }
 
     /// Waits on a pending operation in an I/O queue.
@@ -67,7 +104,12 @@ impl LibOS {
     }
 
     /// Creates a socket.
-    pub fn socket(&mut self, domain: c_int, socket_type: c_int, protocol: c_int) -> Result<QDesc, Fail> {
+    pub fn socket(
+        &mut self,
+        domain: libc::c_int,
+        socket_type: libc::c_int,
+        protocol: libc::c_int,
+    ) -> Result<QDesc, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
         }

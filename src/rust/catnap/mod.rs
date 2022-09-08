@@ -8,10 +8,7 @@ mod runtime;
 // Exports
 //==============================================================================
 
-pub use self::{
-    futures::OperationResult,
-    runtime::PosixRuntime,
-};
+pub use self::runtime::PosixRuntime;
 
 //==============================================================================
 // Imports
@@ -26,6 +23,7 @@ use self::futures::{
     Operation,
 };
 use crate::demikernel::config::Config;
+use ::inetstack::operations::OperationResult;
 use ::libc::{
     c_int,
     AF_INET,

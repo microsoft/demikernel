@@ -34,6 +34,7 @@ impl MemoryRuntime for IoUringRuntime {
     /// Creates a scatter-gather array from a memory buffer.
     fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
         let len: usize = buf.len();
+        #[allow(unreachable_patterns)]
         let sgaseg: demi_sgaseg_t = match buf {
             Buffer::Heap(dbuf) => {
                 let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
@@ -42,6 +43,7 @@ impl MemoryRuntime for IoUringRuntime {
                     sgaseg_len: len as u32,
                 }
             },
+            _ => return Err(Fail::new(libc::EINVAL, "invalid buffer type")),
         };
         Ok(demi_sgarray_t {
             sga_buf: ptr::null_mut(),

@@ -50,7 +50,7 @@ path = "examples/rust/tcp-ping-pong.rs"
 
 
 [features]
-default = [ ]
+default = [ "catnap-libos" ]
 catnap-libos = [ ]
 catpowder-libos = [ ]
 catcollar-libos = [ "runtime/liburing" ]

@@ -5,7 +5,10 @@
 // Imports
 //==============================================================================
 
-use ::demikernel::LibOS;
+use ::demikernel::{
+    LibOS,
+    LibOSName,
+};
 use ::runtime::types::demi_sgarray_t;
 
 //==============================================================================
@@ -24,7 +27,14 @@ const SGA_SIZE_BIG: usize = 1280;
 
 /// Tests for a single scatter-gather array allocation and deallocation.
 fn do_test_unit_sga_alloc_free_single(size: usize) {
-    let libos: LibOS = LibOS::new();
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+    let libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
 
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {
         Ok(sga) => sga,
@@ -54,7 +64,14 @@ fn test_unit_sga_alloc_free_single_big() {
 
 /// Tests looped allocation and deallocation of scatter-gather arrays.
 fn do_test_unit_sga_alloc_free_loop_tight(size: usize) {
-    let libos: LibOS = LibOS::new();
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+    let libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
 
     // Allocate and deallocate several times.
     for _ in 0..1_000_000 {
@@ -88,7 +105,14 @@ fn test_unit_sga_alloc_free_loop_tight_big() {
 /// Tests decoupled looped allocation and deallocation of scatter-gather arrays.
 fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) {
     let mut sgas: Vec<demi_sgarray_t> = Vec::with_capacity(1_000);
-    let libos: LibOS = LibOS::new();
+    let libos_name: LibOSName = match LibOSName::from_env() {
+        Ok(libos_name) => libos_name.into(),
+        Err(e) => panic!("{:?}", e),
+    };
+    let libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
+        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+    };
 
     // Allocate and deallocate several times.
     for _ in 0..1_000 {
