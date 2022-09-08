@@ -28,7 +28,7 @@ use ::runtime::{
 use ::std::mem;
 
 #[cfg(feature = "profiler")]
-use ::runtime::perftools::timer;
+use ::runtime::timer;
 
 //==============================================================================
 // Trait Implementations

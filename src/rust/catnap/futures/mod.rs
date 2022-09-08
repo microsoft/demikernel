@@ -24,7 +24,7 @@ use self::{
 };
 use ::inetstack::operations::OperationResult;
 use ::runtime::{
-    scheduler::{
+    scheduler::scheduler::{
         FutureResult,
         SchedulerFuture,
     },

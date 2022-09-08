@@ -22,7 +22,7 @@ use ::runtime::{
     fail::Fail,
     libdpdk::load_mlx_driver,
     memory::MemoryRuntime,
-    scheduler::{
+    scheduler::scheduler::{
         Scheduler,
         SchedulerHandle,
     },
@@ -48,7 +48,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::runtime::perftools::timer;
+use ::runtime::timer;
 
 //==============================================================================
 // Structures
