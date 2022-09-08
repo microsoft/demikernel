@@ -48,7 +48,7 @@ use ::runtime::{
         MemoryRuntime,
     },
     queue::IoQueueTable,
-    scheduler::SchedulerHandle,
+    scheduler::scheduler::SchedulerHandle,
     types::{
         demi_accept_result_t,
         demi_opcode_t,
@@ -72,7 +72,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::runtime::perftools::timer;
+use ::runtime::timer;
 
 //======================================================================================================================
 // Constants

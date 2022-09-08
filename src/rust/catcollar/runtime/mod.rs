@@ -14,7 +14,7 @@ use ::runtime::{
     fail::Fail,
     liburing,
     memory::Buffer,
-    scheduler::Scheduler,
+    scheduler::scheduler::Scheduler,
     Runtime,
 };
 use ::std::{

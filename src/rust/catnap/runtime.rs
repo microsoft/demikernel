@@ -13,7 +13,7 @@ use ::runtime::{
         DataBuffer,
         MemoryRuntime,
     },
-    scheduler::Scheduler,
+    scheduler::scheduler::Scheduler,
     types::{
         demi_sgarray_t,
         demi_sgaseg_t,
