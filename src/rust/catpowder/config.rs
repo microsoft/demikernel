@@ -5,8 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::demikernel::config::Config;
-use ::inetstack::runtime::network::types::MacAddress;
+use crate::{
+    demikernel::config::Config,
+    inetstack::runtime::network::types::MacAddress,
+};
 
 //======================================================================================================================
 // Associated Functions

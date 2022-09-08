@@ -5,9 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::demikernel::config::Config;
+use crate::{
+    demikernel::config::Config,
+    inetstack::runtime::network::types::MacAddress,
+};
 use ::anyhow::Error;
-use ::inetstack::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
     ffi::CString,

@@ -22,7 +22,7 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use ::inetstack::{
+use crate::inetstack::{
     operations::OperationResult,
     runtime::{
         scheduler::scheduler::{

@@ -6,7 +6,7 @@
 //==============================================================================
 
 use super::LinuxRuntime;
-use ::inetstack::runtime::{
+use crate::inetstack::runtime::{
     fail::Fail,
     memory::{
         Buffer,

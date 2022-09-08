@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use ::inetstack::runtime::{
+use crate::inetstack::runtime::{
     fail::Fail,
     types::{
         demi_qresult_t,
@@ -29,7 +29,7 @@ use crate::catpowder::CatpowderLibOS;
 // Exports
 //======================================================================================================================
 
-pub use ::inetstack::operations::OperationResult;
+pub use crate::inetstack::operations::OperationResult;
 
 //======================================================================================================================
 // Structures

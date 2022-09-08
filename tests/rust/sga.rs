@@ -6,10 +6,10 @@
 //==============================================================================
 
 use ::demikernel::{
+    inetstack::runtime::types::demi_sgarray_t,
     LibOS,
     LibOSName,
 };
-use ::inetstack::runtime::types::demi_sgarray_t;
 
 //==============================================================================
 // Constants

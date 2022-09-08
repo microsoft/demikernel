@@ -5,20 +5,22 @@
 // Imports
 //==============================================================================
 
-use crate::demikernel::libos::{
-    name::LibOSName,
-    LibOS,
-};
-use ::inetstack::runtime::{
-    fail::Fail,
-    logging,
-    types::{
-        demi_qresult_t,
-        demi_qtoken_t,
-        demi_sgarray_t,
-        demi_sgaseg_t,
+use crate::{
+    demikernel::libos::{
+        name::LibOSName,
+        LibOS,
     },
-    QToken,
+    inetstack::runtime::{
+        fail::Fail,
+        logging,
+        types::{
+            demi_qresult_t,
+            demi_qtoken_t,
+            demi_sgarray_t,
+            demi_sgaseg_t,
+        },
+        QToken,
+    },
 };
 use ::libc::{
     c_char,

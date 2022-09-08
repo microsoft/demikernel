@@ -3,17 +3,17 @@
 
 use crate::{
     catpowder::LinuxRuntime,
-    OperationResult,
-};
-use ::inetstack::runtime::{
-    memory::MemoryRuntime,
-    types::{
-        demi_accept_result_t,
-        demi_opcode_t,
-        demi_qr_value_t,
-        demi_qresult_t,
+    inetstack::runtime::{
+        memory::MemoryRuntime,
+        types::{
+            demi_accept_result_t,
+            demi_opcode_t,
+            demi_qr_value_t,
+            demi_qresult_t,
+        },
+        QDesc,
     },
-    QDesc,
+    OperationResult,
 };
 use ::std::{
     mem,

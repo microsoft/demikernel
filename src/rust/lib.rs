@@ -5,6 +5,22 @@
 #![deny(clippy::all)]
 #![feature(maybe_uninit_uninit_array, new_uninit)]
 #![feature(try_blocks)]
+#![cfg_attr(feature = "strict", deny(clippy:all))]
+#![feature(never_type)]
+#![feature(test)]
+#![feature(type_alias_impl_trait)]
+#![recursion_limit = "512"]
+#![feature(allocator_api)]
+
+pub mod inetstack;
+
+extern crate test;
+
+#[macro_use]
+extern crate derive_more;
+
+#[macro_use]
+extern crate num_derive;
 
 #[macro_use]
 extern crate log;
@@ -27,7 +43,7 @@ pub use self::demikernel::libos::{
     name::LibOSName,
     LibOS,
 };
-pub use ::inetstack::runtime::{
+pub use crate::inetstack::runtime::{
     network::types::{
         MacAddress,
         Port16,
