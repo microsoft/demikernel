@@ -7,28 +7,30 @@
 
 use super::mempool::MemoryPool;
 use ::anyhow::Error;
-use ::inetstack::protocols::{
-    ethernet2::ETHERNET2_HEADER_SIZE,
-    ipv4::IPV4_HEADER_DEFAULT_SIZE,
-    tcp::MAX_TCP_HEADER_SIZE,
+use ::inetstack::{
+    protocols::{
+        ethernet2::ETHERNET2_HEADER_SIZE,
+        ipv4::IPV4_HEADER_DEFAULT_SIZE,
+        tcp::MAX_TCP_HEADER_SIZE,
+    },
+    runtime::{
+        fail::Fail,
+        libdpdk::{
+            rte_mbuf,
+            rte_mempool,
+        },
+        memory::{
+            Buffer,
+            DPDKBuffer,
+            DataBuffer,
+        },
+        types::{
+            demi_sgarray_t,
+            demi_sgaseg_t,
+        },
+    },
 };
 use ::libc::c_void;
-use ::runtime::{
-    fail::Fail,
-    libdpdk::{
-        rte_mbuf,
-        rte_mempool,
-    },
-    memory::{
-        Buffer,
-        DPDKBuffer,
-        DataBuffer,
-    },
-    types::{
-        demi_sgarray_t,
-        demi_sgaseg_t,
-    },
-};
 use ::std::{
     ffi::CString,
     mem,

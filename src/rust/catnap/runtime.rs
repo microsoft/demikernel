@@ -5,8 +5,7 @@
 // Imports
 //==============================================================================
 
-use ::libc::c_void;
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     memory::{
         Buffer,
@@ -20,6 +19,7 @@ use ::runtime::{
     },
     Runtime,
 };
+use ::libc::c_void;
 use ::std::{
     mem,
     ptr,

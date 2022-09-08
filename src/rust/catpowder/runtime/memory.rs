@@ -6,8 +6,7 @@
 //==============================================================================
 
 use super::LinuxRuntime;
-use ::libc::c_void;
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     memory::{
         Buffer,
@@ -19,6 +18,7 @@ use ::runtime::{
         demi_sgaseg_t,
     },
 };
+use ::libc::c_void;
 use ::std::{
     mem,
     ptr,

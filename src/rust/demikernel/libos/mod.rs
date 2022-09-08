@@ -16,7 +16,7 @@ use self::{
     },
 };
 use crate::demikernel::config::Config;
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     logging,
     types::{

@@ -7,7 +7,7 @@
 
 use super::IoUringRuntime;
 use ::arrayvec::ArrayVec;
-use ::runtime::{
+use ::inetstack::runtime::{
     memory::Buffer,
     network::{
         consts::RECEIVE_BATCH_SIZE,

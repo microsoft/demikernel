@@ -9,14 +9,14 @@ mod network;
 //==============================================================================
 
 use super::iouring::IoUring;
-use ::nix::sys::socket::SockaddrStorage;
-use ::runtime::{
+use ::inetstack::runtime::{
     fail::Fail,
     liburing,
     memory::Buffer,
     scheduler::scheduler::Scheduler,
     Runtime,
 };
+use ::nix::sys::socket::SockaddrStorage;
 use ::std::{
     cell::RefCell,
     collections::{

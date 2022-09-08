@@ -13,7 +13,7 @@ use self::rawsocket::{
     RawSocket,
     RawSocketAddr,
 };
-use ::runtime::{
+use ::inetstack::runtime::{
     network::{
         config::{
             ArpConfig,

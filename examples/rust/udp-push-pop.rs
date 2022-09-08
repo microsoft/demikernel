@@ -21,7 +21,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::runtime::perftools::profiler;
+use ::inetstack::runtime::perftools::profiler;
 
 //======================================================================================================================
 // Constants

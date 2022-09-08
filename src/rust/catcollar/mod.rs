@@ -27,7 +27,29 @@ use self::{
     runtime::RequestId,
 };
 use crate::demikernel::config::Config;
-use ::inetstack::operations::OperationResult;
+use ::inetstack::{
+    operations::OperationResult,
+    runtime::{
+        fail::Fail,
+        memory::{
+            Buffer,
+            DataBuffer,
+            MemoryRuntime,
+        },
+        queue::IoQueueTable,
+        scheduler::scheduler::SchedulerHandle,
+        types::{
+            demi_accept_result_t,
+            demi_opcode_t,
+            demi_qr_value_t,
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
+        QType,
+    },
+};
 use ::libc::c_int;
 use ::nix::{
     sys::socket::{
@@ -39,26 +61,6 @@ use ::nix::{
         SockaddrStorage,
     },
     unistd,
-};
-use ::runtime::{
-    fail::Fail,
-    memory::{
-        Buffer,
-        DataBuffer,
-        MemoryRuntime,
-    },
-    queue::IoQueueTable,
-    scheduler::scheduler::SchedulerHandle,
-    types::{
-        demi_accept_result_t,
-        demi_opcode_t,
-        demi_qr_value_t,
-        demi_qresult_t,
-        demi_sgarray_t,
-    },
-    QDesc,
-    QToken,
-    QType,
 };
 use ::std::{
     any::Any,
@@ -72,7 +74,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::runtime::timer;
+use ::inetstack::timer;
 
 //======================================================================================================================
 // Constants

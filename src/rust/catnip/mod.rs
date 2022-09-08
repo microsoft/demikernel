@@ -16,26 +16,26 @@ use self::{
 use crate::demikernel::config::Config;
 use ::inetstack::{
     operations::OperationResult,
+    runtime::{
+        fail::Fail,
+        libdpdk::load_mlx_driver,
+        memory::MemoryRuntime,
+        scheduler::scheduler::{
+            Scheduler,
+            SchedulerHandle,
+        },
+        timer::{
+            Timer,
+            TimerRc,
+        },
+        types::{
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
+    },
     InetStack,
-};
-use ::runtime::{
-    fail::Fail,
-    libdpdk::load_mlx_driver,
-    memory::MemoryRuntime,
-    scheduler::scheduler::{
-        Scheduler,
-        SchedulerHandle,
-    },
-    timer::{
-        Timer,
-        TimerRc,
-    },
-    types::{
-        demi_qresult_t,
-        demi_sgarray_t,
-    },
-    QDesc,
-    QToken,
 };
 use ::std::{
     net::SocketAddrV4,
@@ -48,7 +48,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::runtime::timer;
+use ::inetstack::timer;
 
 //==============================================================================
 // Structures

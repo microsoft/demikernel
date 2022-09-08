@@ -10,16 +10,18 @@ use super::{
     LinuxRuntime,
 };
 use ::arrayvec::ArrayVec;
-use ::inetstack::protocols::ethernet2::Ethernet2Header;
-use ::runtime::{
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
-    network::{
-        consts::RECEIVE_BATCH_SIZE,
-        NetworkRuntime,
-        PacketBuf,
+use ::inetstack::{
+    protocols::ethernet2::Ethernet2Header,
+    runtime::{
+        memory::{
+            Buffer,
+            DataBuffer,
+        },
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+            PacketBuf,
+        },
     },
 };
 use ::std::mem::{

@@ -27,7 +27,7 @@ pub use self::demikernel::libos::{
     name::LibOSName,
     LibOS,
 };
-pub use ::runtime::{
+pub use ::inetstack::runtime::{
     network::types::{
         MacAddress,
         Port16,

@@ -5,7 +5,7 @@ use crate::{
     catnip::DPDKRuntime,
     OperationResult,
 };
-use ::runtime::{
+use ::inetstack::runtime::{
     memory::MemoryRuntime,
     types::{
         demi_accept_result_t,
