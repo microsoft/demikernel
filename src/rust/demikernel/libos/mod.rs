@@ -15,16 +15,18 @@ use self::{
         OperationResult,
     },
 };
-use crate::demikernel::config::Config;
-use ::inetstack::runtime::{
-    fail::Fail,
-    logging,
-    types::{
-        demi_qresult_t,
-        demi_sgarray_t,
+use crate::{
+    demikernel::config::Config,
+    inetstack::runtime::{
+        fail::Fail,
+        logging,
+        types::{
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
     },
-    QDesc,
-    QToken,
 };
 use std::{
     env,

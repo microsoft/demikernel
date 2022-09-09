@@ -6,8 +6,7 @@
 //==============================================================================
 
 use super::IoUringRuntime;
-use ::arrayvec::ArrayVec;
-use ::inetstack::runtime::{
+use crate::inetstack::runtime::{
     memory::Buffer,
     network::{
         consts::RECEIVE_BATCH_SIZE,
@@ -15,6 +14,7 @@ use ::inetstack::runtime::{
         PacketBuf,
     },
 };
+use ::arrayvec::ArrayVec;
 
 //==============================================================================
 // Trait Implementations

@@ -12,12 +12,7 @@ use self::memory::{
     consts::DEFAULT_MAX_BODY_SIZE,
     MemoryManager,
 };
-use ::anyhow::{
-    bail,
-    format_err,
-    Error,
-};
-use ::inetstack::runtime::{
+use crate::inetstack::runtime::{
     libdpdk::{
         rte_delay_us_block,
         rte_eal_init,
@@ -64,6 +59,11 @@ use ::inetstack::runtime::{
         types::MacAddress,
     },
     Runtime,
+};
+use ::anyhow::{
+    bail,
+    format_err,
+    Error,
 };
 use ::std::{
     collections::HashMap,

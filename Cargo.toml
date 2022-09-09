@@ -18,14 +18,38 @@ path = "src/rust/lib.rs"
 
 [dependencies]
 arrayvec = "0.7.2"
+async-trait = "0.1.57"
 anyhow = "1.0.64"
+bit-iter = "1.1.1"
+byteorder = "1.4.3"
+cfg-if = "1.0.0"
+crc = "3.0.0"
+crossbeam-channel = "0.5.6"
+derive_more = "0.99.17"
+eui48 = "1.1.0"
+flexi_logger = "0.23.1"
+float_duration = "0.3.3"
+futures = "0.3.24"
 libc = "0.2.132"
-rand = { version = "0.8.5", features = ["small_rng"] }
-yaml-rust = "0.4.5"
 log = "0.4.17"
 nix = "0.25.0"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
+rand = { version = "0.8.5", features = ["small_rng"] }
+slab = "0.4.7"
+yaml-rust = "0.4.5"
+x86 = "0.51.0"
 
-inetstack = { git = "https://github.com/demikernel/inetstack", rev = "e055397fa7b6fa688314db774f5054d830e17a1d" }
+liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "7d75ce6db61351d2a06fa3d84bd0af3ec017166d", optional = true }
+
+[[test]]
+name = "tcp"
+path = "tests/rust/tcp.rs"
+
+[[test]]
+name = "udp"
+path = "tests/rust/udp.rs"
 
 [[test]]
 name = "sga"
@@ -52,11 +76,12 @@ path = "examples/rust/tcp-ping-pong.rs"
 default = [ "catnap-libos" ]
 catnap-libos = [ ]
 catpowder-libos = [ ]
-catcollar-libos = [ "inetstack/liburing" ]
-catnip-libos = [ "inetstack/libdpdk" ]
-mlx4 = ["inetstack/libdpdk", "inetstack/mlx4"]
-mlx5 = ["inetstack/libdpdk", "inetstack/mlx5"]
-profiler = [ "inetstack/profiler" ]
+catcollar-libos = [ "liburing" ]
+catnip-libos = [ "libdpdk" ]
+libdpdk = [ "dpdk-rs" ]
+mlx4 = [ "dpdk-rs/mlx4" ]
+mlx5 = [ "dpdk-rs/mlx5" ]
+profiler = [  ]
 
 
 [profile.release]

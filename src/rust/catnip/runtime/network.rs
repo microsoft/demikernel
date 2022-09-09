@@ -6,8 +6,7 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use ::arrayvec::ArrayVec;
-use ::inetstack::{
+use crate::inetstack::{
     protocols::ethernet2::MIN_PAYLOAD_SIZE,
     runtime::{
         libdpdk::{
@@ -27,10 +26,11 @@ use ::inetstack::{
         },
     },
 };
+use ::arrayvec::ArrayVec;
 use ::std::mem;
 
 #[cfg(feature = "profiler")]
-use ::inetstack::timer;
+use crate::timer;
 
 //==============================================================================
 // Trait Implementations

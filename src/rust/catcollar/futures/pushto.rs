@@ -5,13 +5,15 @@
 // Imports
 //==============================================================================
 
-use crate::catcollar::{
-    runtime::RequestId,
-    IoUringRuntime,
-};
-use ::inetstack::runtime::{
-    fail::Fail,
-    QDesc,
+use crate::{
+    catcollar::{
+        runtime::RequestId,
+        IoUringRuntime,
+    },
+    inetstack::runtime::{
+        fail::Fail,
+        QDesc,
+    },
 };
 use ::std::{
     future::Future,

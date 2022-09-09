@@ -9,8 +9,7 @@ use super::{
     rawsocket::RawSocketAddr,
     LinuxRuntime,
 };
-use ::arrayvec::ArrayVec;
-use ::inetstack::{
+use crate::inetstack::{
     protocols::ethernet2::Ethernet2Header,
     runtime::{
         memory::{
@@ -24,6 +23,7 @@ use ::inetstack::{
         },
     },
 };
+use ::arrayvec::ArrayVec;
 use ::std::mem::{
     self,
     MaybeUninit,

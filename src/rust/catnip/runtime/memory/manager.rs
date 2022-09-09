@@ -6,8 +6,7 @@
 //==============================================================================
 
 use super::mempool::MemoryPool;
-use ::anyhow::Error;
-use ::inetstack::{
+use crate::inetstack::{
     protocols::{
         ethernet2::ETHERNET2_HEADER_SIZE,
         ipv4::IPV4_HEADER_DEFAULT_SIZE,
@@ -30,6 +29,7 @@ use ::inetstack::{
         },
     },
 };
+use ::anyhow::Error;
 use ::libc::c_void;
 use ::std::{
     ffi::CString,
