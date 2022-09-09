@@ -3,3 +3,4 @@
 
 pub mod intrusive;
 pub mod raw_array;
+pub mod ring;

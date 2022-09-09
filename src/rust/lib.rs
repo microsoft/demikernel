@@ -6,6 +6,8 @@
 #![feature(maybe_uninit_uninit_array)]
 #![feature(new_uninit)]
 #![feature(try_blocks)]
+#![feature(atomic_from_mut)]
+#![feature(int_log)]
 #![feature(never_type)]
 #![feature(test)]
 #![feature(type_alias_impl_trait)]
