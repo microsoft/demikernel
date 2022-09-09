@@ -11,16 +11,18 @@ mod mempool;
 //==============================================================================
 
 pub use self::manager::MemoryManager;
-use crate::inetstack::runtime::memory::Buffer;
 
 //==============================================================================
 // Imports
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
-    memory::MemoryRuntime,
+    memory::{
+        Buffer,
+        MemoryRuntime,
+    },
     types::demi_sgarray_t,
 };
 

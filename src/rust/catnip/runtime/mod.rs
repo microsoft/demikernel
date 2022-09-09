@@ -12,7 +12,7 @@ use self::memory::{
     consts::DEFAULT_MAX_BODY_SIZE,
     MemoryManager,
 };
-use crate::inetstack::runtime::{
+use crate::runtime::{
     libdpdk::{
         rte_delay_us_block,
         rte_eal_init,

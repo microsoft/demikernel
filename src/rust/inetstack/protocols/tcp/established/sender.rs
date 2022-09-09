@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 use super::ControlBlock;
-use crate::inetstack::{
-    protocols::tcp::{
+use crate::{
+    inetstack::protocols::tcp::{
         segment::TcpHeader,
         SeqNumber,
     },

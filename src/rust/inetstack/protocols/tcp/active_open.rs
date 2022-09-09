@@ -1,30 +1,32 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    constants::FALLBACK_MSS,
-    established::ControlBlock,
-    SeqNumber,
-};
-use crate::inetstack::{
-    futures::FutureOperation,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
-        tcp::{
-            established::congestion_control::{
-                self,
-                CongestionControl,
+use crate::{
+    inetstack::{
+        futures::FutureOperation,
+        protocols::{
+            arp::ArpPeer,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
             },
-            segment::{
-                TcpHeader,
-                TcpOptions2,
-                TcpSegment,
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
+            tcp::{
+                constants::FALLBACK_MSS,
+                established::{
+                    congestion_control::{
+                        self,
+                        CongestionControl,
+                    },
+                    ControlBlock,
+                },
+                segment::{
+                    TcpHeader,
+                    TcpOptions2,
+                    TcpSegment,
+                },
+                SeqNumber,
             },
         },
     },

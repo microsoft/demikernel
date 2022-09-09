@@ -5,8 +5,8 @@ mod cubic;
 mod none;
 mod options;
 
-use crate::inetstack::{
-    protocols::tcp::SeqNumber,
+use crate::{
+    inetstack::protocols::tcp::SeqNumber,
     runtime::watched::WatchFuture,
 };
 use ::std::{

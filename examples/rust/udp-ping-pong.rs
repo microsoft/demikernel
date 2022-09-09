@@ -32,7 +32,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::demikernel::inetstack::runtime::perftools::profiler;
+use ::demikernel::runtime::perftools::profiler;
 
 //======================================================================================================================
 // Constants

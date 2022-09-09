@@ -5,8 +5,8 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    protocols::ip::IpProtocol,
+use crate::{
+    inetstack::protocols::ip::IpProtocol,
     runtime::{
         fail::Fail,
         memory::Buffer,

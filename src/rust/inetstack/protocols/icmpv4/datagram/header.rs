@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use super::protocol::Icmpv4Type2;
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
     memory::Buffer,
 };

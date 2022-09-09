@@ -10,7 +10,7 @@ use crate::{
         runtime::RequestId,
         IoUringRuntime,
     },
-    inetstack::runtime::{
+    runtime::{
         fail::Fail,
         QDesc,
     },

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ethernet2::Ethernet2Header,
         ip::IpProtocol,
         ipv4::Ipv4Header,

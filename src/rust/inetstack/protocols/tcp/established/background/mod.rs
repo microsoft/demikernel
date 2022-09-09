@@ -11,7 +11,7 @@ use self::{
     sender::sender,
 };
 use super::ControlBlock;
-use crate::inetstack::runtime::QDesc;
+use crate::runtime::QDesc;
 use ::futures::{
     channel::mpsc,
     FutureExt,

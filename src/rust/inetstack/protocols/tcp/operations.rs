@@ -5,8 +5,8 @@ use super::peer::{
     Inner,
     TcpPeer,
 };
-use crate::inetstack::{
-    operations::OperationResult,
+use crate::{
+    inetstack::operations::OperationResult,
     runtime::{
         fail::Fail,
         memory::Buffer,

@@ -7,8 +7,8 @@ mod header;
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ethernet2::Ethernet2Header,
         ipv4::Ipv4Header,
     },
@@ -124,8 +124,8 @@ impl PacketBuf for UdpDatagram {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::inetstack::{
-        protocols::{
+    use crate::{
+        inetstack::protocols::{
             ethernet2::{
                 EtherType2,
                 ETHERNET2_HEADER_SIZE,

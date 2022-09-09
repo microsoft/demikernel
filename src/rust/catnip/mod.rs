@@ -17,26 +17,26 @@ use crate::{
     demikernel::config::Config,
     inetstack::{
         operations::OperationResult,
-        runtime::{
-            fail::Fail,
-            libdpdk::load_mlx_driver,
-            memory::MemoryRuntime,
-            scheduler::scheduler::{
-                Scheduler,
-                SchedulerHandle,
-            },
-            timer::{
-                Timer,
-                TimerRc,
-            },
-            types::{
-                demi_qresult_t,
-                demi_sgarray_t,
-            },
-            QDesc,
-            QToken,
-        },
         InetStack,
+    },
+    runtime::{
+        fail::Fail,
+        libdpdk::load_mlx_driver,
+        memory::MemoryRuntime,
+        scheduler::scheduler::{
+            Scheduler,
+            SchedulerHandle,
+        },
+        timer::{
+            Timer,
+            TimerRc,
+        },
+        types::{
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
     },
 };
 use ::std::{

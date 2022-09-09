@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::runtime::timer::Timer;
+use crate::runtime::timer::Timer;
 use ::std::rc::Rc;
 
 use super::*;

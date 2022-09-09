@@ -22,8 +22,8 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use crate::inetstack::{
-    operations::OperationResult,
+use crate::{
+    inetstack::operations::OperationResult,
     runtime::{
         scheduler::scheduler::{
             FutureResult,

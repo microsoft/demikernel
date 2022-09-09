@@ -16,19 +16,21 @@ use super::{
         SharedQueueSlot,
     },
 };
-use crate::inetstack::{
-    futures::FutureOperation,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
+use crate::{
+    inetstack::{
+        futures::FutureOperation,
+        protocols::{
+            arp::ArpPeer,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            ip::{
+                EphemeralPorts,
+                IpProtocol,
+            },
+            ipv4::Ipv4Header,
         },
-        ip::{
-            EphemeralPorts,
-            IpProtocol,
-        },
-        ipv4::Ipv4Header,
     },
     runtime::{
         fail::Fail,

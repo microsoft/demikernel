@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use ::demikernel::inetstack::runtime::{
+use ::demikernel::runtime::{
     memory::{
         Buffer,
         DataBuffer,

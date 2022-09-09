@@ -9,7 +9,7 @@ mod network;
 //==============================================================================
 
 use super::iouring::IoUring;
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
     liburing,
     memory::Buffer,

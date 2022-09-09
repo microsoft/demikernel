@@ -5,18 +5,20 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    futures::operation::FutureOperation,
-    operations::OperationResult,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
+use crate::{
+    inetstack::{
+        futures::operation::FutureOperation,
+        operations::OperationResult,
+        protocols::{
+            arp::ArpPeer,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            tcp::operations::ConnectFuture,
+            udp::UdpOperation,
+            Peer,
         },
-        tcp::operations::ConnectFuture,
-        udp::UdpOperation,
-        Peer,
     },
     runtime::{
         fail::Fail,
@@ -77,7 +79,6 @@ pub mod futures;
 pub mod operations;
 pub mod options;
 pub mod protocols;
-pub mod runtime;
 
 //==============================================================================
 // Constants

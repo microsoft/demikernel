@@ -4,7 +4,7 @@
 pub mod libos;
 pub mod runtime;
 
-use ::demikernel::inetstack::runtime::network::types::MacAddress;
+use ::demikernel::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,

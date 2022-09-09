@@ -9,8 +9,11 @@ mod common;
 // Imports
 //======================================================================================================================
 
-use ::demikernel::inetstack::{
-    operations::OperationResult,
+use ::demikernel::{
+    inetstack::{
+        operations::OperationResult,
+        InetStack,
+    },
     runtime::{
         memory::{
             Buffer,
@@ -19,7 +22,6 @@ use ::demikernel::inetstack::{
         QDesc,
         QToken,
     },
-    InetStack,
 };
 use common::{
     arp,

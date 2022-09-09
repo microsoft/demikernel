@@ -7,7 +7,7 @@
 
 use crate::{
     demikernel::config::Config,
-    inetstack::runtime::network::types::MacAddress,
+    runtime::network::types::MacAddress,
 };
 
 //======================================================================================================================

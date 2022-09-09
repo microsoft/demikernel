@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::runtime::network::{
+use crate::runtime::network::{
     config::{
         ArpConfig,
         TcpConfig,

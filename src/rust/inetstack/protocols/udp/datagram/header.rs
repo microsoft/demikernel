@@ -5,8 +5,8 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
     },

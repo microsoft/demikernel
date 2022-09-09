@@ -1,17 +1,17 @@
 // // Copyright (c) Microsoft Corporation.
 // // Licensed under the MIT license.
 
-use crate::inetstack::{
+use crate::{
+    inetstack::test_helpers::{
+        self,
+        Engine,
+    },
     runtime::{
         memory::{
             Buffer,
             DataBuffer,
         },
         QDesc,
-    },
-    test_helpers::{
-        self,
-        Engine,
     },
 };
 use ::futures::task::{

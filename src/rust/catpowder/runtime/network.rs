@@ -9,8 +9,8 @@ use super::{
     rawsocket::RawSocketAddr,
     LinuxRuntime,
 };
-use crate::inetstack::{
-    protocols::ethernet2::Ethernet2Header,
+use crate::{
+    inetstack::protocols::ethernet2::Ethernet2Header,
     runtime::{
         memory::{
             Buffer,

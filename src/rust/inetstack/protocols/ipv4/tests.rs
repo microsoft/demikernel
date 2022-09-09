@@ -5,18 +5,20 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    protocols::{
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
+use crate::{
+    inetstack::{
+        protocols::{
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
+        },
+        test_helpers::{
+            ALICE_IPV4,
+            BOB_IPV4,
+        },
     },
     runtime::memory::{
         Buffer,
         DataBuffer,
-    },
-    test_helpers::{
-        ALICE_IPV4,
-        BOB_IPV4,
     },
 };
 use ::byteorder::{

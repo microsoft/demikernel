@@ -6,27 +6,29 @@ use super::{
     established::ControlBlock,
     isn_generator::IsnGenerator,
 };
-use crate::inetstack::{
-    futures::FutureOperation,
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
-        tcp::{
-            established::{
-                congestion_control,
-                congestion_control::CongestionControl,
+use crate::{
+    inetstack::{
+        futures::FutureOperation,
+        protocols::{
+            arp::ArpPeer,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
             },
-            segment::{
-                TcpHeader,
-                TcpOptions2,
-                TcpSegment,
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
+            tcp::{
+                established::{
+                    congestion_control,
+                    congestion_control::CongestionControl,
+                },
+                segment::{
+                    TcpHeader,
+                    TcpOptions2,
+                    TcpSegment,
+                },
+                SeqNumber,
             },
-            SeqNumber,
         },
     },
     runtime::{

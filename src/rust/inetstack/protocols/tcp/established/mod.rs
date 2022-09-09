@@ -13,9 +13,11 @@ pub use self::ctrlblk::{
 };
 
 use self::background::background;
-use crate::inetstack::{
-    futures::FutureOperation,
-    protocols::tcp::segment::TcpHeader,
+use crate::{
+    inetstack::{
+        futures::FutureOperation,
+        protocols::tcp::segment::TcpHeader,
+    },
     runtime::{
         fail::Fail,
         memory::Buffer,

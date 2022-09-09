@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
     memory::Buffer,
     QDesc,

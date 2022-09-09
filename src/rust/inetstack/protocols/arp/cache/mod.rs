@@ -4,8 +4,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::inetstack::{
-    collections::HashTtlCache,
+use crate::{
+    inetstack::collections::HashTtlCache,
     runtime::{
         network::types::MacAddress,
         timer::TimerRc,

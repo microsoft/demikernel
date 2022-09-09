@@ -12,8 +12,8 @@ use super::{
         UnackedSegment,
     },
 };
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         ethernet2::{
             EtherType2,

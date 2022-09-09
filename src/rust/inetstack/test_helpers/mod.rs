@@ -7,7 +7,7 @@ pub mod runtime;
 pub use self::runtime::TestRuntime;
 pub use engine::Engine;
 
-use crate::inetstack::runtime::{
+use crate::runtime::{
     network::{
         config::{
             ArpConfig,

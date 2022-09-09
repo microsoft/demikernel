@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         icmpv4::Icmpv4Peer,
         ip::IpProtocol,
@@ -34,7 +34,7 @@ use ::std::{
 };
 
 #[cfg(test)]
-use crate::inetstack::runtime::QDesc;
+use crate::runtime::QDesc;
 
 pub struct Peer {
     local_ipv4_addr: Ipv4Addr,

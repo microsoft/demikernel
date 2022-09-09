@@ -9,14 +9,16 @@ use super::{
         ArpOperation,
     },
 };
-use crate::inetstack::{
-    futures::{
-        FutureOperation,
-        UtilityMethods,
-    },
-    protocols::ethernet2::{
-        EtherType2,
-        Ethernet2Header,
+use crate::{
+    inetstack::{
+        futures::{
+            FutureOperation,
+            UtilityMethods,
+        },
+        protocols::ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
     },
     runtime::{
         fail::Fail,

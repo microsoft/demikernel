@@ -11,6 +11,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
 
+pub mod runtime;
+
 pub mod inetstack;
 
 extern crate test;
@@ -42,7 +44,7 @@ pub use self::demikernel::libos::{
     name::LibOSName,
     LibOS,
 };
-pub use crate::inetstack::runtime::{
+pub use crate::runtime::{
     network::types::{
         MacAddress,
         Port16,

@@ -6,8 +6,8 @@
 //==============================================================================
 
 use super::mempool::MemoryPool;
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ethernet2::ETHERNET2_HEADER_SIZE,
         ipv4::IPV4_HEADER_DEFAULT_SIZE,
         tcp::MAX_TCP_HEADER_SIZE,

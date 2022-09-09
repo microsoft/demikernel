@@ -5,8 +5,8 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    protocols::udp::queue::{
+use crate::{
+    inetstack::protocols::udp::queue::{
         SharedQueue,
         SharedQueueSlot,
     },

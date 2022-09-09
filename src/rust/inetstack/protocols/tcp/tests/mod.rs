@@ -4,8 +4,8 @@
 pub mod established;
 pub mod setup;
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ethernet2::{
             EtherType2,
             Ethernet2Header,

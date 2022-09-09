@@ -10,7 +10,7 @@ use crate::{
         name::LibOSName,
         LibOS,
     },
-    inetstack::runtime::{
+    runtime::{
         fail::Fail,
         logging,
         types::{

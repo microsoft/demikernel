@@ -11,8 +11,8 @@ use super::{
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         ethernet2::{
             EtherType2,
