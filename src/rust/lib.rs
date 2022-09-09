@@ -1,15 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![cfg_attr(feature = "strict", deny(warnings))]
-#![deny(clippy::all)]
-#![feature(maybe_uninit_uninit_array, new_uninit)]
-#![feature(try_blocks)]
 #![cfg_attr(feature = "strict", deny(clippy:all))]
+#![recursion_limit = "512"]
+#![feature(maybe_uninit_uninit_array)]
+#![feature(new_uninit)]
+#![feature(try_blocks)]
 #![feature(never_type)]
 #![feature(test)]
 #![feature(type_alias_impl_trait)]
-#![recursion_limit = "512"]
 #![feature(allocator_api)]
 
 pub mod inetstack;
