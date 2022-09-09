@@ -1,6 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+#=======================================================================================================================
+# Package
+#=======================================================================================================================
+
 [package]
 name = "demikernel"
 version = "1.0.17"
@@ -12,11 +16,13 @@ homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
 license-file = "LICENSE.txt"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-path = "src/rust/lib.rs"
+#=======================================================================================================================
+# Dependencies
+#=======================================================================================================================
 
 [dependencies]
+
+# Third Party
 arrayvec = "0.7.2"
 async-trait = "0.1.57"
 anyhow = "1.0.64"
@@ -40,8 +46,17 @@ slab = "0.4.7"
 yaml-rust = "0.4.5"
 x86 = "0.51.0"
 
+# Demikernel Organization
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "7d75ce6db61351d2a06fa3d84bd0af3ec017166d", optional = true }
+
+#=======================================================================================================================
+# Targets
+#=======================================================================================================================
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/rust/lib.rs"
 
 [[test]]
 name = "tcp"
@@ -71,6 +86,9 @@ path = "examples/rust/tcp-push-pop.rs"
 name = "tcp-ping-pong"
 path = "examples/rust/tcp-ping-pong.rs"
 
+#=======================================================================================================================
+# Features
+#=======================================================================================================================
 
 [features]
 default = [ "catnap-libos" ]
@@ -83,6 +101,9 @@ mlx4 = [ "dpdk-rs/mlx4" ]
 mlx5 = [ "dpdk-rs/mlx5" ]
 profiler = [  ]
 
+#=======================================================================================================================
+# Profile
+#=======================================================================================================================
 
 # Build profile used for releases.
 [profile.release]
