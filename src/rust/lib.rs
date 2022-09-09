@@ -11,6 +11,9 @@
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
 
+#[cfg(feature = "profiler")]
+pub mod perftools;
+
 pub mod scheduler;
 
 pub mod runtime;

@@ -21,9 +21,6 @@ pub use queue::{
     QType,
 };
 
-#[cfg(feature = "profiler")]
-pub mod perftools;
-
 #[cfg(feature = "liburing")]
 pub use liburing;
 

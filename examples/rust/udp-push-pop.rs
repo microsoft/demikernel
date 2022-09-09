@@ -21,7 +21,7 @@ use ::std::{
 };
 
 #[cfg(feature = "profiler")]
-use ::demikernel::runtime::perftools::profiler;
+use ::demikernel::perftools::profiler;
 
 //======================================================================================================================
 // Constants

@@ -47,7 +47,7 @@ thread_local!(
 #[macro_export]
 macro_rules! timer {
     ($name:expr) => {
-        let _guard = $crate::runtime::perftools::profiler::PROFILER.with(|p| p.borrow_mut().enter($name));
+        let _guard = $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().enter($name));
     };
 }
 

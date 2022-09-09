@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    runtime::perftools::profiler,
+    perftools::profiler,
     timer,
 };
 
