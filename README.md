@@ -117,8 +117,8 @@ PEER=client TEST=udp_ping_pong sudo -E make LIBOS=catnip test-system
 
 ## Documentation
 
-- Checkout UML Documentation in [`etc/README.md`](./etc/README.md)
-- Checkout API Documentation (see instructions bellow)
+- Legacy system call API documentation [`doc/syscalls.md`](./doc/syscalls.md)
+- Instructions for running Demikernel on CloudLab [`doc/cloudlab.md`](./doc/cloudlab.md)
 
 ### 1. Build API Documentation (Optional)
 
