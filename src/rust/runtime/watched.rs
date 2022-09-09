@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::collections::intrusive::double_linked_list::{
+use crate::collections::intrusive::double_linked_list::{
     LinkedList,
     ListNode,
 };

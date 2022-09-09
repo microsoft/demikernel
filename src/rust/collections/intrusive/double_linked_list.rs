@@ -22,7 +22,7 @@
 
 //! An intrusive double linked list of data
 
-use core::{
+use ::core::{
     marker::PhantomPinned,
     ops::{
         Deref,

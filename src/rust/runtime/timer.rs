@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::collections::intrusive::pairing_heap::{
+use crate::collections::intrusive::pairing_heap::{
     HeapNode,
     PairingHeap,
 };

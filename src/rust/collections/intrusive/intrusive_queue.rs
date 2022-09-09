@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use std::{
+use ::std::{
     marker::PhantomData,
     mem,
     mem::ManuallyDrop,
@@ -25,6 +25,7 @@ pub struct IntrusiveQueue<T: IntrusivelyQueueable> {
 impl<T: IntrusivelyQueueable> IntrusiveQueue<T> {
     // Create an empty IntrusiveQueue.
     #[inline]
+    #[allow(dead_code)]
     pub const fn new() -> Self {
         IntrusiveQueue {
             front: None,
@@ -35,11 +36,13 @@ impl<T: IntrusivelyQueueable> IntrusiveQueue<T> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.front.is_none()
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -76,6 +79,7 @@ impl<T: IntrusivelyQueueable> IntrusiveQueue<T> {
 
     // Add the given element to the back of the queue.
     // Call this push_back to match VecDequeue?
+    #[allow(dead_code)]
     pub fn push_element(&mut self, added: Rc<T>) {
         // Ensure the new element's next pointer doesn't point to anything.
         added.set_queue_next(None);

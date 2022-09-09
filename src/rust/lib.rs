@@ -11,6 +11,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
 
+mod collections;
+
 #[cfg(feature = "profiler")]
 pub mod perftools;
 
