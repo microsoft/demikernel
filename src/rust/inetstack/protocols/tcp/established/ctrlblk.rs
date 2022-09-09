@@ -40,13 +40,13 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         watched::{
             WatchFuture,
             WatchedValue,
         },
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::std::{
     cell::{

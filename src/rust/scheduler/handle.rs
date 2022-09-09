@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::scheduler::{
+use crate::scheduler::{
     page::WakerPageRef,
     waker64::WAKER_BIT_LENGTH,
 };

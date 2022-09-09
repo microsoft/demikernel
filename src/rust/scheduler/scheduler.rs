@@ -11,20 +11,18 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::scheduler::{
+use crate::scheduler::{
     page::{
         WakerPageRef,
         WakerRef,
     },
     pin_slab::PinSlab,
-    scheduler::{
-        SchedulerFuture,
-        SchedulerHandle,
-    },
     waker64::{
         WAKER_BIT_LENGTH,
         WAKER_BIT_LENGTH_SHIFT,
     },
+    SchedulerFuture,
+    SchedulerHandle,
 };
 use ::bit_iter::BitIter;
 use ::std::{
@@ -196,7 +194,7 @@ impl Default for Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::scheduler::scheduler::{
+    use crate::scheduler::scheduler::{
         Scheduler,
         SchedulerFuture,
         SchedulerHandle,

@@ -23,10 +23,6 @@ use crate::{
         fail::Fail,
         libdpdk::load_mlx_driver,
         memory::MemoryRuntime,
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::{
             Timer,
             TimerRc,
@@ -37,6 +33,10 @@ use crate::{
         },
         QDesc,
         QToken,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::std::{

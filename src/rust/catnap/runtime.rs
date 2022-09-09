@@ -5,19 +5,21 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::{
-        Buffer,
-        DataBuffer,
-        MemoryRuntime,
+use crate::{
+    runtime::{
+        fail::Fail,
+        memory::{
+            Buffer,
+            DataBuffer,
+            MemoryRuntime,
+        },
+        types::{
+            demi_sgarray_t,
+            demi_sgaseg_t,
+        },
+        Runtime,
     },
     scheduler::scheduler::Scheduler,
-    types::{
-        demi_sgarray_t,
-        demi_sgaseg_t,
-    },
-    Runtime,
 };
 use ::libc::c_void;
 use ::std::{

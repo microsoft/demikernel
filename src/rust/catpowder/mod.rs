@@ -22,10 +22,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::{
             Timer,
             TimerRc,
@@ -36,6 +32,10 @@ use crate::{
         },
         QDesc,
         QToken,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::std::{

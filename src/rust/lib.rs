@@ -11,6 +11,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
 
+pub mod scheduler;
+
 pub mod runtime;
 
 pub mod inetstack;

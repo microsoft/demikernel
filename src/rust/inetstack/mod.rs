@@ -36,15 +36,15 @@ use crate::{
             NetworkRuntime,
         },
         queue::IoQueueTable,
-        scheduler::scheduler::{
-            FutureResult,
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::TimerRc,
         QDesc,
         QToken,
         QType,
+    },
+    scheduler::{
+        FutureResult,
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::libc::{

@@ -22,7 +22,6 @@ use ::demikernel::{
             },
             types::MacAddress,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
     },
 };
@@ -30,6 +29,7 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
+use demikernel::scheduler::scheduler::Scheduler;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,

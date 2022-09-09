@@ -21,9 +21,9 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::libc::ENOTCONN;
 use ::std::{

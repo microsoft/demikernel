@@ -22,11 +22,11 @@ use crate::{
         memory::Buffer,
         network::types::MacAddress,
         queue::IoQueueTable,
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         QDesc,
         QType,
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::libc::EBADMSG;
 use ::std::{

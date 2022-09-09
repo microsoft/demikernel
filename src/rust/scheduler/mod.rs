@@ -3,8 +3,11 @@
 
 mod future;
 mod handle;
+mod page;
+mod pin_slab;
 mod result;
-mod scheduler;
+pub mod scheduler;
+mod waker64;
 
 //==============================================================================
 // Exports

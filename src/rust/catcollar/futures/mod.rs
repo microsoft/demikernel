@@ -24,12 +24,10 @@ use self::{
 };
 use crate::{
     inetstack::operations::OperationResult,
-    runtime::{
-        scheduler::scheduler::{
-            FutureResult,
-            SchedulerFuture,
-        },
-        QDesc,
+    runtime::QDesc,
+    scheduler::{
+        FutureResult,
+        SchedulerFuture,
     },
 };
 use ::std::{

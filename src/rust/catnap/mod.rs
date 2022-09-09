@@ -33,7 +33,6 @@ use crate::{
             MemoryRuntime,
         },
         queue::IoQueueTable,
-        scheduler::scheduler::SchedulerHandle,
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -45,6 +44,7 @@ use crate::{
         QToken,
         QType,
     },
+    scheduler::SchedulerHandle,
 };
 use ::libc::{
     c_int,

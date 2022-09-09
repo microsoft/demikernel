@@ -21,9 +21,9 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::Buffer,
-        scheduler::scheduler::SchedulerHandle,
         QDesc,
     },
+    scheduler::SchedulerHandle,
 };
 use ::futures::{
     channel::mpsc,

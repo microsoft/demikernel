@@ -46,10 +46,10 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         QDesc,
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::futures::channel::mpsc;
 use ::libc::{

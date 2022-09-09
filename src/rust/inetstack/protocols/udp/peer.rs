@@ -39,11 +39,11 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         QDesc,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::futures::FutureExt;

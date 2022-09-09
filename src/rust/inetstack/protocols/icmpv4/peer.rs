@@ -29,11 +29,11 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::TimerRc,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::byteorder::{

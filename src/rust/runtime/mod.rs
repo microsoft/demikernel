@@ -11,7 +11,6 @@ pub mod logging;
 pub mod memory;
 pub mod network;
 pub mod queue;
-pub mod scheduler;
 pub mod timer;
 pub mod types;
 pub mod watched;

@@ -10,9 +10,9 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::Buffer,
-        scheduler::scheduler::FutureResult,
         QDesc,
     },
+    scheduler::FutureResult,
 };
 use ::std::{
     cell::RefCell,

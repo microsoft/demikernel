@@ -5,25 +5,27 @@
 // Imports
 //==============================================================================
 
-use ::demikernel::runtime::{
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
-    network::{
-        consts::RECEIVE_BATCH_SIZE,
-        NetworkRuntime,
-        PacketBuf,
+use ::arrayvec::ArrayVec;
+use ::crossbeam_channel;
+use ::demikernel::{
+    runtime::{
+        memory::{
+            Buffer,
+            DataBuffer,
+        },
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+            PacketBuf,
+        },
+        timer::{
+            Timer,
+            TimerRc,
+        },
     },
     scheduler::scheduler::Scheduler,
-    timer::{
-        Timer,
-        TimerRc,
-    },
 };
-use arrayvec::ArrayVec;
-use crossbeam_channel;
-use std::{
+use ::std::{
     cell::RefCell,
     rc::Rc,
     time::Instant,

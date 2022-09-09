@@ -153,7 +153,7 @@ pub const VTABLE: RawWakerVTable =
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::scheduler::{
+    use crate::scheduler::{
         page::{
             WakerPageRef,
             WakerRef,

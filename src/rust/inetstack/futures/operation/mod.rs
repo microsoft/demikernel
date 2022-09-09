@@ -6,7 +6,7 @@ use crate::{
         tcp::operations::TcpOperation,
         udp::UdpOperation,
     },
-    runtime::scheduler::scheduler::SchedulerFuture,
+    scheduler::SchedulerFuture,
 };
 use ::futures::Future;
 use ::std::{
