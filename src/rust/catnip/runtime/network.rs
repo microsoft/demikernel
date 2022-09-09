@@ -6,8 +6,8 @@
 //==============================================================================
 
 use super::DPDKRuntime;
-use crate::inetstack::{
-    protocols::ethernet2::MIN_PAYLOAD_SIZE,
+use crate::{
+    inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE,
     runtime::{
         libdpdk::{
             rte_eth_rx_burst,

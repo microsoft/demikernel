@@ -3,7 +3,7 @@
 
 use crate::{
     catnip::DPDKRuntime,
-    inetstack::runtime::{
+    runtime::{
         memory::MemoryRuntime,
         types::{
             demi_accept_result_t,

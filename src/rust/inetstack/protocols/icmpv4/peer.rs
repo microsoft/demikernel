@@ -1,24 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    futures::{
-        FutureOperation,
-        UtilityMethods,
-    },
-    protocols::{
-        arp::ArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
+use crate::{
+    inetstack::{
+        futures::{
+            FutureOperation,
+            UtilityMethods,
         },
-        icmpv4::datagram::{
-            Icmpv4Header,
-            Icmpv4Message,
-            Icmpv4Type2,
+        protocols::{
+            arp::ArpPeer,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            icmpv4::datagram::{
+                Icmpv4Header,
+                Icmpv4Message,
+                Icmpv4Type2,
+            },
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
         },
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
     },
     runtime::{
         fail::Fail,
@@ -27,11 +29,11 @@ use crate::inetstack::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::TimerRc,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::byteorder::{

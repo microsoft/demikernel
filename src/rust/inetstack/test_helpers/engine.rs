@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         ethernet2::{
             EtherType2,
@@ -22,11 +22,11 @@ use crate::inetstack::{
         memory::Buffer,
         network::types::MacAddress,
         queue::IoQueueTable,
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         QDesc,
         QType,
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::libc::EBADMSG;
 use ::std::{

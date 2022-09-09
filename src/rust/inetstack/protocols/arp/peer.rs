@@ -9,14 +9,16 @@ use super::{
         ArpOperation,
     },
 };
-use crate::inetstack::{
-    futures::{
-        FutureOperation,
-        UtilityMethods,
-    },
-    protocols::ethernet2::{
-        EtherType2,
-        Ethernet2Header,
+use crate::{
+    inetstack::{
+        futures::{
+            FutureOperation,
+            UtilityMethods,
+        },
+        protocols::ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
     },
     runtime::{
         fail::Fail,
@@ -26,11 +28,11 @@ use crate::inetstack::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::{
-            Scheduler,
-            SchedulerHandle,
-        },
         timer::TimerRc,
+    },
+    scheduler::{
+        Scheduler,
+        SchedulerHandle,
     },
 };
 use ::futures::{

@@ -5,14 +5,16 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::{
-    operations::OperationResult,
-    protocols::udp::UdpPopFuture,
+use crate::{
+    inetstack::{
+        operations::OperationResult,
+        protocols::udp::UdpPopFuture,
+    },
     runtime::{
         fail::Fail,
-        scheduler::scheduler::FutureResult,
         QDesc,
     },
+    scheduler::FutureResult,
 };
 use ::std::{
     future::Future,

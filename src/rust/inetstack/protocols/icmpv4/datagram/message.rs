@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 use super::Icmpv4Header;
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         ethernet2::Ethernet2Header,
         ipv4::Ipv4Header,
     },

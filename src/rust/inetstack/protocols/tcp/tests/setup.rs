@@ -1,23 +1,29 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::{
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
+use crate::{
+    inetstack::{
+        protocols::{
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            ipv4::Ipv4Header,
+            tcp::{
+                operations::{
+                    AcceptFuture,
+                    ConnectFuture,
+                },
+                segment::{
+                    TcpHeader,
+                    TcpSegment,
+                },
+                SeqNumber,
+            },
         },
-        ipv4::Ipv4Header,
-        tcp::{
-            operations::{
-                AcceptFuture,
-                ConnectFuture,
-            },
-            segment::{
-                TcpHeader,
-                TcpSegment,
-            },
-            SeqNumber,
+        test_helpers::{
+            self,
+            Engine,
         },
     },
     runtime::{
@@ -30,10 +36,6 @@ use crate::inetstack::{
             PacketBuf,
         },
         QDesc,
-    },
-    test_helpers::{
-        self,
-        Engine,
     },
 };
 use ::futures::task::noop_waker_ref;

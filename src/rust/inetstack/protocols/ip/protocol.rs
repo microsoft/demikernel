@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::inetstack::runtime::fail::Fail;
+use crate::runtime::fail::Fail;
 use ::libc::ENOTSUP;
 use ::num_traits::FromPrimitive;
 use ::std::convert::TryFrom;

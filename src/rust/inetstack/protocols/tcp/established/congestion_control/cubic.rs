@@ -16,8 +16,8 @@ use super::{
     Options,
     SlowStartCongestionAvoidance,
 };
-use crate::inetstack::{
-    protocols::tcp::SeqNumber,
+use crate::{
+    inetstack::protocols::tcp::SeqNumber,
     runtime::watched::{
         WatchFuture,
         WatchedValue,

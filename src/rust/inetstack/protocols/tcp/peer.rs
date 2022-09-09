@@ -11,8 +11,8 @@ use super::{
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
 };
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         ethernet2::{
             EtherType2,
@@ -46,10 +46,10 @@ use crate::inetstack::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         QDesc,
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::futures::channel::mpsc;
 use ::libc::{

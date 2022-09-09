@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use super::ControlBlock;
-use crate::inetstack::runtime::fail::Fail;
+use crate::runtime::fail::Fail;
 use ::futures::{
     future::{
         self,

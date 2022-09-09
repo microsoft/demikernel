@@ -3,7 +3,7 @@
 
 use crate::{
     catpowder::LinuxRuntime,
-    inetstack::runtime::{
+    runtime::{
         memory::MemoryRuntime,
         types::{
             demi_accept_result_t,

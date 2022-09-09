@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::ethernet2::EtherType2,
+use crate::{
+    inetstack::protocols::ethernet2::EtherType2,
     runtime::{
         fail::Fail,
         memory::Buffer,

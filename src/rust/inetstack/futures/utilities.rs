@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::runtime::fail::Fail;
+use crate::runtime::fail::Fail;
 use ::async_trait::async_trait;
 use ::futures::{
     future::FusedFuture,

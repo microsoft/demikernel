@@ -6,7 +6,7 @@
 //==============================================================================
 
 use super::IoUringRuntime;
-use crate::inetstack::runtime::{
+use crate::runtime::{
     memory::Buffer,
     network::{
         consts::RECEIVE_BATCH_SIZE,

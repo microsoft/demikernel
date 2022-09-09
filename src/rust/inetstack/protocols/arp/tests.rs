@@ -5,10 +5,12 @@ use super::packet::{
     ArpHeader,
     ArpOperation,
 };
-use crate::inetstack::{
-    protocols::ethernet2::Ethernet2Header,
+use crate::{
+    inetstack::{
+        protocols::ethernet2::Ethernet2Header,
+        test_helpers::{self,},
+    },
     runtime::network::types::MacAddress,
-    test_helpers::{self,},
 };
 use ::futures::{
     task::{

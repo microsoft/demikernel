@@ -1,28 +1,30 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::runtime::{
-    logging,
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    runtime::{
+        logging,
+        memory::{
+            Buffer,
+            DataBuffer,
         },
-        consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
-        NetworkRuntime,
-        PacketBuf,
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            consts::RECEIVE_BATCH_SIZE,
+            types::MacAddress,
+            NetworkRuntime,
+            PacketBuf,
+        },
+        timer::{
+            Timer,
+            TimerRc,
+        },
     },
     scheduler::scheduler::Scheduler,
-    timer::{
-        Timer,
-        TimerRc,
-    },
 };
 use ::arrayvec::ArrayVec;
 use ::std::{

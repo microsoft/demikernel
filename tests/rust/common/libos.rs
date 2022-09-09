@@ -6,7 +6,8 @@
 //==============================================================================
 
 use super::runtime::DummyRuntime;
-use ::demikernel::inetstack::{
+use ::demikernel::{
+    inetstack::InetStack,
     runtime::{
         logging,
         memory::{
@@ -21,15 +22,14 @@ use ::demikernel::inetstack::{
             },
             types::MacAddress,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
     },
-    InetStack,
 };
 use crossbeam_channel::{
     Receiver,
     Sender,
 };
+use demikernel::scheduler::scheduler::Scheduler;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,

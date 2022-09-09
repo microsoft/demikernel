@@ -22,14 +22,12 @@ use self::{
     push::PushFuture,
     pushto::PushtoFuture,
 };
-use crate::inetstack::{
-    operations::OperationResult,
-    runtime::{
-        scheduler::scheduler::{
-            FutureResult,
-            SchedulerFuture,
-        },
-        QDesc,
+use crate::{
+    inetstack::operations::OperationResult,
+    runtime::QDesc,
+    scheduler::{
+        FutureResult,
+        SchedulerFuture,
     },
 };
 use ::std::{

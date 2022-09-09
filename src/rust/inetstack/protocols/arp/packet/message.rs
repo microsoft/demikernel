@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 use super::ArpHeader;
-use crate::inetstack::{
-    protocols::ethernet2::Ethernet2Header,
+use crate::{
+    inetstack::protocols::ethernet2::Ethernet2Header,
     runtime::{
         memory::Buffer,
         network::PacketBuf,

@@ -9,12 +9,14 @@ mod network;
 //==============================================================================
 
 use super::iouring::IoUring;
-use crate::inetstack::runtime::{
-    fail::Fail,
-    liburing,
-    memory::Buffer,
+use crate::{
+    runtime::{
+        fail::Fail,
+        liburing,
+        memory::Buffer,
+        Runtime,
+    },
     scheduler::scheduler::Scheduler,
-    Runtime,
 };
 use ::nix::sys::socket::SockaddrStorage;
 use ::std::{

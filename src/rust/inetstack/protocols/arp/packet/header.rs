@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
     memory::Buffer,
     network::types::MacAddress,

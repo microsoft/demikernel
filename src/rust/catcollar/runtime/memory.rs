@@ -6,7 +6,7 @@
 //==============================================================================
 
 use super::IoUringRuntime;
-use crate::inetstack::runtime::{
+use crate::runtime::{
     fail::Fail,
     memory::{
         Buffer,

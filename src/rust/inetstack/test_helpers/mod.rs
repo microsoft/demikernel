@@ -7,17 +7,19 @@ pub mod runtime;
 pub use self::runtime::TestRuntime;
 pub use engine::Engine;
 
-use crate::inetstack::runtime::{
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    runtime::{
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            types::MacAddress,
         },
-        types::MacAddress,
+        timer::TimerRc,
     },
     scheduler::scheduler::Scheduler,
-    timer::TimerRc,
 };
 use ::std::{
     collections::HashMap,

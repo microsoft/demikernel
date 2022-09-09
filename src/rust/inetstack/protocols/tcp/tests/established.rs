@@ -1,18 +1,24 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::tcp::{
-        operations::PushFuture,
-        tests::{
-            check_packet_data,
-            check_packet_pure_ack,
-            setup::{
-                advance_clock,
-                connection_setup,
+use crate::{
+    inetstack::{
+        protocols::tcp::{
+            operations::PushFuture,
+            tests::{
+                check_packet_data,
+                check_packet_pure_ack,
+                setup::{
+                    advance_clock,
+                    connection_setup,
+                },
             },
+            SeqNumber,
         },
-        SeqNumber,
+        test_helpers::{
+            self,
+            Engine,
+        },
     },
     runtime::{
         memory::{
@@ -20,10 +26,6 @@ use crate::inetstack::{
             DataBuffer,
         },
         QDesc,
-    },
-    test_helpers::{
-        self,
-        Engine,
     },
 };
 use ::futures::task::noop_waker_ref;

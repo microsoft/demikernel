@@ -12,8 +12,8 @@ use super::{
         UnackedSegment,
     },
 };
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         arp::ArpPeer,
         ethernet2::{
             EtherType2,
@@ -40,13 +40,13 @@ use crate::inetstack::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::scheduler::Scheduler,
         timer::TimerRc,
         watched::{
             WatchFuture,
             WatchedValue,
         },
     },
+    scheduler::scheduler::Scheduler,
 };
 use ::std::{
     cell::{

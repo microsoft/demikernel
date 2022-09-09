@@ -5,8 +5,8 @@ use super::super::{
     ctrlblk::ControlBlock,
     sender::UnackedSegment,
 };
-use crate::inetstack::{
-    protocols::tcp::{
+use crate::{
+    inetstack::protocols::tcp::{
         segment::TcpHeader,
         SeqNumber,
     },

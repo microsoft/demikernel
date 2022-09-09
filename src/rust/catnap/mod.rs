@@ -24,29 +24,27 @@ use self::futures::{
 };
 use crate::{
     demikernel::config::Config,
-    inetstack::{
-        operations::OperationResult,
-        runtime::{
-            fail::Fail,
-            memory::{
-                Buffer,
-                DataBuffer,
-                MemoryRuntime,
-            },
-            queue::IoQueueTable,
-            scheduler::scheduler::SchedulerHandle,
-            types::{
-                demi_accept_result_t,
-                demi_opcode_t,
-                demi_qr_value_t,
-                demi_qresult_t,
-                demi_sgarray_t,
-            },
-            QDesc,
-            QToken,
-            QType,
+    inetstack::operations::OperationResult,
+    runtime::{
+        fail::Fail,
+        memory::{
+            Buffer,
+            DataBuffer,
+            MemoryRuntime,
         },
+        queue::IoQueueTable,
+        types::{
+            demi_accept_result_t,
+            demi_opcode_t,
+            demi_qr_value_t,
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
+        QType,
     },
+    scheduler::SchedulerHandle,
 };
 use ::libc::{
     c_int,

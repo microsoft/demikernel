@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::{
-    protocols::{
+use crate::{
+    inetstack::protocols::{
         tcp::operations::TcpOperation,
         udp::UdpOperation,
     },
-    runtime::scheduler::scheduler::SchedulerFuture,
+    scheduler::SchedulerFuture,
 };
 use ::futures::Future;
 use ::std::{
