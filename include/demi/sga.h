@@ -5,6 +5,7 @@
 #define DEMI_SGA_H_IS_INCLUDED
 
 #include <demi/types.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C"

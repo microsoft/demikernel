@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/socket.h>
 
 #ifdef __cplusplus
 extern "C"

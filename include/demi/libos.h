@@ -5,6 +5,8 @@
 #define DEMI_LIBOS_H_IS_INCLUDED
 
 #include <demi/types.h>
+#include <stddef.h>
+#include <sys/socket.h>
 
 #ifdef __cplusplus
 extern "C"
