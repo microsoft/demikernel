@@ -26,21 +26,6 @@ extern "C"
     extern int demi_init(int argc, char *const argv[]);
 
     /**
-     * @brief Allocates an in-memory Demikernel queue.
-     *
-     * @details Returns a queue descriptor that references a FIFO queue (i.e.,
-     * popping an element from the queue will return the first scatter-gather array
-     * that was pushed).
-     *
-     * @param qd_out Queue descriptor for newly allocated memory queue if
-     * successful; otherwise invalid.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    extern int demi_queue(int *qd_out);
-
-    /**
      * @brief Allocates Demikernel queue associated with a socket.
      *
      * @param qd_out Queue descriptor for newly allocated network queue connected
@@ -57,18 +42,6 @@ extern "C"
      * is returned instead.
      */
     extern int demi_socket(int *qd_out, int domain, int type, int protocol);
-
-    /**
-     * @brief Gets address that the socket associated with queue qd is bound to.
-     *
-     * @param qd Queue descriptor.
-     * @param saddr Socket address data structure.
-     * @param size Size (in bytes) of socket address data structure.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    extern int demi_getsockname(int qd, struct sockaddr *saddr, socklen_t *size);
 
     /**
      * @brief Sets socket to listening mode.

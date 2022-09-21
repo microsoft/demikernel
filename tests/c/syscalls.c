@@ -30,18 +30,6 @@ static bool inval_socket(void)
 }
 
 /**
- * @brief Issues an invalid call to demi_getsockname().
- */
-static bool inval_getsockname(void)
-{
-    int qd = -1;
-    struct sockaddr *saddr = NULL;
-    socklen_t *size = NULL;
-
-    return (demi_getsockname(qd, saddr, size) != 0);
-}
-
-/**
  * @brief Issues an invalid call to demi_listen().
  */
 static bool inval_listen(void)
@@ -204,12 +192,11 @@ struct test
 /**
  * @brief Tests for system calls in demi/libos.h
  */
-static struct test tests_libos[] = {
-    {inval_socket, "invalid demi_socket()"},   {inval_accept, "invalid demi_accept()"},
-    {inval_bind, "invalid demi_bind()"},       {inval_close, "invalid_demi_close()"},
-    {inval_connect, "invalid demi_connect()"}, {inval_getsockname, "invalid demi_getsockname()"},
-    {inval_listen, "invalid demi_listen()"},   {inval_pop, "invalid demi_pop()"},
-    {inval_push, "invalid demi_push()"},       {inval_pushto, "invalid demi_pushto()"}};
+static struct test tests_libos[] = {{inval_socket, "invalid demi_socket()"},   {inval_accept, "invalid demi_accept()"},
+                                    {inval_bind, "invalid demi_bind()"},       {inval_close, "invalid_demi_close()"},
+                                    {inval_connect, "invalid demi_connect()"}, {inval_listen, "invalid demi_listen()"},
+                                    {inval_pop, "invalid demi_pop()"},         {inval_push, "invalid demi_push()"},
+                                    {inval_pushto, "invalid demi_pushto()"}};
 
 /**
  * @brief Tests for system calls in demi/sga.h

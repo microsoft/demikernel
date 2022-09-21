@@ -44,8 +44,6 @@ extern "C"
      */
     extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qtoks[], int num_qtoks);
 
-    extern int demi_wait_all(demi_qresult_t *qr_out, demi_qtoken_t qtoks[], int num_qtoks);
-
 #ifdef __cplusplus
 }
 #endif
