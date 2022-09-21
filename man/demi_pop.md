@@ -2,7 +2,7 @@
 
 ## Name
 
-`demi_pop` - Pops a scatter-gather array from an I/O queue.
+`demi_pop` - Asynchronously pops a scatter-gather array from an I/O queue.
 
 ## Synopsis
 

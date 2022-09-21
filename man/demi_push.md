@@ -3,7 +3,7 @@
 
 ## Name
 
-`demi_push` - Pushes a scatter-gather array to an I/O queue.
+`demi_push` - Asynchronously pushes a scatter-gather array to an I/O queue.
 
 ## Synopsis
 

@@ -10,13 +10,13 @@
 #include <demi/libos.h>
 #include <sys/socket.h> /* For socket domain and type. */
 
-int demi_socket(int *qd_out, int domain, int type, int protocol);
+int demi_socket(int *sockqd_out, int domain, int type, int protocol);
 ```
 
 ## Description
 
 `demi_socket()` creates a socket I/O queue and stores the I/O queue descriptor that refers to that socket in the
-location pointed to by `qd_out`.
+location pointed to by `sockqd_out`.
 
 The `domain` parameter specifies the protocol family which will be used for communication. Demikernel currently supports
 the following protocol families:

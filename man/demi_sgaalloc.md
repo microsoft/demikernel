@@ -27,11 +27,11 @@ typedef struct demi_sgarray
 {
     // Reserved.
     void *sga_buf;
-    // Number of segments in the scatter-gather array in the scatter-gather array.
+    // Number of segments in the scatter-gather array.
     uint32_t sga_numsegs;
     // Scatter-gather array segments.
     demi_sgaseg_t sga_segs[DEMI_SGARRAY_MAXSIZE];
-    // Deprecated.
+    // Source address of scatter-gather array.
     struct sockaddr_in sga_addr;
 } demi_sgarray_t;
 ```
@@ -41,9 +41,9 @@ The `demi_sgaseg_t` is defined as follows:
 ```c
 typedef struct demi_sgaseg
 {
-    // Underlying memory area allocated for the segment.
+    // Underlying data.
     void *sgaseg_buf;
-    // Size in bytes of the memory area.
+    // Size in bytes of data.
     uint32_t sgaseg_len;
 } demi_sgaseg_t;
 ```

@@ -3,7 +3,7 @@
 
 ## Name
 
-`demi_pushto` - Pushes a scatter-gather array to a network queue.
+`demi_pushto` - Asynchronously pushes a scatter-gather array to a socket I/O queue.
 
 ## Synopsis
 
@@ -11,15 +11,15 @@
 #include <demi/libos.h>
 #include <sys/socket.h> /* For struct sockaddr and socklen_t. */
 
-int demi_pushto(demi_qtoken_t *qt_out, int qd, const demi_sgarray_t *sga, const struct sockaddr *dest_addr, socklen_t size);
+int demi_pushto(demi_qtoken_t *qt_out, int sockqd, const demi_sgarray_t *sga, const struct sockaddr *dest_addr, socklen_t size);
 ```
 
 ## Description
 
-`demi_pushto()` asynchronously pushes a scatter-gather array to a network queue. It only works on connection-mode
+`demi_pushto()` asynchronously pushes a scatter-gather array to a socket I/O queue. It only works on connection-mode
 sockets.
 
-The `qd` parameter is the I/O queue descriptor that is associated with the target network queue.
+The `sockqd` parameter is the I/O queue descriptor that is associated with the target socket I/O queue.
 
 The `sga` parameter points to the scatter-gather array that is being pushed. For information on scatter-gather arrays,
 see `demi_sgaalloc()`.
@@ -51,7 +51,7 @@ On error, one of the following positive error codes is returned:
 - `EINVAL` - The socket address size `size` is not valid.
 - `EINVAL` - The `sga` argument does not point to a valid scatter-gather array.
 - `EINVAL` - The scatter-gather array pointed to by `sga` refers to a zero-length buffer.
-- `EBADF` - The I/O queue descriptor `qd` does not refer to a valid I/O queue.
+- `EBADF` - `sockqd` does not refer to a socket I/O queue.
 - `EAGAIN` - Demikernel failed to create an asynchronous co-routine to handle the `demi_pushto()` operation.
 
 ## Conforming To

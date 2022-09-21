@@ -4,7 +4,7 @@
 
 `demi_wait` - Waits for an asynchronous I/O operation to complete.
 
-`demi_wait_any` - Waits for the first asynchronous I/O operation in a set to complete.
+`demi_wait_any` - Waits for the first asynchronous I/O operation in a list to complete.
 
 ## Synopsis
 
@@ -18,12 +18,12 @@ int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[]
 
 ## Description
 
-`demi_wait()` waits for an I/O operation to complete, and`demi_wait_any()` waits for the first I/O operation in a set to
+`demi_wait()` waits for an I/O operation to complete, and`demi_wait_any()` waits for the first I/O operation in a list to
 complete.
 
 - The `qt` parameter in `demi_wait()` is the queue token wait for completion.
-- The `qts` parameter in `demi_wait_any()` is the set of queue tokens to wait for completion.
-- The `num_qts` parameter in `demi_wait_any()` specifies the length of `qts` set.
+- The `qts` parameter in `demi_wait_any()` is the list of queue tokens to wait for completion.
+- The `num_qts` parameter in `demi_wait_any()` specifies the length of `qts` list.
 - The `ready_offset` parameter points to the location where `demi_wait_any()` shall store the offset within `qts` of the
 operation that has completed.
 - The `qr_out` points to the location where the result of the completed operation shall be stored.
