@@ -2,7 +2,7 @@
 
 ## Name
 
-`demi_bind` - Binds a name to a socket.
+`demi_bind` - Binds an address to a socket I/O queue.
 
 ## Synopsis
 
@@ -10,17 +10,18 @@
 #include <demi/libos.h>
 #include <sys/socket.h> /* For struct sockaddr and socklen_t. */
 
-int demi_bind(int qd, const struct sockaddr *saddr, socklen_t size);
+int demi_bind(int sockqd, const struct sockaddr *addr, socklen_t size);
 ```
 
 ## Description
 
-`demi_bind()` assigns the address specified by `saddr` to the socket referred to by the I/O queue descriptor `qd`.
+`demi_bind()` assigns the address specified by `addr` to the socket referred to by the socket I/O queue descriptor
+`sockqd`.
 
-The `size` parameter specifies the size (in bytes) of the address structure pointed to by `saddr`.
+The `size` parameter specifies the size (in bytes) of the address structure pointed to by `addr`.
 
-The `sockaddr` structure has a genetic format and its only purpose is to cast the structure pointer passed in `saddr`,
-in order to avoid compiler warnings. The length and the format of actual socket address depends on the address family of
+The `sockaddr` structure has a genetic format and its only purpose is to cast the structure pointer passed in `addr`, in
+order to avoid compiler warnings. The length and the format of actual socket address depends on the address family of
 the socket.
 
 ## Return Value
@@ -31,11 +32,11 @@ On success, zero is returned. On error, a positive error code is returned.
 
 On error, one of the following positive error codes is returned:
 
-- `EINVAL` - The `saddr` argument does not point to a valid socket address structure.
+- `EINVAL` - The `addr` argument does not point to a valid socket address structure.
 - `EINVAL` - The socket address size `size` is not valid.
-- `EINVAL` - The I/O queue descriptor `qd` refers to an I/O queue that does not support the `demi_bind()` operation.
-- `EBADF` - The I/O queue descriptor `qd` does not refer to a valid I/O queue.
-- `EADDRINUSE` - The address pointed to by `saddr` is already in use.
+- `EINVAL` - `sockqd` refers to an I/O queue that does not support the `demi_bind()` operation.
+- `EBADF` - `sockqd` does not refer to a socket I/O queue.
+- `EADDRINUSE` - The address pointed to by `addr` is already in use.
 
 ## Conforming To
 

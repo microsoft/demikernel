@@ -12,39 +12,26 @@ extern "C"
 #endif
 
     /**
-     * @brief Blocks until completion of queue operation associated with queue token
-     * qtok and destroys the queue token.
+     * @brief Waits for an asynchronous I/O operation to complete.
      *
-     * @details Returns result of I/O operation in qr_out. The application does not
-     * need to drop the token with demi_drop() afterwards.
+     * @param qr_out Store location for the result of the completed I/O operation.
+     * @param qt     I/O queue token of the target operation to wait for completion.
      *
-     * @param qr_out Result of completed queue operation.
-     * @param qtok Queue token from requested queue operation.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qtok);
+    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
 
     /**
-     * @brief Blocks until completion of at first queue operation in the set of
-     * queue tokens, indicated by qtoks up to num_qtoks.
+     * @brief Waits for the first asynchronous I/O operation in a list to complete.
      *
-     * @details Returns result of first completed I/O operation in qr_out and index
-     * of completed queue token in ready_offset. Destroys queue token so application
-     * does not need to call demi_drop(). ready_offset must be less than num_qtoks.
+     * @param qr_out       Store location for the result of the completed I/O operation.
+     * @param ready_offset Store location for the offset in the list of I/O queue tokens of the completed I/O operation.
+     * @param qts          List of I/O queue tokens to wait for completion.
+     * @param num_qts      Length of the list of I/O queue tokens to wait for completion.
      *
-     * @param qr_out Result of completed queue operation.
-     * @param ready_offset Offset in list of queue tokens qtoks that is complete.
-     * @param qtoks List of queue tokens to wait on.
-     * @param num_qtoks Number of queue tokens to wait on.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qtoks[], int num_qtoks);
-
-    extern int demi_wait_all(demi_qresult_t *qr_out, demi_qtoken_t qtoks[], int num_qtoks);
+    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts);
 
 #ifdef __cplusplus
 }

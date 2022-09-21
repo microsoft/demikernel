@@ -5,6 +5,8 @@
 #define DEMI_LIBOS_H_IS_INCLUDED
 
 #include <demi/types.h>
+#include <stddef.h>
+#include <sys/socket.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -12,166 +14,111 @@ extern "C"
 #endif
 
     /**
-     * @brief Initializes libOS state.
+     * @brief Initializes Demikernel.
      *
-     * @details Set up devices, allocate data structures and general initialization
-     * tasks.
+     * @param argc Number of arguments.
+     * @param argv Argument values.
      *
-     * @param argc Number of commandline arguments, passed on to the libOS.
-     * @param argv Values of commandline arguments, passed on to the libOS.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
     extern int demi_init(int argc, char *const argv[]);
 
     /**
-     * @brief Allocates an in-memory Demikernel queue.
+     * @brief Creates a socket I/O queue.
      *
-     * @details Returns a queue descriptor that references a FIFO queue (i.e.,
-     * popping an element from the queue will return the first scatter-gather array
-     * that was pushed).
+     * @param sockqd_out Store location for the socket I/O queue descriptor.
+     * @param domain     Communication domain for the new socket.
+     * @param type       Type of the socket.
+     * @param protocol   Communication protocol for the new socket.
      *
-     * @param qd_out Queue descriptor for newly allocated memory queue if
-     * successful; otherwise invalid.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_queue(int *qd_out);
+    extern int demi_socket(int *sockqd_out, int domain, int type, int protocol);
 
     /**
-     * @brief Allocates Demikernel queue associated with a socket.
+     * @brief Sets as passive a socket I/O queue.
      *
-     * @param qd_out Queue descriptor for newly allocated network queue connected
-     * to the socket if successful; otherwise invalid.
-     * @param domain Communication domain for the newly allocated socket queue if
-     * appropriate for the libOS.
-     * @param type Type for the newly allocated socket queue if appropriate;
-     * sometimes translated by the libOS. For example, Linux RDMA will allocate an
-     * RC queue pair if the type is SOCK_STREAM and a UD queue pair if the type is
-     * SOCK_DGRAM.
-     * @param protocol Communication protocol for newly allocated socket queue.
+     * @param sockqd  I/O queue descriptor of the target socket.
+     * @param backlog Maximum length for the queue of pending connections.
      *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_socket(int *qd_out, int domain, int type, int protocol);
+    extern int demi_listen(int sockqd, int backlog);
 
     /**
-     * @brief Gets address that the socket associated with queue qd is bound to.
+     * @brief Binds an address to a socket I/O queue.
      *
-     * @param qd Queue descriptor.
-     * @param saddr Socket address data structure.
-     * @param size Size (in bytes) of socket address data structure.
+     * @param sockqd I/O queue descriptor of the target socket.
+     * @param addr   Bind address.
+     * @param size   Effective size of the socked address data structure.
      *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_getsockname(int qd, struct sockaddr *saddr, socklen_t *size);
+    extern int demi_bind(int sockqd, const struct sockaddr *addr, socklen_t size);
 
     /**
-     * @brief Sets socket to listening mode.
+     * @brief Asynchronously accepts a connection request on a socket I/O queue.
      *
-     * @details New connections are returned when the application calls accept.
+     * @param qt_out Store location for I/O queue token.
+     * @param sockqd I/O queue descriptor of the target socket.
      *
-     * @param fd Queue descriptor to listen on.
-     * @param backlog Depth of back log to keep.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_listen(int fd, int backlog);
+    extern int demi_accept(demi_qtoken_t *qt_out, int sockqd);
 
     /**
-     * @brief Binds socket associated with queue qd to address saddr.
+     * @brief Asynchronously initiates a connection on a socket I/O queue.
      *
-     * @param qd Queue descriptor of socket to bind.
-     * @param saddr Address to bind to.
-     * @param size Size of saddr data structure.
+     * @param qt_out Store location for I/O queue token.
+     * @param sockqd I/O queue descriptor of the target socket.
+     * @param addr   Address of remote host.
+     * @param size   Effective size of the socked address data structure.
      *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_bind(int qd, const struct sockaddr *saddr, socklen_t size);
+    extern int demi_connect(demi_qtoken_t *qt_out, int sockqd, const struct sockaddr *addr, socklen_t size);
 
     /**
-     * @brief Asynchronously retrieves new connection request.
+     * @brief Closes an I/O queue descriptor.
      *
-     * @details Returns a queue token qtok_out, which can be used to retrieve the
-     * new connection info or used with wait_any to block until a new connection
-     * request arrives.
+     * @param qd Target I/O queue descriptor.
      *
-     * @param qtok_out Token for waiting on new connections.
-     * @param sockqd Queue descriptor associated with listening socket.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    extern int demi_accept(demi_qtoken_t *qtok_out, int sockqd);
-
-    /**
-     * @brief Connects Demikernel queue qd to remote host indicated by saddr.
-     *
-     * @details Future pushes to the queue will be sent to remote host and pops will
-     * retrieve message from remote host.
-     *
-     * @param qt_out Token for waiting on operation.
-     * @param qd Queue descriptor for socket to connect.
-     * @param saddr Address to connect to.
-     * @param size Address to connect to.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
-     */
-    extern int demi_connect(demi_qtoken_t *qt_out, int qd, const struct sockaddr *saddr, socklen_t size);
-
-    /**
-     * @brief Closes Demikernel queue qd and associated I/O connection/file
-     *
-     * @param qd Queue to close.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
     extern int demi_close(int qd);
 
     /**
-     * @brief Asynchronously pushes scatter-gather array sga to queue qd and perform associated I/O.
+     * @brief Asynchronously pushes a scatter-gather array to an I/O queue.
      *
-     * @details If network queue, send data over the socket. If file queue, write to
-     * file at file cursor. If device is busy, buffer request until able to send.
-     * Operation avoids copying, so the application must not modify or free memory
-     * referenced in the scatter-gather array until asynchronous push operation
-     * completes. Returns a queue token qtok_out to check or wait for completion.
-     * Some libOSes offer free-protection, which ensures memory referenced by the
-     * sga is not freed until the operaton completes even if application calls free;
-     * however, applications should not rely on this feature.
+     * @param qt_out Store location for I/O queue token.
+     * @param qd     Target I/O queue descriptor.
+     * @param sga    Scatter-gather array to push.
      *
-     * @param qtok_out Token for waiting for push to complete.
-     * @param qd Queue descriptor for queue to push to.
-     * @param sga Scatter-gather array with pointers to data to push.
-     *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_push(demi_qtoken_t *qtok_out, int qd, const demi_sgarray_t *sga);
-
-    extern int demi_pushto(demi_qtoken_t *qtok_out, int qd, const demi_sgarray_t *sga,
-                                const struct sockaddr *saddr, socklen_t size);
+    extern int demi_push(demi_qtoken_t *qt_out, int qd, const demi_sgarray_t *sga);
 
     /**
-     * @brief Asynchronously pops incoming data from socket/file.
+     * @brief Asynchronously pushes a scatter-gather array to a socket I/O queue.
      *
-     * @details If network queue, retrieve data from socket associated with queue.
-     * If file, read file at file cursor. Returns a queue token qtok_out to check or
-     * wait for incoming data.
+     * @param qt_out    Store location for I/O queue token.
+     * @param sockqd    I/O queue descriptor of the target socket.
+     * @param sga       Scatter-gather array to push.
+     * @param dest_addr Address of destination host.
+     * @param size      Effective size of the socked address data structure.
      *
-     * @param qt_out Token for waiting for pop to complete (when data arrives).
-     * @param qd Queue to wait on incoming data.
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_pushto(demi_qtoken_t *qt_out, int sockqd, const demi_sgarray_t *sga,
+                           const struct sockaddr *dest_addr, socklen_t size);
+
+    /**
+     * @brief Asynchronously pops a scatter-gather array from an I/O queue.
      *
-     * @return On successful completion zero is returned. On failure, an error code
-     * is returned instead.
+     * @param qt_out Store location for I/O queue token.
+     * @param qd     Target I/O queue descriptor.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
     extern int demi_pop(demi_qtoken_t *qt_out, int qd);
 

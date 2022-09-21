@@ -2,7 +2,7 @@
 
 ## Name
 
-`demi_connect` - Initiates a connection on a socket.
+`demi_connect` - Asynchronously initiates a connection on a socket I/O queue.
 
 ## Synopsis
 
@@ -10,7 +10,7 @@
 #include <demi/libos.h>
 #include <sys/socket.h> /* For struct sockaddr and socklen_t. */
 
-int demi_connect(demi_qtoken_t *qt_out, int qd, const struct sockaddr *addr, socklen_t size);
+int demi_connect(demi_qtoken_t *qt_out, int sockqd, const struct sockaddr *addr, socklen_t size);
 ```
 
 ## Description
@@ -18,7 +18,7 @@ int demi_connect(demi_qtoken_t *qt_out, int qd, const struct sockaddr *addr, soc
 `demi_connect()` asynchronously initiates a connection to a remote host, and gets a queue token that refers to that
 operation.
 
-The `qd` parameter is the I/O queue descriptor that is associated with the target I/O queue.
+The `sockqd` parameter is the I/O queue descriptor that is associated with the target socket.
 
 The `addr` parameter points to information concerning the address of the remote host. The `sockaddr` structure has a
 genetic format and its only purpose is to cast the structure pointer passed in `addr`, in order to avoid compiler
@@ -40,10 +40,10 @@ On success, zero is returned. On error, a positive error code is returned.
 
 On error, one of the following positive error codes is returned:
 
-- `EINVAL` - The I/O queue descriptor `qd` refers to an I/O queue that does not support the `demi_connect()` operation.
+- `EINVAL` - `sockqd` refers to an I/O queue that does not support the `demi_connect()` operation.
 - `EINVAL` - The `addr` argument does not point to a valid socket address structure.
 - `EINVAL` - The socket address size `size` is not valid.
-- `EBADF` - The I/O queue descriptor `qd` does not refer to a valid I/O queue.
+- `EBADF` - `sockqd` does not refer to a socket I/O queue.
 - `EAGAIN` - Demikernel failed to create an asynchronous co-routine to handle the `demi_connect()` operation.
 
 ## Conforming To
