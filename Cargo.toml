@@ -96,6 +96,10 @@ name = "udp-ping-pong"
 path = "examples/rust/udp-ping-pong.rs"
 
 [[example]]
+name = "tcp-dump"
+path = "examples/rust/tcp-dump.rs"
+
+[[example]]
 name = "tcp-push-pop"
 path = "examples/rust/tcp-push-pop.rs"
 
