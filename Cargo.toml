@@ -76,6 +76,10 @@ name = "udp-dump"
 path = "examples/rust/udp-dump.rs"
 
 [[example]]
+name = "udp-echo"
+path = "examples/rust/udp-echo.rs"
+
+[[example]]
 name = "udp-pktgen"
 path = "examples/rust/udp-pktgen.rs"
 

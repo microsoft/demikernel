@@ -7,6 +7,7 @@ export EXEC_SUFFIX := elf
 all: all-examples
 	mkdir -p $(BINDIR)/examples/rust
 	cp -f $(BUILD_DIR)/examples/udp-dump  $(BINDIR)/examples/rust/udp-dump.$(EXEC_SUFFIX)
+	cp -f $(BUILD_DIR)/examples/udp-echo  $(BINDIR)/examples/rust/udp-echo.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/udp-pktgen  $(BINDIR)/examples/rust/udp-pktgen.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/udp-push-pop  $(BINDIR)/examples/rust/udp-push-pop.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/udp-ping-pong $(BINDIR)/examples/rust/udp-ping-pong.$(EXEC_SUFFIX)
@@ -19,6 +20,7 @@ all-examples:
 
 clean:
 	@rm -rf $(BINDIR)/examples/rust/udp-dump.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/examples/rust/udp-echo.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/udp-pktgen.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/udp-push-pop.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/udp-ping-pong.$(EXEC_SUFFIX)
