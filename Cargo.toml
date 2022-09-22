@@ -84,6 +84,10 @@ name = "udp-pktgen"
 path = "examples/rust/udp-pktgen.rs"
 
 [[example]]
+name = "udp-relay"
+path = "examples/rust/udp-relay.rs"
+
+[[example]]
 name = "udp-push-pop"
 path = "examples/rust/udp-push-pop.rs"
 
