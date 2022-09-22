@@ -30,6 +30,7 @@ bit-iter = "1.1.1"
 byteorder = "1.4.3"
 cfg-if = "1.0.0"
 crc = "3.0.0"
+clap = "3.2.15"
 crossbeam-channel = "0.5.6"
 derive_more = "0.99.17"
 eui48 = "1.1.0"
@@ -71,12 +72,40 @@ name = "sga"
 path = "tests/rust/sga.rs"
 
 [[example]]
+name = "udp-dump"
+path = "examples/rust/udp-dump.rs"
+
+[[example]]
+name = "udp-echo"
+path = "examples/rust/udp-echo.rs"
+
+[[example]]
+name = "udp-pktgen"
+path = "examples/rust/udp-pktgen.rs"
+
+[[example]]
+name = "udp-relay"
+path = "examples/rust/udp-relay.rs"
+
+[[example]]
 name = "udp-push-pop"
 path = "examples/rust/udp-push-pop.rs"
 
 [[example]]
 name = "udp-ping-pong"
 path = "examples/rust/udp-ping-pong.rs"
+
+[[example]]
+name = "tcp-dump"
+path = "examples/rust/tcp-dump.rs"
+
+[[example]]
+name = "tcp-echo"
+path = "examples/rust/tcp-echo.rs"
+
+[[example]]
+name = "tcp-pktgen"
+path = "examples/rust/tcp-pktgen.rs"
 
 [[example]]
 name = "tcp-push-pop"
