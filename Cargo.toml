@@ -100,6 +100,10 @@ name = "tcp-dump"
 path = "examples/rust/tcp-dump.rs"
 
 [[example]]
+name = "tcp-echo"
+path = "examples/rust/tcp-echo.rs"
+
+[[example]]
 name = "tcp-push-pop"
 path = "examples/rust/tcp-push-pop.rs"
 
