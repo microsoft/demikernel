@@ -104,6 +104,10 @@ name = "tcp-echo"
 path = "examples/rust/tcp-echo.rs"
 
 [[example]]
+name = "tcp-pktgen"
+path = "examples/rust/tcp-pktgen.rs"
+
+[[example]]
 name = "tcp-push-pop"
 path = "examples/rust/tcp-push-pop.rs"
 
