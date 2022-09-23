@@ -4,6 +4,8 @@
 
 `demi_wait` - Waits for an asynchronous I/O operation to complete.
 
+`demi_timedwait` - Waits for an asynchronous I/O operation to complete or a timeout to expire.
+
 `demi_wait_any` - Waits for the first asynchronous I/O operation in a list to complete.
 
 ## Synopsis
@@ -18,15 +20,23 @@ int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[]
 
 ## Description
 
-`demi_wait()` waits for an I/O operation to complete, and`demi_wait_any()` waits for the first I/O operation in a list to
-complete.
+`demi_wait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt`. This
+system call may cause the calling thread to block (spin) indefinitely.
 
-- The `qt` parameter in `demi_wait()` is the queue token wait for completion.
-- The `qts` parameter in `demi_wait_any()` is the list of queue tokens to wait for completion.
-- The `num_qts` parameter in `demi_wait_any()` specifies the length of `qts` list.
-- The `ready_offset` parameter points to the location where `demi_wait_any()` shall store the offset within `qts` of the
-operation that has completed.
-- The `qr_out` points to the location where the result of the completed operation shall be stored.
+`demi_timedwait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt` or
+for the expiration of a timeout, whichever happens first. The `abstime` parameter specifies an absolute timeout in
+seconds and nanoseconds since the Epoch.  If the I/O operation has already completed when `demi_timedwait()` is called,
+then this system call never fails with a timeout error, regardless of the value of `abstime`. This system call may cause
+the calling thread to block (spin) until the timeout `abstime` expires.
+
+`demi_wait_any()` waits for the first asynchronous I/O operation in a set to complete. The set of I/O operations is
+specified by the list of queue tokens `qts` and it has a length of `num_qts`. This system call may cause the calling
+thread to block (spin) indefinitely.
+
+When `demi_wait()` and `demi_timedwait()` successfully completes, the structure pointed to by `qr_out` is filled in with
+the result value of the I/O operation that has completed. The `demi_wait_any()` system call behaves similarly, but it
+additionally sets `ready_offset` to indicate the index of that I/O operation in the list of queue tokens `qts` that has
+completed.
 
 The `demi_qresult_t` is defined as follows:
 
@@ -102,6 +112,8 @@ On error, one of the following positive error codes is returned:
 - `EINVAL` - The `qt` argument refers to an invalid queue token.
 - `EINVAL` - The `num_qts` argument has an invalid size.
 - `EINVAL` - The `qts` argument contains an invalid queue token.
+- `EINVAL` - The `abtime` argument does not point to a valid structure.
+- `ETIMEDOUT` - The system call timed out before an I/O operation was completed.
 
 ## Conforming To
 
