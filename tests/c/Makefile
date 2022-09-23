@@ -10,4 +10,3 @@
 include linux.mk
 #                     \
 !endif
-

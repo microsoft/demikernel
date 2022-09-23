@@ -12,6 +12,7 @@ export CARGO_FLAGS += --profile $(BUILD)
 # C
 export CC := gcc
 export CFLAGS := -Werror -Wall -Wextra -O3 -I $(INCDIR) -std=c99
+export CFLAGS += -D_POSIX_C_SOURCE=199309L
 
 #=======================================================================================================================
 # Build Artifacts
