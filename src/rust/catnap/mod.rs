@@ -77,6 +77,7 @@ use ::std::{
         SocketAddrV4,
     },
     os::unix::prelude::RawFd,
+    time::SystemTime,
 };
 
 #[cfg(feature = "profiler")]
@@ -347,6 +348,38 @@ impl CatnapLibOS {
         trace!("wait() qt={:?}", qt);
 
         let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
+        Ok(pack_result(&self.runtime, result, qd, qt.into()))
+    }
+
+    /// Waits for an I/O operation to complete or a timeout to expire.
+    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::timedwait");
+        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
+
+        // Retrieve associated schedule handle.
+        let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
+        let (qd, result): (QDesc, OperationResult) = loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.runtime.scheduler.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                break self.take_result(handle);
+            }
+
+            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
+        };
+
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
     }
 

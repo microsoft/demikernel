@@ -41,6 +41,10 @@ use ::std::{
     },
     ptr,
     slice,
+    time::{
+        Duration,
+        SystemTime,
+    },
 };
 
 //==============================================================================
@@ -361,6 +365,54 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
 }
 
 //==============================================================================
+// timedwait
+//==============================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_timedwait(
+    qr_out: *mut demi_qresult_t,
+    qt: demi_qtoken_t,
+    abstime: *const libc::timespec,
+) -> c_int {
+    trace!("demi_timedwait() {:?} {:?} {:?}", qr_out, qt, abstime);
+
+    // Check for invalid timeout.
+    if abstime.is_null() {
+        warn!("abstime is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Convert timespec to SystemTime.
+    let abstime: Option<SystemTime> = {
+        if abstime.is_null() {
+            None
+        } else {
+            let timeout: Duration = Duration::from_nanos(
+                unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
+            );
+            match SystemTime::UNIX_EPOCH.checked_add(timeout) {
+                Some(abstime) => Some(abstime),
+                None => Some(SystemTime::now()),
+            }
+        }
+    };
+
+    // Issue operation.
+    with_libos(|libos| match libos.timedwait(qt.into(), abstime) {
+        Ok(r) => {
+            if !qr_out.is_null() {
+                unsafe { *qr_out = r };
+            }
+            0
+        },
+        Err(e) => {
+            warn!("timedwait() failed: {:?}", e);
+            e.errno
+        },
+    })
+}
+
+//==============================================================================
 // wait
 //==============================================================================
 
@@ -534,7 +586,7 @@ fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
     // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
     let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
     if sin.sin_family != libc::AF_INET as u16 {
-        return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported"));
+        return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
     };
     let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
     let port: u16 = u16::from_be(sin.sin_port);

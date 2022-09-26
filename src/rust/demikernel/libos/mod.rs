@@ -28,9 +28,10 @@ use crate::{
         QToken,
     },
 };
-use std::{
+use ::std::{
     env,
     net::SocketAddrV4,
+    time::SystemTime,
 };
 
 #[cfg(feature = "catcollar-libos")]
@@ -191,6 +192,13 @@ impl LibOS {
     pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait(qt),
+        }
+    }
+
+    /// Waits for an I/O operation to complete or a timeout to expire.
+    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.timedwait(qt, abstime),
         }
     }
 

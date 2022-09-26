@@ -5,6 +5,7 @@
 #define DEMI_WAIT_H_IS_INCLUDED
 
 #include <demi/types.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -20,6 +21,17 @@ extern "C"
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
     extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
+
+    /**
+     * @brief Waits for an asynchronous I/O operation to complete or a timeout to expire.
+     *
+     * @param qr_out  Store location for the result of the completed I/O operation.
+     * @param qt      I/O queue token of the target operation to wait for completion.
+     * @param abstime Absolute timeout in seconds and nanoseconds since Epoch.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_timedwait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *abstime);
 
     /**
      * @brief Waits for the first asynchronous I/O operation in a list to complete.

@@ -61,7 +61,10 @@ use ::std::{
         SocketAddrV4,
     },
     rc::Rc,
-    time::Instant,
+    time::{
+        Instant,
+        SystemTime,
+    },
 };
 
 #[cfg(feature = "profiler")]
@@ -484,6 +487,36 @@ impl InetStack {
             if handle.has_completed() {
                 trace!("wait2() qt={:?} completed!", qt);
                 return Ok(self.take_operation(handle));
+            }
+        }
+    }
+
+    /// Waits for an I/O operation to complete or a timeout to expire.
+    pub fn timedwait2(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<(QDesc, OperationResult), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("inetstack::timedwait");
+        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
+
+        // Retrieve associated schedule handle.
+        let mut handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll_bg_work();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.take_operation(handle));
+            }
+
+            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
             }
         }
     }
