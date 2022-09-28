@@ -12,6 +12,7 @@
 #![feature(allocator_api)]
 
 mod collections;
+mod pal;
 
 #[cfg(feature = "profiler")]
 pub mod perftools;
