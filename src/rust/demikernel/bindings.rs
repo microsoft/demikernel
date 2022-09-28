@@ -30,10 +30,7 @@ use ::libc::{
     socklen_t,
 };
 use ::std::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
+    cell::RefCell,
     mem,
     net::{
         Ipv4Addr,
@@ -48,19 +45,11 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Thread Local Storage
+// DEMIKERNEL
 //======================================================================================================================
 
-thread_local! {
-    static LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
-}
-
-fn with_libos<T>(f: impl FnOnce(&mut LibOS) -> T) -> T {
-    LIBOS.with(|l| {
-        let mut tls_libos: RefMut<Option<LibOS>> = l.borrow_mut();
-        f(tls_libos.as_mut().expect("Uninitialized engine"))
-    })
-}
+/// Demikernel state.
+static mut DEMIKERNEL: RefCell<Option<LibOS>> = RefCell::new(None);
 
 //======================================================================================================================
 // init
@@ -86,12 +75,7 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         },
     };
 
-    // Initialize thread local storage.
-    LIBOS.with(move |l| {
-        let mut tls_libos: RefMut<Option<LibOS>> = l.borrow_mut();
-        assert!(tls_libos.is_none());
-        *tls_libos = Some(libos);
-    });
+    unsafe { DEMIKERNEL = RefCell::new(Some(libos)) };
 
     0
 }
@@ -105,7 +89,7 @@ pub extern "C" fn demi_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
     trace!("demi_socket()");
 
     // Issue socket operation.
-    with_libos(|libos| match libos.socket(domain, socket_type, protocol) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.socket(domain, socket_type, protocol) {
         Ok(qd) => {
             unsafe { *qd_out = qd.into() };
             0
@@ -114,7 +98,12 @@ pub extern "C" fn demi_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
             warn!("socket() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -145,13 +134,18 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     };
 
     // Issue bind operation.
-    with_libos(|libos| match libos.bind(qd.into(), endpoint) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.bind(qd.into(), endpoint) {
         Ok(..) => 0,
         Err(e) => {
             warn!("bind() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -168,13 +162,18 @@ pub extern "C" fn demi_listen(fd: c_int, backlog: c_int) -> c_int {
     }
 
     // Issue listen operation.
-    with_libos(|libos| match libos.listen(fd.into(), backlog as usize) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.listen(fd.into(), backlog as usize) {
         Ok(..) => 0,
         Err(e) => {
             warn!("listen() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -186,7 +185,7 @@ pub extern "C" fn demi_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_
     trace!("demi_accept()");
 
     // Issue accept operation.
-    with_libos(|libos| {
+    let ret: Result<i32, Fail> = do_syscall(|libos| {
         unsafe {
             *qtok_out = match libos.accept(sockqd.into()) {
                 Ok(qt) => qt.into(),
@@ -197,7 +196,12 @@ pub extern "C" fn demi_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_
             }
         };
         0
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -233,7 +237,7 @@ pub extern "C" fn demi_connect(
     };
 
     // Issue connect operation.
-    with_libos(|libos| match libos.connect(qd.into(), endpoint) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.connect(qd.into(), endpoint) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
@@ -242,7 +246,12 @@ pub extern "C" fn demi_connect(
             warn!("connect() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -254,13 +263,18 @@ pub extern "C" fn demi_close(qd: c_int) -> c_int {
     trace!("demi_close()");
 
     // Issue close operation.
-    with_libos(|libos| match libos.close(qd.into()) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.close(qd.into()) {
         Ok(..) => 0,
         Err(e) => {
             warn!("close() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -303,7 +317,7 @@ pub extern "C" fn demi_pushto(
         },
     };
 
-    with_libos(|libos| match libos.pushto(qd.into(), sga, endpoint) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pushto(qd.into(), sga, endpoint) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
@@ -312,7 +326,12 @@ pub extern "C" fn demi_pushto(
             warn!("pushto() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -331,7 +350,7 @@ pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const
     let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Issue push operation.
-    with_libos(|libos| match libos.push(qd.into(), sga) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.push(qd.into(), sga) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
@@ -340,7 +359,12 @@ pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const
             warn!("push() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -352,7 +376,7 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
     trace!("demi_pop()");
 
     // Issue pop operation.
-    with_libos(|libos| match libos.pop(qd.into()) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pop(qd.into()) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
@@ -361,7 +385,12 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
             warn!("pop() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -398,7 +427,7 @@ pub extern "C" fn demi_timedwait(
     };
 
     // Issue operation.
-    with_libos(|libos| match libos.timedwait(qt.into(), abstime) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.timedwait(qt.into(), abstime) {
         Ok(r) => {
             if !qr_out.is_null() {
                 unsafe { *qr_out = r };
@@ -409,7 +438,12 @@ pub extern "C" fn demi_timedwait(
             warn!("timedwait() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -421,7 +455,7 @@ pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c
     trace!("demi_wait()");
 
     // Issue wait operation.
-    with_libos(|libos| match libos.wait(qt.into()) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait(qt.into()) {
         Ok(r) => {
             if !qr_out.is_null() {
                 unsafe { *qr_out = r };
@@ -432,7 +466,12 @@ pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c
             warn!("wait() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -460,7 +499,7 @@ pub extern "C" fn demi_wait_any(
     };
 
     // Issue wait_any operation.
-    with_libos(|libos| match libos.wait_any(&qts) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait_any(&qts) {
         Ok((ix, qr)) => {
             unsafe {
                 *qr_out = qr;
@@ -472,7 +511,12 @@ pub extern "C" fn demi_wait_any(
             warn!("wait_any() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -483,30 +527,30 @@ pub extern "C" fn demi_wait_any(
 pub extern "C" fn demi_sgaalloc(size: libc::size_t) -> demi_sgarray_t {
     trace!("demi_sgalloc()");
 
+    let null_sga: demi_sgarray_t = {
+        demi_sgarray_t {
+            sga_buf: ptr::null_mut() as *mut _,
+            sga_numsegs: 0,
+            sga_segs: [demi_sgaseg_t {
+                sgaseg_buf: ptr::null_mut() as *mut c_void,
+                sgaseg_len: 0,
+            }; 1],
+            sga_addr: unsafe { mem::zeroed() },
+        }
+    };
+
     // Issue sgaalloc operation.
-    with_libos(|libos| -> demi_sgarray_t {
+    let ret: Result<demi_sgarray_t, Fail> = do_syscall(|libos| -> demi_sgarray_t {
         match libos.sgaalloc(size) {
             Ok(sga) => sga,
-            Err(e) => {
-                warn!("sgaalloc() failed: {:?}", e);
-                let saddr: libc::sockaddr_in = libc::sockaddr_in {
-                    sin_family: 0,
-                    sin_port: 0,
-                    sin_addr: libc::in_addr { s_addr: 0 },
-                    sin_zero: [0; 8],
-                };
-                demi_sgarray_t {
-                    sga_buf: ptr::null_mut() as *mut _,
-                    sga_numsegs: 0,
-                    sga_segs: [demi_sgaseg_t {
-                        sgaseg_buf: ptr::null_mut() as *mut c_void,
-                        sgaseg_len: 0,
-                    }; 1],
-                    sga_addr: unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(saddr) },
-                }
-            },
+            Err(_) => null_sga,
         }
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(_) => null_sga,
+    }
 }
 
 //======================================================================================================================
@@ -523,13 +567,18 @@ pub extern "C" fn demi_sgafree(sga: *mut demi_sgarray_t) -> c_int {
     }
 
     // Issue sgafree operation.
-    with_libos(|libos| match libos.sgafree(unsafe { *sga }) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.sgafree(unsafe { *sga }) {
         Ok(()) => 0,
         Err(e) => {
             warn!("sgafree() failed: {:?}", e);
             e.errno
         },
-    })
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================
@@ -580,6 +629,17 @@ pub extern "C" fn demi_getsockopt(
 //======================================================================================================================
 // Standalone Functions
 //======================================================================================================================
+
+/// Issues a system call.
+fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
+    match unsafe { DEMIKERNEL.try_borrow_mut() } {
+        Ok(mut libos) => match libos.as_mut() {
+            Some(libos) => Ok(f(libos)),
+            None => Err(Fail::new(libc::ENOSYS, "Demikernel is not initialized")),
+        },
+        Err(_) => Err(Fail::new(libc::EBUSY, "Demikernel is busy")),
+    }
+}
 
 /// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
