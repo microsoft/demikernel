@@ -141,6 +141,10 @@ impl CatcollarLibOS {
         // Create socket.
         match socket::socket(domain, ty, flags, protocol) {
             Ok(fd) => {
+                // Try to set SO_REUSEPORT option. If we fail, keep going because this is non-critical.
+                if socket::setsockopt(fd, socket::sockopt::ReusePort, &true).is_err() {
+                    warn!("cannot set SO_REUSEPORT option");
+                }
                 let qtype: QType = QType::TcpSocket;
                 let qd: QDesc = self.qtable.alloc(qtype.into());
                 assert_eq!(self.sockets.insert(qd, fd).is_none(), true);
