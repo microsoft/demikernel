@@ -5,9 +5,12 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    QDesc,
+use crate::{
+    pal::linux,
+    runtime::{
+        fail::Fail,
+        QDesc,
+    },
 };
 use ::nix::{
     errno::Errno,
@@ -15,17 +18,12 @@ use ::nix::{
 };
 use ::std::{
     future::Future,
-    mem::size_of_val,
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
         Context,
         Poll,
     },
-};
-use libc::{
-    c_void,
-    socklen_t,
 };
 
 //==============================================================================
@@ -80,13 +78,16 @@ impl Future for AcceptFuture {
             Ok(new_fd) => {
                 trace!("connection accepted ({:?})", new_fd);
 
-                // Set async options in socket.
+                // Set socket options.
                 unsafe {
-                    if set_tcp_nodelay(new_fd) != 0 {
+                    if linux::set_tcp_nodelay(new_fd) != 0 {
                         warn!("cannot set TCP_NONDELAY option");
                     }
-                    if set_nonblock(new_fd) != 0 {
+                    if linux::set_nonblock(new_fd) != 0 {
                         warn!("cannot set NONBLOCK option");
+                    }
+                    if linux::set_so_reuseport(new_fd) != 0 {
+                        warn!("cannot set SO_REUSEPORT option");
                     }
                 }
 
@@ -104,36 +105,4 @@ impl Future for AcceptFuture {
             },
         }
     }
-}
-
-//==============================================================================
-// Standalone Functions
-//==============================================================================
-
-/// Sets TCP_NODELAY option in a socket.
-unsafe fn set_tcp_nodelay(fd: RawFd) -> i32 {
-    let value: u32 = 1;
-    let value_ptr: *const u32 = &value as *const u32;
-    let option_len: socklen_t = size_of_val(&value) as socklen_t;
-    libc::setsockopt(
-        fd,
-        libc::IPPROTO_TCP,
-        libc::TCP_NODELAY,
-        value_ptr as *const c_void,
-        option_len,
-    )
-}
-
-/// Sets NONBLOCK option in a socket.
-unsafe fn set_nonblock(fd: RawFd) -> i32 {
-    // Get file flags.
-    let mut flags: i32 = libc::fcntl(fd, libc::F_GETFL);
-    if flags == -1 {
-        warn!("failed to get flags for new socket");
-        return -1;
-    }
-
-    // Set file flags.
-    flags |= libc::O_NONBLOCK;
-    libc::fcntl(fd, libc::F_SETFL, flags, 1)
 }
