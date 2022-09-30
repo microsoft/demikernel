@@ -58,14 +58,14 @@ impl ProgramArguments {
     const DEFAULT_REMOTE: &'static str = "127.0.0.1:23456";
 
     /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &str, app_author: &str, app_about: &str) -> Result<Self> {
+    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
         let matches: ArgMatches = Command::new(app_name)
             .author(app_author)
             .about(app_about)
             .arg(
                 Arg::new("remote")
                     .long("remote")
-                    .takes_value(true)
+                    .value_parser(clap::value_parser!(String))
                     .required(true)
                     .value_name("ADDRESS:PORT")
                     .help("Sets remote address"),
@@ -73,7 +73,7 @@ impl ProgramArguments {
             .arg(
                 Arg::new("bufsize")
                     .long("bufsize")
-                    .takes_value(true)
+                    .value_parser(clap::value_parser!(String))
                     .required(true)
                     .value_name("SIZE")
                     .help("Sets buffer size"),
@@ -81,7 +81,7 @@ impl ProgramArguments {
             .arg(
                 Arg::new("injection_rate")
                     .long("injection_rate")
-                    .takes_value(true)
+                    .value_parser(clap::value_parser!(String))
                     .required(true)
                     .value_name("RATE")
                     .help("Sets packet injection rate"),
@@ -96,17 +96,17 @@ impl ProgramArguments {
         };
 
         // Remote address.
-        if let Some(addr) = matches.value_of("remote") {
+        if let Some(addr) = matches.get_one::<String>("remote") {
             args.set_remote_addr(addr)?;
         }
 
         // Buffer size.
-        if let Some(bufsize) = matches.value_of("bufsize") {
+        if let Some(bufsize) = matches.get_one::<String>("bufsize") {
             args.set_bufsize(bufsize)?;
         }
 
         // Injection rate.
-        if let Some(injection_rate) = matches.value_of("injection_rate") {
+        if let Some(injection_rate) = matches.get_one::<String>("injection_rate") {
             args.set_injection_rate(injection_rate)?;
         }
 
