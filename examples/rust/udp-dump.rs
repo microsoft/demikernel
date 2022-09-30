@@ -47,14 +47,14 @@ impl ProgramArguments {
     const DEFAULT_LOCAL: &'static str = "127.0.0.1:12345";
 
     /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &str, app_author: &str, app_about: &str) -> Result<Self> {
+    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
         let matches: ArgMatches = Command::new(app_name)
             .author(app_author)
             .about(app_about)
             .arg(
                 Arg::new("local")
                     .long("local")
-                    .takes_value(true)
+                    .value_parser(clap::value_parser!(String))
                     .required(false)
                     .value_name("ADDRESS:PORT")
                     .help("Sets local address"),
@@ -67,7 +67,7 @@ impl ProgramArguments {
         };
 
         // Local address.
-        if let Some(addr) = matches.value_of("local") {
+        if let Some(addr) = matches.get_one::<String>("local") {
             args.set_local_addr(addr)?;
         }
 
