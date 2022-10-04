@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
+// TODO: Remove allowances on this module.
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -202,11 +204,13 @@ impl SharedMemory {
     }
 
     /// Returns the size of the target shared memory region.
+    #[allow(unused)]
     pub fn size(&self) -> usize {
         self.size
     }
 
     /// Writes a value to the target shared memory region at a given offset.
+    #[allow(unused)]
     pub fn write<T>(&mut self, idx: usize, val: &T) {
         let size_of_t: usize = mem::size_of::<T>();
         let offset: usize = idx * size_of_t;
@@ -220,6 +224,7 @@ impl SharedMemory {
     }
 
     /// Reads a value from the target shared memory region at a given offset.
+    #[allow(unused)]
     pub fn read<T>(&mut self, idx: usize, val: &mut T) {
         let size_of_t: usize = mem::size_of::<T>();
         let offset: usize = idx * size_of_t;
