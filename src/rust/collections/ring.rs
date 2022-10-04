@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
+// TODO: Remove allowances on this module.
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -30,8 +32,10 @@ pub struct RingBuffer<T> {
     // Indexes the first item in the front of the ring buffer.
     front_ptr: *mut usize,
     // Underlying buffer.
+    #[allow(unused)]
     buffer: raw_array::RawArray<T>,
     // Pre-computed capacity mask for the buffer.
+    #[allow(unused)]
     mask: usize,
     /// Is the underlying memory managed by this module?
     is_managed: bool,
@@ -47,6 +51,7 @@ where
     T: Copy,
 {
     /// Creates a ring buffer.
+    #[allow(unused)]
     pub fn new(capacity: usize) -> Result<RingBuffer<T>, Fail> {
         // Check if capacity is invalid.
         if !capacity.is_power_of_two() {
@@ -152,11 +157,13 @@ where
     }
 
     /// Returns the effective capacity of the target ring buffer.
+    #[allow(unused)]
     pub fn capacity(&self) -> usize {
         self.buffer.capacity() - 1
     }
 
     /// Peeks the target ring buffer and checks if it is full.
+    #[allow(unused)]
     pub fn is_full(&self) -> bool {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -170,6 +177,7 @@ where
     }
 
     /// Peeks the target ring buffer and checks if it is empty.
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -183,6 +191,7 @@ where
     }
 
     /// Attempts to insert an item at the back of the target ring buffer.
+    #[allow(unused)]
     pub fn try_enqueue(&self, item: T) -> Result<(), T> {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -205,6 +214,7 @@ where
     }
 
     /// Inserts an item at the back of the target ring buffer. This function may block (spin).
+    #[allow(unused)]
     pub fn enqueue(&self, item: T) {
         loop {
             if self.try_enqueue(item).is_ok() {
@@ -214,6 +224,7 @@ where
     }
 
     /// Attempts to remove the item from the front of the target ring buffer.
+    #[allow(unused)]
     pub fn try_dequeue(&self) -> Option<T> {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -236,6 +247,7 @@ where
     }
 
     /// Removes the item from the front of the target ring buffer. This function may block (spin).
+    #[allow(unused)]
     pub fn dequeue(&self) -> T {
         loop {
             if let Some(item) = self.try_dequeue() {
@@ -252,6 +264,7 @@ where
     }
 
     /// Atomically sets the `front` index.
+    #[allow(unused)]
     fn set_front(&self, val: usize) {
         let front: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.front_ptr });
         front.store(val, atomic::Ordering::Relaxed);
@@ -265,6 +278,7 @@ where
     }
 
     /// Atomically sets the `back` index.
+    #[allow(unused)]
     fn set_back(&self, val: usize) {
         let back: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.back_ptr });
         back.store(val, atomic::Ordering::Relaxed);
