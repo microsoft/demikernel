@@ -96,6 +96,10 @@ name = "udp-relay"
 path = "examples/rust/udp-relay.rs"
 
 [[example]]
+name = "pipe-push-pop"
+path = "examples/rust/pipe-push-pop.rs"
+
+[[example]]
 name = "udp-push-pop"
 path = "examples/rust/udp-push-pop.rs"
 
