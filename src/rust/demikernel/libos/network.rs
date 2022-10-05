@@ -258,7 +258,6 @@ impl NetworkLibOS {
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.
-    #[allow(unreachable_patterns)]
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
