@@ -706,7 +706,6 @@ impl ControlBlock {
         // Check the FIN bit.
         if header.fin {
             trace!("Received FIN");
-            // ToDo: Signal the user "connection closing" and return any pending Receive requests.
 
             // Advance RCV.NXT over the FIN.
             self.receiver
@@ -735,9 +734,16 @@ impl ControlBlock {
                 state => panic!("Bad TCP state {:?}", state), // Should never happen.
             }
 
+            // Push empty buffer.
+            self.receiver.push(DemiBuffer::new(0));
+            if let Some(w) = self.waker.borrow_mut().take() {
+                w.wake()
+            }
+
             // Since we consumed the FIN we ACK immediately rather than opportunistically.
             // ToDo: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
             self.send_ack();
+
             return;
         }
 
