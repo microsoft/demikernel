@@ -104,142 +104,142 @@ impl NetworkLibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, fd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.bind(fd, local),
+            NetworkLibOS::Catpowder(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.bind(fd, local),
+            NetworkLibOS::Catnap(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.bind(fd, local),
+            NetworkLibOS::Catcollar(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.bind(fd, local),
+            NetworkLibOS::Catnip(libos) => libos.bind(sockqd, local),
         }
     }
 
     /// Marks a socket as a passive one.
-    pub fn listen(&mut self, fd: QDesc, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.listen(fd, backlog),
+            NetworkLibOS::Catpowder(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.listen(fd, backlog),
+            NetworkLibOS::Catnap(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.listen(fd, backlog),
+            NetworkLibOS::Catcollar(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.listen(fd, backlog),
+            NetworkLibOS::Catnip(libos) => libos.listen(sockqd, backlog),
         }
     }
 
     /// Accepts an incoming connection on a TCP socket.
-    pub fn accept(&mut self, fd: QDesc) -> Result<QToken, Fail> {
+    pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.accept(fd),
+            NetworkLibOS::Catpowder(libos) => libos.accept(sockqd),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.accept(fd),
+            NetworkLibOS::Catnap(libos) => libos.accept(sockqd),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.accept(fd),
+            NetworkLibOS::Catcollar(libos) => libos.accept(sockqd),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.accept(fd),
+            NetworkLibOS::Catnip(libos) => libos.accept(sockqd),
         }
     }
 
     /// Initiates a connection with a remote TCP pper.
-    pub fn connect(&mut self, fd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.connect(fd, remote),
+            NetworkLibOS::Catpowder(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.connect(fd, remote),
+            NetworkLibOS::Catnap(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.connect(fd, remote),
+            NetworkLibOS::Catcollar(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.connect(fd, remote),
+            NetworkLibOS::Catnip(libos) => libos.connect(sockqd, remote),
         }
     }
 
     /// Closes a socket.
-    pub fn close(&mut self, fd: QDesc) -> Result<(), Fail> {
+    pub fn close(&mut self, sockqd: QDesc) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.close(fd),
+            NetworkLibOS::Catpowder(libos) => libos.close(sockqd),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.close(fd),
+            NetworkLibOS::Catnap(libos) => libos.close(sockqd),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.close(fd),
+            NetworkLibOS::Catcollar(libos) => libos.close(sockqd),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.close(fd),
+            NetworkLibOS::Catnip(libos) => libos.close(sockqd),
         }
     }
 
     /// Pushes a scatter-gather array to a TCP socket.
-    pub fn push(&mut self, fd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, sockqd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.push(fd, sga),
+            NetworkLibOS::Catpowder(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.push(fd, sga),
+            NetworkLibOS::Catnap(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.push(fd, sga),
+            NetworkLibOS::Catcollar(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.push(fd, sga),
+            NetworkLibOS::Catnip(libos) => libos.push(sockqd, sga),
         }
     }
 
     /// Pushes raw data to a TCP socket.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
+    pub fn push2(&mut self, sockqd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.push2(qd, data),
+            NetworkLibOS::Catpowder(libos) => libos.push2(sockqd, data),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.push2(qd, data),
+            NetworkLibOS::Catnap(libos) => libos.push2(sockqd, data),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.push2(qd, data),
+            NetworkLibOS::Catcollar(libos) => libos.push2(sockqd, data),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.push2(qd, data),
+            NetworkLibOS::Catnip(libos) => libos.push2(sockqd, data),
         }
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, fd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pushto(fd, sga, to),
+            NetworkLibOS::Catpowder(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.pushto(fd, sga, to),
+            NetworkLibOS::Catnap(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pushto(fd, sga, to),
+            NetworkLibOS::Catcollar(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pushto(fd, sga, to),
+            NetworkLibOS::Catnip(libos) => libos.pushto(sockqd, sga, to),
         }
     }
 
     /// Pushes raw data to a UDP socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, sockqd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pushto2(qd, data, remote),
+            NetworkLibOS::Catpowder(libos) => libos.pushto2(sockqd, data, remote),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.pushto2(qd, data, remote),
+            NetworkLibOS::Catnap(libos) => libos.pushto2(sockqd, data, remote),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pushto2(qd, data, remote),
+            NetworkLibOS::Catcollar(libos) => libos.pushto2(sockqd, data, remote),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pushto2(qd, data, remote),
+            NetworkLibOS::Catnip(libos) => libos.pushto2(sockqd, data, remote),
         }
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, fd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pop(fd),
+            NetworkLibOS::Catpowder(libos) => libos.pop(sockqd),
             #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.pop(fd),
+            NetworkLibOS::Catnap(libos) => libos.pop(sockqd),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pop(fd),
+            NetworkLibOS::Catcollar(libos) => libos.pop(sockqd),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pop(fd),
+            NetworkLibOS::Catnip(libos) => libos.pop(sockqd),
         }
     }
 

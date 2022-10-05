@@ -119,44 +119,44 @@ impl LibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, fd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.bind(fd, local),
+            LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
         }
     }
 
     /// Marks a socket as a passive one.
-    pub fn listen(&mut self, fd: QDesc, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.listen(fd, backlog),
+            LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
         }
     }
 
     /// Accepts an incoming connection on a TCP socket.
-    pub fn accept(&mut self, fd: QDesc) -> Result<QToken, Fail> {
+    pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.accept(fd),
+            LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
         }
     }
 
     /// Initiates a connection with a remote TCP pper.
-    pub fn connect(&mut self, fd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.connect(fd, remote),
+            LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
         }
     }
 
     /// Closes a socket.
-    pub fn close(&mut self, fd: QDesc) -> Result<(), Fail> {
+    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.close(fd),
+            LibOS::NetworkLibOS(libos) => libos.close(qd),
         }
     }
 
     /// Pushes a scatter-gather array to a TCP socket.
-    pub fn push(&mut self, fd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.push(fd, sga),
+            LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
         }
     }
 
@@ -168,9 +168,9 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, fd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.pushto(fd, sga, to),
+            LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
         }
     }
 
@@ -182,9 +182,9 @@ impl LibOS {
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, fd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.pop(fd),
+            LibOS::NetworkLibOS(libos) => libos.pop(qd),
         }
     }
 
