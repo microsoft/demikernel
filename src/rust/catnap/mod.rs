@@ -140,11 +140,16 @@ impl CatnapLibOS {
         // Create socket.
         match socket::socket(domain, ty, flags, protocol) {
             Ok(fd) => {
+                let qtype: QType = match ty {
+                    SockType::Stream => QType::TcpSocket,
+                    SockType::Datagram => QType::UdpSocket,
+                    _ => return Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
+                };
+
                 // Try to set SO_REUSEPORT option. If we fail, keep going because this is non-critical.
                 if socket::setsockopt(fd, socket::sockopt::ReusePort, &true).is_err() {
                     warn!("cannot set SO_REUSEPORT option");
                 }
-                let qtype: QType = QType::TcpSocket;
                 let qd: QDesc = self.qtable.alloc(qtype.into());
                 assert_eq!(self.sockets.insert(qd, fd).is_none(), true);
                 Ok(qd)
