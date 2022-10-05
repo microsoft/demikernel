@@ -93,6 +93,7 @@ impl LibOS {
     }
 
     /// Waits on a pending operation in an I/O queue.
+    #[deprecated]
     pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
@@ -100,6 +101,7 @@ impl LibOS {
     }
 
     /// Waits on a pending operation in an I/O queue.
+    #[deprecated]
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait2(qt),
@@ -161,6 +163,7 @@ impl LibOS {
     }
 
     /// Pushes raw data to a TCP socket.
+    #[deprecated]
     pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.push2(qd, data),
@@ -175,6 +178,7 @@ impl LibOS {
     }
 
     /// Pushes raw data to a UDP socket.
+    #[deprecated]
     pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto2(qd, data, remote),

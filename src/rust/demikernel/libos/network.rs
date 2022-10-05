@@ -57,6 +57,7 @@ pub enum NetworkLibOS {
 /// Associated functions for network LibOSes.
 impl NetworkLibOS {
     /// Waits on a pending operation in an I/O queue.
+    #[deprecated]
     pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
@@ -71,6 +72,7 @@ impl NetworkLibOS {
     }
 
     /// Waits on a pending operation in an I/O queue.
+    #[deprecated]
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
@@ -188,6 +190,7 @@ impl NetworkLibOS {
     }
 
     /// Pushes raw data to a TCP socket.
+    #[deprecated]
     pub fn push2(&mut self, sockqd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
@@ -216,6 +219,7 @@ impl NetworkLibOS {
     }
 
     /// Pushes raw data to a UDP socket.
+    #[deprecated]
     pub fn pushto2(&mut self, sockqd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
