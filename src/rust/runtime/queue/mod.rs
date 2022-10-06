@@ -44,7 +44,9 @@ impl IoQueueTable {
     /// When Demikernel is interposing system calls of the underlying OS
     /// this offset enables us to distinguish I/O queue descriptors from
     /// file descriptors.
-    const BASE_QD: u32 = 1_000_000;
+    ///
+    /// NOTE: This is intentionally set to be half of FD_SETSIZE (1024) in Linux.
+    const BASE_QD: u32 = 500;
 
     /// Creates an I/O queue descriptors table.
     pub fn new() -> Self {
