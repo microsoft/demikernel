@@ -18,14 +18,16 @@ use ::clap::{
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
 use ::std::{
     net::SocketAddrV4,
+    slice,
     str::FromStr,
     time::{
         Duration,
@@ -243,11 +245,10 @@ impl Application {
 
     /// Runs the target application.
     pub fn run(&mut self) {
-        let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
+        let start: Instant = Instant::now();
         let mut last_push: Instant = Instant::now();
         let mut last_log: Instant = Instant::now();
-        let data: Vec<u8> = Self::mkbuf(self.bufsize, 0x65);
 
         loop {
             // Dump statistics.
@@ -259,30 +260,46 @@ impl Application {
 
             // Push packet.
             if last_push.elapsed() > Duration::from_nanos(self.injection_rate) {
-                let qt: QToken = match self.libos.pushto2(self.sockqd, &data, self.remote) {
+                let sga: demi_sgarray_t = self.mksga(self.bufsize, 0x65);
+
+                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote) {
                     Ok(qt) => qt,
                     Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
                 };
-                match self.libos.wait2(qt) {
-                    Ok((_, OperationResult::Push)) => (),
+                match self.libos.wait(qt) {
+                    Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
                     Err(e) => panic!("operation failed: {:?}", e.cause),
                     _ => panic!("unexpected result"),
                 };
-                nbytes += self.bufsize;
+                nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                match self.libos.sgafree(sga) {
+                    Ok(_) => {},
+                    Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                }
+
                 last_push = Instant::now();
             }
         }
     }
 
-    /// Makes a buffer.
-    fn mkbuf(bufsize: usize, fill_char: u8) -> Vec<u8> {
-        let mut data: Vec<u8> = Vec::<u8>::with_capacity(bufsize);
+    // Makes a scatter-gather array.
+    fn mksga(&mut self, size: usize, value: u8) -> demi_sgarray_t {
+        // Allocate scatter-gather array.
+        let sga: demi_sgarray_t = match self.libos.sgaalloc(size) {
+            Ok(sga) => sga,
+            Err(e) => panic!("failed to allocate scatter-gather array: {:?}", e),
+        };
 
-        for _ in 0..bufsize {
-            data.push(fill_char);
-        }
+        // Ensure that scatter-gather array has the requested size.
+        assert!(sga.sga_segs[0].sgaseg_len as usize == size);
 
-        data
+        // Fill in scatter-gather array.
+        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+        slice.fill(value);
+
+        sga
     }
 }
 
