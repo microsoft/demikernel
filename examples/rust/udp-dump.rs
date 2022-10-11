@@ -15,9 +15,10 @@ use ::clap::{
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
@@ -144,9 +145,14 @@ impl Application {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
             };
-            match self.libos.wait2(qt) {
-                Ok((_, OperationResult::Pop(_, buf))) => {
-                    nbytes += buf.len();
+            match self.libos.wait(qt) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 Err(e) => panic!("operation failed: {:?}", e.cause),
                 _ => panic!("unexpected result"),
