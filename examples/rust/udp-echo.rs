@@ -8,21 +8,29 @@
 // Imports
 //==============================================================================
 
-use ::anyhow::Result;
+use ::anyhow::{
+    bail,
+    Result,
+};
 use ::clap::{
     Arg,
     ArgMatches,
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    mem,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     str::FromStr,
     time::{
         Duration,
@@ -127,8 +135,8 @@ impl Application {
 
     /// Runs the target echo server.
     pub fn run(&mut self) -> ! {
-        let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
+        let start: Instant = Instant::now();
         let mut qtokens: Vec<QToken> = Vec::new();
         let mut last_log: Instant = Instant::now();
 
@@ -147,38 +155,59 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            // TODO: add type annotation to the following variable once we drop generics on OperationResult.
-            let (i, _, result) = match self.libos.wait_any2(&qtokens) {
-                Ok((i, qd, result)) => (i, qd, result),
+            let (i, qr) = match self.libos.wait_any(&qtokens) {
+                Ok((i, qr)) => (i, qr),
                 Err(e) => panic!("operation failed: {:?}", e),
             };
             qtokens.swap_remove(i);
 
             // Parse result.
-            match result {
+            match qr.qr_opcode {
                 // Pop completed.
-                OperationResult::Pop(addr, buf) => {
-                    nbytes += buf.len();
+                demi_opcode_t::DEMI_OPC_POP => {
+                    let qd: QDesc = qr.qr_qd.into();
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let saddr: SocketAddrV4 = Self::sockaddr_to_socketaddrv4(unsafe { &qr.qr_value.sga.sga_addr })
+                        .expect("could not parse sockaddr");
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
                     // Push packet back.
-                    let qt: QToken = match self.libos.pushto2(self.sockqd, &buf, addr.unwrap()) {
+                    let qt: QToken = match self.libos.pushto(qd, &sga, saddr) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
                     };
                     qtokens.push(qt);
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 // Push completed.
-                OperationResult::Push => {
+                demi_opcode_t::DEMI_OPC_PUSH => {
                     // Pop another packet.
-                    let qt: QToken = match self.libos.pop(self.sockqd) {
+                    let qd: QDesc = qr.qr_qd.into();
+                    let qt: QToken = match self.libos.pop(qd) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };
                     qtokens.push(qt);
                 },
-                OperationResult::Failed(e) => panic!("operation failed: {:?}", e),
+                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
                 _ => panic!("unexpected result"),
             };
         }
+    }
+
+    /// Converts a [sockaddr] into a [SocketAddrV4].
+    pub fn sockaddr_to_socketaddrv4(saddr: *const libc::sockaddr) -> Result<SocketAddrV4> {
+        // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
+        let sin: libc::sockaddr_in =
+            unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
+        if sin.sin_family != libc::AF_INET as u16 {
+            bail!("communication domain not supported");
+        };
+        let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+        let port: u16 = u16::from_be(sin.sin_port);
+        Ok(SocketAddrV4::new(addr, port))
     }
 }
 
