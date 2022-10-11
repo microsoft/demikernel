@@ -18,14 +18,16 @@ use ::clap::{
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
 use ::std::{
     net::SocketAddrV4,
+    slice,
     str::FromStr,
     time::{
         Duration,
@@ -40,10 +42,8 @@ use ::std::{
 /// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Local socket IPv4 address.
-    local: Option<SocketAddrV4>,
-    /// Remote socket IPv4 address.
-    remote: Option<SocketAddrV4>,
+    /// Socket IPv4 address.
+    saddr: Option<SocketAddrV4>,
     /// Buffer size (in bytes).
     bufsize: usize,
     /// Peer type.
@@ -61,20 +61,12 @@ impl ProgramArguments {
             .author(app_author)
             .about(app_about)
             .arg(
-                Arg::new("local")
-                    .long("local")
+                Arg::new("addr")
+                    .long("address")
                     .value_parser(clap::value_parser!(String))
                     .required(false)
                     .value_name("ADDRESS:PORT")
-                    .help("Sets local address"),
-            )
-            .arg(
-                Arg::new("remote")
-                    .long("remote")
-                    .value_parser(clap::value_parser!(String))
-                    .required(false)
-                    .value_name("ADDRESS:PORT")
-                    .help("Sets remote address"),
+                    .help("Sets socket address"),
             )
             .arg(
                 Arg::new("peer")
@@ -97,20 +89,14 @@ impl ProgramArguments {
 
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: None,
-            remote: None,
+            saddr: None,
             bufsize: Self::DEFAULT_BUFSIZE,
             peer_type: "server".to_string(),
         };
 
-        // Local address.
-        if let Some(addr) = matches.get_one::<String>("local") {
-            args.set_local_addr(addr)?;
-        }
-
-        // Remote address.
-        if let Some(addr) = matches.get_one::<String>("remote") {
-            args.set_remote_addr(addr)?;
+        // Socket address.
+        if let Some(addr) = matches.get_one::<String>("addr") {
+            args.set_socket_addr(addr)?;
         }
 
         // Buffer size.
@@ -136,14 +122,9 @@ impl ProgramArguments {
         self.peer_type.to_string()
     }
 
-    /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> Option<SocketAddrV4> {
-        self.local
-    }
-
-    /// Returns the remote endpoint address parameter stored in the target program arguments.
-    pub fn get_remote(&self) -> Option<SocketAddrV4> {
-        self.remote
+    /// Returns the socket address parameter stored in the target program arguments.
+    pub fn get_socket_addr(&self) -> Option<SocketAddrV4> {
+        self.saddr
     }
 
     /// Sets the buffer size parameter in the target program arguments.
@@ -168,14 +149,8 @@ impl ProgramArguments {
     }
 
     /// Sets the local address and port number parameters in the target program arguments.
-    fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = Some(SocketAddrV4::from_str(addr)?);
-        Ok(())
-    }
-
-    /// Sets the remote address and port number parameters in the target program arguments.
-    fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote = Some(SocketAddrV4::from_str(addr)?);
+    fn set_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.saddr = Some(SocketAddrV4::from_str(addr)?);
         Ok(())
     }
 }
@@ -204,7 +179,7 @@ impl Application {
     /// Instantiates a client application.
     fn new_client(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         let bufsize: usize = args.get_bufsize();
-        if let Some(remote) = args.get_remote() {
+        if let Some(remote) = args.get_socket_addr() {
             // Create TCP socket.
             let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
                 Ok(qd) => qd,
@@ -216,8 +191,8 @@ impl Application {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to connect socket: {:?}", e.cause),
             };
-            match libos.wait2(qt) {
-                Ok((_, OperationResult::Connect)) => println!("connected!"),
+            match libos.wait(qt) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
                 Err(e) => panic!("operation failed: {:?}", e),
                 _ => panic!("unexpected result"),
             }
@@ -232,13 +207,13 @@ impl Application {
             });
         };
 
-        bail!("missing remote address")
+        bail!("missing socket address")
     }
 
     /// Instantiates a server application.
     fn new_server(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         let bufsize: usize = args.get_bufsize();
-        if let Some(local) = args.get_local() {
+        if let Some(local) = args.get_socket_addr() {
             // Create TCP socket.
             let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
                 Ok(qd) => qd,
@@ -267,7 +242,7 @@ impl Application {
             });
         }
 
-        bail!("missing local address")
+        bail!("missing socket address")
     }
 
     /// Instantiates the application.
@@ -303,17 +278,18 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            let (i, qd, result) = match self.libos.wait_any2(&qtokens) {
-                Ok((i, qd, result)) => (i, qd, result),
+            let (i, qr) = match self.libos.wait_any(&qtokens) {
+                Ok((i, qr)) => (i, qr),
                 Err(e) => panic!("operation failed: {:?}", e),
             };
             qtokens.swap_remove(i);
 
             // Parse result.
-            match result {
-                OperationResult::Accept(qd) => {
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_ACCEPT => {
                     println!("connection accepted!");
                     // Pop first packet.
+                    let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
                     let qt: QToken = match self.libos.pop(qd) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
@@ -321,24 +297,31 @@ impl Application {
                     qtokens.push(qt);
                 },
                 // Pop completed.
-                OperationResult::Pop(_, buf) => {
-                    nbytes += buf.len();
-                    let qt: QToken = match self.libos.push2(qd, &buf) {
+                demi_opcode_t::DEMI_OPC_POP => {
+                    let qd: QDesc = qr.qr_qd.into();
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    let qt: QToken = match self.libos.push(qd, &sga) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
                     };
                     qtokens.push(qt);
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 // Push completed.
-                OperationResult::Push => {
+                demi_opcode_t::DEMI_OPC_PUSH => {
                     // Pop another packet.
+                    let qd: QDesc = qr.qr_qd.into();
                     let qt: QToken = match self.libos.pop(qd) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };
                     qtokens.push(qt);
                 },
-                OperationResult::Failed(e) => panic!("operation failed: {:?}", e),
+                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
                 _ => panic!("unexpected result"),
             }
         }
@@ -349,7 +332,6 @@ impl Application {
         let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
         let mut last_log: Instant = Instant::now();
-        let data: Vec<u8> = Self::mkbuf(self.bufsize, 0x65);
 
         loop {
             // Dump statistics.
@@ -359,25 +341,36 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            let qt: QToken = match self.libos.push2(self.sockqd, &data) {
+            // Push data.
+            let sga: demi_sgarray_t = self.mksga(self.bufsize, 0x65);
+            let qt: QToken = match self.libos.push(self.sockqd, &sga) {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
             };
-            match self.libos.wait2(qt) {
-                Ok((_, OperationResult::Push)) => (),
+            match self.libos.wait(qt) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => {},
                 Err(e) => panic!("operation failed: {:?}", e.cause),
                 _ => panic!("unexpected result"),
             };
-            nbytes += self.bufsize;
+            nbytes += sga.sga_segs[0].sgaseg_len as usize;
+            match self.libos.sgafree(sga) {
+                Ok(_) => {},
+                Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+            }
 
-            // Drain packets.
+            // Pop data.
             let qt: QToken = match self.libos.pop(self.sockqd) {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
             };
-            match self.libos.wait2(qt) {
-                Ok((_, OperationResult::Pop(_, buf))) => {
-                    nbytes += buf.len();
+            match self.libos.wait(qt) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 Err(e) => panic!("operation failed: {:?}", e.cause),
                 _ => panic!("unexpected result"),
@@ -385,15 +378,24 @@ impl Application {
         }
     }
 
-    /// Makes a buffer.
-    fn mkbuf(bufsize: usize, fill_char: u8) -> Vec<u8> {
-        let mut data: Vec<u8> = Vec::<u8>::with_capacity(bufsize);
+    // Makes a scatter-gather array.
+    fn mksga(&mut self, size: usize, value: u8) -> demi_sgarray_t {
+        // Allocate scatter-gather array.
+        let sga: demi_sgarray_t = match self.libos.sgaalloc(size) {
+            Ok(sga) => sga,
+            Err(e) => panic!("failed to allocate scatter-gather array: {:?}", e),
+        };
 
-        for _ in 0..bufsize {
-            data.push(fill_char);
-        }
+        // Ensure that scatter-gather array has the requested size.
+        assert!(sga.sga_segs[0].sgaseg_len as usize == size);
 
-        data
+        // Fill in scatter-gather array.
+        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+        slice.fill(value);
+
+        sga
     }
 
     /// Asserts if the target application is running on server mode or not.
