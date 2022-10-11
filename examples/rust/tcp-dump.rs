@@ -15,9 +15,10 @@ use ::clap::{
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
@@ -133,8 +134,8 @@ impl Application {
 
     /// Runs the target echo server.
     pub fn run(&mut self) -> ! {
-        let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
+        let start: Instant = Instant::now();
         let mut last_log: Instant = Instant::now();
 
         // Accept first connection.
@@ -142,9 +143,10 @@ impl Application {
             Ok(qt) => qt,
             Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
         };
-        let (qd, mut qt): (QDesc, QToken) = match self.libos.wait2(qt) {
-            Ok((_, OperationResult::Accept(qd))) => {
+        let (qd, mut qt): (QDesc, QToken) = match self.libos.wait(qt) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => {
                 println!("connection accepted!");
+                let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
                 // Pop first packet.
                 let qt: QToken = match self.libos.pop(qd) {
                     Ok(qt) => qt,
@@ -166,9 +168,14 @@ impl Application {
             }
 
             // Drain packets.
-            match self.libos.wait2(qt) {
-                Ok((_, OperationResult::Pop(_, buf))) => {
-                    nbytes += buf.len();
+            match self.libos.wait(qt) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 Err(e) => panic!("operation failed: {:?}", e.cause),
                 _ => panic!("unexpected result"),
