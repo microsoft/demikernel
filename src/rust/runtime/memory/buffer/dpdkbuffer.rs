@@ -43,7 +43,7 @@ pub struct DPDKBuffer {
 impl DPDKBuffer {
     /// Removes `len` bytes at the beginning of the target [Mbuf].
     pub fn adjust(&mut self, nbytes: usize) {
-        assert!(nbytes <= self.len());
+        assert!(nbytes <= self.len(), "nbytes={:?} self.len()={:?}", nbytes, self.len());
         if unsafe { rte_pktmbuf_adj(self.ptr, nbytes as u16) } == ptr::null_mut() {
             panic!("rte_pktmbuf_adj failed");
         }
@@ -51,6 +51,7 @@ impl DPDKBuffer {
 
     /// Removes `len` bytes at the end of the target [Mbuf].
     pub fn trim(&mut self, nbytes: usize) {
+        assert!(nbytes <= self.len(), "nbytes={:?} self.len()={:?}", nbytes, self.len());
         assert!(nbytes <= self.len());
         if unsafe { rte_pktmbuf_trim(self.ptr, nbytes as u16) } != 0 {
             panic!("rte_pktmbuf_trim failed");
