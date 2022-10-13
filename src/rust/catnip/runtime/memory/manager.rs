@@ -219,13 +219,7 @@ impl MemoryManager {
                 Ok(mbuf_ptr) => mbuf_ptr,
                 Err(e) => panic!("failed to clone mbuf: {:?}", e.cause),
             };
-            let mut mbuf: DPDKBuffer = DPDKBuffer::new(body_clone);
-            // Adjust buffer length.
-            // TODO: Replace the following method for computing the length of a mbuf once we have a proper DPDKBuffer abstraction.
-            let orig_len: usize = unsafe { ((*mbuf_ptr).buf_len - (*mbuf_ptr).data_off).into() };
-            let trim: usize = orig_len - len;
-            mbuf.trim(trim);
-            Buffer::DPDK(mbuf)
+            Buffer::DPDK(DPDKBuffer::new(body_clone))
         } else {
             // Clone heap-managed buffer.
             let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
