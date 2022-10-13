@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 mod databuffer;
+mod demibuffer;
 #[cfg(feature = "libdpdk")]
 mod dpdkbuffer;
 
@@ -19,9 +20,12 @@ use ::std::fmt::Debug;
 // Exports
 //==============================================================================
 
-pub use self::databuffer::DataBuffer;
 #[cfg(feature = "libdpdk")]
 pub use self::dpdkbuffer::DPDKBuffer;
+pub use self::{
+    databuffer::DataBuffer,
+    demibuffer::DemiBuffer,
+};
 
 //==============================================================================
 // Enumerations
