@@ -21,7 +21,6 @@ use crate::runtime::{
 use ::libc::c_void;
 use ::std::{
     mem,
-    ptr,
     slice,
 };
 
@@ -31,23 +30,25 @@ use ::std::{
 
 /// Memory Runtime Trait Implementation for Linux Runtime
 impl MemoryRuntime for LinuxRuntime {
-    /// Memory Buffer
     /// Converts a runtime buffer into a scatter-gather array.
     fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
         let len: usize = buf.len();
         #[allow(unreachable_patterns)]
-        let sgaseg: demi_sgaseg_t = match buf {
+        let (dbuf_ptr, sgaseg): (*const u8, demi_sgaseg_t) = match buf {
             Buffer::Heap(dbuf) => {
-                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
-                demi_sgaseg_t {
-                    sgaseg_buf: dbuf_ptr as *mut c_void,
-                    sgaseg_len: len as u32,
-                }
+                let (dbuf_ptr, data_ptr): (*const u8, *const u8) = DataBuffer::into_raw_parts(Clone::clone(&dbuf))?;
+                (
+                    dbuf_ptr,
+                    demi_sgaseg_t {
+                        sgaseg_buf: data_ptr as *mut c_void,
+                        sgaseg_len: len as u32,
+                    },
+                )
             },
             _ => return Err(Fail::new(libc::EINVAL, "invalid buffer type")),
         };
         Ok(demi_sgarray_t {
-            sga_buf: ptr::null_mut(),
+            sga_buf: dbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
@@ -58,13 +59,13 @@ impl MemoryRuntime for LinuxRuntime {
     fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // Allocate a heap-managed buffer.
         let dbuf: DataBuffer = DataBuffer::new(size)?;
-        let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
+        let (dbuf_ptr, data_ptr): (*const u8, *const u8) = DataBuffer::into_raw_parts(dbuf)?;
         let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
-            sgaseg_buf: dbuf_ptr as *mut c_void,
+            sgaseg_buf: data_ptr as *mut c_void,
             sgaseg_len: size as u32,
         };
         Ok(demi_sgarray_t {
-            sga_buf: ptr::null_mut(),
+            sga_buf: dbuf_ptr as *mut c_void,
             sga_numsegs: 1,
             sga_segs: [sgaseg],
             sga_addr: unsafe { mem::zeroed() },
@@ -80,11 +81,8 @@ impl MemoryRuntime for LinuxRuntime {
         }
 
         // Release heap-managed buffer.
-        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
-        let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
-
-        // Convert back raw slice to a heap buffer and drop allocation.
-        DataBuffer::from_raw_parts(data_ptr, length)?;
+        let (dbuf_ptr, length): (*mut u8, usize) = (sga.sga_buf as *mut u8, sga.sga_segs[0].sgaseg_len as usize);
+        DataBuffer::from_raw_parts(dbuf_ptr, length)?;
 
         Ok(())
     }
@@ -98,10 +96,13 @@ impl MemoryRuntime for LinuxRuntime {
         }
 
         let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
-        let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        let (dbuf_ptr, len): (*mut c_void, usize) = (sga.sga_buf, sgaseg.sgaseg_len as usize);
 
         // Clone heap-managed buffer.
-        let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
-        Ok(Buffer::Heap(DataBuffer::from_slice(seg_slice)))
+        let seg_slice: &[u8] = unsafe { slice::from_raw_parts(dbuf_ptr as *const u8, len) };
+        let mut dbuf: DataBuffer = DataBuffer::from_slice(seg_slice);
+        let nbytes: usize = unsafe { sgaseg.sgaseg_buf.sub_ptr(sga.sga_buf) };
+        dbuf.adjust(nbytes);
+        Ok(Buffer::Heap(dbuf))
     }
 }
