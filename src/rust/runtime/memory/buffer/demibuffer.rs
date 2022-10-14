@@ -27,7 +27,11 @@
 // This code currently uses std::alloc() and std::dealloc() to allocate/free things from the heap.  Note that the Rust
 // documentation says that these functions are expected to be deprecated in favor of their respective methods of the
 // "Global" type when it and the "Allocator" trait become stable.
-use crate::runtime::fail::Fail;
+
+use crate::{
+    pal::arch,
+    runtime::fail::Fail,
+};
 #[cfg(feature = "libdpdk")]
 use ::dpdk_rs::{
     rte_mbuf,
@@ -50,6 +54,7 @@ use ::std::{
     mem::size_of,
     num::NonZeroUsize,
     ops::{
+        BitOr,
         Deref,
         DerefMut,
     },
@@ -61,16 +66,13 @@ use ::std::{
     slice,
 };
 
-// Cache line size, defined here for code clarity.
-// While this is arguably architecture dependent, and thus should be pulled from some architecture-specific information,
-// this value (64 bytes) is used by all architectures we're likely to care about (and is also assumed by DPDK).
-const CACHE_LINE_SIZE: usize = 64;
-
 // Buffer Metadata.
 // This is defined to match a DPDK MBuf (rte_mbuf) in order to potentially use the same code for some DemiBuffer
 // operations that currently use identical (but separate) implementations for heap vs DPDK allocated buffers.
 // Fields beginning with an underscore are not directly used by the current DemiBuffer implementation.
-// Should be cache-line aligned and consume 2 cache lines (128 bytes).
+// Should be cache-line aligned (64 bytes on x86 or x86_64) and consume 2 cache lines (128 bytes on x86 or x86_64).
+// Unfortunately, we have to use a numeric literal value in #[repr(align())] below, and can't use a defined constant.
+// So we make an educated guess and then check that it matches that of our target_arch in a compile-time assert below.
 #[repr(C)]
 #[repr(align(64))]
 struct MetaData {
@@ -133,6 +135,12 @@ struct MetaData {
     _dynfield: [u32; 9],
 }
 
+// Check MetaData structure alignment and size at compile time.
+// Note that alignment must be specified via a literal value in #[repr(align(64))] above, so a defined constant can't
+// be used.  So, if the alignment assert is firing, change the value in the align() to match CPU_DATA_CACHE_LINE_SIZE.
+const _: () = assert!(std::mem::align_of::<MetaData>() == arch::CPU_DATA_CACHE_LINE_SIZE);
+const _: () = assert!(std::mem::size_of::<MetaData>() == 2 * arch::CPU_DATA_CACHE_LINE_SIZE);
+
 // MetaData "offload flags".  These exactly mimic those of DPDK MBufs.
 
 // Indicates this MetaData struct doesn't have the actual data directly attached, but rather this MetaData's buf_addr
@@ -173,6 +181,36 @@ impl MetaData {
     }
 }
 
+// DemiBuffer type tags.
+// Since our MetaData structure is 64-byte aligned, the lower 6 bits of a pointer to it are guaranteed to be zero.
+// We currently only use the lower 2 of those bits to hold the type tag.
+#[derive(PartialEq)]
+enum Tag {
+    Heap = 1,
+    #[cfg(feature = "libdpdk")]
+    Dpdk = 2,
+}
+const TAG_MASK: usize = 0x3;
+
+impl BitOr<Tag> for NonZeroUsize {
+    type Output = Self;
+
+    fn bitor(self, rhs: Tag) -> Self::Output {
+        self | rhs as usize
+    }
+}
+
+impl From<usize> for Tag {
+    fn from(tag_value: usize) -> Self {
+        match tag_value {
+            1 => Tag::Heap,
+            #[cfg(feature = "libdpdk")]
+            2 => Tag::Dpdk,
+            _ => panic!("memory corruption in DemiBuffer pointer"),
+        }
+    }
+}
+
 // The DemiBuffer.
 pub struct DemiBuffer {
     // Pointer to the buffer metadata.
@@ -182,13 +220,6 @@ pub struct DemiBuffer {
     // Hint to compiler that this struct "owns" a MetaData (for safety determinations).  Doesn't consume space.
     _phantom: PhantomData<MetaData>,
 }
-
-// DemiBuffer tag types.
-// Since our MetaData structure is 64-byte aligned, the lower 6 bits of a pointer to it are guaranteed to be zero.
-// We currently only use the lower 2 of those bits to hold the tag.
-const TAG_MASK: usize = 0x3;
-const TAG_HEAP: usize = 0x1;
-const TAG_DPDK: usize = 0x2;
 
 impl DemiBuffer {
     // ------------
@@ -241,7 +272,7 @@ impl DemiBuffer {
         }
 
         // Embed the buffer type into the lower bits of the pointer.
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | TAG_HEAP);
+        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
 
         // Return the new DemiBuffer.
         DemiBuffer {
@@ -296,7 +327,7 @@ impl DemiBuffer {
         }
 
         // Embed the buffer type into the lower bits of the pointer.
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | TAG_HEAP);
+        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
 
         // Return the new DemiBuffer.
         Ok(DemiBuffer {
@@ -313,7 +344,7 @@ impl DemiBuffer {
     pub unsafe fn from_mbuf(mbuf_ptr: *mut rte_mbuf) -> Self {
         // Convert the raw pointer into a NonNull and add a tag indicating it is a DPDK buffer (i.e. a MBuf).
         let temp: NonNull<MetaData> = NonNull::new_unchecked(mbuf_ptr as *mut _);
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | TAG_DPDK);
+        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Dpdk);
 
         DemiBuffer {
             ptr: tagged,
@@ -326,11 +357,12 @@ impl DemiBuffer {
     // ----------------
 
     pub fn is_heap_allocated(&self) -> bool {
-        self.get_tag() == TAG_HEAP
+        self.get_tag() == Tag::Heap
     }
 
+    #[cfg(feature = "libdpdk")]
     pub fn is_dpdk_allocated(&self) -> bool {
-        self.get_tag() == TAG_DPDK
+        self.get_tag() == Tag::Dpdk
     }
 
     // Returns the length of the data stored in the DemiBuffer.
@@ -346,7 +378,7 @@ impl DemiBuffer {
     pub fn adjust(&mut self, nbytes: u16) -> Result<(), Fail> {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 let metadata: &mut MetaData = self.get_metadata();
                 if nbytes > metadata.data_len {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
@@ -356,14 +388,11 @@ impl DemiBuffer {
                 metadata.data_len -= nbytes;
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
                 if unsafe { rte_pktmbuf_adj(self.get_mbuf(), nbytes) } == ptr::null_mut() {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
 
@@ -377,7 +406,7 @@ impl DemiBuffer {
     pub fn trim(&mut self, nbytes: u16) -> Result<(), Fail> {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 let md_first: &mut MetaData = self.get_metadata();
                 let md_last: &mut MetaData = md_first.get_last_segment();
 
@@ -388,14 +417,11 @@ impl DemiBuffer {
                 md_first.pkt_len -= nbytes as u32;
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 // Safety: rte_pktmbuf_trim is a FFI, which is safe since we call it with an actual MBuf pointer.
                 if unsafe { rte_pktmbuf_trim(self.get_mbuf(), nbytes) } != 0 {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
 
@@ -408,7 +434,7 @@ impl DemiBuffer {
     pub fn split(&mut self, offset: u16) -> Result<Self, Fail> {
         // Check that a split is allowed.
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 let md_front: &mut MetaData = self.get_metadata();
                 if md_front.nb_segs != 1 {
                     return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
@@ -418,7 +444,7 @@ impl DemiBuffer {
                 }
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 let mbuf: *mut rte_mbuf = self.get_mbuf();
                 // Safety: The `mbuf` dereferences in this block are safe, as it is aligned and dereferenceable.
                 unsafe {
@@ -429,9 +455,6 @@ impl DemiBuffer {
                         return Err(Fail::new(libc::EINVAL, "split offset is more bytes than are present"));
                     }
                 }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
 
@@ -455,7 +478,7 @@ impl DemiBuffer {
     // The returned MBuf takes all existing references on the data with it (the DemiBuffer donates its ref to the MBuf).
     #[cfg(feature = "libdpdk")]
     pub fn into_mbuf(this: Self) -> Option<*mut rte_mbuf> {
-        if this.get_tag() == TAG_DPDK {
+        if this.get_tag() == Tag::Dpdk {
             let mbuf = Self::get_mbuf(&this);
             // Don't run the DemiBuffer destructor on this.
             mem::forget(this);
@@ -471,8 +494,8 @@ impl DemiBuffer {
 
     // Gets the tag containing the type of DemiBuffer.
     #[inline]
-    fn get_tag(&self) -> usize {
-        usize::from(self.ptr.addr()) & TAG_MASK
+    fn get_tag(&self) -> Tag {
+        Tag::from(usize::from(self.ptr.addr()) & TAG_MASK)
     }
 
     // Gets the untagged pointer to the underlying type.
@@ -526,20 +549,11 @@ impl DemiBuffer {
 
 // Allocates the MetaData (plus the space for any directly attached data) for a new heap-allocated DemiBuffer.
 fn allocate_metadata_data(direct_data_size: u16) -> NonNull<MetaData> {
-    // Since our MetaData structure is defined to mimic a DPDK MBuf, it should be two cache-lines in size (checked
-    // here in debug builds) and cache-line aligned.
-    // ToDo: When Rust adds proper compile-time assertions, switch this to one.
-    #[cfg(debug_assertions)]
-    if size_of::<MetaData>() != 2 * CACHE_LINE_SIZE {
-        panic!("MetaData structure is not the expected size");
-    }
-
-    // Allocate space for the MetaData struct, plus any extra memory for directly attached data.
-
+    // We need space for the MetaData struct, plus any extra memory for directly attached data.
     let amount: usize = size_of::<MetaData>() + direct_data_size as usize;
 
     // Given our limited allocation amount (u16::MAX) and fixed alignment size, this unwrap cannot panic.
-    let layout: Layout = Layout::from_size_align(amount, CACHE_LINE_SIZE).unwrap();
+    let layout: Layout = Layout::from_size_align(amount, arch::CPU_DATA_CACHE_LINE_SIZE).unwrap();
 
     // Safety: This is safe, as we check for a null return value before dereferencing "allocation".
     let allocation: *mut u8 = unsafe { alloc(layout) };
@@ -579,7 +593,7 @@ fn free_metadata_data(buffer: NonNull<MetaData>) {
     debug_assert_eq!(metadata._priv_size, 0);
     let amount: usize = size_of::<MetaData>() + metadata.buf_len as usize;
     // This unwrap will never panic, as we pass a known allocation amount and a fixed alignment to from_size_align().
-    let layout: Layout = Layout::from_size_align(amount, CACHE_LINE_SIZE).unwrap();
+    let layout: Layout = Layout::from_size_align(amount, arch::CPU_DATA_CACHE_LINE_SIZE).unwrap();
 
     // Convert buffer pointer into a raw allocation pointer.
     let allocation: *mut u8 = buffer.cast::<u8>().as_ptr();
@@ -596,7 +610,7 @@ fn free_metadata_data(buffer: NonNull<MetaData>) {
 impl Clone for DemiBuffer {
     fn clone(&self) -> Self {
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 // To create a clone (not a copy), we construct a new indirect buffer for each buffer segment in the
                 // original buffer chain.  An indirect buffer has its own MetaData struct representing its view into
                 // the data, but the data itself resides in the original direct buffer and isn't copied.  Instead,
@@ -665,7 +679,7 @@ impl Clone for DemiBuffer {
                 }
 
                 // Embed the buffer type into the lower bits of the pointer.
-                let tagged: NonNull<MetaData> = head.with_addr(head.addr() | TAG_HEAP);
+                let tagged: NonNull<MetaData> = head.with_addr(head.addr() | Tag::Heap);
 
                 // Return the new DemiBuffer.
                 DemiBuffer {
@@ -674,7 +688,7 @@ impl Clone for DemiBuffer {
                 }
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => unsafe {
+            Tag::Dpdk => unsafe {
                 let mbuf_ptr: *mut rte_mbuf = self.get_mbuf();
                 // ToDo: This allocates the clone MBuf from the same MBuf pool as the original MBuf.  Since the clone
                 // never has any direct data, we could potentially save memory by allocating these from a special pool.
@@ -690,9 +704,6 @@ impl Clone for DemiBuffer {
                 // Safety: from_mbuf is safe to call here as "mbuf_ptr_clone" is known to point to a valid MBuf.
                 DemiBuffer::from_mbuf(mbuf_ptr_clone)
             },
-            _ => {
-                panic!("corrupted DemiBuffer");
-            },
         }
     }
 }
@@ -704,21 +715,18 @@ impl Deref for DemiBuffer {
     fn deref(&self) -> &[u8] {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
                 // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
                 // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
                 unsafe { slice::from_raw_parts(self.data_ptr(), self.len()) }
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
                 // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
                 // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
                 unsafe { slice::from_raw_parts(self.dpdk_data_ptr(), self.len()) }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
     }
@@ -729,21 +737,18 @@ impl DerefMut for DemiBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region
                 // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
                 // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
                 unsafe { slice::from_raw_parts_mut(self.data_ptr(), self.len()) }
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region
                 // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
                 // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
                 unsafe { slice::from_raw_parts_mut(self.dpdk_data_ptr(), self.len()) }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
     }
@@ -753,7 +758,7 @@ impl DerefMut for DemiBuffer {
 impl Drop for DemiBuffer {
     fn drop(&mut self) {
         match self.get_tag() {
-            TAG_HEAP => {
+            Tag::Heap => {
                 // This might be a chain of buffers.  If so, we'll walk the list.
                 let mut next_entry: Option<NonNull<MetaData>> = Some(self.ptr);
                 while let Some(mut entry) = next_entry {
@@ -804,16 +809,13 @@ impl Drop for DemiBuffer {
                 }
             },
             #[cfg(feature = "libdpdk")]
-            TAG_DPDK => {
+            Tag::Dpdk => {
                 let mbuf_ptr: *mut rte_mbuf = self.get_mbuf();
                 // Safety: This is safe, as mbuf_ptr does indeed point to a valid MBuf.
                 unsafe {
                     // Note: This DPDK routine properly handles MBuf chains, as well as indirect, and external MBufs.
                     rte_pktmbuf_free(mbuf_ptr);
                 }
-            },
-            _ => {
-                panic!("corrupted DemiBuffer");
             },
         }
     }

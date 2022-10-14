@@ -9,6 +9,7 @@
 // datastructures. This layer exists because of the differences between the Windows/Linux libc/WinSock implementations
 // of the corresponding Rust libraries.
 
+pub mod arch;
 pub mod constants;
 pub mod data_structures;
 pub mod functions;
