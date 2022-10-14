@@ -419,16 +419,6 @@ impl CatcollarLibOS {
         timer!("catcollar::wait_any");
         trace!("wait_any(): qts={:?}", qts);
 
-        let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
-        Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())))
-    }
-
-    /// Waits for any operation to complete.
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::wait_any2");
-        trace!("wait_any2() {:?}", qts);
-
         loop {
             // Poll first, so as to give pending operations a chance to complete.
             self.runtime.scheduler.poll();
@@ -444,7 +434,8 @@ impl CatcollarLibOS {
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
                     let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-                    return Ok((i, qd, r));
+                    let (i, qd, r): (usize, QDesc, OperationResult) = (i, qd, r);
+                    return Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())));
                 }
 
                 // Return this operation to the scheduling queue by removing the associated key
