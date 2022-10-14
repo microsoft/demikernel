@@ -35,6 +35,18 @@ use ::std::{
     },
 };
 
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
+
 //==============================================================================
 // Program Arguments
 //==============================================================================
@@ -220,7 +232,7 @@ impl Application {
         let injection_rate: u64 = args.get_injection_rate();
 
         // Create UDP socket.
-        let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 1) {
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 1) {
             Ok(qd) => qd,
             Err(e) => panic!("failed to create socket: {:?}", e.cause),
         };

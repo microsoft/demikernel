@@ -31,6 +31,18 @@ use ::std::{
     },
 };
 
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
+
 //==============================================================================
 // Program Arguments
 //==============================================================================
@@ -110,7 +122,7 @@ impl Application {
         let local: SocketAddrV4 = args.get_local();
 
         // Create TCP socket.
-        let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
             Ok(qd) => qd,
             Err(e) => panic!("failed to create socket: {:?}", e.cause),
         };

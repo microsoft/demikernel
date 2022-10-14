@@ -37,6 +37,19 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
+
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
+
 use std::{
     net::SocketAddrV4,
     thread::{
@@ -52,7 +65,7 @@ use std::{
 /// Opens and closes a socket using a non-ephemeral port.
 fn do_udp_setup(libos: &mut InetStack) {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -61,7 +74,7 @@ fn do_udp_setup(libos: &mut InetStack) {
 fn do_udp_setup_ephemeral(libos: &mut InetStack) {
     const PORT_EPHEMERAL_BASE: u16 = 49152;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -69,7 +82,7 @@ fn do_udp_setup_ephemeral(libos: &mut InetStack) {
 /// Opens and closes a socket using wildcard ephemeral port.
 fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -94,7 +107,7 @@ fn udp_connect_loopback() {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
     libos.bind(sockfd, local).unwrap();
     libos.close(sockfd).unwrap();
 }
@@ -119,7 +132,7 @@ fn udp_push_remote() {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
@@ -155,7 +168,7 @@ fn udp_push_remote() {
         let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.
@@ -203,7 +216,7 @@ fn udp_loopback() {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
@@ -239,7 +252,7 @@ fn udp_loopback() {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0).unwrap();
+        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.

@@ -26,7 +26,6 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -37,6 +36,24 @@ use ::std::{
         Instant,
     },
 };
+
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Networking::WinSock::SOCKADDR_IN;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
+
+#[cfg(target_os = "linux")]
+use ::std::mem;
 
 //==============================================================================
 // Program Arguments
@@ -117,7 +134,7 @@ impl Application {
         let local: SocketAddrV4 = args.get_local();
 
         // Create UDP socket.
-        let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(qd) => qd,
             Err(e) => panic!("failed to create socket: {:?}", e.cause),
         };
@@ -197,15 +214,30 @@ impl Application {
         }
     }
 
+    #[cfg(target_os = "linux")]
     /// Converts a [sockaddr] into a [SocketAddrV4].
     pub fn sockaddr_to_socketaddrv4(saddr: *const libc::sockaddr) -> Result<SocketAddrV4> {
-        // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
+        // TODO: Change the logic below and rename this function once we support V6 addresses as well.
         let sin: libc::sockaddr_in =
             unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
         if sin.sin_family != libc::AF_INET as u16 {
             bail!("communication domain not supported");
         };
         let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+        let port: u16 = u16::from_be(sin.sin_port);
+        Ok(SocketAddrV4::new(addr, port))
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Converts a [sockaddr] into a [SocketAddrV4].
+    pub fn sockaddr_to_socketaddrv4(saddr: *const SOCKADDR_IN) -> Result<SocketAddrV4> {
+        // TODO: Change the logic below and rename this function once we support V6 addresses as well.
+
+        let sin: SOCKADDR_IN = unsafe { *saddr };
+        if sin.sin_family != AF_INET as u16 {
+            bail!("communication domain not supported");
+        };
+        let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(unsafe { sin.sin_addr.S_un.S_addr }));
         let port: u16 = u16::from_be(sin.sin_port);
         Ok(SocketAddrV4::new(addr, port))
     }
