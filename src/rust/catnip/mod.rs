@@ -189,6 +189,12 @@ impl CatnipLibOS {
         Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
     }
 
+    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+        match self.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => Ok(handle),
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        }
+    }
     /// Waits for any operation to complete.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]

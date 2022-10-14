@@ -243,6 +243,19 @@ impl NetworkLibOS {
         }
     }
 
+    /// Waits for any operation in an I/O queue.
+    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOS::Catpowder(libos) => libos.schedule(qt),
+            #[cfg(feature = "catnap-libos")]
+            NetworkLibOS::Catnap(libos) => libos.schedule(qt),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOS::Catcollar(libos) => libos.schedule(qt),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOS::Catnip(libos) => libos.schedule(qt),
+        }
+    }
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
