@@ -655,7 +655,7 @@ fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
     if sin.sin_family != AF_INET as u16 {
         return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
     };
-    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(sin)));
+    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
     let port: u16 = u16::from_be(sin.sin_port);
     Ok(SocketAddrV4::new(addr, port))
 }

@@ -48,7 +48,7 @@ pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM as
 pub const AF_INET: i32 = libc::AF_INET;
 
 #[cfg(target_os = "linux")]
-pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
+pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
 use std::{
     net::{

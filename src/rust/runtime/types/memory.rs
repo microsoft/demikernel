@@ -9,7 +9,7 @@
 
 use ::libc::c_void;
 
-use crate::pal::data_structures::SockAddrIn;
+use crate::pal::data_structures::SockAddr;
 
 //==============================================================================
 // Constants
@@ -39,5 +39,5 @@ pub struct demi_sgarray_t {
     pub sga_buf: *mut c_void,
     pub sga_numsegs: u32,
     pub sga_segs: [demi_sgaseg_t; DEMI_SGARRAY_MAXLEN],
-    pub sga_addr: SockAddrIn,
+    pub sga_addr: SockAddr,
 }

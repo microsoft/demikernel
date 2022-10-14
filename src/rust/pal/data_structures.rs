@@ -19,6 +19,9 @@ pub type Socklen = i32;
 //==============================================================================
 
 #[cfg(target_os = "linux")]
+pub type SockAddr = libc::sockaddr;
+
+#[cfg(target_os = "linux")]
 pub type SockAddrIn = libc::sockaddr_in;
 
 #[cfg(target_os = "linux")]
