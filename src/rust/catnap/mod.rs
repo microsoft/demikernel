@@ -121,7 +121,7 @@ impl CatnapLibOS {
         // Parse communication domain.
         let domain: AddressFamily = match domain {
             AF_INET => AddressFamily::Inet,
-            _ => return Err(Fail::new(ENOTSUP, "communication domain  not supported")),
+            _ => return Err(Fail::new(ENOTSUP, "communication domain not supported")),
         };
 
         // Parse socket type and protocol.
