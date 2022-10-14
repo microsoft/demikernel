@@ -94,11 +94,13 @@ impl DataBuffer {
         })
     }
 
-    /// Consumes the data buffer returning a raw pointer to the underlying data.
-    pub fn into_raw(dbuf: DataBuffer) -> Result<*const [u8], Fail> {
+    /// Consumes the data buffer returning a raw pointer to the underlying buffer and data.
+    pub fn into_raw_parts(dbuf: DataBuffer) -> Result<(*const u8, *const u8), Fail> {
         if let Some(data) = dbuf.data {
-            let data_ptr: *const [u8] = Arc::<[u8]>::into_raw(data);
-            return Ok(data_ptr);
+            let offset: usize = dbuf.offset;
+            let dbuf_ptr: *const u8 = Arc::<[u8]>::into_raw(data).as_ptr();
+            let data_ptr: *const u8 = unsafe { dbuf_ptr.add(offset) };
+            return Ok((dbuf_ptr, data_ptr));
         }
 
         Err(Fail::new(libc::EINVAL, "zero-length buffer"))

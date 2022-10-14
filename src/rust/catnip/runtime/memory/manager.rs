@@ -89,7 +89,7 @@ impl MemoryManager {
             // Heap-managed buffer.
             Buffer::Heap(dbuf) => {
                 let len: usize = dbuf.len();
-                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(Clone::clone(&dbuf))?;
+                let (dbuf_ptr, _): (*const u8, *const u8) = DataBuffer::into_raw_parts(Clone::clone(&dbuf))?;
                 (
                     ptr::null_mut(),
                     demi_sgaseg_t {
@@ -156,7 +156,7 @@ impl MemoryManager {
             } else {
                 // Allocate a heap-managed buffer.
                 let dbuf: DataBuffer = DataBuffer::new(size)?;
-                let dbuf_ptr: *const [u8] = DataBuffer::into_raw(dbuf)?;
+                let (dbuf_ptr, _): (*const u8, *const u8) = DataBuffer::into_raw_parts(dbuf)?;
                 (
                     ptr::null_mut(),
                     demi_sgaseg_t {
@@ -184,6 +184,10 @@ impl MemoryManager {
         }
 
         // Release underlying buffer.
+        // NOTE: In contrast to the other LibOses we store in the sga.sga_buf a pointer to an MBuf, and use this to
+        // differentiate a DPDKBuffer for a DataBuffer. This only works because in the receive path, all buffers are
+        // allocated from the DPDK pool, thus we don't need to keep track of data pointer. We should revisit this when
+        // changing the scatter-gather array structure.
         if !sga.sga_buf.is_null() {
             // Release DPDK-managed buffer.
             let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
@@ -212,6 +216,10 @@ impl MemoryManager {
         let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
 
         // Clone underlying buffer.
+        // NOTE: In contrast to the other LibOses we store in the sga.sga_buf a pointer to an MBuf, and use this to
+        // differentiate a DPDKBuffer for a DataBuffer. This only works because in the receive path, all buffers are
+        // allocated from the DPDK pool, thus we don't need to keep track of data pointer. We should revisit this when
+        // changing the scatter-gather array structure.
         let buf: Buffer = if !sga.sga_buf.is_null() {
             // Clone DPDK-managed buffer.
             let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;

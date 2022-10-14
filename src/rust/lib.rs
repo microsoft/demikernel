@@ -12,6 +12,8 @@
 #![feature(test)]
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
+#![feature(slice_ptr_get)]
+#![feature(ptr_sub_ptr)]
 
 mod collections;
 mod pal;
