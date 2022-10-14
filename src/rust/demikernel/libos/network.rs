@@ -173,21 +173,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Pushes raw data to a UDP socket.
-    #[deprecated]
-    pub fn pushto2(&mut self, sockqd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pushto2(sockqd, data, remote),
-        }
-    }
-
     /// Pops data from a socket.
     pub fn pop(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
