@@ -268,25 +268,6 @@ impl CatcollarLibOS {
         }
     }
 
-    /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Buffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                // Issue operation.
-                let addr: SockaddrStorage = parse_addr(remote);
-                let request_id: RequestId = self.runtime.pushto(fd, addr, buf.clone())?;
-
-                let future: Operation = Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
-            },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
-    }
-
     /// Pushes a scatter-gather array to a socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
@@ -298,23 +279,25 @@ impl CatcollarLibOS {
                 }
 
                 // Issue pushto operation.
-                self.do_pushto(qd, buf, remote)
+                match self.sockets.get(&qd) {
+                    Some(&fd) => {
+                        // Issue operation.
+                        let addr: SockaddrStorage = parse_addr(remote);
+                        let request_id: RequestId = self.runtime.pushto(fd, addr, buf.clone())?;
+
+                        let future: Operation =
+                            Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
+                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                            Some(handle) => handle,
+                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                        };
+                        Ok(handle.into_raw().into())
+                    },
+                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                }
             },
             Err(e) => Err(e),
         }
-    }
-
-    /// Pushes raw data to a socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_pushto(qd, buf, remote)
     }
 
     /// Pops data from a socket.
