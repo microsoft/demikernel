@@ -240,21 +240,6 @@ impl CatnapLibOS {
         }
     }
 
-    // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
-            },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
-        }
-    }
-
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
@@ -266,23 +251,20 @@ impl CatnapLibOS {
                 }
 
                 // Issue push operation.
-                self.do_push(qd, buf)
+                match self.sockets.get(&qd) {
+                    Some(&fd) => {
+                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
+                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                            Some(handle) => handle,
+                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                        };
+                        Ok(handle.into_raw().into())
+                    },
+                    _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+                }
             },
             Err(e) => Err(e),
         }
-    }
-
-    // Pushes raw data to a socket.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        trace!("push2() qd={:?}", qd);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_push(qd, buf)
     }
 
     /// Handles a pushto operation.
