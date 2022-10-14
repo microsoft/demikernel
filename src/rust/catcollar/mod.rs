@@ -241,8 +241,17 @@ impl CatcollarLibOS {
         }
     }
 
-    // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
+    /// Pushes a scatter-gather array to a socket.
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+        trace!("push() qd={:?}", qd);
+
+        let buf: Buffer = self.runtime.clone_sgarray(sga)?;
+
+        if buf.len() == 0 {
+            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
+        }
+
+        // Issue push operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
@@ -257,33 +266,6 @@ impl CatcollarLibOS {
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
-    }
-
-    /// Pushes a scatter-gather array to a socket.
-    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        trace!("push() qd={:?}", qd);
-
-        let buf: Buffer = self.runtime.clone_sgarray(sga)?;
-
-        if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue push operation.
-        self.do_push(qd, buf)
-    }
-
-    // Pushes raw data to a socket.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        trace!("push2() qd={:?}", qd);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_push(qd, buf)
     }
 
     /// Handles a pushto operation.
