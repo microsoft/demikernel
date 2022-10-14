@@ -190,6 +190,12 @@ impl CatpowderLibOS {
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         }
     }
+
+    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
+        Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
+    }
+
     /// Waits for any operation to complete.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]

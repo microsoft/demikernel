@@ -377,6 +377,12 @@ impl CatnapLibOS {
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         }
     }
+
+    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
+        Ok(pack_result(&self.runtime, r, qd, qt.into()))
+    }
+
     /// Waits for any operation to complete.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]

@@ -256,6 +256,19 @@ impl NetworkLibOS {
             NetworkLibOS::Catnip(libos) => libos.schedule(qt),
         }
     }
+
+    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOS::Catpowder(libos) => libos.pack_result(handle, qt),
+            #[cfg(feature = "catnap-libos")]
+            NetworkLibOS::Catnap(libos) => libos.pack_result(handle, qt),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOS::Catcollar(libos) => libos.pack_result(handle, qt),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOS::Catnip(libos) => libos.pack_result(handle, qt),
+        }
+    }
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
