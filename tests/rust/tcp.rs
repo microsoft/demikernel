@@ -37,6 +37,19 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
+
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
+
 use std::{
     net::{
         Ipv4Addr,
@@ -47,6 +60,8 @@ use std::{
         JoinHandle,
     },
 };
+#[cfg(target_os = "windows")]
+use windows::Win32::Networking::WinSock;
 
 //======================================================================================================================
 // Open/Close Passive Socket
@@ -281,6 +296,7 @@ fn tcp_bad_socket() {
     let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
+    #[cfg(target_os = "linux")]
     let domains: Vec<libc::c_int> = vec![
         libc::AF_ALG,
         libc::AF_APPLETALK,
@@ -328,7 +344,21 @@ fn tcp_bad_socket() {
         libc::AF_XDP,
     ];
 
-    let scoket_types: Vec<libc::c_int> = vec![
+    #[cfg(target_os = "windows")]
+    let domains: Vec<libc::c_int> = vec![
+        WinSock::AF_APPLETALK as i32,
+        WinSock::AF_DECnet as i32,
+        // WinSock::AF_INET as i32,
+        WinSock::AF_INET6.0 as i32,
+        WinSock::AF_IPX as i32,
+        WinSock::AF_IRDA as i32,
+        WinSock::AF_SNA as i32,
+        WinSock::AF_UNIX as i32,
+        WinSock::AF_UNSPEC.0 as i32,
+    ];
+
+    #[cfg(target_os = "linux")]
+    let socket_types: Vec<libc::c_int> = vec![
         libc::SOCK_DCCP,
         // libc::SOCK_DGRAM,
         libc::SOCK_PACKET,
@@ -338,17 +368,26 @@ fn tcp_bad_socket() {
         // libc::SOCK_STREAM,
     ];
 
+    #[cfg(target_os = "windows")]
+    let socket_types: Vec<libc::c_int> = vec![
+        // WinSock::SOCK_DGRAM as i32,
+        WinSock::SOCK_RAW as i32,
+        WinSock::SOCK_RDM as i32,
+        WinSock::SOCK_SEQPACKET as i32,
+        // WinSock::SOCK_STREAM as i32,
+    ];
+
     // Invalid domain.
     for d in domains {
-        match libos.socket(d, libc::SOCK_STREAM, 0) {
+        match libos.socket(d, SOCK_STREAM, 0) {
             Err(e) if e.errno == libc::ENOTSUP => (),
             _ => panic!("invalid call to socket() should fail with ENOTSUP"),
         };
     }
 
     // Invalid socket tpe.
-    for t in scoket_types {
-        match libos.socket(libc::AF_INET, t, 0) {
+    for t in socket_types {
+        match libos.socket(AF_INET, t, 0) {
             Err(e) if e.errno == libc::ENOTSUP => (),
             _ => panic!("invalid call to socket() should fail with ENOTSUP"),
         };
@@ -787,7 +826,7 @@ fn tcp_bad_pop() {
 
 /// Safe call to `socket()`.
 fn safe_socket(libos: &mut InetStack) -> QDesc {
-    match libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0) {
+    match libos.socket(AF_INET, SOCK_STREAM, 0) {
         Ok(sockqd) => sockqd,
         Err(e) => panic!("failed to create socket: {:?}", e),
     }

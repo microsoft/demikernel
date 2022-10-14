@@ -25,6 +25,18 @@ use ::std::{
     str::FromStr,
 };
 
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
+
 #[cfg(feature = "profiler")]
 use ::demikernel::perftools::profiler;
 
@@ -74,7 +86,7 @@ fn server(local: SocketAddrV4, remote: SocketAddrV4) -> ! {
     };
 
     // Setup peer.
-    let qd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+    let qd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
         Err(e) => panic!("failed to create socket: {:?}", e.cause),
     };
@@ -141,7 +153,7 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
     let mut qts: Vec<QToken> = Vec::new();
 
     // Setup peer.
-    let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+    let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
         Err(e) => panic!("failed to create socket: {:?}", e.cause),
     };

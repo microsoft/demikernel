@@ -126,7 +126,7 @@ impl CatcollarLibOS {
         // Parse communication domain.
         let domain: AddressFamily = match domain {
             libc::AF_INET => AddressFamily::Inet,
-            _ => return Err(Fail::new(libc::ENOTSUP, "communication domain  not supported")),
+            _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
         };
 
         // Parse socket type and protocol.

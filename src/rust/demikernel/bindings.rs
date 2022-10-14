@@ -10,6 +10,14 @@ use crate::{
         name::LibOSName,
         LibOS,
     },
+    pal::{
+        constants::AF_INET,
+        data_structures::{
+            SockAddrIn,
+            Socklen,
+        },
+        functions::get_addr_from_sock_addr_in,
+    },
     runtime::{
         fail::Fail,
         logging,
@@ -27,7 +35,6 @@ use ::libc::{
     c_int,
     c_void,
     sockaddr,
-    socklen_t,
 };
 use ::std::{
     cell::RefCell,
@@ -111,7 +118,7 @@ pub extern "C" fn demi_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_
 //======================================================================================================================
 
 #[no_mangle]
-pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) -> c_int {
+pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: Socklen) -> c_int {
     trace!("demi_bind()");
 
     // Check if socket address is invalid.
@@ -120,7 +127,7 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: socklen_t) 
     }
 
     // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<libc::sockaddr_in>() {
+    if size as usize != mem::size_of::<SockAddrIn>() {
         return libc::EINVAL;
     }
 
@@ -213,7 +220,7 @@ pub extern "C" fn demi_connect(
     qtok_out: *mut demi_qtoken_t,
     qd: c_int,
     saddr: *const sockaddr,
-    size: socklen_t,
+    size: Socklen,
 ) -> c_int {
     trace!("demi_connect()");
 
@@ -223,7 +230,7 @@ pub extern "C" fn demi_connect(
     }
 
     // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<libc::sockaddr_in>() {
+    if size as usize != mem::size_of::<SockAddrIn>() {
         return libc::EINVAL;
     }
 
@@ -287,7 +294,7 @@ pub extern "C" fn demi_pushto(
     qd: c_int,
     sga: *const demi_sgarray_t,
     saddr: *const sockaddr,
-    size: socklen_t,
+    size: Socklen,
 ) -> c_int {
     trace!("demi_pushto()");
 
@@ -302,7 +309,7 @@ pub extern "C" fn demi_pushto(
     }
 
     // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<libc::sockaddr_in>() {
+    if size as usize != mem::size_of::<SockAddrIn>() {
         return libc::EINVAL;
     }
 
@@ -587,7 +594,7 @@ pub extern "C" fn demi_sgafree(sga: *mut demi_sgarray_t) -> c_int {
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn demi_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut socklen_t) -> c_int {
+pub extern "C" fn demi_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut Socklen) -> c_int {
     // TODO: Implement this system call.
     libc::ENOSYS
 }
@@ -603,7 +610,7 @@ pub extern "C" fn demi_setsockopt(
     level: c_int,
     optname: c_int,
     optval: *const c_void,
-    optlen: socklen_t,
+    optlen: Socklen,
 ) -> c_int {
     // TODO: Implement this system call.
     libc::ENOSYS
@@ -620,7 +627,7 @@ pub extern "C" fn demi_getsockopt(
     level: c_int,
     optname: c_int,
     optval: *mut c_void,
-    optlen: *mut socklen_t,
+    optlen: *mut Socklen,
 ) -> c_int {
     // TODO: Implement this system call.
     libc::ENOSYS
@@ -644,11 +651,11 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 /// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
-    let sin: libc::sockaddr_in = unsafe { *mem::transmute::<*const sockaddr, *const libc::sockaddr_in>(saddr) };
-    if sin.sin_family != libc::AF_INET as u16 {
+    let sin: SockAddrIn = unsafe { *mem::transmute::<*const sockaddr, *const SockAddrIn>(saddr) };
+    if sin.sin_family != AF_INET as u16 {
         return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
     };
-    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
     let port: u16 = u16::from_be(sin.sin_port);
     Ok(SocketAddrV4::new(addr, port))
 }
@@ -660,7 +667,7 @@ fn test_sockaddr_to_socketaddrv4() {
     // SocketAddrV4: 127.0.0.1:80
     let saddr: libc::sockaddr = {
         sockaddr {
-            sa_family: libc::AF_INET as u16,
+            sa_family: AF_INET as u16,
             sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         }
     };

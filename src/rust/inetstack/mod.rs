@@ -20,6 +20,11 @@ use crate::{
             Peer,
         },
     },
+    pal::constants::{
+        AF_INET,
+        SOCK_DGRAM,
+        SOCK_STREAM,
+    },
     runtime::{
         fail::Fail,
         memory::{
@@ -173,11 +178,11 @@ impl InetStack {
             socket_type,
             _protocol
         );
-        if domain != libc::AF_INET {
+        if domain != AF_INET {
             return Err(Fail::new(ENOTSUP, "address family not supported"));
         }
         match socket_type {
-            libc::SOCK_STREAM => {
+            SOCK_STREAM => {
                 let qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
                 if let Err(e) = self.ipv4.tcp.do_socket(qd) {
                     self.file_table.free(qd);
@@ -186,7 +191,7 @@ impl InetStack {
                     Ok(qd)
                 }
             },
-            libc::SOCK_DGRAM => {
+            SOCK_DGRAM => {
                 let qd: QDesc = self.file_table.alloc(QType::UdpSocket.into());
                 if let Err(e) = self.ipv4.udp.do_socket(qd) {
                     self.file_table.free(qd);
