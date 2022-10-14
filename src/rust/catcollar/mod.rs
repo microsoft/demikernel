@@ -322,30 +322,6 @@ impl CatcollarLibOS {
         }
     }
 
-    /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::wait");
-        trace!("wait() qt={:?}", qt);
-
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
-            Some(handle) => handle,
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        };
-
-        let (qd, result): (QDesc, OperationResult) = loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.scheduler.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                break self.take_result(handle);
-            }
-        };
-        Ok(pack_result(&self.runtime, result, qd, qt.into()))
-    }
-
     /// Waits for an I/O operation to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]

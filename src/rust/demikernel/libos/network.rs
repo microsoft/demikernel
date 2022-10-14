@@ -5,14 +5,17 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    types::{
-        demi_qresult_t,
-        demi_sgarray_t,
+use crate::{
+    runtime::{
+        fail::Fail,
+        types::{
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
+        QDesc,
+        QToken,
     },
-    QDesc,
-    QToken,
+    scheduler::SchedulerHandle,
 };
 use ::std::{
     net::SocketAddrV4,
@@ -187,20 +190,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Waits for a pending operation in an I/O queue.
-    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait(qt),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait(qt),
-        }
-    }
-
     /// Waits for an I/O operation to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
         match self {
@@ -269,6 +258,25 @@ impl NetworkLibOS {
             NetworkLibOS::Catnip(libos) => libos.pack_result(handle, qt),
         }
     }
+
+    /// Waits for an operation to complete.
+    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        trace!("wait(): qt={:?}", qt);
+
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = self.schedule(qt)?;
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.pack_result(handle, qt)?);
+            }
+        }
+    }
+
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
