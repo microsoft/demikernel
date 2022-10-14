@@ -241,24 +241,6 @@ impl CatcollarLibOS {
         }
     }
 
-    // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                // Issue operation.
-                let request_id: RequestId = self.runtime.push(fd, buf.clone())?;
-
-                let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), request_id, qd));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
-            },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
-    }
-
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
@@ -270,31 +252,12 @@ impl CatcollarLibOS {
         }
 
         // Issue push operation.
-        self.do_push(qd, buf)
-    }
-
-    // Pushes raw data to a socket.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        trace!("push2() qd={:?}", qd);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_push(qd, buf)
-    }
-
-    /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Buffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
-                let addr: SockaddrStorage = parse_addr(remote);
-                let request_id: RequestId = self.runtime.pushto(fd, addr, buf.clone())?;
+                let request_id: RequestId = self.runtime.push(fd, buf.clone())?;
 
-                let future: Operation = Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
+                let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), request_id, qd));
                 let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -316,23 +279,25 @@ impl CatcollarLibOS {
                 }
 
                 // Issue pushto operation.
-                self.do_pushto(qd, buf, remote)
+                match self.sockets.get(&qd) {
+                    Some(&fd) => {
+                        // Issue operation.
+                        let addr: SockaddrStorage = parse_addr(remote);
+                        let request_id: RequestId = self.runtime.pushto(fd, addr, buf.clone())?;
+
+                        let future: Operation =
+                            Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
+                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                            Some(handle) => handle,
+                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                        };
+                        Ok(handle.into_raw().into())
+                    },
+                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                }
             },
             Err(e) => Err(e),
         }
-    }
-
-    /// Pushes raw data to a socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_pushto(qd, buf, remote)
     }
 
     /// Pops data from a socket.
@@ -363,7 +328,21 @@ impl CatcollarLibOS {
         timer!("catcollar::wait");
         trace!("wait() qt={:?}", qt);
 
-        let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
+        let (qd, result): (QDesc, OperationResult) = loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.runtime.scheduler.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                break self.take_result(handle);
+            }
+        };
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
     }
 
@@ -399,44 +378,11 @@ impl CatcollarLibOS {
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
     }
 
-    /// Waits for an operation to complete.
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::wait2");
-        trace!("wait2() qt={:?}", qt);
-
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
-            Some(handle) => handle,
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        };
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.scheduler.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.take_result(handle));
-            }
-        }
-    }
-
     /// Waits for any operation to complete.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catcollar::wait_any");
         trace!("wait_any(): qts={:?}", qts);
-
-        let (i, qd, r): (usize, QDesc, OperationResult) = self.wait_any2(qts)?;
-        Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())))
-    }
-
-    /// Waits for any operation to complete.
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::wait_any2");
-        trace!("wait_any2() {:?}", qts);
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -453,7 +399,8 @@ impl CatcollarLibOS {
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
                     let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-                    return Ok((i, qd, r));
+                    let (i, qd, r): (usize, QDesc, OperationResult) = (i, qd, r);
+                    return Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())));
                 }
 
                 // Return this operation to the scheduling queue by removing the associated key

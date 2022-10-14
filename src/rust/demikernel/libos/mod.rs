@@ -10,10 +10,7 @@ pub mod network;
 
 use self::{
     name::LibOSName,
-    network::{
-        NetworkLibOS,
-        OperationResult,
-    },
+    network::NetworkLibOS,
 };
 use crate::{
     demikernel::config::Config,
@@ -92,22 +89,6 @@ impl LibOS {
         Ok(libos)
     }
 
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
-        }
-    }
-
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait2(qt),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,
@@ -162,26 +143,10 @@ impl LibOS {
         }
     }
 
-    /// Pushes raw data to a TCP socket.
-    #[deprecated]
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.push2(qd, data),
-        }
-    }
-
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
-        }
-    }
-
-    /// Pushes raw data to a UDP socket.
-    #[deprecated]
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.pushto2(qd, data, remote),
         }
     }
 

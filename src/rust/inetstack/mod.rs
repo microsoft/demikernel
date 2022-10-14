@@ -468,6 +468,7 @@ impl InetStack {
     }
 
     /// Waits for an operation to complete.
+    #[deprecated]
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait2");
@@ -522,6 +523,7 @@ impl InetStack {
     }
 
     /// Waits for any operation to complete.
+    #[deprecated]
     pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait_any2");

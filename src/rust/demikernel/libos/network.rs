@@ -56,36 +56,6 @@ pub enum NetworkLibOS {
 
 /// Associated functions for network LibOSes.
 impl NetworkLibOS {
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait_any2(qts),
-        }
-    }
-
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait2(qt),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait2(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait2(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait2(qt),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,
@@ -189,21 +159,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Pushes raw data to a TCP socket.
-    #[deprecated]
-    pub fn push2(&mut self, sockqd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.push2(sockqd, data),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.push2(sockqd, data),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.push2(sockqd, data),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.push2(sockqd, data),
-        }
-    }
-
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
@@ -215,21 +170,6 @@ impl NetworkLibOS {
             NetworkLibOS::Catcollar(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOS::Catnip(libos) => libos.pushto(sockqd, sga, to),
-        }
-    }
-
-    /// Pushes raw data to a UDP socket.
-    #[deprecated]
-    pub fn pushto2(&mut self, sockqd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pushto2(sockqd, data, remote),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pushto2(sockqd, data, remote),
         }
     }
 
