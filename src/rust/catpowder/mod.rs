@@ -154,7 +154,23 @@ impl CatpowderLibOS {
         timer!("catpowder::wait");
         trace!("wait(): qt={:?}", qt);
 
-        let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
+        let (qd, result): (QDesc, OperationResult) = loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll_bg_work();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                trace!("wait2() qt={:?} completed!", qt);
+                break self.take_operation(handle);
+            }
+        };
+
         Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
     }
 
