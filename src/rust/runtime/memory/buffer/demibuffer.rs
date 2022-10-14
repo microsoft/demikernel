@@ -286,13 +286,14 @@ impl DemiBuffer {
     // handle the error case where the given slice is larger than a single DemiBuffer can hold.  ToDo: Review this?
     pub fn from_slice(slice: &[u8]) -> Result<Self, Fail> {
         // Check size of the slice to ensure a single DemiBuffer can hold it.
-        if slice.len() > u16::MAX as usize {
+        let size: u16 = if slice.len() < u16::MAX as usize {
+            slice.len() as u16
+        } else {
             return Err(Fail::new(libc::EINVAL, "slice is larger than a DemiBuffer can hold"));
-        }
-        let amount: u16 = slice.len() as u16;
+        };
 
         // Allocate some memory off the heap.
-        let mut temp: NonNull<MetaData> = allocate_metadata_data(amount);
+        let mut temp: NonNull<MetaData> = allocate_metadata_data(size);
 
         // Initialize the MetaData.
         {
@@ -300,7 +301,7 @@ impl DemiBuffer {
             let metadata: &mut MetaData = unsafe { temp.as_mut() };
 
             // Point buf_addr at the newly allocated data space (if any).
-            if amount == 0 {
+            if size == 0 {
                 // No direct data, so don't point buf_addr at anything.
                 metadata.buf_addr = null_mut();
             } else {
@@ -310,9 +311,9 @@ impl DemiBuffer {
                 metadata.buf_addr = unsafe { address.offset(size_of::<MetaData>() as isize) };
 
                 // Copy the data from the slice into the DemiBuffer.
-                // Safety: This is safe, as the src/dst argument pointers are valid for reads/writes of `amount` bytes,
+                // Safety: This is safe, as the src/dst argument pointers are valid for reads/writes of `size` bytes,
                 // are aligned (trivial for u8 pointers), and the regions they specify do not overlap one another.
-                unsafe { ptr::copy_nonoverlapping(slice.as_ptr(), metadata.buf_addr, amount as usize) };
+                unsafe { ptr::copy_nonoverlapping(slice.as_ptr(), metadata.buf_addr, size as usize) };
             }
 
             // Set field values as appropriate.
@@ -320,9 +321,9 @@ impl DemiBuffer {
             metadata.refcnt = 1;
             metadata.nb_segs = 1;
             metadata.ol_flags = 0;
-            metadata.pkt_len = amount as u32;
-            metadata.data_len = amount;
-            metadata.buf_len = amount;
+            metadata.pkt_len = size as u32;
+            metadata.data_len = size;
+            metadata.buf_len = size;
             metadata.next = None;
         }
 
