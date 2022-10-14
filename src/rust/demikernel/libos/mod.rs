@@ -92,14 +92,6 @@ impl LibOS {
         Ok(libos)
     }
 
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any2(qts),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,

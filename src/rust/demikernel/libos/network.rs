@@ -56,21 +56,6 @@ pub enum NetworkLibOS {
 
 /// Associated functions for network LibOSes.
 impl NetworkLibOS {
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait_any2(qts),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait_any2(qts),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,
