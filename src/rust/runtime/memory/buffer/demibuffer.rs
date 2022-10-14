@@ -368,7 +368,7 @@ impl DemiBuffer {
     // Returns the length of the data stored in the DemiBuffer.
     // Note that while we return a usize here (for convenience), the value is guaranteed to never exceed u16::MAX.
     pub fn len(&self) -> usize {
-        self.get_metadata().data_len as usize
+        self.as_metadata().data_len as usize
     }
 
     // Removes `nbytes` bytes from the beginning of the DemiBuffer chain.
@@ -379,7 +379,7 @@ impl DemiBuffer {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
-                let metadata: &mut MetaData = self.get_metadata();
+                let metadata: &mut MetaData = self.as_metadata();
                 if nbytes > metadata.data_len {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
@@ -390,7 +390,7 @@ impl DemiBuffer {
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
-                if unsafe { rte_pktmbuf_adj(self.get_mbuf(), nbytes) } == ptr::null_mut() {
+                if unsafe { rte_pktmbuf_adj(self.as_mbuf(), nbytes) } == ptr::null_mut() {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
             },
@@ -407,7 +407,7 @@ impl DemiBuffer {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
-                let md_first: &mut MetaData = self.get_metadata();
+                let md_first: &mut MetaData = self.as_metadata();
                 let md_last: &mut MetaData = md_first.get_last_segment();
 
                 if nbytes > md_last.data_len {
@@ -419,7 +419,7 @@ impl DemiBuffer {
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
                 // Safety: rte_pktmbuf_trim is a FFI, which is safe since we call it with an actual MBuf pointer.
-                if unsafe { rte_pktmbuf_trim(self.get_mbuf(), nbytes) } != 0 {
+                if unsafe { rte_pktmbuf_trim(self.as_mbuf(), nbytes) } != 0 {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
             },
@@ -435,7 +435,7 @@ impl DemiBuffer {
         // Check that a split is allowed.
         match self.get_tag() {
             Tag::Heap => {
-                let md_front: &mut MetaData = self.get_metadata();
+                let md_front: &mut MetaData = self.as_metadata();
                 if md_front.nb_segs != 1 {
                     return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
                 }
@@ -445,7 +445,7 @@ impl DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
-                let mbuf: *mut rte_mbuf = self.get_mbuf();
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
                 // Safety: The `mbuf` dereferences in this block are safe, as it is aligned and dereferenceable.
                 unsafe {
                     if (*mbuf).nb_segs != 1 {
@@ -479,7 +479,7 @@ impl DemiBuffer {
     #[cfg(feature = "libdpdk")]
     pub fn into_mbuf(this: Self) -> Option<*mut rte_mbuf> {
         if this.get_tag() == Tag::Dpdk {
-            let mbuf = Self::get_mbuf(&this);
+            let mbuf = Self::as_mbuf(&this);
             // Don't run the DemiBuffer destructor on this.
             mem::forget(this);
             Some(mbuf)
@@ -508,7 +508,8 @@ impl DemiBuffer {
 
     // Gets the DemiBuffer as a mutable MetaData reference.
     // Note: Caller is responsible for enforcing Rust's aliasing rules for the returned MetaData reference.
-    fn get_metadata(&self) -> &mut MetaData {
+    #[inline]
+    fn as_metadata(&self) -> &mut MetaData {
         // Safety: The call to as_mut is safe, as the pointer is aligned and dereferenceable, and the MetaData struct
         // it points to is initialized properly.
         unsafe { self.get_ptr::<MetaData>().as_mut() }
@@ -516,13 +517,14 @@ impl DemiBuffer {
 
     // Gets the DemiBuffer as a mutable MBuf pointer.
     #[cfg(feature = "libdpdk")]
-    fn get_mbuf(&self) -> *mut rte_mbuf {
+    #[inline]
+    fn as_mbuf(&self) -> *mut rte_mbuf {
         self.get_ptr::<rte_mbuf>().as_ptr()
     }
 
     // Gets a raw pointer to the DemiBuffer data.
     fn data_ptr(&self) -> *mut u8 {
-        let metadata: &mut MetaData = self.get_metadata();
+        let metadata: &mut MetaData = self.as_metadata();
         let buf_ptr: *mut u8 = metadata.buf_addr;
         // Safety: The call to offset is safe, as its argument is known to remain within the allocated region.
         unsafe { buf_ptr.offset(metadata.data_off as isize) }
@@ -533,7 +535,7 @@ impl DemiBuffer {
     // function isn't strictly necessary, as it does the exact same thing as data_ptr() does.
     #[cfg(feature = "libdpdk")]
     fn dpdk_data_ptr(&self) -> *mut u8 {
-        let mbuf: *mut rte_mbuf = self.get_mbuf();
+        let mbuf: *mut rte_mbuf = self.as_mbuf();
         unsafe {
             // Safety: It is safe to dereference "mbuf" as it is known to be valid.
             let buf_ptr: *mut u8 = (*mbuf).buf_addr as *mut u8;
@@ -689,7 +691,7 @@ impl Clone for DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => unsafe {
-                let mbuf_ptr: *mut rte_mbuf = self.get_mbuf();
+                let mbuf_ptr: *mut rte_mbuf = self.as_mbuf();
                 // ToDo: This allocates the clone MBuf from the same MBuf pool as the original MBuf.  Since the clone
                 // never has any direct data, we could potentially save memory by allocating these from a special pool.
                 // Safety: it is safe to dereference "mbuf_ptr" as it is known to point to a valid MBuf.
@@ -810,7 +812,7 @@ impl Drop for DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
-                let mbuf_ptr: *mut rte_mbuf = self.get_mbuf();
+                let mbuf_ptr: *mut rte_mbuf = self.as_mbuf();
                 // Safety: This is safe, as mbuf_ptr does indeed point to a valid MBuf.
                 unsafe {
                     // Note: This DPDK routine properly handles MBuf chains, as well as indirect, and external MBufs.
