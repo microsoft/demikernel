@@ -100,14 +100,6 @@ impl LibOS {
         }
     }
 
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait2(qt),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,

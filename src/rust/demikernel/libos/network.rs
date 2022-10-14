@@ -71,21 +71,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Waits on a pending operation in an I/O queue.
-    #[deprecated]
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait2(qt),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait2(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait2(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait2(qt),
-        }
-    }
-
     /// Creates a socket.
     pub fn socket(
         &mut self,
