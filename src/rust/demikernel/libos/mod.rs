@@ -10,10 +10,7 @@ pub mod network;
 
 use self::{
     name::LibOSName,
-    network::{
-        NetworkLibOS,
-        OperationResult,
-    },
+    network::NetworkLibOS,
 };
 use crate::{
     demikernel::config::Config,
