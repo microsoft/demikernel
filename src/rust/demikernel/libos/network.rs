@@ -216,6 +216,20 @@ impl NetworkLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
+    pub fn poll(&mut self) {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOS::Catpowder(libos) => libos.poll_bg_work(),
+            #[cfg(feature = "catnap-libos")]
+            NetworkLibOS::Catnap(libos) => libos.poll(),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOS::Catcollar(libos) => libos.poll(),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOS::Catnip(libos) => libos.poll_bg_work(),
+        }
+    }
+
+    /// Waits for any operation in an I/O queue.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]

@@ -378,6 +378,9 @@ impl CatcollarLibOS {
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
     }
 
+    pub fn poll(&self) {
+        self.runtime.scheduler.poll()
+    }
     /// Waits for any operation to complete.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
         #[cfg(feature = "profiler")]
