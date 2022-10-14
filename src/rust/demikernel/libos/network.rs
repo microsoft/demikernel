@@ -17,10 +17,7 @@ use crate::{
     },
     scheduler::SchedulerHandle,
 };
-use ::std::{
-    net::SocketAddrV4,
-    time::SystemTime,
-};
+use ::std::net::SocketAddrV4;
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
@@ -187,20 +184,6 @@ impl NetworkLibOS {
             NetworkLibOS::Catcollar(libos) => libos.pop(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOS::Catnip(libos) => libos.pop(sockqd),
-        }
-    }
-
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.timedwait(qt, abstime),
         }
     }
 

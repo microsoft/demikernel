@@ -178,8 +178,26 @@ impl LibOS {
 
     /// Waits for an I/O operation to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.timedwait(qt, abstime),
+        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
+
+        // Retrieve associated schedule handle.
+        let mut handle: SchedulerHandle = self.schedule(qt)?;
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.pack_result(handle, qt)?);
+            }
+
+            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
         }
     }
 

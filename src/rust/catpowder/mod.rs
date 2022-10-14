@@ -46,10 +46,7 @@ use ::std::{
         DerefMut,
     },
     rc::Rc,
-    time::{
-        Instant,
-        SystemTime,
-    },
+    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -146,16 +143,6 @@ impl CatpowderLibOS {
             },
             Err(e) => Err(e),
         }
-    }
-
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catpowder::timedwait");
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        let (qd, result): (QDesc, OperationResult) = self.timedwait2(qt, abstime)?;
-        Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
