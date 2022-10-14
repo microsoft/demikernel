@@ -190,7 +190,10 @@ enum Tag {
     #[cfg(feature = "libdpdk")]
     Dpdk = 2,
 }
-const TAG_MASK: usize = 0x3;
+
+impl Tag {
+    const MASK: usize = 0x3;
+}
 
 impl BitOr<Tag> for NonZeroUsize {
     type Output = Self;
@@ -496,14 +499,14 @@ impl DemiBuffer {
     // Gets the tag containing the type of DemiBuffer.
     #[inline]
     fn get_tag(&self) -> Tag {
-        Tag::from(usize::from(self.ptr.addr()) & TAG_MASK)
+        Tag::from(usize::from(self.ptr.addr()) & Tag::MASK)
     }
 
     // Gets the untagged pointer to the underlying type.
     #[inline]
     fn get_ptr<U>(&self) -> NonNull<U> {
         // Safety: The call to NonZeroUsize::new_unchecked is safe, as its argument is guaranteed to be non-zero.
-        let address: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(usize::from(self.ptr.addr()) & !TAG_MASK) };
+        let address: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(usize::from(self.ptr.addr()) & !Tag::MASK) };
         self.ptr.with_addr(address).cast::<U>()
     }
 
