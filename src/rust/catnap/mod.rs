@@ -356,7 +356,22 @@ impl CatnapLibOS {
         timer!("catnap::wait");
         trace!("wait() qt={:?}", qt);
 
-        let (qd, result): (QDesc, OperationResult) = self.wait2(qt)?;
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        };
+
+        let (qd, result): (QDesc, OperationResult) = loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.runtime.scheduler.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                break self.take_result(handle);
+            }
+        };
+
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
     }
 
@@ -390,29 +405,6 @@ impl CatnapLibOS {
         };
 
         Ok(pack_result(&self.runtime, result, qd, qt.into()))
-    }
-
-    /// Waits for an operation to complete.
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::wait2");
-        trace!("wait2() qt={:?}", qt);
-
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
-            Some(handle) => handle,
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        };
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.scheduler.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.take_result(handle));
-            }
-        }
     }
 
     /// Waits for any operation to complete.
