@@ -146,14 +146,6 @@ impl LibOS {
         }
     }
 
-    /// Pushes raw data to a TCP socket.
-    #[deprecated]
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.push2(qd, data),
-        }
-    }
-
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
