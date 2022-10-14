@@ -15,9 +15,10 @@ use ::clap::{
     Command,
 };
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::demi_opcode_t,
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
@@ -180,27 +181,31 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            // TODO: add type annotation to the following variable once we drop generics on OperationResult.
-            let (i, _, result) = match self.libos.wait_any2(&qtokens) {
-                Ok((i, qd, result)) => (i, qd, result),
+            let (i, qr) = match self.libos.wait_any(&qtokens) {
+                Ok((i, qr)) => (i, qr),
                 Err(e) => panic!("operation failed: {:?}", e),
             };
             qtokens.swap_remove(i);
 
             // Parse result.
-            match result {
+            match qr.qr_opcode {
                 // Pop completed.
-                OperationResult::Pop(_, buf) => {
-                    nbytes += buf.len();
+                demi_opcode_t::DEMI_OPC_POP => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
                     // Push packet back.
-                    let qt: QToken = match self.libos.pushto2(self.sockqd, &buf, self.remote) {
+                    let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
                     };
                     qtokens.push(qt);
+                    match self.libos.sgafree(sga) {
+                        Ok(_) => {},
+                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                    }
                 },
                 // Push completed.
-                OperationResult::Push => {
+                demi_opcode_t::DEMI_OPC_PUSH => {
                     // Pop another packet.
                     let qt: QToken = match self.libos.pop(self.sockqd) {
                         Ok(qt) => qt,
@@ -208,7 +213,7 @@ impl Application {
                     };
                     qtokens.push(qt);
                 },
-                OperationResult::Failed(e) => panic!("operation failed: {:?}", e),
+                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
                 _ => panic!("unexpected result"),
             };
         }

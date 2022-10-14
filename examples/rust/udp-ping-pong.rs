@@ -7,9 +7,13 @@
 
 use ::anyhow::Result;
 use ::demikernel::{
+    demi_sgarray_t,
+    runtime::types::{
+        demi_opcode_t,
+        demi_qresult_t,
+    },
     LibOS,
     LibOSName,
-    OperationResult,
     QDesc,
     QToken,
 };
@@ -17,18 +21,8 @@ use ::std::{
     env,
     net::SocketAddrV4,
     panic,
-    process,
+    slice,
     str::FromStr,
-    sync::{
-        mpsc,
-        mpsc::{
-            Receiver,
-            Sender,
-        },
-    },
-    thread,
-    thread::JoinHandle,
-    time::Duration,
 };
 
 #[cfg(feature = "profiler")]
@@ -39,19 +33,30 @@ use ::demikernel::perftools::profiler;
 //======================================================================================================================
 
 const BUFFER_SIZE: usize = 64;
+const FILL_CHAR: u8 = 0x65;
 
 //======================================================================================================================
-// mkbuf()
+// mksga()
 //======================================================================================================================
 
-fn mkbuf(buffer_size: usize, fill_char: u8) -> Vec<u8> {
-    let mut data: Vec<u8> = Vec::<u8>::with_capacity(buffer_size);
+// Makes a scatter-gather array.
+fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
+    // Allocate scatter-gather array.
+    let sga: demi_sgarray_t = match libos.sgaalloc(size) {
+        Ok(sga) => sga,
+        Err(e) => panic!("failed to allocate scatter-gather array: {:?}", e),
+    };
 
-    for _ in 0..buffer_size {
-        data.push(fill_char);
-    }
+    // Ensure that scatter-gather array has the requested size.
+    assert!(sga.sga_segs[0].sgaseg_len as usize == size);
 
-    data
+    // Fill in scatter-gather array.
+    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+    slice.fill(value);
+
+    sga
 }
 
 //======================================================================================================================
@@ -67,62 +72,56 @@ fn server(local: SocketAddrV4, remote: SocketAddrV4) -> ! {
         Ok(libos) => libos,
         Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
     };
-    let fill_char: u8 = 'a' as u8;
 
     // Setup peer.
-    let sockfd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+    let qd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
         Ok(qd) => qd,
         Err(e) => panic!("failed to create socket: {:?}", e.cause),
     };
-    match libos.bind(sockfd, local) {
+    match libos.bind(qd, local) {
         Ok(()) => (),
         Err(e) => panic!("bind failed: {:?}", e.cause),
     };
 
-    let mut npongs: usize = 0;
+    let mut i: usize = 0;
     loop {
-        let sendbuf: Vec<u8> = mkbuf(BUFFER_SIZE, fill_char);
-        let mut qt: QToken = match libos.pop(sockfd) {
+        // Pop data.
+        let qt: QToken = match libos.pop(qd) {
             Ok(qt) => qt,
-            Err(e) => panic!("failed to pop: {:?}", e.cause),
+            Err(e) => panic!("pop failed: {:?}", e.cause),
+        };
+        let sga: demi_sgarray_t = match libos.wait(qt) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+            _ => panic!("unexpected result"),
         };
 
-        // Spawn timeout thread.
-        let (sender, receiver): (Sender<i32>, Receiver<i32>) = mpsc::channel();
-        let t: JoinHandle<()> = thread::spawn(move || match receiver.recv_timeout(Duration::from_secs(60)) {
-            Ok(_) => {},
-            _ => process::exit(0),
-        });
+        // Sanity check received data.
+        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+        for x in slice {
+            assert!(*x == FILL_CHAR);
+        }
 
-        // Wait for incoming data.
-        // TODO: add type annotation to the following variable once we drop generics on OperationResult.
-        let recvbuf = match libos.wait2(qt) {
-            Ok((_, OperationResult::Pop(_, buf))) => buf,
-            _ => panic!("server failed to wait()"),
-        };
-
-        // Join timeout thread.
-        sender.send(0).expect("failed to join timeout thread");
-        t.join().expect("failed to join thread");
-
-        // Sanity check contents of received buffer.
-        assert_eq!(sendbuf[..], recvbuf[..], "server sendbuf != recevbuf");
-
-        // Send data.
-        qt = match libos.pushto2(sockfd, sendbuf.as_slice(), remote) {
+        // Push data.
+        let qt: QToken = match libos.pushto(qd, &sga, remote) {
             Ok(qt) => qt,
-            Err(e) => panic!("failed to push: {:?}", e.cause),
+            Err(e) => panic!("push failed: {:?}", e.cause),
         };
         match libos.wait(qt) {
-            Ok(_) => (),
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
             Err(e) => panic!("operation failed: {:?}", e.cause),
+            _ => panic!("unexpected result"),
         };
+        match libos.sgafree(sga) {
+            Ok(_) => {},
+            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+        }
 
-        npongs += 1;
-        println!("pong {:?}", npongs);
+        i += 1;
+        println!("pong {:?}", i);
     }
-
-    // TODO: close socket when we get close working properly in catnip.
 }
 
 //======================================================================================================================
@@ -138,74 +137,78 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
         Ok(libos) => libos,
         Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
     };
-    let fill_char: u8 = 'a' as u8;
+    let npings: usize = 64;
+    let mut qts: Vec<QToken> = Vec::new();
 
     // Setup peer.
-    let sockfd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
+    let sockqd: QDesc = match libos.socket(libc::AF_INET, libc::SOCK_DGRAM, 0) {
         Ok(qd) => qd,
         Err(e) => panic!("failed to create socket: {:?}", e.cause),
     };
-    match libos.bind(sockfd, local) {
+    match libos.bind(sockqd, local) {
         Ok(()) => (),
         Err(e) => panic!("bind failed: {:?}", e.cause),
     };
 
-    let mut npongs: usize = 1000;
-    let mut npings: usize = 0;
-    let mut qtokens: Vec<QToken> = Vec::new();
-    let sendbuf: Vec<u8> = mkbuf(BUFFER_SIZE, fill_char);
-
-    // Push pop first packet.
-    let (qt_push, qt_pop): (QToken, QToken) = {
-        let qt_push: QToken = match libos.pushto2(sockfd, sendbuf.as_slice(), remote) {
-            Ok(qt) => qt,
-            Err(e) => panic!("failed to push: {:?}", e.cause),
-        };
-        let qt_pop: QToken = match libos.pop(sockfd) {
-            Ok(qt) => qt,
-            Err(e) => panic!("failed to pop: {:?}", e.cause),
-        };
-        (qt_push, qt_pop)
+    // Push and pop data.
+    let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+    match libos.pushto(sockqd, &sga, remote) {
+        Ok(qt) => qts.push(qt),
+        Err(e) => panic!("push failed: {:?}", e.cause),
     };
-    qtokens.push(qt_push);
-    qtokens.push(qt_pop);
+    match libos.sgafree(sga) {
+        Ok(_) => {},
+        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+    }
+    match libos.pop(sockqd) {
+        Ok(qt) => qts.push(qt),
+        Err(e) => panic!("pop failed: {:?}", e.cause),
+    };
 
     // Send packets.
-    while npongs > 0 {
-        // FIXME: If any packet is lost this will hang.
-
-        // TODO: add type annotation to the following variable once we drop generics on OperationResult.
-        let (ix, _, result) = match libos.wait_any2(&qtokens) {
-            Ok(result) => result,
+    let mut i: usize = 0;
+    while i < npings {
+        let (idx, qr): (usize, demi_qresult_t) = match libos.wait_any(&qts) {
+            Ok((idx, qr)) => (idx, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        qtokens.swap_remove(ix);
+        qts.remove(idx);
 
-        // Parse result.
-        match result {
-            OperationResult::Push => {
-                let (qt_push, qt_pop): (QToken, QToken) = {
-                    let qt_push: QToken = match libos.pushto2(sockfd, sendbuf.as_slice(), remote) {
-                        Ok(qt) => qt,
-                        Err(e) => panic!("failed to push: {:?}", e.cause),
-                    };
-                    let qt_pop: QToken = match libos.pop(sockfd) {
-                        Ok(qt) => qt,
-                        Err(e) => panic!("failed to pop: {:?}", e.cause),
-                    };
-                    (qt_push, qt_pop)
+        match qr.qr_opcode {
+            demi_opcode_t::DEMI_OPC_POP => {
+                let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+
+                // Sanity check received data.
+                let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+                let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+                let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+                for x in slice {
+                    assert!(*x == FILL_CHAR);
+                }
+
+                i += 1;
+                println!("ping {:?}", i);
+                match libos.sgafree(sga) {
+                    Ok(_) => {},
+                    Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                }
+                match libos.pop(sockqd) {
+                    Ok(qt) => qts.push(qt),
+                    Err(e) => panic!("pop failed: {:?}", e.cause),
                 };
-                qtokens.push(qt_push);
-                qtokens.push(qt_pop);
-                println!("ping {:?}", npings);
             },
-            OperationResult::Pop(_, recvbuf) => {
-                // Sanity received buffer.
-                assert_eq!(sendbuf[..], recvbuf[..], "server expectbuf != recevbuf");
-                npings += 1;
-                npongs -= 1;
+            demi_opcode_t::DEMI_OPC_PUSH => {
+                let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+                match libos.pushto(sockqd, &sga, remote) {
+                    Ok(qt) => qts.push(qt),
+                    Err(e) => panic!("push failed: {:?}", e.cause),
+                };
+                match libos.sgafree(sga) {
+                    Ok(_) => {},
+                    Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                }
             },
-            _ => panic!("unexpected result"),
+            _ => panic!("unexpected operation result"),
         }
     }
 
@@ -225,8 +228,8 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
 fn usage(program_name: &String) {
     println!("Usage: {} MODE local remote\n", program_name);
     println!("Modes:\n");
-    println!("  --client    Run program in client mode.\n");
-    println!("  --server    Run program in server mode.\n");
+    println!("  --client    Run program in client mode.");
+    println!("  --server    Run program in server mode.");
 }
 
 //======================================================================================================================
@@ -242,8 +245,7 @@ pub fn main() -> Result<()> {
         if args[1] == "--server" {
             server(local, remote);
         } else if args[1] == "--client" {
-            let ret: Result<()> = client(local, remote);
-            return ret;
+            return client(local, remote);
         }
     }
 
