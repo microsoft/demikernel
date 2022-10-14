@@ -45,6 +45,20 @@ extern "C"
      */
     extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts);
 
+    /**
+     * @brief Waits for the first asynchronous I/O operation in a list to complete or a timeout to expire.
+     *
+     * @param qr_out       Store location for the result of the completed I/O operation.
+     * @param ready_offset Store location for the offset in the list of I/O queue tokens of the completed I/O operation.
+     * @param qts          List of I/O queue tokens to wait for completion.
+     * @param num_qts      Length of the list of I/O queue tokens to wait for completion.
+     * @param abstime      Absolute timeout in seconds and nanoseconds since Epoch.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_timedwait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts,
+                                  const struct timespec *abstime);
+
 #ifdef __cplusplus
 }
 #endif

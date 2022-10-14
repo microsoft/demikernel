@@ -523,6 +523,80 @@ pub extern "C" fn demi_wait_any(
 }
 
 //======================================================================================================================
+// timedwait_any
+//======================================================================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_timedwait_any(
+    qr_out: *mut demi_qresult_t,
+    ready_offset: *mut c_int,
+    qts: *mut demi_qtoken_t,
+    num_qts: c_int,
+    abstime: *const libc::timespec,
+) -> c_int {
+    trace!(
+        "demi_timedwait_any() {:?} {:?} {:?} {:?} {:?}",
+        qr_out,
+        ready_offset,
+        qts,
+        num_qts,
+        abstime
+    );
+
+    // Check arguments.
+    if num_qts < 0 {
+        return libc::EINVAL;
+    }
+
+    // Check for invalid timeout.
+    if abstime.is_null() {
+        warn!("abstime is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Convert timespec to SystemTime.
+    let abstime: Option<SystemTime> = {
+        if abstime.is_null() {
+            None
+        } else {
+            let timeout: Duration = Duration::from_nanos(
+                unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
+            );
+            match SystemTime::UNIX_EPOCH.checked_add(timeout) {
+                Some(abstime) => Some(abstime),
+                None => Some(SystemTime::now()),
+            }
+        }
+    };
+
+    // Get queue tokens.
+    let qts: Vec<QToken> = {
+        let raw_qts: &[u64] = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
+        raw_qts.iter().map(|i| QToken::from(*i)).collect()
+    };
+
+    // Issue operation.
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.timedwait_any(&qts, abstime) {
+        Ok((ix, qr)) => {
+            unsafe {
+                *qr_out = qr;
+                *ready_offset = ix as c_int;
+            }
+            0
+        },
+        Err(e) => {
+            warn!("timedwait_any() failed: {:?}", e);
+            e.errno
+        },
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
+}
+
+//======================================================================================================================
 // sgaalloc
 //======================================================================================================================
 
