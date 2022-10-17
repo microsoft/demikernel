@@ -7,7 +7,7 @@ CC = cl
 LIBS = $(LIBS) "WS2_32.lib"
 
 # Compiles several object files into a binary.
-COMPILE_CMD = $(CC) $@.obj $(LIBS) /Fe: $(BINDIR)/examples/c/$@.exe
+COMPILE_CMD = $(CC) $@.obj common.obj $(LIBS) /Fe: $(BINDIR)/examples/c/$@.exe
 
 # Builds everything.
 all: udp-push-pop udp-ping-pong tcp-push-pop tcp-ping-pong
@@ -39,15 +39,18 @@ clean:
 	IF EXIST $(BINDIR)\examples\c\tcp-push-pop.exe del /Q $(BINDIR)\examples\c\tcp-push-pop.exe
 	IF EXIST $(BINDIR)\examples\c\tcp-ping-pong.exe del /Q $(BINDIR)\examples\c\tcp-ping-pong.exe
 
-# Builds a C source file.
-udp-push-pop.obj:
+# Build obj files.
+common.obj:
+	$(CC) /I $(INCDIR) /I examples\c\ examples\c\common.c /c
+
+udp-push-pop.obj: common.obj
 	$(CC) /I $(INCDIR) /I examples\c\ examples\c\udp-push-pop.c /c
 
-udp-ping-pong.obj:
+udp-ping-pong.obj: common.obj
 	$(CC) /I $(INCDIR) /I examples\c\ examples\c\udp-ping-pong.c /c
 
-tcp-push-pop.obj:
+tcp-push-pop.obj: common.obj
 	$(CC) /I $(INCDIR) /I examples\c\ examples\c\tcp-push-pop.c /c
 
-tcp-ping-pong.obj:
+tcp-ping-pong.obj: common.obj
 	$(CC) /I $(INCDIR) /I examples\c\ examples\c\tcp-ping-pong.c /c

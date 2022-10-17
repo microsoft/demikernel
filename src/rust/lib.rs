@@ -49,8 +49,11 @@ mod catpowder;
 #[cfg(feature = "catcollar-libos")]
 mod catcollar;
 
-#[cfg(feature = "catnap-libos")]
+#[cfg(all(feature = "catnap-libos", target_os = "linux"))]
 mod catnap;
+
+#[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
+mod catnapw;
 
 pub use crate::demikernel::libos::network::OperationResult;
 

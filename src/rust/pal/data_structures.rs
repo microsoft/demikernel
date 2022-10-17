@@ -1,12 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#[cfg(target_os = "windows")]
+use windows::Win32::Networking::WinSock;
+
 //==============================================================================
 // Windows data structures
 //==============================================================================
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Networking::WinSock;
+pub type SockAddr = windows::Win32::Networking::WinSock::SOCKADDR;
 
 #[cfg(target_os = "windows")]
 pub type SockAddrIn = WinSock::SOCKADDR_IN;

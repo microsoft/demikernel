@@ -8,16 +8,18 @@
  * Imports                                                                                                            *
  *====================================================================================================================*/
 
-#include <arpa/inet.h>
 #include <assert.h>
 #include <demi/libos.h>
 #include <demi/sga.h>
 #include <demi/wait.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+#ifdef __linux__
+#include <arpa/inet.h>
 #include <sys/socket.h>
+#endif
+
+#include "common.h"
 
 /*====================================================================================================================*
  * Constants                                                                                                          *
@@ -32,25 +34,6 @@
  * @brief Maximum number of bytes to transfer.
  */
 #define MAX_BYTES (DATA_SIZE * 1024)
-
-/*====================================================================================================================*
- * sighandler()                                                                                                       *
- *====================================================================================================================*/
-
-/**
- * @brief Signal handler.
- *
- * @param signum Number of received signal.
- */
-static void sighandler(int signum)
-{
-    const char *signame = strsignal(signum);
-
-    fprintf(stderr, "\nReceived %s signal\n", signame);
-    fprintf(stderr, "Exiting...\n");
-
-    exit(EXIT_SUCCESS);
-}
 
 /*====================================================================================================================*
  * accept_wait()                                                                                                      *
@@ -323,13 +306,10 @@ void build_sockaddr(const char *const ip_str, const char *const port_str, struct
  */
 int main(int argc, char *const argv[])
 {
-    /* Install signal handlers. */
-    signal(SIGINT, sighandler);
-    signal(SIGQUIT, sighandler);
-    signal(SIGTSTP, sighandler);
-
     if (argc >= 4)
     {
+        reg_sighandlers();
+
         struct sockaddr_in saddr = {0};
 
         /* Build addresses.*/

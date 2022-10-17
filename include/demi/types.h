@@ -4,10 +4,17 @@
 #ifndef DEMI_TYPES_H_IS_INCLUDED
 #define DEMI_TYPES_H_IS_INCLUDED
 
-#include <netinet/in.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef __linux__
+#include <netinet/in.h>
 #include <sys/socket.h>
+#endif
+
+#ifdef _WIN32
+#include <winsock.h>
+#endif
 
 #ifdef __cplusplus
 extern "C"
