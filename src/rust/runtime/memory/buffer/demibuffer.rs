@@ -285,59 +285,10 @@ impl DemiBuffer {
     }
 
     // Create a new Heap-allocated DemiBuffer from a slice.
-    // Note: This is implemented as stand-alone function instead of a conversion (From) Trait in order to be able to
-    // handle the error case where the given slice is larger than a single DemiBuffer can hold.  ToDo: Review this?
     pub fn from_slice(slice: &[u8]) -> Result<Self, Fail> {
-        // Check size of the slice to ensure a single DemiBuffer can hold it.
-        let size: u16 = if slice.len() < u16::MAX as usize {
-            slice.len() as u16
-        } else {
-            return Err(Fail::new(libc::EINVAL, "slice is larger than a DemiBuffer can hold"));
-        };
-
-        // Allocate some memory off the heap.
-        let mut temp: NonNull<MetaData> = allocate_metadata_data(size);
-
-        // Initialize the MetaData.
-        {
-            // Safety: This is safe, as temp is aligned, dereferenceable, and metadata isn't aliased in this block.
-            let metadata: &mut MetaData = unsafe { temp.as_mut() };
-
-            // Point buf_addr at the newly allocated data space (if any).
-            if size == 0 {
-                // No direct data, so don't point buf_addr at anything.
-                metadata.buf_addr = null_mut();
-            } else {
-                // The direct data immediately follows the MetaData struct.
-                let address: *mut u8 = temp.cast::<u8>().as_ptr();
-                // Safety: The call to offset is safe, as the provided offset is known to be within the allocation.
-                metadata.buf_addr = unsafe { address.offset(size_of::<MetaData>() as isize) };
-
-                // Copy the data from the slice into the DemiBuffer.
-                // Safety: This is safe, as the src/dst argument pointers are valid for reads/writes of `size` bytes,
-                // are aligned (trivial for u8 pointers), and the regions they specify do not overlap one another.
-                unsafe { ptr::copy_nonoverlapping(slice.as_ptr(), metadata.buf_addr, size as usize) };
-            }
-
-            // Set field values as appropriate.
-            metadata.data_off = 0;
-            metadata.refcnt = 1;
-            metadata.nb_segs = 1;
-            metadata.ol_flags = 0;
-            metadata.pkt_len = size as u32;
-            metadata.data_len = size;
-            metadata.buf_len = size;
-            metadata.next = None;
-        }
-
-        // Embed the buffer type into the lower bits of the pointer.
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
-
-        // Return the new DemiBuffer.
-        Ok(DemiBuffer {
-            ptr: tagged,
-            _phantom: PhantomData,
-        })
+        // Note: The implementation of the TryFrom trait (see below, under "Trait Implementations") automatically
+        // provides us with a TryInto trait implementation (which is where try_into comes from).
+        slice.try_into()
     }
 
     #[cfg(feature = "libdpdk")]
@@ -824,5 +775,63 @@ impl Drop for DemiBuffer {
                 }
             },
         }
+    }
+}
+
+// TryFrom Trait Implementation for DemiBuffer
+impl TryFrom<&[u8]> for DemiBuffer {
+    type Error = Fail;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        // Check size of the slice to ensure a single DemiBuffer can hold it.
+        let size: u16 = if slice.len() < u16::MAX as usize {
+            slice.len() as u16
+        } else {
+            return Err(Fail::new(libc::EINVAL, "slice is larger than a DemiBuffer can hold"));
+        };
+
+        // Allocate some memory off the heap.
+        let mut temp: NonNull<MetaData> = allocate_metadata_data(size);
+
+        // Initialize the MetaData.
+        {
+            // Safety: This is safe, as temp is aligned, dereferenceable, and metadata isn't aliased in this block.
+            let metadata: &mut MetaData = unsafe { temp.as_mut() };
+
+            // Point buf_addr at the newly allocated data space (if any).
+            if size == 0 {
+                // No direct data, so don't point buf_addr at anything.
+                metadata.buf_addr = null_mut();
+            } else {
+                // The direct data immediately follows the MetaData struct.
+                let address: *mut u8 = temp.cast::<u8>().as_ptr();
+                // Safety: The call to offset is safe, as the provided offset is known to be within the allocation.
+                metadata.buf_addr = unsafe { address.offset(size_of::<MetaData>() as isize) };
+
+                // Copy the data from the slice into the DemiBuffer.
+                // Safety: This is safe, as the src/dst argument pointers are valid for reads/writes of `size` bytes,
+                // are aligned (trivial for u8 pointers), and the regions they specify do not overlap one another.
+                unsafe { ptr::copy_nonoverlapping(slice.as_ptr(), metadata.buf_addr, size as usize) };
+            }
+
+            // Set field values as appropriate.
+            metadata.data_off = 0;
+            metadata.refcnt = 1;
+            metadata.nb_segs = 1;
+            metadata.ol_flags = 0;
+            metadata.pkt_len = size as u32;
+            metadata.data_len = size;
+            metadata.buf_len = size;
+            metadata.next = None;
+        }
+
+        // Embed the buffer type into the lower bits of the pointer.
+        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
+
+        // Return the new DemiBuffer.
+        Ok(DemiBuffer {
+            ptr: tagged,
+            _phantom: PhantomData,
+        })
     }
 }
