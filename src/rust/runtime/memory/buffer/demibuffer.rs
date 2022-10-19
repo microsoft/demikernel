@@ -156,21 +156,21 @@ impl MetaData {
 
     // Increments the reference count and returns the new value.
     #[inline]
-    pub fn inc_refcnt(&mut self) -> u16 {
+    fn inc_refcnt(&mut self) -> u16 {
         self.refcnt += 1;
         self.refcnt
     }
 
     // Decrements the reference count and returns the new value.
     #[inline]
-    pub fn dec_refcnt(&mut self) -> u16 {
+    fn dec_refcnt(&mut self) -> u16 {
         self.refcnt -= 1;
         self.refcnt
     }
 
     // Gets the MetaData for the last segment in the buffer chain.
     #[inline]
-    pub fn get_last_segment(&mut self) -> &mut MetaData {
+    fn get_last_segment(&mut self) -> &mut MetaData {
         let mut md: &mut MetaData = self;
         while md.next.is_some() {
             // Safety: The call to as_mut is safe, as the pointer is aligned and dereferenceable, and the MetaData
@@ -214,7 +214,11 @@ impl From<usize> for Tag {
     }
 }
 
-// The DemiBuffer.
+/// The `DemiBuffer`.
+///
+/// This buffer type is designed to be a common abstraction defining the behavior of data buffers in Demikernel.
+/// It currently supports two underlying types of buffers: heap-allocated and DPDK-allocated.  It defines the basic
+/// operations on `DemiBuffer`s; these have the same effect on the data regardless of the underlying buffer type.
 pub struct DemiBuffer {
     // Pointer to the buffer metadata.
     // Stored as a NonNull so it can efficiently be packed into an Option.
@@ -229,8 +233,8 @@ impl DemiBuffer {
     // Constructors
     // ------------
 
-    // Create a new (Heap-allocated) DemiBuffer.
-    //
+    /// Creates a new (Heap-allocated) `DemiBuffer`.
+
     // Implementation Note:
     // This function is replacing the new() function of DataBuffer, which could return failure.  However, the only
     // failure it actually reported was if the new DataBuffer request was for zero size.  A seperate empty() function
@@ -242,7 +246,6 @@ impl DemiBuffer {
     // return an error condition.  But since we call the allocator directly in this implementation, we could now
     // propagate actual allocation failures outward, if we determine that would be helpful.  For now, we stick to the
     // status quo, and assume this allocation never fails.
-    //
     pub fn new(capacity: u16) -> Self {
         // Allocate some memory off the heap.
         let mut temp: NonNull<MetaData> = allocate_metadata_data(capacity);
@@ -284,7 +287,7 @@ impl DemiBuffer {
         }
     }
 
-    // Create a new Heap-allocated DemiBuffer from a slice.
+    /// Create a new Heap-allocated `DemiBuffer` from a byte slice.
     pub fn from_slice(slice: &[u8]) -> Result<Self, Fail> {
         // Note: The implementation of the TryFrom trait (see below, under "Trait Implementations") automatically
         // provides us with a TryInto trait implementation (which is where try_into comes from).
@@ -292,7 +295,7 @@ impl DemiBuffer {
     }
 
     #[cfg(feature = "libdpdk")]
-    // Creates a DemiBuffer from a raw MBuf pointer (*mut rte_mbuf).
+    /// Creates a `DemiBuffer` from a raw MBuf pointer (*mut rte_mbuf).
     // The MBuf's internal reference count is left unchanged (a reference is effectively donated to the DemiBuffer).
     // Note: Must be called with a non-null (i.e. actual) MBuf pointer.  The MBuf is expected to be in a valid state.
     // It is the caller's responsibility to guarantee this, which is why this function is marked "unsafe".
@@ -311,22 +314,24 @@ impl DemiBuffer {
     // Public Functions
     // ----------------
 
+    /// Returns `true` if this `DemiBuffer` was allocated off of the heap, and `false` otherwise.
     pub fn is_heap_allocated(&self) -> bool {
         self.get_tag() == Tag::Heap
     }
 
     #[cfg(feature = "libdpdk")]
+    /// Returns `true` if this `DemiBuffer` was allocated by DPDK, and `false` otherwise.
     pub fn is_dpdk_allocated(&self) -> bool {
         self.get_tag() == Tag::Dpdk
     }
 
-    // Returns the length of the data stored in the DemiBuffer.
+    /// Returns the length of the data stored in the `DemiBuffer`.
     // Note that while we return a usize here (for convenience), the value is guaranteed to never exceed u16::MAX.
     pub fn len(&self) -> usize {
         self.as_metadata().data_len as usize
     }
 
-    // Removes `nbytes` bytes from the beginning of the DemiBuffer chain.
+    /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
     // Note: If `nbytes` is greater than the length of the first segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_adj() routine.
@@ -354,7 +359,7 @@ impl DemiBuffer {
         Ok(())
     }
 
-    // Removes `nbytes` bytes from the end of the DemiBuffer chain.
+    /// Removes `nbytes` bytes from the end of the `DemiBuffer` chain.
     // Note: If `nbytes` is greater than the length of the last segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_trim() routine.
@@ -383,7 +388,7 @@ impl DemiBuffer {
         Ok(())
     }
 
-    // Splits off a new DemiBuffer containing a subset of the data in this DemiBuffer, starting at the given offset.
+    /// Splits off a new `DemiBuffer` containing a subset of the data in this one, starting at the given offset.
     // The data contained in the new DemiBuffer is removed from the original DemiBuffer.
     // Note: the DemiBuffer being split must be a single buffer segment (not a chain) large enough to hold `offset`.
     pub fn split(&mut self, offset: u16) -> Result<Self, Fail> {
@@ -429,7 +434,7 @@ impl DemiBuffer {
         Ok(back_half)
     }
 
-    // Consumes the DemiBuffer, returning the contained MBuf pointer.
+    /// Consumes the `DemiBuffer`, returning the contained MBuf pointer.
     // The returned MBuf takes all existing references on the data with it (the DemiBuffer donates its ref to the MBuf).
     #[cfg(feature = "libdpdk")]
     pub fn into_mbuf(this: Self) -> Option<*mut rte_mbuf> {
@@ -563,7 +568,7 @@ fn free_metadata_data(buffer: NonNull<MetaData>) {
 // Trait Implementations
 // ---------------------
 
-// Clone Trait Implementation for DemiBuffer
+/// Clone Trait Implementation for `DemiBuffer`.
 impl Clone for DemiBuffer {
     fn clone(&self) -> Self {
         match self.get_tag() {
@@ -665,7 +670,7 @@ impl Clone for DemiBuffer {
     }
 }
 
-// De-Reference Trait Implementation for DemiBuffer.
+/// De-Reference Trait Implementation for `DemiBuffer`.
 impl Deref for DemiBuffer {
     type Target = [u8];
 
@@ -689,7 +694,7 @@ impl Deref for DemiBuffer {
     }
 }
 
-// Mutable De-Reference Trait Implementation for DemiBuffer.
+/// Mutable De-Reference Trait Implementation for `DemiBuffer`.
 impl DerefMut for DemiBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
@@ -711,7 +716,7 @@ impl DerefMut for DemiBuffer {
     }
 }
 
-// Drop Trait Implementation for DemiBuffer
+/// Drop Trait Implementation for `DemiBuffer`.
 impl Drop for DemiBuffer {
     fn drop(&mut self) {
         match self.get_tag() {
@@ -778,7 +783,7 @@ impl Drop for DemiBuffer {
     }
 }
 
-// TryFrom Trait Implementation for DemiBuffer
+/// TryFrom Trait Implementation for `DemiBuffer`.
 impl TryFrom<&[u8]> for DemiBuffer {
     type Error = Fail;
 
