@@ -4,7 +4,7 @@
 // This DemiBuffer type is designed to be a common abstraction defining the behavior of data buffers in Demikernel.
 // It currently supports two underlying types of buffers: heap-allocated and DPDK-allocated.  The basic operations on
 // DemiBuffers are designed to have equivalent behavior (effects on the data), regardless of the underlying buffer type.
-// In particular, len(), adjust(), trim(), clone(), and split() are present and designed to behave the same regardless.
+// In particular, len(), adjust(), trim(), clone(), and split_off() are designed to behave the same regardless.
 //
 // The constructors/destructors, however, are necessarily different.  For DPDK-allocated buffers, a MBuf is expected
 // to be allocated externally and provided to the DemiBuffer's "from_mbuf" constructor.  A MBuf can also be extracted
@@ -75,6 +75,7 @@ use ::std::{
 // So we make an educated guess and then check that it matches that of our target_arch in a compile-time assert below.
 #[repr(C)]
 #[repr(align(64))]
+#[derive(Debug)]
 struct MetaData {
     // Virtual address of the start of the actual data.
     buf_addr: *mut u8,
@@ -219,6 +220,7 @@ impl From<usize> for Tag {
 /// This buffer type is designed to be a common abstraction defining the behavior of data buffers in Demikernel.
 /// It currently supports two underlying types of buffers: heap-allocated and DPDK-allocated.  It defines the basic
 /// operations on `DemiBuffer`s; these have the same effect on the data regardless of the underlying buffer type.
+#[derive(Debug)]
 pub struct DemiBuffer {
     // Pointer to the buffer metadata.
     // Stored as a NonNull so it can efficiently be packed into an Option.
@@ -391,7 +393,7 @@ impl DemiBuffer {
     /// Splits off a new `DemiBuffer` containing a subset of the data in this one, starting at the given offset.
     // The data contained in the new DemiBuffer is removed from the original DemiBuffer.
     // Note: the DemiBuffer being split must be a single buffer segment (not a chain) large enough to hold `offset`.
-    pub fn split(&mut self, offset: u16) -> Result<Self, Fail> {
+    pub fn split_off(&mut self, offset: u16) -> Result<Self, Fail> {
         // Check that a split is allowed.
         match self.get_tag() {
             Tag::Heap => {
@@ -838,5 +840,89 @@ impl TryFrom<&[u8]> for DemiBuffer {
             ptr: tagged,
             _phantom: PhantomData,
         })
+    }
+}
+
+// Unit tests for `DemiBuffer` type.
+// Note that due to DPDK being a configurable option, all of these unit tests are only for heap-allocated `DemiBuffer`s.
+#[cfg(test)]
+mod tests {
+    use super::DemiBuffer;
+    use crate::runtime::fail::Fail;
+
+    // Test basic allocation, len, adjust, and trim.
+    #[test]
+    fn basic() {
+        // Create a new (heap-allocated) `DemiBuffer` with a 42 byte data area.
+        let mut buf: DemiBuffer = DemiBuffer::new(42);
+        assert!(buf.is_heap_allocated());
+        assert_eq!(buf.len(), 42);
+
+        // Remove 7 bytes from the beginning of the data area.  Length should now be 35.
+        assert!(buf.adjust(7).is_ok());
+        assert_eq!(buf.len(), 35);
+
+        // Remove 7 bytes from the end of the data area.  Length should now be 28.
+        assert!(buf.trim(7).is_ok());
+        assert_eq!(buf.len(), 28);
+
+        // Verify bad requests actually fail.
+        assert!(buf.adjust(30).is_err());
+        assert!(buf.trim(30).is_err());
+    }
+
+    // Test split_off (and also allocation from a slice).
+    #[test]
+    fn split() {
+        // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
+        let mut str: String = String::from("word one two three four five six seven eight nine");
+        let slice: &[u8] = str.as_bytes();
+        let result: Result<DemiBuffer, Fail> = DemiBuffer::from_slice(slice);
+        // `DemiBuffer::from_slice` shouldn't fail, as we passed it a valid slice of a `DemiBuffer`-allowable length.
+        assert!(result.is_ok());
+        let mut buf: DemiBuffer = result.expect("DemiBuffer::from_slice should return a DemiBuffer for this slice");
+
+        // The `DemiBuffer` data length should equal the original string length.
+        assert_eq!(buf.len(), str.len());
+
+        // The `DemiBuffer` data (content) should match that of the original string.
+        assert_eq!(&*buf, slice);
+
+        // Split this `DemiBuffer` into two.
+        let result: Result<DemiBuffer, Fail> = buf.split_off(24);
+        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        assert!(result.is_ok());
+        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        assert_eq!(buf.len(), 24);
+        assert_eq!(split_buf.len(), 25);
+
+        // Split the original `String` into two as well (for comparison).
+        let mut split_str: String = str.split_off(24);
+        assert_eq!(str.len(), 24);
+        assert_eq!(split_str.len(), 25);
+
+        // Compare contents.
+        assert_eq!(&*buf, str.as_bytes());
+        assert_eq!(&*split_buf, split_str.as_bytes());
+
+        // Split another `DemiBuffer` off of the already-split-off one.
+        let result: Result<DemiBuffer, Fail> = split_buf.split_off(9);
+        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        assert!(result.is_ok());
+        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        assert_eq!(buf.len(), 24);
+        assert_eq!(split_buf.len(), 9);
+        assert_eq!(another_buf.len(), 16);
+
+        // Do the same for the `String`s.
+        let another_str: String = split_str.split_off(9);
+        assert_eq!(str.len(), 24);
+        assert_eq!(split_str.len(), 9);
+        assert_eq!(another_str.len(), 16);
+
+        // Compare contents (including the unaffected original to ensure that it is actually unaffected).
+        assert_eq!(&*buf, str.as_bytes());
+        assert_eq!(&*split_buf, split_str.as_bytes());
+        assert_eq!(&*another_buf, another_str.as_bytes());
     }
 }
