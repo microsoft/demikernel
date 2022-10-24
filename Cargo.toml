@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.0.22"
+version = "1.0.23"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -24,20 +24,20 @@ license-file = "LICENSE.txt"
 
 # Third Party
 arrayvec = "0.7.2"
-async-trait = "0.1.57"
-anyhow = "1.0.65"
+async-trait = "0.1.58"
+anyhow = "1.0.66"
 bit-iter = "1.1.1"
 byteorder = "1.4.3"
 cfg-if = "1.0.0"
 crc = "3.0.0"
-clap = "4.0.15"
+clap = "4.0.18"
 crossbeam-channel = "0.5.6"
 derive_more = "0.99.17"
 eui48 = "1.1.0"
 flexi_logger = "0.24.0"
 float_duration = "0.3.3"
-futures = "0.3.24"
-libc = "0.2.135"
+futures = "0.3.25"
+libc = "0.2.136"
 log = "0.4.17"
 nix = "0.25.0"
 num-derive = "0.3.3"
@@ -45,7 +45,7 @@ num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.7"
 yaml-rust = "0.4.5"
-x86 = "0.51.0"
+x86 = "0.52.0"
 
 # Demikernel Organization
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
