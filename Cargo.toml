@@ -45,7 +45,7 @@ num-traits = "0.2.15"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.7"
 yaml-rust = "0.4.5"
-x86 = "0.51.0"
+x86 = "0.52.0"
 
 # Demikernel Organization
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
