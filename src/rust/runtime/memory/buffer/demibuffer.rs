@@ -724,7 +724,7 @@ impl Drop for DemiBuffer {
         match self.get_tag() {
             Tag::Heap => {
                 // This might be a chain of buffers.  If so, we'll walk the list.
-                let mut next_entry: Option<NonNull<MetaData>> = Some(self.ptr);
+                let mut next_entry: Option<NonNull<MetaData>> = Some(self.get_ptr());
                 while let Some(mut entry) = next_entry {
                     // Safety: This is safe, as `entry` is aligned, dereferenceable, and the MetaData struct it points
                     // to is initialized.
@@ -845,7 +845,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
 
 // Unit tests for `DemiBuffer` type.
 // Note that due to DPDK being a configurable option, all of these unit tests are only for heap-allocated `DemiBuffer`s.
-#[cfg(not(test))]
+#[cfg(test)]
 mod tests {
     use super::DemiBuffer;
     use crate::runtime::fail::Fail;
