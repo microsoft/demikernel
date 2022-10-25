@@ -101,8 +101,8 @@ all-tests: all-tests-rust all-tests-c
 
 # Builds all Rust tests.
 all-tests-rust: all-libs
-	@echo "$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
-	$(CARGO) build  --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
+	@echo "$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
 
 # Builds all C tests.
 all-tests-c: all-libs

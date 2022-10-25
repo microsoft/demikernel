@@ -7,7 +7,9 @@ target/
 bin/
 *.a
 *.elf
+*.exe
 *.o
+*.obj
 *.so
 *.stderr
 *.stdout
