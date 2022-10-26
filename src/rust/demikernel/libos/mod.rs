@@ -159,8 +159,19 @@ impl LibOS {
 
     /// Waits for a pending operation in an I/O queue.
     pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait(qt),
+        trace!("wait(): qt={:?}", qt);
+
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = self.schedule(qt)?;
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.pack_result(handle, qt)?);
+            }
         }
     }
 
@@ -189,6 +200,25 @@ impl LibOS {
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
+        }
+    }
+
+    /// Waits for any operation in an I/O queue.
+    fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.schedule(qt),
+        }
+    }
+
+    fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
+        }
+    }
+
+    fn poll(&mut self) {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.poll(),
         }
     }
 }

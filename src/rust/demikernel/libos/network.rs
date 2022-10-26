@@ -259,24 +259,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        trace!("wait(): qt={:?}", qt);
-
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = self.schedule(qt)?;
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.pack_result(handle, qt)?);
-            }
-        }
-    }
-
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
