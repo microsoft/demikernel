@@ -219,20 +219,6 @@ impl NetworkLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait_any(qts),
-        }
-    }
-
-    /// Waits for any operation in an I/O queue.
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]

@@ -24,6 +24,7 @@ use crate::{
         QDesc,
         QToken,
     },
+    scheduler::SchedulerHandle,
 };
 use ::std::{
     env,
@@ -184,8 +185,27 @@ impl LibOS {
 
     /// Waits for any operation in an I/O queue.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any(qts),
+        trace!("wait_any(): qts={:?}", qts);
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // Search for any operation that has completed.
+            for (i, &qt) in qts.iter().enumerate() {
+                // Retrieve associated schedule handle.
+                // TODO: move this out of the loop.
+                let mut handle: SchedulerHandle = self.schedule(qt)?;
+
+                // Found one, so extract the result and return.
+                if handle.has_completed() {
+                    return Ok((i, self.pack_result(handle, qt)?));
+                }
+
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+            }
         }
     }
 

@@ -170,38 +170,6 @@ impl CatpowderLibOS {
         Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
     }
 
-    /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catpowder::wait_any");
-        trace!("wait_any(): qts={:?}", qts);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll_bg_work();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                // Retrieve associated schedule handle.
-                // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-                };
-
-                // Found one, so extract the result and return.
-                if handle.has_completed() {
-                    let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
-                    return Ok((i, pack_result(self.rt.clone(), r, qd, qts[i].into())));
-                }
-
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                handle.take_key();
-            }
-        }
-    }
-
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         self.rt.alloc_sgarray(size)
