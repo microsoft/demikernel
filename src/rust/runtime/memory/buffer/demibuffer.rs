@@ -225,7 +225,7 @@ pub struct DemiBuffer {
     // Pointer to the buffer metadata.
     // Stored as a NonNull so it can efficiently be packed into an Option.
     // This is a "tagged pointer" where the lower bits encode the type of buffer this points to.
-    ptr: NonNull<MetaData>,
+    tagged_ptr: NonNull<MetaData>,
     // Hint to compiler that this struct "owns" a MetaData (for safety determinations).  Doesn't consume space.
     _phantom: PhantomData<MetaData>,
 }
@@ -284,7 +284,7 @@ impl DemiBuffer {
 
         // Return the new DemiBuffer.
         DemiBuffer {
-            ptr: tagged,
+            tagged_ptr: tagged,
             _phantom: PhantomData,
         }
     }
@@ -307,7 +307,7 @@ impl DemiBuffer {
         let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Dpdk);
 
         DemiBuffer {
-            ptr: tagged,
+            tagged_ptr: tagged,
             _phantom: PhantomData,
         }
     }
@@ -457,15 +457,16 @@ impl DemiBuffer {
     // Gets the tag containing the type of DemiBuffer.
     #[inline]
     fn get_tag(&self) -> Tag {
-        Tag::from(usize::from(self.ptr.addr()) & Tag::MASK)
+        Tag::from(usize::from(self.tagged_ptr.addr()) & Tag::MASK)
     }
 
     // Gets the untagged pointer to the underlying type.
     #[inline]
     fn get_ptr<U>(&self) -> NonNull<U> {
         // Safety: The call to NonZeroUsize::new_unchecked is safe, as its argument is guaranteed to be non-zero.
-        let address: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(usize::from(self.ptr.addr()) & !Tag::MASK) };
-        self.ptr.with_addr(address).cast::<U>()
+        let address: NonZeroUsize =
+            unsafe { NonZeroUsize::new_unchecked(usize::from(self.tagged_ptr.addr()) & !Tag::MASK) };
+        self.tagged_ptr.with_addr(address).cast::<U>()
     }
 
     // Gets the DemiBuffer as a mutable MetaData reference.
@@ -647,7 +648,7 @@ impl Clone for DemiBuffer {
 
                 // Return the new DemiBuffer.
                 DemiBuffer {
-                    ptr: tagged,
+                    tagged_ptr: tagged,
                     _phantom: PhantomData,
                 }
             },
@@ -724,7 +725,7 @@ impl Drop for DemiBuffer {
         match self.get_tag() {
             Tag::Heap => {
                 // This might be a chain of buffers.  If so, we'll walk the list.
-                let mut next_entry: Option<NonNull<MetaData>> = Some(self.ptr);
+                let mut next_entry: Option<NonNull<MetaData>> = Some(self.get_ptr());
                 while let Some(mut entry) = next_entry {
                     // Safety: This is safe, as `entry` is aligned, dereferenceable, and the MetaData struct it points
                     // to is initialized.
@@ -837,7 +838,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
 
         // Return the new DemiBuffer.
         Ok(DemiBuffer {
-            ptr: tagged,
+            tagged_ptr: tagged,
             _phantom: PhantomData,
         })
     }
@@ -845,7 +846,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
 
 // Unit tests for `DemiBuffer` type.
 // Note that due to DPDK being a configurable option, all of these unit tests are only for heap-allocated `DemiBuffer`s.
-#[cfg(not(test))]
+#[cfg(test)]
 mod tests {
     use super::DemiBuffer;
     use crate::runtime::fail::Fail;
