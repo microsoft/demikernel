@@ -17,10 +17,7 @@ use crate::{
     },
     scheduler::SchedulerHandle,
 };
-use ::std::{
-    net::SocketAddrV4,
-    time::SystemTime,
-};
+use ::std::net::SocketAddrV4;
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
@@ -190,20 +187,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.timedwait(qt, abstime),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.timedwait(qt, abstime),
-        }
-    }
-
     /// Waits for any operation in an I/O queue.
     pub fn poll(&mut self) {
         match self {
@@ -215,20 +198,6 @@ impl NetworkLibOS {
             NetworkLibOS::Catcollar(libos) => libos.poll(),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOS::Catnip(libos) => libos.poll_bg_work(),
-        }
-    }
-
-    /// Waits for any operation in an I/O queue.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catnap-libos")]
-            NetworkLibOS::Catnap(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.wait_any(qts),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.wait_any(qts),
         }
     }
 
@@ -256,24 +225,6 @@ impl NetworkLibOS {
             NetworkLibOS::Catcollar(libos) => libos.pack_result(handle, qt),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOS::Catnip(libos) => libos.pack_result(handle, qt),
-        }
-    }
-
-    /// Waits for an operation to complete.
-    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        trace!("wait(): qt={:?}", qt);
-
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = self.schedule(qt)?;
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.pack_result(handle, qt)?);
-            }
         }
     }
 

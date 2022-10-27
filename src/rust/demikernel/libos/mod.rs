@@ -24,6 +24,7 @@ use crate::{
         QDesc,
         QToken,
     },
+    scheduler::SchedulerHandle,
 };
 use ::std::{
     env,
@@ -159,22 +160,70 @@ impl LibOS {
 
     /// Waits for a pending operation in an I/O queue.
     pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait(qt),
+        trace!("wait(): qt={:?}", qt);
+
+        // Retrieve associated schedule handle.
+        let handle: SchedulerHandle = self.schedule(qt)?;
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.pack_result(handle, qt)?);
+            }
         }
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.timedwait(qt, abstime),
+        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
+
+        // Retrieve associated schedule handle.
+        let mut handle: SchedulerHandle = self.schedule(qt)?;
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if handle.has_completed() {
+                return Ok(self.pack_result(handle, qt)?);
+            }
+
+            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
         }
     }
 
     /// Waits for any operation in an I/O queue.
     pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any(qts),
+        trace!("wait_any(): qts={:?}", qts);
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // Search for any operation that has completed.
+            for (i, &qt) in qts.iter().enumerate() {
+                // Retrieve associated schedule handle.
+                // TODO: move this out of the loop.
+                let mut handle: SchedulerHandle = self.schedule(qt)?;
+
+                // Found one, so extract the result and return.
+                if handle.has_completed() {
+                    return Ok((i, self.pack_result(handle, qt)?));
+                }
+
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+            }
         }
     }
 
@@ -189,6 +238,25 @@ impl LibOS {
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
+        }
+    }
+
+    /// Waits for any operation in an I/O queue.
+    fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.schedule(qt),
+        }
+    }
+
+    fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
+        }
+    }
+
+    fn poll(&mut self) {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.poll(),
         }
     }
 }

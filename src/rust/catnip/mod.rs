@@ -46,10 +46,7 @@ use ::std::{
         DerefMut,
     },
     rc::Rc,
-    time::{
-        Instant,
-        SystemTime,
-    },
+    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -153,16 +150,6 @@ impl CatnipLibOS {
         }
     }
 
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::timedwait");
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        let (qd, result): (QDesc, OperationResult) = self.timedwait2(qt, abstime)?;
-        Ok(pack_result(self.rt.clone(), result, qd, qt.into()))
-    }
-
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => Ok(handle),
@@ -173,38 +160,6 @@ impl CatnipLibOS {
     pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
         Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
-    }
-
-    /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::wait_any");
-        trace!("wait_any(): qts={:?}", qts);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll_bg_work();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                // Retrieve associated schedule handle.
-                // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-                };
-
-                // Found one, so extract the result and return.
-                if handle.has_completed() {
-                    let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
-                    return Ok((i, pack_result(self.rt.clone(), r, qd, qts[i].into())));
-                }
-
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                handle.take_key();
-            }
-        }
     }
 
     /// Allocates a scatter-gather array.

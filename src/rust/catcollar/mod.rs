@@ -71,11 +71,7 @@ use ::std::{
         SocketAddrV4,
     },
     os::unix::prelude::RawFd,
-    time::SystemTime,
 };
-
-#[cfg(feature = "profiler")]
-use crate::timer;
 
 //======================================================================================================================
 // Constants
@@ -322,38 +318,6 @@ impl CatcollarLibOS {
         }
     }
 
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::timedwait");
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        // Retrieve associated schedule handle.
-        let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
-            Some(handle) => handle,
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        };
-
-        let (qd, result): (QDesc, OperationResult) = loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.scheduler.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                break self.take_result(handle);
-            }
-
-            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                handle.take_key();
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
-        };
-
-        Ok(pack_result(&self.runtime, result, qd, qt.into()))
-    }
-
     pub fn poll(&self) {
         self.runtime.scheduler.poll()
     }
@@ -368,38 +332,6 @@ impl CatcollarLibOS {
     pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
         Ok(pack_result(&self.runtime, r, qd, qt.into()))
-    }
-
-    /// Waits for any operation to complete.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catcollar::wait_any");
-        trace!("wait_any(): qts={:?}", qts);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.scheduler.poll();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                // Retrieve associated schedule handle.
-                let mut handle: SchedulerHandle = match self.runtime.scheduler.from_raw_handle(qt.into()) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-                };
-
-                // Found one, so extract the result and return.
-                if handle.has_completed() {
-                    let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-                    let (i, qd, r): (usize, QDesc, OperationResult) = (i, qd, r);
-                    return Ok((i, pack_result(&self.runtime, r, qd, qts[i].into())));
-                }
-
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                handle.take_key();
-            }
-        }
     }
 
     /// Allocates a scatter-gather array.
