@@ -188,6 +188,20 @@ static bool inval_wait_any(void)
     return (demi_wait_any(qr, ready_offset, qts, num_qts) != 0);
 }
 
+/**
+ * @brief Issues an invalid system call to demi_timedwait_any().
+ */
+static bool inval_timedwait_any(void)
+{
+    struct timespec *abstime = NULL;
+    demi_qresult_t *qr = NULL;
+    int *ready_offset = NULL;
+    demi_qtoken_t *qts = NULL;
+    int num_qts = -1;
+
+    return (demi_timedwait_any(qr, ready_offset, qts, num_qts, abstime) != 0);
+}
+
 /*===================================================================================================================*
  * main()                                                                                                            *
  *===================================================================================================================*/
@@ -221,7 +235,8 @@ static struct test tests_sga[] = {{inval_sgaalloc, "invalid demi_sgaalloc()"},
  */
 static struct test tests_wait[] = {{inval_timedwait, "invalid demi_timedwait()"},
                                    {inval_wait, "invalid demi_wait()"},
-                                   {inval_wait_any, "invalid demi_wait_any()"}};
+                                   {inval_wait_any, "invalid demi_wait_any()"},
+                                   {inval_timedwait_any, "invalid demi_timedwait_any()"}};
 
 /**
  * @brief Drives the application.
