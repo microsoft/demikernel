@@ -15,6 +15,7 @@
 #include <demi/types.h> /* For demi_qresult_t and demi_qtoken_t. */
 
 int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
+int demi_timedwait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *abstime);
 int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[], int num_qts);
 ```
 
