@@ -8,6 +8,8 @@
 
 `demi_wait_any` - Waits for the first asynchronous I/O operation in a list to complete.
 
+`demi_timedwait_any` - Waits for an asynchronous I/O operation to complete or a timeout to expire.
+
 ## Synopsis
 
 ```c
@@ -17,6 +19,8 @@
 int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
 int demi_timedwait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *abstime);
 int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[], int num_qts);
+int demi_timedwait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts,
+                                  const struct timespec *abstime);
 ```
 
 ## Description
@@ -34,10 +38,17 @@ the calling thread to block (spin) until the timeout `abstime` expires.
 specified by the list of queue tokens `qts` and it has a length of `num_qts`. This system call may cause the calling
 thread to block (spin) indefinitely.
 
+`demi_timedwait_any()` waits for the first asynchronous I/O operation in a set to complete or for the expiration of a
+timeout, whichever happens first. The set of I/O operations is specified by the list of queue tokens `qts` and it has a
+length of `num_qts`.  The `abstime` parameter specifies an absolute timeout in seconds and nanoseconds since the
+Epoch. If the I/O operation has already completed when `demi_timedwait()` is called, then this system call never fails
+with a timeout error, regardless of the value of `abstime`. This system call may cause the calling thread to block
+(spin) until the timeout `abstime` expires.
+
 When `demi_wait()` and `demi_timedwait()` successfully completes, the structure pointed to by `qr_out` is filled in with
-the result value of the I/O operation that has completed. The `demi_wait_any()` system call behaves similarly, but it
-additionally sets `ready_offset` to indicate the index of that I/O operation in the list of queue tokens `qts` that has
-completed.
+the result value of the I/O operation that has completed. The `demi_wait_any()` and `demi_timedwait_any` system calls
+behave similarly, but they additionally set `ready_offset` to indicate the index of that I/O operation in the list of
+queue tokens `qts` that has completed.
 
 The `demi_qresult_t` is defined as follows:
 
