@@ -24,8 +24,8 @@ pub use self::buffer::*;
 
 /// Memory Runtime
 pub trait MemoryRuntime {
-    /// Creates a [demi_sgarray_t] from a [Buffer].
-    fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail>;
+    /// Creates a [demi_sgarray_t] from a [DemiBuffer].
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail>;
 
     /// Allocates a [demi_sgarray_t].
     fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail>;
@@ -33,6 +33,6 @@ pub trait MemoryRuntime {
     /// Releases a [demi_sgarray_t].
     fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail>;
 
-    /// Clones a [demi_sgarray_t] into a [Buffer].
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail>;
+    /// Clones a [demi_sgarray_t] into a [DemiBuffer].
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail>;
 }

@@ -8,7 +8,7 @@ use crate::{
         ipv4::Ipv4Header,
     },
     runtime::{
-        memory::Buffer,
+        memory::DemiBuffer,
         network::PacketBuf,
     },
 };
@@ -61,7 +61,7 @@ impl PacketBuf for Icmpv4Message {
             .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
     }
 
-    fn take_body(&self) -> Option<Buffer> {
+    fn take_body(&self) -> Option<DemiBuffer> {
         None
     }
 }

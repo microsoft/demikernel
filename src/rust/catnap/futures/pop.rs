@@ -7,10 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
+    memory::DemiBuffer,
     QDesc,
 };
 use ::nix::{
@@ -76,7 +73,7 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<(Option<SocketAddrV4>, Buffer), Fail>;
+    type Output = Result<(Option<SocketAddrV4>, DemiBuffer), Fail>;
 
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -86,7 +83,7 @@ impl Future for PopFuture {
             // Operation completed.
             Ok((nbytes, socketaddr)) => {
                 trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
-                let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(&bytes[0..nbytes]));
+                let buf: DemiBuffer = DemiBuffer::from_slice(&bytes[0..nbytes])?;
                 let addr: Option<SocketAddrV4> = match socketaddr {
                     Some(addr) => match addr.as_sockaddr_in() {
                         Some(sin) => {

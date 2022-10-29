@@ -34,7 +34,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::{
             types::MacAddress,
             NetworkRuntime,
@@ -93,9 +93,9 @@ pub struct UdpPeer {
     /// Opened sockets.
     sockets: HashMap<QDesc, Option<SocketAddrV4>>,
     /// Bound sockets.
-    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<Buffer>>>,
+    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<DemiBuffer>>>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
-    send_queue: SharedQueue<SharedQueueSlot<Buffer>>,
+    send_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>,
     /// Local link address.
     local_link_addr: MacAddress,
     /// Local IPv4 address.
@@ -125,8 +125,8 @@ impl UdpPeer {
         offload_checksum: bool,
         arp: ArpPeer,
     ) -> Result<Self, Fail> {
-        let send_queue: SharedQueue<SharedQueueSlot<Buffer>> =
-            SharedQueue::<SharedQueueSlot<Buffer>>::new(SEND_QUEUE_MAX_SIZE);
+        let send_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> =
+            SharedQueue::<SharedQueueSlot<DemiBuffer>>::new(SEND_QUEUE_MAX_SIZE);
         let future = Self::background_sender(
             rt.clone(),
             local_ipv4_addr,
@@ -167,7 +167,7 @@ impl UdpPeer {
         local_link_addr: MacAddress,
         offload_checksum: bool,
         arp: ArpPeer,
-        mut rx: SharedQueue<SharedQueueSlot<Buffer>>,
+        mut rx: SharedQueue<SharedQueueSlot<DemiBuffer>>,
     ) {
         loop {
             // Grab next unsent datagram.
@@ -241,8 +241,8 @@ impl UdpPeer {
                 *s = Some(addr);
 
                 // Bind endpoint and create a receiver-side shared queue.
-                let queue: SharedQueue<SharedQueueSlot<Buffer>> =
-                    SharedQueue::<SharedQueueSlot<Buffer>>::new(RECV_QUEUE_MAX_SIZE);
+                let queue: SharedQueue<SharedQueueSlot<DemiBuffer>> =
+                    SharedQueue::<SharedQueueSlot<DemiBuffer>>::new(RECV_QUEUE_MAX_SIZE);
 
                 if self.bound.insert(addr, queue).is_some() {
                     Err(Fail::new(libc::EADDRINUSE, "address in use"))
@@ -285,7 +285,7 @@ impl UdpPeer {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn do_pushto(&self, qd: QDesc, data: Buffer, remote: SocketAddrV4) -> Result<(), Fail> {
+    pub fn do_pushto(&self, qd: QDesc, data: DemiBuffer, remote: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
 
@@ -322,7 +322,7 @@ impl UdpPeer {
         timer!("udp::pop");
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: SharedQueue<SharedQueueSlot<Buffer>> = match self.sockets.get(&qd) {
+        let recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.sockets.get(&qd) {
             Some(s) if s.is_some() => self.bound.get(&s.unwrap()).unwrap().clone(),
             _ => panic!("invalid queue descriptor"),
         };
@@ -332,19 +332,19 @@ impl UdpPeer {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: Buffer) -> Result<(), Fail> {
+    pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
 
         // Parse datagram.
-        let (hdr, data): (UdpHeader, Buffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
+        let (hdr, data): (UdpHeader, DemiBuffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
 
         // Lookup associated receiver-side shared queue.
-        let recv_queue: &mut SharedQueue<SharedQueueSlot<Buffer>> = match self.bound.get_mut(&local) {
+        let recv_queue: &mut SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.bound.get_mut(&local) {
             Some(q) => q,
             None => {
                 // Handle wildcard address.
@@ -372,7 +372,7 @@ impl UdpPeer {
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,
-        buf: Buffer,
+        buf: DemiBuffer,
         local: &SocketAddrV4,
         remote: &SocketAddrV4,
         offload_checksum: bool,

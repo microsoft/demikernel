@@ -19,7 +19,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::types::MacAddress,
         queue::IoQueueTable,
         timer::TimerRc,
@@ -88,7 +88,7 @@ impl Engine {
         })
     }
 
-    pub fn receive(&mut self, bytes: Buffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, bytes: DemiBuffer) -> Result<(), Fail> {
         let (header, payload) = Ethernet2Header::parse(bytes)?;
         debug!("Engine received {:?}", header);
         if self.rt.link_addr != header.dst_addr() && !header.dst_addr().is_broadcast() {
@@ -109,7 +109,7 @@ impl Engine {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, fd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<(), Fail> {
         self.ipv4.udp.do_pushto(fd, buf, to)
     }
 
@@ -150,7 +150,7 @@ impl Engine {
         self.ipv4.tcp.do_accept(fd, newfd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: Buffer) -> PushFuture {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> PushFuture {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 

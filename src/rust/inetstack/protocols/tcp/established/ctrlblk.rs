@@ -31,10 +31,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             config::TcpConfig,
             types::MacAddress,
@@ -117,7 +114,7 @@ struct Receiver {
     pub receive_next: Cell<SeqNumber>,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
-    recv_queue: RefCell<VecDeque<Buffer>>,
+    recv_queue: RefCell<VecDeque<DemiBuffer>>,
 }
 
 impl Receiver {
@@ -129,15 +126,15 @@ impl Receiver {
         }
     }
 
-    pub fn pop(&self) -> Option<Buffer> {
-        let buf: Buffer = self.recv_queue.borrow_mut().pop_front()?;
+    pub fn pop(&self) -> Option<DemiBuffer> {
+        let buf: DemiBuffer = self.recv_queue.borrow_mut().pop_front()?;
         self.reader_next
             .set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
 
         Some(buf)
     }
 
-    pub fn push(&self, buf: Buffer) {
+    pub fn push(&self, buf: DemiBuffer) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.borrow_mut().push_back(buf);
         self.receive_next
@@ -188,7 +185,7 @@ pub struct ControlBlock {
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
     // and what we've already presented to the user.
     //
-    out_of_order: RefCell<VecDeque<(SeqNumber, Buffer)>>,
+    out_of_order: RefCell<VecDeque<(SeqNumber, DemiBuffer)>>,
 
     // The sequence number of the FIN, if we received it out-of-order.
     // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
@@ -275,7 +272,7 @@ impl ControlBlock {
         self.arp.clone()
     }
 
-    pub fn send(&self, buf: Buffer) -> Result<(), Fail> {
+    pub fn send(&self, buf: DemiBuffer) -> Result<(), Fail> {
         self.sender.send(buf, self)
     }
 
@@ -375,17 +372,17 @@ impl ControlBlock {
         self.sender.top_size_unsent()
     }
 
-    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<Buffer> {
+    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<DemiBuffer> {
         self.sender.pop_unsent(max_bytes)
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Buffer> {
+    pub fn pop_one_unsent_byte(&self) -> Option<DemiBuffer> {
         self.sender.pop_one_unsent_byte()
     }
 
     // This is the main TCP receive routine.
     //
-    pub fn receive(&self, mut header: &mut TcpHeader, mut data: Buffer) {
+    pub fn receive(&self, mut header: &mut TcpHeader, mut data: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.state.get(),
@@ -468,7 +465,8 @@ impl ControlBlock {
                         header.syn = false;
                         duplicate -= 1;
                     }
-                    data.adjust(duplicate as usize);
+                    data.adjust(duplicate as usize)
+                        .expect("'data' should contain at least 'duplicate' bytes");
                 }
             } else {
                 // This segment contains entirely new data, but is later in the sequence than what we're expecting.
@@ -501,7 +499,8 @@ impl ControlBlock {
                 header.fin = false;
                 excess -= 1;
             }
-            data.trim(excess as usize);
+            data.trim(excess as usize)
+                .expect("'data' should contain at least 'excess' bytes");
         }
 
         // From here on, the entire new segment (including any SYN or FIN flag remaining) is in the window.
@@ -777,7 +776,7 @@ impl ControlBlock {
         debug_assert!((self.state.get() == State::Established) || (self.state.get() == State::CloseWait));
 
         // Send a FIN.
-        let fin_buf: Buffer = Buffer::Heap(DataBuffer::empty());
+        let fin_buf: DemiBuffer = DemiBuffer::new(0);
         self.send(fin_buf).expect("send failed");
 
         // Remember that the user has called close.
@@ -817,7 +816,7 @@ impl ControlBlock {
 
     /// Transmit this message to our connected peer.
     ///
-    pub fn emit(&self, header: TcpHeader, body: Option<Buffer>, remote_link_addr: MacAddress) {
+    pub fn emit(&self, header: TcpHeader, body: Option<DemiBuffer>, remote_link_addr: MacAddress) {
         // Only perform this debug print in debug builds.  debug_assertions is compiler set in non-optimized builds.
         #[cfg(debug_assertions)]
         if body.is_some() {
@@ -896,7 +895,7 @@ impl ControlBlock {
         hdr_window_size
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Buffer, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
         // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
@@ -909,7 +908,7 @@ impl ControlBlock {
             return Poll::Pending;
         }
 
-        let segment: Buffer = self
+        let segment: DemiBuffer = self
             .receiver
             .pop()
             .expect("poll_recv failed to pop data from receive queue");
@@ -927,7 +926,7 @@ impl ControlBlock {
     // If the new segment had a FIN it has been removed prior to this routine being called.
     // Note: Since this is not the "fast path", this is written for clarity over efficiency.
     //
-    pub fn store_out_of_order_segment(&self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: Buffer) {
+    pub fn store_out_of_order_segment(&self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: DemiBuffer) {
         let mut out_of_order = self.out_of_order.borrow_mut();
         let mut action_index: usize = out_of_order.len();
         let mut another_pass_neeeded: bool = true;
@@ -939,7 +938,7 @@ impl ControlBlock {
             // The out-of-order store is sorted by starting sequence number, and contains no duplicate data.
             action_index = out_of_order.len();
             for index in 0..out_of_order.len() {
-                let stored_segment: &(SeqNumber, Buffer) = &out_of_order[index];
+                let stored_segment: &(SeqNumber, DemiBuffer) = &out_of_order[index];
 
                 // Properties of the segment stored at this index.
                 let stored_start: SeqNumber = stored_segment.0;
@@ -979,7 +978,8 @@ impl ControlBlock {
                     // Trim the end of the new segment and stop checking for out-of-order overlap.
                     let excess: u32 = u32::from(new_end - stored_start) + 1;
                     new_end = new_end - SeqNumber::from(excess);
-                    buf.trim(excess as usize);
+                    buf.trim(excess as usize)
+                        .expect("'buf' should contain at least 'excess' bytes");
                     break;
                 } else {
                     // The new segment starts at or after the start of this out-of-order segment.
@@ -999,7 +999,8 @@ impl ControlBlock {
                     // Adjust the beginning of the new segment and continue on to check the next out-of-order segment.
                     let duplicate: u32 = u32::from(stored_end - new_start);
                     new_start = new_start + SeqNumber::from(duplicate);
-                    buf.adjust(duplicate as usize);
+                    buf.adjust(duplicate as usize)
+                        .expect("'buf' should contain at least 'duplicate' bytes");
                     continue;
                 }
             }
@@ -1029,7 +1030,7 @@ impl ControlBlock {
     //
     // Returns true if a previously out-of-order segment containing a FIN has now been received.
     //
-    pub fn receive_data(&self, seg_start: SeqNumber, buf: Buffer) -> bool {
+    pub fn receive_data(&self, seg_start: SeqNumber, buf: DemiBuffer) -> bool {
         let recv_next: SeqNumber = self.receiver.receive_next.get();
 
         // This routine should only be called with in-order segment data.

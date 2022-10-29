@@ -9,10 +9,7 @@ use ::arrayvec::ArrayVec;
 use ::crossbeam_channel;
 use ::demikernel::{
     runtime::{
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
@@ -39,9 +36,9 @@ use ::std::{
 struct SharedDummyRuntime {
     /// Random Number Generator
     /// Incoming Queue of Packets
-    incoming: crossbeam_channel::Receiver<DataBuffer>,
+    incoming: crossbeam_channel::Receiver<DemiBuffer>,
     /// Outgoing Queue of Packets
-    outgoing: crossbeam_channel::Sender<DataBuffer>,
+    outgoing: crossbeam_channel::Sender<DemiBuffer>,
 }
 
 /// Dummy Runtime
@@ -62,8 +59,8 @@ impl DummyRuntime {
     /// Creates a Dummy Runtime.
     pub fn new(
         now: Instant,
-        incoming: crossbeam_channel::Receiver<DataBuffer>,
-        outgoing: crossbeam_channel::Sender<DataBuffer>,
+        incoming: crossbeam_channel::Receiver<DemiBuffer>,
+        outgoing: crossbeam_channel::Sender<DemiBuffer>,
     ) -> Self {
         let inner = SharedDummyRuntime { incoming, outgoing };
         Self {
@@ -81,10 +78,14 @@ impl DummyRuntime {
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for DummyRuntime {
     fn transmit(&self, pkt: Box<dyn PacketBuf>) {
-        let header_size = pkt.header_size();
-        let body_size = pkt.body_size();
+        let header_size: usize = pkt.header_size();
+        let body_size: usize = pkt.body_size();
 
-        let mut buf: DataBuffer = DataBuffer::new(header_size + body_size).unwrap();
+        // The packet header and body must fit into whatever physical media we're transmitting over.
+        // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
+        assert!(header_size + body_size < u16::MAX as usize);
+
+        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
@@ -92,11 +93,10 @@ impl NetworkRuntime for DummyRuntime {
         self.inner.borrow_mut().outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
-            let dbuf: Buffer = Buffer::Heap(buf);
-            out.push(dbuf);
+            out.push(buf);
         }
         out
     }

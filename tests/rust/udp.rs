@@ -15,10 +15,7 @@ use ::demikernel::{
         InetStack,
     },
     runtime::{
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         QDesc,
         QToken,
     },
@@ -90,7 +87,7 @@ fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) {
 /// Tests if a socket can be successfully setup.
 #[test]
 fn udp_setup() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
     do_udp_setup(&mut libos);
     do_udp_setup_ephemeral(&mut libos);
@@ -100,7 +97,7 @@ fn udp_setup() {
 /// Tests if a connection can be successfully established in loopback mode.
 #[test]
 fn udp_connect_loopback() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
@@ -120,8 +117,8 @@ fn udp_connect_loopback() {
 /// itself.
 #[test]
 fn udp_push_remote() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: u16 = PORT_BASE;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, bob_port);
@@ -136,7 +133,7 @@ fn udp_push_remote() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Buffer = DummyLibOS::cook_data(32);
+        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
@@ -177,7 +174,7 @@ fn udp_push_remote() {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Buffer = match qr {
+        let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };
@@ -204,8 +201,8 @@ fn udp_push_remote() {
 /// Tests if data can be successfully pushed/popped in loopback mode.
 #[test]
 fn udp_loopback() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let bob_port: u16 = PORT_BASE;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, bob_port);
@@ -220,7 +217,7 @@ fn udp_loopback() {
         libos.bind(sockfd, alice_addr).unwrap();
 
         // Cook some data.
-        let bytes: Buffer = DummyLibOS::cook_data(32);
+        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
@@ -261,7 +258,7 @@ fn udp_loopback() {
             Ok((qd, qr)) => (qd, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        let bytes: Buffer = match qr {
+        let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
         };

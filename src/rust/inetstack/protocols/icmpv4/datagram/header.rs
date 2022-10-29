@@ -4,7 +4,7 @@
 use super::protocol::Icmpv4Type2;
 use crate::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::DemiBuffer,
 };
 use ::byteorder::{
     ByteOrder,
@@ -38,7 +38,7 @@ impl Icmpv4Header {
         ICMPV4_HEADER_SIZE
     }
 
-    pub fn parse(mut buf: Buffer) -> Result<(Self, Buffer), Fail> {
+    pub fn parse(mut buf: DemiBuffer) -> Result<(Self, DemiBuffer), Fail> {
         if buf.len() < ICMPV4_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "ICMPv4 datagram too small for header"));
         }
@@ -53,7 +53,7 @@ impl Icmpv4Header {
         let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
         let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;
 
-        buf.adjust(ICMPV4_HEADER_SIZE);
+        buf.adjust(ICMPV4_HEADER_SIZE)?;
         Ok((
             Self {
                 protocol: icmpv4_type,

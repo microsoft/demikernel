@@ -12,7 +12,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::{
             config::{
                 TcpConfig,
@@ -93,7 +93,7 @@ impl Peer {
         })
     }
 
-    pub fn receive(&mut self, buf: Buffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         let (header, payload) = Ipv4Header::parse(buf)?;
         debug!("Ipv4 received {:?}", header);
         if header.get_dest_addr() != self.local_ipv4_addr && !header.get_dest_addr().is_broadcast() {

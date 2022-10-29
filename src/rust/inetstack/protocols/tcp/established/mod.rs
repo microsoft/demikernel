@@ -20,7 +20,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         QDesc,
     },
     scheduler::SchedulerHandle,
@@ -61,15 +61,15 @@ impl EstablishedSocket {
         }
     }
 
-    pub fn receive(&self, header: &mut TcpHeader, data: Buffer) {
+    pub fn receive(&self, header: &mut TcpHeader, data: DemiBuffer) {
         self.cb.receive(header, data)
     }
 
-    pub fn send(&self, buf: Buffer) -> Result<(), Fail> {
+    pub fn send(&self, buf: DemiBuffer) -> Result<(), Fail> {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<Buffer, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
         self.cb.poll_recv(ctx)
     }
 

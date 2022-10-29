@@ -27,10 +27,7 @@ use crate::{
         },
     },
     runtime::{
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             types::MacAddress,
             PacketBuf,
@@ -81,7 +78,7 @@ fn test_connection_timeout() {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (QDesc, ConnectFuture, Buffer) =
+    let (_, mut connect_future, bytes): (QDesc, ConnectFuture, DemiBuffer) =
         connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
@@ -131,7 +128,7 @@ fn test_refuse_connection_early_rst() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, Buffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
+    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -163,7 +160,7 @@ fn test_refuse_connection_early_rst() {
     };
 
     // Serialize segment.
-    let buf: Buffer = serialize_segment(segment);
+    let buf: DemiBuffer = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -199,7 +196,7 @@ fn test_refuse_connection_early_ack() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, Buffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
+    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -231,7 +228,7 @@ fn test_refuse_connection_early_ack() {
     };
 
     // Serialize segment.
-    let buf: Buffer = serialize_segment(segment);
+    let buf: DemiBuffer = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -267,7 +264,7 @@ fn test_refuse_connection_missing_syn() {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, Buffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
+    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr);
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -309,7 +306,7 @@ fn test_refuse_connection_missing_syn() {
     };
 
     // Serialize segment.
-    let buf: Buffer = serialize_segment(segment);
+    let buf: DemiBuffer = serialize_segment(segment);
 
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -325,7 +322,7 @@ fn test_refuse_connection_missing_syn() {
 //=============================================================================
 
 /// Extracts headers of a TCP packet.
-fn extract_headers(bytes: Buffer) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
+fn extract_headers(bytes: DemiBuffer) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload).unwrap();
     let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
@@ -336,28 +333,31 @@ fn extract_headers(bytes: Buffer) -> (Ethernet2Header, Ipv4Header, TcpHeader) {
 //=============================================================================
 
 /// Serializes a TCP segment.
-fn serialize_segment(pkt: TcpSegment) -> Buffer {
+fn serialize_segment(pkt: TcpSegment) -> DemiBuffer {
     let header_size: usize = pkt.header_size();
     let body_size: usize = pkt.body_size();
-    let mut buf = DataBuffer::new(header_size + body_size).unwrap();
+    let mut buf = DemiBuffer::new((header_size + body_size) as u16);
     pkt.write_header(&mut buf[..header_size]);
     if let Some(body) = pkt.take_body() {
         buf[header_size..].copy_from_slice(&body[..]);
     }
-    Buffer::Heap(buf)
+    buf
 }
 
 //=============================================================================
 
 /// Triggers LISTEN -> SYN_SENT state transition.
-fn connection_setup_listen_syn_sent(client: &mut Engine, listen_addr: SocketAddrV4) -> (QDesc, ConnectFuture, Buffer) {
+fn connection_setup_listen_syn_sent(
+    client: &mut Engine,
+    listen_addr: SocketAddrV4,
+) -> (QDesc, ConnectFuture, DemiBuffer) {
     // Issue CONNECT operation.
     let client_fd: QDesc = client.tcp_socket().unwrap();
     let connect_future: ConnectFuture = client.tcp_connect(client_fd, listen_addr);
 
     // SYN_SENT state.
     client.rt.poll_scheduler();
-    let bytes: Buffer = client.rt.pop_frame();
+    let bytes: DemiBuffer = client.rt.pop_frame();
 
     (client_fd, connect_future, bytes)
 }
@@ -377,7 +377,7 @@ fn connection_setup_closed_listen(server: &mut Engine, listen_addr: SocketAddrV4
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
-fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: Buffer) -> Buffer {
+fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: DemiBuffer) -> DemiBuffer {
     // SYN_RCVD state.
     server.receive(bytes).unwrap();
     server.rt.poll_scheduler();
@@ -385,14 +385,14 @@ fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: Buffer) -> Buffe
 }
 
 /// Triggers SYN_SENT -> ESTABLISHED state transition.
-fn connection_setup_syn_sent_established(client: &mut Engine, bytes: Buffer) -> Buffer {
+fn connection_setup_syn_sent_established(client: &mut Engine, bytes: DemiBuffer) -> DemiBuffer {
     client.receive(bytes).unwrap();
     client.rt.poll_scheduler();
     client.rt.pop_frame()
 }
 
 /// Triggers SYN_RCVD -> ESTABLISHED state transition.
-fn connection_setup_sync_rcvd_established(server: &mut Engine, bytes: Buffer) {
+fn connection_setup_sync_rcvd_established(server: &mut Engine, bytes: DemiBuffer) {
     server.receive(bytes).unwrap();
     server.rt.poll_scheduler();
 }
@@ -400,7 +400,7 @@ fn connection_setup_sync_rcvd_established(server: &mut Engine, bytes: Buffer) {
 /// Checks for a pure SYN packet. This packet is sent by the sender side (active
 /// open peer) when transitioning from the LISTEN to the SYN_SENT state.
 fn check_packet_pure_syn(
-    bytes: Buffer,
+    bytes: DemiBuffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -423,7 +423,7 @@ fn check_packet_pure_syn(
 /// Checks for a SYN+ACK packet. This packet is sent by the receiver side
 /// (passive open peer) when transitioning from the LISTEN to the SYN_RCVD state.
 fn check_packet_syn_ack(
-    bytes: Buffer,
+    bytes: DemiBuffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -449,7 +449,7 @@ fn check_packet_syn_ack(
 /// side (active open peer) when transitioning from the SYN_SENT state to the
 /// ESTABLISHED state.
 fn check_packet_pure_ack_on_syn_ack(
-    bytes: Buffer,
+    bytes: DemiBuffer,
     eth2_src_addr: MacAddress,
     eth2_dst_addr: MacAddress,
     ipv4_src_addr: Ipv4Addr,
@@ -497,7 +497,7 @@ pub fn connection_setup(
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture, Buffer) =
+    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture, DemiBuffer) =
         connection_setup_listen_syn_sent(client, listen_addr);
 
     // Sanity check packet.

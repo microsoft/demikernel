@@ -5,7 +5,7 @@ use super::ArpHeader;
 use crate::{
     inetstack::protocols::ethernet2::Ethernet2Header,
     runtime::{
-        memory::Buffer,
+        memory::DemiBuffer,
         network::PacketBuf,
     },
 };
@@ -59,7 +59,7 @@ impl PacketBuf for ArpMessage {
         self.header.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
     }
 
-    fn take_body(&self) -> Option<Buffer> {
+    fn take_body(&self) -> Option<DemiBuffer> {
         None
     }
 }

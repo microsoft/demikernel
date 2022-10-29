@@ -10,7 +10,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::PacketBuf,
     },
 };
@@ -33,7 +33,7 @@ pub struct TcpSegment {
     pub ethernet2_hdr: Ethernet2Header,
     pub ipv4_hdr: Ipv4Header,
     pub tcp_hdr: TcpHeader,
-    pub data: Option<Buffer>,
+    pub data: Option<DemiBuffer>,
     pub tx_checksum_offload: bool,
 }
 
@@ -76,7 +76,7 @@ impl PacketBuf for TcpSegment {
         );
     }
 
-    fn take_body(&self) -> Option<Buffer> {
+    fn take_body(&self) -> Option<DemiBuffer> {
         match &self.data {
             Some(body) => Some(body.clone()),
             None => None,
@@ -223,7 +223,11 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(ipv4_header: &Ipv4Header, mut buf: Buffer, rx_checksum_offload: bool) -> Result<(Self, Buffer), Fail> {
+    pub fn parse(
+        ipv4_header: &Ipv4Header,
+        mut buf: DemiBuffer,
+        rx_checksum_offload: bool,
+    ) -> Result<(Self, DemiBuffer), Fail> {
         if buf.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "TCP segment too small"));
         }
@@ -358,7 +362,8 @@ impl TcpHeader {
             num_options,
             option_list,
         };
-        buf.adjust(data_offset);
+        buf.adjust(data_offset)
+            .expect("buf should contain at least 'data_offset' bytes");
         Ok((header, buf))
     }
 

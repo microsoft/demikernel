@@ -11,7 +11,6 @@ use crate::runtime::{
         rte_mbuf,
         rte_mempool,
         rte_pktmbuf_alloc,
-        rte_pktmbuf_clone,
         rte_pktmbuf_free,
         rte_pktmbuf_pool_create,
         rte_socket_id,
@@ -91,25 +90,5 @@ impl MemoryPool {
         }
 
         Ok(mbuf_ptr)
-    }
-
-    /// Releases a mbuf in the target memory pool.
-    pub fn free_mbuf(mbuf_ptr: *mut rte_mbuf) {
-        unsafe {
-            rte_pktmbuf_free(mbuf_ptr);
-        }
-    }
-
-    /// Clones a mbuf into a memory pool.
-    pub fn clone_mbuf(mbuf_ptr: *mut rte_mbuf) -> Result<*mut rte_mbuf, Fail> {
-        unsafe {
-            let mempool_ptr: *mut rte_mempool = (*mbuf_ptr).pool;
-            let mbuf_ptr_clone: *mut rte_mbuf = rte_pktmbuf_clone(mbuf_ptr, mempool_ptr);
-            if mbuf_ptr_clone.is_null() {
-                return Err(Fail::new(libc::EINVAL, "cannot clone mbuf"));
-            }
-
-            Ok(mbuf_ptr_clone)
-        }
     }
 }

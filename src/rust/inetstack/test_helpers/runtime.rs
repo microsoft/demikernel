@@ -4,10 +4,7 @@
 use crate::{
     runtime::{
         logging,
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             config::{
                 ArpConfig,
@@ -43,8 +40,8 @@ use ::std::{
 pub struct Inner {
     #[allow(unused)]
     timer: TimerRc,
-    incoming: VecDeque<Buffer>,
-    outgoing: VecDeque<Buffer>,
+    incoming: VecDeque<DemiBuffer>,
+    outgoing: VecDeque<DemiBuffer>,
 }
 
 #[derive(Clone)]
@@ -91,7 +88,7 @@ impl TestRuntime {
         }
     }
 
-    pub fn pop_frame(&self) -> Buffer {
+    pub fn pop_frame(&self) -> DemiBuffer {
         self.inner
             .borrow_mut()
             .outgoing
@@ -99,11 +96,11 @@ impl TestRuntime {
             .expect("pop_front didn't return an outgoing frame")
     }
 
-    pub fn pop_frame_unchecked(&self) -> Option<Buffer> {
+    pub fn pop_frame_unchecked(&self) -> Option<DemiBuffer> {
         self.inner.borrow_mut().outgoing.pop_front()
     }
 
-    pub fn push_frame(&self, buf: Buffer) {
+    pub fn push_frame(&self, buf: DemiBuffer) {
         self.inner.borrow_mut().incoming.push_back(buf);
     }
 
@@ -119,10 +116,14 @@ impl TestRuntime {
 
 impl NetworkRuntime for TestRuntime {
     fn transmit(&self, pkt: Box<dyn PacketBuf>) {
-        let header_size = pkt.header_size();
-        let body_size = pkt.body_size();
+        let header_size: usize = pkt.header_size();
+        let body_size: usize = pkt.body_size();
 
-        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(header_size + body_size).unwrap());
+        // The packet header and body must fit into whatever physical media we're transmitting over.
+        // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
+        assert!(header_size + body_size < u16::MAX as usize);
+
+        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
@@ -130,7 +131,7 @@ impl NetworkRuntime for TestRuntime {
         self.inner.borrow_mut().outgoing.push_back(buf);
     }
 
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
             out.push(buf);

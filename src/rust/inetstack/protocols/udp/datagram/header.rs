@@ -12,10 +12,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
     },
 };
 use ::byteorder::{
@@ -109,9 +106,9 @@ impl UdpHeader {
     }
 
     /// Parses a buffer into a UDP header.
-    pub fn parse(ipv4_hdr: &Ipv4Header, buf: Buffer, checksum_offload: bool) -> Result<(Self, Buffer), Fail> {
+    pub fn parse(ipv4_hdr: &Ipv4Header, buf: DemiBuffer, checksum_offload: bool) -> Result<(Self, DemiBuffer), Fail> {
         match Self::parse_from_slice(ipv4_hdr, &buf[..], checksum_offload) {
-            Ok((udp_hdr, bytes)) => Ok((udp_hdr, Buffer::Heap(DataBuffer::from_slice(bytes)))),
+            Ok((udp_hdr, bytes)) => Ok((udp_hdr, DemiBuffer::from_slice(bytes)?)),
             Err(e) => Err(e),
         }
     }

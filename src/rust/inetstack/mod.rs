@@ -27,10 +27,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             config::{
                 ArpConfig,
@@ -367,7 +364,7 @@ impl InetStack {
 
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
-    pub fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<FutureOperation, Fail> {
+    pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<FutureOperation, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
@@ -385,7 +382,7 @@ impl InetStack {
         trace!("push2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
+        let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -403,7 +400,7 @@ impl InetStack {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: Buffer, to: SocketAddrV4) -> Result<FutureOperation, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<FutureOperation, Fail> {
         match self.file_table.get(qd) {
             Some(qtype) => match QType::try_from(qtype) {
                 Ok(QType::UdpSocket) => {
@@ -424,7 +421,7 @@ impl InetStack {
         trace!("pushto2(): qd={:?}", qd);
 
         // Convert raw data to a buffer representation.
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
+        let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
         if buf.is_empty() {
             return Err(Fail::new(EINVAL, "zero-length buffer"));
         }
@@ -563,7 +560,7 @@ impl InetStack {
     /// New incoming data has arrived. Route it to the correct parse out the Ethernet header and
     /// allow the correct protocol to handle it. The underlying protocol will futher parse the data
     /// and inform the correct task that its data has arrived.
-    fn do_receive(&mut self, bytes: Buffer) -> Result<(), Fail> {
+    fn do_receive(&mut self, bytes: DemiBuffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::engine::receive");
         let (header, payload) = Ethernet2Header::parse(bytes)?;

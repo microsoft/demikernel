@@ -40,7 +40,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::{
             config::TcpConfig,
             types::MacAddress,
@@ -234,7 +234,7 @@ impl TcpPeer {
         }
     }
 
-    pub fn receive(&self, ip_header: &Ipv4Header, buf: Buffer) -> Result<(), Fail> {
+    pub fn receive(&self, ip_header: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         self.inner.borrow_mut().receive(ip_header, buf)
     }
 
@@ -383,7 +383,7 @@ impl TcpPeer {
         })
     }
 
-    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<Buffer, Fail>> {
+    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -398,8 +398,8 @@ impl TcpPeer {
         }
     }
 
-    pub fn push(&self, fd: QDesc, buf: Buffer) -> PushFuture {
-        let err = match self.send(fd, buf) {
+    pub fn push(&self, fd: QDesc, buf: DemiBuffer) -> PushFuture {
+        let err: Option<Fail> = match self.send(fd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
         };
@@ -413,7 +413,7 @@ impl TcpPeer {
         }
     }
 
-    fn send(&self, fd: QDesc, buf: Buffer) -> Result<(), Fail> {
+    fn send(&self, fd: QDesc, buf: DemiBuffer) -> Result<(), Fail> {
         let inner = self.inner.borrow_mut();
         let key = match inner.sockets.get(&fd) {
             Some(Socket::Established { local, remote }) => (*local, *remote),
@@ -521,7 +521,7 @@ impl Inner {
         }
     }
 
-    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: Buffer) -> Result<(), Fail> {
+    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
