@@ -157,11 +157,11 @@ static bool inval_sgafree(void)
  */
 static bool inval_timedwait(void)
 {
-    struct timespec abstime;
+    struct timespec *abstime = NULL;
     demi_qresult_t *qr = NULL;
     demi_qtoken_t qt = -1;
 
-    return (demi_timedwait(qr, qt, &abstime) != 0);
+    return (demi_timedwait(qr, qt, abstime) != 0);
 }
 
 /**

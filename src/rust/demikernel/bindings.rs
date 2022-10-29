@@ -420,16 +420,12 @@ pub extern "C" fn demi_timedwait(
 
     // Convert timespec to SystemTime.
     let abstime: Option<SystemTime> = {
-        if abstime.is_null() {
-            None
-        } else {
-            let timeout: Duration = Duration::from_nanos(
-                unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
-            );
-            match SystemTime::UNIX_EPOCH.checked_add(timeout) {
-                Some(abstime) => Some(abstime),
-                None => Some(SystemTime::now()),
-            }
+        let timeout: Duration = Duration::from_nanos(
+            unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
+        );
+        match SystemTime::UNIX_EPOCH.checked_add(timeout) {
+            Some(abstime) => Some(abstime),
+            None => Some(SystemTime::now()),
         }
     };
 

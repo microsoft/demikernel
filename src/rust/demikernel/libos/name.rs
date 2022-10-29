@@ -16,6 +16,7 @@ use ::std::env;
 pub enum LibOSName {
     Catpowder,
     Catnap,
+    CatnapW,
     Catcollar,
     Catnip,
 }
@@ -44,6 +45,7 @@ impl From<String> for LibOSName {
         match str.to_lowercase().as_str() {
             "catpowder" => LibOSName::Catpowder,
             "catnap" => LibOSName::Catnap,
+            "catnapw" => LibOSName::CatnapW,
             "catcollar" => LibOSName::Catcollar,
             "catnip" => LibOSName::Catnip,
             _ => panic!("unkown libos"),

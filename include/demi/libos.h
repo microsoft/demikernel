@@ -6,7 +6,15 @@
 
 #include <demi/types.h>
 #include <stddef.h>
+
+#ifdef __linux__
 #include <sys/socket.h>
+#endif
+
+#ifdef _WIN32
+#include <winsock.h>
+typedef int socklen_t;
+#endif
 
 #ifdef __cplusplus
 extern "C"

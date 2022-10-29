@@ -3,34 +3,20 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#ifdef __linux__
 #include <arpa/inet.h>
+#endif
+
 #include <assert.h>
 #include <demi/libos.h>
 #include <demi/sga.h>
 #include <demi/wait.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+#include "common.h"
 
 #define DATA_SIZE 64
 #define MAX_BYTES DATA_SIZE * 1024
-
-static void sighandler(int signum)
-{
-    const char *signame = strsignal(signum);
-
-    fprintf(stderr, "\nReceived %s signal\n", signame);
-    fprintf(stderr, "Exiting...\n");
-    exit(EXIT_SUCCESS);
-}
-
-void reg_sighandlers()
-{
-    signal(SIGINT, sighandler);
-    signal(SIGQUIT, sighandler);
-    signal(SIGTSTP, sighandler);
-}
 
 static int accept_get_newsockqd(struct sockaddr_in *addr)
 {

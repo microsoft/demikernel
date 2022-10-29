@@ -230,8 +230,8 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: $(BINDIR)/syscalls.exe
-	$(BINDIR)/syscalls.exe
+test-unit-c: all-tests-c
+	$(BINDIR)\syscalls.exe
 
 # Rust unit tests.
 test-unit-rust:
