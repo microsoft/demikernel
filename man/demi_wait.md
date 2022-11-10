@@ -15,6 +15,7 @@
 #include <demi/types.h> /* For demi_qresult_t and demi_qtoken_t. */
 
 int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
+int demi_timedwait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *abstime);
 int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[], int num_qts);
 ```
 
@@ -24,10 +25,12 @@ int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[]
 system call may cause the calling thread to block (spin) indefinitely.
 
 `demi_timedwait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt` or
-for the expiration of a timeout, whichever happens first. The `abstime` parameter specifies an absolute timeout in
-seconds and nanoseconds since the Epoch.  If the I/O operation has already completed when `demi_timedwait()` is called,
-then this system call never fails with a timeout error, regardless of the value of `abstime`. This system call may cause
-the calling thread to block (spin) until the timeout `abstime` expires.
+for the expiration of a timeout, whichever happens first. If the `abstime` parameter is non null, then it is taken as an
+absolute timeout in seconds and nanoseconds since the Epoch. On the one hand, if the I/O operation has already completed
+when `demi_timedwait()` is called, then this system call never fails with a timeout error, regardless of the value of
+`abstime`. On this mode, the `demi_timedwait()` system call may cause the calling thread to block (spin) until the
+timeout `abstime` expires. On the other hand, if the `abstime` parameter has a null value, then the calling thread
+blocks (spins) indefinitely until the I/O operation associated with the queue token `qt` completes.
 
 `demi_wait_any()` waits for the first asynchronous I/O operation in a set to complete. The set of I/O operations is
 specified by the list of queue tokens `qts` and it has a length of `num_qts`. This system call may cause the calling
