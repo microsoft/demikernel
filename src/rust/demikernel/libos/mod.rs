@@ -166,18 +166,7 @@ impl LibOS {
     pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         trace!("wait(): qt={:?}", qt);
 
-        // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = self.schedule(qt)?;
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.pack_result(handle, qt)?);
-            }
-        }
+        self.timedwait(qt, None)
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.

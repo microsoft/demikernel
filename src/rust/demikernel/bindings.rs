@@ -452,24 +452,8 @@ pub extern "C" fn demi_timedwait(
 pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c_int {
     trace!("demi_wait()");
 
-    // Issue wait operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait(qt.into()) {
-        Ok(r) => {
-            if !qr_out.is_null() {
-                unsafe { *qr_out = r };
-            }
-            0
-        },
-        Err(e) => {
-            warn!("wait() failed: {:?}", e);
-            e.errno
-        },
-    });
-
-    match ret {
-        Ok(ret) => ret,
-        Err(e) => e.errno,
-    }
+    // Forward wait operation.
+    demi_timedwait(qr_out, qt, ptr::null())
 }
 
 //======================================================================================================================
