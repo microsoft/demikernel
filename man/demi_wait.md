@@ -22,7 +22,11 @@ int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[]
 ## Description
 
 `demi_wait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt`. This
-system call may cause the calling thread to block (spin) indefinitely.
+system call may cause the calling thread to block (spin) indefinitely. This `demi_wait(qr, qt)` call is equivalent to:
+
+```c
+demi_timedwait(qr, qt, NULL);
+```
 
 `demi_timedwait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt` or
 for the expiration of a timeout, whichever happens first. If the `abstime` parameter is non null, then it is taken as an
@@ -115,7 +119,6 @@ On error, one of the following positive error codes is returned:
 - `EINVAL` - The `qt` argument refers to an invalid queue token.
 - `EINVAL` - The `num_qts` argument has an invalid size.
 - `EINVAL` - The `qts` argument contains an invalid queue token.
-- `EINVAL` - The `abtime` argument does not point to a valid structure.
 - `ETIMEDOUT` - The system call timed out before an I/O operation was completed.
 
 ## Conforming To
