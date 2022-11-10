@@ -410,19 +410,16 @@ pub extern "C" fn demi_timedwait(
     qt: demi_qtoken_t,
     abstime: *const libc::timespec,
 ) -> c_int {
+    const GIGA: u64 = 1_000_000_000;
     trace!("demi_timedwait() {:?} {:?} {:?}", qr_out, qt, abstime);
 
-    // Check for invalid timeout.
-    if abstime.is_null() {
-        warn!("abstime is a null pointer");
-        return libc::EINVAL;
-    }
-
     // Convert timespec to SystemTime.
-    let abstime: Option<SystemTime> = {
-        let timeout: Duration = Duration::from_nanos(
-            unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
-        );
+    let abstime: Option<SystemTime> = if abstime.is_null() {
+        None
+    } else {
+        let timeout: Duration =
+            Duration::from_nanos(unsafe { (*abstime).tv_sec } as u64 * GIGA + unsafe { (*abstime).tv_nsec } as u64);
+
         match SystemTime::UNIX_EPOCH.checked_add(timeout) {
             Some(abstime) => Some(abstime),
             None => Some(SystemTime::now()),
@@ -437,12 +434,10 @@ pub extern "C" fn demi_timedwait(
             }
             0
         },
-        Err(e) => {
-            warn!("timedwait() failed: {:?}", e);
-            e.errno
-        },
+        Err(e) => e.errno,
     });
 
+    // Check for return value.
     match ret {
         Ok(ret) => ret,
         Err(e) => e.errno,
