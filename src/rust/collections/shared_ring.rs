@@ -82,7 +82,6 @@ mod test {
 
     /// Tests if we succeed to perform sequential accesses to a shared ring buffer.
     #[test]
-    #[ignore]
     fn ring_buffer_on_shm_sequential() {
         let shm_name: String = "shm-test-ring-buffer-serial".to_string();
         let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::create(&shm_name, RING_BUFFER_CAPACITY) {
@@ -111,7 +110,6 @@ mod test {
 
     /// Tests if we succeed to perform concurrent accesses to a shared ring buffer..
     #[test]
-    #[ignore]
     fn ring_buffer_on_shm_concurrent() {
         let shm_name: String = "shm-test-ring-buffer-concurrent".to_string();
 
