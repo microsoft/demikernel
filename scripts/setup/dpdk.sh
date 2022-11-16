@@ -12,9 +12,9 @@ mkdir -p $HOME/tmp/dpdk
 cd $HOME/tmp/dpdk
 
 # Download sources.
-wget https://fast.dpdk.org/rel/dpdk-21.02.tar.xz
-tar -xvf dpdk-21.02.tar.xz
-cd dpdk-21.02
+wget https://fast.dpdk.org/rel/dpdk-22.11.tar.xz
+tar -xvf dpdk-22.11.tar.xz
+cd dpdk-22.11
 mkdir -p build
 
 # Build and install

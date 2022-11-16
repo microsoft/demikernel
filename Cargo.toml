@@ -49,11 +49,11 @@ x86 = "0.52.0"
 
 # Demikernel Organization
 liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
-dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "7d75ce6db61351d2a06fa3d84bd0af3ec017166d", optional = true }
+dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "5a339766b6f64c2b09c2e4089c62013bfb48297e", optional = true }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
-# libc implementation in Rust is quite different for Windows and Linux. This library provides the relevant networking 
+# libc implementation in Rust is quite different for Windows and Linux. This library provides the relevant networking
 # constants and datastructures for Windows.
 windows = { version = "0.39.0", features = ["Win32_Foundation", "Win32_Networking_WinSock"] }
 # Provides the Rust socket API for Windows.
