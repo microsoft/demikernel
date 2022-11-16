@@ -231,23 +231,23 @@ impl DPDKRuntime {
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
     ) -> Result<(), Error> {
-        let rx_rings = 1;
-        let tx_rings = 1;
-        let rx_ring_size = 2048;
-        let tx_ring_size = 2048;
-        let nb_rxd = rx_ring_size;
-        let nb_txd = tx_ring_size;
+        let rx_rings: u16 = 1;
+        let tx_rings: u16 = 1;
+        let rx_ring_size: u16 = 2048;
+        let tx_ring_size: u16 = 2048;
+        let nb_rxd: u16 = rx_ring_size;
+        let nb_txd: u16 = tx_ring_size;
 
-        let rx_pthresh = 8;
-        let rx_hthresh = 8;
-        let rx_wthresh = 0;
+        let rx_pthresh: u8 = 8;
+        let rx_hthresh: u8 = 8;
+        let rx_wthresh: u8 = 0;
 
-        let tx_pthresh = 0;
-        let tx_hthresh = 0;
-        let tx_wthresh = 0;
+        let tx_pthresh: u8 = 0;
+        let tx_hthresh: u8 = 0;
+        let tx_wthresh: u8 = 0;
 
-        let dev_info = unsafe {
-            let mut d = MaybeUninit::zeroed();
+        let dev_info: dpdk_rs::rte_eth_dev_info = unsafe {
+            let mut d: MaybeUninit<dpdk_rs::rte_eth_dev_info> = MaybeUninit::zeroed();
             rte_eth_dev_info_get(port_id, d.as_mut_ptr());
             d.assume_init()
         };
@@ -301,7 +301,16 @@ impl DPDKRuntime {
             ))?;
         }
 
-        let socket_id = 0;
+        unsafe {
+            expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
+            let mut dpdk_mtu: u16 = 0u16;
+            expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
+            if dpdk_mtu != mtu {
+                bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
+            }
+        }
+
+        let socket_id: u32 = 0;
 
         unsafe {
             for i in 0..rx_rings {
@@ -331,14 +340,14 @@ impl DPDKRuntime {
             bail!("Invalid port");
         }
 
-        let sleep_duration = Duration::from_millis(100);
-        let mut retry_count = 90;
+        let sleep_duration: Duration = Duration::from_millis(100);
+        let mut retry_count: i32 = 90;
 
         loop {
             unsafe {
                 let mut link: MaybeUninit<rte_eth_link> = MaybeUninit::zeroed();
                 rte_eth_link_get_nowait(port_id, link.as_mut_ptr());
-                let link = link.assume_init();
+                let link: rte_eth_link = link.assume_init();
                 if link.link_status() as u32 == ETH_LINK_UP {
                     let duplex = if link.link_duplex() as u32 == ETH_LINK_FULL_DUPLEX {
                         "full"
@@ -357,15 +366,6 @@ impl DPDKRuntime {
                 bail!("Link never came up");
             }
             retry_count -= 1;
-        }
-
-        unsafe {
-            expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
-            let mut dpdk_mtu: u16 = 0u16;
-            expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
-            if dpdk_mtu != mtu {
-                bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
-            }
         }
 
         Ok(())
