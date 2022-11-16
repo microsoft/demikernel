@@ -81,6 +81,7 @@ mod test {
     const RING_BUFFER_CAPACITY: usize = 4096;
 
     /// Tests if we succeed to perform sequential accesses to a shared ring buffer.
+    #[ignore]
     #[test]
     fn ring_buffer_on_shm_sequential() {
         let shm_name: String = "shm-test-ring-buffer-serial".to_string();
@@ -109,6 +110,7 @@ mod test {
     }
 
     /// Tests if we succeed to perform concurrent accesses to a shared ring buffer..
+    #[ignore]
     #[test]
     fn ring_buffer_on_shm_concurrent() {
         let shm_name: String = "shm-test-ring-buffer-concurrent".to_string();
