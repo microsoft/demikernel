@@ -253,15 +253,6 @@ impl DPDKRuntime {
         };
 
         println!("dev_info: {:?}", dev_info);
-        unsafe {
-            expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
-            let mut dpdk_mtu = 0u16;
-            expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
-            if dpdk_mtu != mtu {
-                bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
-            }
-        }
-
         let mut port_conf: rte_eth_conf = unsafe { MaybeUninit::zeroed().assume_init() };
         port_conf.rxmode.max_rx_pkt_len = if use_jumbo_frames {
             RTE_ETHER_MAX_JUMBO_FRAME_LEN
@@ -366,6 +357,15 @@ impl DPDKRuntime {
                 bail!("Link never came up");
             }
             retry_count -= 1;
+        }
+
+        unsafe {
+            expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
+            let mut dpdk_mtu: u16 = 0u16;
+            expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
+            if dpdk_mtu != mtu {
+                bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
+            }
         }
 
         Ok(())
