@@ -13,7 +13,7 @@ use crate::{
         ipv4::Ipv4Header,
     },
     runtime::{
-        memory::Buffer,
+        memory::DemiBuffer,
         network::PacketBuf,
     },
 };
@@ -39,7 +39,7 @@ pub struct UdpDatagram {
     /// UDP header.
     udp_hdr: UdpHeader,
     /// Payload
-    data: Buffer,
+    data: DemiBuffer,
     /// Offload checksum to hardware?
     checksum_offload: bool,
 }
@@ -55,7 +55,7 @@ impl UdpDatagram {
         ethernet2_hdr: Ethernet2Header,
         ipv4_hdr: Ipv4Header,
         udp_hdr: UdpHeader,
-        data: Buffer,
+        data: DemiBuffer,
         checksum_offload: bool,
     ) -> Self {
         Self {
@@ -112,7 +112,7 @@ impl PacketBuf for UdpDatagram {
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(&self) -> Option<Buffer> {
+    fn take_body(&self) -> Option<DemiBuffer> {
         Some(self.data.clone())
     }
 }
@@ -134,7 +134,7 @@ mod test {
             ipv4::IPV4_HEADER_DEFAULT_SIZE,
         },
         runtime::{
-            memory::DataBuffer,
+            memory::DemiBuffer,
             network::types::MacAddress,
         },
     };
@@ -165,7 +165,7 @@ mod test {
 
         // Payload.
         let bytes: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-        let data: Buffer = Buffer::Heap(DataBuffer::from_slice(&bytes));
+        let data: DemiBuffer = DemiBuffer::from_slice(&bytes).expect("bytes should be shorter than u16::MAX");
 
         // Build expected header.
         let mut hdr: [u8; HEADER_SIZE] = [0; HEADER_SIZE];

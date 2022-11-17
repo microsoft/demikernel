@@ -24,7 +24,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::{
             types::MacAddress,
             NetworkRuntime,
@@ -204,7 +204,7 @@ impl Icmpv4Peer {
     }
 
     /// Parses and handles a ICMP message.
-    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: Buffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         let (icmpv4_hdr, _) = Icmpv4Header::parse(buf)?;
         debug!("ICMPv4 received {:?}", icmpv4_hdr);
         match icmpv4_hdr.get_protocol() {

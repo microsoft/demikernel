@@ -9,7 +9,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         watched::{
             WatchFuture,
             WatchedValue,
@@ -39,7 +39,7 @@ use ::std::{
 // buffer structure that held everything we need directly, thus avoiding this extra wrapper.
 //
 pub struct UnackedSegment {
-    pub bytes: Buffer,
+    pub bytes: DemiBuffer,
     // Set to `None` on retransmission to implement Karn's algorithm.
     pub initial_tx: Option<Instant>,
 }
@@ -75,7 +75,7 @@ pub struct Sender {
     send_next: WatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
-    unsent_queue: RefCell<VecDeque<Buffer>>,
+    unsent_queue: RefCell<VecDeque<DemiBuffer>>,
 
     // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
@@ -158,7 +158,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send(&self, buf: Buffer, cb: &ControlBlock) -> Result<(), Fail> {
+    pub fn send(&self, buf: DemiBuffer, cb: &ControlBlock) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending.get() {
@@ -289,7 +289,10 @@ impl Sender {
 
                 if segment.bytes.len() > bytes_remaining {
                     // Only some of the data in this segment has been acked.  Remove just the acked amount.
-                    segment.bytes.adjust(bytes_remaining);
+                    segment
+                        .bytes
+                        .adjust(bytes_remaining)
+                        .expect("'segment' should contain at least 'bytes_remaining'");
                     segment.initial_tx = None;
 
                     // Leave this segment on the unacknowledged queue.
@@ -314,7 +317,7 @@ impl Sender {
         }
     }
 
-    pub fn pop_one_unsent_byte(&self) -> Option<Buffer> {
+    pub fn pop_one_unsent_byte(&self) -> Option<DemiBuffer> {
         let mut queue = self.unsent_queue.borrow_mut();
 
         let buf = queue.front_mut()?;
@@ -322,23 +325,28 @@ impl Sender {
         let buf_len: usize = buf.len();
 
         // Pop one byte off the buf still in the queue and all but one of the bytes on our clone.
-        buf.adjust(1);
-        cloned_buf.trim(buf_len - 1);
+        buf.adjust(1).expect("'buf' should contain at least one byte");
+        cloned_buf
+            .trim(buf_len - 1)
+            .expect("'cloned_buf' should contain at least one less than its professed length");
 
         Some(cloned_buf)
     }
 
-    pub fn pop_unsent(&self, max_bytes: usize) -> Option<Buffer> {
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<DemiBuffer> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
-        let mut buf: Buffer = unsent_queue.pop_front()?;
+        let mut buf: DemiBuffer = unsent_queue.pop_front()?;
         let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {
-            let mut cloned_buf = buf.clone();
+            let mut cloned_buf: DemiBuffer = buf.clone();
 
-            buf.adjust(max_bytes);
-            cloned_buf.trim(buf_len - max_bytes);
+            buf.adjust(max_bytes)
+                .expect("'buf' should contain at least 'max_bytes'");
+            cloned_buf
+                .trim(buf_len - max_bytes)
+                .expect("'cloned_buf' should contain at least less than its length");
 
             unsent_queue.push_front(buf);
             buf = cloned_buf;

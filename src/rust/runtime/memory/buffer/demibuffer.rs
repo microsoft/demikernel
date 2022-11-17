@@ -41,8 +41,6 @@ use ::dpdk_rs::{
     rte_pktmbuf_free,
     rte_pktmbuf_trim,
 };
-#[cfg(feature = "libdpdk")]
-use ::std::mem;
 use ::std::{
     alloc::{
         alloc,
@@ -51,7 +49,10 @@ use ::std::{
         Layout,
     },
     marker::PhantomData,
-    mem::size_of,
+    mem::{
+        self,
+        size_of,
+    },
     num::NonZeroUsize,
     ops::{
         BitOr,
@@ -165,6 +166,8 @@ impl MetaData {
     // Decrements the reference count and returns the new value.
     #[inline]
     fn dec_refcnt(&mut self) -> u16 {
+        // We should never decrement an already zero reference count.  Check this on debug builds.
+        debug_assert_ne!(self.refcnt, 0);
         self.refcnt -= 1;
         self.refcnt
     }
@@ -229,6 +232,15 @@ pub struct DemiBuffer {
     // Hint to compiler that this struct "owns" a MetaData (for safety determinations).  Doesn't consume space.
     _phantom: PhantomData<MetaData>,
 }
+
+// Safety: Technically, DemiBuffer's aren't safe to Send between threads in their current implementation, as the
+// reference counting on the data region isn't performed using (expensive) atomic operations, for performance reasons.
+// This is okay in practice, as we currently run Demikernel single-threaded.  If this changes, the reference counting
+// functionality (MetaData's inc_refcnt() and dec_refcnt(), see above) will need to be swapped out for ones that use
+// atomic operations.  And then it will be safe to mark DemiBuffer as Send.
+//
+// ToDo: For now, this is here because some of our test infrastructure wants to send DemiBuffers to other threads.
+unsafe impl Send for DemiBuffer {}
 
 impl DemiBuffer {
     // ------------
@@ -296,6 +308,14 @@ impl DemiBuffer {
         slice.try_into()
     }
 
+    /// Creates a `DemiBuffer` from a raw pointer.
+    pub unsafe fn from_raw(token: NonNull<u8>) -> Self {
+        DemiBuffer {
+            tagged_ptr: token.cast::<MetaData>(),
+            _phantom: PhantomData,
+        }
+    }
+
     #[cfg(feature = "libdpdk")]
     /// Creates a `DemiBuffer` from a raw MBuf pointer (*mut rte_mbuf).
     // The MBuf's internal reference count is left unchanged (a reference is effectively donated to the DemiBuffer).
@@ -337,22 +357,31 @@ impl DemiBuffer {
     // Note: If `nbytes` is greater than the length of the first segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_adj() routine.
-    pub fn adjust(&mut self, nbytes: u16) -> Result<(), Fail> {
+    pub fn adjust(&mut self, nbytes: usize) -> Result<(), Fail> {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 let metadata: &mut MetaData = self.as_metadata();
-                if nbytes > metadata.data_len {
+                if nbytes > metadata.data_len as usize {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
-                metadata.data_off += nbytes;
+                // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
+                metadata.data_off += nbytes as u16;
                 metadata.pkt_len -= nbytes as u32;
-                metadata.data_len -= nbytes;
+                metadata.data_len -= nbytes as u16;
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
+                unsafe {
+                    // Safety: The `mbuf` dereference below is safe, as it is aligned and dereferenceable.
+                    if ((*mbuf).data_len as usize) < nbytes {
+                        return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                    }
+                }
+
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
-                if unsafe { rte_pktmbuf_adj(self.as_mbuf(), nbytes) } == ptr::null_mut() {
+                if unsafe { rte_pktmbuf_adj(mbuf, nbytes as u16) } == ptr::null_mut() {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
             },
@@ -365,23 +394,32 @@ impl DemiBuffer {
     // Note: If `nbytes` is greater than the length of the last segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_trim() routine.
-    pub fn trim(&mut self, nbytes: u16) -> Result<(), Fail> {
+    pub fn trim(&mut self, nbytes: usize) -> Result<(), Fail> {
         // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 let md_first: &mut MetaData = self.as_metadata();
                 let md_last: &mut MetaData = md_first.get_last_segment();
 
-                if nbytes > md_last.data_len {
+                if nbytes > md_last.data_len as usize {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
-                md_last.data_len -= nbytes;
+                // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
+                md_last.data_len -= nbytes as u16;
                 md_first.pkt_len -= nbytes as u32;
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
+                unsafe {
+                    // Safety: The `mbuf` dereference below is safe, as it is aligned and dereferenceable.
+                    if ((*mbuf).data_len as usize) < nbytes {
+                        return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                    }
+                }
+
                 // Safety: rte_pktmbuf_trim is a FFI, which is safe since we call it with an actual MBuf pointer.
-                if unsafe { rte_pktmbuf_trim(self.as_mbuf(), nbytes) } != 0 {
+                if unsafe { rte_pktmbuf_trim(mbuf, nbytes as u16) } != 0 {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
             },
@@ -393,7 +431,7 @@ impl DemiBuffer {
     /// Splits off a new `DemiBuffer` containing a subset of the data in this one, starting at the given offset.
     // The data contained in the new DemiBuffer is removed from the original DemiBuffer.
     // Note: the DemiBuffer being split must be a single buffer segment (not a chain) large enough to hold `offset`.
-    pub fn split_off(&mut self, offset: u16) -> Result<Self, Fail> {
+    pub fn split_off(&mut self, offset: usize) -> Result<Self, Fail> {
         // Check that a split is allowed.
         match self.get_tag() {
             Tag::Heap => {
@@ -401,7 +439,7 @@ impl DemiBuffer {
                 if md_front.nb_segs != 1 {
                     return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
                 }
-                if md_front.data_len < offset {
+                if (md_front.data_len as usize) < offset {
                     return Err(Fail::new(libc::EINVAL, "split offset is more bytes than are present"));
                 }
             },
@@ -413,7 +451,7 @@ impl DemiBuffer {
                     if (*mbuf).nb_segs != 1 {
                         return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
                     }
-                    if (*mbuf).data_len < offset {
+                    if ((*mbuf).data_len as usize) < offset {
                         return Err(Fail::new(libc::EINVAL, "split offset is more bytes than are present"));
                     }
                 }
@@ -424,7 +462,7 @@ impl DemiBuffer {
         let mut back_half: DemiBuffer = self.clone();
 
         // Remove data starting at `offset` from the front (original) DemiBuffer as those bytes now belong to the back.
-        let trim: u16 = self.len() as u16 - offset;
+        let trim: usize = self.len() - offset;
         // This unwrap won't panic as we already performed its error checking above.
         self.trim(trim).unwrap();
 
@@ -436,14 +474,37 @@ impl DemiBuffer {
         Ok(back_half)
     }
 
+    /// Provides a raw pointer to the buffer data.
+    ///
+    /// The reference count is not affected in any way and the DemiBuffer is not consumed.  The pointer is valid for as
+    /// long as there is a DemiBuffer in existance that is holding a reference on this data.
+    // This function is not marked unsafe, as the unsafe act is dereferencing the returned pointer, not providing it.
+    pub fn as_ptr(&self) -> *const u8 {
+        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        match self.get_tag() {
+            Tag::Heap => self.data_ptr(),
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => self.dpdk_data_ptr(),
+        }
+    }
+
+    /// Consumes the `DemiBuffer`, returning a raw token (useful for FFI) that can be used with `from_raw()`.
+    // Note the type of the token is arbitrary, it should be treated as an opaque value.
+    pub fn into_raw(self) -> NonNull<u8> {
+        let raw_token = self.tagged_ptr.cast::<u8>();
+        // Don't run the DemiBuffer destructor on this.
+        mem::forget(self);
+        raw_token
+    }
+
     /// Consumes the `DemiBuffer`, returning the contained MBuf pointer.
     // The returned MBuf takes all existing references on the data with it (the DemiBuffer donates its ref to the MBuf).
     #[cfg(feature = "libdpdk")]
-    pub fn into_mbuf(this: Self) -> Option<*mut rte_mbuf> {
-        if this.get_tag() == Tag::Dpdk {
-            let mbuf = Self::as_mbuf(&this);
+    pub fn into_mbuf(self) -> Option<*mut rte_mbuf> {
+        if self.get_tag() == Tag::Dpdk {
+            let mbuf = self.as_mbuf();
             // Don't run the DemiBuffer destructor on this.
-            mem::forget(this);
+            mem::forget(self);
             Some(mbuf)
         } else {
             None
@@ -617,9 +678,20 @@ impl Clone for DemiBuffer {
                         clone.buf_len = original.buf_len;
                         clone.data_off = original.data_off;
                         clone.nb_segs = original.nb_segs;
-                        clone.ol_flags = original.ol_flags | METADATA_F_INDIRECT; // Add indirect flag to clone.
                         clone.pkt_len = original.pkt_len;
                         clone.data_len = original.data_len;
+
+                        // Special case for zero-length buffers.
+                        if original.buf_len == 0 {
+                            debug_assert_eq!(clone.buf_len, 0);
+                            debug_assert_eq!(clone.buf_addr, ptr::null_mut());
+                            // Since there is no data to clone, we don't need to make this an indirect buffer or
+                            // increment any reference counts.  Instead we just create a new zero-length direct buffer.
+                            clone.ol_flags = original.ol_flags;
+                            continue;
+                        } else {
+                            clone.ol_flags = original.ol_flags | METADATA_F_INDIRECT; // Add indirect flag to clone.
+                        }
                     }
 
                     // Incrememnt the reference count on the data.  It resides in the MetaData structure that the data
@@ -850,6 +922,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
 mod tests {
     use super::DemiBuffer;
     use crate::runtime::fail::Fail;
+    use std::ptr::NonNull;
 
     // Test basic allocation, len, adjust, and trim.
     #[test]
@@ -870,6 +943,43 @@ mod tests {
         // Verify bad requests actually fail.
         assert!(buf.adjust(30).is_err());
         assert!(buf.trim(30).is_err());
+    }
+
+    // Test cloning, raw conversion, and zero-size buffers.
+    #[test]
+    fn advanced() {
+        fn clone_me(buf: DemiBuffer) -> DemiBuffer {
+            // Clone and return the buffer.
+            buf.clone()
+            // `buf` should be dropped here.
+        }
+
+        fn convert_to_token(buf: DemiBuffer) -> NonNull<u8> {
+            // Convert the buffer into a raw token.
+            buf.into_raw()
+            // `buf` was consumed by into_raw(), so it isn't dropped here.  The token holds the reference.
+        }
+
+        // Create a buffer and clone it.
+        let fortytwo: DemiBuffer = DemiBuffer::new(42);
+        assert_eq!(fortytwo.len(), 42);
+        let clone: DemiBuffer = clone_me(fortytwo);
+        assert_eq!(clone.len(), 42);
+
+        // Convert a buffer into a raw token and bring it back.
+        let token: NonNull<u8> = convert_to_token(clone);
+        let reconstituted: DemiBuffer = unsafe { DemiBuffer::from_raw(token) };
+        assert_eq!(reconstituted.len(), 42);
+
+        // Create a zero-sized buffer.
+        let zero: DemiBuffer = DemiBuffer::new(0);
+        assert_eq!(zero.len(), 0);
+        // Clone it, and keep the original around.
+        let clone: DemiBuffer = zero.clone();
+        assert_eq!(clone.len(), 0);
+        // Clone the clone, and drop the first clone.
+        let another: DemiBuffer = clone_me(clone);
+        assert_eq!(another.len(), 0);
     }
 
     // Test split_off (and also allocation from a slice).

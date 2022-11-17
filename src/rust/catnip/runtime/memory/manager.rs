@@ -19,9 +19,8 @@ use crate::{
             rte_mempool,
         },
         memory::{
-            Buffer,
             DPDKBuffer,
-            DataBuffer,
+            DemiBuffer,
         },
         types::{
             demi_sgarray_t,
@@ -34,9 +33,11 @@ use ::libc::c_void;
 use ::std::{
     ffi::CString,
     mem,
-    ptr,
+    ptr::{
+        self,
+        NonNull,
+    },
     rc::Rc,
-    slice,
 };
 
 //==============================================================================
@@ -84,37 +85,19 @@ impl MemoryManager {
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
-    pub fn into_sgarray(&self, buf: Buffer) -> Result<demi_sgarray_t, Fail> {
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) = match buf {
-            // Heap-managed buffer.
-            Buffer::Heap(dbuf) => {
-                let len: usize = dbuf.len();
-                let (dbuf_ptr, _): (*const u8, *const u8) = DataBuffer::into_raw_parts(Clone::clone(&dbuf))?;
-                (
-                    ptr::null_mut(),
-                    demi_sgaseg_t {
-                        sgaseg_buf: dbuf_ptr as *mut c_void,
-                        sgaseg_len: len as u32,
-                    },
-                )
-            },
-            // DPDK-managed buffer.
-            Buffer::DPDK(mbuf) => {
-                let mbuf_ptr: *mut rte_mbuf = mbuf.get_ptr();
-                let sgaseg: demi_sgaseg_t = demi_sgaseg_t {
-                    sgaseg_buf: mbuf.data_ptr() as *mut c_void,
-                    sgaseg_len: mbuf.len() as u32,
-                };
-                mem::forget(mbuf);
-                (mbuf_ptr, sgaseg)
-            },
+    pub fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        // Create a scatter-gather segment to expose the DemiBuffer to the user.
+        let data: *const u8 = buf.as_ptr();
+        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
+            sgaseg_buf: data as *mut c_void,
+            sgaseg_len: buf.len() as u32,
         };
 
-        // TODO: Drop the sga_addr field in the scatter-gather array.
+        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
         Ok(demi_sgarray_t {
-            sga_buf: mbuf_ptr as *mut c_void,
+            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
             sga_numsegs: 1,
-            sga_segs: [sgaseg],
+            sga_segs: [sga_seg],
             sga_addr: unsafe { mem::zeroed() },
         })
     }
@@ -135,42 +118,37 @@ impl MemoryManager {
 
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        // Allocate underlying buffer.
-        let (mbuf_ptr, sgaseg): (*mut rte_mbuf, demi_sgaseg_t) =
+        // ToDo: Allocate an array of buffers if requested size is too large for a single buffer.
+
+        // We can't allocate more than a single buffer.
+        if size > u16::MAX as usize {
+            return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
+        }
+
+        // First allocate the underlying DemiBuffer.
+        let buf: DemiBuffer =
             if size > self.inner.config.get_inline_body_size() && size <= self.inner.config.get_max_body_size() {
                 // Allocate a DPDK-managed buffer.
                 let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(Some(size))?;
-
-                // Adjust various fields in the mbuf and create a scatter-gather segment out of it.
-                unsafe {
-                    let buf_ptr: *mut u8 = (*mbuf_ptr).buf_addr as *mut u8;
-                    let data_ptr: *mut u8 = buf_ptr.offset((*mbuf_ptr).data_off as isize);
-                    (
-                        mbuf_ptr,
-                        demi_sgaseg_t {
-                            sgaseg_buf: data_ptr as *mut c_void,
-                            sgaseg_len: size as u32,
-                        },
-                    )
-                }
+                // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
+                unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
             } else {
                 // Allocate a heap-managed buffer.
-                let dbuf: DataBuffer = DataBuffer::new(size)?;
-                let (dbuf_ptr, _): (*const u8, *const u8) = DataBuffer::into_raw_parts(dbuf)?;
-                (
-                    ptr::null_mut(),
-                    demi_sgaseg_t {
-                        sgaseg_buf: dbuf_ptr as *mut c_void,
-                        sgaseg_len: size as u32,
-                    },
-                )
+                DemiBuffer::new(size as u16)
             };
 
-        // TODO: Drop the sga_addr field in the scatter-gather array.
+        // Create a scatter-gather segment to expose the DemiBuffer to the user.
+        let data: *const u8 = buf.as_ptr();
+        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
+            sgaseg_buf: data as *mut c_void,
+            sgaseg_len: size as u32,
+        };
+
+        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
         Ok(demi_sgarray_t {
-            sga_buf: mbuf_ptr as *mut c_void,
+            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
             sga_numsegs: 1,
-            sga_segs: [sgaseg],
+            sga_segs: [sga_seg],
             sga_addr: unsafe { mem::zeroed() },
         })
     }
@@ -180,62 +158,81 @@ impl MemoryManager {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
         }
 
-        // Release underlying buffer.
-        // NOTE: In contrast to the other LibOses we store in the sga.sga_buf a pointer to an MBuf, and use this to
-        // differentiate a DPDKBuffer for a DataBuffer. This only works because in the receive path, all buffers are
-        // allocated from the DPDK pool, thus we don't need to keep track of data pointer. We should revisit this when
-        // changing the scatter-gather array structure.
-        if !sga.sga_buf.is_null() {
-            // Release DPDK-managed buffer.
-            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
-            MemoryPool::free_mbuf(mbuf_ptr);
-        } else {
-            // Release heap-managed buffer.
-            let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
-            let (data_ptr, length): (*mut u8, usize) = (sgaseg.sgaseg_buf as *mut u8, sgaseg.sgaseg_len as usize);
-
-            // Convert back to a heap buffer and drop allocation.
-            DataBuffer::from_raw_parts(data_ptr, length)?;
+        if sga.sga_buf == ptr::null_mut() {
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid DemiBuffer token"));
         }
+
+        // Convert back to a DemiBuffer and drop it.
+        // Safety: The `NonNull::new_unchecked()` call is safe, as we verified `sga.sga_buf` is not null above.
+        let token: NonNull<u8> = unsafe { NonNull::new_unchecked(sga.sga_buf as *mut u8) };
+        // Safety: The `DemiBuffer::from_raw()` call *should* be safe, as the `sga_buf` field in the `demi_sgarray_t`
+        // contained a valid `DemiBuffer` token when we provided it to the user (and the user shouldn't change it).
+        let buf: DemiBuffer = unsafe { DemiBuffer::from_raw(token) };
+        drop(buf);
 
         Ok(())
     }
 
-    /// Clones a scatter-gather array.
-    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<Buffer, Fail> {
+    /// Clones a scatter-gather array into a DemiBuffer.
+    pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
-            return Err(Fail::new(libc::EINVAL, "scatter-gather array with invalid size"));
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
         }
 
-        let sgaseg: demi_sgaseg_t = sga.sga_segs[0];
-        let (ptr, len): (*mut c_void, usize) = (sgaseg.sgaseg_buf, sgaseg.sgaseg_len as usize);
+        if sga.sga_buf == ptr::null_mut() {
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid DemiBuffer token"));
+        }
 
-        // Clone underlying buffer.
-        // NOTE: In contrast to the other LibOses we store in the sga.sga_buf a pointer to an MBuf, and use this to
-        // differentiate a DPDKBuffer for a DataBuffer. This only works because in the receive path, all buffers are
-        // allocated from the DPDK pool, thus we don't need to keep track of data pointer. We should revisit this when
-        // changing the scatter-gather array structure.
-        let buf: Buffer = if !sga.sga_buf.is_null() {
-            // Clone DPDK-managed buffer.
-            let mbuf_ptr: *mut rte_mbuf = sga.sga_buf as *mut rte_mbuf;
-            let body_clone: *mut rte_mbuf = match MemoryPool::clone_mbuf(mbuf_ptr) {
-                Ok(mbuf_ptr) => mbuf_ptr,
-                Err(e) => panic!("failed to clone mbuf: {:?}", e.cause),
-            };
-            Buffer::DPDK(DPDKBuffer::new(body_clone))
-        } else {
-            // Clone heap-managed buffer.
-            let seg_slice: &[u8] = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
-            let buf: DataBuffer = DataBuffer::from_slice(seg_slice);
-            Buffer::Heap(buf)
-        };
+        // Convert back to a DemiBuffer.
+        // Safety: The `NonNull::new_unchecked()` call is safe, as we verified `sga.sga_buf` is not null above.
+        let token: NonNull<u8> = unsafe { NonNull::new_unchecked(sga.sga_buf as *mut u8) };
+        // Safety: The `DemiBuffer::from_raw()` call *should* be safe, as the `sga_buf` field in the `demi_sgarray_t`
+        // contained a valid `DemiBuffer` token when we provided it to the user (and the user shouldn't change it).
+        let buf: DemiBuffer = unsafe { DemiBuffer::from_raw(token) };
+        let mut clone: DemiBuffer = buf.clone();
 
-        Ok(buf)
+        // Don't drop buf, as it holds the same reference to the data as the sgarray (which should keep it).
+        mem::forget(buf);
+
+        // Check to see if the user has reduced the size of the buffer described by the sgarray segment since we
+        // provided it to them.  They could have increased the starting address of the buffer (`sgaseg_buf`),
+        // decreased the ending address of the buffer (`sgaseg_buf + sgaseg_len`), or both.
+        let sga_data: *const u8 = sga.sga_segs[0].sgaseg_buf as *const u8;
+        let sga_len: usize = sga.sga_segs[0].sgaseg_len as usize;
+        let clone_data: *const u8 = clone.as_ptr();
+        let mut clone_len: usize = clone.len();
+        if sga_data != clone_data || sga_len != clone_len {
+            // We need to adjust the DemiBuffer to match the user's changes.
+
+            // First check that the user didn't do something non-sensical, like change the buffer description to
+            // reference address space outside of the allocated memory area.
+            if sga_data < clone_data || sga_data.addr() + sga_len > clone_data.addr() + clone_len {
+                return Err(Fail::new(
+                    libc::EINVAL,
+                    "demi_sgarray_t describes data outside backing buffer's allocated region",
+                ));
+            }
+
+            // Calculate the amount the new starting address is ahead of the old.  And then adjust `clone` to match.
+            let adjustment_amount: usize = sga_data.addr() - clone_data.addr();
+            clone.adjust(adjustment_amount)?;
+
+            // An adjustment above would have reduced clone.len() by the adjustment amount.
+            clone_len -= adjustment_amount;
+            debug_assert_eq!(clone_len, clone.len());
+
+            // Trim the clone down to size.
+            let trim_amount: usize = clone_len - sga_len;
+            clone.trim(trim_amount)?;
+        }
+
+        // Return the clone.
+        Ok(clone)
     }
 
     /// Returns a raw pointer to the underlying body pool.

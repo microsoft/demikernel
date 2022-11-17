@@ -15,10 +15,7 @@ use ::demikernel::{
         InetStack,
     },
     runtime::{
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         QDesc,
         QToken,
     },
@@ -98,7 +95,7 @@ fn do_passive_connection_setup_wildcard_ephemeral(mut libos: &mut InetStack) {
 /// Tests if a passive socket may be successfully opened and closed.
 #[test]
 fn tcp_connection_setup() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     do_passive_connection_setup(&mut libos);
@@ -113,8 +110,8 @@ fn tcp_connection_setup() {
 /// Tests if connection may be successfully established by an unbound active socket.
 #[test]
 fn tcp_establish_connection_unbound() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -163,8 +160,8 @@ fn tcp_establish_connection_unbound() {
 /// Tests if connection may be successfully established by a bound active socket.
 #[test]
 fn tcp_establish_connection_bound() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -219,8 +216,8 @@ fn tcp_establish_connection_bound() {
 /// Tests if data can be pushed.
 #[test]
 fn tcp_push_remote() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -268,7 +265,7 @@ fn tcp_push_remote() {
         }
 
         // Cook some data.
-        let bytes: Buffer = DummyLibOS::cook_data(32);
+        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);
@@ -293,7 +290,7 @@ fn tcp_push_remote() {
 /// Tests for bad socket creation.
 #[test]
 fn tcp_bad_socket() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     #[cfg(target_os = "linux")]
@@ -401,7 +398,7 @@ fn tcp_bad_socket() {
 /// Test bad calls for `bind()`.
 #[test]
 fn tcp_bad_bind() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
@@ -443,7 +440,7 @@ fn tcp_bad_bind() {
 /// Tests bad calls for `listen()`.
 #[test]
 fn tcp_bad_listen() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     let port: u16 = PORT_BASE;
@@ -493,7 +490,7 @@ fn tcp_bad_listen() {
 /// Tests bad calls for `accept()`.
 #[test]
 fn tcp_bad_accept() {
-    let (tx, rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
 
     // Invalid queue descriptor.
@@ -510,8 +507,8 @@ fn tcp_bad_accept() {
 /// Tests if data can be successfully established.
 #[test]
 fn tcp_bad_connect() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -581,8 +578,8 @@ fn tcp_bad_connect() {
 /// Tests if bad calls t `close()`.
 #[test]
 fn tcp_bad_close() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -660,8 +657,8 @@ fn tcp_bad_close() {
 /// Tests bad calls to `push()`.
 #[test]
 fn tcp_bad_push() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -709,7 +706,7 @@ fn tcp_bad_push() {
         }
 
         // Cook some data.
-        let bytes: Buffer = DummyLibOS::cook_data(32);
+        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push to bad socket.
         match libos.push2(QDesc::from(2), &bytes) {
@@ -719,7 +716,10 @@ fn tcp_bad_push() {
 
         // Push bad data to socket.
         let zero_bytes: [u8; 0] = [];
-        match libos.push2(sockqd, &DataBuffer::from_slice(&zero_bytes)) {
+        match libos.push2(
+            sockqd,
+            &DemiBuffer::from_slice(&zero_bytes).expect("(zero-byte) slice should fit in a DemiBuffer."),
+        ) {
             Ok(_) => panic!("push2() zero-length slice should fail."),
             Err(_) => (),
         };
@@ -747,8 +747,8 @@ fn tcp_bad_push() {
 /// Tests bad calls to `pop()`.
 #[test]
 fn tcp_bad_pop() {
-    let (alice_tx, alice_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
-    let (bob_tx, bob_rx): (Sender<DataBuffer>, Receiver<DataBuffer>) = crossbeam_channel::unbounded();
+    let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
     let alice: JoinHandle<()> = thread::spawn(move || {
         let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
@@ -802,7 +802,7 @@ fn tcp_bad_pop() {
         }
 
         // Cook some data.
-        let bytes: Buffer = DummyLibOS::cook_data(32);
+        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
         let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);

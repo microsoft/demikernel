@@ -9,7 +9,7 @@ use crate::{
     inetstack::protocols::ip::IpProtocol,
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
     },
 };
 use ::byteorder::{
@@ -127,7 +127,7 @@ impl Ipv4Header {
     }
 
     /// Parses a buffer into an IPv4 header and payload.
-    pub fn parse(mut buf: Buffer) -> Result<(Self, Buffer), Fail> {
+    pub fn parse(mut buf: DemiBuffer) -> Result<(Self, DemiBuffer), Fail> {
         // The datagram should be as big as the header.
         if buf.len() < (IPV4_DATAGRAM_MIN_SIZE as usize) {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));
@@ -141,14 +141,14 @@ impl Ipv4Header {
 
         // Internet header length.
         let ihl: u8 = buf[0] & 0xF;
-        let hdr_size: usize = (ihl as usize) << 2;
-        if hdr_size < (IPV4_HEADER_MIN_SIZE as usize) {
+        let hdr_size: u16 = (ihl as u16) << 2;
+        if hdr_size < IPV4_HEADER_MIN_SIZE {
             return Err(Fail::new(EBADMSG, "ipv4 IHL is too small"));
         }
-        if buf.len() < hdr_size {
+        if buf.len() < hdr_size as usize {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too small to fit in header"));
         }
-        let hdr_buf: &[u8] = &buf[..hdr_size];
+        let hdr_buf: &[u8] = &buf[..hdr_size as usize];
 
         // Differentiated services code point.
         let dscp: u8 = hdr_buf[1] >> 2;
@@ -164,7 +164,7 @@ impl Ipv4Header {
 
         // Total length.
         let total_length: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
-        if (total_length as usize) < hdr_size {
+        if total_length < hdr_size {
             return Err(Fail::new(EBADMSG, "ipv4 datagram smaller than header"));
         }
         // NOTE: there may be padding bytes in the buffer.
@@ -231,9 +231,9 @@ impl Ipv4Header {
         let dst_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
 
         // Truncate datagram.
-        let padding_bytes: usize = buf.len() - total_length as usize;
-        buf.adjust(hdr_size);
-        buf.trim(padding_bytes);
+        let padding_bytes: usize = buf.len() - (total_length as usize);
+        buf.adjust(hdr_size as usize)?;
+        buf.trim(padding_bytes)?;
 
         let header: Ipv4Header = Self {
             version,

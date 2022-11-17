@@ -6,7 +6,7 @@
 //==============================================================================
 
 use crate::runtime::{
-    memory::Buffer,
+    memory::DemiBuffer,
     network::consts::RECEIVE_BATCH_SIZE,
 };
 use ::arrayvec::ArrayVec;
@@ -32,7 +32,7 @@ pub trait PacketBuf {
     /// Returns the body size of the target [PacketBuf].
     fn body_size(&self) -> usize;
     /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&self) -> Option<Buffer>;
+    fn take_body(&self) -> Option<DemiBuffer>;
 }
 
 /// Network Runtime
@@ -40,6 +40,6 @@ pub trait NetworkRuntime {
     /// Transmits a single [PacketBuf].
     fn transmit(&self, pkt: Box<dyn PacketBuf>);
 
-    /// Receives a batch of [PacketBuf].
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE>;
+    /// Receives a batch of [DemiBuffer].
+    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
 }

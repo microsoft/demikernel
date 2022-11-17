@@ -7,7 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::DemiBuffer,
     QDesc,
 };
 use ::std::{
@@ -24,7 +24,7 @@ pub enum OperationResult {
     Accept(QDesc),
     Push,
     // TODO: Drop wrapping Option.
-    Pop(Option<SocketAddrV4>, Buffer),
+    Pop(Option<SocketAddrV4>, DemiBuffer),
     Failed(Fail),
 }
 

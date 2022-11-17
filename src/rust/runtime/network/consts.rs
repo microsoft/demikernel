@@ -19,7 +19,7 @@ pub const MAX_MSS: usize = u16::max_value() as usize;
 /// TODO: Auto-Discovery MTU Size
 pub const DEFAULT_MSS: usize = 1450;
 
-/// Length of a [crate::memory::Buffer] batch.
+/// Length of a [crate::memory::DemiBuffer] batch.
 ///
 /// TODO: This Should be Generic
 pub const RECEIVE_BATCH_SIZE: usize = 4;

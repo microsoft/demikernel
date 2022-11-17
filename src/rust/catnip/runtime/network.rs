@@ -16,8 +16,8 @@ use crate::{
             rte_pktmbuf_chain,
         },
         memory::{
-            Buffer,
             DPDKBuffer,
+            DemiBuffer,
         },
         network::{
             consts::RECEIVE_BATCH_SIZE,
@@ -39,6 +39,10 @@ use crate::timer;
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for DPDKRuntime {
     fn transmit(&self, buf: Box<dyn PacketBuf>) {
+        // ToDo: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
+        // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
+        // prepend the headers into that mbuf and save the extra header mbuf allocation that we currently always do.
+
         // Alloc header mbuf, check header size.
         // Serialize header.
         // Decide if we can inline the data --
@@ -51,7 +55,7 @@ impl NetworkRuntime for DPDKRuntime {
         // Chain body buffer.
 
         // First, allocate a header mbuf and write the header into it.
-        let mut header_mbuf = match self.mm.alloc_header_mbuf() {
+        let mut header_mbuf: DPDKBuffer = match self.mm.alloc_header_mbuf() {
             Ok(mbuf) => mbuf,
             Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
         };
@@ -63,28 +67,33 @@ impl NetworkRuntime for DPDKRuntime {
             // Next, see how much space we have remaining and inline the body if we have room.
             let inline_space = header_mbuf.len() - header_size;
 
-            // Chain a buffer
+            // Chain a buffer.
             if body.len() > inline_space {
                 assert!(header_size + body.len() >= MIN_PAYLOAD_SIZE);
 
                 // We're only using the header_mbuf for, well, the header.
                 header_mbuf.trim(header_mbuf.len() - header_size);
 
-                let body_mbuf = match body {
-                    Buffer::DPDK(mbuf) => mbuf.clone(),
-                    Buffer::Heap(bytes) => {
-                        let mut mbuf = match self.mm.alloc_body_mbuf() {
-                            Ok(mbuf) => mbuf,
-                            Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
-                        };
-                        assert!(mbuf.len() >= bytes.len());
-                        unsafe { mbuf.slice_mut()[..bytes.len()].copy_from_slice(&bytes[..]) };
-                        mbuf.trim(mbuf.len() - bytes.len());
-                        mbuf
-                    },
+                // Get the body mbuf.
+                let body_mbuf: *mut rte_mbuf = if body.is_dpdk_allocated() {
+                    // The body is already stored in an MBuf, just extract it from the DemiBuffer.
+                    body.into_mbuf().expect("'body' should be DPDK-allocated")
+                } else {
+                    // The body is not dpdk-allocated, allocate a DPDKBuffer and copy the body into it.
+                    let mut mbuf: DPDKBuffer = match self.mm.alloc_body_mbuf() {
+                        Ok(mbuf) => mbuf,
+                        Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
+                    };
+                    assert!(mbuf.len() >= body.len());
+                    unsafe { mbuf.slice_mut()[..body.len()].copy_from_slice(&body[..]) };
+                    mbuf.trim(mbuf.len() - body.len());
+                    mbuf.into_raw()
                 };
+
+                // Safety: rte_pktmbuf_chain is a FFI that is safe to call as both of its args are valid MBuf pointers.
                 unsafe {
-                    assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf.into_raw()), 0);
+                    // Attach the body MBuf onto the header MBuf's buffer chain.
+                    assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf), 0);
                 }
                 let mut header_mbuf_ptr = header_mbuf.into_raw();
                 let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
@@ -129,7 +138,7 @@ impl NetworkRuntime for DPDKRuntime {
         }
     }
 
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
@@ -145,8 +154,8 @@ impl NetworkRuntime for DPDKRuntime {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos:receive::for");
             for &packet in &packets[..nb_rx as usize] {
-                let mbuf: DPDKBuffer = DPDKBuffer::new(packet);
-                let buf: Buffer = Buffer::DPDK(mbuf);
+                // Safety: `packet` is a valid pointer to a properly initialized `rte_mbuf` struct.
+                let buf: DemiBuffer = unsafe { DemiBuffer::from_mbuf(packet) };
                 out.push(buf);
             }
         }

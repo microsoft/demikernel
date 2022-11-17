@@ -10,10 +10,7 @@ use ::demikernel::{
     inetstack::InetStack,
     runtime::{
         logging,
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             config::{
                 ArpConfig,
@@ -55,8 +52,8 @@ impl DummyLibOS {
     pub fn new(
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
-        tx: Sender<DataBuffer>,
-        rx: Receiver<DataBuffer>,
+        tx: Sender<DemiBuffer>,
+        rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> InetStack {
         let now: Instant = Instant::now();
@@ -89,10 +86,10 @@ impl DummyLibOS {
     }
 
     /// Cooks a buffer.
-    pub fn cook_data(size: usize) -> Buffer {
+    pub fn cook_data(size: usize) -> DemiBuffer {
         let fill_char: u8 = b'a';
 
-        let mut buf: Buffer = Buffer::Heap(DataBuffer::new(size).unwrap());
+        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         for a in &mut buf[..] {
             *a = fill_char;
         }

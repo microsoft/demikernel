@@ -8,7 +8,7 @@
 use crate::runtime::{
     fail::Fail,
     liburing,
-    memory::Buffer,
+    memory::DemiBuffer,
 };
 use ::libc::socklen_t;
 use ::nix::{
@@ -72,7 +72,7 @@ impl IoUring {
     }
 
     /// Pushes a buffer to the target IO user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<*const liburing::msghdr, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
@@ -119,7 +119,7 @@ impl IoUring {
         &mut self,
         sockfd: RawFd,
         addr: SockaddrStorage,
-        buf: Buffer,
+        buf: DemiBuffer,
     ) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
@@ -169,7 +169,7 @@ impl IoUring {
     }
 
     /// Pops a buffer from the target IO user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<*const liburing::msghdr, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();

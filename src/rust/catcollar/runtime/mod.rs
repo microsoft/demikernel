@@ -13,7 +13,7 @@ use crate::{
     runtime::{
         fail::Fail,
         liburing,
-        memory::Buffer,
+        memory::DemiBuffer,
         Runtime,
     },
     scheduler::scheduler::Scheduler,
@@ -80,7 +80,7 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn push(&mut self, sockfd: RawFd, buf: Buffer) -> Result<RequestId, Fail> {
+    pub fn push(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<RequestId, Fail> {
         let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().push(sockfd, buf)?;
         let request_id: RequestId = RequestId(msg_ptr);
         self.pending.insert(request_id);
@@ -88,7 +88,7 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn pushto(&mut self, sockfd: i32, addr: SockaddrStorage, buf: Buffer) -> Result<RequestId, Fail> {
+    pub fn pushto(&mut self, sockfd: i32, addr: SockaddrStorage, buf: DemiBuffer) -> Result<RequestId, Fail> {
         let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?;
         let request_id: RequestId = RequestId(msg_ptr);
         self.pending.insert(request_id);
@@ -96,7 +96,7 @@ impl IoUringRuntime {
     }
 
     /// Pops a buffer from the target I/O user ring.
-    pub fn pop(&mut self, sockfd: RawFd, buf: Buffer) -> Result<RequestId, Fail> {
+    pub fn pop(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<RequestId, Fail> {
         let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().pop(sockfd, buf)?;
         let request_id: RequestId = RequestId(msg_ptr);
         self.pending.insert(request_id);

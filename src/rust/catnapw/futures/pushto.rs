@@ -7,7 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::DemiBuffer,
     QDesc,
 };
 use ::socket2::{
@@ -39,7 +39,7 @@ pub struct PushtoFuture {
     // Underlying socket.
     socket: Rc<RefCell<Socket>>,
     /// Buffer to send.
-    buf: Buffer,
+    buf: DemiBuffer,
 }
 
 //==============================================================================
@@ -49,7 +49,7 @@ pub struct PushtoFuture {
 /// Associate Functions for Pushto Operation Descriptors
 impl PushtoFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(qd: QDesc, socket: Rc<RefCell<Socket>>, addr: SockAddr, buf: Buffer) -> Self {
+    pub fn new(qd: QDesc, socket: Rc<RefCell<Socket>>, addr: SockAddr, buf: DemiBuffer) -> Self {
         Self { qd, addr, socket, buf }
     }
 

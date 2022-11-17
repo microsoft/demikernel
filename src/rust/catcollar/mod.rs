@@ -32,8 +32,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::{
-            Buffer,
-            DataBuffer,
+            DemiBuffer,
             MemoryRuntime,
         },
         queue::IoQueueTable,
@@ -78,7 +77,7 @@ use ::std::{
 //======================================================================================================================
 
 // Size of receive buffers.
-const CATCOLLAR_RECVBUF_SIZE: usize = 9000;
+const CATCOLLAR_RECVBUF_SIZE: u16 = 9000;
 
 //======================================================================================================================
 // Structures
@@ -241,7 +240,7 @@ impl CatcollarLibOS {
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
-        let buf: Buffer = self.runtime.clone_sgarray(sga)?;
+        let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
 
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -300,7 +299,7 @@ impl CatcollarLibOS {
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}", qd);
 
-        let buf: Buffer = Buffer::Heap(DataBuffer::new(CATCOLLAR_RECVBUF_SIZE)?);
+        let buf: DemiBuffer = DemiBuffer::new(CATCOLLAR_RECVBUF_SIZE);
 
         // Issue pop operation.
         match self.sockets.get(&qd) {

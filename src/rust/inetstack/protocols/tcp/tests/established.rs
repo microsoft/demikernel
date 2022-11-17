@@ -21,10 +21,7 @@ use crate::{
         },
     },
     runtime::{
-        memory::{
-            Buffer,
-            DataBuffer,
-        },
+        memory::DemiBuffer,
         QDesc,
     },
 };
@@ -45,12 +42,13 @@ use ::std::{
 //=============================================================================
 
 /// Cooks a buffer.
-fn cook_buffer(size: usize, stamp: Option<u8>) -> Buffer {
-    let mut buf: DataBuffer = DataBuffer::new(size).unwrap();
+fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
+    assert!(size < u16::MAX as usize);
+    let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
     for i in 0..size {
         buf[i] = stamp.unwrap_or(i as u8);
     }
-    Buffer::Heap(buf)
+    buf
 }
 
 //=============================================================================
@@ -64,8 +62,8 @@ fn send_data(
     window_size: u16,
     seq_no: SeqNumber,
     ack_num: Option<SeqNumber>,
-    bytes: Buffer,
-) -> (Buffer, usize) {
+    bytes: DemiBuffer,
+) -> (DemiBuffer, usize) {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -75,7 +73,7 @@ fn send_data(
     // Push data.
     let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
 
-    let bytes: Buffer = sender.rt.pop_frame();
+    let bytes: DemiBuffer = sender.rt.pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
         sender.rt.link_addr,
@@ -103,7 +101,7 @@ fn send_data(
 
 //=============================================================================
 
-fn recv_data(ctx: &mut Context, receiver: &mut Engine, sender: &mut Engine, receiver_fd: QDesc, bytes: Buffer) {
+fn recv_data(ctx: &mut Context, receiver: &mut Engine, sender: &mut Engine, receiver_fd: QDesc, bytes: DemiBuffer) {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -162,12 +160,12 @@ fn send_recv(
     client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
-    bytes: Buffer,
+    bytes: DemiBuffer,
 ) {
     let bufsize: usize = bytes.len();
 
     // Push data.
-    let (bytes, _): (Buffer, usize) = send_data(
+    let (bytes, _): (DemiBuffer, usize) = send_data(
         ctx,
         now,
         server,
@@ -197,18 +195,18 @@ fn send_recv_round(
     client_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
-    bytes: Buffer,
+    bytes: DemiBuffer,
 ) {
     // Push Data: Client -> Server
-    let (bytes, bufsize): (Buffer, usize) =
+    let (bytes, bufsize): (DemiBuffer, usize) =
         send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes);
 
     // Pop data.
     recv_data(ctx, server, client, server_fd, bytes.clone());
 
     // Push Data: Server -> Client
-    let bytes: Buffer = cook_buffer(bufsize, None);
-    let (bytes, _): (Buffer, usize) = send_data(
+    let bytes: DemiBuffer = cook_buffer(bufsize, None);
+    let (bytes, _): (DemiBuffer, usize) = send_data(
         ctx,
         now,
         client,
@@ -237,13 +235,13 @@ fn connection_hangup(
     // Send FIN: Client -> Server
     client.tcp_close(client_fd).expect("client tcp_close returned error");
     client.rt.poll_scheduler();
-    let bytes: Buffer = client.rt.pop_frame();
+    let bytes: DemiBuffer = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
     server.receive(bytes).expect("server receive returned error");
     server.rt.poll_scheduler();
-    let bytes: Buffer = server.rt.pop_frame();
+    let bytes: DemiBuffer = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -253,13 +251,13 @@ fn connection_hangup(
     // Send FIN: Server -> Client
     server.tcp_close(server_fd).expect("server tcp_close returned error");
     server.rt.poll_scheduler();
-    let bytes: Buffer = server.rt.pop_frame();
+    let bytes: DemiBuffer = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
     client.receive(bytes).expect("client receive (of FIN) returned error");
     client.rt.poll_scheduler();
-    let bytes: Buffer = client.rt.pop_frame();
+    let bytes: DemiBuffer = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -296,7 +294,7 @@ pub fn test_send_recv_loop() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Buffer = cook_buffer(bufsize as usize, None);
+    let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv(
@@ -336,7 +334,7 @@ pub fn test_send_recv_round_loop() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Buffer = cook_buffer(bufsize as usize, None);
+    let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv_round(
@@ -379,14 +377,14 @@ pub fn test_send_recv_with_delay() {
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 
     let bufsize: u32 = 64;
-    let buf: Buffer = cook_buffer(bufsize as usize, None);
+    let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
     let mut recv_seq_no: SeqNumber = SeqNumber::from(1);
     let mut seq_no: SeqNumber = SeqNumber::from(1);
-    let mut inflight = VecDeque::<Buffer>::new();
+    let mut inflight = VecDeque::<DemiBuffer>::new();
 
     for _ in 0..((max_window_size + 1) / bufsize) {
         // Push data.
-        let (bytes, _): (Buffer, usize) = send_data(
+        let (bytes, _): (DemiBuffer, usize) = send_data(
             &mut ctx,
             &mut now,
             &mut server,

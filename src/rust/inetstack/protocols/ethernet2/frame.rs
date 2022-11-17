@@ -5,7 +5,7 @@ use crate::{
     inetstack::protocols::ethernet2::EtherType2,
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         network::types::MacAddress,
     },
 };
@@ -46,7 +46,7 @@ impl Ethernet2Header {
         ETHERNET2_HEADER_SIZE
     }
 
-    pub fn parse(mut buf: Buffer) -> Result<(Self, Buffer), Fail> {
+    pub fn parse(mut buf: DemiBuffer) -> Result<(Self, DemiBuffer), Fail> {
         if buf.len() < ETHERNET2_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "frame too small"));
         }
@@ -60,7 +60,7 @@ impl Ethernet2Header {
             ether_type,
         };
 
-        buf.adjust(ETHERNET2_HEADER_SIZE);
+        buf.adjust(ETHERNET2_HEADER_SIZE)?;
         Ok((hdr, buf))
     }
 

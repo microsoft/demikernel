@@ -7,7 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::Buffer,
+    memory::DemiBuffer,
     QDesc,
 };
 use ::nix::{
@@ -35,7 +35,7 @@ pub struct PushFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
-    buf: Buffer,
+    buf: DemiBuffer,
 }
 
 //==============================================================================
@@ -45,7 +45,7 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a push operation.
-    pub fn new(qd: QDesc, fd: RawFd, buf: Buffer) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, buf: DemiBuffer) -> Self {
         Self { qd, fd, buf }
     }
 

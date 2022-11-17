@@ -7,7 +7,7 @@
 
 use super::IoUringRuntime;
 use crate::runtime::{
-    memory::Buffer,
+    memory::DemiBuffer,
     network::{
         consts::RECEIVE_BATCH_SIZE,
         NetworkRuntime,
@@ -28,7 +28,7 @@ impl NetworkRuntime for IoUringRuntime {
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<Buffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 }

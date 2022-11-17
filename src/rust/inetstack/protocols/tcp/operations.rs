@@ -9,7 +9,7 @@ use crate::{
     inetstack::operations::OperationResult,
     runtime::{
         fail::Fail,
-        memory::Buffer,
+        memory::DemiBuffer,
         QDesc,
     },
     scheduler::FutureResult,
@@ -212,7 +212,7 @@ impl fmt::Debug for PopFuture {
 }
 
 impl Future for PopFuture {
-    type Output = Result<Buffer, Fail>;
+    type Output = Result<DemiBuffer, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
