@@ -174,8 +174,10 @@ impl DPDKRuntime {
         std::env::set_var("MLX5_SINGLE_THREADED", "1");
         std::env::set_var("MLX4_SINGLE_THREADED", "1");
         let eal_init_refs = eal_init_args.iter().map(|s| s.as_ptr() as *mut u8).collect::<Vec<_>>();
-        unsafe {
-            rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _);
+        let ret: libc::c_int = unsafe { rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _) };
+        if ret < 0 {
+            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            bail!("EAL initialization failed (rte_errno={:?})", rte_errno);
         }
         let nb_ports: u16 = unsafe { rte_eth_dev_count_avail() };
         if nb_ports == 0 {
