@@ -115,7 +115,8 @@ where
 
     /// Removes an entry from the cache.
     pub fn remove(&mut self, _key: &K) -> Option<V> {
-        todo!()
+        let (k, v) = self.map.remove_entry(key).unwrap();
+        self.graveyard.insert(k, v.value);
     }
 
     // Gets an entry from the cache.
