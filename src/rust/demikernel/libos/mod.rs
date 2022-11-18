@@ -29,7 +29,11 @@ use crate::{
 use ::std::{
     env,
     net::SocketAddrV4,
-    time::SystemTime,
+    time::{
+        Duration,
+        Instant,
+        SystemTime,
+    },
 };
 
 #[cfg(feature = "catcollar-libos")]
@@ -163,11 +167,14 @@ impl LibOS {
     }
 
     /// Waits for a pending operation in an I/O queue.
-    pub fn wait(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        trace!("wait(): qt={:?}", qt);
+    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
+        trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
 
         // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = self.schedule(qt)?;
+        let mut handle: SchedulerHandle = self.schedule(qt)?;
+
+        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
+        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -176,6 +183,17 @@ impl LibOS {
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
                 return Ok(self.pack_result(handle, qt)?);
+            }
+
+            // If we have a timeout, check for expiration.
+            if timeout.is_some()
+                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
+                    > timeout.expect("timeout should still be set")
+            {
+                // Return this operation to the scheduling queue by removing the associated key
+                // (which would otherwise cause the operation to be freed).
+                handle.take_key();
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
             }
         }
     }
@@ -206,8 +224,11 @@ impl LibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn wait_any(&mut self, qts: &[QToken]) -> Result<(usize, demi_qresult_t), Fail> {
-        trace!("wait_any(): qts={:?}", qts);
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
+        trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
+
+        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
+        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -227,6 +248,14 @@ impl LibOS {
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
                 handle.take_key();
+            }
+
+            // If we have a timeout, check for expiration.
+            if timeout.is_some()
+                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
+                    > timeout.expect("timeout should still be set")
+            {
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
             }
         }
     }

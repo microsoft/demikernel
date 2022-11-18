@@ -278,7 +278,7 @@ impl Application {
                     Ok(qt) => qt,
                     Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
                 };
-                match self.libos.wait(qt) {
+                match self.libos.wait(qt, None) {
                     Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
                     Err(e) => panic!("operation failed: {:?}", e.cause),
                     _ => panic!("unexpected result"),

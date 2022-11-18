@@ -155,7 +155,7 @@ impl Application {
             Ok(qt) => qt,
             Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
         };
-        let (qd, mut qt): (QDesc, QToken) = match self.libos.wait(qt) {
+        let (qd, mut qt): (QDesc, QToken) = match self.libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => {
                 println!("connection accepted!");
                 let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
@@ -180,7 +180,7 @@ impl Application {
             }
 
             // Drain packets.
-            match self.libos.wait(qt) {
+            match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;

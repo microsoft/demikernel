@@ -193,7 +193,7 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            let (i, qr) = match self.libos.wait_any(&qtokens) {
+            let (i, qr) = match self.libos.wait_any(&qtokens, None) {
                 Ok((i, qr)) => (i, qr),
                 Err(e) => panic!("operation failed: {:?}", e),
             };

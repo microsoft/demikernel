@@ -2,11 +2,11 @@
 
 ## Name
 
-`demi_wait` - Waits for an asynchronous I/O operation to complete.
+`demi_wait` - Waits for an asynchronous I/O operation to complete or a timeout to expire.
 
 `demi_timedwait` - Waits for an asynchronous I/O operation to complete or a timeout to expire.
 
-`demi_wait_any` - Waits for the first asynchronous I/O operation in a list to complete.
+`demi_wait_any` - Waits for the first asynchronous I/O operation in a list to complete or a timeout to expire.
 
 ## Synopsis
 
@@ -14,14 +14,16 @@
 #include <demi/wait.h>
 #include <demi/types.h> /* For demi_qresult_t and demi_qtoken_t. */
 
-int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
-int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[], int num_qts);
+int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt, struct timespec *timeout)
+int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, demi_qtoken_t qts[], int num_qts, struct timespec *timeout);
 ```
 
 ## Description
 
-`demi_wait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt`. This
-system call may cause the calling thread to block (spin) indefinitely.
+`demi_wait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt` or for
+the expiration of a timeout, whichever happens first.  The `timeout` parameter specifies an interval timeout in seconds
+and nanoseconds.  If the `timeout` parameter is NULL, then the timeout will be treated as infinite.  If the I/O
+operation has already completed when `demi_wait()` is called, then this system call never fails with a timeout error, regardless of the value of `timeout`. This system call may cause the calling thread to block (spin) until the timeout `timeout` expires, or indefinitely if the `timeout` is not specified (i.e. is NULL).
 
 `demi_timedwait()` waits for the completion of the asynchronous I/O operation associated with the queue token `qt` or
 for the expiration of a timeout, whichever happens first. The `abstime` parameter specifies an absolute timeout in
@@ -30,8 +32,11 @@ then this system call never fails with a timeout error, regardless of the value 
 the calling thread to block (spin) until the timeout `abstime` expires.
 
 `demi_wait_any()` waits for the first asynchronous I/O operation in a set to complete. The set of I/O operations is
-specified by the list of queue tokens `qts` and it has a length of `num_qts`. This system call may cause the calling
-thread to block (spin) indefinitely.
+specified by the list of queue tokens `qts` and it has a length of `num_qts`.  The `timeout` parameter specifies an
+interval timeout in seconds and nanoseconds.  If the `timeout` parameter is NULL, then the timeout will be treated as
+infinite.  If the I/O operation has already completed when `demi_wait()` is called, then this system call never fails
+with a timeout error, regardless of the value of `timeout`. This system call may cause the calling thread to block
+(spin) until the timeout `timeout` expires, or indefinitely if the `timeout` is not specified (i.e. is NULL).
 
 When `demi_wait()` and `demi_timedwait()` successfully completes, the structure pointed to by `qr_out` is filled in with
 the result value of the I/O operation that has completed. The `demi_wait_any()` system call behaves similarly, but it

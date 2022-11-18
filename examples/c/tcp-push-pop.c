@@ -28,7 +28,7 @@ static int accept_get_newsockqd(struct sockaddr_in *addr)
     assert(demi_bind(sockqd, (const struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0);
     assert(demi_listen(sockqd, 16) == 0);
     assert(demi_accept(&tok, sockqd) == 0);
-    assert(demi_wait(&res, tok) == 0);
+    assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_ACCEPT);
     return res.qr_value.ares.qd;
 }
@@ -40,7 +40,7 @@ static int pop_get_received_nbytes(int sockqd)
     int recv_bytes = 0;
 
     assert(demi_pop(&tok, sockqd) == 0);
-    assert(demi_wait(&res, tok) == 0);
+    assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_POP);
     assert(res.qr_value.sga.sga_segs != 0);
     recv_bytes = res.qr_value.sga.sga_segs[0].sgaseg_len;
@@ -70,7 +70,7 @@ static int connect_get_sockqd(const struct sockaddr_in *const addr)
 
     assert(demi_socket(&sockqd, AF_INET, SOCK_STREAM, 0) == 0);
     assert(demi_connect(&tok, sockqd, (const struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0);
-    assert(demi_wait(&res, tok) == 0);
+    assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_CONNECT);
     return sockqd;
 }
@@ -85,7 +85,7 @@ static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int 
     assert(sga.sga_segs != 0);
     memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
     assert(demi_pushto(&tok, sockqd, &sga, (const struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0);
-    assert(demi_wait(&res, tok) == 0);
+    assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_PUSH);
     sent_bytes = sga.sga_segs[0].sgaseg_len;
     assert(demi_sgafree(&sga) == 0);

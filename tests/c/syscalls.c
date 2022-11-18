@@ -171,8 +171,9 @@ static bool inval_wait(void)
 {
     demi_qresult_t *qr = NULL;
     demi_qtoken_t qt = -1;
+    struct timespec *timeout = NULL;
 
-    return (demi_wait(qr, qt) != 0);
+    return (demi_wait(qr, qt, timeout) != 0);
 }
 
 /**
@@ -184,8 +185,9 @@ static bool inval_wait_any(void)
     int *ready_offset = NULL;
     demi_qtoken_t *qts = NULL;
     int num_qts = -1;
+    struct timespec *timeout = NULL;
 
-    return (demi_wait_any(qr, ready_offset, qts, num_qts) != 0);
+    return (demi_wait_any(qr, ready_offset, qts, num_qts, timeout) != 0);
 }
 
 /*===================================================================================================================*
