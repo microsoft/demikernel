@@ -114,8 +114,19 @@ where
     }
 
     /// Removes an entry from the cache.
-    pub fn remove(&mut self, _key: &K) -> Option<V> {
-        todo!()
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        match self.get(key) {
+            Some(_) => {
+                let (k, v): (K, Record<V>) = self.map.remove_entry(key).unwrap();
+                // FIXME: should be returning the removed memory not the old one from
+                // the graveyard, but we can't without cloning the removed value
+                self.graveyard.insert(k, v.value)
+            },
+            None => {
+                warn!("Trying to remove key that does not exist");
+                None
+            },
+        }
     }
 
     // Gets an entry from the cache.
