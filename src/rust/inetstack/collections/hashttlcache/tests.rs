@@ -126,3 +126,28 @@ fn replace_object() {
     cache.cleanup();
     assert!(cache.get(&"a").is_none());
 }
+
+#[test]
+fn add_and_remove_object() {
+    let now = Instant::now();
+    let ttl = Duration::from_secs(2);
+    let default_ttl = Duration::from_secs(1);
+    let mut cache = HashTtlCache::new(now, Some(default_ttl));
+    // insert object with default TTL
+    cache.insert("a", 'a');
+    // insert object with some TTL
+    cache.insert_with_ttl("b", 'b', Some(ttl));
+
+    // make sure object is in the cache
+    assert!(cache.get(&"a") == Some(&'a'));
+    assert!(cache.get(&"b") == Some(&'b'));
+
+    // remove object
+    cache.remove(&"a");
+    cache.remove(&"b");
+
+    // make sure object is not in cache
+    assert!(cache.get(&"a").is_none());
+    assert!(cache.get(&"b").is_none());
+
+}
