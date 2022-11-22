@@ -175,9 +175,9 @@ impl LibOS {
         let qt_array: [QToken; 1] = [qt];
 
         // Call wait_any() to do the real work.
-        let result = self.wait_any(&qt_array, timeout)?;
-        debug_assert_eq!(result.0, 0);
-        Ok(result.1)
+        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
+        debug_assert_eq!(offset, 0);
+        Ok(qr)
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.
