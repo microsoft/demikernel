@@ -93,7 +93,7 @@ impl ProgramArguments {
                 Arg::new("bufsize")
                     .long("bufsize")
                     .value_parser(clap::value_parser!(String))
-                    .required(true)
+                    .required(false)
                     .value_name("SIZE")
                     .help("Sets buffer size"),
             )
