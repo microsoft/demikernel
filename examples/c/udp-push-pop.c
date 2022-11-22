@@ -70,7 +70,7 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
         assert(demi_pop(&qt, sockqd) == 0);
 
         /* Wait for pop operation to complete. */
-        assert(demi_wait(&qr, qt) == 0);
+        assert(demi_wait(&qr, qt, NULL) == 0);
 
         /* Parse operation result. */
         assert(qr.qr_opcode == DEMI_OPC_POP);
@@ -125,7 +125,7 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
         assert(demi_pushto(&qt, sockqd, &sga, (const struct sockaddr *)remote, sizeof(struct sockaddr_in)) == 0);
 
         /* Wait push operation to complete. */
-        assert(demi_wait(&qr, qt) == 0);
+        assert(demi_wait(&qr, qt, NULL) == 0);
 
         /* Parse operation result. */
         assert(qr.qr_opcode == DEMI_OPC_PUSH);

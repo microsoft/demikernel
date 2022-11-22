@@ -56,7 +56,7 @@ static int accept_wait(int qd)
     assert(demi_accept(&qt, qd) == 0);
 
     /* Wait for operation to complete. */
-    assert(demi_wait(&qr, qt) == 0);
+    assert(demi_wait(&qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr.qr_opcode == DEMI_OPC_ACCEPT);
@@ -83,7 +83,7 @@ static void connect_wait(int qd, const struct sockaddr_in *saddr)
     assert(demi_connect(&qt, qd, (const struct sockaddr *)saddr, sizeof(struct sockaddr_in)) == 0);
 
     /* Wait for operation to complete. */
-    assert(demi_wait(&qr, qt) == 0);
+    assert(demi_wait(&qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr.qr_opcode == DEMI_OPC_CONNECT);
@@ -108,7 +108,7 @@ static void push_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr)
     assert(demi_push(&qt, qd, sga) == 0);
 
     /* Wait push operation to complete. */
-    assert(demi_wait(qr, qt) == 0);
+    assert(demi_wait(qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr->qr_opcode == DEMI_OPC_PUSH);
@@ -132,7 +132,7 @@ static void pop_wait(int qd, demi_qresult_t *qr)
     assert(demi_pop(&qt, qd) == 0);
 
     /* Wait for pop operation to complete. */
-    assert(demi_wait(qr, qt) == 0);
+    assert(demi_wait(qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr->qr_opcode == DEMI_OPC_POP);

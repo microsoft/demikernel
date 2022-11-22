@@ -104,7 +104,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
         Ok(qt) => qt,
         Err(e) => panic!("accept failed: {:?}", e.cause),
     };
-    let qd: QDesc = match libos.wait(qt) {
+    let qd: QDesc = match libos.wait(qt, None) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { qr.qr_value.ares.qd.into() },
         Err(e) => panic!("operation failed: {:?}", e.cause),
         _ => panic!("unexpected result"),
@@ -117,7 +117,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt) {
+        let sga: demi_sgarray_t = match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
@@ -136,7 +136,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
             Ok(qt) => qt,
             Err(e) => panic!("push failed: {:?}", e.cause),
         };
-        match libos.wait(qt) {
+        match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
@@ -181,7 +181,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
         Ok(qt) => qt,
         Err(e) => panic!("connect failed: {:?}", e.cause),
     };
-    match libos.wait(qt) {
+    match libos.wait(qt, None) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
         Err(e) => panic!("operation failed: {:?}", e),
         _ => panic!("unexpected result"),
@@ -196,7 +196,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
             Ok(qt) => qt,
             Err(e) => panic!("push failed: {:?}", e.cause),
         };
-        match libos.wait(qt) {
+        match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
@@ -211,7 +211,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt) {
+        let sga: demi_sgarray_t = match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
