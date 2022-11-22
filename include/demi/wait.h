@@ -15,12 +15,13 @@ extern "C"
     /**
      * @brief Waits for an asynchronous I/O operation to complete.
      *
-     * @param qr_out Store location for the result of the completed I/O operation.
-     * @param qt     I/O queue token of the target operation to wait for completion.
+     * @param qr_out  Store location for the result of the completed I/O operation.
+     * @param qt      I/O queue token of the target operation to wait for completion.
+     * @param timeout Timeout interval in seconds and nanoseconds.
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt);
+    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *timeout);
 
     /**
      * @brief Waits for an asynchronous I/O operation to complete or a timeout to expire.
@@ -40,10 +41,11 @@ extern "C"
      * @param ready_offset Store location for the offset in the list of I/O queue tokens of the completed I/O operation.
      * @param qts          List of I/O queue tokens to wait for completion.
      * @param num_qts      Length of the list of I/O queue tokens to wait for completion.
+     * @param timeout      Timeout interval in seconds and nanoseconds.
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts);
+    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts, const struct timespec *timeout);
 
 #ifdef __cplusplus
 }

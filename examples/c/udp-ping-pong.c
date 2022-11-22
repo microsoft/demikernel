@@ -56,7 +56,7 @@ static void pushto_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr, const s
     assert(demi_pushto(&qt, qd, sga, (const struct sockaddr *)dest, sizeof(struct sockaddr_in)) == 0);
 
     /* Wait push operation to complete. */
-    assert(demi_wait(qr, qt) == 0);
+    assert(demi_wait(qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr->qr_opcode == DEMI_OPC_PUSH);
@@ -80,7 +80,7 @@ static void pop_wait(int qd, demi_qresult_t *qr)
     assert(demi_pop(&qt, qd) == 0);
 
     /* Wait for pop operation to complete. */
-    assert(demi_wait(qr, qt) == 0);
+    assert(demi_wait(qr, qt, NULL) == 0);
 
     /* Parse operation result. */
     assert(qr->qr_opcode == DEMI_OPC_POP);

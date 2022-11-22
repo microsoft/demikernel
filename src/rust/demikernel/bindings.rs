@@ -454,11 +454,19 @@ pub extern "C" fn demi_timedwait(
 //======================================================================================================================
 
 #[no_mangle]
-pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t) -> c_int {
-    trace!("demi_wait()");
+pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t, timeout: *const libc::timespec) -> c_int {
+    trace!("demi_wait() {:?} {:?} {:?}", qr_out, qt, timeout);
+
+    // Convert timespec to Duration.
+    let duration: Option<Duration> = if timeout.is_null() {
+        None
+    } else {
+        // Safety: We have to trust that our user is providing a valid timeout pointer for us to dereference.
+        Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
+    };
 
     // Issue wait operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait(qt.into()) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait(qt.into(), duration) {
         Ok(r) => {
             if !qr_out.is_null() {
                 unsafe { *qr_out = r };
@@ -487,8 +495,16 @@ pub extern "C" fn demi_wait_any(
     ready_offset: *mut c_int,
     qts: *mut demi_qtoken_t,
     num_qts: c_int,
+    timeout: *const libc::timespec,
 ) -> c_int {
-    trace!("demi_wait_any()");
+    trace!(
+        "demi_wait_any() {:?} {:?} {:?} {:?} {:?}",
+        qr_out,
+        ready_offset,
+        qts,
+        num_qts,
+        timeout
+    );
 
     // Check arguments.
     if num_qts < 0 {
@@ -501,8 +517,16 @@ pub extern "C" fn demi_wait_any(
         raw_qts.iter().map(|i| QToken::from(*i)).collect()
     };
 
+    // Convert timespec to Duration.
+    let duration: Option<Duration> = if timeout.is_null() {
+        None
+    } else {
+        // Safety: We have to trust that our user is providing a valid timeout pointer for us to dereference.
+        Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
+    };
+
     // Issue wait_any operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait_any(&qts) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait_any(&qts, duration) {
         Ok((ix, qr)) => {
             unsafe {
                 *qr_out = qr;

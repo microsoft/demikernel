@@ -102,7 +102,7 @@ fn server(local: SocketAddrV4, remote: SocketAddrV4) -> ! {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt) {
+        let sga: demi_sgarray_t = match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
@@ -121,7 +121,7 @@ fn server(local: SocketAddrV4, remote: SocketAddrV4) -> ! {
             Ok(qt) => qt,
             Err(e) => panic!("push failed: {:?}", e.cause),
         };
-        match libos.wait(qt) {
+        match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
             Err(e) => panic!("operation failed: {:?}", e.cause),
             _ => panic!("unexpected result"),
@@ -180,7 +180,7 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
     // Send packets.
     let mut i: usize = 0;
     while i < npings {
-        let (idx, qr): (usize, demi_qresult_t) = match libos.wait_any(&qts) {
+        let (idx, qr): (usize, demi_qresult_t) = match libos.wait_any(&qts, None) {
             Ok((idx, qr)) => (idx, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
