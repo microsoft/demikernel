@@ -160,7 +160,7 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: Socklen) ->
 //======================================================================================================================
 
 #[no_mangle]
-pub extern "C" fn demi_listen(fd: c_int, backlog: c_int) -> c_int {
+pub extern "C" fn demi_listen(sockqd: c_int, backlog: c_int) -> c_int {
     trace!("demi_listen()");
 
     // Check if socket backlog is invalid.
@@ -169,7 +169,7 @@ pub extern "C" fn demi_listen(fd: c_int, backlog: c_int) -> c_int {
     }
 
     // Issue listen operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.listen(fd.into(), backlog as usize) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.listen(sockqd.into(), backlog as usize) {
         Ok(..) => 0,
         Err(e) => {
             trace!("demi_listen() failed: {:?}", e);
@@ -218,7 +218,7 @@ pub extern "C" fn demi_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_
 #[no_mangle]
 pub extern "C" fn demi_connect(
     qtok_out: *mut demi_qtoken_t,
-    qd: c_int,
+    sockqd: c_int,
     saddr: *const sockaddr,
     size: Socklen,
 ) -> c_int {
@@ -244,7 +244,7 @@ pub extern "C" fn demi_connect(
     };
 
     // Issue connect operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.connect(qd.into(), endpoint) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.connect(sockqd.into(), endpoint) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
@@ -291,7 +291,7 @@ pub extern "C" fn demi_close(qd: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn demi_pushto(
     qtok_out: *mut demi_qtoken_t,
-    qd: c_int,
+    sockqd: c_int,
     sga: *const demi_sgarray_t,
     saddr: *const sockaddr,
     size: Socklen,
@@ -324,7 +324,7 @@ pub extern "C" fn demi_pushto(
         },
     };
 
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pushto(qd.into(), sga, endpoint) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pushto(sockqd.into(), sga, endpoint) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0
