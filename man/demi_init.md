@@ -32,14 +32,15 @@ All arguments supported by Demikernel are listed in the table bellow. Arguments 
 | `ARG-2` | `--catnap`    | Enables Catnap LibOS    |
 | `ARG-3` | `--catnip`    | Enables Catnip LibOS    |
 | `ARG-4` | `--catpowder` | Enables Catpowder LibOS |
+| `ARG-5` | `--catmem`    | Enables Catmem LibOS    |
 
  Any constraints/restrictions of arguments are detailed next:
 
 - `ARG-1` takes effect only on Linux hosts. If one is attempts to initialize Catcollar on a non-Linux host and `ARG-1`
 is the only parameter passed to Demikernel, `demi_init()` will fail.
 
-- `ARG-1`, `ARG-2`, `ARG-3` and `ARG-4` are mutually exclusive. Demikernel currently does not support multiple LibOSes
-to co-exist. [Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this feature.
+- `ARG-1`, `ARG-2`, `ARG-3`, `ARG-4` and `ARG-5` are mutually exclusive. Demikernel currently does not support multiple
+LibOSes to co-exist. [Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this feature.
 
 ## Return Value
 

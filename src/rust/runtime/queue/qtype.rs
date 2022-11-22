@@ -13,6 +13,7 @@ use ::std::convert::TryFrom;
 pub enum QType {
     UdpSocket = 0x0001,
     TcpSocket = 0x0002,
+    MemoryQueue = 0x003,
 }
 
 //==============================================================================
@@ -25,6 +26,7 @@ impl From<QType> for u32 {
         match value {
             QType::UdpSocket => 0x0001,
             QType::TcpSocket => 0x0002,
+            QType::MemoryQueue => 0x0003,
         }
     }
 }
@@ -37,6 +39,7 @@ impl TryFrom<u32> for QType {
         match value {
             0x0001 => Ok(QType::UdpSocket),
             0x0002 => Ok(QType::TcpSocket),
+            0x0003 => Ok(QType::MemoryQueue),
             _ => Err("invalid qtype"),
         }
     }

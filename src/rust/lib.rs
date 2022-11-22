@@ -55,6 +55,9 @@ mod catnap;
 #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
 mod catnapw;
 
+#[cfg(feature = "catmem-libos")]
+mod catmem;
+
 pub use crate::demikernel::libos::network::OperationResult;
 
 pub use self::demikernel::libos::{

@@ -38,6 +38,7 @@ use ::libc::{
 };
 use ::std::{
     cell::RefCell,
+    ffi::CStr,
     mem,
     net::{
         Ipv4Addr,
@@ -85,6 +86,70 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe { DEMIKERNEL = RefCell::new(Some(libos)) };
 
     0
+}
+
+//======================================================================================================================
+// create
+//======================================================================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_create_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
+    trace!("demi_create_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
+
+    // Convert C string to a Rust one.
+    let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return libc::EINVAL,
+    };
+
+    // Issue socket operation.
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.create_pipe(name) {
+        Ok(qd) => {
+            unsafe { *memqd_out = qd.into() };
+            0
+        },
+        Err(e) => {
+            trace!("demi_create_pipe() failed: {:?}", e);
+            e.errno
+        },
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
+}
+
+//======================================================================================================================
+// open
+//======================================================================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_open_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
+    trace!("demi_open_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
+
+    // Convert C string to a Rust one.
+    let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return libc::EINVAL,
+    };
+
+    // Issue socket operation.
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.open_pipe(name) {
+        Ok(qd) => {
+            unsafe { *memqd_out = qd.into() };
+            0
+        },
+        Err(e) => {
+            trace!("demi_open_pipe() failed: {:?}", e);
+            e.errno
+        },
+    });
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
 }
 
 //======================================================================================================================

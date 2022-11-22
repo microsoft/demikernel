@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+pub mod memory;
 pub mod name;
 pub mod network;
 
@@ -9,6 +10,7 @@ pub mod network;
 //======================================================================================================================
 
 use self::{
+    memory::MemoryLibOS,
     name::LibOSName,
     network::NetworkLibOS,
 };
@@ -38,6 +40,8 @@ use ::std::{
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
+#[cfg(feature = "catmem-libos")]
+use crate::catmem::CatmemLibOS;
 #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
 use crate::catnap::CatnapLibOS;
 #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
@@ -55,6 +59,8 @@ use crate::catpowder::CatpowderLibOS;
 pub enum LibOS {
     /// Network LibOS
     NetworkLibOS(NetworkLibOS),
+    /// Memory LibOS
+    MemoryLibOS(MemoryLibOS),
 }
 
 //======================================================================================================================
@@ -92,10 +98,34 @@ impl LibOS {
             LibOSName::Catpowder => Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config))),
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
+            #[cfg(feature = "catmem-libos")]
+            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new())),
             _ => panic!("unsupported libos"),
         };
 
         Ok(libos)
+    }
+
+    /// Creates a new memory queue.
+    pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
+        match self {
+            LibOS::NetworkLibOS(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "create_pipe() is not supported on network liboses",
+            )),
+            LibOS::MemoryLibOS(libos) => libos.create_pipe(name),
+        }
+    }
+
+    /// Opens an existing memory queue.
+    pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
+        match self {
+            LibOS::NetworkLibOS(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "open_pipe() is not supported on network liboses",
+            )),
+            LibOS::MemoryLibOS(libos) => libos.open_pipe(name),
+        }
     }
 
     /// Creates a socket.
@@ -107,6 +137,7 @@ impl LibOS {
     ) -> Result<QDesc, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "socket() is not supported on memory liboses")),
         }
     }
 
@@ -114,6 +145,7 @@ impl LibOS {
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "bind() is not supported on memory liboses")),
         }
     }
 
@@ -121,6 +153,7 @@ impl LibOS {
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "listen() is not supported on memory liboses")),
         }
     }
 
@@ -128,6 +161,7 @@ impl LibOS {
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "accept() is not supported on memory liboses")),
         }
     }
 
@@ -135,6 +169,7 @@ impl LibOS {
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "connect() is not supported on memory liboses")),
         }
     }
 
@@ -142,6 +177,7 @@ impl LibOS {
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.close(qd),
+            LibOS::MemoryLibOS(libos) => libos.close(qd),
         }
     }
 
@@ -149,6 +185,7 @@ impl LibOS {
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
+            LibOS::MemoryLibOS(libos) => libos.push(qd, sga),
         }
     }
 
@@ -156,6 +193,7 @@ impl LibOS {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
+            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "pushto() is not supported on memory liboses")),
         }
     }
 
@@ -163,6 +201,7 @@ impl LibOS {
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pop(qd),
+            LibOS::MemoryLibOS(libos) => libos.pop(qd),
         }
     }
 
@@ -246,6 +285,7 @@ impl LibOS {
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
+            LibOS::MemoryLibOS(libos) => libos.sgaalloc(size),
         }
     }
 
@@ -253,6 +293,7 @@ impl LibOS {
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
+            LibOS::MemoryLibOS(libos) => libos.sgafree(sga),
         }
     }
 
@@ -260,18 +301,21 @@ impl LibOS {
     fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.schedule(qt),
+            LibOS::MemoryLibOS(libos) => libos.schedule(qt),
         }
     }
 
     fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
+            LibOS::MemoryLibOS(libos) => libos.pack_result(handle, qt),
         }
     }
 
     fn poll(&mut self) {
         match self {
             LibOS::NetworkLibOS(libos) => libos.poll(),
+            LibOS::MemoryLibOS(libos) => libos.poll(),
         }
     }
 }
