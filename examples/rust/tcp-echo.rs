@@ -93,7 +93,7 @@ impl ProgramArguments {
                 Arg::new("bufsize")
                     .long("bufsize")
                     .value_parser(clap::value_parser!(String))
-                    .required(true)
+                    .required(false)
                     .value_name("SIZE")
                     .help("Sets buffer size"),
             )
@@ -271,22 +271,28 @@ impl Application {
     /// Runs the target echo server.
     pub fn run_server(&mut self) -> ! {
         let start: Instant = Instant::now();
+        let mut nclients: usize = 0;
         let mut nbytes: usize = 0;
         let mut qtokens: Vec<QToken> = Vec::new();
         let mut last_log: Instant = Instant::now();
+        let mut clients: Vec<QDesc> = Vec::default();
 
         // Accept first connection.
-        let qt: QToken = match self.libos.accept(self.sockqd) {
-            Ok(qt) => qt,
+        match self.libos.accept(self.sockqd) {
+            Ok(qt) => qtokens.push(qt),
             Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
         };
-        qtokens.push(qt);
 
         loop {
             // Dump statistics.
             if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
                 let elapsed: Duration = Instant::now() - start;
-                println!("{:?} B / {:?} us", nbytes, elapsed.as_micros());
+                println!(
+                    "nclients={:?} / {:?} B / {:?} us",
+                    nclients,
+                    nbytes,
+                    elapsed.as_micros()
+                );
                 last_log = Instant::now();
             }
 
@@ -300,13 +306,21 @@ impl Application {
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT => {
                     println!("connection accepted!");
-                    // Pop first packet.
+                    nclients += 1;
+
+                    // Pop first packet from this connection.
                     let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
-                    let qt: QToken = match self.libos.pop(qd) {
-                        Ok(qt) => qt,
+                    clients.push(qd);
+                    match self.libos.pop(qd) {
+                        Ok(qt) => qtokens.push(qt),
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };
-                    qtokens.push(qt);
+
+                    // Accept more connections.
+                    match self.libos.accept(self.sockqd) {
+                        Ok(qt) => qtokens.push(qt),
+                        Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
+                    };
                 },
                 // Pop completed.
                 demi_opcode_t::DEMI_OPC_POP => {
