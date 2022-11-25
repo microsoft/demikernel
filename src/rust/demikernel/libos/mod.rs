@@ -131,21 +131,21 @@ impl LibOS {
         }
     }
 
-    /// Initiates a connection with a remote TCP pper.
+    /// Initiates a connection with a remote TCP socket.
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
         }
     }
 
-    /// Closes a socket.
+    /// Closes an I/O queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.close(qd),
         }
     }
 
-    /// Pushes a scatter-gather array to a TCP socket.
+    /// Pushes a scatter-gather array to an I/O queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
@@ -159,7 +159,7 @@ impl LibOS {
         }
     }
 
-    /// Pops data from a socket.
+    /// Pops data from a an I/O queue.
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pop(qd),
@@ -175,9 +175,9 @@ impl LibOS {
         let qt_array: [QToken; 1] = [qt];
 
         // Call wait_any() to do the real work.
-        let result = self.wait_any(&qt_array, timeout)?;
-        debug_assert_eq!(result.0, 0);
-        Ok(result.1)
+        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
+        debug_assert_eq!(offset, 0);
+        Ok(qr)
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.
