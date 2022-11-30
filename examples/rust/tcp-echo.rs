@@ -19,7 +19,10 @@ use ::clap::{
 };
 use ::demikernel::{
     demi_sgarray_t,
-    runtime::types::demi_opcode_t,
+    runtime::types::{
+        demi_opcode_t,
+        demi_qresult_t,
+    },
     LibOS,
     LibOSName,
     QDesc,
@@ -296,11 +299,13 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            let (i, qr) = match self.libos.wait_any(&qtokens, None) {
-                Ok((i, qr)) => (i, qr),
+            let qr: demi_qresult_t = match self.libos.wait_any(&qtokens, None) {
+                Ok((i, qr)) => {
+                    qtokens.swap_remove(i);
+                    qr
+                },
                 Err(e) => panic!("operation failed: {:?}", e),
             };
-            qtokens.swap_remove(i);
 
             // Parse result.
             match qr.qr_opcode {
