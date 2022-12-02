@@ -25,8 +25,9 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
+#[cfg(target_os = "linux")]
+use ::std::mem;
 use ::std::{
-    mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
