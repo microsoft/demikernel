@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.Build.Traversal/2.0.19">
+  <ItemGroup>
+    <ProjectReference Include="src\**\*.csproj" />
+  </ItemGroup>
+</Project>
