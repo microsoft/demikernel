@@ -20,3 +20,18 @@ dotnet pack -c Release Build.csproj
 ```
 
 The package is currently listed on nuget.org as [Demikernel](https://www.nuget.org/packages/Demikernel/)
+
+# Notes
+
+The raw Demikernel API is exposed via `Demikernel.Interop.Libdemiknel`; however, in general-purpose applications it is *not*
+suggested to use this as the primary API; the API is exposed in a more .NET-focused way via `Socket`; for example:
+
+``` c#
+using var socket = Socket.Create(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+socket.Bind(new IPEndPoint(IPAddress.Loopback, 4133));
+socket.Listen(32);
+//...
+var accept = await socket.AcceptAsync(ct.Token);
+using var client = accept.AsSocket();
+```
+

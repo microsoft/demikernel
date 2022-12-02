@@ -67,7 +67,7 @@ public unsafe readonly struct ScatterGatherArray : IDisposable
     /// <summary>
     /// Indicates whether this buffer has exactly one segment
     /// </summary>
-    public bool IsSingleSegment => SegmentCount == 1;
+    public bool IsSingleSegment => SegmentCount < 2;
 
     /// <summary>
     /// Gets the span of the first segment associated with the buffer

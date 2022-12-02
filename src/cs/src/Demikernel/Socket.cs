@@ -9,7 +9,9 @@ using Demikernel.Internal;
 namespace Demikernel;
 
 /// <summary>
-/// Represents a network device driven by the demikernel API
+/// Represents a network device driven by the demikernel API; this is a simplified
+/// and generalised API that is broadly comparable to the <see cref="System.Net.Sockets.Socket"/>,
+/// however, it is not directly optimized as a DemiKernel message pump.
 /// </summary>
 public readonly struct Socket : IDisposable
 {
@@ -36,7 +38,7 @@ public readonly struct Socket : IDisposable
     {
         args ??= Array.Empty<string>();
         int len = args.Length; // for the NUL terminators
-        if (args.Length > 128) throw new ArgumentOutOfRangeException("Too many args, sorry");
+        if (args.Length > 128) throw new ArgumentOutOfRangeException(nameof(args), "Too many args, sorry");
         foreach (var arg in args)
         {
             len += Encoding.ASCII.GetByteCount(arg);
@@ -248,9 +250,9 @@ public readonly struct Socket : IDisposable
     /// <summary>
     /// Send data to the remote device
     /// </summary>
-    public unsafe ValueTask SendAsync(in ScatterGatherArray payload, CancellationToken cancellationToken = default)
+    public unsafe Task SendAsync(in ScatterGatherArray payload, CancellationToken cancellationToken = default)
     {
-        if (payload.IsEmpty) return default;
+        if (payload.IsEmpty) return Task.CompletedTask;
         Unsafe.SkipInit(out QueueToken qt);
         ApiResult result;
 #if SYNC_WAIT
@@ -284,27 +286,25 @@ public readonly struct Socket : IDisposable
             return default;
         }
 #endif
-        return new(PendingQueue.AddSend(qt, cancellationToken));
+        return PendingQueue.AddVoid(qt, cancellationToken);
     }
 
     /// <summary>
     /// Send data to the remote device
     /// </summary>
-    public unsafe void Send(in ScatterGatherArray payload)
+    public void Send(in ScatterGatherArray payload)
     {
         if (payload.IsEmpty) return;
-        var pending = SendAsync(in payload);
-        if (pending.IsCompleted) pending.GetAwaiter().GetResult();
-        pending.AsTask().Wait();
+        SendAsync(in payload).Wait();
     }
 
 
     /// <summary>
     /// Send data to the remote device
     /// </summary>
-    public ValueTask SendAsync(ReadOnlySpan<byte> payload, CancellationToken cancellationToken = default)
+    public Task SendAsync(ReadOnlySpan<byte> payload, CancellationToken cancellationToken = default)
     {
-        if (payload.IsEmpty) return default;
+        if (payload.IsEmpty) return Task.CompletedTask;
         using var sga = ScatterGatherArray.Create(payload);
         // this looks like we're disposing too soon, but actually it is
         // fine; you can "sgafree" as soon as the "push" has been started
@@ -320,4 +320,36 @@ public readonly struct Socket : IDisposable
         using var sga = ScatterGatherArray.Create(payload);
         Send(sga);
     }
+
+
+    /// <summary>
+    /// As a client socket, connect to a server
+    /// </summary>
+    public unsafe Task ConnectAsync(EndPoint endpoint, CancellationToken cancellationToken = default)
+    {
+        var socketAddress = endpoint.Serialize();
+        var len = socketAddress.Size;
+        if (len > 128) throw new ArgumentException($"Socket address is oversized: {len} bytes");
+
+        var saddr = stackalloc byte[len];
+        for (int i = 0; i < len; i++)
+        {
+            saddr[i] = socketAddress[i];
+        }
+        
+        ApiResult result;
+        Unsafe.SkipInit(out QueueToken qt);
+        lock (LibDemikernel.GlobalLock)
+        {
+            result = LibDemikernel.connect(&qt.qt, _qd, saddr, len);
+        }
+        result.AssertSuccess(nameof(LibDemikernel.connect));
+        return PendingQueue.AddVoid(qt, cancellationToken);
+    }
+
+    /// <summary>
+    /// As a client socket, connect to a server
+    /// </summary>
+    public void Connect(EndPoint endpoint)
+        => ConnectAsync(endpoint).Wait();
 }

@@ -263,7 +263,7 @@ internal static class PendingQueue
     }
 
     static readonly Action<object?, CancellationToken> CancelCallback = TryCancel;
-    internal static Task AddSend(in QueueToken pending, CancellationToken cancellationToken = default)
+    internal static Task AddVoid(in QueueToken pending, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) return Task.FromCanceled(cancellationToken);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

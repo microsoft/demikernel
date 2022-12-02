@@ -139,7 +139,7 @@ internal sealed class DemiKernelStream : Stream
 
     public override void Write(ReadOnlySpan<byte> buffer) => _socket.Send(buffer);
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        => _socket.SendAsync(buffer.Span, cancellationToken);
+        => new(_socket.SendAsync(buffer.Span, cancellationToken));
 
     // TODO: CopyTo[Async]
 }
