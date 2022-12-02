@@ -37,7 +37,7 @@ then:
 dotnet test Test.csproj
 ```
 
-(on use your IDE's test runner)
+(or use your IDE's test runner)
 
 
 # Notes
