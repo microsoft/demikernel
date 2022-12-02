@@ -244,15 +244,15 @@ internal static class PendingQueue
         ctr.Unregister();
         if (tcs is TaskCompletionSource raw)
         {
-            raw.TrySetCanceled();
+            raw.TrySetCanceled(ctr.Token);
         }
         else if (tcs is TaskCompletionSource<ScatterGatherArray> sga)
         {
-            sga.TrySetCanceled();
+            sga.TrySetCanceled(ctr.Token);
         }
         else if (tcs is TaskCompletionSource<AcceptResult> ar)
         {
-            ar.TrySetCanceled();
+            ar.TrySetCanceled(ctr.Token);
         }
     }
     static void TryCancel(object? tcs, CancellationToken cancellationToken)
