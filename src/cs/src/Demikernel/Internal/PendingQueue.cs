@@ -182,13 +182,14 @@ internal static class PendingQueue
             switch (qr.Opcode)
             {
                 case Opcode.Push:
+                case Opcode.Connect:
                     raw.TrySetResult();
                     break;
                 case Opcode.Failed:
                     raw.TrySetException(CreateFailed());
                     break;
                 default:
-                    raw.TrySetException(qr.CreateUnexpected(Opcode.Push));
+                    raw.TrySetException(qr.CreateUnexpected(Opcode.Push, Opcode.Connect));
                     break;
             }
         }

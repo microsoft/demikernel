@@ -21,10 +21,30 @@ dotnet pack -c Release Build.csproj
 
 The package is currently listed on nuget.org as [Demikernel](https://www.nuget.org/packages/Demikernel/)
 
+# Testing
+
+To run the tests, you need the LibOs environment variables; for example:
+
+```
+export LIBOS=Catnap
+export CONFIG_PATH=$HOME/config.yaml
+export RUST_LOG=debug
+```
+
+then:
+
+``` txt
+dotnet test Test.csproj
+```
+
+(on use your IDE's test runner)
+
+
 # Notes
 
 The raw Demikernel API is exposed via `Demikernel.Interop.Libdemiknel`; however, in general-purpose applications it is *not*
-suggested to use this as the primary API; the API is exposed in a more .NET-focused way via `Socket`; for example:
+suggested to use this as the primary API; the API is exposed in a more .NET-focused way via `Socket` *noting that this
+is not optimal for Demikernel* (as it is not a tight loop); for example:
 
 ``` c#
 using var socket = Socket.Create(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -34,4 +54,3 @@ socket.Listen(32);
 var accept = await socket.AcceptAsync(ct.Token);
 using var client = accept.AsSocket();
 ```
-

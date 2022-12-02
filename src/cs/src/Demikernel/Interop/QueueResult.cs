@@ -44,4 +44,6 @@ public readonly struct QueueResult
     }
     private void ThrowUnexpected(Opcode expected) => throw CreateUnexpected(expected);
     internal Exception CreateUnexpected(Opcode expected) => new InvalidOperationException($"Opcode failure; expected {expected}, actually {Opcode}");
+
+    internal Exception CreateUnexpected(Opcode expected0, Opcode expected1) => new InvalidOperationException($"Opcode failure; expected {expected0} or {expected1}, actually {Opcode}");
 }
