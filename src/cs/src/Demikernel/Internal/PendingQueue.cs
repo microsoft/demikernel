@@ -38,8 +38,11 @@ internal static class PendingQueue
                 }
                 else
                 {
+                    Thread thd = new(Pump);
+                    thd.Name = "DemiKernel pump";
+                    thd.IsBackground = true;
+                    thd.Start();
                     s_started = true;
-                    ThreadPool.UnsafeQueueUserWorkItem(static _ => Drive(), null); // use non-pool thread? probably should...
                 }
             }
         }
@@ -67,7 +70,7 @@ internal static class PendingQueue
         }
     }
 
-    private unsafe static void Drive()
+    private unsafe static void Pump()
     {
         var liveTokens = Array.Empty<long>();
         var liveCompletions = Array.Empty<(object Tcs, CancellationTokenRegistration Ctr)>();
