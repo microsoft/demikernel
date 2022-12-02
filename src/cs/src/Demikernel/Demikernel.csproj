@@ -17,6 +17,7 @@
         -->
         <Content Include="..\..\..\..\target\release\libdemikernel.so">
             <PackagePath>runtimes/linux-x64/native/libdemikernel.so</PackagePath>
+            <Link>native/linux-x64/libdemikernel.so</Link>
             <Pack>true</Pack>
         </Content>
     </ItemGroup>

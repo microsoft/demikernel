@@ -6,11 +6,12 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "global", "global", "{6C0D4F50-D7DC-40C8-A004-D86D5D970412}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
-		Directory.build.props = Directory.build.props
+		Directory.Build.props = Directory.Build.props
 		global.json = global.json
 		nuget.config = nuget.config
 		pack.cmd = pack.cmd
 		pack.ps1 = pack.ps1
+		readme.md = readme.md
 		version.json = version.json
 	EndProjectSection
 EndProject
