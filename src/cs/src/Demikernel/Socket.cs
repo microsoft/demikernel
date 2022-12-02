@@ -25,7 +25,7 @@ public readonly struct Socket : IDisposable
         while (true)
         {
             await Task.Delay(5000);
-            Console.WriteLine($"sync push: {Volatile.Read(ref s_SyncPush)}, pop: {Volatile.Read(ref s_SyncPop)}, accept: {Volatile.Read(ref s_SyncAccept)}");
+            Debug.WriteLine($"sync push: {Volatile.Read(ref s_SyncPush)}, pop: {Volatile.Read(ref s_SyncPop)}, accept: {Volatile.Read(ref s_SyncAccept)}");
         }
     }
     static DKSocket() => Task.Run(WriteCounters);

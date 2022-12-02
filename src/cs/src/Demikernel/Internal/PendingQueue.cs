@@ -117,7 +117,7 @@ internal static class PendingQueue
                 {
                     result = LibDemikernel.wait_any(&qr, &offset, qts, liveCount, &perLoopTimeout);
                 }
-                //Console.WriteLine($"wait_any: got {result}");
+                //Debug.WriteLine($"wait_any: got {result}");
                 if (result ==  ApiResult.Timeout)
                 {
                     continue;
@@ -149,12 +149,11 @@ internal static class PendingQueue
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[manager]: {ex.Message}");
-            Debug.WriteLine(ex);
+            Debug.WriteLine($"[manager]: {ex.Message}");
         }
         finally
         {
-            Console.WriteLine($"[manager]: exiting loop");
+            Debug.WriteLine($"[manager]: exiting loop");
             lock (s_pendingItemsSyncLock)
             {
                 s_doomed = true;
