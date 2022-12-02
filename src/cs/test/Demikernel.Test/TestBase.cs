@@ -1,4 +1,5 @@
-﻿using Xunit;
+﻿using System.Diagnostics;
+using Xunit;
 
 namespace Demikernel.Test;
 
@@ -14,6 +15,7 @@ public abstract class TestBase
         }
         catch (Exception ex)
         {
+            Debug.WriteLine(ex.Message);
             Console.Error.WriteLine(ex.Message);
         }
     }

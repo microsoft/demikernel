@@ -72,7 +72,7 @@ internal static class PendingQueue
         var liveTokens = Array.Empty<long>();
         var liveCompletions = Array.Empty<(object Tcs, CancellationTokenRegistration Ctr)>();
         int liveCount = 0;
-        Console.WriteLine("[server] entering dedicated work loop");
+        Debug.WriteLine("[server] entering dedicated work loop");
         var perLoopTimeout = new TimeSpec(0, 1000); // 1 microsecond, entirely made up - no logic here
         try
         {
@@ -229,7 +229,7 @@ internal static class PendingQueue
                     break;
             }
         }
-        static Exception CreateFailed() => throw new IOException();
+        static Exception CreateFailed() => new IOException();
     }
     static void TryCancel(object tcs, in CancellationTokenRegistration ctr)
     {
