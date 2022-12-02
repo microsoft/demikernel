@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <!-- if necessary, we can multi-target via:
             <TargetFrameworks>net6.0;net7.0</TargetFrameworks>
@@ -7,6 +7,11 @@
             and 7.0 targets can consume 6.0 happily
         -->
         <TargetFramework>net6.0</TargetFramework>
+
+        <!--
+        SYNC_WAIT: after an accept/push/pop, immediately perform a zero-timeout wait on the same, to check for sync-completion
+        -->
+        <DefineConstants>$(DefineConstants);SYNC_WAIT</DefineConstants>
     </PropertyGroup>
     <ItemGroup>
         <!-- key native x64 targets:

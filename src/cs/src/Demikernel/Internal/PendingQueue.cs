@@ -38,9 +38,11 @@ internal static class PendingQueue
                 }
                 else
                 {
-                    Thread thd = new(Pump);
-                    thd.Name = "DemiKernel pump";
-                    thd.IsBackground = true;
+                    Thread thd = new(Pump)
+                    {
+                        Name = "DemiKernel pump",
+                        IsBackground = true
+                    };
                     thd.Start();
                     s_started = true;
                 }

@@ -159,7 +159,7 @@ public readonly struct Socket : IDisposable
         Unsafe.SkipInit(out QueueToken qt);
         ApiResult result;
 #if SYNC_WAIT
-        int syncResult = -1;
+        var syncResult = (ApiResult)(-1);
         Unsafe.SkipInit(out QueueResult qr);
 #endif
         lock (LibDemikernel.GlobalLock)
@@ -183,7 +183,7 @@ public readonly struct Socket : IDisposable
             Interlocked.Increment(ref s_SyncAccept);
 #endif
             qr.Assert(Opcode.Accept);
-            return new(qr.ares);
+            return new(qr.AcceptResult);
         }
 #endif
         return new(PendingQueue.AddAccept(qt, cancellationToken));
@@ -207,7 +207,7 @@ public readonly struct Socket : IDisposable
         Unsafe.SkipInit(out QueueToken qt);
         ApiResult result;
 #if SYNC_WAIT
-        int syncResult = -1;
+        var syncResult = (ApiResult)(-1);
         Unsafe.SkipInit(out QueueResult qr);
 #endif
         lock (LibDemikernel.GlobalLock)
@@ -231,7 +231,7 @@ public readonly struct Socket : IDisposable
             Interlocked.Increment(ref s_SyncPop);
 #endif
             qr.Assert(Opcode.Pop);
-            return new(qr.sga);
+            return new(qr.ScatterGatherArray);
         }
 #endif
         return new(PendingQueue.AddReceive(qt, cancellationToken));
@@ -256,7 +256,7 @@ public readonly struct Socket : IDisposable
         Unsafe.SkipInit(out QueueToken qt);
         ApiResult result;
 #if SYNC_WAIT
-        int syncResult = -1;
+        var syncResult = (ApiResult)(-1);
         Unsafe.SkipInit(out QueueResult qr);
 #endif
         fixed (ScatterGatherArray* ptr = &payload)
@@ -283,7 +283,7 @@ public readonly struct Socket : IDisposable
             Interlocked.Increment(ref s_SyncPush);
 #endif
             qr.Assert(Opcode.Push);
-            return default;
+            return Task.CompletedTask;
         }
 #endif
         return PendingQueue.AddVoid(qt, cancellationToken);
