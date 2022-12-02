@@ -24,7 +24,11 @@ public class EchoServer : IDisposable
         Task.Run(AcceptClients);
     }
 
-    public void Dispose() => _server.Dispose();
+    public void Dispose()
+    {
+        _cancel.Cancel();
+        _server.Dispose();
+    }
 
     async Task AcceptClients()
     {
