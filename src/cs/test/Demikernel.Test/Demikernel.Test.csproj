@@ -2,6 +2,7 @@
     <PropertyGroup>
         <TargetFramework>net7.0</TargetFramework>
         <RootNamespace>Demikernel.Test</RootNamespace>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
     </PropertyGroup>
     <ItemGroup>
       <None Include="..\..\..\..\target\release\libdemikernel.so" Link="libdemikernel.so">
