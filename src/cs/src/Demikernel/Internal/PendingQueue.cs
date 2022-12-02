@@ -77,7 +77,7 @@ internal static class PendingQueue
         var liveTokens = Array.Empty<long>();
         var liveCompletions = Array.Empty<(object Tcs, CancellationTokenRegistration Ctr)>();
         int liveCount = 0;
-        Debug.WriteLine("[server] entering dedicated work loop");
+        Debug.WriteLine("[manager] entering dedicated work loop");
         var perLoopTimeout = new TimeSpec(0, 1000); // 1 microsecond, entirely made up - no logic here
         try
         {
@@ -211,7 +211,7 @@ internal static class PendingQueue
                     sga.TrySetException(CreateFailed());
                     break;
                 default:
-                    sga.TrySetException(qr.CreateUnexpected(Opcode.Push));
+                    sga.TrySetException(qr.CreateUnexpected(Opcode.Pop));
                     break;
             }
         }
@@ -229,9 +229,13 @@ internal static class PendingQueue
                     ar.TrySetException(CreateFailed());
                     break;
                 default:
-                    ar.TrySetException(qr.CreateUnexpected(Opcode.Push));
+                    ar.TrySetException(qr.CreateUnexpected(Opcode.Accept));
                     break;
             }
+        }
+        else
+        {
+            Debug.WriteLine($"[manager]: unexpected completion: {tcs?.GetType()?.FullName}");
         }
         static Exception CreateFailed() => new IOException();
     }
