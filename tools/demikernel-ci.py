@@ -168,6 +168,22 @@ def test_tcp_push_pop(
     client_args: string = "--client {}:12345".format(server_addr)
     return job_test_system_rust(test_name, repository, libos, server, client, server_args, client_args, is_sudo, True)
 
+
+def test_pipe_ping_pong(server: string, client: string, repository: string) -> bool:
+    test_name: string = "pipe-ping-pong"
+    pipe_name: string = "demikernel-test-pipe-ping-pong"
+    server_args: string = "--server demikernel-test-pipe-ping-pong".format(pipe_name)
+    client_args: string = "--client demikernel-test-pipe-ping-pong".format(pipe_name)
+    return job_test_system_rust(test_name, repository, "catmem", server, client, server_args, client_args, False, True)
+
+
+def test_pipe_push_pop(server: string, client: string, repository: string) -> bool:
+    test_name: string = "pipe-push-pop"
+    pipe_name: string = "demikernel-test-pipe-push-pop"
+    server_args: string = "--server demikernel-test-pipe-push-pop".format(pipe_name)
+    client_args: string = "--client demikernel-test-pipe-push-pop".format(pipe_name)
+    return job_test_system_rust(test_name, repository, "catmem", server, client, server_args, client_args, False, True)
+
 # =====================================================================================================================
 
 
@@ -191,10 +207,14 @@ def run_pipeline(
 
     # STEP 4: Run system tests.
     if test and passed:
-        passed = test_udp_ping_pong(server, client, libos, is_sudo, repository, server_addr, client_addr)
-        passed = test_udp_push_pop(server, client, libos, is_sudo, repository, server_addr, client_addr)
-        passed = test_tcp_ping_pong(server, client, libos, is_sudo, repository, server_addr)
-        passed = test_tcp_push_pop(server, client, libos, is_sudo, repository, server_addr)
+        if libos != "catmem":
+            passed = test_udp_ping_pong(server, client, libos, is_sudo, repository, server_addr, client_addr)
+            passed = test_udp_push_pop(server, client, libos, is_sudo, repository, server_addr, client_addr)
+            passed = test_tcp_ping_pong(server, client, libos, is_sudo, repository, server_addr)
+            passed = test_tcp_push_pop(server, client, libos, is_sudo, repository, server_addr)
+        else:
+            passed = test_pipe_ping_pong(server, server, repository)
+            passed = test_pipe_push_pop(client, client, repository)
 
     # Setp 5: Clean up.
     passed = job_cleanup(repository, server, client)
