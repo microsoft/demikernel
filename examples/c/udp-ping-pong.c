@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-/* This should come first. */
+// This should come first.
+// Glibc macro to expose definitions corresponding to the POSIX.1-2008 base specification.
+// See https://man7.org/linux/man-pages/man7/feature_test_macros.7.html.
 #define _POSIX_C_SOURCE 200809L
 
 /*====================================================================================================================*
