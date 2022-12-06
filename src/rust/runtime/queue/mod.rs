@@ -53,20 +53,20 @@ impl IoQueueTable {
 
     /// Allocates a new entry in the target I/O queue descriptors table.
     pub fn alloc(&mut self, qtype: u32) -> QDesc {
-        let idx: usize = self.table.insert(qtype);
-        QDesc::from(idx + Self::BASE_QD)
+        let index: usize = self.table.insert(qtype);
+        QDesc::from(index + Self::BASE_QD)
     }
 
     /// Gets the entry associated with an I/O queue descriptor.
     pub fn get(&self, qd: QDesc) -> Option<u32> {
-        let idx: usize = self.get_index(qd)? as usize;
-        self.table.get(idx).cloned()
+        let index: usize = self.get_index(qd)? as usize;
+        self.table.get(index).cloned()
     }
 
     /// Releases the entry associated with an I/O queue descriptor.
     pub fn free(&mut self, qd: QDesc) -> Option<u32> {
-        let idx: usize = self.get_index(qd)?;
-        Some(self.table.remove(idx))
+        let index: usize = self.get_index(qd)?;
+        Some(self.table.remove(index))
     }
 
     /// Gets the index in the I/O queue descriptors table to which a given I/O queue descriptor refers to.
