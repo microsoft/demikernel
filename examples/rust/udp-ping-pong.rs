@@ -180,11 +180,11 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
     // Send packets.
     let mut i: usize = 0;
     while i < npings {
-        let (idx, qr): (usize, demi_qresult_t) = match libos.wait_any(&qts, None) {
-            Ok((idx, qr)) => (idx, qr),
+        let (index, qr): (usize, demi_qresult_t) = match libos.wait_any(&qts, None) {
+            Ok((index, qr)) => (index, qr),
             Err(e) => panic!("operation failed: {:?}", e.cause),
         };
-        qts.remove(idx);
+        qts.remove(index);
 
         match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_POP => {
