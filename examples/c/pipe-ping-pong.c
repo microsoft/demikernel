@@ -10,19 +10,16 @@
  * Imports                                                                                                            *
  *====================================================================================================================*/
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <demi/libos.h>
 #include <demi/sga.h>
 #include <demi/wait.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-
-#ifdef __linux__
-#include <arpa/inet.h>
 #include <sys/socket.h>
-#endif
-
-#include "common.h"
 
 /*====================================================================================================================*
  * Constants                                                                                                          *
@@ -34,28 +31,46 @@
 #define DATA_SIZE 64
 
 /**
- * @brief Maximum number of iterations.
+ * @brief Maximum number of bytes to transfer.
  */
-#define MAX_ITERATIONS 1000000
+#define MAX_BYTES (DATA_SIZE * 1024)
 
 /*====================================================================================================================*
- * push_and_wait()                                                                                                    *
+ * sighandler()                                                                                                       *
+ *====================================================================================================================*/
+
+/**
+ * @brief Signal handler.
+ *
+ * @param signum Number of received signal.
+ */
+static void sighandler(int signum)
+{
+    const char *signame = strsignal(signum);
+
+    fprintf(stderr, "\nReceived %s signal\n", signame);
+    fprintf(stderr, "Exiting...\n");
+
+    exit(EXIT_SUCCESS);
+}
+
+/*====================================================================================================================*
+ * push_wait()                                                                                                        *
  *====================================================================================================================*/
 
 /**
  * @brief Pushes a scatter-gather array to a remote socket and waits for operation to complete.
  *
- * @param qd   Target queue descriptor.
- * @param sga  Target scatter-gather array.
- * @param qr   Storage location for operation result.
- * @param dest Destination address.
+ * @param qd  Target queue descriptor.
+ * @param sga Target scatter-gather array.
+ * @param qr  Storage location for operation result.
  */
-static void pushto_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr, const struct sockaddr *dest)
+static void push_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr)
 {
     demi_qtoken_t qt = -1;
 
     /* Push data. */
-    assert(demi_pushto(&qt, qd, sga, (const struct sockaddr *)dest, sizeof(struct sockaddr_in)) == 0);
+    assert(demi_push(&qt, qd, sga) == 0);
 
     /* Wait push operation to complete. */
     assert(demi_wait(qr, qt, NULL) == 0);
@@ -65,7 +80,7 @@ static void pushto_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr, const s
 }
 
 /*====================================================================================================================*
- * pop_and_wait()                                                                                                    *
+ * pop_wait()                                                                                                         *
  *====================================================================================================================*/
 
 /**
@@ -94,43 +109,48 @@ static void pop_wait(int qd, demi_qresult_t *qr)
  *====================================================================================================================*/
 
 /**
- * @brief UDP echo server.
+ * @brief Memory queue echo server.
  *
- * @param argc   Argument count.
- * @param argv   Argument list.
- * @param local  Local socket address.
- * @param remote Remote socket address.
+ * @param argc Argument count.
+ * @param argv Argument list.
  */
-static void server(int argc, char *const argv[], struct sockaddr_in *local, struct sockaddr_in *remote)
+static void server(int argc, char *const argv[])
 {
-    int sockqd = -1;
+    int nbytes = 0;
+    char name[1024];
+    int pipeqd_rx = -1;
+    int pipeqd_tx = -1;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
 
-    /* Setup local socket. */
-    assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
-    assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
+    /* Setup memory queues. */
+    sprintf(name, "%s:rx", argv[2]);
+    assert(demi_create_pipe(&pipeqd_rx, name) == 0);
+    sprintf(name, "%s:tx", argv[2]);
+    assert(demi_create_pipe(&pipeqd_tx, name) == 0);
 
     /* Run. */
-    for (int it = 0; it < MAX_ITERATIONS; it++)
+    while (nbytes < MAX_BYTES)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
 
         /* Pop scatter-gather array. */
-        pop_wait(sockqd, &qr);
+        pop_wait(pipeqd_rx, &qr);
 
         /* Extract received scatter-gather array. */
         memcpy(&sga, &qr.qr_value.sga, sizeof(demi_sgarray_t));
 
+        nbytes += sga.sga_segs[0].sgaseg_len;
+
         /* Push scatter-gather array. */
-        pushto_wait(sockqd, &sga, &qr, (const struct sockaddr *)remote);
+        push_wait(pipeqd_tx, &sga, &qr);
 
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&sga) == 0);
 
-        fprintf(stdout, "ping (%d)\n", it);
+        fprintf(stdout, "ping (%d)\n", nbytes);
     }
 }
 
@@ -139,27 +159,29 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local, stru
  *====================================================================================================================*/
 
 /**
- * @brief UDP echo client.
+ * @brief Memory queue echo client.
  *
- * @param argc   Argument count.
- * @param argv   Argument list.
- * @param local  Local socket address.
- * @param remote Remote socket address.
+ * @param argc Argument count.
+ * @param argv Argument list.
  */
-static void client(int argc, char *const argv[], struct sockaddr_in *local, struct sockaddr_in *remote)
+static void client(int argc, char *const argv[])
 {
-    int sockqd = -1;
-    char expected_buf[DATA_SIZE];
+    int nbytes = 0;
+    char name[1024];
+    int pipeqd_tx = -1;
+    int pipeqd_rx = -1;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
 
-    /* Setup socket. */
-    assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
-    assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
+    /* Setup memory queues. */
+    sprintf(name, "%s:tx", argv[2]);
+    assert(demi_open_pipe(&pipeqd_rx, name) == 0);
+    sprintf(name, "%s:rx", argv[2]);
+    assert(demi_open_pipe(&pipeqd_tx, name) == 0);
 
     /* Run. */
-    for (int it = 0; it < MAX_ITERATIONS; it++)
+    while (nbytes < MAX_BYTES)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
@@ -169,25 +191,27 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
         assert(sga.sga_segs != 0);
 
         /* Cook data. */
-        memset(expected_buf, it % 256, DATA_SIZE);
-        memcpy(sga.sga_segs[0].sgaseg_buf, expected_buf, DATA_SIZE);
+        memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
 
         /* Push scatter-gather array. */
-        pushto_wait(sockqd, &sga, &qr, (const struct sockaddr *)remote);
+        push_wait(pipeqd_tx, &sga, &qr);
 
         /* Release sent scatter-gather array. */
         assert(demi_sgafree(&sga) == 0);
 
         /* Pop data scatter-gather array. */
-        pop_wait(sockqd, &qr);
+        memset(&qr, 0, sizeof(demi_qresult_t));
+        pop_wait(pipeqd_rx, &qr);
 
-        /* Parse operation result. */
-        assert(!memcmp(qr.qr_value.sga.sga_segs[0].sgaseg_buf, expected_buf, DATA_SIZE));
+        /* Check payload. */
+        for (uint32_t i = 0; i < qr.qr_value.sga.sga_segs[0].sgaseg_len; i++)
+            assert(((char *)qr.qr_value.sga.sga_segs[0].sgaseg_buf)[i] == 1);
+        nbytes += qr.qr_value.sga.sga_segs[0].sgaseg_len;
 
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&qr.qr_value.sga) == 0);
 
-        fprintf(stdout, "pong (%d)\n", it);
+        fprintf(stdout, "pong (%d)\n", nbytes);
     }
 }
 
@@ -196,39 +220,16 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
  *====================================================================================================================*/
 
 /**
- * @brief Prints program usage and exits.
+ * @brief Prints program usage.
  *
  * @param progname Program name.
  */
 static void usage(const char *progname)
 {
-    fprintf(stderr, "Usage: %s MODE local-ipv4 local-port remote-ipv4 remote-port\n", progname);
-    fprintf(stderr, "Modes:\n");
-    fprintf(stderr, "  --client    Run program in client mode.\n");
-    fprintf(stderr, "  --server    Run program in server mode.\n");
-
-    exit(EXIT_SUCCESS);
-}
-
-/*====================================================================================================================*
- * build_sockaddr()                                                                                                   *
- *====================================================================================================================*/
-
-/**
- * @brief Builds a socket address.
- *
- * @param ip_str    String representation of an IP address.
- * @param port_str  String representation of a port number.
- * @param addr      Storage location for socket address.
- */
-void build_sockaddr(const char *const ip_str, const char *const port_str, struct sockaddr_in *const addr)
-{
-    int port = -1;
-
-    sscanf(port_str, "%d", &port);
-    addr->sin_family = AF_INET;
-    addr->sin_port = htons(port);
-    assert(inet_pton(AF_INET, ip_str, &addr->sin_addr) == 1);
+    fprintf(stderr, "Usage: %s MODE pipe-name\n", progname);
+    fprintf(stderr, "MODE:\n");
+    fprintf(stderr, "  --client    Run in client mode.\n");
+    fprintf(stderr, "  --server    Run in server mode.\n");
 }
 
 /*====================================================================================================================*
@@ -248,32 +249,23 @@ void build_sockaddr(const char *const ip_str, const char *const port_str, struct
  */
 int main(int argc, char *const argv[])
 {
-    if (argc >= 6)
+    /* Install signal handlers. */
+    signal(SIGINT, sighandler);
+    signal(SIGQUIT, sighandler);
+    signal(SIGTSTP, sighandler);
+
+    if (argc >= 3)
     {
-        reg_sighandlers();
-
-        struct sockaddr_in local = {0};
-        struct sockaddr_in remote = {0};
-
-        /* Build local addresses.*/
-        build_sockaddr(argv[2], argv[3], &local);
-        build_sockaddr(argv[4], argv[5], &remote);
-
+        /* Run. */
         if (!strcmp(argv[1], "--server"))
-        {
-            server(argc, argv, &local, &remote);
-            return (EXIT_SUCCESS);
-        }
+            server(argc, argv);
         else if (!strcmp(argv[1], "--client"))
-        {
-            client(argc, argv, &local, &remote);
-            return (EXIT_SUCCESS);
-        }
+            client(argc, argv);
+
+        return (EXIT_SUCCESS);
     }
 
     usage(argv[0]);
-
-    /* Never gets here. */
 
     return (EXIT_SUCCESS);
 }

@@ -211,9 +211,9 @@ impl SharedMemory {
 
     /// Writes a value to the target shared memory region at a given offset.
     #[allow(unused)]
-    pub fn write<T>(&mut self, idx: usize, val: &T) {
+    pub fn write<T>(&mut self, index: usize, val: &T) {
         let size_of_t: usize = mem::size_of::<T>();
-        let offset: usize = idx * size_of_t;
+        let offset: usize = index * size_of_t;
         if offset <= (self.size - size_of_t) {
             unsafe {
                 let dest: *mut u8 = (self.addr as *mut u8).add(offset);
@@ -225,9 +225,9 @@ impl SharedMemory {
 
     /// Reads a value from the target shared memory region at a given offset.
     #[allow(unused)]
-    pub fn read<T>(&mut self, idx: usize, val: &mut T) {
+    pub fn read<T>(&mut self, index: usize, val: &mut T) {
         let size_of_t: usize = mem::size_of::<T>();
-        let offset: usize = idx * size_of_t;
+        let offset: usize = index * size_of_t;
         if offset <= (self.size - size_of_t) {
             unsafe {
                 let dest: *mut T = val as *mut T;

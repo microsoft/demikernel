@@ -32,6 +32,26 @@ extern "C"
     extern int demi_init(int argc, char *const argv[]);
 
     /**
+     * @brief Creates a new memory I/O queue.
+     *
+     * @param memqd_out Storage location for the memory I/O queue descriptor
+     * @param name      Name of the target memory I/O queue.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_create_pipe(int *memqd_out, const char *name);
+
+    /**
+     * @brief Opens an existing memory I/O queue.
+     *
+     * @param memqd_out Storage location for the memory I/O queue descriptor
+     * @param name      Name of the target memory I/O queue.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_open_pipe(int *memqd_out, const char *name);
+
+    /**
      * @brief Creates a socket I/O queue.
      *
      * @param sockqd_out Store location for the socket I/O queue descriptor.
