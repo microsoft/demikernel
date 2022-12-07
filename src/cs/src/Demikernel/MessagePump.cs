@@ -65,6 +65,82 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
     }
     private protected readonly TaskCompletionSource _shutdown = new();
     public Task Shutdown => _shutdown.Task;
+
+    [StructLayout(LayoutKind.Explicit, Pack = 1)]
+    private protected readonly struct PendingOperation
+    {
+        [FieldOffset(0)]
+        public readonly int Socket;
+        [FieldOffset(4)]
+        public readonly Opcode Opcode;
+        [FieldOffset(8)]
+        public readonly ScatterGatherArray Payload; // size: 48
+
+        [FieldOffset(8)]
+        public readonly int AddrSize;
+        [FieldOffset(12)]
+        public readonly byte AddrStart; // max size 44 before starts hitting end
+
+        private const int MaxAddrSize = 44;
+
+        public static PendingOperation Pop(int socket) => new(socket, Opcode.Pop);
+        public static PendingOperation Connect(int socket, ReadOnlySpan<byte> address) => new(socket, Opcode.Connect, address);
+        public static PendingOperation Push(int socket, in ScatterGatherArray payload) => new(socket, Opcode.Connect, in payload);
+        public static PendingOperation Accept(int socket) => new(socket, Opcode.Connect);
+
+        internal unsafe long ExecuteDirect()
+        {
+            long qt = 0;
+            switch (Opcode)
+            {
+                case Opcode.Pop:
+                    LibDemikernel.pop(&qt, Socket).AssertSuccess(nameof(LibDemikernel.pop));
+                    break;
+                case Opcode.Connect:
+                    fixed (byte* addrStart = &AddrStart)
+                    {
+                        LibDemikernel.connect(&qt, Socket, addrStart, AddrSize).AssertSuccess(nameof(LibDemikernel.connect));
+                    }
+                    break;
+                case Opcode.Accept:
+                    LibDemikernel.accept(&qt, Socket).AssertSuccess(nameof(LibDemikernel.accept));
+                    break;
+                case Opcode.Push:
+                    fixed (ScatterGatherArray* payload = &Payload)
+                    {
+                        LibDemikernel.push(&qt, Socket, payload).AssertSuccess(nameof(LibDemikernel.accept));
+                        LibDemikernel.sgafree(payload).AssertSuccess(nameof(LibDemikernel.sgafree));
+                    }
+                    break;
+                default:
+                    ThrowInvalid(Opcode);
+                    break;
+            }
+            return qt;
+            static void ThrowInvalid(Opcode opcode) => throw new NotImplementedException("Unexpected operation: " + opcode);
+        }
+
+        private unsafe PendingOperation(int socket, Opcode opcode, ReadOnlySpan<byte> address) : this(socket, opcode)
+        {
+            AddrSize = address.Length;
+            fixed (byte* addrStart = &AddrStart)
+            {
+                address.CopyTo(new Span<byte>(addrStart, MaxAddrSize)); // this max usage intentional to assert overflow conditions
+            }
+        }
+
+        private PendingOperation(int socket, Opcode opcode, in ScatterGatherArray payload) : this(socket, opcode)
+        {
+            Payload = payload;
+        }
+
+        private PendingOperation(int socket, Opcode opcode)
+        {
+            Unsafe.SkipInit(out this);
+            Socket = socket;
+            Opcode = opcode;
+        }
+    }
 }
 public abstract class MessagePump<TState> : MessagePump
 {
@@ -100,7 +176,7 @@ public abstract class MessagePump<TState> : MessagePump
         }
     }
 
-    private readonly Queue<PendingOperation> _pendingOperations = new();
+    private readonly Queue<(TState State, PendingOperation Operation)> _pendingOperations = new();
     private volatile bool _pendingWork, _keepRunning = true;
     private int _messagePumpThreadId = -1;
 
@@ -120,9 +196,9 @@ public abstract class MessagePump<TState> : MessagePump
                 {
                     lock (_pendingOperations)
                     {
-                        while (_pendingOperations.TryDequeue(out var pending))
+                        while (_pendingOperations.TryDequeue(out var tuple))
                         {
-                            AddAsMessagePump(in pending);
+                            AddAsMessagePump(tuple.State, in tuple.Operation);
                         }
                         _pendingWork = false;
                     }
@@ -242,36 +318,36 @@ public abstract class MessagePump<TState> : MessagePump
     // requests a read operation from the specified socket
     private void Pop(int socket, TState state)
     {
-        var pending = PendingOperation.Pop(socket, state);
+        var pending = PendingOperation.Pop(socket);
         if (IsMessagePumpThread)
         {
-            AddAsMessagePump(in pending);
+            AddAsMessagePump(state, in pending);
         }
         else
         {
-            AddPending(in pending);
+            AddPending(state, in pending);
         }
     }
 
     // performs a push operation to the specified socket, and releases the payload once written (which may not be immediately)
     protected unsafe void Push(int socket, TState state, in ScatterGatherArray payload)
     {
-        var pending = PendingOperation.Push(socket, state, payload);
+        var pending = PendingOperation.Push(socket, payload);
         if (IsMessagePumpThread)
         {
-            AddAsMessagePump(in pending);
+            AddAsMessagePump(state, in pending);
         }
         else
         {
-            AddPending(in pending);
+            AddPending(state, in pending);
         }
     }
 
-    private void AddAsMessagePump(in PendingOperation value)
+    private void AddAsMessagePump(TState state, in PendingOperation value)
     {
         GrowIfNeeded();
         _liveOperations[_liveOperationCount] = value.ExecuteDirect();
-        _liveStates[_liveOperationCount++] = value.State;
+        _liveStates[_liveOperationCount++] = state;
     }
 
     private void GrowIfNeeded()
@@ -289,12 +365,12 @@ public abstract class MessagePump<TState> : MessagePump
         Array.Resize(ref _liveStates, newLen);
     }
 
-    private void AddPending(in PendingOperation value)
+    private void AddPending(TState state, in PendingOperation value)
     {
         lock (_pendingOperations)
         {
             if (!_keepRunning) ThrowDoomed();
-            _pendingOperations.Enqueue(value);
+            _pendingOperations.Enqueue((state, value));
             _pendingWork = true;
             if (_pendingOperations.Count == 1) Monitor.PulseAll(_pendingOperations);
         }
@@ -338,84 +414,5 @@ public abstract class MessagePump<TState> : MessagePump
             _liveStates[_liveOperationCount++] = state;
         }
         return socket;
-    }
-
-    [StructLayout(LayoutKind.Explicit, Pack = 1)]
-    private readonly struct PendingOperation
-    {
-        [FieldOffset(0)]
-        public readonly int Socket;
-        [FieldOffset(4)]
-        public readonly Opcode Opcode;
-        [FieldOffset(8)]
-        public readonly ScatterGatherArray Payload; // size: 48
-
-        [FieldOffset(8)]
-        public readonly int AddrSize;
-        [FieldOffset(12)]
-        public readonly byte AddrStart; // max size 44 before starts hitting state
-        [FieldOffset(56)]
-        public readonly TState State;
-
-        private const int MaxAddrSize = 44;
-
-        public static PendingOperation Pop(int socket, TState state) => new(socket, Opcode.Pop, state);
-        public static PendingOperation Connect(int socket, TState state, ReadOnlySpan<byte> address) => new(socket, Opcode.Connect, state, address);
-        public static PendingOperation Push(int socket, TState state, in ScatterGatherArray payload) => new(socket, Opcode.Connect, state, in payload);
-        public static PendingOperation Accept(int socket, TState state) => new(socket, Opcode.Connect, state);
-
-        internal unsafe long ExecuteDirect()
-        {
-            long qt = 0;
-            switch (Opcode)
-            {
-                case Opcode.Pop:
-                    LibDemikernel.pop(&qt, Socket).AssertSuccess(nameof(LibDemikernel.pop));
-                    break;
-                case Opcode.Connect:
-                    fixed (byte* addrStart = &AddrStart)
-                    {
-                        LibDemikernel.connect(&qt, Socket, addrStart, AddrSize).AssertSuccess(nameof(LibDemikernel.connect));
-                    }
-                    break;
-                case Opcode.Accept:
-                    LibDemikernel.accept(&qt, Socket).AssertSuccess(nameof(LibDemikernel.accept));
-                    break;
-                case Opcode.Push:
-                    fixed (ScatterGatherArray* payload = &Payload)
-                    {
-                        LibDemikernel.push(&qt, Socket, payload).AssertSuccess(nameof(LibDemikernel.accept));
-                        LibDemikernel.sgafree(payload).AssertSuccess(nameof(LibDemikernel.sgafree));
-                    }
-                    break;
-                default:
-                    ThrowInvalid(Opcode);
-                    break;
-            }
-            return qt;
-            static void ThrowInvalid(Opcode opcode) => throw new NotImplementedException("Unexpected operation: " + opcode);
-        }
-
-        private unsafe PendingOperation(int socket, Opcode opcode, TState state, ReadOnlySpan<byte> address) : this(socket, opcode, state)
-        {
-            AddrSize = address.Length;
-            fixed (byte* addrStart = &AddrStart)
-            {
-                address.CopyTo(new Span<byte>(addrStart, MaxAddrSize)); // this max usage intentional to assert overflow conditions
-            }
-        }
-
-        private PendingOperation(int socket, Opcode opcode, TState state, in ScatterGatherArray payload) : this(socket, opcode, state)
-        {
-            Payload = payload;
-        }
-
-        private PendingOperation(int socket, Opcode opcode, TState state)
-        {
-            Unsafe.SkipInit(out this);
-            Socket = socket;
-            Opcode = opcode;
-            State = state;
-        }
     }
 }
