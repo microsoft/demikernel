@@ -85,7 +85,7 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
 
         public static PendingOperation Pop(int socket) => new(socket, Opcode.Pop);
         public static PendingOperation Connect(int socket, ReadOnlySpan<byte> address) => new(socket, Opcode.Connect, address);
-        public static PendingOperation Push(int socket, in ScatterGatherArray payload) => new(socket, Opcode.Connect, in payload);
+        public static PendingOperation Push(int socket, in ScatterGatherArray payload) => new(socket, Opcode.Push, in payload);
         public static PendingOperation Accept(int socket) => new(socket, Opcode.Connect);
 
         internal unsafe long ExecuteDirect()
@@ -108,7 +108,7 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
                 case Opcode.Push:
                     fixed (ScatterGatherArray* payload = &Payload)
                     {
-                        LibDemikernel.push(&qt, Socket, payload).AssertSuccess(nameof(LibDemikernel.accept));
+                        LibDemikernel.push(&qt, Socket, payload).AssertSuccess(nameof(LibDemikernel.push));
                         LibDemikernel.sgafree(payload).AssertSuccess(nameof(LibDemikernel.sgafree));
                     }
                     break;
@@ -190,6 +190,7 @@ public abstract class MessagePump<TState> : MessagePump
         var timeout = TimeSpec.Create(TimeSpan.FromMilliseconds(1)); // entirely arbitrary
         try
         {
+            OnStart();
             while (_keepRunning)
             {
                 if (_pendingWork)
@@ -267,15 +268,16 @@ public abstract class MessagePump<TState> : MessagePump
                     // immediately begin a pop; we already know we have space in the array
                     long qt = 0;
                     LibDemikernel.pop(&qt, readSocket).AssertSuccess(nameof(LibDemikernel.pop));
+                    GrowIfNeeded();
                     _liveOperations[_liveOperationCount] = qt;
                     _liveStates[_liveOperationCount++] = state;
 
                     if (qr.Opcode == Opcode.Accept)
                     {
                         // accept again, making sure we grow if needed
-                        GrowIfNeeded();
                         qt = 0;
                         LibDemikernel.accept(&qt, qr.Qd).AssertSuccess(nameof(LibDemikernel.accept));
+                        GrowIfNeeded();
                         _liveOperations[_liveOperationCount] = qt;
                         _liveStates[_liveOperationCount++] = origState;
                     }
@@ -286,6 +288,7 @@ public abstract class MessagePump<TState> : MessagePump
         }
         catch (Exception ex)
         {
+            Debug.WriteLine(ex.Message);
             PrepareForMessagePumpExit(false);
             _shutdown.TrySetException(ex);
         }
@@ -308,6 +311,7 @@ public abstract class MessagePump<TState> : MessagePump
     protected virtual void OnStart() { }
     protected virtual bool OnPop(int socket, ref TState state, in ScatterGatherArray payload)
     {
+        if (payload.IsEmpty) Close(socket);
         payload.Dispose();
         return false; // true===read again
     }
@@ -326,6 +330,15 @@ public abstract class MessagePump<TState> : MessagePump
         else
         {
             AddPending(state, in pending);
+        }
+    }
+
+    protected void Close(int socket)
+    {
+        AssertMessagePump();
+        if (_liveSockets.Remove(socket))
+        {
+            LibDemikernel.close(socket).AssertSuccess(nameof(LibDemikernel.close));
         }
     }
 

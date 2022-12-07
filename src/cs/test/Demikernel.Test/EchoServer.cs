@@ -23,7 +23,15 @@ public class EchoServer : MessagePump<int>
 
     protected override bool OnPop(int socket, ref int state, in ScatterGatherArray payload)
     {
-        Push(socket, state, in payload); // note that this calls sgafree correctly
-        return true; // do another pop
+        if (payload.IsEmpty)
+        {
+            Close(socket);
+            return false;
+        }
+        else
+        {
+            Push(socket, state, in payload); // note that this calls sgafree correctly
+            return true; // do another pop
+        }
     }
 }
