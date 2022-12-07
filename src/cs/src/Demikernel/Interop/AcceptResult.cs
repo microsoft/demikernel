@@ -1,5 +1,4 @@
-﻿using Demikernel.Internal;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Demikernel.Interop;
@@ -21,17 +20,6 @@ public readonly struct AcceptResult
 
     [FieldOffset(4)]
     private readonly byte _saddrStart; // [Sizes.SOCKET_ADDRESS];
-
-    /// <summary>
-    /// Gets this result as a <see cref="Socket"/>
-    /// </summary>
-    public Socket AsSocket() => new Socket(Qd);
-
-    /// <summary>
-    /// Gets this result as a <see cref="Stream"/>
-    /// </summary>
-    public Stream AsStream(bool ownsSocket = true)
-        => new DemiKernelStream(AsSocket(), ownsSocket);
 
     /// <summary>
     /// Copies the address held in this result to the provided target

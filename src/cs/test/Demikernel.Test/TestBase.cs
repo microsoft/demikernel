@@ -10,7 +10,7 @@ public abstract class TestBase
     {
         try
         {
-            Socket.Initialize();
+            MessagePump.Initialize();
             LibraryAvailable = true;
         }
         catch (Exception ex)

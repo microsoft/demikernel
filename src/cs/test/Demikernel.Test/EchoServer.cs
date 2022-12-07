@@ -1,67 +1,29 @@
-﻿using System.Net.Sockets;
+﻿using Demikernel.Interop;
 using System.Net;
-using Demikernel.Interop;
+using System.Net.Sockets;
 
 namespace Demikernel.Test;
 
-public class EchoServer : IDisposable
+public class EchoServer : MessagePump<int>
 {
     public const int Port = 12314;
 
     public static EndPoint EndPoint { get; } = new IPEndPoint(IPAddress.Loopback, Port);
 
-    private readonly Socket _server;
-    readonly CancellationTokenSource _cancel = new();
-
     public EchoServer()
     {
         if (!TestBase.LibraryAvailable) return;
-
-        _server = Socket.Create(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        _server.Bind(EndPoint);
-        _server.Listen(32);
-
-        Task.Run(AcceptClients);
+        Start();
     }
 
-    public void Dispose()
+    protected override void OnStart()
     {
-        _cancel.Cancel();
-        _server.Dispose();
+        Accept(42, AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp, EndPoint, 32);
     }
 
-    async Task AcceptClients()
+    protected override bool OnPop(int socket, ref int state, in ScatterGatherArray payload)
     {
-        while (true)
-        {
-            try
-            {
-                var accept = await _server.AcceptAsync(_cancel.Token);
-                _ = Task.Run(() => RunClient(accept));
-            }
-            catch (OperationCanceledException oce) when (oce.CancellationToken == _cancel.Token)
-            {
-                break; // all done
-            }
-        }
+        Push(socket, state, in payload); // note that this calls sgafree correctly
+        return true; // do another pop
     }
-    async Task RunClient(AcceptResult accept)
-    {
-        try
-        {
-            using var client = accept.AsSocket();
-            while (true)
-            {
-                using var read = await client.ReceiveAsync(_cancel.Token);
-                if (read.IsEmpty) break; // EOF
-                await client.SendAsync(read, _cancel.Token);
-            }
-            client.Close();
-        }
-        catch (OperationCanceledException oce) when (oce.CancellationToken == _cancel.Token)
-        {
-            // fine
-        }
-    }
-
 }
