@@ -24,7 +24,7 @@ public class EchoServer : MessagePump<int>
 
     protected override bool OnPop(Socket socket, ref int state, in ScatterGatherArray payload)
     {
-        if (payload.IsEmpty)
+        if (payload.IsEmpty) // note no need to dispose when empty
         {
             Close(socket);
             return false;

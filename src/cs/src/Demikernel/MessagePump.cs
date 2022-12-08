@@ -188,11 +188,16 @@ public abstract class MessagePump<TState> : MessagePump
     {
         _messagePumpThreadId = Environment.CurrentManagedThreadId;
         var timeout = TimeSpec.Create(TimeSpan.FromMilliseconds(1)); // entirely arbitrary
+        bool haveLock = false;
         try
         {
+            Monitor.Enter(LibDemikernel.GlobalLock, ref haveLock);
             OnStart();
             while (_keepRunning)
             {
+                // allow other threads to access the global lock for "sgalloc" and "close" (TODO: can we nuke this?)
+                Monitor.Wait(LibDemikernel.GlobalLock, 0);
+
                 if (_pendingWork)
                 {
                     lock (_pendingOperations)
@@ -290,6 +295,13 @@ public abstract class MessagePump<TState> : MessagePump
             Debug.WriteLine(ex.Message);
             PrepareForMessagePumpExit(false);
             _shutdown.TrySetException(ex);
+        }
+        finally
+        {
+            if (haveLock)
+            {
+                Monitor.Exit(LibDemikernel.GlobalLock);
+            }
         }
     }
 
