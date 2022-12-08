@@ -16,7 +16,7 @@ public readonly struct AcceptResult
     /// Gets the queue (socket) associated with this result
     /// </summary>
     [FieldOffset(0)]
-    public readonly int Qd;
+    public readonly Socket Socket;
 
     [FieldOffset(4)]
     private readonly byte _saddrStart; // [Sizes.SOCKET_ADDRESS];
@@ -34,11 +34,11 @@ public readonly struct AcceptResult
     }
 
     /// <inheritdoc/>
-    public override int GetHashCode() => Qd;
+    public override int GetHashCode() => Socket.GetHashCode();
 
     /// <inheritdoc/>
     public override bool Equals([NotNullWhen(true)] object? obj)
-        => obj is AcceptResult other && other.Qd == Qd;
+        => obj is AcceptResult other && other.Socket == Socket;
 
     /// <inheritdoc/>
     public override unsafe string ToString()

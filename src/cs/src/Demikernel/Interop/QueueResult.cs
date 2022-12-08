@@ -18,7 +18,7 @@ public readonly struct QueueResult
     /// Gets the queue (socket) associated with this result
     /// </summary>
     [FieldOffset(4)]
-    public readonly int Qd;
+    public readonly Socket Socket;
     /// <summary>
     /// Gets the token (operation) associated with this result
     /// </summary>
@@ -36,7 +36,7 @@ public readonly struct QueueResult
     public readonly AcceptResult AcceptResult;
 
     /// <inheritdoc/>
-    public override string ToString() => $"Queue-result for '{Opcode}' on socket {Qd}/{Qt}";
+    public override string ToString() => $"Queue-result for '{Opcode}' on socket {Socket}/{Qt}";
 
     internal void Assert(Opcode expected)
     {

@@ -7,7 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-
+using Socket = Demikernel.Interop.Socket;
 namespace Demikernel;
 
 public abstract class MessagePump : IDisposable, IAsyncDisposable
@@ -70,7 +70,7 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
     private protected readonly struct PendingOperation
     {
         [FieldOffset(0)]
-        public readonly int Socket;
+        public readonly Socket Socket;
         [FieldOffset(4)]
         public readonly Opcode Opcode;
         [FieldOffset(8)]
@@ -83,10 +83,10 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
 
         private const int MaxAddrSize = 44;
 
-        public static PendingOperation Pop(int socket) => new(socket, Opcode.Pop);
-        public static PendingOperation Connect(int socket, ReadOnlySpan<byte> address) => new(socket, Opcode.Connect, address);
-        public static PendingOperation Push(int socket, in ScatterGatherArray payload) => new(socket, Opcode.Push, in payload);
-        public static PendingOperation Accept(int socket) => new(socket, Opcode.Connect);
+        public static PendingOperation Pop(Socket socket) => new(socket, Opcode.Pop);
+        public static PendingOperation Connect(Socket socket, ReadOnlySpan<byte> address) => new(socket, Opcode.Connect, address);
+        public static PendingOperation Push(Socket socket, in ScatterGatherArray payload) => new(socket, Opcode.Push, in payload);
+        public static PendingOperation Accept(Socket socket) => new(socket, Opcode.Connect);
 
         internal unsafe long ExecuteDirect()
         {
@@ -120,7 +120,7 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
             static void ThrowInvalid(Opcode opcode) => throw new NotImplementedException("Unexpected operation: " + opcode);
         }
 
-        private unsafe PendingOperation(int socket, Opcode opcode, ReadOnlySpan<byte> address) : this(socket, opcode)
+        private unsafe PendingOperation(Socket socket, Opcode opcode, ReadOnlySpan<byte> address) : this(socket, opcode)
         {
             AddrSize = address.Length;
             fixed (byte* addrStart = &AddrStart)
@@ -129,12 +129,12 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
             }
         }
 
-        private PendingOperation(int socket, Opcode opcode, in ScatterGatherArray payload) : this(socket, opcode)
+        private PendingOperation(Socket socket, Opcode opcode, in ScatterGatherArray payload) : this(socket, opcode)
         {
             Payload = payload;
         }
 
-        private PendingOperation(int socket, Opcode opcode)
+        private PendingOperation(Socket socket, Opcode opcode)
         {
             Unsafe.SkipInit(out this);
             Socket = socket;
@@ -144,7 +144,7 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
 }
 public abstract class MessagePump<TState> : MessagePump
 {
-    private readonly HashSet<int> _liveSockets = new();
+    private readonly HashSet<Socket> _liveSockets = new();
 
     public override sealed void Start()
     {
@@ -245,22 +245,22 @@ public abstract class MessagePump<TState> : MessagePump
                 _liveStates[--_liveOperationCount] = default!;
 
                 bool beginRead = false;
-                int readSocket = qr.Qd;
+                var readSocket = qr.Socket;
                 TState origState = state;
                 switch (qr.Opcode)
                 {
                     case Opcode.Accept:
-                        beginRead = OnAccept(qr.Qd, ref state, in qr.AcceptResult);
-                        readSocket = qr.AcceptResult.Qd;
+                        beginRead = OnAccept(qr.Socket, ref state, in qr.AcceptResult);
+                        readSocket = qr.AcceptResult.Socket;
                         break;
                     case Opcode.Connect:
-                        beginRead = OnConnect(qr.Qd, ref state);
+                        beginRead = OnConnect(qr.Socket, ref state);
                         break;
                     case Opcode.Pop:
-                        beginRead = OnPop(qr.Qd, ref state, in qr.ScatterGatherArray) && !qr.ScatterGatherArray.IsEmpty;
+                        beginRead = OnPop(qr.Socket, ref state, in qr.ScatterGatherArray) && !qr.ScatterGatherArray.IsEmpty;
                         break;
                     case Opcode.Push:
-                        OnPush(qr.Qd, ref state);
+                        OnPush(qr.Socket, ref state);
                         break;
                 }
                 if (beginRead)
@@ -276,7 +276,7 @@ public abstract class MessagePump<TState> : MessagePump
                     {
                         // accept again, making sure we grow if needed
                         qt = 0;
-                        LibDemikernel.accept(&qt, qr.Qd).AssertSuccess(nameof(LibDemikernel.accept));
+                        LibDemikernel.accept(&qt, qr.Socket).AssertSuccess(nameof(LibDemikernel.accept));
                         GrowIfNeeded();
                         _liveOperations[_liveOperationCount] = qt;
                         _liveStates[_liveOperationCount++] = origState;
@@ -309,18 +309,18 @@ public abstract class MessagePump<TState> : MessagePump
     private bool IsMessagePumpThread => _messagePumpThreadId == Environment.CurrentManagedThreadId;
 
     protected virtual void OnStart() { }
-    protected virtual bool OnPop(int socket, ref TState state, in ScatterGatherArray payload)
+    protected virtual bool OnPop(Socket socket, ref TState state, in ScatterGatherArray payload)
     {
         if (payload.IsEmpty) Close(socket);
         payload.Dispose();
         return false; // true===read again
     }
-    protected virtual void OnPush(int socket, ref TState state) { }
-    protected virtual bool OnConnect(int socket, ref TState state) => true; // true===start reading
-    protected virtual bool OnAccept(int socket, ref TState state, in AcceptResult accept) => true; // true===start reading & accept again
+    protected virtual void OnPush(Socket socket, ref TState state) { }
+    protected virtual bool OnConnect(Socket socket, ref TState state) => true; // true===start reading
+    protected virtual bool OnAccept(Socket socket, ref TState state, in AcceptResult accept) => true; // true===start reading & accept again
 
     // requests a read operation from the specified socket
-    private void Pop(int socket, TState state)
+    private void Pop(Socket socket, TState state)
     {
         var pending = PendingOperation.Pop(socket);
         if (IsMessagePumpThread)
@@ -333,7 +333,7 @@ public abstract class MessagePump<TState> : MessagePump
         }
     }
 
-    protected void Close(int socket)
+    protected void Close(Socket socket)
     {
         AssertMessagePump();
         if (_liveSockets.Remove(socket))
@@ -343,7 +343,7 @@ public abstract class MessagePump<TState> : MessagePump
     }
 
     // performs a push operation to the specified socket, and releases the payload once written (which may not be immediately)
-    protected unsafe void Push(int socket, TState state, in ScatterGatherArray payload)
+    protected unsafe void Push(Socket socket, TState state, in ScatterGatherArray payload)
     {
         var pending = PendingOperation.Push(socket, payload);
         if (IsMessagePumpThread)
@@ -397,7 +397,7 @@ public abstract class MessagePump<TState> : MessagePump
         static void Throw(string caller) => throw new InvalidOperationException($"The {caller} method must only be called from the message-pump");
     }
 
-    protected unsafe int Accept(TState state, AddressFamily addressFamily, SocketType socketType, ProtocolType protocol, EndPoint endPoint, int backlog, int acceptCount = 1)
+    protected unsafe Socket Accept(TState state, AddressFamily addressFamily, SocketType socketType, ProtocolType protocol, EndPoint endPoint, int backlog, int acceptCount = 1)
     {
         AssertMessagePump();
 
@@ -410,7 +410,7 @@ public abstract class MessagePump<TState> : MessagePump
             saddr[i] = addr[i];
         }
 
-        int socket = 0;
+        Socket socket = default;
         LibDemikernel.socket(&socket, addressFamily, socketType, protocol).AssertSuccess(nameof(LibDemikernel.socket));
         if (!_liveSockets.Add(socket)) throw new InvalidOperationException("Duplicate socket: " + socket);
 

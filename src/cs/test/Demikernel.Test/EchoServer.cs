@@ -1,6 +1,7 @@
 ﻿using Demikernel.Interop;
 using System.Net;
 using System.Net.Sockets;
+using Socket = Demikernel.Interop.Socket;
 
 namespace Demikernel.Test;
 
@@ -21,7 +22,7 @@ public class EchoServer : MessagePump<int>
         Accept(42, AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp, EndPoint, 32);
     }
 
-    protected override bool OnPop(int socket, ref int state, in ScatterGatherArray payload)
+    protected override bool OnPop(Socket socket, ref int state, in ScatterGatherArray payload)
     {
         if (payload.IsEmpty)
         {
