@@ -23,7 +23,7 @@ public readonly struct QueueResult
     /// Gets the token (operation) associated with this result
     /// </summary>
     [FieldOffset(8)]
-    public readonly long Qt;
+    public readonly QueueToken QueueToken;
     /// <summary>
     /// Gets the buffer returned from this operation; this is only defined if this was a <see cref="Opcode.Pop"/>
     /// </summary>
@@ -36,7 +36,7 @@ public readonly struct QueueResult
     public readonly AcceptResult AcceptResult;
 
     /// <inheritdoc/>
-    public override string ToString() => $"Queue-result for '{Opcode}' on socket {Socket}/{Qt}";
+    public override string ToString() => $"Queue-result for '{Opcode}' on socket {Socket}/{QueueToken}";
 
     internal void Assert(Opcode expected)
     {

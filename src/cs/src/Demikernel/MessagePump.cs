@@ -88,9 +88,9 @@ public abstract class MessagePump : IDisposable, IAsyncDisposable
         public static PendingOperation Push(Socket socket, in ScatterGatherArray payload) => new(socket, Opcode.Push, in payload);
         public static PendingOperation Accept(Socket socket) => new(socket, Opcode.Connect);
 
-        internal unsafe long ExecuteDirect()
+        internal unsafe QueueToken ExecuteDirect()
         {
-            long qt = 0;
+            Unsafe.SkipInit(out QueueToken qt);
             switch (Opcode)
             {
                 case Opcode.Pop:
@@ -180,7 +180,7 @@ public abstract class MessagePump<TState> : MessagePump
     private volatile bool _pendingWork, _keepRunning = true;
     private int _messagePumpThreadId = -1;
 
-    private long[] _liveOperations = Array.Empty<long>();
+    private QueueToken[] _liveOperations = Array.Empty<QueueToken>();
     private TState[] _liveStates = Array.Empty<TState>();
     private int _liveOperationCount = 0;
 
@@ -226,7 +226,7 @@ public abstract class MessagePump<TState> : MessagePump
                 Unsafe.SkipInit(out QueueResult qr);
                 int offset = 0;
                 ApiResult result;
-                fixed (long* qt = _liveOperations)
+                fixed (QueueToken* qt = _liveOperations)
                 {
                     result = LibDemikernel.wait_any(&qr, &offset, qt, _liveOperationCount, &timeout);
                 }
@@ -266,7 +266,7 @@ public abstract class MessagePump<TState> : MessagePump
                 if (beginRead)
                 {
                     // immediately begin a pop; we already know we have space in the array
-                    long qt = 0;
+                    Unsafe.SkipInit(out QueueToken qt);
                     LibDemikernel.pop(&qt, readSocket).AssertSuccess(nameof(LibDemikernel.pop));
                     GrowIfNeeded();
                     _liveOperations[_liveOperationCount] = qt;
@@ -275,7 +275,6 @@ public abstract class MessagePump<TState> : MessagePump
                     if (qr.Opcode == Opcode.Accept)
                     {
                         // accept again, making sure we grow if needed
-                        qt = 0;
                         LibDemikernel.accept(&qt, qr.Socket).AssertSuccess(nameof(LibDemikernel.accept));
                         GrowIfNeeded();
                         _liveOperations[_liveOperationCount] = qt;
@@ -410,7 +409,7 @@ public abstract class MessagePump<TState> : MessagePump
             saddr[i] = addr[i];
         }
 
-        Socket socket = default;
+        Unsafe.SkipInit(out Socket socket);
         LibDemikernel.socket(&socket, addressFamily, socketType, protocol).AssertSuccess(nameof(LibDemikernel.socket));
         if (!_liveSockets.Add(socket)) throw new InvalidOperationException("Duplicate socket: " + socket);
 
@@ -419,7 +418,7 @@ public abstract class MessagePump<TState> : MessagePump
 
         for (int i = 0; i < acceptCount; i++)
         {
-            long qt = 0;
+            Unsafe.SkipInit(out QueueToken qt);
             LibDemikernel.accept(&qt, socket).AssertSuccess(nameof(LibDemikernel.accept));
 
             GrowIfNeeded();

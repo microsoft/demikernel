@@ -58,28 +58,28 @@ public static unsafe class LibDemikernel
     public static extern ApiResult bind(Socket qd, byte* saddr, int size);
 
     [DllImport("libdemikernel", EntryPoint = "demi_accept")]
-    public static extern ApiResult accept(long* qt, Socket sockqd);
+    public static extern ApiResult accept(QueueToken* qt, Socket sockqd);
 
     [DllImport("libdemikernel", EntryPoint = "demi_connect")]
-    public static extern ApiResult connect(long* qt, Socket qd, byte* saddr, int size);
+    public static extern ApiResult connect(QueueToken* qt, Socket qd, byte* saddr, int size);
 
     [DllImport("libdemikernel", EntryPoint = "demi_close")]
     public static extern ApiResult close(Socket qd);
 
     [DllImport("libdemikernel", EntryPoint = "demi_push")]
-    public static extern ApiResult push(long* qt, Socket qd, ScatterGatherArray* sga);
+    public static extern ApiResult push(QueueToken* qt, Socket qd, ScatterGatherArray* sga);
 
     [DllImport("libdemikernel", EntryPoint = "demi_pushto")]
-    public static extern ApiResult pushto(long* qt, Socket qd, ScatterGatherArray* sga, byte* saddr, int size);
+    public static extern ApiResult pushto(QueueToken* qt, Socket qd, ScatterGatherArray* sga, byte* saddr, int size);
 
     [DllImport("libdemikernel", EntryPoint = "demi_pop")]
-    public static extern ApiResult pop(long* qt, Socket qd);
+    public static extern ApiResult pop(QueueToken* qt, Socket qd);
 
     [DllImport("libdemikernel", EntryPoint = "demi_wait")]
-    public static extern ApiResult wait(QueueResult* qr, long qt, TimeSpec* timeout);
+    public static extern ApiResult wait(QueueResult* qr, QueueToken qt, TimeSpec* timeout);
 
     [DllImport("libdemikernel", EntryPoint = "demi_wait_any")]
-    public static extern ApiResult wait_any(QueueResult* qr, int* offset, long* qt, int num_qts, TimeSpec* timeout);
+    public static extern ApiResult wait_any(QueueResult* qr, int* offset, QueueToken* qt, int num_qts, TimeSpec* timeout);
 
     [DllImport("libdemikernel", EntryPoint = "demi_sgaalloc")]
     public static extern ScatterGatherArray sgaalloc(ulong size);
