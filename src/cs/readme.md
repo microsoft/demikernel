@@ -43,14 +43,8 @@ dotnet test Test.csproj
 # Notes
 
 The raw Demikernel API is exposed via `Demikernel.Interop.Libdemiknel`; however, in general-purpose applications it is *not*
-suggested to use this as the primary API; the API is exposed in a more .NET-focused way via `Socket` *noting that this
-is not optimal for Demikernel* (as it is not a tight loop); for example:
-
-``` c#
-using var socket = Socket.Create(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-socket.Bind(new IPEndPoint(IPAddress.Loopback, 4133));
-socket.Listen(32);
-//...
-var accept = await socket.AcceptAsync(ct.Token);
-using var client = accept.AsSocket();
-```
+suggested to use this as the primary API; Demikernel is intended to be used as a single-threaded IO core in scenarios where
+the primary application functionality is IO related (not CPU offload); this is broadly like `epoll`, but with an emphasis
+on the single IO core. The `MessagePump<T>` wraps up the IO loop functionality for most common server scenarios, allowing
+a consumer to respond to incoming data. See `EchoServer` for an example of a server that responds to incoming data requests
+by pushing the same data back at the sender.
