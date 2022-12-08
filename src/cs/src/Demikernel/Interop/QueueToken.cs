@@ -23,7 +23,7 @@ public readonly struct QueueToken : IEquatable<QueueToken>
     public override int GetHashCode() => Qt.GetHashCode();
 
     /// <inheritdoc/>
-    public override string ToString() => $"Socket {Qt}";
+    public override string ToString() => $"Queue-token {Qt}";
 
     /// <summary>Compare two values for equality</summary>
     public static bool operator ==(QueueToken x, QueueToken y) => x.Qt == y.Qt;
