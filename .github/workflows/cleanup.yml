@@ -41,6 +41,5 @@ jobs:
           cd $GITHUB_REPOSITORY
             sudo -E make clean
             git clean -fdx
-            git checkout master
+            git checkout dev
             git remote prune origin
-

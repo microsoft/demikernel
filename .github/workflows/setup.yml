@@ -39,6 +39,6 @@ jobs:
         envs: GITHUB_REPOSITORY,GITHUB_SHA
         script: |
           cd $GITHUB_REPOSITORY
-          git checkout master
+          git checkout dev
           git pull
           git checkout --detach $GITHUB_SHA
