@@ -7,30 +7,26 @@ assignees: ''
 
 ---
 
-Description
-========
+## Description
 
 A clear and concise description of what the bug is.
 
-How to Reproduce
-=============
+## How to Reproduce
 
 Steps to reproduce the behavior:
+
 1. Do this
 2. Do that
 3. See error
 
-Screenshots
-=========
+## Screenshots
 
 If applicable, add screenshots to help explain your problem.
 
-Expected Behavior
-============
+## Expected Behavior
 
 A clear and concise description of what you expected to happen.
 
-Related Issues
-==========
+## Related Issues
 
 Link related issues here.
