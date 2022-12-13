@@ -87,7 +87,7 @@ def remote_run(host: string, repository: string, is_debug: bool, target: string,
 
 
 # Executes a cleanup command in a remote host.
-def remote_cleanup(host: string, workspace: string, default_branch: string = "master"):
+def remote_cleanup(host: string, workspace: string, default_branch: string = "dev"):
     cmd = "cd {} && make clean && git checkout {} && git clean -fdx".format(workspace, default_branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
