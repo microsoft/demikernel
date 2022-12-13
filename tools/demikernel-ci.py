@@ -208,37 +208,61 @@ def test_pipe_push_pop(server: string, client: string, is_debug: bool, repositor
 def run_pipeline(
         repository: string, branch: string, libos: string, is_debug: bool,
         server: string, client: string,
-        test: bool, server_addr: string, client_addr: string, delay: float):
+        test: bool, server_addr: string, client_addr: string, delay: float) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     passed: bool = False
+    step: int = 0
+    status: int = 0
 
     # STEP 1: Check out.
     passed = job_checkout(repository, branch, server, client)
+    status |= (0 if passed else 1) << step
+    step += 1
 
     # STEP 2: Compile debug.
     if passed:
         passed = job_compile(repository, libos, is_debug, server, client)
+        status |= (0 if passed else 1) << step
+        step += 1
 
     if test:
         # STEP 3: Run unit tests.
         if passed:
             passed = job_test_unit_rust(repository, libos, is_debug, server, client, is_sudo)
+            status |= (0 if passed else 1) << step
+            step += 1
 
         # STEP 4: Run system tests.
         if passed:
             if libos != "catmem":
                 passed = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
                                             repository, server_addr, client_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
                 passed = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
                                            repository, server_addr, client_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
                 passed = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo, repository, server_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
                 passed = test_tcp_push_pop(server, client, libos, is_debug, is_sudo, repository, server_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
             else:
                 passed = test_pipe_ping_pong(server, server, is_debug, repository, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
                 passed = test_pipe_push_pop(client, client, is_debug, repository, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
 
     # Setp 5: Clean up.
     passed = job_cleanup(repository, server, client)
+    status |= (0 if passed else 1) << step
+    step += 1
+
+    return status
 
 
 # Reads and parses command line arguments.
@@ -293,7 +317,9 @@ def main():
     server_addr: string = args.server_addr if test else ""
     client_addr: string = args.client_addr if test else ""
 
-    run_pipeline(repository, branch, libos, is_debug, server, client, test, server_addr, client_addr, delay)
+    status: int = run_pipeline(repository, branch, libos, is_debug, server,
+                               client, test, server_addr, client_addr, delay)
+    sys.exit(status)
 
 
 if __name__ == "__main__":
