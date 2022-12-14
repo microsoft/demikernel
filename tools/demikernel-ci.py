@@ -207,8 +207,8 @@ def test_pipe_push_pop(server: string, client: string, is_debug: bool, repositor
 # Runs the CI pipeline.
 def run_pipeline(
         repository: string, branch: string, libos: string, is_debug: bool,
-        server: string, client: string,
-        test: bool, server_addr: string, client_addr: string, delay: float) -> int:
+        server: string, client: string, test_unit: bool,
+        test_system: bool, server_addr: string, client_addr: string, delay: float) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     passed: bool = False
     step: int = 0
@@ -225,14 +225,15 @@ def run_pipeline(
         status |= (0 if passed else 1) << step
         step += 1
 
-    if test:
-        # STEP 3: Run unit tests.
+    # STEP 3: Run unit tests.
+    if test_unit | test_system:
         if passed:
             passed = job_test_unit_rust(repository, libos, is_debug, server, client, is_sudo)
             status |= (0 if passed else 1) << step
             step += 1
 
-        # STEP 4: Run system tests.
+    # STEP 4: Run system tests.
+    if test_system:
         if passed:
             if libos != "catmem":
                 passed = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
@@ -288,9 +289,10 @@ def read_args() -> argparse.Namespace:
                         help="set delay between server and host for system-level tests")
 
     # Test options.
-    parser.add_argument("--test", action='store_true', required=False, help="run tests")
-    parser.add_argument("--server-addr", required="--test" in sys.argv, help="sets server address in tests")
-    parser.add_argument("--client-addr", required="--test" in sys.argv, help="sets client address in tests")
+    parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests only")
+    parser.add_argument("--test-system", action='store_true', required=False, help="run unit and system tests")
+    parser.add_argument("--server-addr", required="--test-system" in sys.argv, help="sets server address in tests")
+    parser.add_argument("--client-addr", required="--test-system" in sys.argv, help="sets client address in tests")
 
     # Read arguments from command line.
     return parser.parse_args()
@@ -313,12 +315,13 @@ def main():
     delay: float = args.delay
 
     # Extract test options.
-    test: bool = args.test
-    server_addr: string = args.server_addr if test else ""
-    client_addr: string = args.client_addr if test else ""
+    test_unit: bool = args.test_unit
+    test_system: bool = args.test_system
+    server_addr: string = args.server_addr if test_system else ""
+    client_addr: string = args.client_addr if test_system else ""
 
     status: int = run_pipeline(repository, branch, libos, is_debug, server,
-                               client, test, server_addr, client_addr, delay)
+                               client, test_unit, test_system, server_addr, client_addr, delay)
     sys.exit(status)
 
 
