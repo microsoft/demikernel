@@ -216,7 +216,7 @@ PEER = server
 !endif
 
 !ifndef TEST
-TEST = udp_push_pop
+TEST = udp-push-pop
 !endif
 
 # Runs system tests.
