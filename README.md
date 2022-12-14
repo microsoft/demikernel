@@ -91,29 +91,9 @@ make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a s
 sudo -E ./scripts/setup/hugepages.sh
 ```
 
-### 3. Run UDP Push-Pop Demo
+### 3. Run Tests
 
-> For Catnap and Catcollar, you don't need to run with super-user privileges.
-
-```bash
-# Server-Side
-PEER=server TEST=udp_push_pop sudo -E make LIBOS=catnip test-system
-
-# Client-Side
-PEER=client TEST=udp_push_pop sudo -E make LIBOS=catnip test-system
-```
-
-### 4. Run UDP Ping-Pong Demo
-
-> For Catnap and Catcollar, you don't need to run with super-user privileges.
-
-```bash
-# Server-Side
-PEER=server TEST=udp_ping_pong sudo -E make LIBOS=catnip test-system
-
-# Client-Side
-PEER=client TEST=udp_ping_pong sudo -E make LIBOS=catnip test-system
-```
+See [doc/testing.md](./doc/testing.md) for instructions and details.
 
 ## Documentation
 
