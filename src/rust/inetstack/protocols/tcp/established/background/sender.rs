@@ -132,7 +132,7 @@ pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
             .expect("No unsent data with sequence number gap?");
         let mut segment_data_len: u32 = segment_data.len() as u32;
 
-        let rto: Duration = cb.rto_estimate();
+        let rto: Duration = cb.rto();
         cb.congestion_control_on_send(rto, sent_data);
 
         // Prepare the segment and send it.
@@ -161,7 +161,7 @@ pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
         // ToDo: Fix how the retransmit timer works.
         let retransmit_deadline = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
-            let rto: Duration = cb.rto_estimate();
+            let rto: Duration = cb.rto();
             cb.set_retransmit_deadline(Some(cb.clock.now() + rto));
         }
     }

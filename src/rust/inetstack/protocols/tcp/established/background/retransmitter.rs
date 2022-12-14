@@ -57,7 +57,7 @@ async fn retransmit(cause: RetransmitCause, cb: &Rc<ControlBlock>) -> Result<(),
 
     // NOTE: Congestion Control Don't think we record a failure on Fast Retransmit, but can't find a definitive source.
     match cause {
-        RetransmitCause::TimeOut => cb.rto_record_failure(),
+        RetransmitCause::TimeOut => cb.rto_back_off(),
         RetransmitCause::FastRetransmit => (),
     };
 
@@ -75,7 +75,7 @@ async fn retransmit(cause: RetransmitCause, cb: &Rc<ControlBlock>) -> Result<(),
 
     // Set new retransmit deadline.
     // ToDo: Review this.  Shouldn't we only do this for RetransmitCause::Timeout?
-    let rto: Duration = cb.rto_estimate();
+    let rto: Duration = cb.rto();
     let deadline: Instant = cb.clock.now() + rto;
     cb.set_retransmit_deadline(Some(deadline));
 

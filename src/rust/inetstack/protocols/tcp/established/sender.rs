@@ -218,7 +218,7 @@ impl Sender {
                 if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
-                    let rto: Duration = cb.rto_estimate();
+                    let rto: Duration = cb.rto();
                     cb.congestion_control_on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
@@ -248,7 +248,7 @@ impl Sender {
 
                     // Start the retransmission timer if it isn't already running.
                     if cb.get_retransmit_deadline().is_none() {
-                        let rto: Duration = cb.rto_estimate();
+                        let rto: Duration = cb.rto();
                         cb.set_retransmit_deadline(Some(cb.clock.now() + rto));
                     }
 
