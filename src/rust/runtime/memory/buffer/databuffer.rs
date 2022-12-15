@@ -23,6 +23,8 @@ use std::{
 /// Data Buffer
 #[derive(Clone, Debug)]
 pub struct DataBuffer {
+    #[deprecated]
+
     /// Underlying data.
     data: Option<Arc<[u8]>>,
 
@@ -40,6 +42,7 @@ pub struct DataBuffer {
 /// Associated Functions for Data Buffers
 impl DataBuffer {
     /// Removes bytes from the front of the target data buffer.
+    #[deprecated]
     pub fn adjust(&mut self, nbytes: usize) {
         if nbytes > self.len {
             panic!("adjusting past end of buffer: {} vs {}", nbytes, self.len);
@@ -49,6 +52,7 @@ impl DataBuffer {
     }
 
     /// Removes bytes from the end of the target data buffer.
+    #[deprecated]
     pub fn trim(&mut self, nbytes: usize) {
         if nbytes > self.len {
             panic!("trimming past beginning of buffer: {} vs {}", nbytes, self.len);
@@ -57,6 +61,7 @@ impl DataBuffer {
     }
 
     // Creates a data buffer with a given capacity.
+    #[deprecated]
     pub fn new(capacity: usize) -> Result<Self, Fail> {
         // Check if argument is valid.
         if capacity == 0 {
@@ -72,6 +77,7 @@ impl DataBuffer {
     }
 
     /// Creates a data buffer from a raw pointer and a length.
+    #[deprecated]
     pub fn from_raw_parts(data: *mut u8, len: usize) -> Result<Self, Fail> {
         // Check if arguments are valid.
         if len == 0 {
@@ -95,6 +101,7 @@ impl DataBuffer {
     }
 
     /// Consumes the data buffer returning a raw pointer to the underlying buffer and data.
+    #[deprecated]
     pub fn into_raw_parts(dbuf: DataBuffer) -> Result<(*const u8, *const u8), Fail> {
         if let Some(data) = dbuf.data {
             let offset: usize = dbuf.offset;
@@ -107,6 +114,7 @@ impl DataBuffer {
     }
 
     /// Creates an empty buffer.
+    #[deprecated]
     pub fn empty() -> Self {
         Self {
             data: None,
@@ -116,6 +124,7 @@ impl DataBuffer {
     }
 
     /// Creates a data buffer from a slice.
+    #[deprecated]
     pub fn from_slice(src: &[u8]) -> Self {
         src.into()
     }

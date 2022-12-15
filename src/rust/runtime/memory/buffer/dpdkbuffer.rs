@@ -30,6 +30,7 @@ use ::std::{
 
 /// DPDK-Managed Buffer
 #[derive(Debug)]
+#[deprecated]
 pub struct DPDKBuffer {
     /// Underlying DPDK buffer.
     ptr: *mut rte_mbuf,
@@ -42,6 +43,7 @@ pub struct DPDKBuffer {
 /// Associate Functions for DPDK-Managed Buffers
 impl DPDKBuffer {
     /// Removes `len` bytes at the beginning of the target [Mbuf].
+    #[deprecated]
     pub fn adjust(&mut self, nbytes: usize) {
         assert!(nbytes <= self.len(), "nbytes={:?} self.len()={:?}", nbytes, self.len());
         if unsafe { rte_pktmbuf_adj(self.ptr, nbytes as u16) } == ptr::null_mut() {
@@ -50,6 +52,7 @@ impl DPDKBuffer {
     }
 
     /// Removes `len` bytes at the end of the target [Mbuf].
+    #[deprecated]
     pub fn trim(&mut self, nbytes: usize) {
         assert!(nbytes <= self.len(), "nbytes={:?} self.len()={:?}", nbytes, self.len());
         assert!(nbytes <= self.len());
@@ -59,11 +62,13 @@ impl DPDKBuffer {
     }
 
     /// Creates a [Mbuf].
+    #[deprecated]
     pub fn new(ptr: *mut rte_mbuf) -> Self {
         DPDKBuffer { ptr }
     }
 
     /// Returns a pointer to the data stored in the target [Mbuf].
+    #[deprecated]
     pub fn data_ptr(&self) -> *mut u8 {
         unsafe {
             let buf_ptr = (*self.ptr).buf_addr as *mut u8;
@@ -72,21 +77,25 @@ impl DPDKBuffer {
     }
 
     /// Returns the length of the data stored in the target [Mbuf].
+    #[deprecated]
     pub fn len(&self) -> usize {
         unsafe { (*self.ptr).data_len as usize }
     }
 
     /// Converts the target [Mbuf] into a mutable [u8] slice.
+    #[deprecated]
     pub unsafe fn slice_mut(&mut self) -> &mut [u8] {
         slice::from_raw_parts_mut(self.data_ptr(), self.len())
     }
 
     /// Converts the target [Mbuf] into a raw DPDK buffer.
+    #[deprecated]
     pub fn into_raw(mut self) -> *mut rte_mbuf {
         mem::replace(&mut self.ptr, ptr::null_mut())
     }
 
     /// Returns a pointer to the underlying DPDK buffer stored in the target [Mbuf].
+    #[deprecated]
     pub fn get_ptr(&self) -> *mut rte_mbuf {
         self.ptr
     }
@@ -140,6 +149,7 @@ impl Drop for DPDKBuffer {
 //==============================================================================
 
 /// Releases a mbuf in the target memory pool.
+#[deprecated]
 fn free_mbuf(mbuf_ptr: *mut rte_mbuf) {
     unsafe {
         rte_pktmbuf_free(mbuf_ptr);
