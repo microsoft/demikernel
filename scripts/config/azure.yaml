@@ -21,6 +21,6 @@ catnip:
   my_interface_name: "abcde"
   arp_disable: true
 dpdk:
-  eal_init: ["-c", "0xff", "-n", "4", "-w", "WW:WW.W","--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=eth1"]
+  eal_init: ["-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=eth1"]
 
 # vim: set tabstop=2 shiftwidth=2
