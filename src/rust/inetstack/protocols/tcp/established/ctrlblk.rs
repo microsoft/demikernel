@@ -276,6 +276,10 @@ impl ControlBlock {
         self.sender.send(buf, self)
     }
 
+    pub fn retransmit(&self) {
+        self.sender.retransmit(self)
+    }
+
     pub fn congestion_control_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
         self.cc.watch_retransmit_now_flag()
     }
@@ -346,10 +350,6 @@ impl ControlBlock {
 
     pub fn watch_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
         self.retransmit_deadline.watch()
-    }
-
-    pub fn pop_unacked_segment(&self) -> Option<UnackedSegment> {
-        self.sender.pop_unacked_segment()
     }
 
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {

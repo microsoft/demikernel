@@ -148,10 +148,6 @@ impl Sender {
         self.unsent_seq_no.watch()
     }
 
-    pub fn pop_unacked_segment(&self) -> Option<UnackedSegment> {
-        self.unacked_queue.borrow_mut().pop_front()
-    }
-
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {
         self.unacked_queue.borrow_mut().push_back(segment)
     }
@@ -271,6 +267,37 @@ impl Sender {
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
         Ok(())
+    }
+
+    /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
+    pub fn retransmit(&self, cb: &ControlBlock) {
+        // Check that we have an unacknowledged segment.
+        if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
+            // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
+            // if the ACK is for the original or the retransmission).  Remove the transmission timestamp from the entry.
+            segment.initial_tx.take();
+
+            // Clone the segment data for retransmission.
+            let data: DemiBuffer = segment.bytes.clone();
+
+            // ToDo: Issue #198 Repacketization - we should send a full MSS (and set the FIN flag if applicable).
+
+            // Prepare and send the segment.
+            if let Some(first_hop_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
+                let mut header: TcpHeader = cb.tcp_header();
+                header.seq_num = self.send_unacked.get();
+                if data.len() == 0 {
+                    // This buffer is the end-of-send marker.  Retransmit the FIN.
+                    header.fin = true;
+                }
+                cb.emit(header, Some(data), first_hop_link_addr);
+            }
+        } else {
+            // We shouldn't enter the retransmit routine with an empty unacknowledged queue.  So maybe we should assert
+            // here?  But this is relatively benign if it happens, and could be the result of a race-condition or a
+            // mismanaged retransmission timer, so asserting would be over-reacting.
+            warn!("Retransmission with empty unacknowledged queue?");
+        }
     }
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
