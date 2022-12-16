@@ -36,8 +36,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::{
-            Buffer,
-            DataBuffer,
+            DemiBuffer,
             MemoryRuntime,
         },
         queue::IoQueueTable,
@@ -241,7 +240,7 @@ impl CatnapWLibOS {
     }
 
     // Handles a push operation.
-    fn do_push(&mut self, qd: QDesc, buf: Buffer) -> Result<QToken, Fail> {
+    fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(socket) => {
                 let future: Operation = Operation::from(PushFuture::new(qd, socket.clone(), buf));
@@ -272,21 +271,8 @@ impl CatnapWLibOS {
         }
     }
 
-    // Pushes raw data to a socket.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        trace!("push2() qd={:?}", qd);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_push(qd, buf)
-    }
-
     /// Handles a pushto operation.
-    fn do_pushto(&mut self, qd: QDesc, buf: Buffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self.sockets.get(&qd) {
             Some(socket) => {
                 let addr: SockAddr = parse_addr(remote);
@@ -316,19 +302,6 @@ impl CatnapWLibOS {
             },
             Err(e) => Err(e),
         }
-    }
-
-    /// Pushes raw data to a socket.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
-        trace!("pushto2() qd={:?}, remote={:?}", qd, remote);
-
-        let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(data));
-        if buf.len() == 0 {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
-        }
-
-        // Issue pushto operation.
-        self.do_pushto(qd, buf, remote)
     }
 
     /// Pops data from a socket.

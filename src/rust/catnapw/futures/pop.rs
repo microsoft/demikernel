@@ -7,10 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::{
-        Buffer,
-        DataBuffer,
-    },
+    memory::DemiBuffer,
     QDesc,
 };
 use ::socket2::Socket;
@@ -73,7 +70,7 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<(Option<SocketAddrV4>, Buffer), Fail>;
+    type Output = Result<(Option<SocketAddrV4>, DemiBuffer), Fail>;
 
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -85,7 +82,7 @@ impl Future for PopFuture {
                 trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
                 unsafe {
                     let bytes_recv: [u8; POP_SIZE] = transmute::<[MaybeUninit<u8>; POP_SIZE], [u8; POP_SIZE]>(bytes);
-                    let buf: Buffer = Buffer::Heap(DataBuffer::from_slice(&bytes_recv[0..nbytes]));
+                    let buf: DemiBuffer = DemiBuffer::from_slice(&bytes_recv[0..nbytes])?;
                     Poll::Ready(Ok((socketaddr.as_socket_ipv4(), buf)))
                 }
             },
