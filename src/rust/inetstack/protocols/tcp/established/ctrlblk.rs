@@ -206,7 +206,7 @@ pub struct ControlBlock {
     retransmit_deadline: WatchedValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
-    rto: RefCell<RtoCalculator>,
+    rto_calculator: RefCell<RtoCalculator>,
 }
 
 //==============================================================================
@@ -255,7 +255,7 @@ impl ControlBlock {
             user_is_done_sending: Cell::new(false),
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
             retransmit_deadline: WatchedValue::new(None),
-            rto: RefCell::new(RtoCalculator::new()),
+            rto_calculator: RefCell::new(RtoCalculator::new()),
         }
     }
 
@@ -274,6 +274,10 @@ impl ControlBlock {
 
     pub fn send(&self, buf: DemiBuffer) -> Result<(), Fail> {
         self.sender.send(buf, self)
+    }
+
+    pub fn retransmit(&self) {
+        self.sender.retransmit(self)
     }
 
     pub fn congestion_control_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
@@ -348,24 +352,20 @@ impl ControlBlock {
         self.retransmit_deadline.watch()
     }
 
-    pub fn pop_unacked_segment(&self) -> Option<UnackedSegment> {
-        self.sender.pop_unacked_segment()
-    }
-
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {
         self.sender.push_unacked_segment(segment)
     }
 
     pub fn rto_add_sample(&self, rtt: Duration) {
-        self.rto.borrow_mut().add_sample(rtt)
+        self.rto_calculator.borrow_mut().add_sample(rtt)
     }
 
-    pub fn rto_estimate(&self) -> Duration {
-        self.rto.borrow().estimate()
+    pub fn rto(&self) -> Duration {
+        self.rto_calculator.borrow().rto()
     }
 
-    pub fn rto_record_failure(&self) {
-        self.rto.borrow_mut().record_failure()
+    pub fn rto_back_off(&self) {
+        self.rto_calculator.borrow_mut().back_off()
     }
 
     pub fn unsent_top_size(&self) -> Option<usize> {
@@ -589,7 +589,7 @@ impl ControlBlock {
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
         self.cc.on_ack_received(
-            self.rto.borrow().estimate(),
+            self.rto_calculator.borrow().rto(),
             send_unacknowledged,
             send_next,
             header.ack_num,
@@ -642,7 +642,7 @@ impl ControlBlock {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
                     // ToDo: This looks wrong.  We should reset the retransmit timer to match the deadline for the
                     // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
-                    let deadline: Instant = now + self.rto.borrow().estimate();
+                    let deadline: Instant = now + self.rto_calculator.borrow().rto();
                     self.retransmit_deadline.set(Some(deadline));
                 }
             } else {
