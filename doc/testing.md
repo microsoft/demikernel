@@ -25,6 +25,12 @@ Unit tests may be run in multiple ways:
 - [Using the Demikernel's CI tool (ie; `demikernel-ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
 - [Using Demikernel's build system (ie. make)](#running-unit-tests-from-the-shell-ie-bash). This method is strongly discouraged.
 
+> Regardless the method you choose to follow:
+>
+> - You should have at your disposal a pair of machines with Demikernel's development environment set up. For more
+information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
+> - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
+
 ### Running Unit Tests with Demikernel's CI Tool (ie. `demikernel-ci`)
 
 In order to use this method, you should first do the following setup once:
@@ -95,9 +101,11 @@ System-level tests may be run in multiple ways:
 - [Directly from the shell (ie. `bash`)](#running-system-level-tests-from-the-shell-ie-bash). This method is strongly discouraged, because you will have to not only deal with
 specific arguments for each test, but also with intricacies of your shell.
 
-> Regardless the method you choose to follow, you should have at your disposal a pair of machines with Demikernel's
-development environment set up. For more information on how to set up Demikernel's development environment, check out
-instructions in the `README.md` file.
+> Regardless the method you choose to follow:
+>
+> - You should have at your disposal a pair of machines with Demikernel's development environment set up. For more
+information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
+> - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
 
 ### Running System-Level Tests with Demikernel's CI Tool (ie. `demikernel-ci`)
 
