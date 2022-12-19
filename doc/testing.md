@@ -80,10 +80,10 @@ export DEMIKERNEL_PATH=/path/to/demikernel
 export DEMIKERNEL_BRANCH=dev
 
 # Run system-level tests with Catnap LibOS, unless otherwise stated.
-# If you want to run unit tests on a different LibOS, then set the LIBOS flag accordingly.
+# If you want to run system-level tests on a different LibOS, then set the LIBOS flag accordingly.
 export LIBOS=catnap
 
-# Run all system tests for the target LIBOS.
+# Run all system-level tests for the target LIBOS.
 python3 tools/demikernel-ci.py \
     --server $SERVER_HOSTNAME \
     --client $CLIENT_HOSTNAME \
@@ -103,7 +103,7 @@ export SERVER_IPV4_ADDR=192.0.2.10:56789
 export CLIENT_IPV4_ADDR=192.0.2.11:56789
 
 # Run system-level tests with Catnap LibOS, unless otherwise stated.
-# If you want to run unit tests on a different LibOS, then set the LIBOS flag accordingly.
+# If you want to run system-level tests on a different LibOS, then set the LIBOS flag accordingly.
 export LIBOS=catnap
 
 # Run tcp-push-pop.
@@ -137,7 +137,7 @@ make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server demikernel
 make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client demikernel-pipe-name'
 ```
 
-### Running System Level Tests from the Shell (ie. `bash`)
+### Running System-Level Tests from the Shell (ie. `bash`)
 
 ```bash
 # Set location for Demikernel's config file.
@@ -150,7 +150,7 @@ export SERVER_IPV4_ADDR=192.0.2.10:56789
 export CLIENT_IPV4_ADDR=192.0.2.11:56789
 
 # Run system-level tests with Catnap LibOS, unless otherwise stated.
-# If you want to run unit tests on a different LibOS, then set the LIBOS flag accordingly.
+# If you want to system-level tests on a different LibOS, then set the LIBOS flag accordingly.
 export LIBOS=catnap
 
 # Run tcp-push-pop.
