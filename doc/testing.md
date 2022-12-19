@@ -20,12 +20,48 @@ implementation, search for `mod tests` and `cfg(test)` in the code base.
 
 ## How to Run Unit Tests
 
-You can run unit tests using Demikernel's build system:
+Unit tests may be run in multiple ways:
+
+- [Using the Demikernel's CI tool (ie; `demikernel-ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
+- [Using Demikernel's build system (ie. make)](#running-unit-tests-from-the-shell-ie-bash). This method is strongly discouraged.
+
+### Running Unit Tests with Demikernel's CI Tool (ie. `demikernel-ci`)
+
+In order to use this method, you should first do the following setup once:
+
+- Setup RSA-based authentication for both server and host machines.
+- Setup SSH aliases for connecting to both server and host machines.
 
 ```bash
-# Run all unit tests of Demikernel with Catnap LibOS.
+# Set parameters for remote machines.
+export SERVER_HOSTNAME=demikernel-vm0
+export CLIENT_HOSTNAME=demikernel-vm1
+export DEMIKERNEL_PATH=/path/to/demikernel
+export DEMIKERNEL_BRANCH=dev
+
+# Run unit tests with Catnap LibOS.
 # If you want to run unit tests on a different LibOS, then set the LIBOS flag accordingly.
-make LIBOS=catnap test-unit
+export LIBOS=catnap
+
+# Run all system tests for the target LIBOS.
+python3 tools/demikernel-ci.py \
+    --server $SERVER_HOSTNAME \
+    --client $CLIENT_HOSTNAME \
+    --repository $DEMIKERNEL_PATH \
+    --branch $DEMIKERNEL_BRANCH \
+    --libos $LIBOS \
+    --test-unit
+```
+
+### Running Unit Tests from the Shell (ie. `bash`)
+
+```bash
+# Run unit tests with Catnap LibOS.
+# If you want to run unit tests on a different LibOS, then set the LIBOS flag accordingly.
+export LIBOS=catnap
+
+# Run all unit tests.
+make LIBOS=$LIBOS test-unit
 ```
 
 ## What Are System-Level Tests
@@ -90,7 +126,7 @@ python3 tools/demikernel-ci.py \
     --repository $DEMIKERNEL_PATH \
     --branch $DEMIKERNEL_BRANCH \
     --libos $LIBOS \
-    --test \
+    --test-system \
     --server-addr $SERVER_IPV4_ADDR \
     --client-addr $CLIENT_IPV4_ADDR
 ```
