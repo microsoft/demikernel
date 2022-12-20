@@ -8,6 +8,7 @@ use ::std::{
     cell::RefCell,
     io,
     rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(feature = "auto-calibrate")]
@@ -123,6 +124,7 @@ impl Scope {
         total_duration: u64,
         depth: usize,
         max_depth: Option<usize>,
+        ns_per_cycle: f64,
     ) -> io::Result<()> {
         if let Some(d) = max_depth {
             if depth > d {
@@ -145,16 +147,17 @@ impl Scope {
         }
         writeln!(
             out,
-            "{: <60} {: >6.2}%, {: >18.4} cycles",
+            "{: <60} {: >6.2}%, {: >18.4} cycles, {: >18.4} ns",
             format!(" {}  {}", markers, self.name),
             percent,
             duration_sum_secs / (self.num_calls as f64),
+            duration_sum_secs / (self.num_calls as f64) * ns_per_cycle,
         )?;
 
         // Write children
         for succ in &self.succs {
             succ.borrow()
-                .write_recursive(out, total_duration, depth + 1, max_depth)?;
+                .write_recursive(out, total_duration, depth + 1, max_depth, ns_per_cycle)?;
         }
 
         Ok(())
@@ -200,6 +203,7 @@ impl Drop for Guard {
 pub struct Profiler {
     roots: Vec<Rc<RefCell<Scope>>>,
     current: Option<Rc<RefCell<Scope>>>,
+    ns_per_cycle: f64,
     #[cfg(feature = "auto-calibrate")]
     clock_drift: u64,
 }
@@ -209,6 +213,7 @@ impl Profiler {
         Profiler {
             roots: Vec::new(),
             current: None,
+            ns_per_cycle: Self::measure_ns_per_cycle(),
             #[cfg(feature = "auto-calibrate")]
             clock_drift: Self::clock_drift(SAMPLE_SIZE),
         }
@@ -302,10 +307,27 @@ impl Profiler {
         let total_duration = self.roots.iter().map(|root| root.borrow().duration_sum).sum();
 
         for root in self.roots.iter() {
-            root.borrow().write_recursive(out, total_duration, 0, max_depth)?;
+            root.borrow().write_recursive(out, total_duration, 0, max_depth, self.ns_per_cycle)?;
         }
 
         out.flush()
+    }
+
+    fn measure_ns_per_cycle() -> f64 {
+        let start = SystemTime::now();
+        let (start_cycle, _): (u64, u32) = unsafe { x86::time::rdtscp() };
+        
+        test::black_box((0..10000).fold(0, |old, new| old ^ new)); // dummy calculations for measurement
+
+        let (end_cycle, _): (u64, u32) = unsafe { x86::time::rdtscp() };
+        let since_the_epoch = SystemTime::now()
+            .duration_since(start)
+            .expect("Time went backwards");
+        let in_ns = since_the_epoch.as_secs() * 1_000_000_000 +
+            since_the_epoch.subsec_nanos() as u64;
+
+
+        in_ns as f64 / (end_cycle-start_cycle) as f64
     }
 
     #[cfg(feature = "auto-calibrate")]
