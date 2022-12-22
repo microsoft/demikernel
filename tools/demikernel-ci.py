@@ -78,15 +78,16 @@ def remote_compile(host: string, repository: string, target: string, is_debug: b
 
 
 # Executes a test in a remote host.
-def remote_run(host: string, repository: string, target: string, is_sudo: bool):
+def remote_run(host: string, repository: string, is_debug: bool, target: string, is_sudo: bool):
+    debug_flag: string = "DEBUG=yes" if is_debug else "DEBUG=no"
     sudo_cmd: string = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make {}".format(repository, sudo_cmd, target)
+    cmd = "cd {} && {} make {} {}".format(repository, sudo_cmd, debug_flag, target)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 # Executes a cleanup command in a remote host.
-def remote_cleanup(host: string, workspace: string, default_branch: string = "master"):
+def remote_cleanup(host: string, workspace: string, default_branch: string = "dev"):
     cmd = "cd {} && make clean && git checkout {} && git clean -fdx".format(workspace, default_branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -104,22 +105,32 @@ def job_checkout(repository: string, branch: string, server: string, client: str
     return wait_and_report("checkout", jobs)
 
 
-def job_compile(repository: string, branch: string, libos: string, is_debug: bool, server: string, client: string) -> bool:
+def job_compile(repository: string, libos: string, is_debug: bool, server: string, client: string) -> bool:
     jobs: list[subprocess.Popen[str]] = []
     jobs.append(remote_compile(server, repository, "all LIBOS={}".format(libos), is_debug))
     jobs.append(remote_compile(client, repository, "all LIBOS={}".format(libos), is_debug))
     return wait_and_report("compile-{}".format("debug" if is_debug else "release"), jobs)
 
 
-def job_test_system_rust(test_name: string, repo: string, libos: string, server: string, client: string,
-                         server_args: string, client_args: string, is_sudo: bool, all_pass: bool) -> bool:
+def job_test_system_rust(test_name: string, repo: string, libos: string, is_debug: bool, server: string, client: string,
+                         server_args: string, client_args: string, is_sudo: bool, all_pass: bool, delay: float) -> bool:
     server_cmd: string = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, server_args)
     client_cmd: string = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, client_args)
     jobs: list[subprocess.Popen[str]] = []
-    jobs.append(remote_run(server, repo, server_cmd, is_sudo))
-    time.sleep(1)
-    jobs.append(remote_run(client, repo, client_cmd, is_sudo))
+    jobs.append(remote_run(server, repo, is_debug, server_cmd, is_sudo))
+    time.sleep(delay)
+    jobs.append(remote_run(client, repo, is_debug, client_cmd, is_sudo))
     return wait_and_report(test_name, jobs, all_pass)
+
+
+def job_test_unit_rust(repo: string, libos: string, is_debug: bool, server: string, client: string,
+                       is_sudo: bool) -> bool:
+    server_cmd: string = "test-unit-rust LIBOS={}".format(libos)
+    client_cmd: string = "test-unit-rust LIBOS={}".format(libos)
+    jobs: list[subprocess.Popen[str]] = []
+    jobs.append(remote_run(server, repo, is_debug, server_cmd, is_sudo))
+    jobs.append(remote_run(client, repo, is_debug, client_cmd, is_sudo))
+    return wait_and_report("unit-tests", jobs, True)
 
 
 def job_cleanup(repository: string, server: string, client: string) -> bool:
@@ -134,90 +145,125 @@ def job_cleanup(repository: string, server: string, client: string) -> bool:
 # ======================================================================================================================
 
 def test_udp_ping_pong(
-        server: string, client: string, libos: string, is_sudo: bool, repository: string,
-        server_addr: string, client_addr: string) -> bool:
+        server: string, client: string, libos: string, is_debug: bool, is_sudo: bool, repository: string,
+        server_addr: string, client_addr: string, delay: float) -> bool:
     test_name: string = "udp-ping-pong"
     server_args: string = "--server {}:12345 {}:23456".format(server_addr, client_addr)
     client_args: string = "--client {}:23456 {}:12345".format(client_addr, server_addr)
-    return job_test_system_rust(test_name, repository, libos, server, client, server_args, client_args, is_sudo, False)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, False, delay)
 
 
 def test_udp_push_pop(
-        server: string, client: string, libos: string, is_sudo: bool, repository: string,
-        server_addr: string, client_addr: string) -> bool:
+        server: string, client: string, libos: string, is_debug: bool, is_sudo: bool, repository: string,
+        server_addr: string, client_addr: string, delay: float) -> bool:
     test_name: string = "udp-push-pop"
     server_args: string = "--server {}:12345 {}:23456".format(server_addr, client_addr)
     client_args: string = "--client {}:23456 {}:12345".format(client_addr, server_addr)
-    return job_test_system_rust(test_name, repository, libos, server, client, server_args, client_args, is_sudo, True)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay)
 
 
 def test_tcp_ping_pong(
-        server: string, client: string, libos: string, is_sudo: bool, repository: string,
-        server_addr: string) -> bool:
+        server: string, client: string, libos: string, is_debug: bool, is_sudo: bool, repository: string,
+        server_addr: string, delay: float) -> bool:
     test_name: string = "tcp-ping-pong"
     server_args: string = "--server {}:12345".format(server_addr)
     client_args: string = "--client {}:12345".format(server_addr)
-    return job_test_system_rust(test_name, repository, libos, server, client, server_args, client_args, is_sudo, True)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay)
 
 
 def test_tcp_push_pop(
-        server: string, client: string, libos: string, is_sudo: bool, repository: string,
-        server_addr: string) -> bool:
+        server: string, client: string, libos: string, is_debug: bool, is_sudo: bool, repository: string,
+        server_addr: string, delay: float) -> bool:
     test_name: string = "tcp-push-pop"
     server_args: string = "--server {}:12345".format(server_addr)
     client_args: string = "--client {}:12345".format(server_addr)
-    return job_test_system_rust(test_name, repository, libos, server, client, server_args, client_args, is_sudo, True)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay)
 
 
-def test_pipe_ping_pong(server: string, client: string, repository: string) -> bool:
+def test_pipe_ping_pong(server: string, client: string, is_debug: bool, repository: string, delay: float) -> bool:
     test_name: string = "pipe-ping-pong"
     pipe_name: string = "demikernel-test-pipe-ping-pong"
     server_args: string = "--server demikernel-test-pipe-ping-pong".format(pipe_name)
     client_args: string = "--client demikernel-test-pipe-ping-pong".format(pipe_name)
-    return job_test_system_rust(test_name, repository, "catmem", server, client, server_args, client_args, False, True)
+    return job_test_system_rust(
+        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay)
 
 
-def test_pipe_push_pop(server: string, client: string, repository: string) -> bool:
+def test_pipe_push_pop(server: string, client: string, is_debug: bool, repository: string, delay: float) -> bool:
     test_name: string = "pipe-push-pop"
     pipe_name: string = "demikernel-test-pipe-push-pop"
     server_args: string = "--server demikernel-test-pipe-push-pop".format(pipe_name)
     client_args: string = "--client demikernel-test-pipe-push-pop".format(pipe_name)
-    return job_test_system_rust(test_name, repository, "catmem", server, client, server_args, client_args, False, True)
+    return job_test_system_rust(
+        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay)
 
 # =====================================================================================================================
 
 
 # Runs the CI pipeline.
 def run_pipeline(
-        repository: string, branch: string, libos: string, server: string, client: string, test: bool,
-        server_addr: string, client_addr: string):
+        repository: string, branch: string, libos: string, is_debug: bool,
+        server: string, client: string, test_unit: bool,
+        test_system: bool, server_addr: string, client_addr: string, delay: float) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     passed: bool = False
+    step: int = 0
+    status: int = 0
 
     # STEP 1: Check out.
     passed = job_checkout(repository, branch, server, client)
+    status |= (0 if passed else 1) << step
+    step += 1
 
     # STEP 2: Compile debug.
     if passed:
-        passed = job_compile(repository, branch, libos, True, server, client)
+        passed = job_compile(repository, libos, is_debug, server, client)
+        status |= (0 if passed else 1) << step
+        step += 1
 
-    # STEP 3: Compile release.
-    if passed:
-        passed = job_compile(repository, branch, libos, False, server, client)
+    # STEP 3: Run unit tests.
+    if test_unit | test_system:
+        if passed:
+            passed = job_test_unit_rust(repository, libos, is_debug, server, client, is_sudo)
+            status |= (0 if passed else 1) << step
+            step += 1
 
     # STEP 4: Run system tests.
-    if test and passed:
-        if libos != "catmem":
-            passed = test_udp_ping_pong(server, client, libos, is_sudo, repository, server_addr, client_addr)
-            passed = test_udp_push_pop(server, client, libos, is_sudo, repository, server_addr, client_addr)
-            passed = test_tcp_ping_pong(server, client, libos, is_sudo, repository, server_addr)
-            passed = test_tcp_push_pop(server, client, libos, is_sudo, repository, server_addr)
-        else:
-            passed = test_pipe_ping_pong(server, server, repository)
-            passed = test_pipe_push_pop(client, client, repository)
+    if test_system:
+        if passed:
+            if libos != "catmem":
+                passed = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
+                                            repository, server_addr, client_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
+                passed = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
+                                           repository, server_addr, client_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
+                passed = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo, repository, server_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
+                passed = test_tcp_push_pop(server, client, libos, is_debug, is_sudo, repository, server_addr, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
+            else:
+                passed = test_pipe_ping_pong(server, server, is_debug, repository, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
+                passed = test_pipe_push_pop(client, client, is_debug, repository, delay)
+                status |= (0 if passed else 1) << step
+                step += 1
 
     # Setp 5: Clean up.
     passed = job_cleanup(repository, server, client)
+    status |= (0 if passed else 1) << step
+    step += 1
+
+    return status
 
 
 # Reads and parses command line arguments.
@@ -238,11 +284,15 @@ def read_args() -> argparse.Namespace:
     parser.add_argument("--repository", required=True, help="set location of target repository in remote hosts")
     parser.add_argument("--branch", required=True, help="set target branch in remote hosts")
     parser.add_argument("--libos", required=True, help="set target libos in remote hosts")
+    parser.add_argument("--debug", required=False, action='store_true', help="sets debug build mode")
+    parser.add_argument("--delay", default=1, required=False,
+                        help="set delay between server and host for system-level tests")
 
     # Test options.
-    parser.add_argument("--test", action='store_true', required=False, help="run tests")
-    parser.add_argument("--server-addr", required="--test" in sys.argv, help="sets server address in tests")
-    parser.add_argument("--client-addr", required="--test" in sys.argv, help="sets client address in tests")
+    parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests only")
+    parser.add_argument("--test-system", action='store_true', required=False, help="run unit and system tests")
+    parser.add_argument("--server-addr", required="--test-system" in sys.argv, help="sets server address in tests")
+    parser.add_argument("--client-addr", required="--test-system" in sys.argv, help="sets client address in tests")
 
     # Read arguments from command line.
     return parser.parse_args()
@@ -261,13 +311,18 @@ def main():
     repository: string = args.repository
     branch: string = args.branch
     libos: string = args.libos
+    is_debug: bool = args.debug
+    delay: float = args.delay
 
     # Extract test options.
-    test: bool = args.test
-    server_addr: string = args.server_addr if test else ""
-    client_addr: string = args.client_addr if test else ""
+    test_unit: bool = args.test_unit
+    test_system: bool = args.test_system
+    server_addr: string = args.server_addr if test_system else ""
+    client_addr: string = args.client_addr if test_system else ""
 
-    run_pipeline(repository, branch, libos, server, client, test, server_addr, client_addr)
+    status: int = run_pipeline(repository, branch, libos, is_debug, server,
+                               client, test_unit, test_system, server_addr, client_addr, delay)
+    sys.exit(status)
 
 
 if __name__ == "__main__":
