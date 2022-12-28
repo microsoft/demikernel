@@ -179,7 +179,7 @@ clean-examples-rust:
 #=======================================================================================================================
 
 # Check code style formatting.
-check-fmt: check-fmt-c check-fmt-rust
+check-fmt: check-fmt-rust
 
 # Check code style formatting for Rust.
 check-fmt-rust:
