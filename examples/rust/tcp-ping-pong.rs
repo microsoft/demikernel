@@ -69,6 +69,94 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
 }
 
 //======================================================================================================================
+// accept_and_wait()
+//======================================================================================================================
+
+/// Accepts a connection on a socket and waits for the operation to complete.
+fn accept_and_wait(libos: &mut LibOS, sockqd: QDesc) -> QDesc {
+    let qt: QToken = match libos.accept(sockqd) {
+        Ok(qt) => qt,
+        Err(e) => panic!("accept failed: {:?}", e.cause),
+    };
+    match libos.wait(qt, None) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { qr.qr_value.ares.qd.into() },
+        Err(e) => panic!("operation failed: {:?}", e.cause),
+        _ => panic!("unexpected result"),
+    }
+}
+
+//======================================================================================================================
+// connect_and_wait()
+//======================================================================================================================
+
+/// Connects to a remote socket and wait for the operation to complete.
+fn connect_and_wait(libos: &mut LibOS, sockqd: QDesc, remote: SocketAddrV4) {
+    let qt: QToken = match libos.connect(sockqd, remote) {
+        Ok(qt) => qt,
+        Err(e) => panic!("connect failed: {:?}", e.cause),
+    };
+    match libos.wait(qt, None) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
+        Err(e) => panic!("operation failed: {:?}", e),
+        _ => panic!("unexpected result"),
+    }
+}
+
+//======================================================================================================================
+// push_and_wait()
+//======================================================================================================================
+
+/// Pushes a scatter-gather array to a remote socket and waits for the operation to complete.
+fn push_and_wait(libos: &mut LibOS, qd: QDesc, sga: &demi_sgarray_t) {
+    // Push data.
+    let qt: QToken = match libos.push(qd, sga) {
+        Ok(qt) => qt,
+        Err(e) => panic!("push failed: {:?}", e.cause),
+    };
+    match libos.wait(qt, None) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
+        Err(e) => panic!("operation failed: {:?}", e.cause),
+        _ => panic!("unexpected result"),
+    };
+}
+
+//======================================================================================================================
+// pop_and_wait()
+//======================================================================================================================
+
+/// Pops a scatter-gather array from a socket and waits for the operation to complete.
+fn pop_and_wait(libos: &mut LibOS, qd: QDesc, recvbuf: &mut [u8]) {
+    let mut index: usize = 0;
+
+    // Pop data.
+    while index < recvbuf.len() {
+        let qt: QToken = match libos.pop(qd) {
+            Ok(qt) => qt,
+            Err(e) => panic!("pop failed: {:?}", e.cause),
+        };
+        let sga: demi_sgarray_t = match libos.wait(qt, None) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
+            Err(e) => panic!("operation failed: {:?}", e.cause),
+            _ => panic!("unexpected result"),
+        };
+
+        // Copy data.
+        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+        for x in slice {
+            recvbuf[index] = *x;
+            index += 1;
+        }
+
+        match libos.sgafree(sga) {
+            Ok(_) => {},
+            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+        }
+    }
+}
+
+//======================================================================================================================
 // server()
 //======================================================================================================================
 
@@ -100,50 +188,27 @@ fn server(local: SocketAddrV4) -> Result<()> {
     };
 
     // Accept incoming connections.
-    let qt: QToken = match libos.accept(sockqd) {
-        Ok(qt) => qt,
-        Err(e) => panic!("accept failed: {:?}", e.cause),
-    };
-    let qd: QDesc = match libos.wait(qt, None) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { qr.qr_value.ares.qd.into() },
-        Err(e) => panic!("operation failed: {:?}", e.cause),
-        _ => panic!("unexpected result"),
-    };
+    let qd: QDesc = accept_and_wait(&mut libos, sockqd);
 
     // Perform multiple ping-pong rounds.
     for i in 0..nrounds {
-        // Pop data.
-        let qt: QToken = match libos.pop(qd) {
-            Ok(qt) => qt,
-            Err(e) => panic!("pop failed: {:?}", e.cause),
-        };
-        let sga: demi_sgarray_t = match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
-        };
-
-        // Sanity check received data.
-        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-        for x in slice {
-            assert!(*x == FILL_CHAR);
+        // Pop data, and sanity check it.
+        {
+            let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+            pop_and_wait(&mut libos, qd, &mut recvbuf);
+            for x in &recvbuf {
+                assert!(*x == FILL_CHAR);
+            }
         }
 
         // Push data.
-        let qt: QToken = match libos.push(qd, &sga) {
-            Ok(qt) => qt,
-            Err(e) => panic!("push failed: {:?}", e.cause),
-        };
-        match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
-        };
-        match libos.sgafree(sga) {
-            Ok(_) => {},
-            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+        {
+            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+            push_and_wait(&mut libos, qd, &sga);
+            match libos.sgafree(sga) {
+                Ok(_) => {},
+                Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+            }
         }
 
         println!("pong {:?}", i);
@@ -153,6 +218,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
     profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
     // TODO: close socket when we get close working properly in catnip.
+
     Ok(())
 }
 
@@ -177,57 +243,27 @@ fn client(remote: SocketAddrV4) -> Result<()> {
         Err(e) => panic!("failed to create socket: {:?}", e.cause),
     };
 
-    let qt: QToken = match libos.connect(sockqd, remote) {
-        Ok(qt) => qt,
-        Err(e) => panic!("connect failed: {:?}", e.cause),
-    };
-    match libos.wait(qt, None) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
-        Err(e) => panic!("operation failed: {:?}", e),
-        _ => panic!("unexpected result"),
-    }
+    connect_and_wait(&mut libos, sockqd, remote);
 
     // Issue n sends.
     for i in 0..nrounds {
-        let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
-
         // Push data.
-        let qt: QToken = match libos.push(sockqd, &sga) {
-            Ok(qt) => qt,
-            Err(e) => panic!("push failed: {:?}", e.cause),
-        };
-        match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
-        };
-        match libos.sgafree(sga) {
-            Ok(_) => {},
-            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+        {
+            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+            push_and_wait(&mut libos, sockqd, &sga);
+            match libos.sgafree(sga) {
+                Ok(_) => {},
+                Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+            }
         }
 
-        // Pop data.
-        let qt: QToken = match libos.pop(sockqd) {
-            Ok(qt) => qt,
-            Err(e) => panic!("pop failed: {:?}", e.cause),
-        };
-        let sga: demi_sgarray_t = match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
-        };
-
-        // Sanity check received data.
-        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-        for x in slice {
-            assert!(*x == FILL_CHAR);
-        }
-
-        match libos.sgafree(sga) {
-            Ok(_) => {},
-            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+        // Pop data, and sanity check it.
+        {
+            let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+            pop_and_wait(&mut libos, sockqd, &mut recvbuf);
+            for x in &recvbuf {
+                assert!(*x == FILL_CHAR);
+            }
         }
 
         println!("ping {:?}", i);
@@ -237,6 +273,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
     profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
     // TODO: close socket when we get close working properly in catnip.
+
     Ok(())
 }
 
