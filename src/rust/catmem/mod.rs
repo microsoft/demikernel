@@ -100,6 +100,7 @@ impl CatmemLibOS {
 
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
+        trace!("close() qd={:?}", qd);
         match self.rings.remove(&qd) {
             Some(_) => {
                 self.qtable.free(qd);

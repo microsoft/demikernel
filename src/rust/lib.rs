@@ -51,6 +51,9 @@ mod catnapw;
 #[cfg(feature = "catmem-libos")]
 mod catmem;
 
+#[cfg(feature = "catloop-libos")]
+mod catloop;
+
 pub use crate::demikernel::libos::network::OperationResult;
 
 pub use self::demikernel::libos::{
