@@ -21,8 +21,8 @@ use ::std::ops::Deref;
 ///
 /// This structure resides on a shared memory region and it is lock-free.
 /// This abstraction ensures the correct concurrent access by a single writer and a single reader.
-#[allow(unused)]
 pub struct SharedRingBuffer<T: Copy> {
+    #[allow(unused)]
     shm: SharedMemory,
     ring: RingBuffer<T>,
 }
@@ -34,7 +34,6 @@ pub struct SharedRingBuffer<T: Copy> {
 /// Associated functions for shared ring buffers.
 impl<T: Copy> SharedRingBuffer<T> {
     /// Creates a new shared ring buffer.
-    #[allow(unused)]
     pub fn create(name: &str, capacity: usize) -> Result<SharedRingBuffer<T>, Fail> {
         let mut shm: SharedMemory = SharedMemory::create(&name, capacity)?;
         let ring: RingBuffer<T> = RingBuffer::<T>::from_raw_parts(true, shm.as_mut_ptr(), shm.len())?;
@@ -42,7 +41,6 @@ impl<T: Copy> SharedRingBuffer<T> {
     }
 
     /// Opens an existing shared ring buffer.
-    #[allow(unused)]
     pub fn open(name: &str, capacity: usize) -> Result<SharedRingBuffer<T>, Fail> {
         let mut shm: SharedMemory = SharedMemory::open(&name, capacity)?;
         let ring: RingBuffer<T> = RingBuffer::<T>::from_raw_parts(false, shm.as_mut_ptr(), shm.len())?;
