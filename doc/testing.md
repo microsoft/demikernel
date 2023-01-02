@@ -78,19 +78,19 @@ These tests are located in `demikernel/examples/` and detailed in the following 
 
 **The following system-level tests are supported by `catcollar`, `catnap`, `catnapw`, `catnip`, `catpowder`.**
 
-| Test Name        | Description                                                               |
-|------------------|---------------------------------------------------------------------------|
-| `tcp-push-pop`   | Tests for fixed size, unidirectional data transfers using TCP.            |
-| `tcp-ping-pong`  | Tests for fixed size, bi-directional, symmetric data transfers using TCP. |
-| `udp-push-pop`   | Tests for fixed size, unidirectional data transfers using UDP.            |
-| `udp-ping-pong`  | Tests for fixed size, bi-directional, symmetric data transfers using UDP. |
+| Test Name       | Description                                                               |
+| --------------- | ------------------------------------------------------------------------- |
+| `tcp-push-pop`  | Tests for fixed size, unidirectional data transfers using TCP.            |
+| `tcp-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers using TCP. |
+| `udp-push-pop`  | Tests for fixed size, unidirectional data transfers using UDP.            |
+| `udp-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers using UDP. |
 
 **The following system-level tests are supported by `catmem`.**
 
-| Test Name        | Description                                                      |
-|------------------|------------------------------------------------------------------|
-| `pipe-push-pop`  | Tests for fixed size, unidirectional data transfers.             |
-| `pipe-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers.  |
+| Test Name        | Description                                                     |
+| ---------------- | --------------------------------------------------------------- |
+| `pipe-push-pop`  | Tests for fixed size, unidirectional data transfers.            |
+| `pipe-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers. |
 
 ## How to Run System-Level Tests
 
