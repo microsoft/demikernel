@@ -151,20 +151,20 @@ export CLIENT_IPV4_ADDR=192.0.2.11:56789
 export LIBOS=catnap
 
 # Run tcp-push-pop.
-make test-system-rust TEST=tcp-push-pop.elf ARGS='--server $SERVER_IPV4_ADDR' # Run this on server host.
-make test-system-rust TEST=tcp-push-pop.elf ARGS='--client $SERVER_IPV4_ADDR' # Run this on client host.
+make test-system-rust TEST=tcp-push-pop ARGS='--server $SERVER_IPV4_ADDR' # Run this on server host.
+make test-system-rust TEST=tcp-push-pop ARGS='--client $SERVER_IPV4_ADDR' # Run this on client host.
 
 # Run tcp-ping-pong.
-make test-system-rust TEST=tcp-ping-pong.elf ARGS='--server $SERVER_IPV4_ADDR' # Run this on server host.
-make test-system-rust TEST=tcp-ping-pong.elf ARGS='--client $SERVER_IPV4_ADDR' # Run this on client host.
+make test-system-rust TEST=tcp-ping-pong ARGS='--server $SERVER_IPV4_ADDR' # Run this on server host.
+make test-system-rust TEST=tcp-ping-pong ARGS='--client $SERVER_IPV4_ADDR' # Run this on client host.
 
 # Run udp-push-pop.
-make test-system-rust TEST=udp-push-pop.elf ARGS='--server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR' # Run this on server host.
-make test-system-rust TEST=udp-push-pop.elf ARGS='--client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR' # Run this on client host.
+make test-system-rust TEST=udp-push-pop ARGS='--server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR' # Run this on server host.
+make test-system-rust TEST=udp-push-pop ARGS='--client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR' # Run this on client host.
 
 # Run udp-ping-pong.
-make test-system-rust TEST=udp-ping-pong.elf ARGS='--server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR' # Run this on server host.
-make test-system-rust TEST=udp-ping-pong.elf ARGS='--client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR' # Run this on client host.
+make test-system-rust TEST=udp-ping-pong ARGS='--server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR' # Run this on server host.
+make test-system-rust TEST=udp-ping-pong ARGS='--client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR' # Run this on client host.
 
 # Run pipe-push-pop.
 # - Note 1: Both commands should be executed on the same host.
