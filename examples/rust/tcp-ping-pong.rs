@@ -20,6 +20,7 @@ use ::std::{
     panic,
     slice,
     str::FromStr,
+    u8,
 };
 
 #[cfg(target_os = "windows")]
@@ -42,7 +43,6 @@ use ::demikernel::perftools::profiler;
 //======================================================================================================================
 
 const BUFFER_SIZE: usize = 64;
-const FILL_CHAR: u8 = 0x65;
 
 //======================================================================================================================
 // mksga()
@@ -192,18 +192,20 @@ fn server(local: SocketAddrV4) -> Result<()> {
 
     // Perform multiple ping-pong rounds.
     for i in 0..nrounds {
+        let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+
         // Pop data, and sanity check it.
         {
             let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             pop_and_wait(&mut libos, qd, &mut recvbuf);
             for x in &recvbuf {
-                assert!(*x == FILL_CHAR);
+                assert!(*x == fill_char);
             }
         }
 
         // Push data.
         {
-            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, fill_char);
             push_and_wait(&mut libos, qd, &sga);
             match libos.sgafree(sga) {
                 Ok(_) => {},
@@ -247,9 +249,11 @@ fn client(remote: SocketAddrV4) -> Result<()> {
 
     // Issue n sends.
     for i in 0..nrounds {
+        let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+
         // Push data.
         {
-            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, fill_char);
             push_and_wait(&mut libos, sockqd, &sga);
             match libos.sgafree(sga) {
                 Ok(_) => {},
@@ -262,7 +266,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
             let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             pop_and_wait(&mut libos, sockqd, &mut recvbuf);
             for x in &recvbuf {
-                assert!(*x == FILL_CHAR);
+                assert!(*x == fill_char);
             }
         }
 
