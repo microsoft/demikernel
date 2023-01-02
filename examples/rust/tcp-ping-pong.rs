@@ -246,10 +246,10 @@ fn client(remote: SocketAddrV4) -> Result<()> {
 
 /// Prints program usage and exits.
 fn usage(program_name: &String) {
-    println!("Usage: {} MODE address\n", program_name);
-    println!("Modes:\n");
-    println!("  --client    Run program in client mode.\n");
-    println!("  --server    Run program in server mode.\n");
+    println!("Usage: {} MODE address", program_name);
+    println!("Modes:");
+    println!("  --client    Run program in client mode.");
+    println!("  --server    Run program in server mode.");
 }
 
 //======================================================================================================================
