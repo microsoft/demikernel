@@ -129,7 +129,7 @@ impl NetworkLibOS {
         }
     }
 
-    /// Initiates a connection with a remote TCP pper.
+    /// Initiates a connection with a remote TCP peer.
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]

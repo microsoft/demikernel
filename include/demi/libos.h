@@ -54,7 +54,7 @@ extern "C"
     /**
      * @brief Creates a socket I/O queue.
      *
-     * @param sockqd_out Store location for the socket I/O queue descriptor.
+     * @param sockqd_out Storage location for the socket I/O queue descriptor.
      * @param domain     Communication domain for the new socket.
      * @param type       Type of the socket.
      * @param protocol   Communication protocol for the new socket.
@@ -78,7 +78,7 @@ extern "C"
      *
      * @param sockqd I/O queue descriptor of the target socket.
      * @param addr   Bind address.
-     * @param size   Effective size of the socked address data structure.
+     * @param size   Effective size of the socket address data structure.
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
