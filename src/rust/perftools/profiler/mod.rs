@@ -11,7 +11,6 @@ use ::std::{
     time::{
         Duration,
         SystemTime,
-        UNIX_EPOCH,
     },
 };
 

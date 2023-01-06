@@ -81,7 +81,7 @@ impl Future for PopFuture {
                 trace!("data received ({:?} bytes)", size);
                 let trim_size: usize = self_.buf.len() - (size as usize);
                 let mut buf: DemiBuffer = self_.buf.clone();
-                buf.trim(trim_size);
+                buf.trim(trim_size)?;
                 Poll::Ready(Ok((addr, buf)))
             },
             // Operation in progress, re-schedule future.

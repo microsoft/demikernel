@@ -137,10 +137,7 @@ fn udp_push_remote() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -148,10 +145,7 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => panic!("pop() failed"),
@@ -170,10 +164,7 @@ fn udp_push_remote() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
@@ -181,10 +172,7 @@ fn udp_push_remote() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -221,10 +209,7 @@ fn udp_loopback() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -232,10 +217,7 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => panic!("pop() failed"),
@@ -254,10 +236,7 @@ fn udp_loopback() {
 
         // Pop data.
         let qt: QToken = libos.pop(sockfd).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => panic!("pop() failed"),
@@ -265,10 +244,7 @@ fn udp_loopback() {
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = match libos.wait2(qt) {
-            Ok((qd, qr)) => (qd, qr),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Push => (),
             _ => panic!("push() failed"),
@@ -280,4 +256,16 @@ fn udp_loopback() {
 
     alice.join().unwrap();
     bob.join().unwrap();
+}
+
+//======================================================================================================================
+// Standalone Functions
+//======================================================================================================================
+
+/// Safe call to `wait2()`.
+fn safe_wait2(libos: &mut InetStack, qt: QToken) -> (QDesc, OperationResult) {
+    match libos.wait2(qt) {
+        Ok((qd, qr)) => (qd, qr),
+        Err(e) => panic!("operation failed: {:?}", e.cause),
+    }
 }

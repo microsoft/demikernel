@@ -214,7 +214,6 @@ impl Application {
                     }
 
                     // Pop another packet.
-                    let qd: QDesc = qr.qr_qd.into();
                     let qt: QToken = match self.libos.pop(qd) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),

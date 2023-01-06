@@ -32,10 +32,8 @@ pub struct RingBuffer<T> {
     // Indexes the first item in the front of the ring buffer.
     front_ptr: *mut usize,
     // Underlying buffer.
-    #[allow(unused)]
     buffer: raw_array::RawArray<T>,
     // Pre-computed capacity mask for the buffer.
-    #[allow(unused)]
     mask: usize,
     /// Is the underlying memory managed by this module?
     is_managed: bool,
@@ -191,7 +189,6 @@ where
     }
 
     /// Attempts to insert an item at the back of the target ring buffer.
-    #[allow(unused)]
     pub fn try_enqueue(&self, item: T) -> Result<(), T> {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -224,7 +221,6 @@ where
     }
 
     /// Attempts to remove the item from the front of the target ring buffer.
-    #[allow(unused)]
     pub fn try_dequeue(&self) -> Option<T> {
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
@@ -264,7 +260,6 @@ where
     }
 
     /// Atomically sets the `front` index.
-    #[allow(unused)]
     fn set_front(&self, val: usize) {
         let front: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.front_ptr });
         front.store(val, atomic::Ordering::Relaxed);
@@ -278,7 +273,6 @@ where
     }
 
     /// Atomically sets the `back` index.
-    #[allow(unused)]
     fn set_back(&self, val: usize) {
         let back: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.back_ptr });
         back.store(val, atomic::Ordering::Relaxed);
