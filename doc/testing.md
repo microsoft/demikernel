@@ -1,15 +1,18 @@
 # Testing Demikernel
 
-This document contains instructions on how to test Demikernel. What it is covered:
+This document contains instructions on how to test Demikernel.
+
+> The instructions listed in this file assume that you have at your disposal at
+least a pair of machines with Demikernel's development environment set up. For
+more information on how to set up Demikernel's development environment, check
+out instructions in the `README.md` file.
+
+## Table of Contents
 
 - [What are unit tests](#what-are-unit-tests)
 - [How to run unit tests](#how-to-run-unit-tests)
 - [What are system-level tests](#what-are-system-level-tests)
 - [How to run system-level tests](#how-to-run-system-level-tests)
-
-> The instructions in this file assume that you have at your disposal at least one machine with Demikernel's development
-environment set up. For more information on how to set up Demikernel's development environment, check out instructions
-in the `README.md` file.
 
 ## What Are Unit Tests
 
