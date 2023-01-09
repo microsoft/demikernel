@@ -21,7 +21,7 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 ## Building
 
-> **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
+> **Follow these instructions to build Demikernel on a fresh Ubuntu 22.04 system.**
 
 ### 1. Clone This Repository
 
