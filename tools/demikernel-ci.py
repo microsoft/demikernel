@@ -49,10 +49,13 @@ def wait_and_report(name: string, jobs: List, all_pass=True):
     ret = wait_jobs(name, jobs)
     status: List = ret[0]
     duration: float = ret[1]
-    if all_pass:
-        passed: bool = True if status[0][1] == 0 and status[1][1] == 0 else False
+    if len(jobs) > 1:
+        if all_pass:
+            passed: bool = True if status[0][1] == 0 and status[1][1] == 0 else False
+        else:
+            passed: bool = True if status[0][1] == 0 or status[1][1] == 0 else False
     else:
-        passed: bool = True if status[0][1] == 0 or status[1][1] == 0 else False
+        passed: bool = True if status[0][1] == 0 else False
     print("[{}] in {:9.2f} ms {}".format("PASSED" if passed else "FAILED", duration, name))
 
     return passed
@@ -98,17 +101,19 @@ def remote_cleanup(host: string, workspace: string, default_branch: string = "de
 # ======================================================================================================================
 
 
-def job_checkout(repository: string, branch: string, server: string, client: string) -> bool:
+def job_checkout(repository: string, branch: string, server: string, client: string, enable_nfs: bool) -> bool:
     jobs: list[subprocess.Popen[str]] = []
     jobs.append(remote_checkout(server, repository, branch))
-    jobs.append(remote_checkout(client, repository, branch))
+    if not enable_nfs:
+        jobs.append(remote_checkout(client, repository, branch))
     return wait_and_report("checkout", jobs)
 
 
-def job_compile(repository: string, libos: string, is_debug: bool, server: string, client: string) -> bool:
+def job_compile(repository: string, libos: string, is_debug: bool, server: string, client: string, enable_nfs: bool) -> bool:
     jobs: list[subprocess.Popen[str]] = []
     jobs.append(remote_compile(server, repository, "all LIBOS={}".format(libos), is_debug))
-    jobs.append(remote_compile(client, repository, "all LIBOS={}".format(libos), is_debug))
+    if not enable_nfs:
+        jobs.append(remote_compile(client, repository, "all LIBOS={}".format(libos), is_debug))
     return wait_and_report("compile-{}".format("debug" if is_debug else "release"), jobs)
 
 
@@ -134,10 +139,11 @@ def job_test_unit_rust(repo: string, libos: string, is_debug: bool, server: stri
     return wait_and_report("unit-tests", jobs, True)
 
 
-def job_cleanup(repository: string, server: string, client: string) -> bool:
+def job_cleanup(repository: string, server: string, client: string, enable_nfs: bool) -> bool:
     jobs: list[subprocess.Popen[str]] = []
     jobs.append(remote_cleanup(server, repository))
-    jobs.append(remote_cleanup(client, repository))
+    if not enable_nfs:
+        jobs.append(remote_cleanup(client, repository))
     return wait_and_report("cleanup", jobs)
 
 
@@ -215,22 +221,22 @@ def test_pipe_push_pop(server: string, client: string, is_debug: bool, repositor
 
 # Runs the CI pipeline.
 def run_pipeline(
-        repository: string, branch: string, libos: string, is_debug: bool,
-        server: string, client: string, test_unit: bool,
-        test_system: bool, server_addr: string, client_addr: string, delay: float, config_path: string) -> int:
+        repository: string, branch: string, libos: string, is_debug: bool, server: string, client: string,
+        test_unit: bool, test_system: bool, server_addr: string, client_addr: string, delay: float, config_path: string,
+        enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     passed: bool = False
     step: int = 0
     status: int = 0
 
     # STEP 1: Check out.
-    passed = job_checkout(repository, branch, server, client)
+    passed = job_checkout(repository, branch, server, client, enable_nfs)
     status |= (0 if passed else 1) << step
     step += 1
 
     # STEP 2: Compile debug.
     if passed:
-        passed = job_compile(repository, libos, is_debug, server, client)
+        passed = job_compile(repository, libos, is_debug, server, client, enable_nfs)
         status |= (0 if passed else 1) << step
         step += 1
 
@@ -270,7 +276,7 @@ def run_pipeline(
                 step += 1
 
     # Setp 5: Clean up.
-    passed = job_cleanup(repository, server, client)
+    passed = job_cleanup(repository, server, client, enable_nfs)
     status |= (0 if passed else 1) << step
     step += 1
 
@@ -298,6 +304,8 @@ def read_args() -> argparse.Namespace:
     parser.add_argument("--debug", required=False, action='store_true', help="sets debug build mode")
     parser.add_argument("--delay", default=1, required=False,
                         help="set delay between server and host for system-level tests")
+    parser.add_argument("--enable-nfs", required=False, default=False,
+                        action="store_true", help="enable building on nfs directories")
 
     # Test options.
     parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests only")
@@ -326,6 +334,7 @@ def main():
     is_debug: bool = args.debug
     delay: float = args.delay
     config_path: string = args.config_path
+    enable_nfs: bool = args.enable_nfs
 
     # Extract test options.
     test_unit: bool = args.test_unit
@@ -334,7 +343,7 @@ def main():
     client_addr: string = args.client_addr if test_system else ""
 
     status: int = run_pipeline(repository, branch, libos, is_debug, server,
-                               client, test_unit, test_system, server_addr, client_addr, delay, config_path)
+                               client, test_unit, test_system, server_addr, client_addr, delay, config_path, enable_nfs)
     sys.exit(status)
 
 
