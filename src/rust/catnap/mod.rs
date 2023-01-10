@@ -43,28 +43,6 @@ use crate::{
     },
     scheduler::SchedulerHandle,
 };
-use ::libc::{
-    c_int,
-    AF_INET,
-    EBADF,
-    EINVAL,
-    ENOTSUP,
-    SOCK_DGRAM,
-    SOCK_STREAM,
-};
-use ::nix::{
-    sys::{
-        socket,
-        socket::{
-            AddressFamily,
-            SockFlag,
-            SockProtocol,
-            SockType,
-            SockaddrStorage,
-        },
-    },
-    unistd,
-};
 use ::std::{
     any::Any,
     collections::HashMap,
@@ -109,45 +87,55 @@ impl CatnapLibOS {
     }
 
     /// Creates a socket.
-    pub fn socket(&mut self, domain: c_int, typ: c_int, _protocol: c_int) -> Result<QDesc, Fail> {
+    pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
-        // All operations are asynchronous.
-        let flags: SockFlag = SockFlag::SOCK_NONBLOCK;
-
         // Parse communication domain.
-        let domain: AddressFamily = match domain {
-            AF_INET => AddressFamily::Inet,
-            _ => return Err(Fail::new(ENOTSUP, "communication domain not supported")),
-        };
+        if domain != libc::AF_INET {
+            return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
+        }
 
         // Parse socket type and protocol.
-        let (ty, protocol): (SockType, SockProtocol) = match typ {
-            SOCK_STREAM => (SockType::Stream, SockProtocol::Tcp),
-            SOCK_DGRAM => (SockType::Datagram, SockProtocol::Udp),
-            _ => {
-                return Err(Fail::new(ENOTSUP, "socket type not supported"));
-            },
-        };
+        if (typ != libc::SOCK_STREAM) && (typ != libc::SOCK_DGRAM) {
+            return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
+        }
 
         // Create socket.
-        match socket::socket(domain, ty, flags, protocol) {
-            Ok(fd) => {
-                let qtype: QType = match ty {
-                    SockType::Stream => QType::TcpSocket,
-                    SockType::Datagram => QType::UdpSocket,
+        match unsafe { libc::socket(domain, typ, 0) } {
+            fd if fd >= 0 => {
+                let qtype: QType = match typ {
+                    libc::SOCK_STREAM => QType::TcpSocket,
+                    libc::SOCK_DGRAM => QType::UdpSocket,
                     _ => return Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
                 };
 
-                // Try to set SO_REUSEPORT option. If we fail, keep going because this is non-critical.
-                if socket::setsockopt(fd, socket::sockopt::ReusePort, &true).is_err() {
-                    warn!("cannot set SO_REUSEPORT option");
+                // Set socket options.
+                unsafe {
+                    if typ == libc::SOCK_STREAM {
+                        if linux::set_tcp_nodelay(fd) != 0 {
+                            let errno: libc::c_int = *libc::__errno_location();
+                            warn!("cannot set TCP_NONDELAY option (errno={:?})", errno);
+                        }
+                    }
+                    if linux::set_nonblock(fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set O_NONBLOCK option (errno={:?})", errno);
+                    }
+                    if linux::set_so_reuseport(fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set SO_REUSEPORT option (errno={:?})", errno);
+                    }
                 }
+
+                trace!("socket: {:?}, domain: {:?}, typ: {:?}", fd, domain, typ);
                 let qd: QDesc = self.qtable.alloc(qtype.into());
                 assert_eq!(self.sockets.insert(qd, fd).is_none(), true);
                 Ok(qd)
             },
-            Err(err) => Err(Fail::new(err as i32, "failed to create socket")),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                Err(Fail::new(errno, "failed to create socket"))
+            },
         }
     }
 
@@ -158,11 +146,23 @@ impl CatnapLibOS {
         // Issue bind operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let addr: SockaddrStorage = parse_addr(local);
-                socket::bind(fd, &addr).unwrap();
-                Ok(())
+                let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
+                match unsafe {
+                    libc::bind(
+                        fd,
+                        (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                        mem::size_of_val(&sockaddr) as u32,
+                    )
+                } {
+                    stats if stats == 0 => Ok(()),
+                    _ => {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        error!("failed to bind socket (errno={:?})", errno);
+                        Err(Fail::new(errno, "operation failed"))
+                    },
+                }
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -173,10 +173,14 @@ impl CatnapLibOS {
         // Issue listen operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                socket::listen(fd, backlog).unwrap();
+                if unsafe { libc::listen(fd, backlog as i32) } != 0 {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                    error!("failed to listen ({:?})", errno);
+                    return Err(Fail::new(errno, "operation failed"));
+                }
                 Ok(())
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -198,7 +202,7 @@ impl CatnapLibOS {
                 };
                 Ok(handle.into_raw().into())
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -209,15 +213,14 @@ impl CatnapLibOS {
         // Issue connect operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let addr: SockaddrStorage = parse_addr(remote);
-                let future: Operation = Operation::from(ConnectFuture::new(qd, fd, addr));
+                let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
                 let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                 };
                 Ok(handle.into_raw().into())
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -225,11 +228,11 @@ impl CatnapLibOS {
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         match self.sockets.get(&qd) {
-            Some(&fd) => match unistd::close(fd) {
-                Ok(_) => Ok(()),
-                _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            Some(&fd) => match unsafe { libc::close(fd) } {
+                stats if stats == 0 => Ok(()),
+                _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -240,7 +243,7 @@ impl CatnapLibOS {
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
-                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                    return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
 
                 // Issue push operation.
@@ -253,7 +256,7 @@ impl CatnapLibOS {
                         };
                         Ok(handle.into_raw().into())
                     },
-                    _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -267,21 +270,20 @@ impl CatnapLibOS {
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
-                    return Err(Fail::new(EINVAL, "zero-length buffer"));
+                    return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
 
                 // Issue pushto operation.
                 match self.sockets.get(&qd) {
                     Some(&fd) => {
-                        let addr: SockaddrStorage = parse_addr(remote);
-                        let future: Operation = Operation::from(PushtoFuture::new(qd, fd, addr, buf));
+                        let future: Operation = Operation::from(PushtoFuture::new(qd, fd, remote, buf));
                         let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                             Some(handle) => handle,
                             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                         };
                         Ok(handle.into_raw().into())
                     },
-                    _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -303,7 +305,7 @@ impl CatnapLibOS {
                 let qt: QToken = handle.into_raw().into();
                 Ok(qt)
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -371,14 +373,6 @@ impl CatnapLibOS {
 //==============================================================================
 // Standalone Functions
 //==============================================================================
-
-/// Parses a [SocketAddrV4] into a [SockaddrStorage].
-fn parse_addr(endpoint: SocketAddrV4) -> SockaddrStorage {
-    let addr: &Ipv4Addr = endpoint.ip();
-    let port: u16 = endpoint.port().into();
-    let ipv4: SocketAddrV4 = SocketAddrV4::new(*addr, port);
-    SockaddrStorage::from(ipv4)
-}
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
 fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
