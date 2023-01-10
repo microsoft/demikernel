@@ -331,7 +331,7 @@ def read_args() -> argparse.Namespace:
     parser.add_argument("--branch", required=True, help="set target branch in remote hosts")
     parser.add_argument("--libos", required=True, help="set target libos in remote hosts")
     parser.add_argument("--debug", required=False, action='store_true', help="sets debug build mode")
-    parser.add_argument("--delay", default=1, required=False,
+    parser.add_argument("--delay", default=1.0, type=float, required=False,
                         help="set delay between server and host for system-level tests")
     parser.add_argument("--enable-nfs", required=False, default=False,
                         action="store_true", help="enable building on nfs directories")
