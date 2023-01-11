@@ -3,6 +3,7 @@
 [![Join us on Slack!](https://img.shields.io/badge/chat-on%20Slack-e01563.svg)](https://join.slack.com/t/demikernel/shared_invite/zt-11i6lgaw5-HFE_IAls7gUX3kp1XSab0g)
 [![Catnip LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnip.yml)
 [![Catnap LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnap.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnap.yml)
+[![Catmem LibOS](https://github.com/demikernel/demikernel/actions/workflows/catmem.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catmem.yml)
 [![Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml)
 [![Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml)
 
@@ -19,9 +20,9 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 > To read more about Demikernel check out <https://aka.ms/demikernel>.
 
-## Building
+## Setting Up the Environment
 
-> **Follow these instructions to build Demikernel on a fresh Ubuntu 20.04 system.**
+> **Follow these instructions to build Demikernel on a fresh Ubuntu 22.04 system.**
 
 ### 1. Clone This Repository
 
@@ -45,27 +46,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust too
 ./scripts/setup/dpdk.sh
 ```
 
-### 4. Build Demikernel with Default Parameters
+## Building Demikernel
 
-```bash
-make
-```
-
-### 5. Build Demikernel with Custom Parameters (Optional)
-
-```bash
-make LIBOS=[catnap|catnip|catpowder|catcollar]    # Build using a specific LibOS.
-make DRIVER=[mlx4|mlx5]                           # Build using a specific driver.
-make LD_LIBRARY_PATH=/path/to/libs                # Override path to shared libraries. Applicable to Catnap and Catcollar.
-make PKG_CONFIG_PATH=/path/to/pkgconfig           # Override path to config files. Applicable to Catnap and Catcollar.
-```
-
-### 6. Install Artifacts (Optional)
-
-```bash
-make install                                     # Copies build artifacts to your $HOME directory.
-make install INSTALL_PREFIX=/path/to/location    # Copies build artifacts to a specific location.
-```
+See [doc/testing.md](./doc/building.md) for instructions and details.
 
 ## Running
 
