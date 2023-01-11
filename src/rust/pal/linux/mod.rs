@@ -41,7 +41,7 @@ pub unsafe fn set_so_reuseport(fd: RawFd) -> i32 {
     let option_len: libc::socklen_t = mem::size_of_val(&value) as libc::socklen_t;
     libc::setsockopt(
         fd,
-        libc::IPPROTO_TCP,
+        libc::SOL_SOCKET,
         libc::SO_REUSEPORT,
         value_ptr as *const libc::c_void,
         option_len,
