@@ -29,6 +29,7 @@ use self::{
 use crate::{
     demikernel::config::Config,
     inetstack::operations::OperationResult,
+    pal::linux,
     runtime::{
         fail::Fail,
         memory::{
@@ -425,17 +426,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
                 if let Some(endpoint) = addr {
-                    let saddr: libc::sockaddr_in = {
-                        // TODO: check the following byte order conversion.
-                        libc::sockaddr_in {
-                            sin_family: libc::AF_INET as u16,
-                            sin_port: endpoint.port().into(),
-                            sin_addr: libc::in_addr {
-                                s_addr: u32::from_le_bytes(endpoint.ip().octets()),
-                            },
-                            sin_zero: [0; 8],
-                        }
-                    };
+                    let saddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&endpoint);
                     sga.sga_addr = unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(saddr) };
                 }
                 let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
