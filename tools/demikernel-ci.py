@@ -47,6 +47,7 @@ def wait_jobs(name: string, jobs: List):
 
 def wait_and_report(name: string, jobs: List, all_pass=True):
     ret = wait_jobs(name, jobs)
+    passed: bool = False
     status: List = ret[0]
     duration: float = ret[1]
     if len(jobs) > 1:
