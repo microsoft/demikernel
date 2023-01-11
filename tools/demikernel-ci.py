@@ -50,7 +50,7 @@ def wait_and_report(name: string, jobs: List, all_pass=True):
     passed: bool = False
     status: List = ret[0]
     duration: float = ret[1]
-    if len(jobs) > 1:
+    if len(status) > 1:
         if all_pass:
             passed: bool = True if status[0][1] == 0 and status[1][1] == 0 else False
         else:
