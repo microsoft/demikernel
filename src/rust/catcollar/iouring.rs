@@ -5,26 +5,23 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    liburing,
-    memory::DemiBuffer,
-};
-use ::libc::socklen_t;
-use ::nix::{
-    errno,
-    sys::socket::{
-        SockaddrIn,
-        SockaddrLike,
-        SockaddrStorage,
+use crate::{
+    pal::linux,
+    runtime::{
+        fail::Fail,
+        liburing,
+        memory::DemiBuffer,
     },
 };
+use ::libc::socklen_t;
 use ::std::{
     ffi::{
         c_void,
         CString,
     },
+    mem,
     mem::MaybeUninit,
+    net::SocketAddrV4,
     os::{
         raw::c_int,
         unix::prelude::RawFd,
@@ -82,10 +79,9 @@ impl IoUring {
             // Allocate a submission queue entry.
             let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
-                let errno: i32 = errno::errno();
-                let strerror: CString = CString::from_raw(libc::strerror(errno));
-                let cause: &str = strerror.to_str().unwrap_or("failed to get sqe");
-                return Err(Fail::new(errno, cause));
+                let errno: libc::c_int = *libc::__errno_location();
+                error!("push(): failed to get sqe (errno={:?})", errno);
+                return Err(Fail::new(errno, "operation failed"));
             }
 
             // Submit operation.
@@ -118,17 +114,14 @@ impl IoUring {
     pub fn pushto(
         &mut self,
         sockfd: RawFd,
-        addr: SockaddrStorage,
+        addr: SocketAddrV4,
         buf: DemiBuffer,
     ) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data: &[u8] = &buf[..];
         let data_ptr: *const u8 = data.as_ptr();
-        let saddr: &SockaddrIn = match addr.as_sockaddr_in() {
-            Some(addr) => addr,
-            None => return Err(Fail::new(libc::EINVAL, "invalid socket address")),
-        };
-        let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) = (saddr.as_ref(), saddr.len());
+        let saddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
+        let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) = (&saddr, mem::size_of_val(&saddr) as u32);
         let sockaddr_ptr: *const libc::sockaddr_in = sockaddr as *const libc::sockaddr_in;
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
@@ -136,10 +129,9 @@ impl IoUring {
             // Allocate a submission queue entry.
             let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
-                let errno: i32 = errno::errno();
-                let strerror: CString = CString::from_raw(libc::strerror(errno));
-                let cause: &str = strerror.to_str().unwrap_or("failed to get sqe");
-                return Err(Fail::new(errno, cause));
+                let errno: libc::c_int = *libc::__errno_location();
+                error!("pushto(): failed to get sqe (errno={:?})", errno);
+                return Err(Fail::new(errno, "operation failed"));
             }
 
             // Submit operation.
@@ -179,10 +171,9 @@ impl IoUring {
             // Allocate a submission queue entry.
             let sqe: *mut liburing::io_uring_sqe = liburing::io_uring_get_sqe(io_uring);
             if sqe.is_null() {
-                let errno: i32 = errno::errno();
-                let strerror: CString = CString::from_raw(libc::strerror(errno));
-                let cause: &str = strerror.to_str().unwrap_or("failed to get sqe");
-                return Err(Fail::new(errno, cause));
+                let errno: libc::c_int = *libc::__errno_location();
+                error!("pop(): failed to get sqe (errno={:?})", errno);
+                return Err(Fail::new(errno, "operation failed"));
             }
 
             // Submit operation.
