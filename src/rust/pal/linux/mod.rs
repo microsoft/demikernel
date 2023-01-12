@@ -63,7 +63,7 @@ pub unsafe fn set_nonblock(fd: RawFd) -> i32 {
     libc::fcntl(fd, libc::F_SETFL, flags, 1)
 }
 
-/// Converts a [std::net::SocketAddrV4] into a [libc::sockaddr_in].
+/// Converts a [std::net::SocketAddrV4] to a [libc::sockaddr_in].
 pub fn socketaddrv4_to_sockaddr_in(addr: &SocketAddrV4) -> libc::sockaddr_in {
     libc::sockaddr_in {
         sin_family: libc::AF_INET as libc::sa_family_t,
