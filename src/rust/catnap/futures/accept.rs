@@ -15,6 +15,7 @@ use crate::{
 use ::std::{
     future::Future,
     mem,
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
@@ -72,7 +73,7 @@ impl AcceptFuture {
 
 /// Future Trait Implementation for Accept Operation Descriptors
 impl Future for AcceptFuture {
-    type Output = Result<RawFd, Fail>;
+    type Output = Result<(RawFd, SocketAddrV4), Fail>;
 
     /// Polls the target [AcceptFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -105,7 +106,8 @@ impl Future for AcceptFuture {
                     }
                 }
 
-                Poll::Ready(Ok(new_fd))
+                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&self_.sockaddr);
+                Poll::Ready(Ok((new_fd, addr)))
             },
 
             _ => {

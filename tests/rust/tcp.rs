@@ -126,7 +126,7 @@ fn tcp_establish_connection_unbound() {
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
 
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -176,7 +176,7 @@ fn tcp_establish_connection_bound() {
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
 
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -232,7 +232,7 @@ fn tcp_push_remote() {
         let qt: QToken = safe_accept(&mut libos, sockqd);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -522,7 +522,7 @@ fn tcp_bad_connect() {
         let qt: QToken = safe_accept(&mut libos, sockqd);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -594,7 +594,7 @@ fn tcp_bad_close() {
         let qt: QToken = safe_accept(&mut libos, sockqd);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -673,7 +673,7 @@ fn tcp_bad_push() {
         let qt: QToken = safe_accept(&mut libos, sockqd);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 
@@ -763,7 +763,7 @@ fn tcp_bad_pop() {
         let qt: QToken = safe_accept(&mut libos, sockqd);
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let qd: QDesc = match qr {
-            OperationResult::Accept(qd) => qd,
+            OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
             _ => panic!("accept() has failed"),
         };
 

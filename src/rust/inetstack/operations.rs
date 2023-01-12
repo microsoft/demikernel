@@ -21,7 +21,7 @@ use ::std::{
 
 pub enum OperationResult {
     Connect,
-    Accept(QDesc),
+    Accept((QDesc, SocketAddrV4)),
     Push,
     // TODO: Drop wrapping Option.
     Pop(Option<SocketAddrV4>, DemiBuffer),

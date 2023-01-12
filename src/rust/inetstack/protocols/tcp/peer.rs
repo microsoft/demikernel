@@ -289,7 +289,12 @@ impl TcpPeer {
     }
 
     /// Handles an incoming connection.
-    pub fn poll_accept(&self, qd: QDesc, new_qd: QDesc, ctx: &mut Context) -> Poll<Result<QDesc, Fail>> {
+    pub fn poll_accept(
+        &self,
+        qd: QDesc,
+        new_qd: QDesc,
+        ctx: &mut Context,
+    ) -> Poll<Result<(QDesc, SocketAddrV4), Fail>> {
         let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
         let inner: &mut Inner = &mut *inner_;
 
@@ -306,12 +311,10 @@ impl TcpPeer {
             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
         };
         let established: EstablishedSocket = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
-        let key: (SocketAddrV4, SocketAddrV4) = (established.cb.get_local(), established.cb.get_remote());
-
-        let socket: Socket = Socket::Established {
-            local: established.cb.get_local(),
-            remote: established.cb.get_remote(),
-        };
+        let local: SocketAddrV4 = established.cb.get_local();
+        let remote: SocketAddrV4 = established.cb.get_remote();
+        let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
+        let socket: Socket = Socket::Established { local, remote };
 
         // TODO: Reset the connection if the following following check fails, instead of panicking.
         if inner.sockets.insert(new_qd, socket).is_some() {
@@ -323,7 +326,7 @@ impl TcpPeer {
             panic!("duplicate queue descriptor in established sockets table");
         }
 
-        Poll::Ready(Ok(new_qd))
+        Poll::Ready(Ok((new_qd, remote)))
     }
 
     pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture, Fail> {

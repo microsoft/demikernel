@@ -290,8 +290,9 @@ pub fn test_send_recv_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) =
+    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
+    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -330,8 +331,9 @@ pub fn test_send_recv_round_loop() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) =
+    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
+    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -373,8 +375,9 @@ pub fn test_send_recv_with_delay() {
         .checked_shl(window_scale as u32)
         .unwrap();
 
-    let (server_fd, client_fd): (QDesc, QDesc) =
+    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
+    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -438,8 +441,9 @@ fn test_connect_disconnect() {
     let mut server: Engine = test_helpers::new_bob2(now);
     let mut client: Engine = test_helpers::new_alice2(now);
 
-    let (server_fd, client_fd): (QDesc, QDesc) =
+    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
+    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd);
 }

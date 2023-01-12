@@ -489,7 +489,7 @@ pub fn connection_setup(
     client: &mut Engine,
     listen_port: u16,
     listen_addr: SocketAddrV4,
-) -> (QDesc, QDesc) {
+) -> ((QDesc, SocketAddrV4), QDesc) {
     // Server: LISTEN state at T(0).
     let mut accept_future: AcceptFuture = connection_setup_closed_listen(server, listen_addr);
 
@@ -547,7 +547,7 @@ pub fn connection_setup(
     // Server: ESTABLISHED at T(4).
     connection_setup_sync_rcvd_established(server, bytes);
 
-    let server_fd = match Future::poll(Pin::new(&mut accept_future), ctx) {
+    let (server_fd, addr) = match Future::poll(Pin::new(&mut accept_future), ctx) {
         Poll::Ready(Ok(server_fd)) => Ok(server_fd),
         _ => Err(()),
     }
@@ -558,7 +558,7 @@ pub fn connection_setup(
     }
     .unwrap();
 
-    (server_fd, client_fd)
+    ((server_fd, addr), client_fd)
 }
 
 /// Tests basic 3-way connection setup.
@@ -575,6 +575,6 @@ fn test_good_connect() {
     let mut server = test_helpers::new_bob2(now);
     let mut client = test_helpers::new_alice2(now);
 
-    let (_, _): (QDesc, QDesc) =
+    let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
 }
