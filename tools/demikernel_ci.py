@@ -238,9 +238,8 @@ def run_pipeline(
         test_unit: bool, test_system: bool, server_addr: str, client_addr: str, delay: float, config_path: str,
         enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
-    passed: bool = False
     step: int = 0
-    status: int = 0
+    status: dict[str,bool] = {}
 
     # Create folder for test logs
     log_directory: str = "{}-{}-{}".format(libos, branch, "debug" if is_debug else "release").replace("/", "_")
@@ -253,62 +252,42 @@ def run_pipeline(
     mkdir(log_directory)
 
     # STEP 1: Check out.
-    passed = job_checkout(repository, branch, server, client, enable_nfs, log_directory)
-    status |= (0 if passed else 1) << step
-    step += 1
-
+    status["checkout"] = job_checkout(repository, branch, server, client, enable_nfs, log_directory)
+    
     # STEP 2: Compile debug.
-    if passed:
-        passed = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
-        status |= (0 if passed else 1) << step
-        step += 1
-
+    if status["checkout"]:
+        status["compile"] = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
+    
     # STEP 3: Run unit tests.
-    if test_unit | test_system:
-        if passed:
-            passed = job_test_unit_rust(repository, libos, is_debug, server, client,
+    if test_unit or test_system:
+        if status["checkout"] and status["compile"]:
+            status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
                                         is_sudo, config_path, log_directory)
-            status |= (0 if passed else 1) << step
-            step += 1
-
+    
     # STEP 4: Run system tests.
     if test_system:
-        if passed:
+        if status["checkout"] and status["compile"]:
             if libos != "catmem":
-                passed = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
+                status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
                                             repository, server_addr, client_addr, delay,
                                             config_path, log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
-                passed = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
+                status["udp_push_pop"] = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
                                            repository, server_addr, client_addr, delay, config_path,
                                            log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
-                passed = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
+                status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                             repository, server_addr, delay, config_path,
                                             log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
-                passed = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
+                status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
                                            repository, server_addr, delay, config_path,
                                            log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
             else:
-                passed = test_pipe_ping_pong(server, server, is_debug, repository, delay,
+                status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
                                              config_path, log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
-                passed = test_pipe_push_pop(client, client, is_debug, repository, delay,
+                status["pipe_push_pop"] = test_pipe_push_pop(client, client, is_debug, repository, delay,
                                             config_path, log_directory)
-                status |= (0 if passed else 1) << step
-                step += 1
 
     # Setp 5: Clean up.
-    passed = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
-    status |= (0 if passed else 1) << step
-    step += 1
+    status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
 
     return status
 
@@ -321,7 +300,7 @@ def read_args() -> argparse.Namespace:
     description += "For more information, check out the README.md file of the project."
 
     # Initialize parser.
-    parser = argparse.ArgumentParser(prog="demikernel-ci.py", description=description)
+    parser = argparse.ArgumentParser(prog="demikernel_ci.py", description=description)
 
     # Host options.
     parser.add_argument("--server", required=True, help="set server host name")
@@ -372,9 +351,13 @@ def main():
     server_addr: str = args.server_addr if test_system else ""
     client_addr: str = args.client_addr if test_system else ""
 
-    status: int = run_pipeline(repository, branch, libos, is_debug, server,
-                               client, test_unit, test_system, server_addr, client_addr, delay, config_path, enable_nfs)
-    sys.exit(status)
+    status: dict = run_pipeline(repository, branch, libos, is_debug, server,
+                                client, test_unit, test_system, server_addr,
+                                client_addr, delay, config_path, enable_nfs)
+    if False in status.values():
+        sys.exit(-1)
+    else:
+        sys.exit(0)
 
 
 if __name__ == "__main__":
