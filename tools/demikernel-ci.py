@@ -242,7 +242,7 @@ def run_pipeline(
     status: int = 0
 
     # Create folder for test logs
-    log_directory = "{}-{}-{}".format(libos, branch, "debug" if is_debug else "release")
+    log_directory: str = "{}-{}-{}".format(libos, branch, "debug" if is_debug else "release").replace("/", "_")
     if isdir(log_directory):
         # Keep the last run
         old_dir: str = log_directory + ".old"
