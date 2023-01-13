@@ -91,8 +91,9 @@ def remote_run(host: str, repository: str, is_debug: bool, target: str, is_sudo:
 
 
 # Executes a cleanup command in a remote host.
-def remote_cleanup(host: str, workspace: str, default_branch: str = "dev"):
-    cmd = "cd {} && make clean && git checkout {} && git clean -fdx".format(workspace, default_branch)
+def remote_cleanup(host: str, workspace: str, is_sudo: bool, default_branch: str = "dev"):
+    sudo_cmd: str = "sudo -E" if is_sudo else ""
+    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(workspace, sudo_cmd, default_branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -149,12 +150,12 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
-def job_cleanup(repository: str, server: str, client: str, enable_nfs: bool, log_directory: str) -> bool:
+def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool, log_directory: str) -> bool:
     test_name = "cleanup"
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_cleanup(server, repository)
+    jobs[test_name + "-server-" + server] = remote_cleanup(server, repository, is_sudo)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client + "-"] = remote_cleanup(client, repository)
+        jobs[test_name + "-client-" + client + "-"] = remote_cleanup(client, repository, is_sudo)
     return wait_and_report(test_name, log_directory, jobs)
 
 
@@ -305,7 +306,7 @@ def run_pipeline(
                 step += 1
 
     # Setp 5: Clean up.
-    passed = job_cleanup(repository, server, client, enable_nfs, log_directory)
+    passed = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
     status |= (0 if passed else 1) << step
     step += 1
 
