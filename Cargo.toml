@@ -24,7 +24,7 @@ license-file = "LICENSE.txt"
 
 # Third Party
 arrayvec = "0.7.2"
-async-trait = "0.1.60"
+async-trait = "0.1.61"
 anyhow = "1.0.68"
 bit-iter = "1.1.1"
 byteorder = "1.4.3"
