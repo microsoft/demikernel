@@ -31,9 +31,6 @@ pub mod inetstack;
 extern crate test;
 
 #[macro_use]
-extern crate derive_more;
-
-#[macro_use]
 extern crate log;
 
 #[cfg(feature = "catnip-libos")]
