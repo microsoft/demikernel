@@ -12,94 +12,27 @@ with kernel-bypass I/O devices. This architecture offers a uniform system call
 API across kernel-bypass technologies (e.g., RDMA, DPDK) and OS functionality
 (e.g., a user-level networking stack for DPDK).
 
-To read more about the motivation behind the _Demikernel_, check out
-this [blog
-post](http://irenezhang.net/blog/2019/05/21/demikernel.html).
+To read more about the motivation behind the _Demikernel_, check out this
+[blog post](http://irenezhang.net/blog/2019/05/21/demikernel.html).
 
 To get details about the system, read our paper in [SOSP '21](https://doi.org/10.1145/3477132.3483569).
 
 > To read more about Demikernel check out <https://aka.ms/demikernel>.
 
-## Setting Up the Environment
-
-> **Follow these instructions to build Demikernel on a fresh Ubuntu 22.04 system.**
-
-### 1. Clone This Repository
-
-```bash
-export WORKDIR=$HOME                                                  # Change this to whatever you want.
-cd $WORKDIR                                                           # Switch to working directory.
-git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
-cd $WORKDIR/demikernel                                                # Switch to repository's source tree.
-```
-
-### 2. Install Prerequisites (Only Once)
-
-```bash
-sudo -H scripts/setup/debian.sh                                   # Install third party libraries.
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust toolchain.
-```
-
-### 3. Build DPDK Libraries (For Catnip and Only Once)
-
-```bash
-./scripts/setup/dpdk.sh
-```
-
-## Building Demikernel
-
-See [doc/building.md](./doc/building.md) for instructions and details.
-
-## Running
-
-> **Follow these instructions to run examples that are shipped in the source tree**.
-
-### 1. Setup Configuration File (Only Once)
-
-- Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
-- Open the file in `$HOME/config.yaml` for editing and do the following:
-  - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
-  - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
-  - Change `PPPP` to the port number that you will expose in the server host.
-  - Change `ZZ.ZZ.ZZ.ZZ` to match the IPv4 address that in the local host.
-  - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.
-  - Change `abcde` to match the name of the interface in the local host.
-  - Change the `arp_table` according to your setup.
-  - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
-- Save the file.
-
-### 2. Enable Huge Pages (For Catnip at Every System Reboot)
-
-```bash
-sudo -E ./scripts/setup/hugepages.sh
-```
-
-### 3. Run Tests
-
-See [doc/testing.md](./doc/testing.md) for instructions and details.
-
 ## Documentation
 
-- Legacy system call API documentation [`doc/syscalls.md`](./doc/syscalls.md)
-- Instructions for running Demikernel on CloudLab [`doc/cloudlab.md`](./doc/cloudlab.md)
-
-### 1. Build API Documentation (Optional)
-
-```bash
-cargo doc --no-deps    # Build API Documentation
-cargo doc --open       # Open API Documentation
-```
+- For instructions on development environment setup, see [doc/setup.md](./doc/setup.md).
+- For instructions on building, see [doc/building.md](./doc/building.md).
+- For instructions on testing and running, [doc/testing.md](./doc/testing.md).
+- For instructions for running on CloudLab, see [doc/cloudlab.md](./doc/cloudlab.md).
+- For documentation on the API, see documents in [man](./man).
+- For instructions on how to contribute to this project, see [CONTRIBUTING](./CONTRIBUTING.md).
 
 ## Code of Conduct
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-## Contributing
-
-See [CONTRIBUTING](./CONTRIBUTING.md) for details regarding how to contribute
-to this project.
 
 ## Usage Statement
 
