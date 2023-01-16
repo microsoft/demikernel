@@ -48,7 +48,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # Get Rust too
 
 ## Building Demikernel
 
-See [doc/testing.md](./doc/building.md) for instructions and details.
+See [doc/building.md](./doc/building.md) for instructions and details.
 
 ## Running
 
