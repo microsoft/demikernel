@@ -39,7 +39,6 @@ futures = "0.3.25"
 libc = "0.2.139"
 log = "0.4.17"
 nix = "0.26.1"
-num-derive = "0.3.3"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.7"
 yaml-rust = "0.4.5"
