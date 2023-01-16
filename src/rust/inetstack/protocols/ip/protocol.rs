@@ -1,22 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use crate::runtime::fail::Fail;
-use ::libc::ENOTSUP;
-use ::num_traits::FromPrimitive;
 use ::std::convert::TryFrom;
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 /// Ipv4 Protocol
 #[repr(u8)]
-#[derive(FromPrimitive, Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum IpProtocol {
     /// Internet Control Message Protocol
     ICMPv4 = 0x01,
@@ -26,18 +24,20 @@ pub enum IpProtocol {
     UDP = 0x11,
 }
 
-//==============================================================================
+//======================================================================================================================
 // Trait Implementations
-//==============================================================================
+//======================================================================================================================
 
 /// TryFrom trait implementation.
 impl TryFrom<u8> for IpProtocol {
     type Error = Fail;
 
-    fn try_from(n: u8) -> Result<Self, Fail> {
-        match FromPrimitive::from_u8(n) {
-            Some(n) => Ok(n),
-            None => Err(Fail::new(ENOTSUP, "unsupported IPv4 protocol")),
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x01 => Ok(IpProtocol::ICMPv4),
+            0x06 => Ok(IpProtocol::TCP),
+            0x11 => Ok(IpProtocol::UDP),
+            _ => Err(Fail::new(libc::ENOTSUP, "unsupported IPv4 protocol")),
         }
     }
 }
