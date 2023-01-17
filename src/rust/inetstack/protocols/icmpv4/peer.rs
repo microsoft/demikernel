@@ -29,7 +29,10 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::{
+            TimerRc,
+            WaitFuture,
+        },
     },
     scheduler::{
         Scheduler,
@@ -45,6 +48,7 @@ use ::futures::{
         mpsc,
         oneshot::{
             channel,
+            Receiver,
             Sender,
         },
     },
@@ -64,9 +68,11 @@ use ::std::{
     num::Wrapping,
     process,
     rc::Rc,
-    time::Duration,
+    time::{
+        Duration,
+        Instant,
+    },
 };
-use libc::EAGAIN;
 
 //==============================================================================
 // ReqQueue
@@ -154,10 +160,9 @@ impl Icmpv4Peer {
         let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
             Some(handle) => handle,
             None => {
-                return Err(Fail::new(
-                    EAGAIN,
-                    "failed to schedule background co-routine for ICMPv4 module",
-                ))
+                let message: String = format!("failed to schedule background co-routine for ICMPv4 module");
+                error!("{}", message);
+                return Err(Fail::new(libc::EAGAIN, &message));
             },
         };
         Ok(Icmpv4Peer {
@@ -259,37 +264,45 @@ impl Icmpv4Peer {
         dst_ipv4_addr: Ipv4Addr,
         timeout: Option<Duration>,
     ) -> impl Future<Output = Result<Duration, Fail>> {
-        let timeout = timeout.unwrap_or_else(|| Duration::from_millis(5000));
-        let id = self.make_id();
-        let seq_num = self.make_seq_num();
-        let echo_request = Icmpv4Type2::EchoRequest { id, seq_num };
-        let arp = self.arp.clone();
-        let rt = self.rt.clone();
+        let timeout: Duration = timeout.unwrap_or_else(|| Duration::from_millis(5000));
+        let id: u16 = self.make_id();
+        let seq_num: u16 = self.make_seq_num();
+        let echo_request: Icmpv4Type2 = Icmpv4Type2::EchoRequest { id, seq_num };
+        let arp: ArpPeer = self.arp.clone();
+        let rt: Rc<dyn NetworkRuntime> = self.rt.clone();
         let clock: TimerRc = self.clock.clone();
-        let requests = self.requests.clone();
+        let requests: Rc<RefCell<ReqQueue>> = self.requests.clone();
         let local_link_addr: MacAddress = self.local_link_addr.clone();
         let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr.clone();
         async move {
-            let t0 = clock.now();
+            let t0: Instant = clock.now();
             debug!("initiating ARP query");
             let dst_link_addr = arp.query(dst_ipv4_addr).await?;
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
-            let msg = Icmpv4Message::new(
+            let msg: Icmpv4Message = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(echo_request, 0),
             );
             rt.transmit(Box::new(msg));
-            let rx = {
+            let rx: Receiver<()> = {
                 let (tx, rx) = channel();
                 assert!(requests.borrow_mut().insert((id, seq_num), tx).is_none());
                 rx
             };
-            // TODO: Handle cancellation here and unregister the completion in `requests`.
-            let timer = clock.wait(clock.clone(), timeout);
-            let _ = rx.fuse().with_timeout(timer).await?;
-            Ok(clock.now() - t0)
+            let timer: WaitFuture<TimerRc> = clock.wait(clock.clone(), timeout);
+            match rx.fuse().with_timeout(timer).await? {
+                // Request completed successfully.
+                Ok(_) => Ok(clock.now() - t0),
+                // Request expired.
+                Err(_) => {
+                    let message: String = format!("timer expired");
+                    requests.borrow_mut().remove(&(id, seq_num));
+                    error!("ping(): {}", message);
+                    Err(Fail::new(libc::ETIMEDOUT, &message))
+                },
+            }
         }
     }
 }
