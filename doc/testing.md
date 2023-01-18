@@ -25,7 +25,7 @@ implementation, search for `mod tests` and `cfg(test)` in the code base.
 
 Unit tests may be run in multiple ways:
 
-- [Using the Demikernel's CI tool (ie; `demikernel-ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
+- [Using the Demikernel's CI tool (ie; `demikernel_ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
 - [Using Demikernel's build system (ie. make)](#running-unit-tests-from-the-shell-ie-bash). This method is strongly discouraged.
 
 > Regardless the method you choose to follow:
@@ -34,7 +34,7 @@ Unit tests may be run in multiple ways:
 information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
 > - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
 
-### Running Unit Tests with Demikernel's CI Tool (ie. `demikernel-ci`)
+### Running Unit Tests with Demikernel's CI Tool (ie. `demikernel_ci`)
 
 In order to use this method, you should first do the following setup once:
 
@@ -53,7 +53,7 @@ export DEMIKERNEL_BRANCH=dev
 export LIBOS=catnap
 
 # Run all system tests for the target LIBOS.
-python3 tools/demikernel-ci.py \
+python3 tools/demikernel_ci.py \
     --server $SERVER_HOSTNAME \
     --client $CLIENT_HOSTNAME \
     --repository $DEMIKERNEL_PATH \
@@ -99,7 +99,7 @@ These tests are located in `demikernel/examples/` and detailed in the following 
 
 System-level tests may be run in multiple ways:
 
-- [Using the Demikernel's CI tool (ie. `demikernel-ci`)](#running-system-level-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
+- [Using the Demikernel's CI tool (ie. `demikernel_ci`)](#running-system-level-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
 - [Using Demikernel's build system (ie. `make`)](#running-system-level-tests-with-demikernels-build-system-ie-make). This method is discouraged, because you will have to deal by yourself with specific arguments for each test.
 - [Directly from the shell (ie. `bash`)](#running-system-level-tests-from-the-shell-ie-bash). This method is strongly discouraged, because you will have to not only deal with
 specific arguments for each test, but also with intricacies of your shell.
@@ -110,7 +110,7 @@ specific arguments for each test, but also with intricacies of your shell.
 information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
 > - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
 
-### Running System-Level Tests with Demikernel's CI Tool (ie. `demikernel-ci`)
+### Running System-Level Tests with Demikernel's CI Tool (ie. `demikernel_ci`)
 
 In order to use this method, you should first do the following setup once:
 
@@ -131,7 +131,7 @@ export DEMIKERNEL_BRANCH=dev
 export LIBOS=catnap
 
 # Run all system-level tests for the target LIBOS.
-python3 tools/demikernel-ci.py \
+python3 tools/demikernel_ci.py \
     --server $SERVER_HOSTNAME \
     --client $CLIENT_HOSTNAME \
     --repository $DEMIKERNEL_PATH \
