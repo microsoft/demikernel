@@ -10,9 +10,9 @@ instructions in the `README.md` file.
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
 - [Building Demikernel with Default Parameters](#building-demikernel-with-default-parameters)
-  - [Installing Artifacts (Optional)](#installing-artifacts-optional)
+- [Installing Artifacts (Optional)](#installing-artifacts-optional)
+- [Building API Documentation (Optional)](#building-api-documentation-optional)
 - [Custom Build Parameters for Catnip LibOS (Optional)](#custom-build-parameters-for-catnip-libos-optional)
   - [Override Default Path for DPDK Libraries](#override-default-path-for-dpdk-libraries)
   - [Override Path to DPDK Package Config File](#override-path-to-dpdk-package-config-file)
@@ -43,7 +43,7 @@ make LIBOS=catnip
 make LIBOS=catpowder
 ```
 
-### Installing Artifacts (Optional)
+## Installing Artifacts (Optional)
 
 ```bash
 # Copies build artifacts to your $HOME directory.
@@ -51,6 +51,13 @@ make install
 
 # Copies build artifacts to a specific location.
 make install INSTALL_PREFIX=/path/to/location
+```
+
+## Building API Documentation (Optional)
+
+```bash
+cargo doc --no-deps    # Build API Documentation
+cargo doc --open       # Open API Documentation
 ```
 
 ## Custom Build Parameters for Catnip LibOS (Optional)
