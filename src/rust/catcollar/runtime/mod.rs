@@ -107,6 +107,7 @@ impl IoUringRuntime {
             // The target request has already completed.
             Some(size) => {
                 let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
+                let _: Box<liburing::iovec> = unsafe { Box::from_raw(msg.msg_iov) };
                 let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
                     None
                 } else {
@@ -135,6 +136,7 @@ impl IoUringRuntime {
                             return Ok((None, None));
                         }
                         let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
+                        let _: Box<liburing::iovec> = unsafe { Box::from_raw(msg.msg_iov) };
                         let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
                             None
                         } else {

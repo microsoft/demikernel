@@ -84,11 +84,11 @@ impl IoUring {
             }
 
             // Submit operation.
-            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
+            let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
                 iov_len: len as u64,
             });
-            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
                 msg_name: ptr::null_mut() as *mut _,
                 msg_namelen: 0,
@@ -133,11 +133,11 @@ impl IoUring {
             }
 
             // Submit operation.
-            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
+            let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
                 iov_len: len as u64,
             });
-            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
                 msg_name: sockaddr_ptr as *mut c_void,
                 msg_namelen: addrlen as u32,
@@ -174,11 +174,11 @@ impl IoUring {
             }
 
             // Submit operation.
-            let mut iov: Box<liburing::iovec> = Box::new(liburing::iovec {
+            let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
                 iov_len: len as u64,
             });
-            let iov_ptr: *mut liburing::iovec = iov.as_mut() as *mut liburing::iovec;
+            let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Rc<liburing::msghdr> = Rc::new(liburing::msghdr {
                 msg_name: ptr::null_mut() as *mut _,
                 msg_namelen: 0,
