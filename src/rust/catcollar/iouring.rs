@@ -71,8 +71,7 @@ impl IoUring {
     /// Pushes a buffer to the target IO user ring.
     pub fn push(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
-        let data: &[u8] = &buf[..];
-        let data_ptr: *const u8 = data.as_ptr();
+        let data_ptr: *const u8 = buf.as_ptr();
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
@@ -118,8 +117,7 @@ impl IoUring {
         buf: DemiBuffer,
     ) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
-        let data: &[u8] = &buf[..];
-        let data_ptr: *const u8 = data.as_ptr();
+        let data_ptr: *const u8 = buf.as_ptr();
         let saddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
         let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) = (&saddr, mem::size_of_val(&saddr) as u32);
         let sockaddr_ptr: *const libc::sockaddr_in = sockaddr as *const libc::sockaddr_in;
@@ -163,8 +161,7 @@ impl IoUring {
     /// Pops a buffer from the target IO user ring.
     pub fn pop(&mut self, sockfd: RawFd, buf: DemiBuffer) -> Result<*const liburing::msghdr, Fail> {
         let len: usize = buf.len();
-        let data: &[u8] = &buf[..];
-        let data_ptr: *const u8 = data.as_ptr();
+        let data_ptr: *const u8 = buf.as_ptr();
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
