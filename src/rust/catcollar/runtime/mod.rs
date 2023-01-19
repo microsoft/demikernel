@@ -56,7 +56,7 @@ pub struct IoUringRuntime {
     /// Pending requests.
     pending: HashSet<RequestId>,
     /// Completed requests.
-    completed: HashMap<RequestId, i32>,
+    completed: HashMap<RequestId, (Option<SocketAddrV4>, i32)>,
 }
 
 //==============================================================================
@@ -101,41 +101,18 @@ impl IoUringRuntime {
     }
 
     /// Peeks for the completion of an operation in the target I/O user ring.
-    pub fn peek(&mut self, request_id: RequestId) -> Result<(Option<SocketAddrV4>, Option<i32>), Fail> {
+    pub fn peek(&mut self, request_id: RequestId) -> Result<(Option<SocketAddrV4>, i32), Fail> {
         // Check if pending request has completed.
         match self.completed.remove(&request_id) {
             // The target request has already completed.
-            Some(size) => {
-                let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
-                let _: Box<liburing::iovec> = unsafe { Box::from_raw(msg.msg_iov) };
-                let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
-                    None
-                } else {
-                    let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
-                    let sin: libc::sockaddr_in =
-                        unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
-                    Some(linux::sockaddr_in_to_socketaddrv4(&sin))
-                };
-
-                // Done.
-                Ok((addr, Some(size)))
-            },
+            Some(result) => Ok(result),
             // The target request may not be completed.
             None => {
                 // Peek the underlying io_uring.
                 match self.io_uring.borrow_mut().wait() {
                     // Some operation has completed.
                     Ok((other_request_id, size)) => {
-                        // This is not the request that we are waiting for.
-                        if request_id.0 != other_request_id {
-                            let other_request_id: RequestId = RequestId(other_request_id);
-                            match self.pending.remove(&other_request_id) {
-                                true => self.completed.insert(other_request_id, size),
-                                false => None,
-                            };
-                            return Ok((None, None));
-                        }
-                        let msg: Rc<liburing::msghdr> = unsafe { Rc::from_raw(request_id.0) };
+                        let msg: Box<liburing::msghdr> = unsafe { Box::from_raw(other_request_id) };
                         let _: Box<liburing::iovec> = unsafe { Box::from_raw(msg.msg_iov) };
                         let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
                             None
@@ -146,18 +123,21 @@ impl IoUringRuntime {
                             Some(linux::sockaddr_in_to_socketaddrv4(&sin))
                         };
 
+                        // This is not the request that we are waiting for.
+                        if request_id.0 != other_request_id {
+                            let other_request_id: RequestId = RequestId(other_request_id);
+                            if self.pending.remove(&other_request_id) {
+                                self.completed.insert(other_request_id, (addr, size));
+                            } else {
+                                warn!("spurious event?");
+                            }
+                        }
+
                         // Done.
-                        Ok((addr, Some(size)))
+                        Ok((addr, size))
                     },
                     // Something bad has happened.
-                    Err(e) => {
-                        match e.errno {
-                            // Operation in progress.
-                            libc::EAGAIN => Ok((None, None)),
-                            // Operation failed.
-                            _ => Err(e),
-                        }
-                    },
+                    Err(e) => Err(e),
                 }
             },
         }

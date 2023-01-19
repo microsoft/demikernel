@@ -19,6 +19,7 @@ use crate::{
 use ::std::{
     future::Future,
     net::SocketAddrV4,
+    os::fd::RawFd,
     pin::Pin,
     task::{
         Context,
@@ -36,10 +37,10 @@ pub struct PopFuture {
     rt: IoUringRuntime,
     /// Associated queue descriptor.
     qd: QDesc,
+    /// Associated file descriptor.
+    fd: RawFd,
     /// Associated receive buffer.
     buf: DemiBuffer,
-    /// Associated request.
-    request_id: RequestId,
 }
 
 //==============================================================================
@@ -49,13 +50,8 @@ pub struct PopFuture {
 /// Associate Functions for Pop Operation Descriptors
 impl PopFuture {
     /// Creates a descriptor for a pop operation.
-    pub fn new(rt: IoUringRuntime, request_id: RequestId, qd: QDesc, buf: DemiBuffer) -> Self {
-        Self {
-            rt,
-            qd,
-            buf,
-            request_id,
-        }
+    pub fn new(rt: IoUringRuntime, qd: QDesc, fd: RawFd, buf: DemiBuffer) -> Self {
+        Self { rt, qd, fd, buf }
     }
 
     /// Returns the queue descriptor associated to the target pop operation descriptor.
@@ -75,26 +71,30 @@ impl Future for PopFuture {
     /// Polls the underlying pop operation.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
-        match self_.rt.peek(self_.request_id) {
+        let request_id: RequestId = self_.rt.pop(self_.fd, self_.buf.clone())?;
+        match self_.rt.peek(request_id) {
             // Operation completed.
-            Ok((addr, Some(size))) if size >= 0 => {
+            Ok((addr, size)) if size >= 0 => {
                 trace!("data received ({:?} bytes)", size);
                 let trim_size: usize = self_.buf.len() - (size as usize);
                 let mut buf: DemiBuffer = self_.buf.clone();
                 buf.trim(trim_size)?;
                 Poll::Ready(Ok((addr, buf)))
             },
-            // Operation in progress, re-schedule future.
-            Ok((_, None)) => {
-                trace!("pop in progress");
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Underlying asynchronous operation failed.
-            Ok((_, Some(size))) if size < 0 => {
+            // Operation not completed, thus parse errno to find out what happened.
+            Ok((None, size)) if size < 0 => {
                 let errno: i32 = -size;
-                warn!("pop failed ({:?})", errno);
-                Poll::Ready(Err(Fail::new(errno, "I/O error")))
+                // Operation in progress.
+                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("pus(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
             // Operation failed.
             Err(e) => {

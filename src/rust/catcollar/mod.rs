@@ -15,16 +15,13 @@ pub use self::runtime::IoUringRuntime;
 // Imports
 //======================================================================================================================
 
-use self::{
-    futures::{
-        accept::AcceptFuture,
-        connect::ConnectFuture,
-        pop::PopFuture,
-        push::PushFuture,
-        pushto::PushtoFuture,
-        Operation,
-    },
-    runtime::RequestId,
+use self::futures::{
+    accept::AcceptFuture,
+    connect::ConnectFuture,
+    pop::PopFuture,
+    push::PushFuture,
+    pushto::PushtoFuture,
+    Operation,
 };
 use crate::{
     demikernel::config::Config,
@@ -264,9 +261,7 @@ impl CatcollarLibOS {
         match self.sockets.get(&qd) {
             Some(&fd) => {
                 // Issue operation.
-                let request_id: RequestId = self.runtime.push(fd, buf.clone())?;
-
-                let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), request_id, qd));
+                let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), qd, fd, buf));
                 let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -291,10 +286,8 @@ impl CatcollarLibOS {
                 match self.sockets.get(&qd) {
                     Some(&fd) => {
                         // Issue operation.
-                        let request_id: RequestId = self.runtime.pushto(fd, remote, buf.clone())?;
-
                         let future: Operation =
-                            Operation::from(PushtoFuture::new(self.runtime.clone(), request_id, qd));
+                            Operation::from(PushtoFuture::new(self.runtime.clone(), qd, fd, remote, buf));
                         let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                             Some(handle) => handle,
                             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -317,8 +310,7 @@ impl CatcollarLibOS {
         // Issue pop operation.
         match self.sockets.get(&qd) {
             Some(&fd) => {
-                let request_id: RequestId = self.runtime.pop(fd, buf.clone())?;
-                let future: Operation = Operation::from(PopFuture::new(self.runtime.clone(), request_id, qd, buf));
+                let future: Operation = Operation::from(PopFuture::new(self.runtime.clone(), qd, fd, buf));
                 let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
