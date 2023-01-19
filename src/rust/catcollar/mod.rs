@@ -375,7 +375,7 @@ impl CatcollarLibOS {
 
         let (qd, new_qd, new_fd, qr): (QDesc, Option<QDesc>, Option<RawFd>, OperationResult) =
             boxed_concrete_type.get_result();
-        trace!("qd={:?}, new_qd={:?}, new_fd={:?}", qd, new_qd, new_fd,);
+        trace!("take_result(): qd={:?}, new_qd={:?}, new_fd={:?}", qd, new_qd, new_fd,);
 
         // Handle accept operation.
         if let Some(new_qd) = new_qd {
