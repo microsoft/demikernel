@@ -10,14 +10,11 @@ use crate::runtime::{
     memory::DemiBuffer,
     QDesc,
 };
-use ::nix::{
-    errno::Errno,
-    sys::socket,
-};
 use ::std::{
     future::Future,
     os::unix::prelude::RawFd,
     pin::Pin,
+    ptr,
     task::{
         Context,
         Poll,
@@ -66,21 +63,37 @@ impl Future for PushFuture {
     /// Polls the target [PushFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushFuture = self.get_mut();
-        match socket::send(self_.fd, &self_.buf[..], socket::MsgFlags::empty()) {
+        match unsafe {
+            libc::sendto(
+                self_.fd,
+                (self_.buf.as_ptr() as *const u8) as *const libc::c_void,
+                self_.buf.len(),
+                libc::MSG_DONTWAIT,
+                ptr::null(),
+                0,
+            )
+        } {
             // Operation completed.
-            Ok(nbytes) => {
+            nbytes if nbytes >= 0 => {
                 trace!("data pushed ({:?}/{:?} bytes)", nbytes, self_.buf.len());
                 Poll::Ready(Ok(()))
             },
-            // Operation in progress.
-            Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Error.
-            Err(e) => {
-                warn!("push failed ({:?})", e);
-                Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                // Operation in progress.
+                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("push(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
         }
     }

@@ -12,12 +12,9 @@ use crate::{
         QDesc,
     },
 };
-use ::nix::{
-    errno::Errno,
-    sys::socket,
-};
 use ::std::{
     future::Future,
+    mem,
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
@@ -38,6 +35,8 @@ pub struct AcceptFuture {
     fd: RawFd,
     /// Queue descriptor of incoming connection.
     new_qd: QDesc,
+    /// Socket address of accept connection.
+    sockaddr: libc::sockaddr_in,
 }
 
 //==============================================================================
@@ -48,7 +47,12 @@ pub struct AcceptFuture {
 impl AcceptFuture {
     /// Creates a descriptor for an accept operation.
     pub fn new(qd: QDesc, fd: RawFd, new_qd: QDesc) -> Self {
-        Self { qd, fd, new_qd }
+        Self {
+            qd,
+            fd,
+            new_qd,
+            sockaddr: unsafe { mem::zeroed() },
+        }
     }
 
     /// Returns the queue descriptor associated to the target accept operation
@@ -74,36 +78,53 @@ impl Future for AcceptFuture {
 
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &AcceptFuture = self.get_mut();
-        match socket::accept(self_.fd as i32) {
+        let self_: &mut AcceptFuture = self.get_mut();
+        match unsafe {
+            let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+            libc::accept(
+                self_.fd,
+                (&mut self_.sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
+                &mut address_len,
+            )
+        } {
             // Operation completed.
-            Ok(new_fd) => {
+            new_fd if new_fd >= 0 => {
                 trace!("connection accepted ({:?})", new_fd);
 
                 // Set socket options.
                 unsafe {
                     if linux::set_tcp_nodelay(new_fd) != 0 {
-                        warn!("cannot set TCP_NONDELAY option");
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set TCP_NONDELAY option (errno={:?})", errno);
                     }
                     if linux::set_nonblock(new_fd) != 0 {
-                        warn!("cannot set NONBLOCK option");
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set O_NONBLOCK option (errno={:?})", errno);
                     }
                     if linux::set_so_reuseport(new_fd) != 0 {
-                        warn!("cannot set SO_REUSEPORT option");
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set SO_REUSEPORT option (errno={:?})", errno);
                     }
                 }
 
                 Poll::Ready(Ok(new_fd))
             },
-            // Operation in progress.
-            Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Operation failed.
-            Err(e) => {
-                warn!("failed to accept connection ({:?})", e);
-                Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                // Operation in progress.
+                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("accept(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
         }
     }

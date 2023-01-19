@@ -5,24 +5,18 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
-    QDesc,
-};
-use ::nix::{
-    errno::Errno,
-    sys::{
-        socket,
-        socket::SockaddrStorage,
+use crate::{
+    pal::linux,
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+        QDesc,
     },
 };
 use ::std::{
     future::Future,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    mem,
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
@@ -48,6 +42,10 @@ pub struct PopFuture {
     qd: QDesc,
     /// Underlying file descriptor.
     fd: RawFd,
+    /// Source socket address.
+    sockaddr: libc::sockaddr_in,
+    /// Receiving buffer.
+    buf: DemiBuffer,
 }
 
 //==============================================================================
@@ -58,7 +56,12 @@ pub struct PopFuture {
 impl PopFuture {
     /// Creates a descriptor for a pop operation.
     pub fn new(qd: QDesc, fd: RawFd) -> Self {
-        Self { qd, fd }
+        Self {
+            qd,
+            fd,
+            sockaddr: unsafe { mem::zeroed() },
+            buf: DemiBuffer::new(POP_SIZE as u16),
+        }
     }
 
     /// Returns the queue descriptor associated to the target [PopFuture].
@@ -78,34 +81,40 @@ impl Future for PopFuture {
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
-        let mut bytes: [u8; POP_SIZE] = [0; POP_SIZE];
-        match socket::recvfrom::<SockaddrStorage>(self_.fd, &mut bytes[..]) {
+        match unsafe {
+            let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+            libc::recvfrom(
+                self_.fd,
+                (self_.buf.as_mut_ptr() as *mut u8) as *mut libc::c_void,
+                self_.buf.len(),
+                libc::MSG_DONTWAIT,
+                (&mut self_.sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
+                &mut addrlen as *mut u32,
+            )
+        } {
             // Operation completed.
-            Ok((nbytes, socketaddr)) => {
+            nbytes if nbytes >= 0 => {
                 trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
-                let buf: DemiBuffer = DemiBuffer::from_slice(&bytes[0..nbytes])?;
-                let addr: Option<SocketAddrV4> = match socketaddr {
-                    Some(addr) => match addr.as_sockaddr_in() {
-                        Some(sin) => {
-                            let ip: Ipv4Addr = Ipv4Addr::from(sin.ip());
-                            let port: u16 = sin.port();
-                            Some(SocketAddrV4::new(ip, port))
-                        },
-                        None => None,
-                    },
-                    _ => None,
-                };
-                Poll::Ready(Ok((addr, buf)))
+                self_.buf.trim(POP_SIZE - nbytes as usize)?;
+                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&self_.sockaddr);
+                return Poll::Ready(Ok((Some(addr), self_.buf.clone())));
             },
-            // Operation in progress.
-            Err(e) if e == Errno::EWOULDBLOCK || e == Errno::EAGAIN => {
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Error.
-            Err(e) => {
-                trace!("pop failed ({:?})", e);
-                Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                // Operation in progress.
+                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("pop(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
         }
     }

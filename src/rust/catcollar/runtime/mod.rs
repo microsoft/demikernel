@@ -10,6 +10,7 @@ mod network;
 
 use super::iouring::IoUring;
 use crate::{
+    pal::linux,
     runtime::{
         fail::Fail,
         liburing,
@@ -18,7 +19,6 @@ use crate::{
     },
     scheduler::scheduler::Scheduler,
 };
-use ::nix::sys::socket::SockaddrStorage;
 use ::std::{
     cell::RefCell,
     collections::{
@@ -26,10 +26,7 @@ use ::std::{
         HashSet,
     },
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     rc::Rc,
 };
@@ -88,7 +85,7 @@ impl IoUringRuntime {
     }
 
     /// Pushes a buffer to the target I/O user ring.
-    pub fn pushto(&mut self, sockfd: i32, addr: SockaddrStorage, buf: DemiBuffer) -> Result<RequestId, Fail> {
+    pub fn pushto(&mut self, sockfd: i32, addr: SocketAddrV4, buf: DemiBuffer) -> Result<RequestId, Fail> {
         let msg_ptr: *const liburing::msghdr = self.io_uring.borrow_mut().pushto(sockfd, addr, buf)?;
         let request_id: RequestId = RequestId(msg_ptr);
         self.pending.insert(request_id);
@@ -116,9 +113,7 @@ impl IoUringRuntime {
                     let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
                     let sin: libc::sockaddr_in =
                         unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
-                    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
-                    let port: u16 = u16::from_be(sin.sin_port);
-                    Some(SocketAddrV4::new(addr, port))
+                    Some(linux::sockaddr_in_to_socketaddrv4(&sin))
                 };
 
                 // Done.
@@ -146,9 +141,7 @@ impl IoUringRuntime {
                             let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
                             let sin: libc::sockaddr_in =
                                 unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
-                            let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
-                            let port: u16 = u16::from_be(sin.sin_port);
-                            Some(SocketAddrV4::new(addr, port))
+                            Some(linux::sockaddr_in_to_socketaddrv4(&sin))
                         };
 
                         // Done.

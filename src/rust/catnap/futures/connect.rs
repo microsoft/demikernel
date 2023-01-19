@@ -5,19 +5,17 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    QDesc,
-};
-use ::nix::{
-    errno::Errno,
-    sys::{
-        socket,
-        socket::SockaddrStorage,
+use crate::{
+    pal::linux,
+    runtime::{
+        fail::Fail,
+        QDesc,
     },
 };
 use ::std::{
     future::Future,
+    mem,
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     pin::Pin,
     task::{
@@ -36,8 +34,8 @@ pub struct ConnectFuture {
     qd: QDesc,
     // Underlying file descriptor.
     fd: RawFd,
-    /// Destination address.
-    addr: SockaddrStorage,
+    /// Connect address.
+    sockaddr: libc::sockaddr_in,
 }
 
 //==============================================================================
@@ -47,8 +45,12 @@ pub struct ConnectFuture {
 /// Associate Functions for Connect Operation Descriptors
 impl ConnectFuture {
     /// Creates a descriptor for a connect operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SockaddrStorage) -> Self {
-        Self { qd, fd, addr }
+    pub fn new(qd: QDesc, fd: RawFd, addr: SocketAddrV4) -> Self {
+        Self {
+            qd,
+            fd,
+            sockaddr: linux::socketaddrv4_to_sockaddr_in(&addr),
+        }
     }
 
     /// Returns the queue descriptor associated to the target [ConnectFuture].
@@ -68,21 +70,34 @@ impl Future for ConnectFuture {
     /// Polls the target [ConnectFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut ConnectFuture = self.get_mut();
-        match socket::connect(self_.fd as i32, &self_.addr) {
+        match unsafe {
+            libc::connect(
+                self_.fd,
+                (&self_.sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                mem::size_of_val(&self_.sockaddr) as u32,
+            )
+        } {
             // Operation completed.
-            Ok(_) => {
-                trace!("connection established ({:?})", self_.addr);
+            stats if stats == 0 => {
+                trace!("connection established ({:?})", self_.sockaddr);
                 Poll::Ready(Ok(()))
             },
-            // Operation not ready yet.
-            Err(e) if e == Errno::EINPROGRESS || e == Errno::EALREADY => {
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Operation failed.
-            Err(e) => {
-                warn!("failed to establish connection ({:?})", e);
-                Poll::Ready(Err(Fail::new(e as i32, "operation failed")))
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                // Operation in progress.
+                if errno == libc::EINPROGRESS || errno == libc::EALREADY {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("connect(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
         }
     }

@@ -13,7 +13,10 @@ pub mod shm;
 
 use ::std::{
     mem,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     os::unix::prelude::RawFd,
 };
 
@@ -63,7 +66,7 @@ pub unsafe fn set_nonblock(fd: RawFd) -> i32 {
     libc::fcntl(fd, libc::F_SETFL, flags, 1)
 }
 
-/// Converts a [std::net::SocketAddrV4] into a [libc::sockaddr_in].
+/// Converts a [std::net::SocketAddrV4] to a [libc::sockaddr_in].
 pub fn socketaddrv4_to_sockaddr_in(addr: &SocketAddrV4) -> libc::sockaddr_in {
     libc::sockaddr_in {
         sin_family: libc::AF_INET as libc::sa_family_t,
@@ -78,4 +81,12 @@ pub fn socketaddrv4_to_sockaddr_in(addr: &SocketAddrV4) -> libc::sockaddr_in {
         },
         sin_zero: [0; 8],
     }
+}
+
+/// Converts a [std::net::SocketAddrV4] to a [libc::sockaddr_in].
+pub fn sockaddr_in_to_socketaddrv4(sin: &libc::sockaddr_in) -> SocketAddrV4 {
+    SocketAddrV4::new(
+        Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr)),
+        u16::from_be(sin.sin_port),
+    )
 }
