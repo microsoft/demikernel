@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::runtime::{
     fail::Fail,
     memory::DemiBuffer,
@@ -14,11 +18,14 @@ use ::libc::{
     EBADMSG,
     ENOTSUP,
 };
-use ::num_traits::FromPrimitive;
 use ::std::{
     convert::TryInto,
     net::Ipv4Addr,
 };
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
 
 const ARP_HTYPE_ETHER2: u16 = 1;
 const ARP_HLEN_ETHER2: u8 = 6;
@@ -26,20 +33,20 @@ const ARP_PTYPE_IPV4: u16 = 0x800;
 const ARP_PLEN_IPV4: u8 = 4;
 const ARP_MESSAGE_SIZE: usize = 28;
 
-//==============================================================================
+//======================================================================================================================
 // Enumerations
-//==============================================================================
+//======================================================================================================================
 
 #[repr(u16)]
-#[derive(FromPrimitive, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArpOperation {
     Request = 1,
     Reply = 2,
 }
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 ///
 /// # Protocol Data Unit (PDU) for ARP
@@ -58,9 +65,9 @@ pub struct ArpHeader {
     target_protocol_addr: Ipv4Addr,
 }
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 impl ArpHeader {
     /// Creates an ARP protocol data unit.
@@ -106,8 +113,7 @@ impl ArpHeader {
         if protocol_address_len != ARP_PLEN_IPV4 {
             return Err(Fail::new(ENOTSUP, "unsupported PLEN"));
         }
-        let operation: ArpOperation = FromPrimitive::from_u16(NetworkEndian::read_u16(&buf[6..8]))
-            .ok_or(Fail::new(ENOTSUP, "unsupported OPER"))?;
+        let operation: ArpOperation = NetworkEndian::read_u16(&buf[6..8]).try_into()?;
         let sender_hardware_addr: MacAddress = MacAddress::from_bytes(&buf[8..14]);
         let sender_protocol_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
         let target_hardware_addr: MacAddress = MacAddress::from_bytes(&buf[18..24]);
@@ -150,5 +156,22 @@ impl ArpHeader {
 
     pub fn get_destination_protocol_addr(&self) -> Ipv4Addr {
         self.target_protocol_addr
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl TryFrom<u16> for ArpOperation {
+    type Error = Fail;
+
+    /// Attempts to convert a [u16] into a [ArpOperation].
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(ArpOperation::Request),
+            2 => Ok(ArpOperation::Reply),
+            _ => Err(Fail::new(libc::ENOTSUP, "unsupported ARP operation")),
+        }
     }
 }

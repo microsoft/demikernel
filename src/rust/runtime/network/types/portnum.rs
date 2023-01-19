@@ -17,7 +17,7 @@ use ::std::{
 //==============================================================================
 
 /// Port Number
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Display, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, Ord, PartialOrd)]
 pub struct Port16(NonZeroU16);
 
 //==============================================================================
