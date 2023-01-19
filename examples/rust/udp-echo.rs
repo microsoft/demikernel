@@ -42,7 +42,10 @@ use ::std::{
 use windows::Win32::Networking::WinSock::SOCKADDR;
 
 #[cfg(target_os = "windows")]
-pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+pub const AF_INET: windows::Win32::Networking::WinSock::ADDRESS_FAMILY = windows::Win32::Networking::WinSock::AF_INET;
+
+#[cfg(target_os = "windows")]
+pub const AF_INET_VALUE: i32 = AF_INET.0 as i32;
 
 #[cfg(target_os = "windows")]
 pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
@@ -51,7 +54,7 @@ pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i
 use windows::Win32::Networking::WinSock::SOCKADDR_IN;
 
 #[cfg(target_os = "linux")]
-pub const AF_INET: i32 = libc::AF_INET;
+pub const AF_INET_VALUE: i32 = libc::AF_INET;
 
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
@@ -135,7 +138,7 @@ impl Application {
         let local: SocketAddrV4 = args.get_local();
 
         // Create UDP socket.
-        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        let sockqd: QDesc = match libos.socket(AF_INET_VALUE, SOCK_DGRAM, 0) {
             Ok(qd) => qd,
             Err(e) => panic!("failed to create socket: {:?}", e.cause),
         };
@@ -235,7 +238,7 @@ impl Application {
         // TODO: Change the logic below and rename this function once we support V6 addresses as well.
 
         let sin: SOCKADDR_IN = unsafe { *(saddr as *const SOCKADDR_IN) };
-        if sin.sin_family != AF_INET as u16 {
+        if sin.sin_family != AF_INET {
             bail!("communication domain not supported");
         };
         let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(unsafe { sin.sin_addr.S_un.S_addr }));

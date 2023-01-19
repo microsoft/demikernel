@@ -28,6 +28,7 @@ use crate::{
     pal::{
         constants::{
             AF_INET,
+            AF_INET_VALUE,
             SOCK_DGRAM,
             SOCK_STREAM,
         },
@@ -126,7 +127,7 @@ impl CatnapWLibOS {
 
         // Parse communication domain.
         let domain: Domain = match domain {
-            AF_INET => Domain::IPV4,
+            AF_INET_VALUE => Domain::IPV4,
             _ => return Err(Fail::new(ENOTSUP, "communication domain not supported")),
         };
 
@@ -422,7 +423,7 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                     let saddr: SockAddrIn = {
                         // TODO: check the following byte order conversion.
                         SockAddrIn {
-                            sin_family: AF_INET as u16,
+                            sin_family: AF_INET,
                             sin_port: endpoint.port().into(),
                             sin_addr: IN_ADDR {
                                 S_un: (WinSock::IN_ADDR_0 {
