@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod memory;
 mod network;
 
 //==============================================================================
@@ -14,7 +13,10 @@ use crate::{
     runtime::{
         fail::Fail,
         liburing,
-        memory::DemiBuffer,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         Runtime,
     },
     scheduler::scheduler::Scheduler,
@@ -148,5 +150,9 @@ impl IoUringRuntime {
 // Trait Implementations
 //==============================================================================
 
+/// Memory Runtime Trait Implementation for IoUring Runtime
+impl MemoryRuntime for IoUringRuntime {}
+
 /// Runtime Trait Implementation for I/O User Ring Runtime
 impl Runtime for IoUringRuntime {}
+
