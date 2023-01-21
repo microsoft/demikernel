@@ -13,6 +13,7 @@ use self::rawsocket::{
     RawSocketAddr,
 };
 use crate::runtime::{
+    memory::MemoryRuntime,
     network::{
         config::{
             ArpConfig,
@@ -21,7 +22,6 @@ use crate::runtime::{
         },
         types::MacAddress,
     },
-    memory::MemoryRuntime,
     Runtime,
 };
 use ::std::{
