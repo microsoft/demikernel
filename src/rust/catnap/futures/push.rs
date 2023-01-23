@@ -5,13 +5,18 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
-    QDesc,
+use crate::{
+    pal::linux,
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+        QDesc,
+    },
 };
 use ::std::{
     future::Future,
+    mem,
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
     pin::Pin,
     ptr,
@@ -33,6 +38,8 @@ pub struct PushFuture {
     fd: RawFd,
     /// Buffer to send.
     buf: DemiBuffer,
+    /// Destination address.
+    sockaddr: Option<libc::sockaddr_in>,
 }
 
 //==============================================================================
@@ -41,9 +48,15 @@ pub struct PushFuture {
 
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
-    /// Creates a descriptor for a push operation.
-    pub fn new(qd: QDesc, fd: RawFd, buf: DemiBuffer) -> Self {
-        Self { qd, fd, buf }
+    /// Creates a descriptor for a pushto operation.
+    pub fn new(qd: QDesc, fd: RawFd, buf: DemiBuffer, addr: Option<SocketAddrV4>) -> Self {
+        let sockaddr: Option<libc::sockaddr_in> = if let Some(addr) = addr {
+            Some(linux::socketaddrv4_to_sockaddr_in(&addr))
+        } else {
+            None
+        };
+
+        Self { qd, fd, buf, sockaddr }
     }
 
     /// Returns the queue descriptor associated to the target [PushFuture].
@@ -64,13 +77,21 @@ impl Future for PushFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushFuture = self.get_mut();
         match unsafe {
+            let (addr, addrlen): (*const libc::sockaddr, u32) = if self_.sockaddr.is_some() {
+                (
+                    (self_.sockaddr.as_ref().unwrap() as *const libc::sockaddr_in) as *const libc::sockaddr,
+                    mem::size_of_val(&self_.sockaddr.unwrap()) as u32,
+                )
+            } else {
+                (ptr::null(), 0)
+            };
             libc::sendto(
                 self_.fd,
                 (self_.buf.as_ptr() as *const u8) as *const libc::c_void,
                 self_.buf.len(),
                 libc::MSG_DONTWAIT,
-                ptr::null(),
-                0,
+                addr,
+                addrlen,
             )
         } {
             // Operation completed.
@@ -90,7 +111,7 @@ impl Future for PushFuture {
                 }
                 // Operation failed.
                 else {
-                    let message: String = format!("push(): operation failed (errno={:?})", errno);
+                    let message: String = format!("pushto(): operation failed (errno={:?})", errno);
                     error!("{}", message);
                     return Poll::Ready(Err(Fail::new(errno, &message)));
                 }

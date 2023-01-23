@@ -9,7 +9,6 @@ pub mod accept;
 pub mod connect;
 pub mod pop;
 pub mod push;
-pub mod pushto;
 
 //==============================================================================
 // Imports
@@ -20,7 +19,6 @@ use self::{
     connect::ConnectFuture,
     pop::PopFuture,
     push::PushFuture,
-    pushto::PushtoFuture,
 };
 use crate::{
     inetstack::operations::OperationResult,
@@ -51,10 +49,8 @@ pub enum Operation {
     Accept(FutureResult<AcceptFuture>),
     /// Connection operation
     Connect(FutureResult<ConnectFuture>),
-    /// Push operation
+    /// Push operation.
     Push(FutureResult<PushFuture>),
-    /// Pushto operation.
-    Pushto(FutureResult<PushtoFuture>),
     /// Pop operation.
     Pop(FutureResult<PopFuture>),
 }
@@ -108,16 +104,6 @@ impl Operation {
                 done: Some(Err(e)),
             }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
-            // Pushto operation.
-            Operation::Pushto(FutureResult {
-                future,
-                done: Some(Ok(())),
-            }) => (future.get_qd(), None, None, OperationResult::Push),
-            Operation::Pushto(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
-
             // Pop operation.
             Operation::Pop(FutureResult {
                 future,
@@ -158,7 +144,6 @@ impl Future for Operation {
             Operation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
-            Operation::Pushto(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
@@ -182,13 +167,6 @@ impl From<ConnectFuture> for Operation {
 impl From<PushFuture> for Operation {
     fn from(f: PushFuture) -> Self {
         Operation::Push(FutureResult::new(f, None))
-    }
-}
-
-/// From Trait Implementation for Operation Descriptors
-impl From<PushtoFuture> for Operation {
-    fn from(f: PushtoFuture) -> Self {
-        Operation::Pushto(FutureResult::new(f, None))
     }
 }
 
