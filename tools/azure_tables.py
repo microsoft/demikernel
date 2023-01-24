@@ -58,16 +58,16 @@ def main():
     debug_modes: List = []
     liboses: List = []
     branches: List = []
-    if args.debug is None and args.release is None:
-        debug_modes = [True, False]
-    else:
-        if args.debug:
-            debug_modes.append(True)
-        if args.release:
-            debug_modes.append(False)
-    
+
+    # If args ask for debug or no make flags given, then run debug build.
+    if args.debug or not args.release:
+        debug_modes.append(True)
+    # If args ask for release or no make flags given, then run release build.
+    if args.release or not args.debug:
+        debug_modes.append(False)
+
     if args.libos is None:
-        liboses = ["catnap", "catnip", "catcollar", "catmem", "catpowder"]
+        liboses = ["catnap", "catcollar", "catmem", "catpowder", "catnip"]
     else:
         liboses = [args.libos]
 

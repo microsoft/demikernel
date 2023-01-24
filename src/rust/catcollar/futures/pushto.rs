@@ -12,11 +12,14 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        memory::DemiBuffer,
         QDesc,
     },
 };
 use ::std::{
     future::Future,
+    net::SocketAddrV4,
+    os::fd::RawFd,
     pin::Pin,
     task::{
         Context,
@@ -34,8 +37,12 @@ pub struct PushtoFuture {
     rt: IoUringRuntime,
     /// Associated queue descriptor.
     qd: QDesc,
-    /// Associated request.
-    request_id: RequestId,
+    /// Associated file descriptor.
+    fd: RawFd,
+    /// Destination address.
+    addr: SocketAddrV4,
+    /// Associated receive buffer.
+    buf: DemiBuffer,
 }
 
 //==============================================================================
@@ -45,8 +52,8 @@ pub struct PushtoFuture {
 /// Associate Functions for Pushto Operation Descriptors
 impl PushtoFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(rt: IoUringRuntime, request_id: RequestId, qd: QDesc) -> Self {
-        Self { rt, request_id, qd }
+    pub fn new(rt: IoUringRuntime, qd: QDesc, fd: RawFd, addr: SocketAddrV4, buf: DemiBuffer) -> Self {
+        Self { rt, qd, fd, addr, buf }
     }
 
     /// Returns the queue descriptor associated to the target push operation descriptor.
@@ -66,23 +73,28 @@ impl Future for PushtoFuture {
     /// Polls the target [PushtoFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushtoFuture = self.get_mut();
-        match self_.rt.peek(self_.request_id) {
+        let request_id: RequestId = self_.rt.pushto(self_.fd, self_.addr, self_.buf.clone())?;
+
+        match self_.rt.peek(request_id) {
             // Operation completed.
-            Ok((_, Some(size))) if size >= 0 => {
+            Ok((_, size)) if size >= 0 => {
                 trace!("data pushed ({:?} bytes)", size);
                 Poll::Ready(Ok(()))
             },
-            // Operation in progress, re-schedule future.
-            Ok((None, None)) => {
-                trace!("push in progress");
-                ctx.waker().wake_by_ref();
-                Poll::Pending
-            },
-            // Underlying asynchronous operation failed.
-            Ok((None, Some(size))) if size < 0 => {
+            // Operation not completed, thus parse errno to find out what happened.
+            Ok((None, size)) if size < 0 => {
                 let errno: i32 = -size;
-                warn!("push failed ({:?})", errno);
-                Poll::Ready(Err(Fail::new(errno, "I/O error")))
+                // Operation in progress.
+                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
+                    ctx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                // Operation failed.
+                else {
+                    let message: String = format!("pushto(): operation failed (errno={:?})", errno);
+                    error!("{}", message);
+                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                }
             },
             // Operation failed.
             Err(e) => {
