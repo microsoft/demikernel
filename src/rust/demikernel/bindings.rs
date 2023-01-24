@@ -5,6 +5,8 @@
 // Imports
 //======================================================================================================================
 
+#[cfg(test)]
+use crate::pal::constants::AF_INET_VALUE;
 use crate::{
     demikernel::libos::{
         name::LibOSName,
@@ -743,7 +745,7 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     // TODO: Change the logic bellow and rename this function once we support V6 addresses as well.
     let sin: SockAddrIn = unsafe { *mem::transmute::<*const sockaddr, *const SockAddrIn>(saddr) };
-    if sin.sin_family != AF_INET as u16 {
+    if sin.sin_family != AF_INET {
         return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
     };
     let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
@@ -758,7 +760,7 @@ fn test_sockaddr_to_socketaddrv4() {
     // SocketAddrV4: 127.0.0.1:80
     let saddr: libc::sockaddr = {
         sockaddr {
-            sa_family: AF_INET as u16,
+            sa_family: AF_INET_VALUE as u16,
             sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         }
     };

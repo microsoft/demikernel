@@ -21,7 +21,7 @@ use crate::{
         },
     },
     pal::constants::{
-        AF_INET,
+        AF_INET_VALUE,
         SOCK_DGRAM,
         SOCK_STREAM,
     },
@@ -172,7 +172,7 @@ impl InetStack {
             socket_type,
             _protocol
         );
-        if domain != AF_INET {
+        if domain != AF_INET_VALUE as i32 {
             return Err(Fail::new(ENOTSUP, "address family not supported"));
         }
         match socket_type {
