@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod memory;
 mod network;
 mod rawsocket;
 
@@ -14,6 +13,7 @@ use self::rawsocket::{
     RawSocketAddr,
 };
 use crate::runtime::{
+    memory::MemoryRuntime,
     network::{
         config::{
             ArpConfig,
@@ -95,5 +95,8 @@ impl LinuxRuntime {
 // Trait Implementations
 //==============================================================================
 
-/// Runtime Trait Implementation for Linux Runtime
+/// Memory Runtime Trait Implementation for POSIX Runtime
+impl MemoryRuntime for LinuxRuntime {}
+
+/// Runtime Trait Implementation for POSIX Runtime
 impl Runtime for LinuxRuntime {}
