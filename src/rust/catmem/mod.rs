@@ -55,7 +55,7 @@ const RING_BUFFER_CAPACITY: usize = 4096;
 pub struct CatmemLibOS {
     qtable: IoQueueTable,
     scheduler: Scheduler,
-    rings: HashMap<QDesc, Rc<SharedRingBuffer<u8>>>,
+    rings: HashMap<QDesc, Rc<SharedRingBuffer<u16>>>,
 }
 
 impl MemoryRuntime for CatmemLibOS {}
@@ -78,7 +78,7 @@ impl CatmemLibOS {
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         trace!("create_pipe() name={:?}", name);
 
-        let ring: SharedRingBuffer<u8> = SharedRingBuffer::<u8>::create(name, RING_BUFFER_CAPACITY)?;
+        let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::create(name, RING_BUFFER_CAPACITY)?;
 
         let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
         assert_eq!(self.rings.insert(qd, Rc::new(ring)).is_none(), true);
@@ -90,7 +90,7 @@ impl CatmemLibOS {
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         trace!("open_pipe() name={:?}", name);
 
-        let ring: SharedRingBuffer<u8> = SharedRingBuffer::<u8>::open(name, RING_BUFFER_CAPACITY)?;
+        let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::open(name, RING_BUFFER_CAPACITY)?;
 
         let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
         assert_eq!(self.rings.insert(qd, Rc::new(ring)).is_none(), true);
@@ -98,11 +98,28 @@ impl CatmemLibOS {
         Ok(qd)
     }
 
+    // Pushes EoF.
+    fn push_eof(&mut self, ring: Rc<SharedRingBuffer<u16>>) -> Result<(), Fail> {
+        let x: u16 = ((1 & 0xff) << 8) as u16;
+
+        loop {
+            match ring.try_enqueue(x) {
+                Ok(()) => break,
+                Err(_) => {
+                    warn!("failed to push EoF")
+                },
+            }
+        }
+
+        Ok(())
+    }
+
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         match self.rings.remove(&qd) {
-            Some(_) => {
+            Some(ring) => {
+                self.push_eof(ring)?;
                 self.qtable.free(qd);
                 Ok(())
             },
@@ -193,25 +210,32 @@ impl CatmemLibOS {
                 qr_qt: qt.into(),
                 qr_value: unsafe { mem::zeroed() },
             },
-            OperationResult::Pop(bytes) => match self.into_sgarray(bytes) {
-                Ok(sga) => {
-                    let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_POP,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_value,
-                    }
-                },
-                Err(e) => {
-                    warn!("Operation Failed: {:?}", e);
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_value: unsafe { mem::zeroed() },
-                    }
-                },
+            OperationResult::Pop(bytes, eof) => {
+                // Handle end of file.
+                if eof {
+                    self.close(qd)?;
+                }
+
+                match self.into_sgarray(bytes) {
+                    Ok(sga) => {
+                        let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
+                        demi_qresult_t {
+                            qr_opcode: demi_opcode_t::DEMI_OPC_POP,
+                            qr_qd: qd.into(),
+                            qr_qt: qt.into(),
+                            qr_value,
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Operation Failed: {:?}", e);
+                        demi_qresult_t {
+                            qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                            qr_qd: qd.into(),
+                            qr_qt: qt.into(),
+                            qr_value: unsafe { mem::zeroed() },
+                        }
+                    },
+                }
             },
             OperationResult::Failed(e) => {
                 warn!("Operation Failed: {:?}", e);

@@ -44,7 +44,7 @@ use ::std::{
 /// Operation Result
 pub enum OperationResult {
     Push,
-    Pop(DemiBuffer),
+    Pop(DemiBuffer, bool),
     Failed(Fail),
 }
 
@@ -78,8 +78,8 @@ impl Operation {
             // Pop operation.
             Operation::Pop(FutureResult {
                 future,
-                done: Some(Ok(buf)),
-            }) => (future.get_qd(), OperationResult::Pop(buf)),
+                done: Some(Ok((buf, eof))),
+            }) => (future.get_qd(), OperationResult::Pop(buf, eof)),
             Operation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),
