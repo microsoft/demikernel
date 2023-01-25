@@ -26,6 +26,7 @@ use crate::{
     },
     catmem::CatmemLibOS,
     demi_sgarray_t,
+    pal::linux,
     runtime::{
         fail::Fail,
         queue::IoQueueTable,
@@ -428,12 +429,15 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Accept((new_qd, _)) => {
-            let sin = unsafe { mem::zeroed() };
-            let qr_value = demi_qr_value_t {
+        OperationResult::Accept((new_qd, (addr, _))) => {
+            let saddr: libc::sockaddr = {
+                let sin: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
+                unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(sin) }
+            };
+            let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
-                    addr: sin,
+                    addr: saddr,
                 },
             };
             demi_qresult_t {

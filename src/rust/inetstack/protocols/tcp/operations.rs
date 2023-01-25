@@ -18,6 +18,7 @@ use ::std::{
     cell::RefCell,
     fmt,
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
     rc::Rc,
     task::{
@@ -86,8 +87,8 @@ impl TcpOperation {
             // Accept operation.
             TcpOperation::Accept(FutureResult {
                 future,
-                done: Some(Ok(new_qd)),
-            }) => (future.qd, Some(future.new_qd), OperationResult::Accept(new_qd)),
+                done: Some(Ok((new_qd, addr))),
+            }) => (future.qd, Some(future.new_qd), OperationResult::Accept((new_qd, addr))),
             TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
@@ -165,7 +166,7 @@ impl fmt::Debug for AcceptFuture {
 
 /// Future Trait Implementation for Accept Operation Descriptors
 impl Future for AcceptFuture {
-    type Output = Result<QDesc, Fail>;
+    type Output = Result<(QDesc, SocketAddrV4), Fail>;
 
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {

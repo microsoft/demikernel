@@ -39,12 +39,19 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Accept(new_qd) => {
-            let sin = unsafe { mem::zeroed() };
-            let qr_value = demi_qr_value_t {
+        OperationResult::Accept((new_qd, addr)) => {
+            let saddr: SockAddrIn = {
+                SockAddrIn {
+                    sin_family: AF_INET as u16,
+                    sin_port: addr.port().into(),
+                    sin_addr: create_sin_addr(&addr.ip().octets()),
+                    sin_zero: create_sin_zero(),
+                }
+            };
+            let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
-                    addr: sin,
+                    addr: unsafe { mem::transmute::<SockAddrIn, SockAddr>(saddr) },
                 },
             };
             demi_qresult_t {
@@ -64,7 +71,6 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
             Ok(mut sga) => {
                 if let Some(endpoint) = addr {
                     let saddr: SockAddrIn = {
-                        // TODO: check the following byte order conversion.
                         SockAddrIn {
                             sin_family: AF_INET as u16,
                             sin_port: endpoint.port().into(),
