@@ -20,6 +20,7 @@ pub enum LibOSName {
     Catcollar,
     Catnip,
     Catmem,
+    Catloop,
 }
 
 //======================================================================================================================
@@ -50,6 +51,7 @@ impl From<String> for LibOSName {
             "catcollar" => LibOSName::Catcollar,
             "catnip" => LibOSName::Catnip,
             "catmem" => LibOSName::Catmem,
+            "catloop" => LibOSName::Catloop,
             _ => panic!("unkown libos"),
         }
     }

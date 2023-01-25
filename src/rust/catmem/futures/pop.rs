@@ -32,7 +32,7 @@ pub struct PopFuture {
     /// Associated queue descriptor.
     qd: QDesc,
     /// Underlying shared ring buffer.
-    ring: Rc<SharedRingBuffer<u8>>,
+    ring: Rc<SharedRingBuffer<u16>>,
 }
 
 //======================================================================================================================
@@ -45,7 +45,7 @@ impl PopFuture {
     const POP_SIZE_MAX: usize = 9216;
 
     /// Creates a descriptor for a pop operation.
-    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u8>>) -> Self {
+    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>) -> Self {
         PopFuture { qd, ring }
     }
 
@@ -61,18 +61,27 @@ impl PopFuture {
 
 /// Future Trait Implementation for Pop Operation Descriptors
 impl Future for PopFuture {
-    type Output = Result<DemiBuffer, Fail>;
+    type Output = Result<(DemiBuffer, bool), Fail>;
 
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
         let mut buf: DemiBuffer = DemiBuffer::new(Self::POP_SIZE_MAX as u16);
+        let mut eof: bool = false;
         let mut index: usize = 0;
         loop {
             match self_.ring.try_dequeue() {
                 Some(x) => {
-                    buf[index] = x;
-                    index += 1;
+                    let (high, low): (u8, u8) = (((x >> 8) & 0xff) as u8, (x & 0xff) as u8);
+                    if high != 0 {
+                        buf.trim(Self::POP_SIZE_MAX - index)
+                            .expect("cannot trim more bytes than the buffer has");
+                        eof = true;
+                        break;
+                    } else {
+                        buf[index] = low;
+                        index += 1;
+                    }
                 },
                 None => {
                     if index > 0 {
@@ -87,6 +96,6 @@ impl Future for PopFuture {
                 },
             }
         }
-        Poll::Ready(Ok(buf))
+        Poll::Ready(Ok((buf, eof)))
     }
 }

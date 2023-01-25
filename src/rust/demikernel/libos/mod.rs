@@ -40,6 +40,8 @@ use ::std::{
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
+#[cfg(feature = "catloop-libos")]
+use crate::catloop::CatloopLibOS;
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::CatmemLibOS;
 #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
@@ -100,6 +102,8 @@ impl LibOS {
             LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
             #[cfg(feature = "catmem-libos")]
             LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new())),
+            #[cfg(feature = "catloop-libos")]
+            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new())),
             _ => panic!("unsupported libos"),
         };
 

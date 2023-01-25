@@ -34,7 +34,7 @@ pub struct PushFuture {
     /// Write index on the underlying shared ring buffer.
     index: usize,
     // Underlying shared ring buffer.
-    ring: Rc<SharedRingBuffer<u8>>,
+    ring: Rc<SharedRingBuffer<u16>>,
     /// Buffer to send.
     buf: DemiBuffer,
 }
@@ -46,7 +46,7 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a push operation.
-    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u8>>, buf: DemiBuffer) -> Self {
+    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer) -> Self {
         PushFuture {
             qd,
             ring,
@@ -73,8 +73,9 @@ impl Future for PushFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PushFuture = self.get_mut();
         let mut index: usize = self_.index;
-        for x in &self_.buf[index..] {
-            match self_.ring.try_enqueue(*x) {
+        for low in &self_.buf[index..] {
+            let x: u16 = (low & 0xff) as u16;
+            match self_.ring.try_enqueue(x) {
                 Ok(()) => index += 1,
                 Err(_) => {
                     self_.index = index;

@@ -5,21 +5,21 @@
 // Exports
 //======================================================================================================================
 
-pub mod pop;
-pub mod push;
+pub mod accept;
+pub mod connect;
 
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
 use self::{
-    pop::PopFuture,
-    push::PushFuture,
+    accept::AcceptFuture,
+    connect::ConnectFuture,
 };
+use super::DuplexPipe;
 use crate::{
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
         QDesc,
     },
     scheduler::{
@@ -30,7 +30,9 @@ use crate::{
 use ::std::{
     any::Any,
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
+    rc::Rc,
     task::{
         Context,
         Poll,
@@ -43,17 +45,17 @@ use ::std::{
 
 /// Operation Result
 pub enum OperationResult {
-    Push,
-    Pop(DemiBuffer, bool),
+    Accept((QDesc, (SocketAddrV4, Rc<DuplexPipe>))),
+    Connect((SocketAddrV4, Rc<DuplexPipe>)),
     Failed(Fail),
 }
 
 /// Operations Descriptor
 pub enum Operation {
-    /// Push operation
-    Push(FutureResult<PushFuture>),
-    /// Pop operation.
-    Pop(FutureResult<PopFuture>),
+    /// Accept operation.
+    Accept(QDesc, FutureResult<AcceptFuture>),
+    /// Connection operation
+    Connect(QDesc, FutureResult<ConnectFuture>),
 }
 
 //======================================================================================================================
@@ -65,25 +67,38 @@ impl Operation {
     /// Gets the [OperationResult] output by the target [Operation].
     pub fn get_result(self) -> (QDesc, OperationResult) {
         match self {
-            // Push operation.
-            Operation::Push(FutureResult {
-                future,
-                done: Some(Ok(())),
-            }) => (future.get_qd(), OperationResult::Push),
-            Operation::Push(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            // Accept operation.
+            Operation::Accept(
+                qd,
+                FutureResult {
+                    future: _,
+                    done: Some(Ok((new_qd, remote, duplex_pipe))),
+                },
+            ) => (new_qd, OperationResult::Accept((qd, (remote, duplex_pipe)))),
+            Operation::Accept(
+                qd,
+                FutureResult {
+                    future: _,
+                    done: Some(Err(e)),
+                },
+            ) => (qd, OperationResult::Failed(e)),
 
-            // Pop operation.
-            Operation::Pop(FutureResult {
-                future,
-                done: Some(Ok((buf, eof))),
-            }) => (future.get_qd(), OperationResult::Pop(buf, eof)),
-            Operation::Pop(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.get_qd(), OperationResult::Failed(e)),
+            // Connect operation.
+            Operation::Connect(
+                qd,
+                FutureResult {
+                    future: _,
+                    done: Some(Ok((remote, duplex_pipe))),
+                },
+            ) => (qd, OperationResult::Connect((remote, duplex_pipe))),
+            Operation::Connect(
+                qd,
+                FutureResult {
+                    future: _,
+                    done: Some(Err(e)),
+                },
+            ) => (qd, OperationResult::Failed(e)),
+
             _ => panic!("future not ready"),
         }
     }
@@ -111,22 +126,22 @@ impl Future for Operation {
     /// Polls the target operation.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.get_mut() {
-            Operation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
-            Operation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Accept(_, ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Connect(_, ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<PushFuture> for Operation {
-    fn from(f: PushFuture) -> Self {
-        Operation::Push(FutureResult::new(f, None))
+impl From<(QDesc, AcceptFuture)> for Operation {
+    fn from((qd, f): (QDesc, AcceptFuture)) -> Self {
+        Operation::Accept(qd, FutureResult::new(f, None))
     }
 }
 
 /// From Trait Implementation for Operation Descriptors
-impl From<PopFuture> for Operation {
-    fn from(f: PopFuture) -> Self {
-        Operation::Pop(FutureResult::new(f, None))
+impl From<(QDesc, ConnectFuture)> for Operation {
+    fn from((qd, f): (QDesc, ConnectFuture)) -> Self {
+        Operation::Connect(qd, FutureResult::new(f, None))
     }
 }

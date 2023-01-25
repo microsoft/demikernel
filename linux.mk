@@ -87,11 +87,20 @@ install:
 #=======================================================================================================================
 
 # Builds all libraries.
-all-libs:
+all-libs: all-libs-demikernel
+
+all-libs-demikernel:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
 	@echo "PKG_CONFIG_PATH: $(PKG_CONFIG_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
+
+clean-libs: clean-libs-demikernel
+
+clean-libs-demikernel:
+	rm -rf target ; \
+	rm -f Cargo.lock ; \
+	$(CARGO) clean
 
 #=======================================================================================================================
 # Tests
@@ -163,10 +172,7 @@ check-fmt-rust:
 #=======================================================================================================================
 
 # Cleans up all build artifacts.
-clean: clean-examples clean-tests
-	rm -rf target ; \
-	rm -f Cargo.lock ; \
-	$(CARGO) clean
+clean: clean-examples clean-tests clean-libs
 
 #=======================================================================================================================
 
