@@ -19,7 +19,6 @@ use self::futures::{
     connect::ConnectFuture,
     pop::PopFuture,
     push::PushFuture,
-    pushto::PushtoFuture,
     Operation,
 };
 use crate::{
@@ -249,7 +248,7 @@ impl CatnapLibOS {
                 // Issue push operation.
                 match self.sockets.get(&qd) {
                     Some(&fd) => {
-                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf));
+                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, None));
                         let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                             Some(handle) => handle,
                             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -276,7 +275,7 @@ impl CatnapLibOS {
                 // Issue pushto operation.
                 match self.sockets.get(&qd) {
                     Some(&fd) => {
-                        let future: Operation = Operation::from(PushtoFuture::new(qd, fd, remote, buf));
+                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, Some(remote)));
                         let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                             Some(handle) => handle,
                             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
