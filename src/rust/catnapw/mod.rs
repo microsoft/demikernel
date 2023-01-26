@@ -396,8 +396,21 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
             qr_qt: qt,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Accept(new_qd) => {
-            let sin: sockaddr = unsafe { mem::zeroed() };
+        OperationResult::Accept((new_qd, addr)) => {
+            let saddr: SockAddrIn = {
+                // TODO: check the following byte order conversion.
+                SockAddrIn {
+                    sin_family: AF_INET,
+                    sin_port: addr.port().into(),
+                    sin_addr: IN_ADDR {
+                        S_un: (WinSock::IN_ADDR_0 {
+                            S_addr: u32::from_le_bytes(addr.ip().octets()),
+                        }),
+                    },
+                    sin_zero: [CHAR(0); 8],
+                }
+            };
+            let sin: sockaddr = unsafe { mem::transmute::<SockAddrIn, sockaddr>(saddr) };
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
