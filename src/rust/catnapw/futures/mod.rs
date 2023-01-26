@@ -71,12 +71,12 @@ impl Operation {
             // Accept operation.
             Operation::Accept(FutureResult {
                 future,
-                done: Some(Ok(new_fd)),
+                done: Some(Ok((new_fd, addr))),
             }) => (
                 future.get_qd(),
                 Some(future.get_new_qd()),
                 Some(new_fd),
-                OperationResult::Accept(future.get_new_qd()),
+                OperationResult::Accept((future.get_new_qd(), addr)),
             ),
             Operation::Accept(FutureResult {
                 future,

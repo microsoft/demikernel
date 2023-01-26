@@ -13,6 +13,7 @@ use ::socket2::Socket;
 use ::std::{
     cell::RefCell,
     future::Future,
+    net::SocketAddrV4,
     pin::Pin,
     rc::Rc,
     task::{
@@ -64,14 +65,14 @@ impl AcceptFuture {
 
 /// Future Trait Implementation for Accept Operation Descriptors
 impl Future for AcceptFuture {
-    type Output = Result<Socket, Fail>;
+    type Output = Result<(Socket, SocketAddrV4), Fail>;
 
     /// Polls the target [AcceptFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &AcceptFuture = self.get_mut();
         match self_.socket.borrow().accept() {
             // Operation completed.
-            Ok((new_socket, _)) => {
+            Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
 
                 // Set async options in socket.
@@ -83,7 +84,10 @@ impl Future for AcceptFuture {
                     Ok(_) => {},
                     Err(_) => warn!("cannot set NONBLOCK option"),
                 };
-                Poll::Ready(Ok(new_socket))
+                // It is ok to have the expect() statement bellow because if
+                // this is not a SocketAddrV4 something really bad happen.
+                let addr: SocketAddrV4 = saddr.as_socket_ipv4().expect("not a SocketAddrV4");
+                Poll::Ready(Ok((new_socket, addr)))
             },
             // Operation in progress.
             Err(e) if e.raw_os_error() == Some(WSAEWOULDBLOCK.0) => {
