@@ -37,15 +37,6 @@ jobs:
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
-  # Node 1
-  setup-demikernel1:
-    name: Node 1
-    uses: demikernel/demikernel/.github/workflows/setup.yml@dev
-    secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
 
   #=====================================================================================================================
   # Setup Completed
@@ -53,7 +44,7 @@ jobs:
 
   setup:
     name: Setup Completed
-    needs: [setup-demikernel0, setup-demikernel1]
+    needs: [setup-demikernel0]
     runs-on: ubuntu-latest
     steps:
       - name: Log
@@ -76,18 +67,6 @@ jobs:
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
-  # Node 1
-  build-demikernel1:
-    name: Node 1
-    needs: [setup]
-    uses: demikernel/demikernel/.github/workflows/build.yml@dev
-    with:
-      libos: catmem
-    secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
 
   #=====================================================================================================================
   # Build Completed
@@ -96,7 +75,7 @@ jobs:
   # Node 0
   build:
     name: Build Completed
-    needs: [build-demikernel0, build-demikernel1]
+    needs: [build-demikernel0]
     runs-on: ubuntu-latest
     steps:
       - name: Log
@@ -124,24 +103,6 @@ jobs:
           cd $GITHUB_REPOSITORY
           make all DEBUG=no LIBOS=catmem
 
-  # Node 1
-  compile-demikernel1:
-    name: Node 1 / Compile
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Build Release
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATMEM_HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM }}
-        envs: GITHUB_REPOSITORY
-        script: |
-          echo repository: $GITHUB_REPOSITORY
-          cd $GITHUB_REPOSITORY
-          make all DEBUG=no LIBOS=catmem
 
   #=====================================================================================================================
   # Compile Test Completed
@@ -150,7 +111,7 @@ jobs:
   # Node 0
   compile:
     name: Compile Completed
-    needs: [compile-demikernel0, compile-demikernel1]
+    needs: [compile-demikernel0]
     runs-on: ubuntu-latest
     steps:
       - name: Log
@@ -170,7 +131,7 @@ jobs:
       targetB: "test-unit LIBOS=catmem"
     secrets:
       hostA: ${{ secrets.CATMEM_HOSTNAME_A }}
-      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_A }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
@@ -189,7 +150,7 @@ jobs:
         run: echo "Unit Test Completed!"
 
   #=====================================================================================================================
-  # Test Pipe
+  # Test Pipe Push Pop
   #=====================================================================================================================
 
   # Test Pipe Push Pop
@@ -207,29 +168,46 @@ jobs:
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
-  # Test Pipe Ping Pong
-  test-pipe-ping-pong:
-    name: Pipe Ping Pong
-    needs: [test-unit-completed]
-    uses: demikernel/demikernel/.github/workflows/test.yml@dev
-    with:
-      targetA: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server test-pipe-ping-pong'"
-      targetB: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client test-pipe-ping-pong'"
-    secrets:
-      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
-      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
   #=====================================================================================================================
   # Test Pipe Completed
   #=====================================================================================================================
 
   # Node 0
-  test-pipe-completed:
+  test-pipe-push-pop-completed:
     name: Test Pipe Completed
-    needs: [test-pipe-push-pop, test-pipe-ping-pong]
+    needs: [test-pipe-push-pop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Test Pipe Completed!"
+
+  #=====================================================================================================================
+  # Test Pipe Ping Pong
+  #=====================================================================================================================
+
+  # Test Pipe Ping Pong
+  test-pipe-ping-pong:
+    name: Pipe Ping Pong
+    needs: [test-pipe-push-pop-completed]
+    uses: demikernel/demikernel/.github/workflows/test.yml@dev
+    with:
+      targetA: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server test-pipe-ping-pong'"
+      targetB: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client test-pipe-ping-pong'"
+    secrets:
+      hostA: ${{ secrets.CATMEM_HOSTNAME_A }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_A }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #=====================================================================================================================
+  # Test Pipe Ping Pong Completed
+  #=====================================================================================================================
+
+  # Node 0
+  test-pipe-ping-pong-completed:
+    name: Test Pipe Completed
+    needs: [test-pipe-ping-pong]
     runs-on: ubuntu-latest
     steps:
       - name: Log
@@ -243,22 +221,10 @@ jobs:
   cleanup-demikernel0:
     name: Node 0
     if: always()
-    needs: [test-pipe-completed]
+    needs: [test-pipe-ping-pong-completed]
     uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
     secrets:
       host: ${{ secrets.CATMEM_HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  # Node 1
-  cleanup-demikernel1:
-    name: Node 1
-    if: always()
-    needs: [test-pipe-completed]
-    uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
-    secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
