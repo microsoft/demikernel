@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-name: Main Catmem
+name: Main Catloop
 
 concurrency:
-  group: azure-catmem
+  group: azure-catloop
   cancel-in-progress: true
 
 on:
@@ -32,7 +32,7 @@ jobs:
     name: Node 0
     uses: demikernel/demikernel/.github/workflows/setup.yml@dev
     secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_A }}
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
@@ -60,9 +60,9 @@ jobs:
     needs: [setup]
     uses: demikernel/demikernel/.github/workflows/build.yml@dev
     with:
-      libos: catmem
+      libos: catloop
     secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_A }}
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
@@ -93,7 +93,7 @@ jobs:
     - name: Build Release
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.CATMEM_HOSTNAME_A }}
+        host: ${{ secrets.CATMEM_HOSTNAME_B }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSHKEY }}
         port: ${{ secrets.PORTNUM }}
@@ -101,7 +101,7 @@ jobs:
         script: |
           echo repository: $GITHUB_REPOSITORY
           cd $GITHUB_REPOSITORY
-          make all DEBUG=no LIBOS=catmem
+          make all DEBUG=no LIBOS=catloop
 
 
   #=====================================================================================================================
@@ -127,11 +127,11 @@ jobs:
     needs: [compile]
     uses: demikernel/demikernel/.github/workflows/test-nowait.yml@dev
     with:
-      targetA: "test-unit LIBOS=catmem"
-      targetB: "test-unit LIBOS=catmem"
+      targetA: "test-unit LIBOS=catloop"
+      targetB: "test-unit LIBOS=catloop"
     secrets:
-      hostA: ${{ secrets.CATMEM_HOSTNAME_A }}
-      hostB: ${{ secrets.CATMEM_HOSTNAME_A }}
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
@@ -150,68 +150,68 @@ jobs:
         run: echo "Unit Test Completed!"
 
   #=====================================================================================================================
-  # Test Pipe Push Pop
+  # Test TCP Ping Pong
   #=====================================================================================================================
 
-  # Test Pipe Push Pop
-  test-pipe-push-pop:
-    name: Pipe Push Pop
+  # Test TCP Ping Pong
+  test-tcp-ping-pong:
+    name: TCP Ping Pong
     needs: [test-unit-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catmem TEST=pipe-push-pop ARGS='--server test-pipe-push-pop'"
-      targetB: "test-system-rust LIBOS=catmem TEST=pipe-push-pop ARGS='--client test-pipe-push-pop'"
+      targetA: "test-system-rust LIBOS=catloop TEST=tcp-ping-pong ARGS='--server 127.0.0.1:12345'"
+      targetB: "test-system-rust LIBOS=catloop TEST=tcp-ping-pong ARGS='--client 127.0.0.1:12345'"
     secrets:
-      hostA: ${{ secrets.CATMEM_HOSTNAME_A }}
-      hostB: ${{ secrets.CATMEM_HOSTNAME_A }}
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
   #=====================================================================================================================
-  # Test Pipe Completed
+  # Test TCP Ping Pong Completed
   #=====================================================================================================================
 
   # Node 0
-  test-pipe-push-pop-completed:
-    name: Test Pipe Completed
-    needs: [test-pipe-push-pop]
+  test-tcp-ping-pong-completed:
+    name: Test TCP Ping Pong Completed
+    needs: [test-tcp-ping-pong]
     runs-on: ubuntu-latest
     steps:
       - name: Log
-        run: echo "Test Pipe Completed!"
+        run: echo "Test TCP Ping Pong Completed!"
 
   #=====================================================================================================================
-  # Test Pipe Ping Pong
+  # Test TCP Push Pop
   #=====================================================================================================================
 
-  # Test Pipe Ping Pong
-  test-pipe-ping-pong:
-    name: Pipe Ping Pong
-    needs: [test-pipe-push-pop-completed]
+  # Test TCP Push Pop
+  test-tcp-push-pop:
+    name: TCP Push Pop
+    needs: [test-tcp-ping-pong-completed]
     uses: demikernel/demikernel/.github/workflows/test.yml@dev
     with:
-      targetA: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server test-pipe-ping-pong'"
-      targetB: "test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client test-pipe-ping-pong'"
+      targetA: "test-system-rust LIBOS=catloop TEST=tcp-push-pop ARGS='--server 127.0.0.1:12345'"
+      targetB: "test-system-rust LIBOS=catloop TEST=tcp-push-pop ARGS='--client 127.0.0.1:12345'"
     secrets:
-      hostA: ${{ secrets.CATMEM_HOSTNAME_A }}
-      hostB: ${{ secrets.CATMEM_HOSTNAME_A }}
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
 
   #=====================================================================================================================
-  # Test Pipe Ping Pong Completed
+  # Test TCP Push Pop Completed
   #=====================================================================================================================
 
   # Node 0
-  test-pipe-ping-pong-completed:
-    name: Test Pipe Completed
-    needs: [test-pipe-ping-pong]
+  test-tcp-push-pop-completed:
+    name: Test TCP Push Pop Completed
+    needs: [test-tcp-push-pop]
     runs-on: ubuntu-latest
     steps:
       - name: Log
-        run: echo "Test Pipe Completed!"
+        run: echo "Test TCP Push Pop Completed!"
 
   #=====================================================================================================================
   # Cleanup
@@ -221,10 +221,10 @@ jobs:
   cleanup-demikernel0:
     name: Node 0
     if: always()
-    needs: [test-pipe-ping-pong-completed]
+    needs: [test-tcp-push-pop-completed]
     uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
     secrets:
-      host: ${{ secrets.CATMEM_HOSTNAME_A }}
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
       port: ${{ secrets.PORTNUM }}
       key: ${{ secrets.SSHKEY }}
       username: ${{ secrets.USERNAME }}
