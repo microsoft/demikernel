@@ -1,0 +1,230 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Main Catloop
+
+concurrency:
+  group: azure-catloop
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - master
+
+env:
+  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+
+jobs:
+
+  #=====================================================================================================================
+  # Setup
+  #=====================================================================================================================
+
+  # Node 0
+  setup-demikernel0:
+    name: Node 0
+    uses: demikernel/demikernel/.github/workflows/setup.yml@dev
+    secrets:
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+
+  #=====================================================================================================================
+  # Setup Completed
+  #=====================================================================================================================
+
+  setup:
+    name: Setup Completed
+    needs: [setup-demikernel0]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Setup Completed!"
+
+  #=====================================================================================================================
+  # Build
+  #=====================================================================================================================
+
+  # Node 0
+  build-demikernel0:
+    name: Node 0
+    needs: [setup]
+    uses: demikernel/demikernel/.github/workflows/build.yml@dev
+    with:
+      libos: catloop
+    secrets:
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+
+  #=====================================================================================================================
+  # Build Completed
+  #=====================================================================================================================
+
+  # Node 0
+  build:
+    name: Build Completed
+    needs: [build-demikernel0]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Build Completed!"
+
+  #=====================================================================================================================
+  # Compile Test
+  #=====================================================================================================================
+
+  compile-demikernel0:
+    name: Node 0 / Compile
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+    - name: Build Release
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.CATMEM_HOSTNAME_B }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSHKEY }}
+        port: ${{ secrets.PORTNUM }}
+        envs: GITHUB_REPOSITORY
+        script: |
+          echo repository: $GITHUB_REPOSITORY
+          cd $GITHUB_REPOSITORY
+          make all DEBUG=no LIBOS=catloop
+
+
+  #=====================================================================================================================
+  # Compile Test Completed
+  #=====================================================================================================================
+
+  # Node 0
+  compile:
+    name: Compile Completed
+    needs: [compile-demikernel0]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Compile Completed!"
+
+  #=====================================================================================================================
+  # Unit Test
+  #=====================================================================================================================
+
+  # Unit Test
+  test-unit:
+    name: Unit Test
+    needs: [compile]
+    uses: demikernel/demikernel/.github/workflows/test-nowait.yml@dev
+    with:
+      targetA: "test-unit LIBOS=catloop"
+      targetB: "test-unit LIBOS=catloop"
+    secrets:
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #=====================================================================================================================
+  # Unit Test Completed
+  #=====================================================================================================================
+
+  # Node 0
+  test-unit-completed:
+    name: Unit Test Completed
+    needs: [test-unit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Unit Test Completed!"
+
+  #=====================================================================================================================
+  # Test TCP Ping Pong
+  #=====================================================================================================================
+
+  # Test TCP Ping Pong
+  test-tcp-ping-pong:
+    name: TCP Ping Pong
+    needs: [test-unit-completed]
+    uses: demikernel/demikernel/.github/workflows/test.yml@dev
+    with:
+      targetA: "test-system-rust LIBOS=catloop TEST=tcp-ping-pong ARGS='--server 127.0.0.1:12345'"
+      targetB: "test-system-rust LIBOS=catloop TEST=tcp-ping-pong ARGS='--client 127.0.0.1:12345'"
+    secrets:
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #=====================================================================================================================
+  # Test TCP Ping Pong Completed
+  #=====================================================================================================================
+
+  # Node 0
+  test-tcp-ping-pong-completed:
+    name: Test TCP Ping Pong Completed
+    needs: [test-tcp-ping-pong]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Test TCP Ping Pong Completed!"
+
+  #=====================================================================================================================
+  # Test TCP Push Pop
+  #=====================================================================================================================
+
+  # Test TCP Push Pop
+  test-tcp-push-pop:
+    name: TCP Push Pop
+    needs: [test-tcp-ping-pong-completed]
+    uses: demikernel/demikernel/.github/workflows/test.yml@dev
+    with:
+      targetA: "test-system-rust LIBOS=catloop TEST=tcp-push-pop ARGS='--server 127.0.0.1:12345'"
+      targetB: "test-system-rust LIBOS=catloop TEST=tcp-push-pop ARGS='--client 127.0.0.1:12345'"
+    secrets:
+      hostA: ${{ secrets.CATMEM_HOSTNAME_B }}
+      hostB: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
+
+  #=====================================================================================================================
+  # Test TCP Push Pop Completed
+  #=====================================================================================================================
+
+  # Node 0
+  test-tcp-push-pop-completed:
+    name: Test TCP Push Pop Completed
+    needs: [test-tcp-push-pop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log
+        run: echo "Test TCP Push Pop Completed!"
+
+  #=====================================================================================================================
+  # Cleanup
+  #=====================================================================================================================
+
+  # Node 0
+  cleanup-demikernel0:
+    name: Node 0
+    if: always()
+    needs: [test-tcp-push-pop-completed]
+    uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
+    secrets:
+      host: ${{ secrets.CATMEM_HOSTNAME_B }}
+      port: ${{ secrets.PORTNUM }}
+      key: ${{ secrets.SSHKEY }}
+      username: ${{ secrets.USERNAME }}
