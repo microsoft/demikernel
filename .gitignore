@@ -1,0 +1,27 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+# Build Artifacts
+bin/
+*.a
+*.elf
+*.exe
+*.o
+*.obj
+*.so
+*.stderr
+*.stdout
+
+# vim
+*.swo
+*.swp
+
+# vscode
+.vscode/
+
+# gdb
+.gdb.*
+
+# ctags
+tags
+tags.*
