@@ -4,6 +4,41 @@ This project provides a POSIX SHIM for [Demikernel](https://github.com/demikerne
 
 > Demikernel is a libOS architecture for kernel-bypass devices. Read more about it at https://aka.ms/demikernel.
 
+## Building
+
+```bash
+# Location where Demikernel artifacts should be searched for.
+# You may want to change this to match your setup.
+export DEMIKERNEL_HOME=$HOME
+
+# Location where the POSIX SHIM library should be placed.
+# It is recommended that you set this to $DEMIKERNEL_HOME.
+export INSTALL_PREFIX=$DEMIKERNEL_HOME
+
+# Build the POSIX SHIM library.
+make all
+
+# Install the POSIX SHIM library (optional).
+make install
+```
+
+## Testing
+
+```bash
+# Build the hello example.
+make all -C test/hello
+
+# Run the hello example with Linux.
+make run -C test/hello
+
+# Run the hello example with Demikernel.
+export LIBOS=catnap
+export CONFIG_PATH=$DEMIKERNEL_HOME/config.yaml
+export RUST_LOG=trace
+export C_TRACE=trace
+LD_PRELOAD=$DEMIKERNEL_HOME/lib/libshim.so make run -C test/hello
+```
+
 ## Code of Conduct
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
