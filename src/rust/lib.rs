@@ -3,18 +3,14 @@
 
 #![cfg_attr(feature = "strict", deny(clippy:all))]
 #![recursion_limit = "512"]
-#![feature(maybe_uninit_uninit_array)]
 #![feature(new_uninit)]
-#![feature(try_blocks)]
 #![feature(atomic_from_mut)]
 #![feature(never_type)]
 #![feature(test)]
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
 #![feature(slice_ptr_get)]
-#![feature(ptr_sub_ptr)]
 #![feature(strict_provenance)]
-#![feature(ptr_as_uninit)]
 
 mod collections;
 mod pal;
