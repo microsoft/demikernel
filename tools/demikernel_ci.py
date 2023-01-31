@@ -268,12 +268,13 @@ def run_pipeline(
     if test_system:
         if status["checkout"] and status["compile"]:
             if libos != "catmem":
-                status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                            repository, server_addr, client_addr, delay,
-                                            config_path, log_directory)
-                status["udp_push_pop"] = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
-                                           repository, server_addr, client_addr, delay, config_path,
-                                           log_directory)
+                if libos != "catloop":
+                    status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
+                                                                 repository, server_addr, client_addr, delay,
+                                                                 config_path, log_directory)
+                    status["udp_push_pop"] = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
+                                                               repository, server_addr, client_addr, delay, config_path,
+                                                               log_directory)
                 status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                                              repository, server_addr, delay, config_path,
                                                              log_directory)
