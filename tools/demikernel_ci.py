@@ -239,7 +239,7 @@ def run_pipeline(
         enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     step: int = 0
-    status: dict[str,bool] = {}
+    status: dict[str, bool] = {}
 
     # Create folder for test logs
     log_directory: str = "{}-{}-{}".format(libos, branch, "debug" if is_debug else "release").replace("/", "_")
@@ -253,17 +253,17 @@ def run_pipeline(
 
     # STEP 1: Check out.
     status["checkout"] = job_checkout(repository, branch, server, client, enable_nfs, log_directory)
-    
+
     # STEP 2: Compile debug.
     if status["checkout"]:
         status["compile"] = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
-    
+
     # STEP 3: Run unit tests.
     if test_unit or test_system:
         if status["checkout"] and status["compile"]:
             status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
-                                        is_sudo, config_path, log_directory)
-    
+                                                      is_sudo, config_path, log_directory)
+
     # STEP 4: Run system tests.
     if test_system:
         if status["checkout"] and status["compile"]:
@@ -275,16 +275,16 @@ def run_pipeline(
                                            repository, server_addr, client_addr, delay, config_path,
                                            log_directory)
                 status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                            repository, server_addr, delay, config_path,
-                                            log_directory)
+                                                             repository, server_addr, delay, config_path,
+                                                             log_directory)
                 status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
-                                           repository, server_addr, delay, config_path,
-                                           log_directory)
+                                                           repository, server_addr, delay, config_path,
+                                                           log_directory)
             else:
                 status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
-                                             config_path, log_directory)
+                                                               config_path, log_directory)
                 status["pipe_push_pop"] = test_pipe_push_pop(client, client, is_debug, repository, delay,
-                                            config_path, log_directory)
+                                                             config_path, log_directory)
 
     # Setp 5: Clean up.
     status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
