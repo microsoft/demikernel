@@ -23,49 +23,8 @@ env:
 
 jobs:
 
-  debug-pipeline:
-    name: Debug Pipeline
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-    - name: Setup SSH
-      shell: bash
-      run: |
-        mkdir -p $HOME/.ssh/
-        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
-        chmod 400 $HOME/.ssh/id_rsa
-        echo "Host *" > $HOME/.ssh/config
-        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
-        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
-        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
-        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
-        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
-        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
-    - name: Run
-      run: |
-        python3 tools/demikernel_ci.py \
-          --server $SERVER \
-          --client $CLIENT \
-          --repository demikernel/demikernel \
-          --branch origin/${{ github.ref_name }} \
-          --libos $LIBOS \
-          --debug \
-          --test-system --delay 2 \
-          --server-addr $SERVER_ADDR \
-          --client-addr $CLIENT_ADDR
-    - name: Archive Logs
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: debug-pipeline-logs
-        path: |
-          **/*.stdout
-          **/*.stderr
-
   release-pipeline:
     name: Release Pipeline
-    needs: debug-pipeline
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
