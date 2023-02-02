@@ -1,0 +1,41 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: SSH Setup
+
+on:
+  workflow_call:
+    secrets:
+      host:
+        required: true
+      portnum:
+        required: true
+      sshkey:
+        required: true
+      username:
+        required: true
+
+jobs:
+
+  setup-ssh:
+    name: SSH Setup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fetch Changes
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.host }}
+        username: ${{ secrets.username }}
+        key: ${{ secrets.key }}
+        port: ${{ secrets.portnum }}
+        script: |
+          mkdir -p $HOME/.ssh/
+          echo "${{ secrets.sshkey }}" > "$HOME/.ssh/id_rsa"
+          chmod 400 $HOME/.ssh/id_rsa
+          echo "Host *" > $HOME/.ssh/config
+          echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+          echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+          echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+          echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+          echo -e "\tUser ${{ secrets.username }}" >> $HOME/.ssh/config
+          echo -e "\tPort ${{ secrets.portnum }}" >> $HOME/.ssh/config
