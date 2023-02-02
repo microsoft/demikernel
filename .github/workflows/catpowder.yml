@@ -3,10 +3,6 @@
 
 name: Main Catpowder
 
-concurrency:
-  group: azure-catpowder
-  cancel-in-progress: true
-
 on:
   push:
     branches:
@@ -19,327 +15,90 @@ on:
       - master
 
 env:
-  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
+  LIBOS: catnap
+  SERVER: ${{ secrets.CATPOWDER_HOSTNAME_A }}
+  CLIENT: ${{ secrets.CATPOWDER_HOSTNAME_B }}
+  SERVER_ADDR: 10.3.1.20
+  CLIENT_ADDR: 10.3.1.21
 
 jobs:
 
-  #=====================================================================================================================
-  # Setup
-  #=====================================================================================================================
-
-  # Node 0
-  setup-demikernel0:
-    name: Node 0
-    uses: demikernel/demikernel/.github/workflows/setup.yml@dev
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  # Node 1
-  setup-demikernel1:
-    name: Node 1
-    uses: demikernel/demikernel/.github/workflows/setup.yml@dev
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Setup Completed
-  #=====================================================================================================================
-
-  setup:
-    name: Setup Completed
-    needs: [setup-demikernel0, setup-demikernel1]
+  debug-pipeline:
+    name: Debug Pipeline
     runs-on: ubuntu-latest
     steps:
-      - name: Log
-        run: echo "Setup Completed!"
-
-  #=====================================================================================================================
-  # Build
-  #=====================================================================================================================
-
-  # Node 0
-  build-demikernel0:
-    name: Node 0
-    needs: [setup]
-    uses: demikernel/demikernel/.github/workflows/build.yml@dev
-    with:
-      libos: catpowder
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  # Node 1
-  build-demikernel1:
-    name: Node 1
-    needs: [setup]
-    uses: demikernel/demikernel/.github/workflows/build.yml@dev
-    with:
-      libos: catpowder
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Build Completed
-  #=====================================================================================================================
-
-  # Node 0
-  build:
-    name: Build Completed
-    needs: [build-demikernel0, build-demikernel1]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Build Completed!"
-
-  #=====================================================================================================================
-  # Compile Test
-  #=====================================================================================================================
-
-  compile-demikernel0:
-    name: Node 0 / Compile
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-    - name: Build Release
-      uses: appleboy/ssh-action@master
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup SSH
+      shell: bash
+      run: |
+        mkdir -p $HOME/.ssh/
+        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
+        chmod 400 $HOME/.ssh/id_rsa
+        echo "Host *" > $HOME/.ssh/config
+        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
+        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Run
+      run: |
+        python3 tools/demikernel_ci.py \
+          --server $SERVER \
+          --client $CLIENT \
+          --repository demikernel/demikernel \
+          --branch origin/${{ github.ref_name }} \
+          --libos $LIBOS \
+          --debug \
+          --test-system --delay 2 \
+          --server-addr $SERVER_ADDR \
+          --client-addr $CLIENT_ADDR
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM }}
-        envs: GITHUB_REPOSITORY
-        script: |
-          echo repository: $GITHUB_REPOSITORY
-          cd $GITHUB_REPOSITORY
-          make all DEBUG=no LIBOS=catpowder
+        name: debug-pipeline-logs
+        path: |
+          **/*.stdout
+          **/*.stderr
 
-  # Node 1
-  compile-demikernel1:
-    name: Node 1 / Compile
-    needs: [build]
+  release-pipeline:
+    name: Release Pipeline
+    needs: debug-pipeline
     runs-on: ubuntu-latest
     steps:
-    - name: Build Release
-      uses: appleboy/ssh-action@master
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup SSH
+      shell: bash
+      run: |
+        mkdir -p $HOME/.ssh/
+        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
+        chmod 400 $HOME/.ssh/id_rsa
+        echo "Host *" > $HOME/.ssh/config
+        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
+        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Run
+      run: |
+        python3 tools/demikernel_ci.py \
+          --server $SERVER \
+          --client $CLIENT \
+          --repository demikernel/demikernel \
+          --branch origin/${{ github.ref_name }} \
+          --libos $LIBOS \
+          --test-system --delay 2 \
+          --server-addr $SERVER_ADDR \
+          --client-addr $CLIENT_ADDR
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSHKEY }}
-        port: ${{ secrets.PORTNUM }}
-        envs: GITHUB_REPOSITORY
-        script: |
-          echo repository: $GITHUB_REPOSITORY
-          cd $GITHUB_REPOSITORY
-          make all DEBUG=no LIBOS=catpowder
-
-  #=====================================================================================================================
-  # Compile Test Completed
-  #=====================================================================================================================
-
-  # Node 0
-  compile:
-    name: Compile Completed
-    needs: [compile-demikernel0, compile-demikernel1]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Compile Completed!"
-
-  #=====================================================================================================================
-  # Unit Test
-  #=====================================================================================================================
-
-  # Unit Test
-  test-unit:
-    name: Unit Test
-    needs: [compile]
-    uses: demikernel/demikernel/.github/workflows/test-nowait.yml@dev
-    with:
-      targetA: "test-unit LIBOS=catpowder"
-      targetB: "test-unit LIBOS=catpowder"
-    secrets:
-      hostA: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      hostB: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Unit Test Completed
-  #=====================================================================================================================
-
-  # Node 0
-  test-unit-completed:
-    name: Unit Test Completed
-    needs: [test-unit]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Unit Test Completed!"
-
-  #=====================================================================================================================
-  # Test UDP Ping Pong
-  #=====================================================================================================================
-
-  # Test UDP Ping Pong
-  test-udp-ping-pong:
-    name: UDP Ping Pong
-    needs: [test-unit-completed]
-    uses: demikernel/demikernel/.github/workflows/test.yml@dev
-    with:
-      targetA: "test-system-rust LIBOS=catpowder TEST=udp-ping-pong ARGS='--server 10.3.1.20:12345 10.3.1.21:23456'"
-      targetB: "test-system-rust LIBOS=catpowder TEST=udp-ping-pong ARGS='--client 10.3.1.21:23456 10.3.1.20:12345'"
-    secrets:
-      hostA: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      hostB: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Test UDP Ping Pong Completed
-  #=====================================================================================================================
-
-  # Node 0
-  test-udp-ping-pong-completed:
-    name: Test UDP Ping Pong Completed
-    needs: [test-udp-ping-pong]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Test UDP Ping Pong Completed!"
-
-  #=====================================================================================================================
-  # Test UDP Push Pop
-  #=====================================================================================================================
-
-  # Test UDP Push Pop
-  test-udp-push-pop:
-    name: UDP Push Pop
-    needs: [test-udp-ping-pong-completed]
-    uses: demikernel/demikernel/.github/workflows/test.yml@dev
-    with:
-      targetA: "test-system-rust LIBOS=catpowder TEST=udp-push-pop ARGS='--server 10.3.1.20:12345'"
-      targetB: "test-system-rust LIBOS=catpowder TEST=udp-push-pop ARGS='--client 10.3.1.21:23456 10.3.1.20:12345'"
-    secrets:
-      hostA: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      hostB: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Test UDP Push Pop Completed
-  #=====================================================================================================================
-
-  # Node 0
-  test-udp-push-pop-completed:
-    name: Test UDP Push Pop Completed
-    needs: [test-udp-push-pop]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Test UDP Push Pop Completed!"
-
-  #=====================================================================================================================
-  # Test TCP Ping Pong
-  #=====================================================================================================================
-
-  # Test TCP Ping Pong
-  test-tcp-ping-pong:
-    name: TCP Ping Pong
-    needs: [test-udp-push-pop-completed]
-    uses: demikernel/demikernel/.github/workflows/test.yml@dev
-    with:
-      targetA: "test-system-rust LIBOS=catpowder TEST=tcp-ping-pong ARGS='--server 10.3.1.20:12345'"
-      targetB: "test-system-rust LIBOS=catpowder TEST=tcp-ping-pong ARGS='--client 10.3.1.20:12345'"
-    secrets:
-      hostA: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      hostB: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Test TCP Ping Pong Completed
-  #=====================================================================================================================
-
-  # Node 0
-  test-tcp-ping-pong-completed:
-    name: Test TCP Ping Pong Completed
-    needs: [test-tcp-ping-pong]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Test TCP Ping Pong Completed!"
-
-  #=====================================================================================================================
-  # Test TCP Push Pop
-  #=====================================================================================================================
-
-  # Test TCP Push Pop
-  test-tcp-push-pop:
-    name: TCP Push Pop
-    needs: [test-tcp-ping-pong-completed]
-    uses: demikernel/demikernel/.github/workflows/test.yml@dev
-    with:
-      targetA: "test-system-rust LIBOS=catpowder TEST=tcp-push-pop ARGS='--server 10.3.1.20:12345'"
-      targetB: "test-system-rust LIBOS=catpowder TEST=tcp-push-pop ARGS='--client 10.3.1.20:12345'"
-    secrets:
-      hostA: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      hostB: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  #=====================================================================================================================
-  # Test TCP Push Pop Completed
-  #=====================================================================================================================
-
-  # Node 0
-  test-tcp-push-pop-completed:
-    name: Test TCP Push Pop Completed
-    needs: [test-tcp-push-pop]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Test TCP Push Pop Completed!"
-
-  #=====================================================================================================================
-  # Cleanup
-  #=====================================================================================================================
-
-  # Node 0
-  cleanup-demikernel0:
-    name: Node 0
-    if: always()
-    needs: [test-tcp-push-pop-completed]
-    uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_A }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
-
-  # Node 1
-  cleanup-demikernel1:
-    name: Node 1
-    if: always()
-    needs: [test-tcp-push-pop-completed]
-    uses: demikernel/demikernel/.github/workflows/cleanup.yml@dev
-    secrets:
-      host: ${{ secrets.CATPOWDER_HOSTNAME_B }}
-      port: ${{ secrets.PORTNUM }}
-      key: ${{ secrets.SSHKEY }}
-      username: ${{ secrets.USERNAME }}
+        name: release-pipeline-logs
+        path: |
+          **/*.stdout
+          **/*.stderr
