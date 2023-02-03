@@ -11,6 +11,7 @@
 #![feature(allocator_api)]
 #![feature(slice_ptr_get)]
 #![feature(strict_provenance)]
+#![cfg_attr(target_os = "windows", feature(maybe_uninit_uninit_array))]
 
 mod collections;
 mod pal;
