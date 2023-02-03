@@ -85,7 +85,6 @@ impl Future for PopFuture {
                 },
                 None => {
                     if index > 0 {
-                        trace!("data read ({:?}/{:?} bytes)", index, Self::POP_SIZE_MAX);
                         buf.trim(Self::POP_SIZE_MAX - index)
                             .expect("cannot trim more bytes than the buffer has");
                         break;
@@ -96,6 +95,13 @@ impl Future for PopFuture {
                 },
             }
         }
+        trace!(
+            "data read (qd={:?}, {:?}/{:?} bytes, eof={:?})",
+            self_.qd,
+            buf.len(),
+            Self::POP_SIZE_MAX,
+            eof
+        );
         Poll::Ready(Ok((buf, eof)))
     }
 }
