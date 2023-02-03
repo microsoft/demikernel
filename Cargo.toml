@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.0.37"
+version = "1.0.38"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
