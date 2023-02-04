@@ -29,7 +29,8 @@ use libc::in_addr;
 pub fn create_sin_addr(octets: &[u8; NUM_OCTETS_IN_IPV4]) -> IN_ADDR {
     IN_ADDR {
         S_un: (IN_ADDR_0 {
-            S_addr: u32::from_le_bytes(*octets),
+            // Always create a big-endian u32 from the given 4 bytes (in big-endian order), regardless of architecture.
+            S_addr: u32::from_ne_bytes(*octets),
         }),
     }
 }
@@ -51,7 +52,8 @@ pub fn get_addr_from_sock_addr_in(sock_addr_in: &SockAddrIn) -> u32 {
 #[cfg(all(feature = "catnip-libos", target_os = "linux"))]
 pub fn create_sin_addr(octets: &[u8; NUM_OCTETS_IN_IPV4]) -> in_addr {
     in_addr {
-        s_addr: u32::from_le_bytes(*octets),
+        // Always create a big-endian u32 from the given 4 bytes (in big-endian order), regardless of architecture.
+        s_addr: u32::from_ne_bytes(*octets),
     }
 }
 
