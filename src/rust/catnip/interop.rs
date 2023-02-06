@@ -42,7 +42,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
         OperationResult::Accept((new_qd, addr)) => {
             let saddr: SockAddrIn = {
                 SockAddrIn {
-                    sin_family: AF_INET as u16,
+                    sin_family: AF_INET,
                     sin_port: addr.port().into(),
                     sin_addr: create_sin_addr(&addr.ip().octets()),
                     sin_zero: create_sin_zero(),
@@ -51,7 +51,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
-                    addr: unsafe { mem::transmute::<SockAddrIn, SockAddr>(saddr) },
+                    addr: unsafe { mem::transmute::<SockAddrIn, libc::sockaddr>(saddr) },
                 },
             };
             demi_qresult_t {
@@ -72,7 +72,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                 if let Some(endpoint) = addr {
                     let saddr: SockAddrIn = {
                         SockAddrIn {
-                            sin_family: AF_INET as u16,
+                            sin_family: AF_INET,
                             sin_port: endpoint.port().into(),
                             sin_addr: create_sin_addr(&endpoint.ip().octets()),
                             sin_zero: create_sin_zero(),
