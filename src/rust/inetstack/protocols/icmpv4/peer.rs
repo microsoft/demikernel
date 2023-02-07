@@ -39,10 +39,6 @@ use crate::{
         SchedulerHandle,
     },
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::futures::{
     channel::{
         mpsc,
@@ -230,20 +226,20 @@ impl Icmpv4Peer {
         Ok(())
     }
 
-    /// Computes the identifier for an ICPM message.
+    /// Computes the identifier for an ICMP message.
     fn make_id(&self) -> u16 {
         let mut state: u32 = 0xFFFF;
-        let addr_octets = self.local_ipv4_addr.octets();
-        state += NetworkEndian::read_u16(&addr_octets[0..2]) as u32;
-        state += NetworkEndian::read_u16(&addr_octets[2..4]) as u32;
+        let addr_octets: [u8; 4] = self.local_ipv4_addr.octets();
+        state += u16::from_be_bytes([addr_octets[0], addr_octets[1]]) as u32;
+        state += u16::from_be_bytes([addr_octets[2], addr_octets[3]]) as u32;
 
-        let mut pid_buf = [0u8; 4];
-        NetworkEndian::write_u32(&mut pid_buf[..], process::id());
-        state += NetworkEndian::read_u16(&pid_buf[0..2]) as u32;
-        state += NetworkEndian::read_u16(&pid_buf[2..4]) as u32;
+        let mut pid_buf: [u8; 4] = [0u8; 4];
+        pid_buf[0..4].copy_from_slice(&process::id().to_be_bytes());
+        state += u16::from_be_bytes([pid_buf[0], pid_buf[1]]) as u32;
+        state += u16::from_be_bytes([pid_buf[2], pid_buf[3]]) as u32;
 
         let nonce: [u8; 2] = self.rng.borrow_mut().gen();
-        state += NetworkEndian::read_u16(&nonce[..]) as u32;
+        state += u16::from_be_bytes([nonce[0], nonce[1]]) as u32;
 
         while state > 0xFFFF {
             state -= 0xFFFF;
@@ -277,7 +273,7 @@ impl Icmpv4Peer {
         async move {
             let t0: Instant = clock.now();
             debug!("initiating ARP query");
-            let dst_link_addr = arp.query(dst_ipv4_addr).await?;
+            let dst_link_addr: MacAddress = arp.query(dst_ipv4_addr).await?;
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
             let msg: Icmpv4Message = Icmpv4Message::new(

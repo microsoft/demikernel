@@ -15,12 +15,9 @@ use crate::{
         memory::DemiBuffer,
     },
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::EBADMSG;
 use ::std::convert::TryInto;
+use std::slice::ChunksExact;
 
 //==============================================================================
 // Constants
@@ -81,9 +78,9 @@ impl UdpHeader {
 
         // Deserialize buffer.
         let hdr_buf: &[u8] = &buf[..UDP_HEADER_SIZE];
-        let src_port: u16 = NetworkEndian::read_u16(&hdr_buf[0..2]);
-        let dest_port: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
-        let length: usize = NetworkEndian::read_u16(&hdr_buf[4..6]) as usize;
+        let src_port: u16 = u16::from_be_bytes([hdr_buf[0], hdr_buf[1]]);
+        let dest_port: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
+        let length: usize = u16::from_be_bytes([hdr_buf[4], hdr_buf[5]]) as usize;
         if length != buf.len() {
             return Err(Fail::new(EBADMSG, "UDP length mismatch"));
         }
@@ -91,7 +88,7 @@ impl UdpHeader {
         // Checksum payload.
         if !checksum_offload {
             let payload_buf: &[u8] = &buf[UDP_HEADER_SIZE..];
-            let checksum: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]);
+            let checksum: u16 = u16::from_be_bytes([hdr_buf[6], hdr_buf[7]]);
             // Check if we should skip checksum verification.
             if checksum != 0 {
                 // No, so check if checksum value matches what we expect.
@@ -118,13 +115,13 @@ impl UdpHeader {
         let fixed_buf: &mut [u8; UDP_HEADER_SIZE] = (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
         // Write source port.
-        NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port);
+        fixed_buf[0..2].copy_from_slice(&self.src_port.to_be_bytes());
 
         // Write destination port.
-        NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dest_port.into());
+        fixed_buf[2..4].copy_from_slice(&self.dest_port.to_be_bytes());
 
         // Write payload length.
-        NetworkEndian::write_u16(&mut fixed_buf[4..6], (UDP_HEADER_SIZE + data.len()) as u16);
+        fixed_buf[4..6].copy_from_slice(&((UDP_HEADER_SIZE + data.len()) as u16).to_be_bytes());
 
         // Write checksum.
         let checksum: u16 = if checksum_offload {
@@ -132,7 +129,7 @@ impl UdpHeader {
         } else {
             Self::checksum(ipv4_hdr, &fixed_buf[..], data)
         };
-        NetworkEndian::write_u16(&mut fixed_buf[6..8], checksum);
+        fixed_buf[6..8].copy_from_slice(&checksum.to_be_bytes());
     }
 
     /// Computes the checksum of a UDP datagram.
@@ -144,20 +141,20 @@ impl UdpHeader {
     ///
     /// TODO: Write a unit test for this function.
     fn checksum(ipv4_hdr: &Ipv4Header, udp_hdr: &[u8], data: &[u8]) -> u16 {
-        let mut state: u32 = 0xffffu32;
+        let mut state: u32 = 0xffff;
 
         // Source address (4 bytes)
         let src_octets: [u8; 4] = ipv4_hdr.get_src_addr().octets();
-        state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
-        state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
+        state += u16::from_be_bytes([src_octets[0], src_octets[1]]) as u32;
+        state += u16::from_be_bytes([src_octets[2], src_octets[3]]) as u32;
 
         // Destination address (4 bytes)
         let dst_octets: [u8; 4] = ipv4_hdr.get_dest_addr().octets();
-        state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
-        state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
+        state += u16::from_be_bytes([dst_octets[0], dst_octets[1]]) as u32;
+        state += u16::from_be_bytes([dst_octets[2], dst_octets[3]]) as u32;
 
         // Padding zeros (1 byte) and UDP protocol number (1 byte)
-        state += NetworkEndian::read_u16(&[0, IpProtocol::UDP as u8]) as u32;
+        state += u16::from_be_bytes([0, IpProtocol::UDP as u8]) as u32;
 
         // UDP segment length (2 bytes)
         state += (udp_hdr.len() + data.len()) as u32;
@@ -166,25 +163,25 @@ impl UdpHeader {
         let fixed_header: &[u8; UDP_HEADER_SIZE] = udp_hdr.try_into().unwrap();
 
         // Source port (2 bytes)
-        state += NetworkEndian::read_u16(&fixed_header[0..2]) as u32;
+        state += u16::from_be_bytes([fixed_header[0], fixed_header[1]]) as u32;
 
         // Destination port (2 bytes)
-        state += NetworkEndian::read_u16(&fixed_header[2..4]) as u32;
+        state += u16::from_be_bytes([fixed_header[2], fixed_header[3]]) as u32;
 
         // Payload Length (2 bytes)
-        state += NetworkEndian::read_u16(&fixed_header[4..6]) as u32;
+        state += u16::from_be_bytes([fixed_header[4], fixed_header[5]]) as u32;
 
         // Checksum (2 bytes, all zeros)
         state += 0;
 
         // Payload.
-        let mut chunks_iter = data.chunks_exact(2);
+        let mut chunks_iter: ChunksExact<u8> = data.chunks_exact(2);
         while let Some(chunk) = chunks_iter.next() {
-            state += NetworkEndian::read_u16(chunk) as u32;
+            state += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
         }
         // Pad with zeros with payload has an odd number of bytes.
         if let Some(&b) = chunks_iter.remainder().get(0) {
-            state += NetworkEndian::read_u16(&[b, 0]) as u32;
+            state += u16::from_be_bytes([b, 0]) as u32;
         }
 
         // NOTE: We don't need to subtract out 0xFFFF as we accumulate the sum.

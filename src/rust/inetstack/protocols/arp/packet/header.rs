@@ -10,10 +10,6 @@ use crate::runtime::{
     memory::DemiBuffer,
     network::types::MacAddress,
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::{
     EBADMSG,
     ENOTSUP,
@@ -97,11 +93,11 @@ impl ArpHeader {
             return Err(Fail::new(EBADMSG, "ARP message too short"));
         }
         let buf: &[u8; ARP_MESSAGE_SIZE] = &buf[..ARP_MESSAGE_SIZE].try_into().unwrap();
-        let hardware_type: u16 = NetworkEndian::read_u16(&buf[0..2]);
+        let hardware_type: u16 = u16::from_be_bytes([buf[0], buf[1]]);
         if hardware_type != ARP_HTYPE_ETHER2 {
             return Err(Fail::new(ENOTSUP, "unsupported HTYPE"));
         }
-        let protocol_type: u16 = NetworkEndian::read_u16(&buf[2..4]);
+        let protocol_type: u16 = u16::from_be_bytes([buf[2], buf[3]]);
         if protocol_type != ARP_PTYPE_IPV4 {
             return Err(Fail::new(ENOTSUP, "unsupported PTYPE"));
         }
@@ -113,11 +109,11 @@ impl ArpHeader {
         if protocol_address_len != ARP_PLEN_IPV4 {
             return Err(Fail::new(ENOTSUP, "unsupported PLEN"));
         }
-        let operation: ArpOperation = NetworkEndian::read_u16(&buf[6..8]).try_into()?;
+        let operation: ArpOperation = u16::from_be_bytes([buf[6], buf[7]]).try_into()?;
         let sender_hardware_addr: MacAddress = MacAddress::from_bytes(&buf[8..14]);
-        let sender_protocol_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[14..18]));
+        let sender_protocol_addr: Ipv4Addr = Ipv4Addr::new(buf[14], buf[15], buf[16], buf[17]);
         let target_hardware_addr: MacAddress = MacAddress::from_bytes(&buf[18..24]);
-        let target_protocol_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&buf[24..28]));
+        let target_protocol_addr: Ipv4Addr = Ipv4Addr::new(buf[24], buf[25], buf[26], buf[27]);
         let pdu: ArpHeader = Self {
             operation,
             sender_hardware_addr,
@@ -131,11 +127,11 @@ impl ArpHeader {
     /// Serializes the target ARP PDU.
     pub fn serialize(&self, buf: &mut [u8]) {
         let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut buf[..ARP_MESSAGE_SIZE]).try_into().unwrap();
-        NetworkEndian::write_u16(&mut buf[0..2], ARP_HTYPE_ETHER2);
-        NetworkEndian::write_u16(&mut buf[2..4], ARP_PTYPE_IPV4);
+        buf[0..2].copy_from_slice(&ARP_HTYPE_ETHER2.to_be_bytes());
+        buf[2..4].copy_from_slice(&ARP_PTYPE_IPV4.to_be_bytes());
         buf[4] = ARP_HLEN_ETHER2;
         buf[5] = ARP_PLEN_IPV4;
-        NetworkEndian::write_u16(&mut buf[6..8], self.operation as u16);
+        buf[6..8].copy_from_slice(&(self.operation as u16).to_be_bytes());
         buf[8..14].copy_from_slice(&self.sender_hardware_addr.octets());
         buf[14..18].copy_from_slice(&self.sender_protocol_addr.octets());
         buf[18..24].copy_from_slice(&self.target_hardware_addr.octets());

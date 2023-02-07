@@ -14,15 +14,14 @@ use crate::{
         network::PacketBuf,
     },
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-    ReadBytesExt,
-};
 use ::libc::EBADMSG;
 use ::std::{
     convert::TryInto,
-    io::Cursor,
+    io::{
+        Cursor,
+        Read,
+    },
+    slice::ChunksExact,
 };
 
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
@@ -50,10 +49,10 @@ impl PacketBuf for TcpSegment {
     }
 
     fn write_header(&self, buf: &mut [u8]) {
-        let eth_hdr_size = self.ethernet2_hdr.compute_size();
-        let ipv4_hdr_size = self.ipv4_hdr.compute_size();
-        let tcp_hdr_size = self.tcp_hdr.compute_size();
-        let mut cur_pos = 0;
+        let eth_hdr_size: usize = self.ethernet2_hdr.compute_size();
+        let ipv4_hdr_size: usize = self.ipv4_hdr.compute_size();
+        let tcp_hdr_size: usize = self.tcp_hdr.compute_size();
+        let mut cur_pos: usize = 0;
 
         self.ethernet2_hdr
             .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
@@ -129,7 +128,7 @@ impl TcpOptions2 {
             MaximumSegmentSize(mss) => {
                 buf[0] = 2;
                 buf[1] = 4;
-                NetworkEndian::write_u16(&mut buf[2..4], *mss);
+                buf[2..4].copy_from_slice(&mss.to_be_bytes());
                 4
             },
             WindowScale(scale) => {
@@ -147,8 +146,8 @@ impl TcpOptions2 {
                 buf[0] = 5;
                 buf[1] = 2 + 8 * *num_sacks as u8;
                 for i in 0..*num_sacks {
-                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i)..(2 + 8 * i + 4)], sacks[i].begin.into());
-                    NetworkEndian::write_u32(&mut buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)], sacks[i].end.into());
+                    buf[(2 + 8 * i)..(2 + 8 * i + 4)].copy_from_slice(&u32::from(sacks[i].begin).to_be_bytes());
+                    buf[(2 + 8 * i + 4)..(2 + 8 * i + 8)].copy_from_slice(&u32::from(sacks[i].end).to_be_bytes());
                 }
                 2 + 8 * num_sacks
             },
@@ -158,8 +157,8 @@ impl TcpOptions2 {
             } => {
                 buf[0] = 8;
                 buf[1] = 10;
-                NetworkEndian::write_u32(&mut buf[2..6], *sender_timestamp);
-                NetworkEndian::write_u32(&mut buf[6..10], *echo_timestamp);
+                buf[2..6].copy_from_slice(&sender_timestamp.to_be_bytes());
+                buf[6..10].copy_from_slice(&echo_timestamp.to_be_bytes());
                 10
             },
         }
@@ -231,7 +230,7 @@ impl TcpHeader {
         if buf.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "TCP segment too small"));
         }
-        let data_offset = (buf[12] >> 4) as usize * 4;
+        let data_offset: usize = (buf[12] >> 4) as usize * 4;
         if buf.len() < data_offset {
             return Err(Fail::new(EBADMSG, "TCP segment smaller than data offset"));
         }
@@ -241,92 +240,114 @@ impl TcpHeader {
         if data_offset > MAX_TCP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "TCP data offset too large"));
         }
-        let (hdr_buf, data_buf) = buf[..].split_at(data_offset);
+        let (hdr_buf, data_buf): (&[u8], &[u8]) = buf[..].split_at(data_offset);
 
-        let src_port = NetworkEndian::read_u16(&hdr_buf[0..2]);
-        let dst_port = NetworkEndian::read_u16(&hdr_buf[2..4]);
+        let src_port: u16 = u16::from_be_bytes([hdr_buf[0], hdr_buf[1]]);
+        let dst_port: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
 
-        let seq_num = SeqNumber::from(NetworkEndian::read_u32(&hdr_buf[4..8]));
-        let ack_num = SeqNumber::from(NetworkEndian::read_u32(&hdr_buf[8..12]));
+        let seq_num: SeqNumber = SeqNumber::from(u32::from_be_bytes([hdr_buf[4], hdr_buf[5], hdr_buf[6], hdr_buf[7]]));
+        let ack_num: SeqNumber =
+            SeqNumber::from(u32::from_be_bytes([hdr_buf[8], hdr_buf[9], hdr_buf[10], hdr_buf[11]]));
 
-        let ns = (hdr_buf[12] & 1) != 0;
+        let ns: bool = (hdr_buf[12] & 1) != 0;
 
-        let cwr = (hdr_buf[13] & (1 << 7)) != 0;
-        let ece = (hdr_buf[13] & (1 << 6)) != 0;
-        let urg = (hdr_buf[13] & (1 << 5)) != 0;
-        let ack = (hdr_buf[13] & (1 << 4)) != 0;
-        let psh = (hdr_buf[13] & (1 << 3)) != 0;
-        let rst = (hdr_buf[13] & (1 << 2)) != 0;
-        let syn = (hdr_buf[13] & (1 << 1)) != 0;
-        let fin = (hdr_buf[13] & (1 << 0)) != 0;
+        let cwr: bool = (hdr_buf[13] & (1 << 7)) != 0;
+        let ece: bool = (hdr_buf[13] & (1 << 6)) != 0;
+        let urg: bool = (hdr_buf[13] & (1 << 5)) != 0;
+        let ack: bool = (hdr_buf[13] & (1 << 4)) != 0;
+        let psh: bool = (hdr_buf[13] & (1 << 3)) != 0;
+        let rst: bool = (hdr_buf[13] & (1 << 2)) != 0;
+        let syn: bool = (hdr_buf[13] & (1 << 1)) != 0;
+        let fin: bool = (hdr_buf[13] & (1 << 0)) != 0;
 
-        let window_size = NetworkEndian::read_u16(&hdr_buf[14..16]);
+        let window_size: u16 = u16::from_be_bytes([hdr_buf[14], hdr_buf[15]]);
 
         if !rx_checksum_offload {
-            let checksum = NetworkEndian::read_u16(&hdr_buf[16..18]);
+            let checksum: u16 = u16::from_be_bytes([hdr_buf[16], hdr_buf[17]]);
             if checksum != tcp_checksum(ipv4_header, hdr_buf, data_buf) {
                 return Err(Fail::new(EBADMSG, "TCP checksum mismatch"));
             }
         }
 
-        let urgent_pointer = NetworkEndian::read_u16(&hdr_buf[18..20]);
+        let urgent_pointer: u16 = u16::from_be_bytes([hdr_buf[18], hdr_buf[19]]);
 
-        let mut num_options = 0;
-        let mut option_list = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
+        let mut num_options: usize = 0;
+        let mut option_list: [TcpOptions2; 5] = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
 
         if data_offset > MIN_TCP_HEADER_SIZE {
-            let mut option_rdr = Cursor::new(&hdr_buf[MIN_TCP_HEADER_SIZE..data_offset]);
+            let mut option_rdr: Cursor<&[u8]> = Cursor::new(&hdr_buf[MIN_TCP_HEADER_SIZE..data_offset]);
             while (option_rdr.position() as usize) < data_offset - MIN_TCP_HEADER_SIZE {
-                let option_kind = option_rdr.read_u8()?;
-                let option = match option_kind {
+                let mut temp: [u8; 1] = [0; 1];
+                option_rdr.read_exact(&mut temp)?;
+                let option_kind: u8 = temp[0];
+                let option: TcpOptions2 = match option_kind {
                     0 => break,
                     1 => continue,
                     2 => {
-                        let option_length = option_rdr.read_u8()?;
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp)?;
+                        let option_length: u8 = temp[0];
                         if option_length != 4 {
                             return Err(Fail::new(EBADMSG, "MSS size was not 4"));
                         }
-                        let mss = option_rdr.read_u16::<NetworkEndian>()?;
+                        let mut temp: [u8; 2] = [0; 2];
+                        option_rdr.read_exact(&mut temp)?;
+                        let mss: u16 = u16::from_be_bytes([temp[0], temp[1]]);
                         TcpOptions2::MaximumSegmentSize(mss)
                     },
                     3 => {
-                        let option_length = option_rdr.read_u8()?;
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp)?;
+                        let option_length: u8 = temp[0];
                         if option_length != 3 {
                             return Err(Fail::new(EBADMSG, "window scale size was not 3"));
                         }
-                        let window_scale = option_rdr.read_u8()?;
+                        option_rdr.read_exact(&mut temp)?;
+                        let window_scale: u8 = temp[0];
                         TcpOptions2::WindowScale(window_scale)
                     },
                     4 => {
-                        let option_length = option_rdr.read_u8()?;
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp)?;
+                        let option_length: u8 = temp[0];
                         if option_length != 2 {
                             return Err(Fail::new(EBADMSG, "SACK permitted size was not 2"));
                         }
                         TcpOptions2::SelectiveAcknowlegementPermitted
                     },
                     5 => {
-                        let option_length = option_rdr.read_u8()?;
-                        let num_sacks = match option_length {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp)?;
+                        let option_length: u8 = temp[0];
+                        let num_sacks: usize = match option_length {
                             10 | 18 | 26 | 34 => (option_length as usize - 2) / 8,
                             _ => return Err(Fail::new(EBADMSG, "invalid SACK size")),
                         };
-                        let mut sacks = [SelectiveAcknowlegement {
+                        let mut sacks: [SelectiveAcknowlegement; 4] = [SelectiveAcknowlegement {
                             begin: SeqNumber::from(0),
                             end: SeqNumber::from(0),
                         }; 4];
                         for s in sacks.iter_mut().take(num_sacks) {
-                            s.begin = SeqNumber::from(option_rdr.read_u32::<NetworkEndian>()?);
-                            s.end = SeqNumber::from(option_rdr.read_u32::<NetworkEndian>()?);
+                            let mut temp: [u8; 4] = [0; 4];
+                            option_rdr.read_exact(&mut temp)?;
+                            s.begin = SeqNumber::from(u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]));
+                            option_rdr.read_exact(&mut temp)?;
+                            s.end = SeqNumber::from(u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]));
                         }
                         TcpOptions2::SelectiveAcknowlegement { num_sacks, sacks }
                     },
                     8 => {
-                        let option_length = option_rdr.read_u8()?;
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp)?;
+                        let option_length: u8 = temp[0];
                         if option_length != 10 {
                             return Err(Fail::new(EBADMSG, "TCP timestamp size was not 10"));
                         }
-                        let sender_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
-                        let echo_timestamp = option_rdr.read_u32::<NetworkEndian>()?;
+                        let mut temp: [u8; 4] = [0; 4];
+                        option_rdr.read_exact(&mut temp)?;
+                        let sender_timestamp: u32 = u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]);
+                        option_rdr.read_exact(&mut temp)?;
+                        let echo_timestamp: u32 = u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]);
                         TcpOptions2::Timestamp {
                             sender_timestamp,
                             echo_timestamp,
@@ -342,7 +363,7 @@ impl TcpHeader {
             }
         }
 
-        let header = Self {
+        let header: TcpHeader = Self {
             src_port,
             dst_port,
             seq_num,
@@ -369,11 +390,10 @@ impl TcpHeader {
 
     pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
         let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] = (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
-        NetworkEndian::write_u16(&mut fixed_buf[0..2], self.src_port.into());
-        NetworkEndian::write_u16(&mut fixed_buf[2..4], self.dst_port.into());
-        NetworkEndian::write_u32(&mut fixed_buf[4..8], self.seq_num.into());
-        NetworkEndian::write_u32(&mut fixed_buf[8..12], self.ack_num.into());
-
+        fixed_buf[0..2].copy_from_slice(&self.src_port.to_be_bytes());
+        fixed_buf[2..4].copy_from_slice(&self.dst_port.to_be_bytes());
+        fixed_buf[4..8].copy_from_slice(&u32::from(self.seq_num).to_be_bytes());
+        fixed_buf[8..12].copy_from_slice(&u32::from(self.ack_num).to_be_bytes());
         fixed_buf[12] = ((self.compute_size() / 4) as u8) << 4;
         if self.ns {
             fixed_buf[12] |= 1;
@@ -404,13 +424,13 @@ impl TcpHeader {
             fixed_buf[13] |= 1 << 0;
         }
 
-        NetworkEndian::write_u16(&mut fixed_buf[14..16], self.window_size);
+        fixed_buf[14..16].copy_from_slice(&self.window_size.to_be_bytes());
 
         // Write the checksum (bytes 16..18) later.
 
-        NetworkEndian::write_u16(&mut fixed_buf[18..20], self.urgent_pointer);
+        fixed_buf[18..20].copy_from_slice(&self.urgent_pointer.to_be_bytes());
 
-        let mut cur_pos = MIN_TCP_HEADER_SIZE;
+        let mut cur_pos: usize = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
             let bytes_written = self.option_list[i].serialize(&mut buf[cur_pos..]);
             cur_pos += bytes_written;
@@ -427,10 +447,11 @@ impl TcpHeader {
 
         // Alright, we've fully filled out the header, time to compute the checksum.
         if !tx_checksum_offload {
-            let checksum = tcp_checksum(ipv4_hdr, &buf[..], data);
-            NetworkEndian::write_u16(&mut buf[16..18], checksum);
+            let checksum: u16 = tcp_checksum(ipv4_hdr, &buf[..], data);
+            buf[16..18].copy_from_slice(&checksum.to_be_bytes());
         } else {
-            NetworkEndian::write_u16(&mut buf[16..18], 0u16);
+            buf[16] = 0;
+            buf[17] = 0;
         }
     }
 
@@ -461,21 +482,21 @@ impl TcpHeader {
 }
 
 fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
-    let mut state = 0xffffu32;
+    let mut state: u32 = 0xffff;
 
     // First, fold in a "pseudo-IP" header of...
     // 1) Source address (4 bytes)
-    let src_octets = ipv4_header.get_src_addr().octets();
-    state += NetworkEndian::read_u16(&src_octets[0..2]) as u32;
-    state += NetworkEndian::read_u16(&src_octets[2..4]) as u32;
+    let src_octets: [u8; 4] = ipv4_header.get_src_addr().octets();
+    state += u16::from_be_bytes([src_octets[0], src_octets[1]]) as u32;
+    state += u16::from_be_bytes([src_octets[2], src_octets[3]]) as u32;
 
     // 2) Destination address (4 bytes)
-    let dst_octets = ipv4_header.get_dest_addr().octets();
-    state += NetworkEndian::read_u16(&dst_octets[0..2]) as u32;
-    state += NetworkEndian::read_u16(&dst_octets[2..4]) as u32;
+    let dst_octets: [u8; 4] = ipv4_header.get_dest_addr().octets();
+    state += u16::from_be_bytes([dst_octets[0], dst_octets[1]]) as u32;
+    state += u16::from_be_bytes([dst_octets[2], dst_octets[3]]) as u32;
 
     // 3) 1 byte of zeros and TCP protocol number (1 byte)
-    state += NetworkEndian::read_u16(&[0, IpProtocol::TCP as u8]) as u32;
+    state += u16::from_be_bytes([0, IpProtocol::TCP as u8]) as u32;
 
     // 4) TCP segment length (2 bytes)
     state += (header.len() + data.len()) as u32;
@@ -484,48 +505,48 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
 
     // Continue to the TCP header. First, for the fixed length parts, we have...
     // 1) Source port (2 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[0..2]) as u32;
+    state += u16::from_be_bytes([fixed_header[0], fixed_header[1]]) as u32;
 
     // 2) Destination port (2 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[2..4]) as u32;
+    state += u16::from_be_bytes([fixed_header[2], fixed_header[3]]) as u32;
 
     // 3) Sequence number (4 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[4..6]) as u32;
-    state += NetworkEndian::read_u16(&fixed_header[6..8]) as u32;
+    state += u16::from_be_bytes([fixed_header[4], fixed_header[5]]) as u32;
+    state += u16::from_be_bytes([fixed_header[6], fixed_header[7]]) as u32;
 
     // 4) Acknowledgement number (4 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[8..10]) as u32;
-    state += NetworkEndian::read_u16(&fixed_header[10..12]) as u32;
+    state += u16::from_be_bytes([fixed_header[8], fixed_header[9]]) as u32;
+    state += u16::from_be_bytes([fixed_header[10], fixed_header[11]]) as u32;
 
     // 5) Data offset (4 bits), reserved (4 bits), and flags (1 byte)
-    state += NetworkEndian::read_u16(&fixed_header[12..14]) as u32;
+    state += u16::from_be_bytes([fixed_header[12], fixed_header[13]]) as u32;
 
     // 6) Window (2 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[14..16]) as u32;
+    state += u16::from_be_bytes([fixed_header[14], fixed_header[15]]) as u32;
 
     // 7) Checksum (all zeros, 2 bytes)
     state += 0;
 
     // 8) Urgent pointer (2 bytes)
-    state += NetworkEndian::read_u16(&fixed_header[18..20]) as u32;
+    state += u16::from_be_bytes([fixed_header[18], fixed_header[19]]) as u32;
 
     // Next, the variable length part of the header for TCP options. Since `data_offset` is
     // guaranteed to be aligned to a 32-bit boundary, we don't have to handle remainders.
     if header.len() > MIN_TCP_HEADER_SIZE {
         assert_eq!(header.len() % 2, 0);
         for chunk in header[MIN_TCP_HEADER_SIZE..].chunks_exact(2) {
-            state += NetworkEndian::read_u16(chunk) as u32;
+            state += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
         }
     }
 
     // Finally, checksum the data itself.
-    let mut chunks_iter = data.chunks_exact(2);
+    let mut chunks_iter: ChunksExact<u8> = data.chunks_exact(2);
     while let Some(chunk) = chunks_iter.next() {
-        state += NetworkEndian::read_u16(chunk) as u32;
+        state += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
     }
     // Since the data may have an odd number of bytes, pad the last byte with zero if necessary.
     if let Some(&b) = chunks_iter.remainder().get(0) {
-        state += NetworkEndian::read_u16(&[b, 0]) as u32;
+        state += u16::from_be_bytes([b, 0]) as u32;
     }
 
     // NB: We don't need to subtract out 0xFFFF as we accumulate the sum. Since we use a u32 for

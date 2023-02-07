@@ -6,10 +6,6 @@ use crate::runtime::{
     fail::Fail,
     memory::DemiBuffer,
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::EBADMSG;
 use ::std::convert::TryInto;
 
@@ -44,14 +40,14 @@ impl Icmpv4Header {
         }
         let hdr_buf: &[u8; ICMPV4_HEADER_SIZE] = &buf[..ICMPV4_HEADER_SIZE].try_into().unwrap();
 
-        let type_byte = hdr_buf[0];
-        let code = hdr_buf[1];
-        let checksum = NetworkEndian::read_u16(&hdr_buf[2..4]);
+        let type_byte: u8 = hdr_buf[0];
+        let code: u8 = hdr_buf[1];
+        let checksum: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
         if checksum != Self::checksum(hdr_buf, &buf[ICMPV4_HEADER_SIZE..]) {
             return Err(Fail::new(EBADMSG, "ICMPv4 checksum mismatch"));
         }
         let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
-        let icmpv4_type = Icmpv4Type2::parse(type_byte, rest_of_header)?;
+        let icmpv4_type: Icmpv4Type2 = Icmpv4Type2::parse(type_byte, rest_of_header)?;
 
         buf.adjust(ICMPV4_HEADER_SIZE)?;
         Ok((
@@ -70,24 +66,24 @@ impl Icmpv4Header {
         buf[1] = self.code;
         // Skip the checksum for now.
         buf[4..8].copy_from_slice(&rest_of_header[..]);
-        let checksum = Self::checksum(buf, &[]);
-        NetworkEndian::write_u16(&mut buf[2..4], checksum);
+        let checksum: u16 = Self::checksum(buf, &[]);
+        buf[2..4].copy_from_slice(&checksum.to_be_bytes());
     }
 
     fn checksum(buf: &[u8; ICMPV4_HEADER_SIZE], body: &[u8]) -> u16 {
-        let mut state = 0xffffu32;
-        state += NetworkEndian::read_u16(&buf[0..2]) as u32;
+        let mut state: u32 = 0xffff;
+        state += u16::from_be_bytes([buf[0], buf[1]]) as u32;
         // Skip the checksum.
         state += 0;
-        state += NetworkEndian::read_u16(&buf[4..6]) as u32;
-        state += NetworkEndian::read_u16(&buf[6..8]) as u32;
+        state += u16::from_be_bytes([buf[4], buf[5]]) as u32;
+        state += u16::from_be_bytes([buf[6], buf[7]]) as u32;
 
         let mut chunks_iter = body.chunks_exact(2);
         while let Some(chunk) = chunks_iter.next() {
-            state += NetworkEndian::read_u16(chunk) as u32;
+            state += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
         }
         if let Some(&b) = chunks_iter.remainder().get(0) {
-            state += NetworkEndian::read_u16(&[b, 0]) as u32;
+            state += u16::from_be_bytes([b, 0]) as u32;
         }
 
         while state > 0xFFFF {

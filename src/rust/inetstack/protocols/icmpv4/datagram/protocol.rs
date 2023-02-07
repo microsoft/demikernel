@@ -2,10 +2,6 @@
 // Licensed under the MIT license.
 
 use crate::runtime::fail::Fail;
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::EBADMSG;
 
 //==============================================================================
@@ -32,16 +28,16 @@ impl Icmpv4Type2 {
         use Icmpv4Type2::*;
         match type_byte {
             0 => {
-                let id = NetworkEndian::read_u16(&rest_of_header[0..2]);
-                let seq_num = NetworkEndian::read_u16(&rest_of_header[2..4]);
+                let id: u16 = u16::from_be_bytes([rest_of_header[0], rest_of_header[1]]);
+                let seq_num: u16 = u16::from_be_bytes([rest_of_header[2], rest_of_header[3]]);
                 Ok(EchoReply { id, seq_num })
             },
             3 => Ok(DestinationUnreachable),
             4 => Ok(SourceQuench),
             5 => Ok(RedirectMessage),
             8 => {
-                let id = NetworkEndian::read_u16(&rest_of_header[0..2]);
-                let seq_num = NetworkEndian::read_u16(&rest_of_header[2..4]);
+                let id: u16 = u16::from_be_bytes([rest_of_header[0], rest_of_header[1]]);
+                let seq_num: u16 = u16::from_be_bytes([rest_of_header[2], rest_of_header[3]]);
                 Ok(EchoRequest { id, seq_num })
             },
             9 => Ok(RouterAdvertisement),
