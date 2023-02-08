@@ -74,7 +74,7 @@ impl Operation {
                     future: _,
                     done: Some(Ok((new_qd, remote, duplex_pipe))),
                 },
-            ) => (new_qd, OperationResult::Accept((qd, (remote, duplex_pipe)))),
+            ) => (qd, OperationResult::Accept((new_qd, (remote, duplex_pipe)))),
             Operation::Accept(
                 qd,
                 FutureResult {
