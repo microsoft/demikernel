@@ -36,7 +36,7 @@ make LIBOS=catloop
 # Build Demikernel with Shared Memory LibOS.
 make LIBOS=catmem
 
-# Build Demikernel with Sockets LibOS.
+# Build Demikernel with Linux Sockets LibOS.
 make LIBOS=catnap
 
 # Build Demikernel with DPDK LibOS.

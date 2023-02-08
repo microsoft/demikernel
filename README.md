@@ -19,6 +19,16 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 > To read more about Demikernel check out <https://aka.ms/demikernel>.
 
+## Codename for LibOSes
+
+- `catcollar` -- I/O Uring LibOS
+- `catloop` -- TCP Socket Loopback LibOS
+- `catmem` -- Shared Memory LibOS
+- `catnap` -- Linux Sockets LibOS
+- `catnip` -- DPDK LibOS
+- `catpowder` -- Linux Raw Sockets
+- `catnapw` -- Windows Sockets LibOS
+
 ## Documentation
 
 - For instructions on development environment setup, see [doc/setup.md](./doc/setup.md).
