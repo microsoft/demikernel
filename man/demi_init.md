@@ -34,10 +34,10 @@ All arguments supported by Demikernel are listed in the table bellow. Arguments 
 | `ARG-4` | `--catnap`    | Enables Catnap LibOS    | Linux        |
 | `ARG-5` | `--catnip`    | Enables Catnip LibOS    | Linux        |
 | `ARG-6` | `--catpowder` | Enables Catpowder LibOS | Linux        |
+| `ARG-7` | `--catnapw`   | Enables Catnap LibOS    | Windows      |
 
-`ARG-1`, `ARG-2`, `ARG-3`, `ARG-4`, `ARG-5` and `ARG-6` are mutually exclusive. Demikernel currently does not support
-multiple LibOSes to co-exist. [Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this
-feature.
+These arguments are mutually exclusive. Demikernel currently does not support multiple LibOSes to co-exist.
+[Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this feature.
 
 ## Return Value
 
