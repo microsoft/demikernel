@@ -26,21 +26,16 @@ turned on.
 
 All arguments supported by Demikernel are listed in the table bellow. Arguments that are not listed therein are ignored.
 
-| ID      | Argument      | Description             |
-| ------- | ------------- | ----------------------- |
-| `ARG-1` | `--catcollar` | Enables Catcollar LibOS |
-| `ARG-2` | `--catloop`   | Enables Catloop LibOS   |
-| `ARG-3` | `--catnap`    | Enables Catnap LibOS    |
-| `ARG-4` | `--catnip`    | Enables Catnip LibOS    |
-| `ARG-5` | `--catpowder` | Enables Catpowder LibOS |
-| `ARG-6` | `--catmem`    | Enables Catmem LibOS    |
+| ID      | Argument      | Description             | Supported OS |
+| ------- | ------------- | ----------------------- | ------------ |
+| `ARG-1` | `--catcollar` | Enables Catcollar LibOS | Linux        |
+| `ARG-2` | `--catloop`   | Enables Catloop LibOS   | Linux        |
+| `ARG-3` | `--catmem`    | Enables Catmem LibOS    | Linux        |
+| `ARG-4` | `--catnap`    | Enables Catnap LibOS    | Linux        |
+| `ARG-5` | `--catnip`    | Enables Catnip LibOS    | Linux        |
+| `ARG-6` | `--catpowder` | Enables Catpowder LibOS | Linux        |
 
- Any constraints/restrictions of arguments are detailed next:
-
-- `ARG-1` takes effect only on Linux hosts. If one is attempts to initialize Catcollar on a non-Linux host and `ARG-1`
-is the only parameter passed to Demikernel, `demi_init()` will fail.
-
-- `ARG-1`, `ARG-2`, `ARG-3`, `ARG-4`, `ARG-5` and `ARG-6` are mutually exclusive. Demikernel currently does not support
+`ARG-1`, `ARG-2`, `ARG-3`, `ARG-4`, `ARG-5` and `ARG-6` are mutually exclusive. Demikernel currently does not support
 multiple LibOSes to co-exist. [Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this
 feature.
 
