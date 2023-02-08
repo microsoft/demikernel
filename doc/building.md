@@ -30,6 +30,9 @@ make
 # Build Demikernel with I/O Uring LibOS.
 make LIBOS=catcollar
 
+# Build Demikernel with TCP Socket Loopback LibOS.
+make LIBOS=catloop
+
 # Build Demikernel with Shared Memory LibOS.
 make LIBOS=catmem
 
