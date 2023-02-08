@@ -26,8 +26,8 @@ turned on.
 
 All arguments supported by Demikernel are listed in the table bellow. Arguments that are not listed therein are ignored.
 
-|ID       | Argument      | Description             |
-|---------|---------------|-------------------------|
+| ID      | Argument      | Description             |
+| ------- | ------------- | ----------------------- |
 | `ARG-1` | `--catcollar` | Enables Catcollar LibOS |
 | `ARG-2` | `--catloop`   | Enables Catloop LibOS   |
 | `ARG-3` | `--catnap`    | Enables Catnap LibOS    |
