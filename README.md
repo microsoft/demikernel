@@ -6,6 +6,8 @@
 [![Catmem LibOS](https://github.com/demikernel/demikernel/actions/workflows/catmem.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catmem.yml)
 [![Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml)
 [![Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml)
+[![Catloop LibOS](https://github.com/demikernel/demikernel/actions/workflows/catloop.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catloop.yml)
+[![Catnapw LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnapw.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnapw.yml)
 
 _Demikernel_ is a library operating system (LibOS) architecture designed for use
 with kernel-bypass I/O devices. This architecture offers a uniform system call
@@ -18,6 +20,16 @@ To read more about the motivation behind the _Demikernel_, check out this
 To get details about the system, read our paper in [SOSP '21](https://doi.org/10.1145/3477132.3483569).
 
 > To read more about Demikernel check out <https://aka.ms/demikernel>.
+
+## Codename for LibOSes
+
+- `catcollar` -- I/O Uring LibOS
+- `catloop` -- TCP Socket Loopback LibOS
+- `catmem` -- Shared Memory LibOS
+- `catnap` -- Linux Sockets LibOS
+- `catnip` -- DPDK LibOS
+- `catpowder` -- Linux Raw Sockets
+- `catnapw` -- Windows Sockets LibOS
 
 ## Documentation
 
