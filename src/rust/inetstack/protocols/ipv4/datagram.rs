@@ -12,10 +12,6 @@ use crate::{
         memory::DemiBuffer,
     },
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::{
     EBADMSG,
     ENOTSUP,
@@ -163,7 +159,7 @@ impl Ipv4Header {
         }
 
         // Total length.
-        let total_length: u16 = NetworkEndian::read_u16(&hdr_buf[2..4]);
+        let total_length: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
         if total_length < hdr_size {
             return Err(Fail::new(EBADMSG, "ipv4 datagram smaller than header"));
         }
@@ -178,7 +174,7 @@ impl Ipv4Header {
         // of zero.  This was horribly misguided.  With the exception of datagramss where the DF (don't fragment) flag
         // is set, all IPv4 datagrams are _required_ to have a (temporally) unique identification field for datagrams
         // with the same source, destination, and protocol.  Thus we should expect most datagrams to have a non-zero Id.
-        let identification: u16 = NetworkEndian::read_u16(&hdr_buf[4..6]);
+        let identification: u16 = u16::from_be_bytes([hdr_buf[4], hdr_buf[5]]);
 
         // Control flags.
         //
@@ -199,7 +195,7 @@ impl Ipv4Header {
         }
 
         // Fragment offset.
-        let fragment_offset: u16 = NetworkEndian::read_u16(&hdr_buf[6..8]) & 0x1fff;
+        let fragment_offset: u16 = u16::from_be_bytes([hdr_buf[6], hdr_buf[7]]) & 0x1fff;
         // TODO: drop this check once we support fragmentation.
         if fragment_offset != 0 {
             warn!("fragmentation is not supported offset={:?}", fragment_offset);
@@ -216,7 +212,7 @@ impl Ipv4Header {
         let protocol: IpProtocol = IpProtocol::try_from(hdr_buf[9])?;
 
         // Header checksum.
-        let header_checksum: u16 = NetworkEndian::read_u16(&hdr_buf[10..12]);
+        let header_checksum: u16 = u16::from_be_bytes([hdr_buf[10], hdr_buf[11]]);
         if header_checksum == 0xffff {
             return Err(Fail::new(EBADMSG, "ipv4 checksum invalid"));
         }
@@ -225,10 +221,10 @@ impl Ipv4Header {
         }
 
         // Source address.
-        let src_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[12..16]));
+        let src_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[12], hdr_buf[13], hdr_buf[14], hdr_buf[15]);
 
         // Destination address.
-        let dst_addr: Ipv4Addr = Ipv4Addr::from(NetworkEndian::read_u32(&hdr_buf[16..20]));
+        let dst_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[16], hdr_buf[17], hdr_buf[18], hdr_buf[19]);
 
         // Truncate datagram.
         let padding_bytes: usize = buf.len() - (total_length as usize);
@@ -267,16 +263,13 @@ impl Ipv4Header {
         buf[1] = (self.dscp << 2) | (self.ecn & 3);
 
         // Total Length.
-        NetworkEndian::write_u16(&mut buf[2..4], IPV4_HEADER_MIN_SIZE + (payload_len as u16));
+        buf[2..4].copy_from_slice(&(IPV4_HEADER_MIN_SIZE + (payload_len as u16)).to_be_bytes());
 
         // Identification.
-        NetworkEndian::write_u16(&mut buf[4..6], self.identification);
+        buf[4..6].copy_from_slice(&self.identification.to_be_bytes());
 
         // Flags and Fragment Offset.
-        NetworkEndian::write_u16(
-            &mut buf[6..8],
-            (self.flags as u16) << 13 | self.fragment_offset & 0x1fff,
-        );
+        buf[6..8].copy_from_slice(&((self.flags as u16) << 13 | self.fragment_offset & 0x1fff).to_be_bytes());
 
         // Time to Live.
         buf[8] = self.ttl;
@@ -294,7 +287,7 @@ impl Ipv4Header {
 
         // Header Checksum.
         let checksum: u16 = Self::compute_checksum(buf);
-        NetworkEndian::write_u16(&mut buf[10..12], checksum);
+        buf[10..12].copy_from_slice(&checksum.to_be_bytes());
     }
 
     /// Returns the source address field stored in the target IPv4 header.
@@ -314,14 +307,14 @@ impl Ipv4Header {
 
     /// Computes the checksum of the target IPv4 header.
     pub fn compute_checksum(buf: &[u8]) -> u16 {
-        let mut state: u32 = 0xffffu32;
+        let mut state: u32 = 0xffff;
         for i in 0..5 {
-            state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;
+            state += u16::from_be_bytes([buf[2 * i], buf[2 * i + 1]]) as u32;
         }
         // Skip the 5th u16 since octets 10-12 are the header checksum, whose value should be zero when
         // computing a checksum.
         for i in 6..10 {
-            state += NetworkEndian::read_u16(&buf[(2 * i)..(2 * i + 2)]) as u32;
+            state += u16::from_be_bytes([buf[2 * i], buf[2 * i + 1]]) as u32;
         }
         while state > 0xffff {
             state -= 0xffff;

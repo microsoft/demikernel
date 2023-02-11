@@ -9,10 +9,6 @@ use crate::{
         network::types::MacAddress,
     },
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 use ::libc::EBADMSG;
 use ::std::convert::{
     TryFrom,
@@ -53,7 +49,7 @@ impl Ethernet2Header {
         let hdr_buf = &buf[..ETHERNET2_HEADER_SIZE];
         let dst_addr = MacAddress::from_bytes(&hdr_buf[0..6]);
         let src_addr = MacAddress::from_bytes(&hdr_buf[6..12]);
-        let ether_type = EtherType2::try_from(NetworkEndian::read_u16(&hdr_buf[12..14]))?;
+        let ether_type = EtherType2::try_from(u16::from_be_bytes([hdr_buf[12], hdr_buf[13]]))?;
         let hdr = Self {
             dst_addr,
             src_addr,
@@ -68,7 +64,7 @@ impl Ethernet2Header {
         let buf: &mut [u8; ETHERNET2_HEADER_SIZE] = buf.try_into().unwrap();
         buf[0..6].copy_from_slice(&self.dst_addr.octets());
         buf[6..12].copy_from_slice(&self.src_addr.octets());
-        NetworkEndian::write_u16(&mut buf[12..14], self.ether_type as u16);
+        buf[12..14].copy_from_slice(&(self.ether_type as u16).to_be_bytes());
     }
 
     pub fn dst_addr(&self) -> MacAddress {

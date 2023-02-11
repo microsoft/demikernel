@@ -18,10 +18,6 @@ use crate::{
     },
     runtime::memory::DemiBuffer,
 };
-use ::byteorder::{
-    ByteOrder,
-    NetworkEndian,
-};
 
 //==============================================================================
 // Helper Functions
@@ -52,13 +48,14 @@ fn build_ipv4_header(
     buf[1] = ((dscp & 0x3f) << 2) | (ecn & 0x3);
 
     // Total Length.
-    NetworkEndian::write_u16(&mut buf[2..4], total_length);
+    buf[2..4].copy_from_slice(&total_length.to_be_bytes());
 
     // ID.
-    NetworkEndian::write_u16(&mut buf[4..6], id);
+    buf[4..6].copy_from_slice(&id.to_be_bytes());
 
     // Flags + Offset.
-    NetworkEndian::write_u16(&mut buf[6..8], ((flags as u16 & 7) << 13) | (fragment_offset & 0x1fff));
+    let field: u16 = ((flags as u16 & 7) << 13) | (fragment_offset & 0x1fff);
+    buf[6..8].copy_from_slice(&field.to_be_bytes());
 
     // Time to live.
     buf[8] = ttl;
@@ -76,7 +73,7 @@ fn build_ipv4_header(
     if checksum.is_none() {
         checksum = Some(Ipv4Header::compute_checksum(&buf[..20]));
     }
-    NetworkEndian::write_u16(&mut buf[10..12], checksum.unwrap());
+    buf[10..12].copy_from_slice(&checksum.unwrap().to_be_bytes());
 }
 
 //==============================================================================
