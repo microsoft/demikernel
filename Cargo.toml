@@ -111,7 +111,7 @@ path = "examples/rust/tcp-dump.rs"
 
 [[example]]
 name = "tcp-echo"
-path = "examples/rust/tcp-echo.rs"
+path = "examples/rust/tcp-echo/main.rs"
 
 [[example]]
 name = "tcp-pktgen"
