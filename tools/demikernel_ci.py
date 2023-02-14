@@ -236,13 +236,15 @@ def test_pipe_push_pop(server: str, client: str, is_debug: bool, repository: str
 def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
         test_unit: bool, test_system: bool, server_addr: str, client_addr: str, delay: float, config_path: str,
-        enable_nfs: bool) -> int:
+        output_dir: str, enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     step: int = 0
     status: dict[str, bool] = {}
 
     # Create folder for test logs
-    log_directory: str = "{}-{}-{}".format(libos, branch, "debug" if is_debug else "release").replace("/", "_")
+    log_directory: str = "{}/{}".format(output_dir, "{}-{}-{}".format(libos, branch,
+                                                                      "debug" if is_debug else "release").replace("/", "_"))
+
     if isdir(log_directory):
         # Keep the last run
         old_dir: str = log_directory + ".old"
@@ -324,6 +326,9 @@ def read_args() -> argparse.Namespace:
     parser.add_argument("--client-addr", required="--test-system" in sys.argv, help="sets client address in tests")
     parser.add_argument("--config-path", required=False, default="\$HOME/config.yaml", help="sets config path")
 
+    # Other options.
+    parser.add_argument("--output-dir", required=False, default=".", help="output directory for logs")
+
     # Read arguments from command line.
     return parser.parse_args()
 
@@ -352,9 +357,12 @@ def main():
     server_addr: str = args.server_addr if test_system else ""
     client_addr: str = args.client_addr if test_system else ""
 
+    # Output directory.
+    output_dir: str = args.output_dir
+
     status: dict = run_pipeline(repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,
-                                client_addr, delay, config_path, enable_nfs)
+                                client_addr, delay, config_path, output_dir, enable_nfs)
     if False in status.values():
         sys.exit(-1)
     else:
