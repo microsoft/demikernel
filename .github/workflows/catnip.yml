@@ -50,7 +50,7 @@ jobs:
           --repository demikernel/demikernel \
           --branch origin/${{ github.ref_name }} \
           --libos $LIBOS \
-          --test-system --delay 2 \
+          --test-unit --test-system all --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs

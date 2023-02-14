@@ -235,7 +235,7 @@ def test_pipe_push_pop(server: str, client: str, is_debug: bool, repository: str
 # Runs the CI pipeline.
 def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
-        test_unit: bool, test_system: bool, server_addr: str, client_addr: str, delay: float, config_path: str,
+        test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     step: int = 0
@@ -261,7 +261,7 @@ def run_pipeline(
         status["compile"] = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
 
     # STEP 3: Run unit tests.
-    if test_unit or test_system:
+    if test_unit:
         if status["checkout"] and status["compile"]:
             status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
                                                       is_sudo, config_path, log_directory)
@@ -271,23 +271,29 @@ def run_pipeline(
         if status["checkout"] and status["compile"]:
             if libos != "catmem":
                 if libos != "catloop":
-                    status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                                                 repository, server_addr, client_addr, delay,
-                                                                 config_path, log_directory)
-                    status["udp_push_pop"] = test_udp_push_pop(server, client, libos, is_debug, is_sudo,
-                                                               repository, server_addr, client_addr, delay, config_path,
+                    if test_system == "all" or test_system == "udp_ping_pong":
+                        status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
+                                                                     repository, server_addr, client_addr, delay,
+                                                                     config_path, log_directory)
+                    if test_system == "all" or test_system == "udp_push_pop":
+                        status["udp_push_pop"] = test_udp_push_pop(
+                            server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
+                            config_path, log_directory)
+                if test_system == "all" or test_system == "tcp_ping_pong":
+                    status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
+                                                                 repository, server_addr, delay, config_path,
+                                                                 log_directory)
+                if test_system == "all" or test_system == "tcp_push_pop":
+                    status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
+                                                               repository, server_addr, delay, config_path,
                                                                log_directory)
-                status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                                             repository, server_addr, delay, config_path,
-                                                             log_directory)
-                status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, delay, config_path,
-                                                           log_directory)
             else:
-                status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
-                                                               config_path, log_directory)
-                status["pipe_push_pop"] = test_pipe_push_pop(client, client, is_debug, repository, delay,
-                                                             config_path, log_directory)
+                if test_system == "all" or test_system == "pipe_ping_pong":
+                    status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
+                                                                   config_path, log_directory)
+                if test_system == "all" or test_system == "pipe_push_pop":
+                    status["pipe_push_pop"] = test_pipe_push_pop(client, client, is_debug, repository, delay,
+                                                                 config_path, log_directory)
 
     # Setp 5: Clean up.
     status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
@@ -320,8 +326,8 @@ def read_args() -> argparse.Namespace:
                         action="store_true", help="enable building on nfs directories")
 
     # Test options.
-    parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests only")
-    parser.add_argument("--test-system", action='store_true', required=False, help="run unit and system tests")
+    parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests")
+    parser.add_argument("--test-system", type=str, required=False, help="run system tests")
     parser.add_argument("--server-addr", required="--test-system" in sys.argv, help="sets server address in tests")
     parser.add_argument("--client-addr", required="--test-system" in sys.argv, help="sets client address in tests")
     parser.add_argument("--config-path", required=False, default="\$HOME/config.yaml", help="sets config path")
@@ -353,7 +359,7 @@ def main():
 
     # Extract test options.
     test_unit: bool = args.test_unit
-    test_system: bool = args.test_system
+    test_system: str = args.test_system
     server_addr: str = args.server_addr if test_system else ""
     client_addr: str = args.client_addr if test_system else ""
 
