@@ -6,8 +6,12 @@ CC = cl
 
 LIBS = $(LIBS) "WS2_32.lib"
 
+!if "$(DEBUG)" == "yes"
+CFLAGS = $(CFLAGS) /Zi
+!endif
+
 # Compiles several object files into a binary.
-COMPILE_CMD = $(CC) $@.obj common.obj $(LIBS) /Fe: $(BINDIR)/examples/c/$@.exe
+COMPILE_CMD = $(CC) $(CFLAGS) $@.obj common.obj $(LIBS) /Fe: $(BINDIR)/examples/c/$@.exe
 
 # Builds everything.
 all: udp-push-pop udp-ping-pong tcp-push-pop tcp-ping-pong
