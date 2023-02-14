@@ -59,8 +59,9 @@ CARGO_FLAGS = $(CARGO_FLAGS) --profile $(BUILD)
 # Libraries
 #=======================================================================================================================
 
-DEMIKERNEL_LIB = $(BUILD_DIR)/demikernel.dll.lib
+DEMIKERNEL_LIB = $(BUILD_DIR)\demikernel.dll.lib
 LIBS = $(DEMIKERNEL_LIB)
+DEMIKERNEL_DLL = $(BUILD_DIR)\demikernel.dll
 
 #=======================================================================================================================
 # Build Parameters
@@ -96,9 +97,10 @@ doc:
 
 # Copies demikernel artifacts to a INSTALL_PREFIX directory.
 install:
-	mkdir $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
-	xcopy /S /E /Y /I $(INCDIR) $(INSTALL_PREFIX)/include/
-	xcopy /S /E /Y /I $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
+	IF NOT EXIST $(INSTALL_PREFIX)\include mkdir $(INSTALL_PREFIX)\include
+	IF NOT EXIST $(INSTALL_PREFIX)\lib mkdir $(INSTALL_PREFIX)\lib
+	xcopy /S /E /Y /I $(INCDIR) $(INSTALL_PREFIX)\include
+	xcopy /S /E /Y /I $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)\lib
 
 #=======================================================================================================================
 # Libs
@@ -109,6 +111,7 @@ all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
+	xcopy /S /E /Y /I $(DEMIKERNEL_DLL) $(BINDIR)
 
 #=======================================================================================================================
 # Tests
