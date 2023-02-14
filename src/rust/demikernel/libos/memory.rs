@@ -38,7 +38,7 @@ pub enum MemoryLibOS {
 /// Associated functions for memory LibOSes
 impl MemoryLibOS {
     /// Creates a memory queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -48,7 +48,7 @@ impl MemoryLibOS {
     }
 
     /// Opens an existing memory queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -58,7 +58,7 @@ impl MemoryLibOS {
     }
 
     /// Closes a memory queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn close(&mut self, memqd: QDesc) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -68,7 +68,7 @@ impl MemoryLibOS {
     }
 
     /// Pushes a scatter-gather array to a memory queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn push(&mut self, memqd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -78,7 +78,7 @@ impl MemoryLibOS {
     }
 
     /// Pops data from a memory queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn pop(&mut self, memqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -88,7 +88,7 @@ impl MemoryLibOS {
     }
 
     /// Allocates a scatter-gather array.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -98,7 +98,7 @@ impl MemoryLibOS {
     }
 
     /// Releases a scatter-gather array.
-    #[allow(unused_variables, unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -108,7 +108,7 @@ impl MemoryLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -117,7 +117,7 @@ impl MemoryLibOS {
         }
     }
 
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -127,7 +127,7 @@ impl MemoryLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, unused_variables)]
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catmem-libos")]
