@@ -169,11 +169,7 @@ fn connect_ack_received(
 
         let sga: demi_sgarray_t = match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            _ => {
-                let e: Fail = Fail::new(libc::EAGAIN, "hashsake failed");
-                error!("failed to establish connection ({:?})", e);
-                return Poll::Ready(Err(e));
-            },
+            _ => panic!("unexpected operation on control duplex pipe"),
         };
 
         // Extract port number.
