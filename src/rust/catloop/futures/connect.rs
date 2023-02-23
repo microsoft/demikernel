@@ -192,6 +192,10 @@ fn connect_ack_received(
 
         // Transition to the next state in the connection establishment protocol.
         self_.state = ClientState::Connected(remote, duplex_pipe);
+    } else {
+        // Connection timeout, retry.
+        DuplexPipe::drop(&self_.catmem, qt_rx)?;
+        self_.state = ClientState::InitiateConnectRequest;
     }
 
     // Re-schedule co-routine for later execution.
