@@ -65,7 +65,7 @@ impl DuplexPipe {
 
     /// Closes a duplex pipe.
     pub fn close(&self) -> Result<(), Fail> {
-        self.catmem.borrow_mut().close(self.rx)?;
+        self.catmem.borrow_mut().shutdown(self.rx)?;
         self.catmem.borrow_mut().close(self.tx)?;
         Ok(())
     }
