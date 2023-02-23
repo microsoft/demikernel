@@ -70,6 +70,14 @@ impl DuplexPipe {
         Ok(())
     }
 
+    /// Disallows further operations on a duplex pipe. The underlying queue
+    /// descriptors are released, but EoF is not pushed to the remote end.
+    pub fn shutdown(&self) -> Result<(), Fail> {
+        self.catmem.borrow_mut().shutdown(self.rx)?;
+        self.catmem.borrow_mut().shutdown(self.tx)?;
+        Ok(())
+    }
+
     /// Pushes a scatter-gather array to a duplex pipe.
     pub fn push(&self, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         self.catmem.borrow_mut().push(self.tx, &sga)
