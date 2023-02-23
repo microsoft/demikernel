@@ -47,7 +47,7 @@ use ::std::{
 enum ServerState {
     ListenAndAccept(QToken),
     Connect(QToken, Rc<DuplexPipe>),
-    Connected(QDesc, SocketAddrV4, Rc<DuplexPipe>),
+    Connected(QToken, QDesc, SocketAddrV4, Rc<DuplexPipe>),
 }
 
 //======================================================================================================================
@@ -112,8 +112,14 @@ impl Future for AcceptFuture {
         match &self_.state {
             ServerState::ListenAndAccept(qt_rx) => listen_and_accept(self_, ctx, *qt_rx),
             ServerState::Connect(qt_tx, duplex_pipe) => connect(self_, ctx, *qt_tx, duplex_pipe.clone()),
-            ServerState::Connected(new_qd, remote, duplex_pipe) => {
-                Poll::Ready(Ok((*new_qd, *remote, duplex_pipe.clone())))
+            ServerState::Connected(qt_close, new_qd, remote, duplex_pipe) => {
+                if let Some(handle) = DuplexPipe::poll(&self_.catmem, *qt_close)? {
+                    check_connect_request(&self_.catmem, handle, *qt_close).expect("magic connect");
+                    debug!("connection accepted!");
+                    return Poll::Ready(Ok((*new_qd, *remote, duplex_pipe.clone())));
+                }
+                ctx.waker().wake_by_ref();
+                return Poll::Pending;
             },
         }
     }
@@ -211,7 +217,8 @@ fn connect(
 ) -> Poll<Result<(QDesc, SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, self_.new_port);
-        self_.state = ServerState::Connected(self_.new_qd, remote, duplex_pipe.clone())
+        let qt_close: QToken = duplex_pipe.pop()?;
+        self_.state = ServerState::Connected(qt_close, self_.new_qd, remote, duplex_pipe.clone())
     }
 
     // Re-schedule co-routine for later execution.

@@ -46,7 +46,7 @@ enum ClientState {
     InitiateConnectRequest,
     ConnectRequestSent(QToken),
     ConnectAckReceived(QToken),
-    Connected(SocketAddrV4, Rc<DuplexPipe>),
+    Connected(QToken, SocketAddrV4, Rc<DuplexPipe>),
 }
 
 //======================================================================================================================
@@ -113,7 +113,15 @@ impl Future for ConnectFuture {
             ClientState::InitiateConnectRequest => setup(self_, ctx),
             ClientState::ConnectRequestSent(qt_tx) => connect_request_sent(self_, ctx, *qt_tx),
             ClientState::ConnectAckReceived(qt_rx) => connect_ack_received(self_, ctx, *qt_rx),
-            ClientState::Connected(remote, duplex_pipe) => Poll::Ready(Ok((*remote, duplex_pipe.clone()))),
+            ClientState::Connected(qt_tx, remote, duplex_pipe) => {
+                if let Some(_) = DuplexPipe::poll(&self_.catmem, *qt_tx)? {
+                    return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
+                }
+
+                // Re-schedule co-routine for later execution.
+                ctx.waker().wake_by_ref();
+                return Poll::Pending;
+            },
         }
     }
 }
@@ -185,8 +193,12 @@ fn connect_ack_received(
         let duplex_pipe: Rc<DuplexPipe> =
             Rc::new(DuplexPipe::open_duplex_pipe(self_.catmem.clone(), &self_.ipv4, port)?);
 
+        let sga: demi_sgarray_t = CatloopLibOS::cook_magic_connect(&self_.catmem)?;
+        let qt_tx: QToken = duplex_pipe.push(&sga)?;
+        self_.catmem.borrow_mut().free_sgarray(sga)?;
+
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::Connected(remote, duplex_pipe);
+        self_.state = ClientState::Connected(qt_tx, remote, duplex_pipe);
     } else {
         // Connection timeout, retry.
         DuplexPipe::drop(&self_.catmem, qt_rx)?;
