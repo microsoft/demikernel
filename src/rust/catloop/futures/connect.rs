@@ -173,17 +173,12 @@ fn connect_ack_received(
         };
 
         // Extract port number.
-        let port: u16 = match extract_port_number(&sga) {
-            Ok(port) => port,
-            Err(e) => {
-                self_.catmem.borrow_mut().free_sgarray(sga)?;
-                return Poll::Ready(Err(e));
-            },
+        let port: u16 = {
+            let port: Result<u16, Fail> = extract_port_number(&sga);
+            self_.catmem.borrow_mut().free_sgarray(sga)?;
+            self_.control_duplex_pipe.shutdown()?;
+            port?
         };
-
-        self_.catmem.borrow_mut().free_sgarray(sga)?;
-
-        self_.control_duplex_pipe.close()?;
 
         // Open underlying pipes.
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, port);
