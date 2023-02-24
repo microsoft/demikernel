@@ -18,10 +18,7 @@ use crate::{
             rte_mbuf,
             rte_mempool,
         },
-        memory::{
-            DPDKBuffer,
-            DemiBuffer,
-        },
+        memory::DemiBuffer,
         types::{
             demi_sgarray_t,
             demi_sgaseg_t,
@@ -104,16 +101,16 @@ impl MemoryManager {
 
     /// Allocates a header mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_header_mbuf(&self) -> Result<DPDKBuffer, Fail> {
+    pub fn alloc_header_mbuf(&self) -> Result<DemiBuffer, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.header_pool.alloc_mbuf(None)?;
-        Ok(DPDKBuffer::new(mbuf_ptr))
+        Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
     /// Allocates a body mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_body_mbuf(&self) -> Result<DPDKBuffer, Fail> {
+    pub fn alloc_body_mbuf(&self) -> Result<DemiBuffer, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(None)?;
-        Ok(DPDKBuffer::new(mbuf_ptr))
+        Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
     /// Allocates a scatter-gather array.
