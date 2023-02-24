@@ -173,6 +173,12 @@ impl CatmemLibOS {
         // Issue pop operation.
         match self.rings.get(&qd) {
             Some(pipe) => {
+                // Handle end of file.
+                if pipe.eof() {
+                    let cause: String = format!("end of file (qd={:?})", qd);
+                    error!("pop(): {:?}", cause);
+                    return Err(Fail::new(libc::ECONNRESET, &cause));
+                }
                 let future: Operation = Operation::from(PopFuture::new(qd, pipe.buffer()));
                 let handle: SchedulerHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
