@@ -46,10 +46,7 @@ use ::std::{
     any::Any,
     collections::HashMap,
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddrV4,
     os::unix::prelude::RawFd,
 };
 
@@ -334,16 +331,6 @@ impl CatnapLibOS {
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         trace!("sgafree()");
         self.runtime.free_sgarray(sga)
-    }
-
-    #[deprecated]
-    pub fn local_ipv4_addr(&self) -> Ipv4Addr {
-        todo!()
-    }
-
-    #[deprecated]
-    pub fn rt(&self) -> &PosixRuntime {
-        &self.runtime
     }
 
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
