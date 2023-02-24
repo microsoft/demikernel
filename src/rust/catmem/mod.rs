@@ -144,6 +144,12 @@ impl CatmemLibOS {
                 // Issue push operation.
                 match self.rings.get(&qd) {
                     Some(pipe) => {
+                        // Handle end of file.
+                        if pipe.eof() {
+                            let cause: String = format!("end of file (qd={:?})", qd);
+                            error!("pop(): {:?}", cause);
+                            return Err(Fail::new(libc::ECONNRESET, &cause));
+                        }
                         let future: Operation = Operation::from(PushFuture::new(qd, pipe.buffer(), buf));
                         let handle: SchedulerHandle = match self.scheduler.insert(future) {
                             Some(handle) => handle,
