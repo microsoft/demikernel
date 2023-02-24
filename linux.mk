@@ -16,7 +16,7 @@ export LD_LIBRARY_PATH ?= $(HOME)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64
 
 export BUILD := release
 ifeq ($(DEBUG),yes)
-export RUST_LOG := trace
+export RUST_LOG ?= trace
 export BUILD := dev
 endif
 
