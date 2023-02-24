@@ -217,7 +217,8 @@ impl CatmemLibOS {
             OperationResult::Pop(bytes, eof) => {
                 // Handle end of file.
                 if eof {
-                    self.close(qd)?;
+                    let pipe: &mut Pipe = self.rings.get_mut(&qd).expect("unregisted queue descriptor");
+                    pipe.set_eof();
                 }
 
                 match self.into_sgarray(bytes) {
