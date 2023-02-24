@@ -220,6 +220,19 @@ def test_tcp_accept(
         config_path, log_directory)
 
 
+def test_pipe_open(
+        server: str, client: str, is_debug: bool, repository: str, delay: float,
+        config_path: str, log_directory: str) -> bool:
+    test_name: str = "pipe-open"
+    pipe_name: str = "demikernel-test-pipe-open"
+    niterations: int = 128
+    server_args: str = "--peer server --pipe-name {} --niterations {}".format(pipe_name, niterations)
+    client_args: str = "--peer client --pipe-name {} --niterations {}".format(pipe_name, niterations)
+    return job_test_system_rust(
+        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay,
+        config_path, log_directory)
+
+
 def test_pipe_ping_pong(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -309,6 +322,9 @@ def run_pipeline(
                                                            repository, server_addr, delay, config_path,
                                                            log_directory, nclients=128, run_mode="parallel")
             else:
+                if test_system == "all" or test_system == "pipe_open":
+                    status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
+                                                         config_path, log_directory)
                 if test_system == "all" or test_system == "pipe_ping_pong":
                     status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
                                                                    config_path, log_directory)
