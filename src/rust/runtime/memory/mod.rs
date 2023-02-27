@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod buffer;
+mod demibuffer;
 
 //==============================================================================
 // Imports
@@ -26,7 +26,7 @@ use ::std::{
 // Exports
 //==============================================================================
 
-pub use self::buffer::*;
+pub use self::demibuffer::*;
 
 //==============================================================================
 // Traits

@@ -15,10 +15,7 @@ use crate::{
             rte_mbuf,
             rte_pktmbuf_chain,
         },
-        memory::{
-            DPDKBuffer,
-            DemiBuffer,
-        },
+        memory::DemiBuffer,
         network::{
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
@@ -43,6 +40,8 @@ impl NetworkRuntime for DPDKRuntime {
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
         // prepend the headers into that mbuf and save the extra header mbuf allocation that we currently always do.
 
+        // ToDo: cleanup unwrap() and expect() from this code when this function returns a Result.
+
         // Alloc header mbuf, check header size.
         // Serialize header.
         // Decide if we can inline the data --
@@ -55,13 +54,13 @@ impl NetworkRuntime for DPDKRuntime {
         // Chain body buffer.
 
         // First, allocate a header mbuf and write the header into it.
-        let mut header_mbuf: DPDKBuffer = match self.mm.alloc_header_mbuf() {
+        let mut header_mbuf: DemiBuffer = match self.mm.alloc_header_mbuf() {
             Ok(mbuf) => mbuf,
             Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
         };
         let header_size = buf.header_size();
         assert!(header_size <= header_mbuf.len());
-        buf.write_header(unsafe { &mut header_mbuf.slice_mut()[..header_size] });
+        buf.write_header(&mut header_mbuf[..header_size]);
 
         if let Some(body) = buf.take_body() {
             // Next, see how much space we have remaining and inline the body if we have room.
@@ -72,7 +71,7 @@ impl NetworkRuntime for DPDKRuntime {
                 assert!(header_size + body.len() >= MIN_PAYLOAD_SIZE);
 
                 // We're only using the header_mbuf for, well, the header.
-                header_mbuf.trim(header_mbuf.len() - header_size);
+                header_mbuf.trim(header_mbuf.len() - header_size).unwrap();
 
                 // Get the body mbuf.
                 let body_mbuf: *mut rte_mbuf = if body.is_dpdk_allocated() {
@@ -80,43 +79,42 @@ impl NetworkRuntime for DPDKRuntime {
                     body.into_mbuf().expect("'body' should be DPDK-allocated")
                 } else {
                     // The body is not dpdk-allocated, allocate a DPDKBuffer and copy the body into it.
-                    let mut mbuf: DPDKBuffer = match self.mm.alloc_body_mbuf() {
+                    let mut mbuf: DemiBuffer = match self.mm.alloc_body_mbuf() {
                         Ok(mbuf) => mbuf,
                         Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
                     };
                     assert!(mbuf.len() >= body.len());
-                    unsafe { mbuf.slice_mut()[..body.len()].copy_from_slice(&body[..]) };
-                    mbuf.trim(mbuf.len() - body.len());
-                    mbuf.into_raw()
+                    mbuf[..body.len()].copy_from_slice(&body[..]);
+                    mbuf.trim(mbuf.len() - body.len()).unwrap();
+                    mbuf.into_mbuf().expect("mbuf should not be empty")
                 };
 
+                let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf should not be empty");
                 // Safety: rte_pktmbuf_chain is a FFI that is safe to call as both of its args are valid MBuf pointers.
                 unsafe {
                     // Attach the body MBuf onto the header MBuf's buffer chain.
-                    assert_eq!(rte_pktmbuf_chain(header_mbuf.get_ptr(), body_mbuf), 0);
+                    assert_eq!(rte_pktmbuf_chain(header_mbuf_ptr, body_mbuf), 0);
                 }
-                let mut header_mbuf_ptr = header_mbuf.into_raw();
                 let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
             // Otherwise, write in the inline space.
             else {
-                let body_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..(header_size + body.len())] };
+                let body_buf = &mut header_mbuf[header_size..(header_size + body.len())];
                 body_buf.copy_from_slice(&body[..]);
 
                 if header_size + body.len() < MIN_PAYLOAD_SIZE {
                     let padding_bytes = MIN_PAYLOAD_SIZE - (header_size + body.len());
-                    let padding_buf =
-                        unsafe { &mut header_mbuf.slice_mut()[(header_size + body.len())..][..padding_bytes] };
+                    let padding_buf = &mut header_mbuf[(header_size + body.len())..][..padding_bytes];
                     for byte in padding_buf {
                         *byte = 0;
                     }
                 }
 
                 let frame_size = std::cmp::max(header_size + body.len(), MIN_PAYLOAD_SIZE);
-                header_mbuf.trim(header_mbuf.len() - frame_size);
+                header_mbuf.trim(header_mbuf.len() - frame_size).unwrap();
 
-                let mut header_mbuf_ptr = header_mbuf.into_raw();
+                let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf cannot be empty");
                 let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
                 assert_eq!(num_sent, 1);
             }
@@ -125,14 +123,14 @@ impl NetworkRuntime for DPDKRuntime {
         else {
             if header_size < MIN_PAYLOAD_SIZE {
                 let padding_bytes = MIN_PAYLOAD_SIZE - header_size;
-                let padding_buf = unsafe { &mut header_mbuf.slice_mut()[header_size..][..padding_bytes] };
+                let padding_buf = &mut header_mbuf[header_size..][..padding_bytes];
                 for byte in padding_buf {
                     *byte = 0;
                 }
             }
             let frame_size = std::cmp::max(header_size, MIN_PAYLOAD_SIZE);
-            header_mbuf.trim(header_mbuf.len() - frame_size);
-            let mut header_mbuf_ptr = header_mbuf.into_raw();
+            header_mbuf.trim(header_mbuf.len() - frame_size).unwrap();
+            let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf cannot be empty");
             let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
             assert_eq!(num_sent, 1);
         }
