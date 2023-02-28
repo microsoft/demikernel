@@ -19,207 +19,82 @@ on:
       - master
 
 env:
-  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
-  GITHUB_SHA: $GITHUB_SHA
+  LIBOS: catnapw
+  SERVER: ${{ secrets.CATNAPW_HOSTNAME_A }}
+  CLIENT: ${{ secrets.CATNAPW_HOSTNAME_B }}
 
 jobs:
 
-  #=====================================================================================================================
-  # Setup
-  #=====================================================================================================================
-
-  # Node 0
-  setup-demikernel0:
-    name: Setup Node 0
+  debug-pipeline:
+    name: Debug Pipeline
     runs-on: ubuntu-latest
     steps:
-    - name: Fetch Changes
-      uses: appleboy/ssh-action@master
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup SSH
+      shell: bash
+      run: |
+        mkdir -p $HOME/.ssh/
+        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
+        chmod 400 $HOME/.ssh/id_rsa
+        echo "Host *" > $HOME/.ssh/config
+        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
+        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Run
+      run: |
+        python3 tools/demikernel_ci.py \
+          --server $SERVER \
+          --client $CLIENT \
+          --repository demikernel/demikernel \
+          --branch origin/${{ github.ref_name }} \
+          --libos $LIBOS \
+          --debug
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_A }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
-          $Env:Path += $GitPath + ';'
-          git pull
-          git checkout dev
+        name: debug-pipeline-logs
+        path: |
+          **/*.stdout
+          **/*.stderr
 
-
-  # Node 1
-  setup-demikernel1:
-    name: Setup Node 1
+  release-pipeline:
+    name: Release Pipeline
+    needs: debug-pipeline
     runs-on: ubuntu-latest
     steps:
-    - name: Fetch Changes
-      uses: appleboy/ssh-action@master
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup SSH
+      shell: bash
+      run: |
+        mkdir -p $HOME/.ssh/
+        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
+        chmod 400 $HOME/.ssh/id_rsa
+        echo "Host *" > $HOME/.ssh/config
+        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
+        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Run
+      run: |
+        python3 tools/demikernel_ci.py \
+          --server $SERVER \
+          --client $CLIENT \
+          --repository demikernel/demikernel \
+          --branch origin/${{ github.ref_name }} \
+          --libos $LIBOS
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v3
       with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_B }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
-          $Env:Path += $GitPath + ';'
-          git pull
-          git checkout dev
-
-  #=====================================================================================================================
-  # Setup Completed
-  #=====================================================================================================================
-
-  setup:
-    name: Setup Completed
-    needs: [setup-demikernel0, setup-demikernel1]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Setup Completed!"
-
-  #=====================================================================================================================
-  # Build
-  #=====================================================================================================================
-
-  # Node 0
-  build-demikernel0:
-    name: Build Node 0
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Compile Debug
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_A }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $Env:Path += $RustPath + ';'
-          $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
-          Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
-          Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw DEBUG=yes
-    - name: Compile Release
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_A }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $Env:Path += $RustPath + ';'
-          $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
-          Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
-          Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw
-
-  # Node 1
-  build-demikernel1:
-    name: Build Node 1
-    needs: [setup]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Compile Debug
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_B }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $Env:Path += $RustPath + ';'
-          $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
-          Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
-          Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw DEBUG=yes
-    - name: Compile Release
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_B }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $Env:Path += $RustPath + ';'
-          $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
-          Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
-          Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw
-
-  #=====================================================================================================================
-  # Build Completed
-  #=====================================================================================================================
-
-  # Node 0
-  build:
-    name: Build Completed
-    needs: [build-demikernel0, build-demikernel1]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log
-        run: echo "Build Completed!"
-
-  #=====================================================================================================================
-  # Cleanup
-  #=====================================================================================================================
-
-  # Node 0
-  cleanup-demikernel0:
-    name: Cleanup Node 0
-    if: always()
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Cleanup Source Tree
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_A }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
-          $Env:Path += $GitPath + ';'
-          $Env:Path += $RustPath + ';'
-          nmake clean
-          git clean -fdx
-          git checkout dev
-          git remote prune origin
-
-  # Node 1
-  cleanup-demikernel1:
-    name: Cleanup Node 1
-    if: always()
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Cleanup Source Tree
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.CATNAPW_HOSTNAME_B }}
-        port: ${{ secrets.PORTNUM }}
-        key: ${{ secrets.SSHKEY }}
-        username: ${{ secrets.USERNAME }}
-        script: |
-          cd c:\demikernel\demikernel
-          $RustPath = Join-Path $Env:HOME "\.cargo\bin"
-          $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
-          $Env:Path += $GitPath + ';'
-          $Env:Path += $RustPath + ';'
-          nmake clean
-          git clean -fdx
-          git checkout dev
-          git remote prune origin
+        name: release-pipeline-logs
+        path: |
+          **/*.stdout
+          **/*.stderr
