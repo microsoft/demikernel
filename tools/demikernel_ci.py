@@ -67,17 +67,41 @@ def wait_and_report(name: str, log_directory: str, jobs: dict, all_pass=True):
 
 
 # Executes a checkout command in a remote host.
-def remote_checkout(host: str, repository: str, branch: str):
-    cmd = "cd {} && git pull origin && git checkout {}".format(repository, branch)
-    ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+def remote_checkout(is_windows: bool, host: str, repository: str, branch: str):
+    cmd: str = ""
+    ssh_cmd: str = ""
+    if not is_windows:
+        cmd = "cd {} && git pull origin && git checkout {}".format(repository, branch)
+        ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+    else:
+        cmd = "{} ; {} ; {} ; {} ; {} ; {} ; {} ; {} ;".format(
+            "\$RustPath = Join-Path \$Env:HOME \\.cargo\\bin", "\$Env:Path += \$RustPath + ';'",
+            "\$GitPath = Join-Path \$Env:ProgramFiles \\Git\\cmd", "\$Env:Path += \$GitPath + ';'",
+            "\$VsInstallPath = &(Join-Path \${Env:ProgramFiles(x86)} '\\Microsoft Visual Studio\\Installer\\vswhere.exe') -latest -property installationPath",
+            "Import-Module (Join-Path \$VsInstallPath 'Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll')",
+            "Enter-VsDevShell -VsInstallPath \$VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'",
+            "cd c:\\demikernel\\demikernel ; git pull ; git checkout dev")
+        ssh_cmd = "ssh {} \"{}\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 # Executes a compile command in a remote host.
-def remote_compile(host: str, repository: str, target: str, is_debug: bool):
+def remote_compile(is_windows: bool, host: str, repository: str, target: str, is_debug: bool):
+    cmd: str = ""
+    ssh_cmd: str = ""
     debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
-    cmd = "cd {} && make {} {}".format(repository, debug_flag, target)
-    ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+    if not is_windows:
+        cmd = "cd {} && make {} {}".format(repository, debug_flag, target)
+        ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+    else:
+        cmd = "{} ; {} ; {} ; {} ; {} ; {} ; {} ; {} ;".format(
+            "\$RustPath = Join-Path \$Env:HOME \\.cargo\\bin", "\$Env:Path += \$RustPath + ';'",
+            "\$GitPath = Join-Path \$Env:ProgramFiles \\Git\\cmd", "\$Env:Path += \$GitPath + ';'",
+            "\$VsInstallPath = &(Join-Path \${Env:ProgramFiles(x86)} '\\Microsoft Visual Studio\\Installer\\vswhere.exe') -latest -property installationPath",
+            "Import-Module (Join-Path \$VsInstallPath 'Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll')",
+            "Enter-VsDevShell -VsInstallPath \$VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'",
+            "cd c:\\demikernel\\demikernel ; nmake all LIBOS=catnapw")
+        ssh_cmd = "ssh {} \"{}\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -91,10 +115,22 @@ def remote_run(host: str, repository: str, is_debug: bool, target: str, is_sudo:
 
 
 # Executes a cleanup command in a remote host.
-def remote_cleanup(host: str, workspace: str, is_sudo: bool, default_branch: str = "dev"):
-    sudo_cmd: str = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(workspace, sudo_cmd, default_branch)
-    ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+def remote_cleanup(is_windows: bool, host: str, workspace: str, is_sudo: bool, default_branch: str = "dev"):
+    cmd: str = ""
+    ssh_cmd: str = ""
+    if not is_windows:
+        sudo_cmd: str = "sudo -E" if is_sudo else ""
+        cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(workspace, sudo_cmd, default_branch)
+        ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
+    else:
+        cmd = "{} ; {} ; {} ; {} ; {} ; {} ; {} ; {} ;".format(
+            "\$RustPath = Join-Path \$Env:HOME \\.cargo\\bin", "\$Env:Path += \$RustPath + ';'",
+            "\$GitPath = Join-Path \$Env:ProgramFiles \\Git\\cmd", "\$Env:Path += \$GitPath + ';'",
+            "\$VsInstallPath = &(Join-Path \${Env:ProgramFiles(x86)} '\\Microsoft Visual Studio\\Installer\\vswhere.exe') -latest -property installationPath",
+            "Import-Module (Join-Path \$VsInstallPath 'Common7\\Tools\\Microsoft.VisualStudio.DevShell.dll')",
+            "Enter-VsDevShell -VsInstallPath \$VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'",
+            "cd c:\\demikernel\\demikernel ; git clean -fdx; git checkout dev ; git remote prune origin")
+        ssh_cmd = "ssh {} \"{}\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -103,25 +139,26 @@ def remote_cleanup(host: str, workspace: str, is_sudo: bool, default_branch: str
 # ======================================================================================================================
 
 
-def job_checkout(repository: str, branch: str, server: str, client: str, enable_nfs: bool,
+def job_checkout(is_windows: bool, repository: str, branch: str, server: str, client: str, enable_nfs: bool,
                  log_directory: str) -> bool:
     # Jobs is a map of job names (server name, repository and compile mode)
     jobs: dict[str, subprocess.Popen[str]] = {}
     test_name = "checkout"
-    jobs[test_name + "-server-" + server] = remote_checkout(server, repository, branch)
+    jobs[test_name + "-server-" + server] = remote_checkout(is_windows, server, repository, branch)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client] = remote_checkout(client, repository, branch)
+        jobs[test_name + "-client-" + client] = remote_checkout(is_windows, client, repository, branch)
     return wait_and_report(test_name, log_directory, jobs)
 
 
 def job_compile(
-        repository: str, libos: str, is_debug: bool, server: str, client: str, enable_nfs: bool,
+        is_windows: bool, repository: str, libos: str, is_debug: bool, server: str, client: str, enable_nfs: bool,
         log_directory: str) -> bool:
     jobs: dict[str, subprocess.Popen[str]] = {}
     test_name = "compile-{}".format("debug" if is_debug else "release")
-    jobs[test_name + "-server-" + server] = remote_compile(server, repository, "all LIBOS={}".format(libos), is_debug)
+    jobs[test_name + "-server-" + server] = remote_compile(is_windows,
+                                                           server, repository, "all LIBOS={}".format(libos), is_debug)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client] = remote_compile(client,
+        jobs[test_name + "-client-" + client] = remote_compile(is_windows, client,
                                                                repository, "all LIBOS={}".format(libos), is_debug)
     return wait_and_report(test_name, log_directory, jobs)
 
@@ -150,12 +187,14 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
-def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool, log_directory: str) -> bool:
+def job_cleanup(
+    is_windows: bool, repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool,
+        log_directory: str) -> bool:
     test_name = "cleanup"
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_cleanup(server, repository, is_sudo)
+    jobs[test_name + "-server-" + server] = remote_cleanup(is_windows, server, repository, is_sudo)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client + "-"] = remote_cleanup(client, repository, is_sudo)
+        jobs[test_name + "-client-" + client + "-"] = remote_cleanup(is_windows, client, repository, is_sudo)
     return wait_and_report(test_name, log_directory, jobs)
 
 
@@ -264,7 +303,7 @@ def run_pipeline(
         test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
-    step: int = 0
+    is_windows: bool = True if libos == "catnapw" else False
     status: dict[str, bool] = {}
 
     # Create folder for test logs
@@ -280,11 +319,12 @@ def run_pipeline(
     mkdir(log_directory)
 
     # STEP 1: Check out.
-    status["checkout"] = job_checkout(repository, branch, server, client, enable_nfs, log_directory)
+    status["checkout"] = job_checkout(is_windows, repository, branch, server, client, enable_nfs, log_directory)
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
+        status["compile"] = job_compile(is_windows, repository, libos, is_debug,
+                                        server, client, enable_nfs, log_directory)
 
     # STEP 3: Run unit tests.
     if test_unit:
@@ -330,7 +370,7 @@ def run_pipeline(
                                                                  config_path, log_directory)
 
     # Setp 5: Clean up.
-    status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
+    status["cleanup"] = job_cleanup(is_windows, repository, server, client, is_sudo, enable_nfs, log_directory)
 
     return status
 
