@@ -207,6 +207,19 @@ def test_tcp_push_pop(
         config_path, log_directory)
 
 
+def test_tcp_accept(
+        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
+        server_addr: str, delay: float, config_path: str, log_directory: str, nclients: int, run_mode: str) -> bool:
+    test_name: str = "tcp-accept"
+    server_args: str = "--peer server --address {}:12345 --nclients {} --run-mode {}".format(
+        server_addr, nclients, run_mode)
+    client_args: str = "--peer client --address {}:12345 --nclients {} --run-mode {}".format(
+        server_addr, nclients, run_mode)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
+        config_path, log_directory)
+
+
 def test_pipe_ping_pong(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -287,6 +300,14 @@ def run_pipeline(
                     status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
                                                                repository, server_addr, delay, config_path,
                                                                log_directory)
+                # Optional tests.
+                if test_system == "tcp_accept":
+                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
+                                                           repository, server_addr, delay, config_path,
+                                                           log_directory, nclients=128, run_mode="serial")
+                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
+                                                           repository, server_addr, delay, config_path,
+                                                           log_directory, nclients=128, run_mode="parallel")
             else:
                 if test_system == "all" or test_system == "pipe_ping_pong":
                     status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
