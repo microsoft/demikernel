@@ -17,6 +17,9 @@ tar -xvf dpdk-22.11.tar.xz
 cd dpdk-22.11
 mkdir -p build
 
+# Install pre-requisites.
+pip3 install pyelftools
+
 # Build and install
 meson --prefix=$HOME build
 ninja -C build
