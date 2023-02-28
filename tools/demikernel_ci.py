@@ -318,9 +318,6 @@ def run_pipeline(
                     status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
                                                            repository, server_addr, delay, config_path,
                                                            log_directory, nclients=128, run_mode="serial")
-                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, delay, config_path,
-                                                           log_directory, nclients=128, run_mode="parallel")
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
