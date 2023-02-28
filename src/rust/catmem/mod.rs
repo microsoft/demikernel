@@ -2,16 +2,20 @@
 // Licensed under the MIT license.
 
 mod futures;
+mod pipe;
 
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use self::futures::{
-    pop::PopFuture,
-    push::PushFuture,
-    Operation,
-    OperationResult,
+use self::{
+    futures::{
+        pop::PopFuture,
+        push::PushFuture,
+        Operation,
+        OperationResult,
+    },
+    pipe::Pipe,
 };
 use crate::{
     collections::shared_ring::SharedRingBuffer,
@@ -55,7 +59,7 @@ const RING_BUFFER_CAPACITY: usize = 4096;
 pub struct CatmemLibOS {
     qtable: IoQueueTable,
     scheduler: Scheduler,
-    rings: HashMap<QDesc, Rc<SharedRingBuffer<u16>>>,
+    rings: HashMap<QDesc, Pipe>,
 }
 
 impl MemoryRuntime for CatmemLibOS {}
@@ -81,7 +85,7 @@ impl CatmemLibOS {
         let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::create(name, RING_BUFFER_CAPACITY)?;
 
         let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
-        assert_eq!(self.rings.insert(qd, Rc::new(ring)).is_none(), true);
+        assert_eq!(self.rings.insert(qd, Pipe::new(ring)).is_none(), true);
 
         Ok(qd)
     }
@@ -93,7 +97,7 @@ impl CatmemLibOS {
         let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::open(name, RING_BUFFER_CAPACITY)?;
 
         let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
-        assert_eq!(self.rings.insert(qd, Rc::new(ring)).is_none(), true);
+        assert_eq!(self.rings.insert(qd, Pipe::new(ring)).is_none(), true);
 
         Ok(qd)
     }
@@ -118,8 +122,8 @@ impl CatmemLibOS {
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         match self.rings.remove(&qd) {
-            Some(ring) => {
-                self.push_eof(ring)?;
+            Some(pipe) => {
+                self.push_eof(pipe.buffer())?;
                 self.qtable.free(qd);
                 Ok(())
             },
@@ -139,8 +143,14 @@ impl CatmemLibOS {
 
                 // Issue push operation.
                 match self.rings.get(&qd) {
-                    Some(ring) => {
-                        let future: Operation = Operation::from(PushFuture::new(qd, ring.clone(), buf));
+                    Some(pipe) => {
+                        // Handle end of file.
+                        if pipe.eof() {
+                            let cause: String = format!("end of file (qd={:?})", qd);
+                            error!("pop(): {:?}", cause);
+                            return Err(Fail::new(libc::ECONNRESET, &cause));
+                        }
+                        let future: Operation = Operation::from(PushFuture::new(qd, pipe.buffer(), buf));
                         let handle: SchedulerHandle = match self.scheduler.insert(future) {
                             Some(handle) => handle,
                             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -162,8 +172,14 @@ impl CatmemLibOS {
 
         // Issue pop operation.
         match self.rings.get(&qd) {
-            Some(ring) => {
-                let future: Operation = Operation::from(PopFuture::new(qd, ring.clone()));
+            Some(pipe) => {
+                // Handle end of file.
+                if pipe.eof() {
+                    let cause: String = format!("end of file (qd={:?})", qd);
+                    error!("pop(): {:?}", cause);
+                    return Err(Fail::new(libc::ECONNRESET, &cause));
+                }
+                let future: Operation = Operation::from(PopFuture::new(qd, pipe.buffer()));
                 let handle: SchedulerHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -213,7 +229,8 @@ impl CatmemLibOS {
             OperationResult::Pop(bytes, eof) => {
                 // Handle end of file.
                 if eof {
-                    self.close(qd)?;
+                    let pipe: &mut Pipe = self.rings.get_mut(&qd).expect("unregisted queue descriptor");
+                    pipe.set_eof();
                 }
 
                 match self.into_sgarray(bytes) {
