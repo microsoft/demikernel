@@ -3,13 +3,17 @@
 
 mod futures;
 mod iouring;
+mod queue;
 mod runtime;
 
 //======================================================================================================================
 // Exports
 //======================================================================================================================
 
-pub use self::runtime::IoUringRuntime;
+pub use self::{
+    queue::CatcollarQueue,
+    runtime::IoUringRuntime,
+};
 
 //======================================================================================================================
 // Imports
@@ -49,7 +53,6 @@ use crate::{
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
@@ -69,9 +72,7 @@ const CATCOLLAR_RECVBUF_SIZE: u16 = 9000;
 /// Catcollar LibOS
 pub struct CatcollarLibOS {
     /// Table of queue descriptors.
-    qtable: IoQueueTable, // TODO: Move this to Demikernel module.
-    /// Established sockets.
-    sockets: HashMap<QDesc, RawFd>,
+    qtable: IoQueueTable<CatcollarQueue>, // TODO: Move this into runtime module.
     /// Underlying runtime.
     runtime: IoUringRuntime,
 }
@@ -84,14 +85,9 @@ pub struct CatcollarLibOS {
 impl CatcollarLibOS {
     /// Instantiates a Catcollar LibOS.
     pub fn new(_config: &Config) -> Self {
-        let qtable: IoQueueTable = IoQueueTable::new();
-        let sockets: HashMap<QDesc, RawFd> = HashMap::new();
+        let qtable: IoQueueTable<CatcollarQueue> = IoQueueTable::<CatcollarQueue>::new();
         let runtime: IoUringRuntime = IoUringRuntime::new();
-        Self {
-            qtable,
-            sockets,
-            runtime,
-        }
+        Self { qtable, runtime }
     }
 
     /// Creates a socket.
@@ -136,9 +132,9 @@ impl CatcollarLibOS {
                 }
 
                 trace!("socket: {:?}, domain: {:?}, typ: {:?}", fd, domain, typ);
-                let qd: QDesc = self.qtable.alloc(qtype.into());
-                assert_eq!(self.sockets.insert(qd, fd).is_none(), true);
-                Ok(qd)
+                let mut queue: CatcollarQueue = CatcollarQueue::new(qtype);
+                queue.set_fd(fd);
+                Ok(self.qtable.alloc(queue))
             },
             _ => {
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -152,25 +148,28 @@ impl CatcollarLibOS {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // Issue bind operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
-                match unsafe {
-                    libc::bind(
-                        fd,
-                        (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                        mem::size_of_val(&sockaddr) as u32,
-                    )
-                } {
-                    stats if stats == 0 => Ok(()),
-                    _ => {
-                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                        error!("failed to bind socket (errno={:?})", errno);
-                        Err(Fail::new(errno, "operation failed"))
-                    },
-                }
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
+                    match unsafe {
+                        libc::bind(
+                            fd,
+                            (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                            mem::size_of_val(&sockaddr) as u32,
+                        )
+                    } {
+                        stats if stats == 0 => Ok(()),
+                        _ => {
+                            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                            error!("failed to bind socket (errno={:?})", errno);
+                            Err(Fail::new(errno, "operation failed"))
+                        },
+                    }
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -179,16 +178,19 @@ impl CatcollarLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // Issue listen operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                if unsafe { libc::listen(fd, backlog as i32) } != 0 {
-                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                    error!("failed to listen ({:?})", errno);
-                    return Err(Fail::new(errno, "operation failed"));
-                }
-                Ok(())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    if unsafe { libc::listen(fd, backlog as i32) } != 0 {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        error!("failed to listen ({:?})", errno);
+                        return Err(Fail::new(errno, "operation failed"));
+                    }
+                    Ok(())
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -196,22 +198,25 @@ impl CatcollarLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
 
-        // Issue accept operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
-                let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => {
-                        self.qtable.free(new_qd);
-                        return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
-                    },
-                };
-                Ok(handle.into_raw().into())
+        let fd: RawFd = match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => fd,
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        };
+
+        // Issue accept operation.
+        let new_qd: QDesc = self.qtable.alloc(CatcollarQueue::new(QType::TcpSocket));
+        let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
+        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => {
+                self.qtable.free(&new_qd);
+                return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
+            },
+        };
+        Ok(handle.into_raw().into())
     }
 
     /// Establishes a connection to a remote endpoint.
@@ -219,14 +224,17 @@ impl CatcollarLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    Ok(handle.into_raw().into())
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
@@ -235,15 +243,17 @@ impl CatcollarLibOS {
     /// Closes a socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
-        match self.sockets.get(&qd) {
-            Some(&fd) => match unsafe { libc::close(fd) } {
-                stats if stats == 0 => (),
-                _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => match unsafe { libc::close(fd) } {
+                    stats if stats != 0 => (),
+                    _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
             None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
-        self.sockets.remove(&qd);
-        self.qtable.free(qd);
+        self.qtable.free(&qd);
         Ok(())
     }
 
@@ -258,17 +268,20 @@ impl CatcollarLibOS {
         }
 
         // Issue push operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                // Issue operation.
-                let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), qd, fd, buf));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    // Issue operation.
+                    let future: Operation = Operation::from(PushFuture::new(self.runtime.clone(), qd, fd, buf));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    Ok(handle.into_raw().into())
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -283,18 +296,21 @@ impl CatcollarLibOS {
                 }
 
                 // Issue pushto operation.
-                match self.sockets.get(&qd) {
-                    Some(&fd) => {
-                        // Issue operation.
-                        let future: Operation =
-                            Operation::from(PushtoFuture::new(self.runtime.clone(), qd, fd, remote, buf));
-                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                            Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                        };
-                        Ok(handle.into_raw().into())
+                match self.qtable.get(&qd) {
+                    Some(queue) => match queue.get_fd() {
+                        Some(fd) => {
+                            // Issue operation.
+                            let future: Operation =
+                                Operation::from(PushtoFuture::new(self.runtime.clone(), qd, fd, remote, buf));
+                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                                Some(handle) => handle,
+                                None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            };
+                            Ok(handle.into_raw().into())
+                        },
+                        None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
                     },
-                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -308,15 +324,18 @@ impl CatcollarLibOS {
         let buf: DemiBuffer = DemiBuffer::new(CATCOLLAR_RECVBUF_SIZE);
 
         // Issue pop operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(PopFuture::new(self.runtime.clone(), qd, fd, buf));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                let qt: QToken = handle.into_raw().into();
-                Ok(qt)
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let future: Operation = Operation::from(PopFuture::new(self.runtime.clone(), qd, fd, buf));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    let qt: QToken = handle.into_raw().into();
+                    Ok(qt)
+                },
+                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
@@ -363,11 +382,14 @@ impl CatcollarLibOS {
         if let Some(new_qd) = new_qd {
             // Associate raw file descriptor with queue descriptor.
             if let Some(new_fd) = new_fd {
-                assert_eq!(self.sockets.insert(new_qd, new_fd).is_none(), true);
+                match self.qtable.get_mut(&new_qd) {
+                    Some(queue) => queue.set_fd(new_fd),
+                    None => unreachable!("accept: Should have allocated the queue already!"),
+                }
             }
             // Release entry in queue table.
             else {
-                self.qtable.free(new_qd);
+                self.qtable.free(&new_qd);
             }
         }
 
