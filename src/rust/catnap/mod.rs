@@ -2,13 +2,17 @@
 // Licensed under the MIT license.
 
 mod futures;
+mod queue;
 mod runtime;
 
 //==============================================================================
 // Exports
 //==============================================================================
 
-pub use self::runtime::PosixRuntime;
+pub use self::{
+    queue::CatnapQueue,
+    runtime::PosixRuntime,
+};
 
 //==============================================================================
 // Imports
@@ -44,7 +48,6 @@ use crate::{
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
@@ -57,9 +60,7 @@ use ::std::{
 /// Catnap LibOS
 pub struct CatnapLibOS {
     /// Table of queue descriptors.
-    qtable: IoQueueTable, // TODO: Move this to Demikernel module.
-    /// Established sockets.
-    sockets: HashMap<QDesc, RawFd>,
+    qtable: IoQueueTable<CatnapQueue>,
     /// Underlying runtime.
     runtime: PosixRuntime,
 }
@@ -72,14 +73,9 @@ pub struct CatnapLibOS {
 impl CatnapLibOS {
     /// Instantiates a Catnap LibOS.
     pub fn new(_config: &Config) -> Self {
-        let qtable: IoQueueTable = IoQueueTable::new();
-        let sockets: HashMap<QDesc, RawFd> = HashMap::new();
+        let qtable: IoQueueTable<CatnapQueue> = IoQueueTable::<CatnapQueue>::new();
         let runtime: PosixRuntime = PosixRuntime::new();
-        Self {
-            qtable,
-            sockets,
-            runtime,
-        }
+        Self { qtable, runtime }
     }
 
     /// Creates a socket.
@@ -124,8 +120,7 @@ impl CatnapLibOS {
                 }
 
                 trace!("socket: {:?}, domain: {:?}, typ: {:?}", fd, domain, typ);
-                let qd: QDesc = self.qtable.alloc(qtype.into());
-                assert_eq!(self.sockets.insert(qd, fd).is_none(), true);
+                let qd: QDesc = self.qtable.alloc(CatnapQueue::new(qtype, Some(fd)));
                 Ok(qd)
             },
             _ => {
@@ -140,25 +135,29 @@ impl CatnapLibOS {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // Issue bind operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
-                match unsafe {
-                    libc::bind(
-                        fd,
-                        (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                        mem::size_of_val(&sockaddr) as u32,
-                    )
-                } {
-                    stats if stats == 0 => Ok(()),
-                    _ => {
-                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                        error!("failed to bind socket (errno={:?})", errno);
-                        Err(Fail::new(errno, "operation failed"))
-                    },
-                }
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
+                    match unsafe {
+                        libc::bind(
+                            fd,
+                            (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                            mem::size_of_val(&sockaddr) as u32,
+                        )
+                    } {
+                        stats if stats == 0 => Ok(()),
+                        _ => {
+                            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                            error!("failed to bind socket (errno={:?})", errno);
+                            Err(Fail::new(errno, "operation failed"))
+                        },
+                    }
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            // TODO: Return the queue descriptor
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -167,16 +166,19 @@ impl CatnapLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // Issue listen operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                if unsafe { libc::listen(fd, backlog as i32) } != 0 {
-                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                    error!("failed to listen ({:?})", errno);
-                    return Err(Fail::new(errno, "operation failed"));
-                }
-                Ok(())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    if unsafe { libc::listen(fd, backlog as i32) } != 0 {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        error!("failed to listen ({:?})", errno);
+                        return Err(Fail::new(errno, "operation failed"));
+                    }
+                    Ok(())
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -184,21 +186,22 @@ impl CatnapLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
 
-        // Issue accept operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
-                let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => {
-                        self.qtable.free(new_qd);
-                        return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
-                    },
-                };
-                Ok(handle.into_raw().into())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let new_qd: QDesc = self.qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
+                    let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
+                    match self.runtime.scheduler.insert(future) {
+                        Some(handle) => Ok(handle.into_raw().into()),
+                        None => {
+                            self.qtable.free(&new_qd);
+                            Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"))
+                        },
+                    }
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -207,32 +210,37 @@ impl CatnapLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                Ok(handle.into_raw().into())
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    Ok(handle.into_raw().into())
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
     /// Closes a socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
-        match self.sockets.get(&qd) {
-            Some(&fd) => match unsafe { libc::close(fd) } {
-                stats if stats == 0 => (),
-                _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => match unsafe { libc::close(fd) } {
+                    stats if stats == 0 => (),
+                    _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
             None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        };
+        }
 
-        self.sockets.remove(&qd);
-        self.qtable.free(qd);
+        self.qtable.free(&qd);
         Ok(())
     }
 
@@ -247,16 +255,19 @@ impl CatnapLibOS {
                 }
 
                 // Issue push operation.
-                match self.sockets.get(&qd) {
-                    Some(&fd) => {
-                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, None));
-                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                            Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                        };
-                        Ok(handle.into_raw().into())
+                match self.qtable.get(&qd) {
+                    Some(queue) => match queue.get_fd() {
+                        Some(fd) => {
+                            let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, None));
+                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                                Some(handle) => handle,
+                                None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            };
+                            Ok(handle.into_raw().into())
+                        },
+                        None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
-                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -274,16 +285,19 @@ impl CatnapLibOS {
                 }
 
                 // Issue pushto operation.
-                match self.sockets.get(&qd) {
-                    Some(&fd) => {
-                        let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, Some(remote)));
-                        let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                            Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                        };
-                        Ok(handle.into_raw().into())
+                match self.qtable.get(&qd) {
+                    Some(queue) => match queue.get_fd() {
+                        Some(fd) => {
+                            let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, Some(remote)));
+                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                                Some(handle) => handle,
+                                None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            };
+                            Ok(handle.into_raw().into())
+                        },
+                        None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
-                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -295,17 +309,20 @@ impl CatnapLibOS {
         trace!("pop() qd={:?}", qd);
 
         // Issue pop operation.
-        match self.sockets.get(&qd) {
-            Some(&fd) => {
-                let future: Operation = Operation::from(PopFuture::new(qd, fd));
-                let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
-                let qt: QToken = handle.into_raw().into();
-                Ok(qt)
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let future: Operation = Operation::from(PopFuture::new(qd, fd));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    let qt: QToken = handle.into_raw().into();
+                    Ok(qt)
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -349,10 +366,13 @@ impl CatnapLibOS {
         if let Some(new_qd) = new_qd {
             // Associate raw file descriptor with queue descriptor.
             if let Some(new_fd) = new_fd {
-                assert!(self.sockets.insert(new_qd, new_fd).is_none());
+                match self.qtable.get_mut(&new_qd) {
+                    Some(queue) => queue.set_fd(new_fd),
+                    None => unreachable!("queue descriptor not inserted"),
+                }
             } else {
                 // Release entry in queue table.
-                self.qtable.free(new_qd);
+                self.qtable.free(&new_qd);
             }
         }
 
