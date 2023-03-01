@@ -7,6 +7,7 @@
 
 mod duplex_pipe;
 mod futures;
+mod queue;
 
 //======================================================================================================================
 // Imports
@@ -18,6 +19,7 @@ use self::{
         Operation,
         OperationResult,
     },
+    queue::CatloopQueue,
 };
 use crate::{
     catloop::futures::{
@@ -48,10 +50,7 @@ use crate::{
 use ::std::{
     any::Any,
     cell::RefCell,
-    collections::{
-        HashMap,
-        HashSet,
-    },
+    collections::HashMap,
     mem,
     net::{
         Ipv4Addr,
@@ -65,18 +64,20 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
+#[derive(Copy, Clone)]
+pub enum Socket {
+    Active(Option<SocketAddrV4>),
+    Passive(SocketAddrV4),
+}
+
 /// A LibOS that exposes exposes sockets semantics on a memory queue.
 pub struct CatloopLibOS {
     /// Next ephemeral port available. ToDo: we want to change this to the ephemeral port allocator.
     next_port: u16,
     /// Table of queue descriptors. This table has one entry for each existing queue descriptor in Catloop LibOS.
-    qtable: IoQueueTable,
+    qtable: IoQueueTable<CatloopQueue>,
     /// Underlying scheduler.
     scheduler: Scheduler,
-    /// Fake sockets table. It holds one entry per open socket.
-    sockets: HashMap<QDesc, Option<(SocketAddrV4, Rc<DuplexPipe>)>>,
-    /// Table of listening sockets. It refers to passive sockets that are registered in the sockets table.
-    listening: HashSet<QDesc>,
     /// Table for ongoing operations.
     qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
     /// Underlying reference to Catmem LibOS.
@@ -101,10 +102,8 @@ impl CatloopLibOS {
     pub fn new() -> Self {
         Self {
             next_port: 0,
-            qtable: IoQueueTable::new(),
+            qtable: IoQueueTable::<CatloopQueue>::new(),
             scheduler: Scheduler::default(),
-            sockets: HashMap::default(),
-            listening: HashSet::default(),
             qts: HashMap::default(),
             catmem: Rc::new(RefCell::new(CatmemLibOS::new())),
         }
@@ -131,16 +130,8 @@ impl CatloopLibOS {
         };
 
         // Create fake socket.
-        let qd: QDesc = self.qtable.alloc(qtype.into());
-
-        // Register queue descriptor in the sockets table.
-        match self.sockets.insert(qd, None).is_none() {
-            true => Ok(qd),
-            false => {
-                error!("failed to register socket (qd={:?})", qd);
-                Err(Fail::new(libc::EAGAIN, "failed to register socket"))
-            },
-        }
+        let qd: QDesc = self.qtable.alloc(CatloopQueue::new(qtype));
+        Ok(qd)
     }
 
     /// Binds a socket to a local endpoint.
@@ -148,20 +139,35 @@ impl CatloopLibOS {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // Check if the queue descriptor is registered in the sockets table.
-        if !self.sockets.contains_key(&qd) {
-            error!("invalid queue descriptor (qd={:?})", qd);
-            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+        match self.qtable.get_mut(&qd) {
+            Some(queue) => {
+                if queue.get_pipe().is_some() {
+                    let message: String = format!("Cannot bind an already bound queue (qd={:?})", qd);
+                    let e: Fail = Fail::new(libc::EBADF, &message);
+                    error!("bind(): {:?}", e);
+                    return Err(e);
+                }
+                if let Socket::Passive(_) = queue.get_socket() {
+                    let message: String = format!("Cannot bind a listening queue (qd={:?})", qd);
+                    let e: Fail = Fail::new(libc::EBADF, &message);
+                    error!("bind(): {:?}", e);
+                    return Err(e);
+                }
+                // Create underlying memory channels.
+                // FIXME: https://github.com/demikernel/demikernel/issues/497
+                let ipv4: &Ipv4Addr = local.ip();
+                let port: u16 = local.port().into();
+                let duplex_pipe: Rc<DuplexPipe> =
+                    Rc::new(DuplexPipe::create_duplex_pipe(self.catmem.clone(), ipv4, port)?);
+                queue.set_pipe(duplex_pipe);
+                queue.set_socket(Socket::Active(Some(local)));
+                Ok(())
+            },
+            None => {
+                error!("invalid queue descriptor (qd={:?})", qd);
+                Err(Fail::new(libc::EBADF, "invalid queue descriptor"))
+            },
         }
-
-        // Create underlying memory channels.
-        let ipv4: &Ipv4Addr = local.ip();
-        let port: u16 = local.port().into();
-        let duplex_pipe: Rc<DuplexPipe> = Rc::new(DuplexPipe::create_duplex_pipe(self.catmem.clone(), ipv4, port)?);
-
-        // Update bind address.
-        self.sockets.insert(qd, Some((local.clone(), duplex_pipe)));
-
-        Ok(())
     }
 
     /// Sets a socket as a passive one.
@@ -169,58 +175,84 @@ impl CatloopLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // Check if the queue descriptor is registered in the sockets table.
-        if !self.sockets.contains_key(&qd) {
-            error!("invalid queue descriptor (qd={:?})", qd);
-            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+        match self.qtable.get_mut(&qd) {
+            Some(queue) => match queue.get_socket() {
+                Socket::Active(Some(local)) => {
+                    queue.set_socket(Socket::Passive(local));
+                    Ok(())
+                },
+                Socket::Active(None) => {
+                    let message: String = format!(
+                        "Cannot call listen on an unbound socket. Please call bind first. (qd={:?})",
+                        qd
+                    );
+                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
+                    error!("listen(): {:?}", e);
+                    Err(e)
+                },
+                Socket::Passive(_) => {
+                    let message: String = format!("Cannot call listen on an already listening socket. (qd={:?})", qd);
+                    let e: Fail = Fail::new(libc::EBADF, &message);
+                    error!("listen(): {:?}", e);
+                    Err(e)
+                },
+            },
+            None => {
+                error!("invalid queue descriptor (qd={:?})", qd);
+                Err(Fail::new(libc::EBADF, "invalid queue descriptor"))
+            },
         }
-
-        // Register socket in the table of listening sockets.
-        self.listening.insert(qd);
-
-        Ok(())
     }
 
     /// Accepts connections on a socket.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept() qd={:?}", qd);
-
-        // Check if the queue descriptor is registered in the sockets table.
-        if !self.sockets.contains_key(&qd) {
-            error!("invalid queue descriptor (qd={:?})", qd);
-            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
-        }
-
         // Issue accept operation.
-        match self.sockets.get(&qd) {
-            Some(&Some((local, ref control_duplex_pipe))) => {
-                let new_qd: QDesc = self.qtable.alloc(QType::TcpSocket.into());
-                let future: Operation = Operation::from((
-                    qd,
-                    AcceptFuture::new(
-                        local.ip(),
-                        self.catmem.clone(),
-                        control_duplex_pipe.clone(),
-                        self.next_port,
-                        new_qd,
-                    )?,
-                ));
-                self.next_port += 1;
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => {
-                        self.qtable.free(new_qd);
-                        let message: String = format!("cannot schedule co-routine");
-                        let e: Fail = Fail::new(libc::EAGAIN, &message);
-                        error!("accept(): {:?}", e);
-                        return Err(e);
-                    },
-                };
-                let qt: QToken = handle.into_raw().into();
-                self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_socket() {
+                Socket::Passive(local) => {
+                    let control_duplex_pipe: Rc<DuplexPipe> = match queue.get_pipe() {
+                        Some(pipe) => pipe,
+                        None => return Err(Fail::new(libc::EINVAL, "invalid queue descriptor")),
+                    };
+                    let new_qd: QDesc = self.qtable.alloc(CatloopQueue::new(QType::TcpSocket));
+                    let future: Operation = Operation::from((
+                        qd,
+                        AcceptFuture::new(
+                            local.ip(),
+                            self.catmem.clone(),
+                            control_duplex_pipe.clone(),
+                            self.next_port,
+                            new_qd,
+                        )?,
+                    ));
+                    self.next_port += 1;
+                    let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => {
+                            self.qtable.free(&new_qd);
+                            let message: String = format!("cannot schedule co-routine");
+                            let e: Fail = Fail::new(libc::EAGAIN, &message);
+                            error!("accept(): {:?}", e);
+                            return Err(e);
+                        },
+                    };
+                    let qt: QToken = handle.into_raw().into();
+                    self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
 
-                Ok(qt)
+                    Ok(qt)
+                },
+                Socket::Active(_) => {
+                    let message: String = format!(
+                        "Cannot call accept on an active socket. Please call listen first. (qd={:?})",
+                        qd
+                    );
+                    let e: Fail = Fail::new(libc::EBADF, &message);
+                    error!("accept(): {:?}", e);
+                    Err(e)
+                },
             },
-            _ => {
+            None => {
                 let message: String = format!("invalid queue descriptor (qd={:?})", qd);
                 let e: Fail = Fail::new(libc::EBADF, &message);
                 error!("accept(): {:?}", e);
@@ -234,23 +266,31 @@ impl CatloopLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
-        match self.sockets.get(&qd) {
-            Some(None) => {
-                let future: Operation = Operation::from((qd, ConnectFuture::new(self.catmem.clone(), remote)?));
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => {
-                        let e: Fail = Fail::new(libc::EAGAIN, "cannot schedule co-routine");
-                        error!("connect(): {:?}", e);
-                        return Err(e);
-                    },
-                };
-                let qt: QToken = handle.into_raw().into();
-                self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_socket() {
+                Socket::Active(_) => {
+                    let future: Operation = Operation::from((qd, ConnectFuture::new(self.catmem.clone(), remote)?));
+                    let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => {
+                            let e: Fail = Fail::new(libc::EAGAIN, "cannot schedule co-routine");
+                            error!("connect(): {:?}", e);
+                            return Err(e);
+                        },
+                    };
+                    let qt: QToken = handle.into_raw().into();
+                    self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
 
-                Ok(qt)
+                    Ok(qt)
+                },
+                Socket::Passive(_) => {
+                    let message: String = format!("Cannot call connect on a listening socket. (qd={:?})", qd);
+                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
+                    error!("connect(): {:?}", e);
+                    Err(e)
+                },
             },
-            _ => {
+            None => {
                 let error_msg: String = format!("invalid queue descriptor {:?}", qd);
                 let e: Fail = Fail::new(libc::EAGAIN, &error_msg);
                 error!("connect(): {:?}", e);
@@ -264,32 +304,34 @@ impl CatloopLibOS {
         trace!("close() qd={:?}", qd);
 
         // Remove socket from sockets table.
-        match self.sockets.remove(&qd) {
+        match self.qtable.get(&qd) {
             // Socket is not bound to a duplex pipe.
-            Some(None) => {
-                self.qtable.free(qd);
-                Ok(())
+            Some(queue) => {
+                if let Some(duplex_pipe) = queue.get_pipe() {
+                    duplex_pipe.close()?;
+                }
             },
-
-            // Socket is bound to a duplex pipe.
-            Some(Some((_, duplex_pipe))) => {
-                self.listening.remove(&qd);
-                duplex_pipe.close()?;
-                self.qtable.free(qd);
-                Ok(())
+            None => {
+                let error_msg: String = format!("invalid queue descriptor {:?}", qd);
+                let e: Fail = Fail::new(libc::EBADF, &error_msg);
+                error!("close(): {:?}", e);
+                return Err(e);
             },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+        };
+        self.qtable.free(&qd);
+        Ok(())
     }
 
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
-        let catmem_qd: QDesc = match self.sockets.get(&qd) {
-            Some(&Some((_, ref duplex_pipe))) => duplex_pipe.tx(),
-            Some(&None) => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-            None => qd,
+        let catmem_qd: QDesc = match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_pipe() {
+                Some(duplex_pipe) => duplex_pipe.tx(),
+                None => unreachable!("push() an unconnected queue"),
+            },
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
@@ -302,10 +344,12 @@ impl CatloopLibOS {
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}", qd);
 
-        let catmem_qd: QDesc = match self.sockets.get(&qd) {
-            Some(&Some((_, ref duplex_pipe))) => duplex_pipe.rx(),
-            Some(&None) => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-            None => qd,
+        let catmem_qd: QDesc = match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_pipe() {
+                Some(duplex_pipe) => duplex_pipe.rx(),
+                None => unreachable!("pop() an unconnected queue"),
+            },
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd)?;
@@ -345,11 +389,22 @@ impl CatloopLibOS {
                 let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
 
                 match r {
-                    OperationResult::Connect((remote, ref duplex_pipe)) => {
-                        _ = self.sockets.insert(qd, Some((remote, duplex_pipe.clone())))
+                    OperationResult::Connect((remote, ref duplex_pipe)) => match self.qtable.get_mut(&qd) {
+                        Some(queue) => {
+                            //TODO: check whether we need to close the original control duplex pipe allocated on bind().
+                            queue.set_socket(Socket::Active(Some(remote)));
+                            queue.set_pipe(duplex_pipe.clone());
+                        },
+                        None => unreachable!("Finishing connect on unallocated queue descriptor"),
                     },
                     OperationResult::Accept((new_qd, (remote, ref duplex_pipe))) => {
-                        self.sockets.insert(new_qd, Some((remote, duplex_pipe.clone())));
+                        match self.qtable.get_mut(&new_qd) {
+                            Some(queue) => {
+                                queue.set_socket(Socket::Active(Some(remote)));
+                                queue.set_pipe(duplex_pipe.clone());
+                            },
+                            None => unreachable!("Finishing accept on unallocated queue descriptor"),
+                        }
                     },
                     _ => {},
                 };
