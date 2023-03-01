@@ -5,7 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::fail::Fail;
+use crate::runtime::{
+    fail::Fail,
+    memory::DemiBuffer,
+    queue::IoQueue,
+};
 use ::futures::{
     channel::mpsc::{
         self,
@@ -47,6 +51,12 @@ pub struct SharedQueue<T> {
     length: Rc<RefCell<usize>>,
     /// Capacity of shahred queue.
     capacity: usize,
+}
+
+/// Per-queue metadata for a UDP socket.
+pub struct UdpQueue {
+    addr: Option<SocketAddrV4>,
+    recv_queue: Option<SharedQueue<SharedQueueSlot<DemiBuffer>>>,
 }
 
 //======================================================================================================================
@@ -108,11 +118,52 @@ impl<T> SharedQueue<T> {
     }
 }
 
+/// Getters and setters for per UDP queue metadata.
+impl UdpQueue {
+    pub fn new() -> Self {
+        Self {
+            addr: None,
+            recv_queue: None,
+        }
+    }
+
+    /// Check whether the queue/socket is bound to an address.
+    pub fn is_bound(&self) -> bool {
+        self.addr != None
+    }
+
+    /// Get the address assigned to this socket.
+    pub fn get_addr(&self) -> Result<SocketAddrV4, Fail> {
+        match self.addr {
+            Some(addr) => Ok(addr.clone()),
+            None => Err(Fail::new(libc::ENOTCONN, "port not bound")),
+        }
+    }
+
+    /// Get the recv queue associated with this socket.
+    pub fn get_recv_queue(&self) -> SharedQueue<SharedQueueSlot<DemiBuffer>> {
+        match &self.recv_queue {
+            Some(recv) => recv.clone(),
+            None => panic!("No allocated receive queue!"),
+        }
+    }
+
+    /// Set the address assigned to this socket/Demikernel queue.
+    pub fn set_addr(&mut self, addr: SocketAddrV4) {
+        self.addr = Some(addr);
+    }
+
+    /// Set the recv_queue for this socket/Demikernel queue.
+    pub fn set_recv_queue(&mut self, queue: SharedQueue<SharedQueueSlot<DemiBuffer>>) {
+        self.recv_queue = Some(queue);
+    }
+}
+
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
 
-/// Clone Trait Implementation for Shared Queues
+/// Clone Trait Implementation for Shared Queues.
 impl<T> Clone for SharedQueue<T> {
     /// Clones the target [SharedQueue].
     fn clone(&self) -> Self {
@@ -122,5 +173,12 @@ impl<T> Clone for SharedQueue<T> {
             length: self.length.clone(),
             capacity: self.capacity,
         }
+    }
+}
+
+/// IoQueue Trait Implementation for UDP Queues.
+impl IoQueue for UdpQueue {
+    fn get_qtype(&self) -> crate::QType {
+        crate::QType::UdpSocket
     }
 }

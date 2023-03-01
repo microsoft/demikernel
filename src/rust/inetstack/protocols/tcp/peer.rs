@@ -10,6 +10,7 @@ use super::{
     established::EstablishedSocket,
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
+    queue::TcpQueue,
 };
 use crate::{
     inetstack::protocols::{
@@ -23,6 +24,7 @@ use crate::{
             IpProtocol,
         },
         ipv4::Ipv4Header,
+        queue::InetQueue,
         tcp::{
             established::ControlBlock,
             operations::{
@@ -46,29 +48,22 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::IoQueueTable,
         timer::TimerRc,
         QDesc,
     },
     scheduler::scheduler::Scheduler,
 };
 use ::futures::channel::mpsc;
-use ::libc::{
-    EAGAIN,
-    EBADF,
-    EBUSY,
-    EINPROGRESS,
-    EINVAL,
-    ENOTCONN,
-    ENOTSUP,
-    EOPNOTSUPP,
-};
 use ::rand::{
     prelude::SmallRng,
     Rng,
     SeedableRng,
 };
+
 use ::std::{
     cell::{
+        Ref,
         RefCell,
         RefMut,
     },
@@ -92,11 +87,18 @@ use crate::timer;
 // Enumerations
 //==============================================================================
 
-enum Socket {
-    Inactive { local: Option<SocketAddrV4> },
-    Listening { local: SocketAddrV4 },
-    Connecting { local: SocketAddrV4, remote: SocketAddrV4 },
-    Established { local: SocketAddrV4, remote: SocketAddrV4 },
+pub enum Socket {
+    Inactive(Option<SocketAddrV4>),
+    Listening(PassiveSocket),
+    Connecting(ActiveOpenSocket),
+    Established(EstablishedSocket),
+    Closing(EstablishedSocket),
+}
+
+#[derive(PartialEq, Eq, Hash)]
+enum SocketId {
+    Active(SocketAddrV4, SocketAddrV4),
+    Passive(SocketAddrV4),
 }
 
 //==============================================================================
@@ -105,16 +107,11 @@ enum Socket {
 
 pub struct Inner {
     isn_generator: IsnGenerator,
-
     ephemeral_ports: EphemeralPorts,
-
-    // FD -> local port
-    sockets: HashMap<QDesc, Socket>,
-
-    passive: HashMap<SocketAddrV4, PassiveSocket>,
-    connecting: HashMap<(SocketAddrV4, SocketAddrV4), ActiveOpenSocket>,
-    established: HashMap<(SocketAddrV4, SocketAddrV4), EstablishedSocket>,
-
+    // queue descriptor -> per queue metadata
+    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+    // Connection or socket identifier for mapping incoming packets to the Demikernel queue
+    addresses: HashMap<SocketId, QDesc>,
     rt: Rc<dyn NetworkRuntime>,
     scheduler: Scheduler,
     clock: TimerRc,
@@ -123,7 +120,6 @@ pub struct Inner {
     tcp_config: TcpConfig,
     arp: ArpPeer,
     rng: Rc<RefCell<SmallRng>>,
-
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
@@ -139,6 +135,7 @@ impl TcpPeer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
         scheduler: Scheduler,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -150,6 +147,7 @@ impl TcpPeer {
         let inner = Rc::new(RefCell::new(Inner::new(
             rt.clone(),
             scheduler,
+            qtable.clone(),
             clock,
             local_link_addr,
             local_ipv4_addr,
@@ -163,32 +161,22 @@ impl TcpPeer {
     }
 
     /// Opens a TCP socket.
-    pub fn do_socket(&self, qd: QDesc) -> Result<(), Fail> {
+    pub fn do_socket(&self) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
-        match inner.sockets.contains_key(&qd) {
-            false => {
-                let socket: Socket = Socket::Inactive { local: None };
-                inner.sockets.insert(qd, socket);
-                Ok(())
-            },
-            true => return Err(Fail::new(EBUSY, "queue descriptor in use")),
-        }
+        let inner: Ref<Inner> = self.inner.borrow();
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+        let new_qd: QDesc = qtable.alloc(InetQueue::Tcp(TcpQueue::new()));
+        Ok(new_qd)
     }
 
     pub fn bind(&self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
         let mut inner: RefMut<Inner> = self.inner.borrow_mut();
 
         // Check if address is already bound.
-        for (_, socket) in &inner.sockets {
-            match socket {
-                Socket::Inactive { local: Some(local) }
-                | Socket::Listening { local }
-                | Socket::Connecting { local, remote: _ }
-                | Socket::Established { local, remote: _ }
-                    if *local == addr =>
-                {
+        for (socket_id, _) in &inner.addresses {
+            match socket_id {
+                SocketId::Passive(local) | SocketId::Active(local, _) if *local == addr => {
                     return Err(Fail::new(libc::EADDRINUSE, "address already in use"))
                 },
                 _ => (),
@@ -210,20 +198,27 @@ impl TcpPeer {
         }
 
         // Issue operation.
-        let ret: Result<(), Fail> = match inner.sockets.get_mut(&qd) {
-            Some(Socket::Inactive { ref mut local }) => match *local {
-                Some(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
-                None => {
-                    *local = Some(addr);
+        let ret: Result<(), Fail> = match inner.qtable.borrow_mut().get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
+                Socket::Inactive(None) => {
+                    queue.set_socket(Socket::Inactive(Some(addr)));
                     Ok(())
                 },
+                Socket::Inactive(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
+                Socket::Listening(_) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
+                Socket::Connecting(_) => return Err(Fail::new(libc::EINVAL, "socket is connecting")),
+                Socket::Established(_) => return Err(Fail::new(libc::EINVAL, "socket is connected")),
+                Socket::Closing(_) => return Err(Fail::new(libc::EINVAL, "socket is closed")),
             },
-            _ => Err(Fail::new(EBADF, "invalid queue descriptor")),
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
         // Handle return value.
         match ret {
-            Ok(x) => Ok(x),
+            Ok(x) => {
+                inner.addresses.insert(SocketId::Passive(addr), qd);
+                Ok(x)
+            },
             Err(e) => {
                 // Rollback ephemeral port allocation.
                 if EphemeralPorts::is_private(addr.port()) {
@@ -235,56 +230,64 @@ impl TcpPeer {
     }
 
     pub fn receive(&self, ip_header: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        self.inner.borrow_mut().receive(ip_header, buf)
+        self.inner.borrow().receive(ip_header, buf)
     }
 
     // Marks the target socket as passive.
     pub fn listen(&self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
-
+        // This code borrows a reference to inner, instead of the entire self structure,
+        // so we can still borrow self later.
+        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
+        let inner: &mut Inner = &mut *inner_;
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
         // Get bound address while checking for several issues.
-        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
-            Some(Socket::Inactive { local: Some(local) }) => *local,
-            Some(Socket::Listening { local: _ }) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
-            Some(Socket::Inactive { local: None }) => {
-                return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
-            },
-            Some(Socket::Connecting { local: _, remote: _ }) => {
-                return Err(Fail::new(libc::EINVAL, "socket is connecting"))
-            },
-            Some(Socket::Established { local: _, remote: _ }) => {
-                return Err(Fail::new(libc::EINVAL, "socket is connected"))
-            },
-            _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        };
+        match qtable.get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
+                Socket::Inactive(Some(local)) => {
+                    // Check if there isn't a socket listening on this address/port pair.
+                    if inner.addresses.contains_key(&SocketId::Passive(*local)) {
+                        if *inner.addresses.get(&SocketId::Passive(*local)).unwrap() != qd {
+                            return Err(Fail::new(
+                                libc::EADDRINUSE,
+                                "another socket is already listening on the same address/port pair",
+                            ));
+                        }
+                    }
 
-        // Check if there isn't a socket listening on this address/port pair.
-        if inner.passive.contains_key(&local) {
-            return Err(Fail::new(
-                libc::EADDRINUSE,
-                "another socket is already listening on the same address/port pair",
-            ));
+                    let nonce: u32 = inner.rng.borrow_mut().gen();
+                    let socket = PassiveSocket::new(
+                        *local,
+                        backlog,
+                        inner.rt.clone(),
+                        inner.scheduler.clone(),
+                        inner.clock.clone(),
+                        inner.tcp_config.clone(),
+                        inner.local_link_addr,
+                        inner.arp.clone(),
+                        nonce,
+                    );
+                    inner.addresses.insert(SocketId::Passive(local.clone()), qd);
+                    queue.set_socket(Socket::Listening(socket));
+                    Ok(())
+                },
+                Socket::Inactive(None) => {
+                    return Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
+                },
+                Socket::Listening(_) => return Err(Fail::new(libc::EINVAL, "socket is already listening")),
+                Socket::Connecting(_) => return Err(Fail::new(libc::EINVAL, "socket is connecting")),
+                Socket::Established(_) => return Err(Fail::new(libc::EINVAL, "socket is connected")),
+                Socket::Closing(_) => return Err(Fail::new(libc::EINVAL, "socket is closed")),
+            },
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
-
-        let nonce: u32 = inner.rng.borrow_mut().gen();
-        let socket = PassiveSocket::new(
-            local,
-            backlog,
-            inner.rt.clone(),
-            inner.scheduler.clone(),
-            inner.clock.clone(),
-            inner.tcp_config.clone(),
-            inner.local_link_addr,
-            inner.arp.clone(),
-            nonce,
-        );
-        assert!(inner.passive.insert(local, socket).is_none());
-        inner.sockets.insert(qd, Socket::Listening { local });
-        Ok(())
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, qd: QDesc, new_qd: QDesc) -> AcceptFuture {
+    pub fn do_accept(&self, qd: QDesc) -> AcceptFuture {
+        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
+        let inner: &mut Inner = &mut *inner_;
+
+        let new_qd: QDesc = inner.qtable.borrow_mut().alloc(InetQueue::Tcp(TcpQueue::new()));
         AcceptFuture::new(qd, new_qd, self.inner.clone())
     }
 
@@ -295,196 +298,195 @@ impl TcpPeer {
         new_qd: QDesc,
         ctx: &mut Context,
     ) -> Poll<Result<(QDesc, SocketAddrV4), Fail>> {
-        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
-        let inner: &mut Inner = &mut *inner_;
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
 
-        let local: &SocketAddrV4 = match inner.sockets.get(&qd) {
-            Some(Socket::Listening { local }) => local,
-            Some(..) => return Poll::Ready(Err(Fail::new(EOPNOTSUPP, "socket not listening"))),
-            None => return Poll::Ready(Err(Fail::new(EBADF, "bad file descriptor"))),
+        let cb: ControlBlock = match inner.qtable.borrow_mut().get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
+                Socket::Listening(socket) => match socket.poll_accept(ctx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(result) => match result {
+                        Ok(cb) => cb,
+                        Err(err) => {
+                            inner.qtable.borrow_mut().free(&new_qd);
+                            return Poll::Ready(Err(err));
+                        },
+                    },
+                },
+                _ => return Poll::Ready(Err(Fail::new(libc::EOPNOTSUPP, "socket not listening"))),
+            },
+            _ => return Poll::Ready(Err(Fail::new(libc::EBADF, "invalid queue descriptor"))),
         };
 
-        let passive: &mut PassiveSocket = inner.passive.get_mut(local).expect("sockets/local inconsistency");
-        let cb: ControlBlock = match passive.poll_accept(ctx) {
-            Poll::Pending => return Poll::Pending,
-            Poll::Ready(Ok(e)) => e,
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-        };
         let established: EstablishedSocket = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
         let local: SocketAddrV4 = established.cb.get_local();
         let remote: SocketAddrV4 = established.cb.get_remote();
-        let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
-        let socket: Socket = Socket::Established { local, remote };
-
-        // TODO: Reset the connection if the following following check fails, instead of panicking.
-        if inner.sockets.insert(new_qd, socket).is_some() {
-            panic!("duplicate queue descriptor in sockets table");
-        }
-
-        // TODO: Reset the connection if the following following check fails, instead of panicking.
-        if inner.established.insert(key, established).is_some() {
+        match inner.qtable.borrow_mut().get_mut(&new_qd) {
+            Some(InetQueue::Tcp(queue)) => queue.set_socket(Socket::Established(established)),
+            _ => panic!("Should have been pre-allocated!"),
+        };
+        if inner
+            .addresses
+            .insert(SocketId::Active(local, remote), new_qd)
+            .is_some()
+        {
             panic!("duplicate queue descriptor in established sockets table");
         }
-
+        // TODO: Reset the connection if the following following check fails, instead of panicking.
         Poll::Ready(Ok((new_qd, remote)))
     }
 
     pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture, Fail> {
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
+        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
+        let inner: &mut Inner = &mut *inner_;
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
 
         // Get local address bound to socket.
-        let local: SocketAddrV4 = match inner.sockets.get_mut(&qd) {
-            // Handle unbound socket.
-            Some(Socket::Inactive { local: None }) => {
-                // TODO: we should free this when closing.
-                let local_port: u16 = inner.ephemeral_ports.alloc_any()?;
-                SocketAddrV4::new(inner.local_ipv4_addr, local_port)
+        match qtable.get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
+                Socket::Inactive(local_socket) => {
+                    let local: SocketAddrV4 = match local_socket {
+                        Some(local) => local.clone(),
+                        None => {
+                            // TODO: we should free this when closing.
+                            let local_port: u16 = inner.ephemeral_ports.alloc_any()?;
+                            SocketAddrV4::new(inner.local_ipv4_addr, local_port)
+                        },
+                    };
+
+                    // Create active socket.
+                    let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
+                    let socket: ActiveOpenSocket = ActiveOpenSocket::new(
+                        inner.scheduler.clone(),
+                        local_isn,
+                        local,
+                        remote,
+                        inner.rt.clone(),
+                        inner.tcp_config.clone(),
+                        inner.local_link_addr,
+                        inner.clock.clone(),
+                        inner.arp.clone(),
+                    );
+
+                    // Update socket state.
+                    queue.set_socket(Socket::Connecting(socket));
+                    inner.addresses.insert(SocketId::Active(local, remote.clone()), qd)
+                },
+                Socket::Listening(_) => return Err(Fail::new(libc::EOPNOTSUPP, "socket is listening")),
+                Socket::Connecting(_) => return Err(Fail::new(libc::EALREADY, "socket is connecting")),
+                Socket::Established(_) => return Err(Fail::new(libc::EISCONN, "socket is connected")),
+                Socket::Closing(_) => return Err(Fail::new(libc::EINVAL, "socket is closed")),
             },
-            // Handle bound socket.
-            Some(Socket::Inactive { local: Some(local) }) => *local,
-            Some(Socket::Connecting { local: _, remote: _ }) => Err(Fail::new(libc::EALREADY, "socket is connecting"))?,
-            Some(Socket::Established { local: _, remote: _ }) => Err(Fail::new(libc::EISCONN, "socket is connected"))?,
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor"))?,
+            _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor"))?,
         };
-
-        // Update socket state.
-        match inner.sockets.get_mut(&qd) {
-            Some(socket) => {
-                *socket = Socket::Connecting { local, remote };
-            },
-            None => {
-                // This should not happen, because we've queried the sockets table above.
-                error!("socket is no longer in the sockets table?");
-                return Err(Fail::new(libc::EAGAIN, "failed to retrieve socket from sockets table"));
-            },
-        };
-
-        // Create active socket.
-        let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
-        let socket: ActiveOpenSocket = ActiveOpenSocket::new(
-            inner.scheduler.clone(),
-            local_isn,
-            local,
-            remote,
-            inner.rt.clone(),
-            inner.tcp_config.clone(),
-            inner.local_link_addr,
-            inner.clock.clone(),
-            inner.arp.clone(),
-        );
-
-        // Insert socket in connecting table.
-        if inner.connecting.insert((local, remote), socket).is_some() {
-            // This should not happen, unless we are leaking entries when transitioning to established state.
-            error!("socket is already connecting?");
-            Err(Fail::new(libc::EALREADY, "socket is connecting"))?;
-        }
-
         Ok(ConnectFuture {
-            fd: qd,
+            qd: qd,
             inner: self.inner.clone(),
         })
     }
 
-    pub fn poll_recv(&self, fd: QDesc, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
-        let inner = self.inner.borrow_mut();
-        let key = match inner.sockets.get(&fd) {
-            Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(Socket::Connecting { .. }) => return Poll::Ready(Err(Fail::new(EINPROGRESS, "socket connecting"))),
-            Some(Socket::Inactive { .. }) => return Poll::Ready(Err(Fail::new(EBADF, "socket inactive"))),
-            Some(Socket::Listening { .. }) => return Poll::Ready(Err(Fail::new(ENOTCONN, "socket listening"))),
-            None => return Poll::Ready(Err(Fail::new(EBADF, "bad queue descriptor"))),
-        };
-        match inner.established.get(&key) {
-            Some(ref s) => s.poll_recv(ctx),
-            None => Poll::Ready(Err(Fail::new(ENOTCONN, "connection not established"))),
+    pub fn poll_recv(&self, qd: QDesc, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
+        let inner: Ref<Inner> = self.inner.borrow();
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+        match qtable.get_mut(&qd) {
+            Some(InetQueue::Tcp(ref mut queue)) => match queue.get_mut_socket() {
+                Socket::Established(ref mut socket) => socket.poll_recv(ctx),
+                Socket::Closing(ref mut socket) => socket.poll_recv(ctx),
+                Socket::Connecting(_) => Poll::Ready(Err(Fail::new(libc::EINPROGRESS, "socket connecting"))),
+                Socket::Inactive(_) => Poll::Ready(Err(Fail::new(libc::EBADF, "socket inactive"))),
+                Socket::Listening(_) => Poll::Ready(Err(Fail::new(libc::ENOTCONN, "socket listening"))),
+            },
+            _ => Poll::Ready(Err(Fail::new(libc::EBADF, "bad queue descriptor"))),
         }
     }
 
-    pub fn push(&self, fd: QDesc, buf: DemiBuffer) -> PushFuture {
-        let err: Option<Fail> = match self.send(fd, buf) {
+    pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> PushFuture {
+        let err: Option<Fail> = match self.send(qd, buf) {
             Ok(()) => None,
             Err(e) => Some(e),
         };
-        PushFuture { fd, err }
+        PushFuture { qd, err }
     }
 
-    pub fn pop(&self, fd: QDesc) -> PopFuture {
+    pub fn pop(&self, qd: QDesc) -> PopFuture {
         PopFuture {
-            fd,
+            qd,
             inner: self.inner.clone(),
         }
     }
 
-    fn send(&self, fd: QDesc, buf: DemiBuffer) -> Result<(), Fail> {
-        let inner = self.inner.borrow_mut();
-        let key = match inner.sockets.get(&fd) {
-            Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
-            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
-        };
-        match inner.established.get(&key) {
-            Some(ref s) => s.send(buf),
-            None => Err(Fail::new(ENOTCONN, "connection not established")),
+    fn send(&self, qd: QDesc, buf: DemiBuffer) -> Result<(), Fail> {
+        let inner = self.inner.borrow();
+        let qtable = inner.qtable.borrow();
+        match qtable.get(&qd) {
+            Some(InetQueue::Tcp(ref queue)) => match queue.get_socket() {
+                Socket::Established(ref socket) => socket.send(buf),
+                _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            _ => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
     /// Closes a TCP socket.
     pub fn do_close(&self, qd: QDesc) -> Result<(), Fail> {
         let mut inner: RefMut<Inner> = self.inner.borrow_mut();
-
-        match inner.sockets.remove(&qd) {
-            Some(Socket::Established { local, remote }) => {
-                let key: (SocketAddrV4, SocketAddrV4) = (local, remote);
-                match inner.established.get(&key) {
-                    Some(ref s) => s.close()?,
-                    None => return Err(Fail::new(ENOTCONN, "connection not established")),
+        // TODO: Currently we do not handle close correctly because we continue to receive packets at this point to finish the TCP close protocol.
+        // 1. We do not remove the endpoint from the addresses table
+        // 2. We do not remove the queue from the queue table.
+        // As a result, we have stale closed queues that are labelled as closing. We should clean these up.
+        // look up socket
+        let addr: SocketAddrV4 = match inner.qtable.borrow_mut().get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => {
+                match queue.get_socket() {
+                    // Closing an active socket
+                    Socket::Established(socket) => {
+                        socket.close()?;
+                        queue.set_socket(Socket::Closing(socket.clone()));
+                        return Ok(());
+                    },
+                    Socket::Listening(socket) => socket.endpoint(),
+                    Socket::Inactive(Some(addr)) => addr.clone(),
+                    _ => return Err(Fail::new(libc::ENOTSUP, "close not implemented for listening sockets")),
                 }
             },
-
-            Some(..) => return Err(Fail::new(ENOTSUP, "close not implemented for listening sockets")),
-            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
-        }
-
-        Ok(())
+            _ => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
+        };
+        inner.addresses.remove(&SocketId::Passive(addr));
+        Err(Fail::new(libc::ENOTSUP, "close not implemented for listening sockets"))
     }
 
-    pub fn remote_mss(&self, fd: QDesc) -> Result<usize, Fail> {
+    pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {
         let inner = self.inner.borrow();
-        let key = match inner.sockets.get(&fd) {
-            Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
-            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
-        };
-        match inner.established.get(&key) {
-            Some(ref s) => Ok(s.remote_mss()),
-            None => Err(Fail::new(ENOTCONN, "connection not established")),
+        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        match qtable.get(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
+                Socket::Established(socket) => Ok(socket.remote_mss()),
+                _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            _ => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
-    pub fn current_rto(&self, fd: QDesc) -> Result<Duration, Fail> {
+    pub fn current_rto(&self, qd: QDesc) -> Result<Duration, Fail> {
         let inner = self.inner.borrow();
-        let key = match inner.sockets.get(&fd) {
-            Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
-            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
-        };
-        match inner.established.get(&key) {
-            Some(ref s) => Ok(s.current_rto()),
-            None => Err(Fail::new(ENOTCONN, "connection not established")),
+        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        match qtable.get(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
+                Socket::Established(socket) => Ok(socket.current_rto()),
+                _ => return Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            _ => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
-    pub fn endpoints(&self, fd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
+    pub fn endpoints(&self, qd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
         let inner = self.inner.borrow();
-        let key = match inner.sockets.get(&fd) {
-            Some(Socket::Established { local, remote }) => (*local, *remote),
-            Some(..) => return Err(Fail::new(ENOTCONN, "connection not established")),
-            None => return Err(Fail::new(EBADF, "bad queue descriptor")),
-        };
-        match inner.established.get(&key) {
-            Some(ref s) => Ok(s.endpoints()),
-            None => Err(Fail::new(ENOTCONN, "connection not established")),
+        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        match qtable.get(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
+                Socket::Established(socket) => Ok(socket.endpoints()),
+                _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            _ => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 }
@@ -493,6 +495,7 @@ impl Inner {
     fn new(
         rt: Rc<dyn NetworkRuntime>,
         scheduler: Scheduler,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -508,48 +511,65 @@ impl Inner {
         Self {
             isn_generator: IsnGenerator::new(nonce),
             ephemeral_ports,
-            sockets: HashMap::new(),
-            passive: HashMap::new(),
-            connecting: HashMap::new(),
-            established: HashMap::new(),
-            rt,
+            rt: rt,
             scheduler,
-            clock,
-            local_link_addr,
-            local_ipv4_addr,
-            tcp_config,
-            arp,
+            qtable: qtable.clone(),
+            addresses: HashMap::<SocketId, QDesc>::new(),
+            clock: clock,
+            local_link_addr: local_link_addr,
+            local_ipv4_addr: local_ipv4_addr,
+            tcp_config: tcp_config,
+            arp: arp,
             rng: Rc::new(RefCell::new(rng)),
-            dead_socket_tx,
+            dead_socket_tx: dead_socket_tx,
         }
     }
 
-    fn receive(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
+    fn receive(&self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
 
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
-            return Err(Fail::new(EINVAL, "invalid address type"));
+            return Err(Fail::new(libc::EINVAL, "invalid address type"));
         }
-        let key = (local, remote);
 
-        if let Some(s) = self.established.get(&key) {
-            debug!("Routing to established connection: {:?}", key);
-            s.receive(&mut tcp_hdr, data);
-            return Ok(());
-        }
-        if let Some(s) = self.connecting.get_mut(&key) {
-            debug!("Routing to connecting connection: {:?}", key);
-            s.receive(&tcp_hdr);
-            return Ok(());
-        }
-        let (local, _) = key;
-        if let Some(s) = self.passive.get_mut(&local) {
-            debug!("Routing to passive connection: {:?}", local);
-            return s.receive(ip_hdr, &tcp_hdr);
-        }
+        // grab the queue descriptor based on the incoming.
+        let &qd: &QDesc = match self.addresses.get(&SocketId::Active(local, remote)) {
+            Some(qdesc) => qdesc,
+            None => match self.addresses.get(&SocketId::Passive(local)) {
+                Some(qdesc) => qdesc,
+                None => return Err(Fail::new(libc::EBADF, "Socket not bound")),
+            },
+        };
+        // look up the queue metadata based on queue descriptor.
+        let mut qtable = self.qtable.borrow_mut();
+        match qtable.get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
+                Socket::Established(socket) => {
+                    debug!("Routing to established connection: {:?}", socket.endpoints());
+                    socket.receive(&mut tcp_hdr, data);
+                    return Ok(());
+                },
+                Socket::Connecting(socket) => {
+                    debug!("Routing to connecting connection: {:?}", socket.endpoints());
+                    socket.receive(&tcp_hdr);
+                    return Ok(());
+                },
+                Socket::Listening(socket) => {
+                    debug!("Routing to passive connection: {:?}", local);
+                    return socket.receive(ip_hdr, &tcp_hdr);
+                },
+                Socket::Inactive(_) => (),
+                Socket::Closing(socket) => {
+                    debug!("Routing to closing connection: {:?}", socket.endpoints());
+                    socket.receive(&mut tcp_hdr, data);
+                    return Ok(());
+                },
+            },
+            _ => panic!("No queue descriptor"),
+        };
 
         // The packet isn't for an open port; send a RST segment.
         debug!("Sending RST for {:?}, {:?}", local, remote);
@@ -557,12 +577,12 @@ impl Inner {
         Ok(())
     }
 
-    fn send_rst(&mut self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
+    fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
         let remote_link_addr = self
             .arp
             .try_query(remote.ip().clone())
-            .ok_or(Fail::new(EINVAL, "detination not in ARP cache"))?;
+            .ok_or(Fail::new(libc::EINVAL, "detination not in ARP cache"))?;
 
         let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
         tcp_hdr.rst = true;
@@ -579,31 +599,28 @@ impl Inner {
         Ok(())
     }
 
-    pub(super) fn poll_connect_finished(&mut self, fd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
-        let key = match self.sockets.get(&fd) {
-            Some(Socket::Connecting { local, remote }) => (*local, *remote),
-            Some(..) => return Poll::Ready(Err(Fail::new(EAGAIN, "socket not connecting"))),
-            None => return Poll::Ready(Err(Fail::new(EBADF, "bad queue descriptor"))),
-        };
-
-        let result = {
-            let socket = match self.connecting.get_mut(&key) {
-                Some(s) => s,
-                None => return Poll::Ready(Err(Fail::new(EAGAIN, "socket not connecting"))),
-            };
-            match socket.poll_result(context) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(r) => r,
-            }
-        };
-        self.connecting.remove(&key);
-
-        let cb = result?;
-        let socket = EstablishedSocket::new(cb, fd, self.dead_socket_tx.clone());
-        assert!(self.established.insert(key, socket).is_none());
-        let (local, remote) = key;
-        self.sockets.insert(fd, Socket::Established { local, remote });
-
-        Poll::Ready(Ok(()))
+    pub(super) fn poll_connect_finished(&mut self, qd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        match qtable.get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
+                Socket::Connecting(socket) => {
+                    let result: Result<ControlBlock, Fail> = match socket.poll_result(context) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(r) => r,
+                    };
+                    match result {
+                        Ok(cb) => {
+                            let new_socket =
+                                Socket::Established(EstablishedSocket::new(cb, qd, self.dead_socket_tx.clone()));
+                            queue.set_socket(new_socket);
+                            Poll::Ready(Ok(()))
+                        },
+                        Err(fail) => Poll::Ready(Err(fail)),
+                    }
+                },
+                _ => Poll::Ready(Err(Fail::new(libc::EAGAIN, "socket not connecting"))),
+            },
+            _ => Poll::Ready(Err(Fail::new(libc::EBADF, "bad queue descriptor"))),
+        }
     }
 }

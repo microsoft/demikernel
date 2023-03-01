@@ -7,6 +7,7 @@ use crate::{
         icmpv4::Icmpv4Peer,
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        queue::InetQueue,
         tcp::TcpPeer,
         udp::UdpPeer,
     },
@@ -21,12 +22,14 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::IoQueueTable,
         timer::TimerRc,
     },
     scheduler::scheduler::Scheduler,
 };
 use ::libc::ENOTCONN;
 use ::std::{
+    cell::RefCell,
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
@@ -47,6 +50,7 @@ impl Peer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
         scheduler: Scheduler,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -59,6 +63,7 @@ impl Peer {
         let udp: UdpPeer = UdpPeer::new(
             rt.clone(),
             scheduler.clone(),
+            qtable.clone(),
             rng_seed,
             local_link_addr,
             local_ipv4_addr,
@@ -77,6 +82,7 @@ impl Peer {
         let tcp: TcpPeer = TcpPeer::new(
             rt.clone(),
             scheduler.clone(),
+            qtable.clone(),
             clock.clone(),
             local_link_addr,
             local_ipv4_addr,

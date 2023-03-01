@@ -72,47 +72,47 @@ impl Future for TcpOperation {
 }
 
 impl TcpOperation {
-    pub fn expect_result(self) -> (QDesc, Option<QDesc>, OperationResult) {
+    pub fn expect_result(self) -> (QDesc, OperationResult) {
         match self {
             // Connect operation.
             TcpOperation::Connect(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.fd, None, OperationResult::Connect),
+            }) => (future.qd, OperationResult::Connect),
             TcpOperation::Connect(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, None, OperationResult::Failed(e)),
+            }) => (future.qd, OperationResult::Failed(e)),
 
             // Accept operation.
             TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Ok((new_qd, addr))),
-            }) => (future.qd, Some(future.new_qd), OperationResult::Accept((new_qd, addr))),
+            }) => (future.qd, OperationResult::Accept((new_qd, addr))),
             TcpOperation::Accept(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.qd, Some(future.new_qd), OperationResult::Failed(e)),
+            }) => (future.qd, OperationResult::Failed(e)),
 
             // Push operation
             TcpOperation::Push(FutureResult {
                 future,
                 done: Some(Ok(())),
-            }) => (future.fd, None, OperationResult::Push),
+            }) => (future.qd, OperationResult::Push),
             TcpOperation::Push(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, None, OperationResult::Failed(e)),
+            }) => (future.qd, OperationResult::Failed(e)),
 
             // Pop Operation.
             TcpOperation::Pop(FutureResult {
                 future,
                 done: Some(Ok(bytes)),
-            }) => (future.fd, None, OperationResult::Pop(None, bytes)),
+            }) => (future.qd, OperationResult::Pop(None, bytes)),
             TcpOperation::Pop(FutureResult {
                 future,
                 done: Some(Err(e)),
-            }) => (future.fd, None, OperationResult::Failed(e)),
+            }) => (future.qd, OperationResult::Failed(e)),
 
             _ => panic!("Future not ready"),
         }
@@ -120,13 +120,13 @@ impl TcpOperation {
 }
 
 pub struct ConnectFuture {
-    pub fd: QDesc,
+    pub qd: QDesc,
     pub inner: Rc<RefCell<Inner>>,
 }
 
 impl fmt::Debug for ConnectFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ConnectFuture({:?})", self.fd)
+        write!(f, "ConnectFuture({:?})", self.qd)
     }
 }
 
@@ -135,7 +135,7 @@ impl Future for ConnectFuture {
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
-        self_.inner.borrow_mut().poll_connect_finished(self_.fd, context)
+        self_.inner.borrow_mut().poll_connect_finished(self_.qd, context)
     }
 }
 
@@ -180,13 +180,13 @@ impl Future for AcceptFuture {
 }
 
 pub struct PushFuture {
-    pub fd: QDesc,
+    pub qd: QDesc,
     pub err: Option<Fail>,
 }
 
 impl fmt::Debug for PushFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "PushFuture({:?})", self.fd)
+        write!(f, "PushFuture({:?})", self.qd)
     }
 }
 
@@ -202,13 +202,13 @@ impl Future for PushFuture {
 }
 
 pub struct PopFuture {
-    pub fd: QDesc,
+    pub qd: QDesc,
     pub inner: Rc<RefCell<Inner>>,
 }
 
 impl fmt::Debug for PopFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "PopFuture({:?})", self.fd)
+        write!(f, "PopFuture({:?})", self.qd)
     }
 }
 
@@ -220,6 +220,6 @@ impl Future for PopFuture {
         let peer = TcpPeer {
             inner: self_.inner.clone(),
         };
-        peer.poll_recv(self_.fd, ctx)
+        peer.poll_recv(self_.qd, ctx)
     }
 }

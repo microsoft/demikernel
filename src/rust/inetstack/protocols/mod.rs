@@ -7,6 +7,7 @@ pub mod icmpv4;
 pub mod ip;
 pub mod ipv4;
 mod peer;
+pub mod queue;
 pub mod tcp;
 pub mod udp;
 

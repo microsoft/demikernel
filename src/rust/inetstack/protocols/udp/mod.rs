@@ -9,8 +9,8 @@
 
 mod datagram;
 mod futures;
-mod peer;
-mod queue;
+pub mod peer;
+pub mod queue;
 
 #[cfg(test)]
 mod tests;

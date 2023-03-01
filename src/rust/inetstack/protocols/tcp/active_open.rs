@@ -317,4 +317,9 @@ impl ActiveOpenSocket {
             r.result.replace(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
         }
     }
+
+    /// Returns the addresses of the two ends of this connection.
+    pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
+        (self.local, self.remote)
+    }
 }
