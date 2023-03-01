@@ -15,7 +15,7 @@ on:
       - master
 
 env:
-  LIBOS: catnap
+  LIBOS: catpowder
   SERVER: ${{ secrets.CATPOWDER_HOSTNAME_A }}
   CLIENT: ${{ secrets.CATPOWDER_HOSTNAME_B }}
   SERVER_ADDR: 10.3.1.20
