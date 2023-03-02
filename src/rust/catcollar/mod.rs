@@ -237,11 +237,14 @@ impl CatcollarLibOS {
         trace!("close() qd={:?}", qd);
         match self.sockets.get(&qd) {
             Some(&fd) => match unsafe { libc::close(fd) } {
-                stats if stats == 0 => Ok(()),
-                _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                stats if stats == 0 => (),
+                _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
             },
-            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        };
+        self.sockets.remove(&qd);
+        self.qtable.free(qd);
+        Ok(())
     }
 
     /// Pushes a scatter-gather array to a socket.
