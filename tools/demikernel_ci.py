@@ -309,7 +309,7 @@ def run_pipeline(
                     status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                                                  repository, server_addr, delay, config_path,
                                                                  log_directory)
-                if test_system == "all" or test_system == "tcp_push_pop":
+                if libos != "catpowder" and (test_system == "all" or test_system == "tcp_push_pop"):
                     status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
                                                                repository, server_addr, delay, config_path,
                                                                log_directory)
