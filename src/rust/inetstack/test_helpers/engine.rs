@@ -8,6 +8,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
+        queue::InetQueue,
         tcp::operations::{
             AcceptFuture,
             ConnectFuture,
@@ -24,12 +25,12 @@ use crate::{
         queue::IoQueueTable,
         timer::TimerRc,
         QDesc,
-        QType,
     },
     scheduler::scheduler::Scheduler,
 };
 use ::libc::EBADMSG;
 use ::std::{
+    cell::RefCell,
     collections::HashMap,
     future::Future,
     net::{
@@ -47,7 +48,7 @@ pub struct Engine {
     pub clock: TimerRc,
     pub arp: ArpPeer,
     pub ipv4: Peer,
-    pub file_table: IoQueueTable,
+    pub qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
 }
 
 impl Engine {
@@ -58,7 +59,7 @@ impl Engine {
         let arp_options = rt.arp_options.clone();
         let udp_config = rt.udp_config.clone();
         let tcp_config = rt.tcp_config.clone();
-        let file_table = IoQueueTable::new();
+        let qtable = Rc::new(RefCell::new(IoQueueTable::<InetQueue>::new()));
         let arp = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
@@ -71,6 +72,7 @@ impl Engine {
         let ipv4 = Peer::new(
             rt.clone(),
             scheduler.clone(),
+            qtable.clone(),
             clock.clone(),
             link_addr,
             ipv4_addr,
@@ -84,7 +86,7 @@ impl Engine {
             clock,
             arp,
             ipv4,
-            file_table,
+            qtable,
         })
     }
 
@@ -118,9 +120,7 @@ impl Engine {
     }
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
-        let fd = self.file_table.alloc(QType::UdpSocket.into());
-        self.ipv4.udp.do_socket(fd).unwrap();
-        Ok(fd)
+        self.ipv4.udp.do_socket()
     }
 
     pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
@@ -132,9 +132,7 @@ impl Engine {
     }
 
     pub fn tcp_socket(&mut self) -> Result<QDesc, Fail> {
-        let fd = self.file_table.alloc(QType::TcpSocket.into());
-        self.ipv4.tcp.do_socket(fd).unwrap();
-        Ok(fd)
+        self.ipv4.tcp.do_socket()
     }
 
     pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture {
@@ -146,8 +144,7 @@ impl Engine {
     }
 
     pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture {
-        let newfd = self.file_table.alloc(QType::TcpSocket.into());
-        self.ipv4.tcp.do_accept(fd, newfd)
+        self.ipv4.tcp.do_accept(fd)
     }
 
     pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> PushFuture {

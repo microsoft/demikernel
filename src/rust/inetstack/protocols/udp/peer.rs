@@ -14,6 +14,7 @@ use super::{
     queue::{
         SharedQueue,
         SharedQueueSlot,
+        UdpQueue,
     },
 };
 use crate::{
@@ -30,6 +31,7 @@ use crate::{
                 IpProtocol,
             },
             ipv4::Ipv4Header,
+            queue::InetQueue,
         },
     },
     runtime::{
@@ -39,6 +41,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::IoQueueTable,
         QDesc,
     },
     scheduler::{
@@ -47,16 +50,16 @@ use crate::{
     },
 };
 use ::futures::FutureExt;
-use ::libc::{
-    EAGAIN,
-    EBADF,
-    EEXIST,
-};
 use ::rand::{
     prelude::SmallRng,
     SeedableRng,
 };
 use ::std::{
+    cell::{
+        Ref,
+        RefCell,
+        RefMut,
+    },
     collections::HashMap,
     net::{
         Ipv4Addr,
@@ -81,6 +84,7 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 // Structures
 //======================================================================================================================
+/// Per-queue metadata: UDP Control Block
 
 /// UDP Peer
 pub struct UdpPeer {
@@ -91,9 +95,9 @@ pub struct UdpPeer {
     /// Ephemeral ports.
     ephemeral_ports: EphemeralPorts,
     /// Opened sockets.
-    sockets: HashMap<QDesc, Option<SocketAddrV4>>,
-    /// Bound sockets.
-    bound: HashMap<SocketAddrV4, SharedQueue<SharedQueueSlot<DemiBuffer>>>,
+    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+    /// Bound sockets to look up incoming packets.
+    bound: HashMap<SocketAddrV4, QDesc>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
     send_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>,
     /// Local link address.
@@ -119,6 +123,7 @@ impl UdpPeer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
         scheduler: Scheduler,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -139,7 +144,7 @@ impl UdpPeer {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(
-                    EAGAIN,
+                    libc::EAGAIN,
                     "failed to schedule background co-routine for UDP module",
                 ))
             },
@@ -150,8 +155,8 @@ impl UdpPeer {
             rt: rt.clone(),
             arp,
             ephemeral_ports,
-            sockets: HashMap::new(),
-            bound: HashMap::new(),
+            qtable: qtable.clone(),
+            bound: HashMap::<SocketAddrV4, QDesc>::new(),
             send_queue,
             local_link_addr,
             local_ipv4_addr,
@@ -197,58 +202,45 @@ impl UdpPeer {
     }
 
     /// Opens a UDP socket.
-    pub fn do_socket(&mut self, qd: QDesc) -> Result<(), Fail> {
+    pub fn do_socket(&mut self) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::socket");
-
-        // Lookup for an existing socket associated to this queue descriptor.
-        match self.sockets.contains_key(&qd) {
-            // Que descriptor not used.
-            false => {
-                let socket: Option<SocketAddrV4> = None;
-                self.sockets.insert(qd, socket);
-                Ok(())
-            },
-            // Queue descriptor in use.
-            true => return Err(Fail::new(EEXIST, "queue descriptor in use")),
-        }
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        let new_qd: QDesc = qtable.alloc(InetQueue::Udp(UdpQueue::new()));
+        Ok(new_qd)
     }
 
     /// Binds a UDP socket to a local endpoint address.
     pub fn do_bind(&mut self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
-
-        // Local endpoint address in use.
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
         if self.bound.contains_key(&addr) {
             return Err(Fail::new(libc::EADDRINUSE, "address in use"));
         }
 
-        // Check if this is an ephemeral port or a wildcard one.
-        if EphemeralPorts::is_private(addr.port()) {
-            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.ephemeral_ports.alloc_port(addr.port())?
-        } else if addr.port() == 0 {
-            // Allocate ephemeral port.
-            // TODO: we should free this when closing.
-            let new_port: u16 = self.ephemeral_ports.alloc_any()?;
-            addr.set_port(new_port);
-        }
-
-        // Register local endpoint address.
-        let ret: Result<(), Fail> = match self.sockets.get_mut(&qd) {
-            Some(s) if s.is_none() => {
-                *s = Some(addr);
+        // Local endpoint address in use.
+        let ret: Result<(), Fail> = match qtable.get_mut(&qd) {
+            Some(InetQueue::Udp(queue)) => {
+                if queue.is_bound() {
+                    return Err(Fail::new(libc::EADDRINUSE, "socket in use"));
+                }
+                // Check if this is an ephemeral port or a wildcard one.
+                if EphemeralPorts::is_private(addr.port()) {
+                    // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+                    self.ephemeral_ports.alloc_port(addr.port())?
+                } else if addr.port() == 0 {
+                    // Allocate ephemeral port.
+                    // TODO: we should free this when closing.
+                    let new_port: u16 = self.ephemeral_ports.alloc_any()?;
+                    addr.set_port(new_port);
+                }
 
                 // Bind endpoint and create a receiver-side shared queue.
-                let queue: SharedQueue<SharedQueueSlot<DemiBuffer>> =
-                    SharedQueue::<SharedQueueSlot<DemiBuffer>>::new(RECV_QUEUE_MAX_SIZE);
-
-                if self.bound.insert(addr, queue).is_some() {
-                    Err(Fail::new(libc::EADDRINUSE, "address in use"))
-                } else {
-                    Ok(())
-                }
+                queue.set_addr(addr);
+                queue.set_recv_queue(SharedQueue::<SharedQueueSlot<DemiBuffer>>::new(RECV_QUEUE_MAX_SIZE));
+                self.bound.insert(addr, qd);
+                Ok(())
             },
             _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
@@ -270,17 +262,17 @@ impl UdpPeer {
     pub fn do_close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::close");
-
+        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
         // Lookup associated endpoint.
-        let socket: Option<SocketAddrV4> = match self.sockets.remove(&qd) {
-            Some(s) => s,
-            None => return Err(Fail::new(EBADF, "invalid queue descriptor")),
-        };
-
-        // Remove endpoint binding.
-        match socket {
-            Some(local) if self.bound.remove(&local).is_some() => Ok(()),
-            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
+        match qtable.free(&qd) {
+            Some(InetQueue::Udp(queue)) => match queue.get_addr() {
+                Ok(addr) => {
+                    self.bound.remove(&addr);
+                    Ok(())
+                },
+                Err(e) => Err(e),
+            },
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
 
@@ -288,54 +280,52 @@ impl UdpPeer {
     pub fn do_pushto(&self, qd: QDesc, data: DemiBuffer, remote: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
-
+        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
         // Lookup associated endpoint.
-        let local: SocketAddrV4 = match self.sockets.get(&qd) {
-            Some(s) if s.is_some() => s.unwrap(),
-            _ => return Err(Fail::new(EBADF, "invalid queue descriptor")),
-        };
+        match qtable.get(&qd) {
+            Some(InetQueue::Udp(queue)) => {
+                let local: SocketAddrV4 = queue.get_addr()?;
 
-        // Fast path: try to send the datagram immediately.
-        if let Some(link_addr) = self.arp.try_query(remote.ip().clone()) {
-            Self::do_send(
-                self.rt.clone(),
-                self.local_ipv4_addr,
-                self.local_link_addr,
-                link_addr,
-                data,
-                &local,
-                &remote,
-                self.checksum_offload,
-            );
+                // Fast path: try to send the datagram immediately.
+                if let Some(link_addr) = self.arp.try_query(remote.ip().clone()) {
+                    Ok(Self::do_send(
+                        self.rt.clone(),
+                        self.local_ipv4_addr,
+                        self.local_link_addr,
+                        link_addr,
+                        data,
+                        &local,
+                        &remote,
+                        self.checksum_offload,
+                    ))
+                }
+                // Slow path: Defer send operation to the async path.
+                else {
+                    self.send_queue.push(SharedQueueSlot { local, remote, data })
+                }
+            },
+            _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
-        // Slow path: Defer send operation to the async path.
-        else {
-            self.send_queue.push(SharedQueueSlot { local, remote, data })?
-        }
-
-        Ok(())
     }
 
     /// Pops data from a socket.
     pub fn do_pop(&self, qd: QDesc) -> UdpPopFuture {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
-
+        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
         // Lookup associated receiver-side shared queue.
-        let recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.sockets.get(&qd) {
-            Some(s) if s.is_some() => self.bound.get(&s.unwrap()).unwrap().clone(),
+        match qtable.get(&qd) {
+            // Issue pop operation.
+            Some(InetQueue::Udp(queue)) => UdpPopFuture::new(qd, queue.get_recv_queue()),
             _ => panic!("invalid queue descriptor"),
-        };
-
-        // Issue pop operation.
-        UdpPopFuture::new(qd, recv_queue)
+        }
     }
 
     /// Consumes the payload from a buffer.
     pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
-
+        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
         // Parse datagram.
         let (hdr, data): (UdpHeader, DemiBuffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
@@ -343,20 +333,24 @@ impl UdpPeer {
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
 
-        // Lookup associated receiver-side shared queue.
-        let recv_queue: &mut SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.bound.get_mut(&local) {
-            Some(q) => q,
+        let recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.bound.get(&local) {
+            Some(qd) => match qtable.get(&qd) {
+                Some(InetQueue::Udp(queue)) => queue.get_recv_queue(),
+                _ => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
+            },
             None => {
                 // Handle wildcard address.
                 let local: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, hdr.dest_port());
-                match self.bound.get_mut(&local) {
-                    Some(q) => q,
+                match self.bound.get(&local) {
+                    Some(qd) => match qtable.get(&qd) {
+                        Some(InetQueue::Udp(queue)) => queue.get_recv_queue(),
+                        _ => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
+                    },
                     // TODO: Send ICMPv4 error in this condition.
-                    None => Err(Fail::new(libc::ENOTCONN, "port not bound"))?,
+                    None => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
                 }
             },
         };
-
         // TODO: Drop this packet if local address/port pair is not bound.
 
         // Push data to the receiver-side shared queue. This will cause the

@@ -3,6 +3,7 @@
 
 mod futures;
 mod pipe;
+mod queue;
 
 //======================================================================================================================
 // Imports
@@ -16,6 +17,7 @@ use self::{
         OperationResult,
     },
     pipe::Pipe,
+    queue::CatmemQueue,
 };
 use crate::{
     collections::shared_ring::SharedRingBuffer,
@@ -36,11 +38,9 @@ use crate::{
         Scheduler,
         SchedulerHandle,
     },
-    QType,
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     mem,
     rc::Rc,
 };
@@ -57,9 +57,8 @@ const RING_BUFFER_CAPACITY: usize = 4096;
 
 /// A LibOS that exposes a memory queue.
 pub struct CatmemLibOS {
-    qtable: IoQueueTable,
+    qtable: IoQueueTable<CatmemQueue>,
     scheduler: Scheduler,
-    rings: HashMap<QDesc, Pipe>,
 }
 
 impl MemoryRuntime for CatmemLibOS {}
@@ -72,9 +71,8 @@ impl CatmemLibOS {
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
         CatmemLibOS {
-            qtable: IoQueueTable::new(),
+            qtable: IoQueueTable::<CatmemQueue>::new(),
             scheduler: Scheduler::default(),
-            rings: HashMap::new(),
         }
     }
 
@@ -83,9 +81,7 @@ impl CatmemLibOS {
         trace!("create_pipe() name={:?}", name);
 
         let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::create(name, RING_BUFFER_CAPACITY)?;
-
-        let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
-        assert_eq!(self.rings.insert(qd, Pipe::new(ring)).is_none(), true);
+        let qd: QDesc = self.qtable.alloc(CatmemQueue::new(ring));
 
         Ok(qd)
     }
@@ -95,9 +91,7 @@ impl CatmemLibOS {
         trace!("open_pipe() name={:?}", name);
 
         let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::open(name, RING_BUFFER_CAPACITY)?;
-
-        let qd: QDesc = self.qtable.alloc(QType::MemoryQueue.into());
-        assert_eq!(self.rings.insert(qd, Pipe::new(ring)).is_none(), true);
+        let qd: QDesc = self.qtable.alloc(CatmemQueue::new(ring));
 
         Ok(qd)
     }
@@ -121,14 +115,12 @@ impl CatmemLibOS {
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
-        match self.rings.remove(&qd) {
-            Some(pipe) => {
-                self.push_eof(pipe.buffer())?;
-                self.qtable.free(qd);
-                Ok(())
-            },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+        match self.qtable.get(&qd) {
+            Some(queue) => self.push_eof(queue.get_pipe().buffer())?,
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        };
+        self.qtable.free(&qd);
+        Ok(())
     }
 
     /// Pushes a scatter-gather array to a socket.
@@ -142,8 +134,9 @@ impl CatmemLibOS {
                 }
 
                 // Issue push operation.
-                match self.rings.get(&qd) {
-                    Some(pipe) => {
+                match self.qtable.get(&qd) {
+                    Some(queue) => {
+                        let pipe: &Pipe = queue.get_pipe();
                         // Handle end of file.
                         if pipe.eof() {
                             let cause: String = format!("end of file (qd={:?})", qd);
@@ -159,7 +152,7 @@ impl CatmemLibOS {
                         trace!("push() qt={:?}", qt);
                         Ok(qt)
                     },
-                    _ => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
                 }
             },
             Err(e) => Err(e),
@@ -171,14 +164,16 @@ impl CatmemLibOS {
         trace!("pop() qd={:?}", qd);
 
         // Issue pop operation.
-        match self.rings.get(&qd) {
-            Some(pipe) => {
+        match self.qtable.get(&qd) {
+            Some(queue) => {
+                let pipe: &Pipe = queue.get_pipe();
                 // Handle end of file.
                 if pipe.eof() {
                     let cause: String = format!("end of file (qd={:?})", qd);
                     error!("pop(): {:?}", cause);
                     return Err(Fail::new(libc::ECONNRESET, &cause));
                 }
+
                 let future: Operation = Operation::from(PopFuture::new(qd, pipe.buffer()));
                 let handle: SchedulerHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
@@ -229,7 +224,8 @@ impl CatmemLibOS {
             OperationResult::Pop(bytes, eof) => {
                 // Handle end of file.
                 if eof {
-                    let pipe: &mut Pipe = self.rings.get_mut(&qd).expect("unregisted queue descriptor");
+                    let queue: &mut CatmemQueue = self.qtable.get_mut(&qd).expect("unregisted queue descriptor");
+                    let pipe: &mut Pipe = queue.get_mut_pipe();
                     pipe.set_eof();
                 }
 

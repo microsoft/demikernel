@@ -15,6 +15,7 @@ use crate::{
                 EtherType2,
                 Ethernet2Header,
             },
+            queue::InetQueue,
             tcp::operations::ConnectFuture,
             udp::UdpOperation,
             Peer,
@@ -37,7 +38,10 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        queue::IoQueueTable,
+        queue::{
+            IoQueue,
+            IoQueueTable,
+        },
         timer::TimerRc,
         QDesc,
         QToken,
@@ -49,15 +53,10 @@ use crate::{
         SchedulerHandle,
     },
 };
-use ::libc::{
-    c_int,
-    EBADF,
-    EINVAL,
-    ENOTSUP,
-};
+use ::libc::c_int;
 use ::std::{
     any::Any,
-    convert::TryFrom,
+    cell::RefCell,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -92,7 +91,7 @@ const MAX_RECV_ITERS: usize = 2;
 pub struct InetStack {
     arp: ArpPeer,
     ipv4: Peer,
-    file_table: IoQueueTable,
+    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
     rt: Rc<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
     scheduler: Scheduler,
@@ -112,7 +111,7 @@ impl InetStack {
         rng_seed: [u8; 32],
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let file_table: IoQueueTable = IoQueueTable::new();
+        let qtable: Rc<RefCell<IoQueueTable<InetQueue>>> = Rc::new(RefCell::new(IoQueueTable::<InetQueue>::new()));
         let arp: ArpPeer = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
@@ -124,6 +123,7 @@ impl InetStack {
         let ipv4: Peer = Peer::new(
             rt.clone(),
             scheduler.clone(),
+            qtable.clone(),
             clock.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -135,13 +135,25 @@ impl InetStack {
         Ok(Self {
             arp,
             ipv4,
-            file_table,
+            qtable,
             rt,
             local_link_addr,
             scheduler,
             clock,
             ts_iters: 0,
         })
+    }
+
+    ///
+    /// **Brief**
+    ///
+    /// Looks up queue type based on queue descriptor
+    ///
+    fn lookup_qtype(&self, &qd: &QDesc) -> Option<QType> {
+        match self.qtable.borrow().get(&qd) {
+            Some(queue) => Some(queue.get_qtype()),
+            None => None,
+        }
     }
 
     ///
@@ -173,28 +185,12 @@ impl InetStack {
             _protocol
         );
         if domain != AF_INET_VALUE as i32 {
-            return Err(Fail::new(ENOTSUP, "address family not supported"));
+            return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
         }
         match socket_type {
-            SOCK_STREAM => {
-                let qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
-                if let Err(e) = self.ipv4.tcp.do_socket(qd) {
-                    self.file_table.free(qd);
-                    Err(e)
-                } else {
-                    Ok(qd)
-                }
-            },
-            SOCK_DGRAM => {
-                let qd: QDesc = self.file_table.alloc(QType::UdpSocket.into());
-                if let Err(e) = self.ipv4.udp.do_socket(qd) {
-                    self.file_table.free(qd);
-                    Err(e)
-                } else {
-                    Ok(qd)
-                }
-            },
-            _ => Err(Fail::new(ENOTSUP, "socket type not supported")),
+            SOCK_STREAM => self.ipv4.tcp.do_socket(),
+            SOCK_DGRAM => self.ipv4.udp.do_socket(),
+            _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
         }
     }
 
@@ -213,13 +209,11 @@ impl InetStack {
         #[cfg(feature = "profiler")]
         timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
-        match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => self.ipv4.tcp.bind(qd, local),
-                Ok(QType::UdpSocket) => self.ipv4.udp.do_bind(qd, local),
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
-            },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
+        match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => self.ipv4.tcp.bind(qd, local),
+            Some(QType::UdpSocket) => self.ipv4.udp.do_bind(qd, local),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -244,14 +238,12 @@ impl InetStack {
         timer!("inetstack::listen");
         trace!("listen(): qd={:?} backlog={:?}", qd, backlog);
         if backlog == 0 {
-            return Err(Fail::new(EINVAL, "invalid backlog length"));
+            return Err(Fail::new(libc::EINVAL, "invalid backlog length"));
         }
-        match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => self.ipv4.tcp.listen(qd, backlog),
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
-            },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
+        match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => self.ipv4.tcp.listen(qd, backlog),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -273,27 +265,21 @@ impl InetStack {
         trace!("accept(): {:?}", qd);
 
         // Search for target queue descriptor.
-        match self.file_table.get(qd) {
-            // Found, check if it concerns a TCP socket.
-            Some(qtype) => match QType::try_from(qtype) {
-                // It does, so allocate a new queue descriptor and issue accept operation.
-                Ok(QType::TcpSocket) => {
-                    let new_qd: QDesc = self.file_table.alloc(QType::TcpSocket.into());
-                    let future: FutureOperation = FutureOperation::from(self.ipv4.tcp.do_accept(qd, new_qd));
-                    let handle: SchedulerHandle = match self.scheduler.insert(future) {
-                        Some(handle) => handle,
-                        None => {
-                            self.file_table.free(new_qd);
-                            return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
-                        },
-                    };
-                    Ok(handle.into_raw().into())
-                },
-                // This queue descriptor does not concern a TCP socket.
-                _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => {
+                let future: FutureOperation = FutureOperation::from(self.ipv4.tcp.do_accept(qd));
+                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                    Some(handle) => handle,
+                    None => {
+                        return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
+                    },
+                };
+                Ok(handle.into_raw().into())
             },
+            // This queue descriptor does not concern a TCP socket.
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
             // The queue descriptor was not found.
-            _ => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -313,16 +299,14 @@ impl InetStack {
         #[cfg(feature = "profiler")]
         timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
-        let future = match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => {
-                    let fut: ConnectFuture = self.ipv4.tcp.connect(qd, remote)?;
-                    Ok(FutureOperation::from(fut))
-                },
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
+        let future = match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => {
+                let fut: ConnectFuture = self.ipv4.tcp.connect(qd, remote)?;
+                FutureOperation::from(fut)
             },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
-        }?;
+            Some(_) => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
+        };
 
         let handle: SchedulerHandle = match self.scheduler.insert(future) {
             Some(handle) => handle,
@@ -348,29 +332,21 @@ impl InetStack {
         timer!("inetstack::close");
         trace!("close(): qd={:?}", qd);
 
-        match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => self.ipv4.tcp.do_close(qd)?,
-                Ok(QType::UdpSocket) => self.ipv4.udp.do_close(qd)?,
-                _ => Err(Fail::new(EINVAL, "invalid queue type"))?,
-            },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor"))?,
+        match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => self.ipv4.tcp.do_close(qd),
+            Some(QType::UdpSocket) => self.ipv4.udp.do_close(qd),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
-
-        self.file_table.free(qd);
-
-        Ok(())
     }
 
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<FutureOperation, Fail> {
-        match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
-            },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
+        match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.push(qd, buf))),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -384,7 +360,7 @@ impl InetStack {
         // Convert raw data to a buffer representation.
         let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
         if buf.is_empty() {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
+            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
 
         // Issue operation.
@@ -401,15 +377,13 @@ impl InetStack {
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
     pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<FutureOperation, Fail> {
-        match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::UdpSocket) => {
-                    let udp_op = UdpOperation::Pushto(qd, self.ipv4.udp.do_pushto(qd, buf, to));
-                    Ok(FutureOperation::Udp(udp_op))
-                },
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
+        match self.lookup_qtype(&qd) {
+            Some(QType::UdpSocket) => {
+                let udp_op = UdpOperation::Pushto(qd, self.ipv4.udp.do_pushto(qd, buf, to));
+                Ok(FutureOperation::Udp(udp_op))
             },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
     }
 
@@ -423,7 +397,7 @@ impl InetStack {
         // Convert raw data to a buffer representation.
         let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
         if buf.is_empty() {
-            return Err(Fail::new(EINVAL, "zero-length buffer"));
+            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
 
         // Issue operation.
@@ -445,16 +419,14 @@ impl InetStack {
 
         trace!("pop(): qd={:?}", qd);
 
-        let future = match self.file_table.get(qd) {
-            Some(qtype) => match QType::try_from(qtype) {
-                Ok(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd))),
-                Ok(QType::UdpSocket) => {
-                    let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd), None));
-                    Ok(FutureOperation::Udp(udp_op))
-                },
-                _ => Err(Fail::new(EINVAL, "invalid queue type")),
+        let future = match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd))),
+            Some(QType::UdpSocket) => {
+                let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd), None));
+                Ok(FutureOperation::Udp(udp_op))
             },
-            _ => Err(Fail::new(EBADF, "bad queue descriptor")),
+            Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }?;
 
         let handle: SchedulerHandle = match self.scheduler.insert(future) {
@@ -533,23 +505,7 @@ impl InetStack {
         let boxed_concrete_type: FutureOperation = *boxed_future.downcast::<FutureOperation>().expect("Wrong type!");
 
         match boxed_concrete_type {
-            FutureOperation::Tcp(f) => {
-                let (qd, new_qd, qr): (QDesc, Option<QDesc>, OperationResult) = f.expect_result();
-
-                // Handle accept failures.
-                if let Some(new_qd) = new_qd {
-                    match qr {
-                        // Operation failed, so release queue descriptor.
-                        OperationResult::Failed(_) => {
-                            self.file_table.free(new_qd);
-                        },
-                        // Operation succeeded.
-                        _ => (),
-                    }
-                }
-
-                (qd, qr)
-            },
+            FutureOperation::Tcp(f) => f.expect_result(),
             FutureOperation::Udp(f) => f.get_result(),
             FutureOperation::Background(..) => {
                 panic!("`take_operation` attempted on background task!")
@@ -569,7 +525,7 @@ impl InetStack {
             && !header.dst_addr().is_broadcast()
             && !header.dst_addr().is_multicast()
         {
-            return Err(Fail::new(EINVAL, "physical destination address mismatch"));
+            return Err(Fail::new(libc::EINVAL, "physical destination address mismatch"));
         }
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),

@@ -39,25 +39,26 @@ use ::std::{
     time::Duration,
 };
 
+#[derive(Clone)]
 pub struct EstablishedSocket {
     pub cb: Rc<ControlBlock>,
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: SchedulerHandle,
+    background: Rc<SchedulerHandle>,
 }
 
 impl EstablishedSocket {
     pub fn new(cb: ControlBlock, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
         let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle: SchedulerHandle = match cb.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
-            Some(handle) => handle,
+        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+            Some(handle) => Rc::<SchedulerHandle>::new(handle),
             None => panic!("failed to insert task in the scheduler"),
         };
         Self {
             cb: cb.clone(),
-            background: handle,
+            background: handle.clone(),
         }
     }
 

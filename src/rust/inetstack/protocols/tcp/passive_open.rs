@@ -171,6 +171,11 @@ impl PassiveSocket {
         }
     }
 
+    /// Returns the address that the socket is bound to.
+    pub fn endpoint(&self) -> SocketAddrV4 {
+        self.local
+    }
+
     pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
         self.ready.borrow_mut().poll(ctx)
     }

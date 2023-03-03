@@ -14,6 +14,7 @@ pub enum QType {
     UdpSocket = 0x0001,
     TcpSocket = 0x0002,
     MemoryQueue = 0x003,
+    TestQueue = 0x004,
 }
 
 //==============================================================================
@@ -27,6 +28,7 @@ impl From<QType> for u32 {
             QType::UdpSocket => 0x0001,
             QType::TcpSocket => 0x0002,
             QType::MemoryQueue => 0x0003,
+            QType::TestQueue => 0x0004,
         }
     }
 }
@@ -40,6 +42,7 @@ impl TryFrom<u32> for QType {
             0x0001 => Ok(QType::UdpSocket),
             0x0002 => Ok(QType::TcpSocket),
             0x0003 => Ok(QType::MemoryQueue),
+            0x0004 => Ok(QType::TestQueue),
             _ => Err("invalid qtype"),
         }
     }

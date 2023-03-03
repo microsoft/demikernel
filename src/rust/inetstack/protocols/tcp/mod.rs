@@ -8,6 +8,7 @@ mod isn_generator;
 pub mod operations;
 mod passive_open;
 pub mod peer;
+pub mod queue;
 pub mod segment;
 mod sequence_number;
 
