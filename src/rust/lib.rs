@@ -54,8 +54,6 @@ mod catmem;
 #[cfg(feature = "catloop-libos")]
 mod catloop;
 
-pub use crate::demikernel::libos::network::OperationResult;
-
 pub use self::demikernel::libos::{
     name::LibOSName,
     LibOS,
@@ -69,6 +67,7 @@ pub use crate::runtime::{
         demi_sgarray_t,
         demi_sgaseg_t,
     },
+    OperationResult,
     QDesc,
     QResult,
     QToken,
