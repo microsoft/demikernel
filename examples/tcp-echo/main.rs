@@ -55,6 +55,8 @@ pub struct ProgramArguments {
     bufsize: Option<usize>,
     /// Number of requests.
     nrequests: Option<usize>,
+    /// Number of clients.
+    nclients: Option<usize>,
     /// Log interval.
     log_interval: Option<u64>,
     /// Peer type.
@@ -94,6 +96,14 @@ impl ProgramArguments {
                     .help("Sets buffer size"),
             )
             .arg(
+                Arg::new("nclients")
+                    .long("nclients")
+                    .value_parser(clap::value_parser!(usize))
+                    .required(false)
+                    .value_name("NUMBER")
+                    .help("Sets number of clients"),
+            )
+            .arg(
                 Arg::new("nrequests")
                     .long("nrequests")
                     .value_parser(clap::value_parser!(usize))
@@ -116,6 +126,7 @@ impl ProgramArguments {
             saddr: None,
             bufsize: None,
             nrequests: None,
+            nclients: None,
             log_interval: None,
             peer_type: "server".to_string(),
         };
@@ -130,8 +141,6 @@ impl ProgramArguments {
         if let Some(bufsize) = matches.get_one::<usize>("bufsize") {
             if *bufsize > 0 {
                 args.bufsize = Some(*bufsize);
-            } else {
-                anyhow::bail!("invalid buffer size");
             }
         }
 
@@ -139,8 +148,13 @@ impl ProgramArguments {
         if let Some(nrequests) = matches.get_one::<usize>("nrequests") {
             if *nrequests > 0 {
                 args.nrequests = Some(*nrequests);
-            } else {
-                anyhow::bail!("invalid buffer size");
+            }
+        }
+
+        // Number of clients.
+        if let Some(nclients) = matches.get_one::<usize>("nclients") {
+            if *nclients > 0 {
+                args.nclients = Some(*nclients);
             }
         }
 
@@ -148,8 +162,6 @@ impl ProgramArguments {
         if let Some(log_interval) = matches.get_one::<u64>("log") {
             if *log_interval > 0 {
                 args.log_interval = Some(*log_interval);
-            } else {
-                anyhow::bail!("invalid log_interval");
             }
         }
 
@@ -197,7 +209,11 @@ fn main() -> Result<()> {
                 args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
                 args.saddr.unwrap(),
             )?;
-            client.run(args.log_interval, args.nrequests)?;
+            client.run(
+                args.log_interval,
+                args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
+                args.nrequests,
+            )?;
         },
         _ => todo!(),
     }
