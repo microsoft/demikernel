@@ -29,7 +29,6 @@ use self::futures::{
 };
 use crate::{
     demikernel::config::Config,
-    inetstack::operations::OperationResult,
     pal::linux,
     runtime::{
         fail::Fail,
@@ -45,6 +44,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        OperationResult,
         QDesc,
         QToken,
         QType,
