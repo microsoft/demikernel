@@ -6,12 +6,10 @@
 //==============================================================================
 
 use crate::{
-    inetstack::{
-        operations::OperationResult,
-        protocols::udp::UdpPopFuture,
-    },
+    inetstack::protocols::udp::UdpPopFuture,
     runtime::{
         fail::Fail,
+        OperationResult,
         QDesc,
     },
     scheduler::FutureResult,

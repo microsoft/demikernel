@@ -8,7 +8,6 @@
 use crate::{
     inetstack::{
         futures::operation::FutureOperation,
-        operations::OperationResult,
         protocols::{
             arp::ArpPeer,
             ethernet2::{
@@ -41,6 +40,7 @@ use crate::{
         queue::{
             IoQueue,
             IoQueueTable,
+            OperationResult,
         },
         timer::TimerRc,
         QDesc,
@@ -77,7 +77,6 @@ pub mod test_helpers;
 
 pub mod collections;
 pub mod futures;
-pub mod operations;
 pub mod options;
 pub mod protocols;
 

@@ -14,6 +14,7 @@ pub mod timer;
 pub mod types;
 pub mod watched;
 pub use queue::{
+    OperationResult,
     QDesc,
     QResult,
     QToken,

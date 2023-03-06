@@ -18,7 +18,10 @@ use ::slab::Slab;
 
 pub use self::{
     qdesc::QDesc,
-    qresult::QResult,
+    qresult::{
+        OperationResult,
+        QResult,
+    },
     qtoken::QToken,
     qtype::QType,
 };
