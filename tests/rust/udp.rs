@@ -10,12 +10,10 @@ mod common;
 //==============================================================================
 
 use ::demikernel::{
-    inetstack::{
-        operations::OperationResult,
-        InetStack,
-    },
+    inetstack::InetStack,
     runtime::{
         memory::DemiBuffer,
+        OperationResult,
         QDesc,
         QToken,
     },
