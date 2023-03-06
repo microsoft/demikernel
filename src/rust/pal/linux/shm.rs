@@ -96,8 +96,13 @@ impl SharedMemory {
 
             // Check for failure return value.
             if ret == -1 {
-                // TODO: get cause for errno variable.
-                return Err(Fail::new(libc::EAGAIN, "failed to create shared memory region"));
+                let errno: libc::c_int = *libc::__errno_location();
+                let cause: String = format!(
+                    "failed to create shared memory region (name={:?}, size={}, errno={})",
+                    name, size, errno
+                );
+                error!("create(): {}", cause);
+                return Err(Fail::new(errno, &cause));
             }
             ret
         };
