@@ -140,7 +140,7 @@ impl CatmemLibOS {
                         // Handle end of file.
                         if pipe.eof() {
                             let cause: String = format!("end of file (qd={:?})", qd);
-                            error!("pop(): {:?}", cause);
+                            error!("push(): {:?}", cause);
                             return Err(Fail::new(libc::ECONNRESET, &cause));
                         }
                         let future: Operation = Operation::from(PushFuture::new(qd, pipe.buffer(), buf));
