@@ -48,8 +48,14 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 pub struct TcpEchoServer {
     /// Underlying libOS.
     libos: LibOS,
-    // Local socket descriptor.
+    /// Local socket descriptor.
     sockqd: QDesc,
+    /// Set of connected clients.
+    clients: HashSet<QDesc>,
+    /// List of pending operations.
+    qts: Vec<QToken>,
+    /// Reverse lookup table of pending operations.
+    qts_reverse: HashMap<QToken, QDesc>,
 }
 
 /// Associated Functions for the Application
@@ -76,25 +82,22 @@ impl TcpEchoServer {
 
         println!("Local Address: {:?}", local);
 
-        return Ok(Self { libos, sockqd });
+        return Ok(Self {
+            libos,
+            sockqd,
+            clients: HashSet::default(),
+            qts: Vec::default(),
+            qts_reverse: HashMap::default(),
+        });
     }
 
     /// Runs the target echo server.
     pub fn run(&mut self, log_interval: Option<u64>, nrequests: Option<usize>) -> Result<()> {
-        let mut qts: Vec<QToken> = Vec::new();
-        let mut qts_reverse: HashMap<QToken, QDesc> = HashMap::default();
-        let mut last_log: Instant = Instant::now();
-        let mut clients: HashSet<QDesc> = HashSet::default();
         let mut i: usize = 0;
+        let mut last_log: Instant = Instant::now();
 
         // Accept first connection.
-        match self.libos.accept(self.sockqd) {
-            Ok(qt) => {
-                qts_reverse.insert(qt, self.sockqd);
-                qts.push(qt)
-            },
-            Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
-        };
+        self.issue_accept()?;
 
         loop {
             // Stop: enough requests sent.
@@ -107,81 +110,117 @@ impl TcpEchoServer {
             // Dump statistics.
             if let Some(log_interval) = log_interval {
                 if last_log.elapsed() > Duration::from_secs(log_interval) {
-                    println!("nclients: {:?}", clients.len(),);
+                    println!("nclients: {:?}", self.clients.len(),);
                     last_log = Instant::now();
                 }
             }
 
+            // Wait for any operation to complete.
             let qr: demi_qresult_t = {
-                let (i, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
-                let qt: QToken = qts.remove(i);
-                qts_reverse
-                    .remove(&qt)
-                    .ok_or(anyhow::anyhow!("unregistered queue token"))?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                self.unregister_operation(index)?;
                 qr
             };
 
             // Parse result.
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT => {
-                    // Register client.
-                    let client_qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
-                    clients.insert(client_qd);
+                    let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
 
-                    // Pop first packet from this connection.
-                    {
-                        let qt: QToken = self.libos.pop(client_qd, None)?;
-                        qts_reverse.insert(qt, client_qd);
-                        qts.push(qt);
-                    }
+                    // Register client.
+                    self.clients.insert(qd);
+
+                    // Pop first packet.
+                    self.issue_pop(qd)?;
 
                     // Accept more connections.
-                    {
-                        let qt: QToken = self.libos.accept(self.sockqd)?;
-                        qts_reverse.insert(qt, self.sockqd);
-                        qts.push(qt);
-                    }
+                    self.issue_accept()?;
                 },
                 // Pop completed.
                 demi_opcode_t::DEMI_OPC_POP => {
                     let qd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     if sga.sga_segs[0].sgaseg_len == 0 {
-                        let qts_drained: HashMap<QToken, QDesc> = qts_reverse.drain_filter(|_k, v| *v == qd).collect();
-                        let _: Vec<_> = qts.drain_filter(|x| qts_drained.contains_key(x)).collect();
-                        clients.remove(&qd);
+                        println!("client closed connection");
+                        self.handle_close(&qd)?;
                     } else {
                         // Push packet back.
-                        {
-                            let qt: QToken = self.libos.push(qd, &sga)?;
-                            qts.push(qt);
-                            qts_reverse.insert(qt, qd);
-                        }
-                        match self.libos.sgafree(sga) {
-                            Ok(_) => {},
-                            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
-                        }
+                        self.issue_push(qd, &sga)?;
+
+                        // Pop more data.
+                        self.issue_pop(qd)?;
                     }
+
+                    // Free scatter-gather array.
+                    self.libos.sgafree(sga)?;
                 },
                 // Push completed.
                 demi_opcode_t::DEMI_OPC_PUSH => {
-                    let qd: QDesc = qr.qr_qd.into();
                     i += 1;
-
-                    // Pop another packet.
-                    {
-                        let qt: QToken = self.libos.pop(qd, None)?;
-                        qts.push(qt);
-                        qts_reverse.insert(qt, qd);
-                    }
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
-                _ => panic!("unexpected result"),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    let qd: QDesc = qr.qr_qd.into();
+                    // Check if this is an unrecoverable error.
+                    let errno: i32 = qr.qr_ret;
+                    if errno != libc::ECONNRESET {
+                        anyhow::bail!("operation failed")
+                    }
+                    println!("client reset connection");
+                    self.handle_close(&qd)?;
+                },
+                demi_opcode_t::DEMI_OPC_INVALID => unreachable!("unexpected invalid operation"),
+                demi_opcode_t::DEMI_OPC_CLOSE => unreachable!("unexpected close operation"),
+                demi_opcode_t::DEMI_OPC_CONNECT => unreachable!("unexpected connect operation"),
             }
         }
 
         self.libos.close(self.sockqd)?;
 
+        Ok(())
+    }
+
+    /// Issues an accept operation.
+    fn issue_accept(&mut self) -> Result<()> {
+        let qt: QToken = self.libos.accept(self.sockqd)?;
+        self.register_operation(self.sockqd, qt);
+        Ok(())
+    }
+
+    /// Issues a push operation.
+    fn issue_push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<()> {
+        let qt: QToken = self.libos.push(qd, &sga)?;
+        self.register_operation(qd, qt);
+        Ok(())
+    }
+
+    /// Issues a pop operation.
+    fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
+        let qt: QToken = self.libos.pop(qd, None)?;
+        self.register_operation(qd, qt);
+        Ok(())
+    }
+
+    /// Handles a close operation.
+    fn handle_close(&mut self, qd: &QDesc) -> Result<()> {
+        let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.drain_filter(|_k, v| v == qd).collect();
+        let _: Vec<_> = self.qts.drain_filter(|x| qts_drained.contains_key(x)).collect();
+        self.clients.remove(qd);
+        self.libos.close(*qd)?;
+        Ok(())
+    }
+
+    /// Registers an asynchronous I/O operation.
+    fn register_operation(&mut self, qd: QDesc, qt: QToken) {
+        self.qts_reverse.insert(qt, qd);
+        self.qts.push(qt);
+    }
+
+    /// Unregisters an asynchronous I/O operation.
+    fn unregister_operation(&mut self, index: usize) -> Result<()> {
+        let qt: QToken = self.qts.remove(index);
+        self.qts_reverse
+            .remove(&qt)
+            .ok_or(anyhow::anyhow!("unregistered queue token"))?;
         Ok(())
     }
 }
