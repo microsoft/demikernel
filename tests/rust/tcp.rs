@@ -416,7 +416,7 @@ fn tcp_bad_bind() {
         Err(e) => panic!("bind() failed with unexpected error code ({:?})", e),
         Ok(_) => panic!("bind() socket multiple times should fail with EINVAL"),
     };
-    safe_close_passive(&mut libos, sockqd);
+    safe_close_active(&mut libos, sockqd);
 
     // Bind sockets to same address.
     let sockqd_a: QDesc = safe_socket(&mut libos);
@@ -427,8 +427,8 @@ fn tcp_bad_bind() {
         Err(e) => panic!("bind() failed with unexpected error code ({:?})", e),
         Ok(_) => panic!("bind() multiple sockets to the same address should fail with EADDRINUSE"),
     };
-    safe_close_passive(&mut libos, sockqd_a);
-    safe_close_passive(&mut libos, sockqd_b);
+    safe_close_active(&mut libos, sockqd_a);
+    safe_close_active(&mut libos, sockqd_b);
 }
 
 //======================================================================================================================
@@ -457,7 +457,7 @@ fn tcp_bad_listen() {
         Err(e) if e.errno == libc::EINVAL => (),
         _ => panic!("invalid call to listen() should fail with EINVAL"),
     };
-    safe_close_passive(&mut libos, sockqd);
+    safe_close_active(&mut libos, sockqd);
 
     // Listen on an already listening socket.
     let sockqd: QDesc = safe_socket(&mut libos);
@@ -478,7 +478,7 @@ fn tcp_bad_listen() {
         Err(e) => panic!("listen() to unbound address should fail with EDESTADDRREQ {:?}", e),
         _ => panic!("should fail"),
     };
-    safe_close_passive(&mut libos, sockqd);
+    safe_close_active(&mut libos, sockqd);
 }
 
 //======================================================================================================================
@@ -898,6 +898,6 @@ fn safe_close_passive(libos: &mut InetStack, sockqd: QDesc) {
 fn safe_close_active(libos: &mut InetStack, qd: QDesc) {
     match libos.close(qd) {
         Ok(_) => (),
-        Err(_) => panic!("close() on passive socket has failed"),
+        Err(_) => panic!("close() on active socket has failed"),
     };
 }
