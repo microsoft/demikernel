@@ -246,8 +246,12 @@ impl CatcollarLibOS {
         match self.qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => match unsafe { libc::close(fd) } {
-                    stats if stats != 0 => (),
-                    _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    stats if stats == 0 => (),
+                    _ => {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        error!("failed to close socket (fd={:?}, errno={:?})", fd, errno);
+                        return Err(Fail::new(errno, "operation failed"));
+                    },
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
