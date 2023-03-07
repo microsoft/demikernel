@@ -9,7 +9,10 @@ use crate::runtime::{
     queue::IoQueue,
     QType,
 };
-use ::std::os::unix::prelude::RawFd;
+use ::std::{
+    net::SocketAddrV4,
+    os::unix::prelude::RawFd,
+};
 
 //======================================================================================================================
 // Structures
@@ -20,6 +23,7 @@ use ::std::os::unix::prelude::RawFd;
 pub struct CatcollarQueue {
     qtype: QType,
     fd: Option<RawFd>,
+    addr: Option<SocketAddrV4>,
 }
 
 //======================================================================================================================
@@ -29,7 +33,11 @@ pub struct CatcollarQueue {
 impl CatcollarQueue {
     /// Creates a new metadata structure for a queue.
     pub fn new(qtype: QType) -> Self {
-        Self { qtype: qtype, fd: None }
+        Self {
+            qtype: qtype,
+            fd: None,
+            addr: None,
+        }
     }
 
     /// Get the underlying Linux raw socket.
@@ -40,6 +48,16 @@ impl CatcollarQueue {
     /// Set the underlying Linux raw socket.
     pub fn set_fd(&mut self, fd: RawFd) {
         self.fd = Some(fd);
+    }
+
+    /// Gets underlying socket address.
+    pub fn get_addr(&self) -> Option<SocketAddrV4> {
+        self.addr
+    }
+
+    /// Sets underlying socket address.
+    pub fn set_addr(&mut self, addr: SocketAddrV4) {
+        self.addr = Some(addr);
     }
 }
 
