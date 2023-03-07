@@ -434,24 +434,46 @@ impl TcpPeer {
         // 2. We do not remove the queue from the queue table.
         // As a result, we have stale closed queues that are labelled as closing. We should clean these up.
         // look up socket
-        let addr: SocketAddrV4 = match inner.qtable.borrow_mut().get_mut(&qd) {
+        let (addr, result): (SocketAddrV4, Result<(), Fail>) = match inner.qtable.borrow_mut().get_mut(&qd) {
             Some(InetQueue::Tcp(queue)) => {
                 match queue.get_socket() {
-                    // Closing an active socket
+                    // Closing an active socket.
                     Socket::Established(socket) => {
                         socket.close()?;
                         queue.set_socket(Socket::Closing(socket.clone()));
                         return Ok(());
                     },
-                    Socket::Listening(socket) => socket.endpoint(),
-                    Socket::Inactive(Some(addr)) => addr.clone(),
-                    _ => return Err(Fail::new(libc::ENOTSUP, "close not implemented for listening sockets")),
+                    // Closing an unbound socket.
+                    Socket::Inactive(None) => {
+                        return Ok(());
+                    },
+                    // Closing a bound socket.
+                    Socket::Inactive(Some(addr)) => (addr.clone(), Ok(())),
+                    // Closing a listening socket.
+                    Socket::Listening(socket) => {
+                        let cause: String = format!("cannot close a listening socket (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        (socket.endpoint(), Err(Fail::new(libc::ENOTSUP, &cause)))
+                    },
+                    // Closing a connecting socket.
+                    Socket::Connecting(_) => {
+                        let cause: String = format!("cannot close a connecting socket (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        return Err(Fail::new(libc::ENOTSUP, &cause));
+                    },
+                    // Closing a closing socket.
+                    Socket::Closing(_) => {
+                        let cause: String = format!("cannot close a socket that is closing (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        return Err(Fail::new(libc::ENOTSUP, &cause));
+                    },
                 }
             },
             _ => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         };
+        // TODO: remove active sockets from the addresses table.
         inner.addresses.remove(&SocketId::Passive(addr));
-        Err(Fail::new(libc::ENOTSUP, "close not implemented for listening sockets"))
+        result
     }
 
     pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {
