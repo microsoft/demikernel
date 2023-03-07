@@ -27,12 +27,14 @@ use self::futures::{
 };
 use crate::{
     demikernel::config::Config,
-    inetstack::operations::OperationResult,
     pal::linux,
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        queue::IoQueueTable,
+        queue::{
+            IoQueueTable,
+            OperationResult,
+        },
         types::{
             demi_accept_result_t,
             demi_opcode_t,

@@ -6,10 +6,10 @@ use super::peer::{
     TcpPeer,
 };
 use crate::{
-    inetstack::operations::OperationResult,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        OperationResult,
         QDesc,
     },
     scheduler::FutureResult,

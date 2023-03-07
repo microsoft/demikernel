@@ -15,10 +15,7 @@ use self::{
 };
 use crate::{
     demikernel::config::Config,
-    inetstack::{
-        operations::OperationResult,
-        InetStack,
-    },
+    inetstack::InetStack,
     runtime::{
         fail::Fail,
         libdpdk::load_mlx_driver,
@@ -31,6 +28,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        OperationResult,
         QDesc,
         QToken,
     },

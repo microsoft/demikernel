@@ -23,8 +23,10 @@ use self::{
     pushto::PushtoFuture,
 };
 use crate::{
-    inetstack::operations::OperationResult,
-    runtime::QDesc,
+    runtime::{
+        OperationResult,
+        QDesc,
+    },
     scheduler::{
         FutureResult,
         SchedulerFuture,
