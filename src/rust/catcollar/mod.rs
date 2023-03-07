@@ -147,29 +147,60 @@ impl CatcollarLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        // Issue bind operation.
-        match self.qtable.get(&qd) {
-            Some(queue) => match queue.get_fd() {
-                Some(fd) => {
-                    let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
-                    match unsafe {
-                        libc::bind(
-                            fd,
-                            (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                            mem::size_of_val(&sockaddr) as u32,
-                        )
-                    } {
-                        stats if stats == 0 => Ok(()),
-                        _ => {
-                            let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                            error!("failed to bind socket (errno={:?})", errno);
-                            Err(Fail::new(errno, "operation failed"))
-                        },
-                    }
-                },
-                None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
+        // Check if we are binding to the wildcard port.
+        if local.port() == 0 {
+            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
+
+        // Check if queue descriptor is valid.
+        if self.qtable.get(&qd).is_none() {
+            let cause: String = format!("invalid queue descriptor {:?}", qd);
+            error!("bind(): {}", &cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+
+        // Check wether the address is in use.
+        for (_, queue) in self.qtable.get_values() {
+            if let Some(addr) = queue.get_addr() {
+                if addr == local {
+                    let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
+                    error!("bind(): {}", &cause);
+                    return Err(Fail::new(libc::EADDRINUSE, &cause));
+                }
+            }
+        }
+
+        // Get a mutable reference to the queue table.
+        // It is safe to unwrap because we checked before that the queue descriptor is valid.
+        let queue: &mut CatcollarQueue = self
+            .qtable
+            .get_mut(&qd)
+            .expect("queue descriptor should be in queue table");
+
+        // Get reference to the underlying file descriptor.
+        // It is safe to unwrap because when creating a queue we assigned it a valid file descritor.
+        let fd: RawFd = queue.get_fd().expect("queue should have a file descriptor");
+
+        // Bind underlying socket.
+        let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
+        match unsafe {
+            libc::bind(
+                fd,
+                (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                mem::size_of_val(&sockaddr) as u32,
+            )
+        } {
+            stats if stats == 0 => {
+                queue.set_addr(local);
+                Ok(())
             },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                error!("failed to bind socket (errno={:?})", errno);
+                Err(Fail::new(errno, "operation failed"))
+            },
         }
     }
 
@@ -387,8 +418,14 @@ impl CatcollarLibOS {
             // Associate raw file descriptor with queue descriptor.
             if let Some(new_fd) = new_fd {
                 match self.qtable.get_mut(&new_qd) {
-                    Some(queue) => queue.set_fd(new_fd),
-                    None => unreachable!("accept: Should have allocated the queue already!"),
+                    Some(queue) => match qr {
+                        OperationResult::Accept((_, addr)) => {
+                            queue.set_fd(new_fd);
+                            queue.set_addr(addr);
+                        },
+                        _ => unreachable!("invalid operation result"),
+                    },
+                    None => unreachable!("queue descriptor not registered"),
                 }
             }
             // Release entry in queue table.
