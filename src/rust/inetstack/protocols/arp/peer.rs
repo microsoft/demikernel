@@ -48,8 +48,14 @@ use ::libc::{
     ETIMEDOUT,
 };
 use ::std::{
-    cell::RefCell,
-    collections::HashMap,
+    cell::{
+        RefCell,
+        RefMut,
+    },
+    collections::{
+        HashMap,
+        LinkedList,
+    },
     future::Future,
     net::Ipv4Addr,
     rc::Rc,
@@ -62,7 +68,7 @@ use ::std::{
 
 ///
 /// Arp Peer
-/// - TODO: Allow multiple waiters for the same address
+///
 #[derive(Clone)]
 pub struct ArpPeer {
     rt: Rc<dyn NetworkRuntime>,
@@ -70,7 +76,7 @@ pub struct ArpPeer {
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: Rc<RefCell<ArpCache>>,
-    waiters: Rc<RefCell<HashMap<Ipv4Addr, Sender<MacAddress>>>>,
+    waiters: Rc<RefCell<HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>>>,
     arp_config: ArpConfig,
 
     /// The background co-routine cleans up the ARP cache from time to time.
@@ -129,8 +135,10 @@ impl ArpPeer {
     }
 
     fn do_insert(&mut self, ipv4_addr: Ipv4Addr, link_addr: MacAddress) -> Option<MacAddress> {
-        if let Some(sender) = self.waiters.borrow_mut().remove(&ipv4_addr) {
-            let _ = sender.send(link_addr);
+        if let Some(wait_queue) = self.waiters.borrow_mut().remove(&ipv4_addr) {
+            for sender in wait_queue {
+                let _ = sender.send(link_addr);
+            }
         }
         self.cache.borrow_mut().insert(ipv4_addr, link_addr)
     }
@@ -140,11 +148,15 @@ impl ArpPeer {
         if let Some(&link_addr) = self.cache.borrow().get(ipv4_addr) {
             let _ = tx.send(link_addr);
         } else {
-            assert!(
-                self.waiters.borrow_mut().insert(ipv4_addr, tx).is_none(),
-                "Duplicate waiter for {:?}",
-                ipv4_addr
-            );
+            let mut waiters: RefMut<HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>> = self.waiters.borrow_mut();
+            if let Some(wait_queue) = waiters.get_mut(&ipv4_addr) {
+                warn!("Duplicate waiter for IP address: {}", ipv4_addr);
+                wait_queue.push_back(tx);
+            } else {
+                let mut wait_queue: LinkedList<Sender<MacAddress>> = LinkedList::new();
+                wait_queue.push_back(tx);
+                waiters.insert(ipv4_addr, wait_queue);
+            }
         }
         rx.map(|r| r.expect("Dropped waiter?"))
     }
