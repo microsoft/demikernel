@@ -20,6 +20,7 @@ pub use self::{
 
 use self::futures::{
     accept::AcceptFuture,
+    close::CloseFuture,
     connect::ConnectFuture,
     pop::PopFuture,
     push::PushFuture,
@@ -276,6 +277,25 @@ impl CatnapLibOS {
         Ok(())
     }
 
+    /// Asynchronous close
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        trace!("close() qd={:?}", qd);
+        match self.qtable.get(&qd) {
+            Some(queue) => match queue.get_fd() {
+                Some(fd) => {
+                    let future: Operation = Operation::from(CloseFuture::new(qd, fd));
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    Ok(handle.into_raw().into())
+                },
+                None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
+            },
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        }
+    }
+
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
@@ -414,6 +434,16 @@ impl CatnapLibOS {
             }
         }
 
+        // Handle close operation.
+        match qr {
+            OperationResult::Close => {
+                if self.qtable.free(&qd).is_none() {
+                    unreachable!("Should not be able to close an underlying file descriptor without the qdescriptor");
+                }
+            },
+            _ => (),
+        }
+
         (qd, qr)
     }
 }
@@ -479,6 +509,12 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                 }
             },
         },
+        OperationResult::Close => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+            qr_qd: qd.into(),
+            qr_qt: qt,
+            qr_value: unsafe { mem::zeroed() },
+        },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
             demi_qresult_t {
@@ -488,6 +524,5 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                 qr_value: unsafe { mem::zeroed() },
             }
         },
-        OperationResult::Close => unimplemented!("Async close not supported yet"),
     }
 }

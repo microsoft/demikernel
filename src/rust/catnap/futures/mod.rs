@@ -6,6 +6,7 @@
 //==============================================================================
 
 pub mod accept;
+pub mod close;
 pub mod connect;
 pub mod pop;
 pub mod push;
@@ -16,6 +17,7 @@ pub mod push;
 
 use self::{
     accept::AcceptFuture,
+    close::CloseFuture,
     connect::ConnectFuture,
     pop::PopFuture,
     push::PushFuture,
@@ -55,6 +57,8 @@ pub enum Operation {
     Push(FutureResult<PushFuture>),
     /// Pop operation.
     Pop(FutureResult<PopFuture>),
+    /// Close operation.
+    Close(FutureResult<CloseFuture>),
 }
 
 //==============================================================================
@@ -116,6 +120,16 @@ impl Operation {
                 done: Some(Err(e)),
             }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
 
+            // Close operation.
+            Operation::Close(FutureResult {
+                future,
+                done: Some(Ok(())),
+            }) => (future.get_qd(), None, None, OperationResult::Close),
+            Operation::Close(FutureResult {
+                future,
+                done: Some(Err(e)),
+            }) => (future.get_qd(), None, None, OperationResult::Failed(e)),
+
             _ => panic!("future not ready"),
         }
     }
@@ -147,6 +161,7 @@ impl Future for Operation {
             Operation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
             Operation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
+            Operation::Close(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
 }
@@ -176,5 +191,12 @@ impl From<PushFuture> for Operation {
 impl From<PopFuture> for Operation {
     fn from(f: PopFuture) -> Self {
         Operation::Pop(FutureResult::new(f, None))
+    }
+}
+
+/// From Trait Implementation for Operation Descriptors
+impl From<CloseFuture> for Operation {
+    fn from(f: CloseFuture) -> Self {
+        Operation::Close(FutureResult::new(f, None))
     }
 }
