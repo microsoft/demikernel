@@ -61,6 +61,7 @@ extern "C"
         DEMI_OPC_POP,         /**< Pop operation.     */
         DEMI_OPC_ACCEPT,      /**< Accept operation.  */
         DEMI_OPC_CONNECT,     /**< Connect operation. */
+        DEMI_OPC_CLOSE,       /**< Close operation. */
         DEMI_OPC_FAILED,      /**< Operation failed.  */
     } demi_opcode_t;
 
@@ -85,7 +86,8 @@ extern "C"
         /**
          * @brief Result value.
          */
-        union {
+        union
+        {
             demi_sgarray_t sga;        /**< Pushed/popped scatter-gather array. */
             demi_accept_result_t ares; /**< Accept result.                      */
         } qr_value;
