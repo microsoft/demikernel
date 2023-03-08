@@ -61,6 +61,7 @@ extern "C"
         DEMI_OPC_POP,         /**< Pop operation.     */
         DEMI_OPC_ACCEPT,      /**< Accept operation.  */
         DEMI_OPC_CONNECT,     /**< Connect operation. */
+        DEMI_OPC_CLOSE,     /**< Close operation. */
         DEMI_OPC_FAILED,      /**< Operation failed.  */
     } demi_opcode_t;
 
