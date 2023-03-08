@@ -10,7 +10,10 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use ::slab::Slab;
+use ::slab::{
+    Iter,
+    Slab,
+};
 
 //======================================================================================================================
 // Exports
@@ -91,6 +94,11 @@ impl<T: IoQueue> IoQueueTable<T> {
     pub fn free(&mut self, qd: &QDesc) -> Option<T> {
         let index: u32 = self.get_index(qd)?;
         Some(self.table.remove(index as usize))
+    }
+
+    /// Gets an iterator over all registered queues.
+    pub fn get_values(&self) -> Iter<'_, T> {
+        self.table.iter()
     }
 
     /// Gets the index in the I/O queue descriptors table to which a given I/O queue descriptor refers to.
