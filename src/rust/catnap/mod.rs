@@ -488,5 +488,6 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                 qr_value: unsafe { mem::zeroed() },
             }
         },
+        OperationResult::Close => unimplemented!("Async close not supported yet"),
     }
 }
