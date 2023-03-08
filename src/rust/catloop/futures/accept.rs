@@ -45,9 +45,19 @@ use ::std::{
 //======================================================================================================================
 
 enum ServerState {
-    ListenAndAccept(QToken),
-    Connect(QToken, Rc<DuplexPipe>),
-    Connected(QToken, QDesc, SocketAddrV4, Rc<DuplexPipe>),
+    ListenAndAccept {
+        qt_rx: QToken,
+    },
+    Connect {
+        qt_tx: QToken,
+        duplex_pipe: Rc<DuplexPipe>,
+    },
+    Connected {
+        qt_close: QToken,
+        new_qd: QDesc,
+        remote: SocketAddrV4,
+        duplex_pipe: Rc<DuplexPipe>,
+    },
 }
 
 //======================================================================================================================
@@ -89,7 +99,7 @@ impl AcceptFuture {
             control_duplex_pipe,
             new_port,
             new_qd,
-            state: ServerState::ListenAndAccept(qt_rx),
+            state: ServerState::ListenAndAccept { qt_rx },
         })
     }
 }
@@ -110,9 +120,14 @@ impl Future for AcceptFuture {
 
         // Act according to the state in the connection establishment protocol.
         match &self_.state {
-            ServerState::ListenAndAccept(qt_rx) => listen_and_accept(self_, ctx, *qt_rx),
-            ServerState::Connect(qt_tx, duplex_pipe) => connect(self_, ctx, *qt_tx, duplex_pipe.clone()),
-            ServerState::Connected(qt_close, new_qd, remote, duplex_pipe) => {
+            ServerState::ListenAndAccept { qt_rx } => listen_and_accept(self_, ctx, *qt_rx),
+            ServerState::Connect { qt_tx, duplex_pipe } => connect(self_, ctx, *qt_tx, duplex_pipe.clone()),
+            ServerState::Connected {
+                qt_close,
+                new_qd,
+                remote,
+                duplex_pipe,
+            } => {
                 if let Some(handle) = DuplexPipe::poll(&self_.catmem, *qt_close)? {
                     check_connect_request(&self_.catmem, handle, *qt_close).expect("magic connect");
                     debug!("connection accepted!");
@@ -195,11 +210,14 @@ fn listen_and_accept(
             let qt_tx: QToken = send_port_number(&self_.catmem, self_.control_duplex_pipe.clone(), self_.new_port)?;
 
             // Advance to next state in the connection establishment protocol.
-            self_.state = ServerState::Connect(qt_tx, duplex_pipe.clone());
+            self_.state = ServerState::Connect {
+                qt_tx,
+                duplex_pipe: duplex_pipe.clone(),
+            };
         } else {
             // Re-issue accept pop.
             let qt_rx: QToken = self_.control_duplex_pipe.pop()?;
-            self_.state = ServerState::ListenAndAccept(qt_rx);
+            self_.state = ServerState::ListenAndAccept { qt_rx };
         }
     }
 
@@ -218,7 +236,12 @@ fn connect(
     if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, self_.new_port);
         let qt_close: QToken = duplex_pipe.pop()?;
-        self_.state = ServerState::Connected(qt_close, self_.new_qd, remote, duplex_pipe.clone())
+        self_.state = ServerState::Connected {
+            qt_close,
+            new_qd: self_.new_qd,
+            remote,
+            duplex_pipe: duplex_pipe.clone(),
+        }
     }
 
     // Re-schedule co-routine for later execution.
