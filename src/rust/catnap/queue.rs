@@ -9,7 +9,10 @@ use crate::runtime::{
     queue::IoQueue,
     QType,
 };
-use ::std::os::unix::prelude::RawFd;
+use ::std::{
+    net::SocketAddrV4,
+    os::unix::prelude::RawFd,
+};
 
 //======================================================================================================================
 // Structures
@@ -19,6 +22,7 @@ use ::std::os::unix::prelude::RawFd;
 pub struct CatnapQueue {
     qtype: QType,
     fd: Option<RawFd>,
+    addr: Option<SocketAddrV4>,
 }
 
 //======================================================================================================================
@@ -27,7 +31,7 @@ pub struct CatnapQueue {
 
 impl CatnapQueue {
     pub fn new(qtype: QType, fd: Option<RawFd>) -> Self {
-        Self { qtype, fd }
+        Self { qtype, fd, addr: None }
     }
 
     /// Get underlying POSIX file descriptor.
@@ -38,6 +42,16 @@ impl CatnapQueue {
     /// Set underlying POSIX file descriptor.
     pub fn set_fd(&mut self, fd: RawFd) {
         self.fd = Some(fd);
+    }
+
+    /// Gets underlying socket address.
+    pub fn get_addr(&self) -> Option<SocketAddrV4> {
+        self.addr
+    }
+
+    /// Sets underlying socket address.
+    pub fn set_addr(&mut self, addr: SocketAddrV4) {
+        self.addr = Some(addr);
     }
 }
 
