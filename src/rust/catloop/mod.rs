@@ -138,36 +138,58 @@ impl CatloopLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        // Check if the queue descriptor is registered in the sockets table.
-        match self.qtable.get_mut(&qd) {
-            Some(queue) => {
-                if queue.get_pipe().is_some() {
-                    let message: String = format!("Cannot bind an already bound queue (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("bind(): {:?}", e);
-                    return Err(e);
-                }
-                if let Socket::Passive(_) = queue.get_socket() {
-                    let message: String = format!("Cannot bind a listening queue (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("bind(): {:?}", e);
-                    return Err(e);
-                }
-                // Create underlying memory channels.
-                // FIXME: https://github.com/demikernel/demikernel/issues/497
-                let ipv4: &Ipv4Addr = local.ip();
-                let port: u16 = local.port().into();
-                let duplex_pipe: Rc<DuplexPipe> =
-                    Rc::new(DuplexPipe::create_duplex_pipe(self.catmem.clone(), ipv4, port)?);
-                queue.set_pipe(duplex_pipe);
-                queue.set_socket(Socket::Active(Some(local)));
-                Ok(())
-            },
-            None => {
-                error!("invalid queue descriptor (qd={:?})", qd);
-                Err(Fail::new(libc::EBADF, "invalid queue descriptor"))
-            },
+        // Check if we are binding to the wildcard port.
+        if local.port() == 0 {
+            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
         }
+
+        // Check if queue descriptor is valid.
+        if self.qtable.get(&qd).is_none() {
+            error!("invalid queue descriptor (qd={:?})", qd);
+            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+        };
+
+        // Check whether the address is in use.
+        for (_, queue) in self.qtable.get_values() {
+            match queue.get_socket() {
+                Socket::Active(Some(addr)) | Socket::Passive(addr) if addr == local => {
+                    let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
+                    error!("bind(): {}", cause);
+                    return Err(Fail::new(libc::EADDRINUSE, &cause));
+                },
+                _ => {},
+            }
+        }
+
+        // Get a mutable reference to the queue table here, once we are sure that it is valid.
+        let queue: &mut CatloopQueue = self
+            .qtable
+            .get_mut(&qd)
+            .expect("queue descriptor should be in queue table");
+
+        // Check that the socket associated with the queue is not listening.
+        if let Socket::Passive(_) = queue.get_socket() {
+            let cause: String = format!("Cannot bind a listening queue (qd={:?})", qd);
+            error!("bind(): {}", &cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+
+        // Make sure the queue is not already bound to a pipe.
+        if queue.get_pipe().is_some() {
+            let cause: String = format!("socket is already bound to an address (qd={:?})", qd);
+            error!("bind(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // Create underlying memory channels.
+        let ipv4: &Ipv4Addr = local.ip();
+        let port: u16 = local.port();
+        let duplex_pipe: Rc<DuplexPipe> = Rc::new(DuplexPipe::create_duplex_pipe(self.catmem.clone(), &ipv4, port)?);
+        queue.set_pipe(duplex_pipe);
+        queue.set_socket(Socket::Active(Some(local)));
+        Ok(())
     }
 
     /// Sets a socket as a passive one.
