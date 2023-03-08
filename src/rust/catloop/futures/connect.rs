@@ -44,9 +44,17 @@ use ::std::{
 /// Client-side states in the connection establishment protocol.
 enum ClientState {
     InitiateConnectRequest,
-    ConnectRequestSent(QToken),
-    ConnectAckReceived(QToken),
-    Connected(QToken, SocketAddrV4, Rc<DuplexPipe>),
+    ConnectRequestSent {
+        qt_tx: QToken,
+    },
+    ConnectAckReceived {
+        qt_rx: QToken,
+    },
+    Connected {
+        qt_tx: QToken,
+        remote: SocketAddrV4,
+        duplex_pipe: Rc<DuplexPipe>,
+    },
 }
 
 //======================================================================================================================
@@ -111,9 +119,13 @@ impl Future for ConnectFuture {
         //
         match &self_.state {
             ClientState::InitiateConnectRequest => setup(self_, ctx),
-            ClientState::ConnectRequestSent(qt_tx) => connect_request_sent(self_, ctx, *qt_tx),
-            ClientState::ConnectAckReceived(qt_rx) => connect_ack_received(self_, ctx, *qt_rx),
-            ClientState::Connected(qt_tx, remote, duplex_pipe) => {
+            ClientState::ConnectRequestSent { qt_tx } => connect_request_sent(self_, ctx, *qt_tx),
+            ClientState::ConnectAckReceived { qt_rx } => connect_ack_received(self_, ctx, *qt_rx),
+            ClientState::Connected {
+                qt_tx,
+                remote,
+                duplex_pipe,
+            } => {
                 if let Some(_) = DuplexPipe::poll(&self_.catmem, *qt_tx)? {
                     return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
                 }
@@ -138,7 +150,7 @@ fn setup(self_: &mut ConnectFuture, ctx: &mut Context<'_>) -> Poll<Result<(Socke
     self_.catmem.borrow_mut().free_sgarray(sga)?;
 
     // Transition to the next state in the connection establishment protocol.
-    self_.state = ClientState::ConnectRequestSent(qt_tx);
+    self_.state = ClientState::ConnectRequestSent { qt_tx };
 
     // Re-schedule co-routine for later execution.
     ctx.waker().wake_by_ref();
@@ -157,7 +169,7 @@ fn connect_request_sent(
         let qt_rx: QToken = self_.control_duplex_pipe.pop()?;
 
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::ConnectAckReceived(qt_rx);
+        self_.state = ClientState::ConnectAckReceived { qt_rx };
     }
 
     // Re-schedule co-routine for later execution.
@@ -198,7 +210,11 @@ fn connect_ack_received(
         self_.catmem.borrow_mut().free_sgarray(sga)?;
 
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::Connected(qt_tx, remote, duplex_pipe);
+        self_.state = ClientState::Connected {
+            qt_tx,
+            remote,
+            duplex_pipe,
+        };
     } else {
         // Connection timeout, retry.
         DuplexPipe::drop(&self_.catmem, qt_rx)?;
