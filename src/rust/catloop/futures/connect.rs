@@ -44,9 +44,17 @@ use ::std::{
 /// Client-side states in the connection establishment protocol.
 enum ClientState {
     InitiateConnectRequest,
-    ConnectRequestSent(QToken),
-    ConnectAckReceived(QToken),
-    Connected(SocketAddrV4, Rc<DuplexPipe>),
+    ConnectRequestSent {
+        qt_tx: QToken,
+    },
+    ConnectAckReceived {
+        qt_rx: QToken,
+    },
+    Connected {
+        qt_tx: QToken,
+        remote: SocketAddrV4,
+        duplex_pipe: Rc<DuplexPipe>,
+    },
 }
 
 //======================================================================================================================
@@ -111,9 +119,21 @@ impl Future for ConnectFuture {
         //
         match &self_.state {
             ClientState::InitiateConnectRequest => setup(self_, ctx),
-            ClientState::ConnectRequestSent(qt_tx) => connect_request_sent(self_, ctx, *qt_tx),
-            ClientState::ConnectAckReceived(qt_rx) => connect_ack_received(self_, ctx, *qt_rx),
-            ClientState::Connected(remote, duplex_pipe) => Poll::Ready(Ok((*remote, duplex_pipe.clone()))),
+            ClientState::ConnectRequestSent { qt_tx } => connect_request_sent(self_, ctx, *qt_tx),
+            ClientState::ConnectAckReceived { qt_rx } => connect_ack_received(self_, ctx, *qt_rx),
+            ClientState::Connected {
+                qt_tx,
+                remote,
+                duplex_pipe,
+            } => {
+                if let Some(_) = DuplexPipe::poll(&self_.catmem, *qt_tx)? {
+                    return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
+                }
+
+                // Re-schedule co-routine for later execution.
+                ctx.waker().wake_by_ref();
+                return Poll::Pending;
+            },
         }
     }
 }
@@ -130,7 +150,7 @@ fn setup(self_: &mut ConnectFuture, ctx: &mut Context<'_>) -> Poll<Result<(Socke
     self_.catmem.borrow_mut().free_sgarray(sga)?;
 
     // Transition to the next state in the connection establishment protocol.
-    self_.state = ClientState::ConnectRequestSent(qt_tx);
+    self_.state = ClientState::ConnectRequestSent { qt_tx };
 
     // Re-schedule co-routine for later execution.
     ctx.waker().wake_by_ref();
@@ -149,7 +169,7 @@ fn connect_request_sent(
         let qt_rx: QToken = self_.control_duplex_pipe.pop()?;
 
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::ConnectAckReceived(qt_rx);
+        self_.state = ClientState::ConnectAckReceived { qt_rx };
     }
 
     // Re-schedule co-routine for later execution.
@@ -169,33 +189,36 @@ fn connect_ack_received(
 
         let sga: demi_sgarray_t = match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            _ => {
-                let e: Fail = Fail::new(libc::EAGAIN, "hashsake failed");
-                error!("failed to establish connection ({:?})", e);
-                return Poll::Ready(Err(e));
-            },
+            _ => panic!("unexpected operation on control duplex pipe"),
         };
 
         // Extract port number.
-        let port: u16 = match extract_port_number(&sga) {
-            Ok(port) => port,
-            Err(e) => {
-                self_.catmem.borrow_mut().free_sgarray(sga)?;
-                return Poll::Ready(Err(e));
-            },
+        let port: u16 = {
+            let port: Result<u16, Fail> = extract_port_number(&sga);
+            self_.catmem.borrow_mut().free_sgarray(sga)?;
+            self_.control_duplex_pipe.shutdown()?;
+            port?
         };
-
-        self_.catmem.borrow_mut().free_sgarray(sga)?;
-
-        self_.control_duplex_pipe.close()?;
 
         // Open underlying pipes.
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, port);
         let duplex_pipe: Rc<DuplexPipe> =
             Rc::new(DuplexPipe::open_duplex_pipe(self_.catmem.clone(), &self_.ipv4, port)?);
 
+        let sga: demi_sgarray_t = CatloopLibOS::cook_magic_connect(&self_.catmem)?;
+        let qt_tx: QToken = duplex_pipe.push(&sga)?;
+        self_.catmem.borrow_mut().free_sgarray(sga)?;
+
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::Connected(remote, duplex_pipe);
+        self_.state = ClientState::Connected {
+            qt_tx,
+            remote,
+            duplex_pipe,
+        };
+    } else {
+        // Connection timeout, retry.
+        DuplexPipe::drop(&self_.catmem, qt_rx)?;
+        self_.state = ClientState::InitiateConnectRequest;
     }
 
     // Re-schedule co-routine for later execution.

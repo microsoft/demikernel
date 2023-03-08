@@ -65,8 +65,16 @@ impl DuplexPipe {
 
     /// Closes a duplex pipe.
     pub fn close(&self) -> Result<(), Fail> {
-        self.catmem.borrow_mut().close(self.rx)?;
+        self.catmem.borrow_mut().shutdown(self.rx)?;
         self.catmem.borrow_mut().close(self.tx)?;
+        Ok(())
+    }
+
+    /// Disallows further operations on a duplex pipe. The underlying queue
+    /// descriptors are released, but EoF is not pushed to the remote end.
+    pub fn shutdown(&self) -> Result<(), Fail> {
+        self.catmem.borrow_mut().shutdown(self.rx)?;
+        self.catmem.borrow_mut().shutdown(self.tx)?;
         Ok(())
     }
 
@@ -92,5 +100,13 @@ impl DuplexPipe {
         }
 
         Ok(Some(handle))
+    }
+
+    /// Drops a pending operation on a duplex pipe.
+    pub fn drop(catmem: &Rc<RefCell<CatmemLibOS>>, qt: QToken) -> Result<(), Fail> {
+        // Retrieve a handle to the concerned co-routine and execute its destructor.
+        let handle: SchedulerHandle = catmem.borrow_mut().schedule(qt)?;
+        drop(handle);
+        Ok(())
     }
 }

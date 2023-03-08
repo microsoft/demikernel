@@ -61,7 +61,12 @@ pub struct CatmemLibOS {
     scheduler: Scheduler,
 }
 
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
 impl MemoryRuntime for CatmemLibOS {}
+
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
@@ -112,6 +117,24 @@ impl CatmemLibOS {
         Ok(())
     }
 
+    /// Disallows further operations on a memory queue.
+    /// This causes the queue descriptor to be freed and the underlying ring
+    /// buffer to be released, but it does not push an EoF message to the other end.
+    pub fn shutdown(&mut self, qd: QDesc) -> Result<(), Fail> {
+        trace!("shutdown() qd={:?}", qd);
+        match self.qtable.get(&qd) {
+            Some(_) => {
+                self.qtable.free(&qd);
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("shutdown(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        };
+        Ok(())
+    }
+
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
@@ -124,6 +147,7 @@ impl CatmemLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
+    /// TODO: Enforce semantics on the pipe.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
@@ -140,7 +164,7 @@ impl CatmemLibOS {
                         // Handle end of file.
                         if pipe.eof() {
                             let cause: String = format!("end of file (qd={:?})", qd);
-                            error!("pop(): {:?}", cause);
+                            error!("push(): {:?}", cause);
                             return Err(Fail::new(libc::ECONNRESET, &cause));
                         }
                         let future: Operation = Operation::from(PushFuture::new(qd, pipe.buffer(), buf));
@@ -160,6 +184,7 @@ impl CatmemLibOS {
     }
 
     /// Pops data from a socket.
+    /// TODO: Enforce semantics on the pipe.
     pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}", qd);
 
