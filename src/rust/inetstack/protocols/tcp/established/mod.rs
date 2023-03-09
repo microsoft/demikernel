@@ -78,6 +78,10 @@ impl EstablishedSocket {
         self.cb.close()
     }
 
+    pub fn poll_close(&self) -> Poll<Result<(), Fail>> {
+        self.cb.poll_close()
+    }
+
     pub fn remote_mss(&self) -> usize {
         self.cb.remote_mss()
     }

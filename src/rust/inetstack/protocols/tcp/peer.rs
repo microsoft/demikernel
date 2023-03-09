@@ -29,6 +29,7 @@ use crate::{
             established::ControlBlock,
             operations::{
                 AcceptFuture,
+                CloseFuture,
                 ConnectFuture,
                 PopFuture,
                 PushFuture,
@@ -128,7 +129,7 @@ pub struct TcpPeer {
 }
 
 //==============================================================================
-// Associated FUnctions
+// Associated Functions
 //==============================================================================
 
 impl TcpPeer {
@@ -399,6 +400,7 @@ impl TcpPeer {
         }
     }
 
+    /// TODO: Should probably check for valid queue descriptor before we schedule the future
     pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> PushFuture {
         let err: Option<Fail> = match self.send(qd, buf) {
             Ok(()) => None,
@@ -407,6 +409,7 @@ impl TcpPeer {
         PushFuture { qd, err }
     }
 
+    /// TODO: Should probably check for valid queue descriptor before we schedule the future
     pub fn pop(&self, qd: QDesc) -> PopFuture {
         PopFuture {
             qd,
@@ -474,6 +477,50 @@ impl TcpPeer {
         // TODO: remove active sockets from the addresses table.
         inner.addresses.remove(&SocketId::Passive(addr));
         result
+    }
+
+    /// Closes a TCP socket.
+    pub fn do_async_close(&self, qd: QDesc) -> Result<CloseFuture, Fail> {
+        match self.inner.borrow().qtable.borrow_mut().get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => {
+                match queue.get_socket() {
+                    // Closing an active socket.
+                    Socket::Established(socket) => {
+                        // Send FIN
+                        socket.close()?;
+                        // Move socket to closing state
+                        queue.set_socket(Socket::Closing(socket.clone()));
+                    },
+                    // Closing an unbound socket.
+                    Socket::Inactive(_) => (),
+                    // Closing a listening socket.
+                    Socket::Listening(_) => {
+                        // TODO: Remove this address from the addresses table
+                        let cause: String = format!("cannot close a listening socket (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        return Err(Fail::new(libc::ENOTSUP, &cause));
+                    },
+                    // Closing a connecting socket.
+                    Socket::Connecting(_) => {
+                        let cause: String = format!("cannot close a connecting socket (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        return Err(Fail::new(libc::ENOTSUP, &cause));
+                    },
+                    // Closing a closing socket.
+                    Socket::Closing(_) => {
+                        let cause: String = format!("cannot close a socket that is closing (qd={:?})", qd);
+                        error!("do_close(): {}", &cause);
+                        return Err(Fail::new(libc::ENOTSUP, &cause));
+                    },
+                }
+            },
+            _ => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
+        };
+        // Schedule a co-routine to all of the cleanup
+        Ok(CloseFuture {
+            qd: qd,
+            inner: self.inner.clone(),
+        })
     }
 
     pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {
@@ -644,5 +691,39 @@ impl Inner {
             },
             _ => Poll::Ready(Err(Fail::new(libc::EBADF, "bad queue descriptor"))),
         }
+    }
+
+    // TODO: Eventually use context to store the waker for this function in the established socket.
+    pub(super) fn poll_close_finished(&mut self, qd: QDesc, _context: &mut Context) -> Poll<Result<(), Fail>> {
+        let sockid: Option<SocketId> = match self.qtable.borrow_mut().get_mut(&qd) {
+            Some(InetQueue::Tcp(queue)) => {
+                match queue.get_socket() {
+                    // Closing an active socket.
+                    Socket::Closing(socket) => match socket.poll_close() {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(_) => Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)),
+                    },
+                    // Closing an unbound socket.
+                    Socket::Inactive(None) => None,
+                    // Closing a bound socket.
+                    Socket::Inactive(Some(addr)) => Some(SocketId::Passive(addr.clone())),
+                    // Closing a listening socket.
+                    Socket::Listening(_) => unimplemented!("Do not support async close for listening sockets yet"),
+                    // Closing a connecting socket.
+                    Socket::Connecting(_) => unimplemented!("Do not support async close for listening sockets yet"),
+                    // Closing a closing socket.
+                    Socket::Established(_) => unreachable!("Should have moved this socket to closing already!"),
+                }
+            },
+            _ => return Poll::Ready(Err(Fail::new(libc::EBADF, "bad queue descriptor"))),
+        };
+
+        // Remove queue from qtable
+        self.qtable.borrow_mut().free(&qd);
+        // Remove address from addresses backmap
+        if let Some(addr) = sockid {
+            self.addresses.remove(&addr);
+        }
+        Poll::Ready(Ok(()))
     }
 }
