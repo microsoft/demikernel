@@ -182,7 +182,7 @@ impl NetworkLibOS {
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => unimplemented!("Async close not supported yet"),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => unimplemented!("Async close not supported yet"),
+            NetworkLibOS::Catnip(libos) => libos.async_close(sockqd),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOS::Catloop(libos) => unimplemented!("Async close not supported yet"),
         }

@@ -98,7 +98,12 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                 }
             },
         },
-        OperationResult::Close => unimplemented!("Async close not implemented yet"),
+        OperationResult::Close => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+            qr_qd: qd.into(),
+            qr_qt: qt,
+            qr_value: unsafe { mem::zeroed() },
+        },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
             demi_qresult_t {
