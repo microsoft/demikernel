@@ -632,10 +632,8 @@ impl ControlBlock {
                             // is, we can delete our state (we maintained it in case we needed to retransmit something,
                             // but we had already sent everything we're ever going to send (incl. FIN) at least once).
                             self.state.set(State::Closed);
-
-                            // ToDo: Delete the ControlBlock.
                         },
-
+                        // TODO: Handle TimeWait to Closed transition.
                         _ => (),
                     }
                 } else {
@@ -735,6 +733,7 @@ impl ControlBlock {
             }
 
             // Push empty buffer.
+            // TODO: set err bit and wake
             self.receiver.push(DemiBuffer::new(0));
             if let Some(w) = self.waker.borrow_mut().take() {
                 w.wake()
@@ -785,10 +784,24 @@ impl ControlBlock {
         let fin_buf: DemiBuffer = DemiBuffer::new(0);
         self.send(fin_buf).expect("send failed");
 
+        // TODO: Set state to FIN-WAIT1 if currently establisehd or set to LASTACK if CloseWait.
+
         // Remember that the user has called close.
         self.user_is_done_sending.set(true);
 
         Ok(())
+    }
+
+    /// Handle moving the connection to the closed state.
+    ///
+    /// This function runs the TCP state machine once it has either sent or received a FIN. This function is only for
+    /// closing estabilished connections.
+    ///
+    pub fn poll_close(&self) -> Poll<Result<(), Fail>> {
+        // TODO: Retry FIN if not successful.
+        // TODO: Check if we have reached the CLOSED state, otherwise continue polling.
+        // For now, just immediately return with ok.
+        Poll::Ready(Ok(()))
     }
 
     /// Fetch a TCP header filling out various values based on our current state.

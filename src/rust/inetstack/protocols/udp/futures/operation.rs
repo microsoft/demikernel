@@ -33,6 +33,8 @@ pub enum UdpOperation {
     Pushto(QDesc, Result<(), Fail>),
     /// Pop operation.
     Pop(FutureResult<UdpPopFuture>),
+    /// Close operation
+    Close(QDesc, Result<(), Fail>),
 }
 
 //==============================================================================
@@ -57,6 +59,10 @@ impl UdpOperation {
                 done: Some(Err(e)),
             }) => (future.get_qd(), OperationResult::Failed(e)),
 
+            // Close operation.
+            UdpOperation::Close(fd, Ok(())) => (fd, OperationResult::Close),
+            UdpOperation::Close(fd, Err(e)) => (fd, OperationResult::Failed(e)),
+
             _ => panic!("UDP Operation not ready"),
         }
     }
@@ -75,6 +81,7 @@ impl Future for UdpOperation {
         match self.get_mut() {
             UdpOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
             UdpOperation::Pushto(..) => Poll::Ready(()),
+            UdpOperation::Close(..) => Poll::Ready(()),
         }
     }
 }
