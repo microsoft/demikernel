@@ -478,6 +478,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
             qr_qd: qd.into(),
             qr_qt: qt,
+            qr_ret: 0,
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
@@ -495,6 +496,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
                 qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
                 qr_qd: qd.into(),
                 qr_qt: qt,
+                qr_ret: 0,
                 qr_value,
             }
         },
@@ -502,6 +504,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
             qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
             qr_qd: qd.into(),
             qr_qt: qt,
+            qr_ret: 0,
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
@@ -515,6 +518,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
                     qr_opcode: demi_opcode_t::DEMI_OPC_POP,
                     qr_qd: qd.into(),
                     qr_qt: qt,
+                    qr_ret: 0,
                     qr_value,
                 }
             },
@@ -524,6 +528,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt,
+                    qr_ret: e.errno,
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
@@ -532,6 +537,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
             qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
             qr_qd: qd.into(),
             qr_qt: qt,
+            qr_ret: 0,
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Failed(e) => {
@@ -540,6 +546,7 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
                 qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                 qr_qd: qd.into(),
                 qr_qt: qt,
+                qr_ret: e.errno,
                 qr_value: unsafe { mem::zeroed() },
             }
         },
