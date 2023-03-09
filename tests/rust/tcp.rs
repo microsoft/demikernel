@@ -390,48 +390,6 @@ fn tcp_bad_socket() {
 }
 
 //======================================================================================================================
-// Bad Bind
-//======================================================================================================================
-
-/// Test bad calls for `bind()`.
-#[test]
-fn tcp_bad_bind() {
-    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
-
-    let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
-    let local2: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE + 1);
-
-    // Invalid queue descriptor.
-    match libos.bind(QDesc::from(0), local) {
-        Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to bind() should fail with EBADF"),
-    };
-
-    // Bind socket multiple times.
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    match libos.bind(sockqd, local2) {
-        Err(e) if e.errno == libc::EINVAL => (),
-        Err(e) => panic!("bind() failed with unexpected error code ({:?})", e),
-        Ok(_) => panic!("bind() socket multiple times should fail with EINVAL"),
-    };
-    safe_close_active(&mut libos, sockqd);
-
-    // Bind sockets to same address.
-    let sockqd_a: QDesc = safe_socket(&mut libos);
-    let sockqd_b: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd_a, local);
-    match libos.bind(sockqd_b, local) {
-        Err(e) if e.errno == libc::EADDRINUSE => (),
-        Err(e) => panic!("bind() failed with unexpected error code ({:?})", e),
-        Ok(_) => panic!("bind() multiple sockets to the same address should fail with EADDRINUSE"),
-    };
-    safe_close_active(&mut libos, sockqd_a);
-    safe_close_active(&mut libos, sockqd_b);
-}
-
-//======================================================================================================================
 // Bad Listen
 //======================================================================================================================
 

@@ -220,6 +220,19 @@ def test_tcp_accept(
         config_path, log_directory)
 
 
+def test_tcp_bind(
+        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
+        server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_name: str = "tcp-bind"
+    server_args: str = "--ipv4 {}".format(
+        server_addr)
+    client_args: str = "--ipv4 {}".format(
+        client_addr)
+    return job_test_system_rust(
+        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
+        config_path, log_directory)
+
+
 def test_pipe_open(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -305,6 +318,10 @@ def run_pipeline(
                         status["udp_push_pop"] = test_udp_push_pop(
                             server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
                             config_path, log_directory)
+                if test_system == "all" or test_system == "tcp_bind":
+                    status["tcp_bind"] = test_tcp_bind(server, client, libos, is_debug, is_sudo,
+                                                       repository, server_addr, client_addr, delay, config_path,
+                                                       log_directory)
                 if test_system == "all" or test_system == "tcp_ping_pong":
                     status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                                                  repository, server_addr, delay, config_path,
