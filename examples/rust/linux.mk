@@ -21,6 +21,7 @@ all: all-examples
 	cp -f $(BUILD_DIR)/examples/tcp-ping-pong $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/tcp-accept $(BINDIR)/examples/rust/tcp-accept.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/tcp-bind $(BINDIR)/examples/rust/tcp-bind.$(EXEC_SUFFIX)
+	cp -f $(BUILD_DIR)/examples/tcp-close $(BINDIR)/examples/rust/tcp-close.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/pipe-open $(BINDIR)/examples/rust/pipe-open.$(EXEC_SUFFIX)
 
 all-examples:
@@ -43,4 +44,5 @@ clean:
 	@rm -rf $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/tcp-accept.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/tcp-bind.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/examples/rust/tcp-close.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/pipe-open.$(EXEC_SUFFIX)
