@@ -10,7 +10,7 @@ use crate::{
         memory::MemoryRuntime,
         Runtime,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 
 //==============================================================================
@@ -21,7 +21,7 @@ use crate::{
 #[derive(Clone)]
 pub struct PosixRuntime {
     /// Scheduler
-    pub scheduler: Scheduler,
+    pub scheduler: DemiScheduler,
 }
 
 //==============================================================================
@@ -32,7 +32,7 @@ pub struct PosixRuntime {
 impl PosixRuntime {
     pub fn new() -> Self {
         Self {
-            scheduler: Scheduler::default(),
+            scheduler: DemiScheduler::default(),
         }
     }
 }

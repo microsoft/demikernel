@@ -223,7 +223,7 @@ impl CatnapLibOS {
                 Some(fd) => {
                     let new_qd: QDesc = self.qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
                     let future: Operation = Operation::from(AcceptFuture::new(qd, fd, new_qd));
-                    match self.runtime.scheduler.insert(future) {
+                    match self.runtime.scheduler.insert(Box::new(future)) {
                         Some(handle) => Ok(handle.into_raw().into()),
                         None => {
                             self.qtable.free(&new_qd);
@@ -246,7 +246,7 @@ impl CatnapLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     let future: Operation = Operation::from(ConnectFuture::new(qd, fd, remote));
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(Box::new(future)) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
@@ -291,7 +291,7 @@ impl CatnapLibOS {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
                             let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, None));
-                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(Box::new(future)) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
@@ -321,7 +321,7 @@ impl CatnapLibOS {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
                             let future: Operation = Operation::from(PushFuture::new(qd, fd, buf, Some(remote)));
-                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(Box::new(future)) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
@@ -345,7 +345,7 @@ impl CatnapLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     let future: Operation = Operation::from(PopFuture::new(qd, fd));
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
+                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(Box::new(future)) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };

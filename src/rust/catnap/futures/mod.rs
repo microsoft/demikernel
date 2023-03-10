@@ -26,8 +26,8 @@ use crate::{
         QDesc,
     },
     scheduler::{
+        Coroutine,
         FutureResult,
-        SchedulerFuture,
     },
 };
 use ::std::{
@@ -126,12 +126,12 @@ impl Operation {
 //==============================================================================
 
 /// Scheduler Future Trait Implementation for Operation Descriptors
-impl SchedulerFuture for Operation {
+impl Coroutine for Operation {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 
-    fn get_future(&self) -> &dyn Future<Output = ()> {
+    fn get_coroutine(&self) -> &dyn Future<Output = ()> {
         todo!()
     }
 }
