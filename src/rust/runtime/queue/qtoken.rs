@@ -16,7 +16,7 @@ pub struct QToken(u64);
 //======================================================================================================================
 
 impl From<u64> for QToken {
-    /// Converts a [QToken] to a [u64].
+    /// Converts a [u64] to a [QToken].
     fn from(value: u64) -> Self {
         QToken(value)
     }
