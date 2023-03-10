@@ -32,7 +32,7 @@ use crate::{
         QToken,
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -56,7 +56,7 @@ use crate::timer;
 
 /// Catpowder LibOS
 pub struct CatpowderLibOS {
-    scheduler: Scheduler,
+    scheduler: DemiScheduler,
     inetstack: InetStack,
     rt: Rc<LinuxRuntime>,
 }
@@ -76,7 +76,7 @@ impl CatpowderLibOS {
             HashMap::default(),
         ));
         let now: Instant = Instant::now();
-        let scheduler: Scheduler = Scheduler::default();
+        let scheduler: DemiScheduler = DemiScheduler::default();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack = InetStack::new(
@@ -111,7 +111,7 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_push(qd, buf)?;
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                 };
@@ -132,7 +132,7 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_pushto(qd, buf, to)?;
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                 };
