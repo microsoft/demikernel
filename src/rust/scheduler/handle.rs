@@ -53,6 +53,11 @@ impl SchedulerHandle {
     pub fn into_raw(mut self) -> u64 {
         self.key.take().unwrap()
     }
+
+    /// Returns the raw key without taking it.
+    pub fn lookup_key(&self) -> u64 {
+        self.key.unwrap()
+    }
 }
 
 //==============================================================================

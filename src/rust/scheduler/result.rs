@@ -36,6 +36,21 @@ impl<F: Future> FutureResult<F> {
     pub fn new(future: F, done: Option<F::Output>) -> Self {
         Self { future, done }
     }
+
+    /// Use this function to cause this Future to immediately return with the given result.
+    pub fn return_failure(&mut self, cause: F::Output) {
+        self.done = Some(cause);
+    }
+
+    /// Check if the future has completed.
+    pub fn is_done(self) -> bool {
+        self.done.is_some()
+    }
+
+    /// Use this function to get the result of this Future. Should only be called once future has completed.
+    pub fn get_future_and_result(self) -> (F, F::Output) {
+        (self.future, self.done.expect("Future not complete"))
+    }
 }
 
 //==============================================================================
@@ -52,13 +67,19 @@ where
     /// Polls the target [FutureResult].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
         let self_: &mut FutureResult<F> = self.get_mut();
+
+        // Check whether the result was already set (e.g., the socket was closed).
         if self_.done.is_some() {
-            panic!("future polled after completion")
+            return Poll::Ready(());
         }
+
+        // Otherwise, poll the Future.
         let result: <F as Future>::Output = match Future::poll(Pin::new(&mut self_.future), ctx) {
             Poll::Pending => return Poll::Pending,
             Poll::Ready(r) => r,
         };
+
+        // If the Future is ready, set the result.
         self_.done = Some(result);
         Poll::Ready(())
     }
