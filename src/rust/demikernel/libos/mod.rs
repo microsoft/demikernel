@@ -185,6 +185,13 @@ impl LibOS {
         }
     }
 
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.async_close(qd),
+            _ => unimplemented!("No async close for memory libOSes"),
+        }
+    }
+
     /// Pushes a scatter-gather array to an I/O queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {

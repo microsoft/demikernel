@@ -171,6 +171,23 @@ impl NetworkLibOS {
         }
     }
 
+    pub fn async_close(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOS::Catpowder(libos) => unimplemented!("Async close not supported yet"),
+            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            NetworkLibOS::Catnap(libos) => unimplemented!("Async close not supported yet"),
+            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
+            NetworkLibOS::CatnapW(libos) => unimplemented!("Async close not supported yet"),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOS::Catcollar(libos) => unimplemented!("Async close not supported yet"),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOS::Catnip(libos) => unimplemented!("Async close not supported yet"),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOS::Catloop(libos) => unimplemented!("Async close not supported yet"),
+        }
+    }
+
     /// Pushes a scatter-gather array to a TCP socket.
     pub fn push(&mut self, sockqd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {

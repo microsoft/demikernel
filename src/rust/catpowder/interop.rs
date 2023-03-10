@@ -77,6 +77,7 @@ pub fn pack_result(rt: Rc<LinuxRuntime>, result: OperationResult, qd: QDesc, qt:
                 }
             },
         },
+        OperationResult::Close => unimplemented!("Async close not implemented yet"),
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
             demi_qresult_t {

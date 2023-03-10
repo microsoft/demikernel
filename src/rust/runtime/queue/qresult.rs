@@ -28,6 +28,7 @@ pub enum OperationResult {
     Accept((QDesc, SocketAddrV4)),
     Push,
     Pop(Option<SocketAddrV4>, DemiBuffer),
+    Close,
     Failed(Fail),
 }
 
@@ -51,6 +52,7 @@ impl fmt::Debug for OperationResult {
             OperationResult::Accept(..) => write!(f, "Accept"),
             OperationResult::Push => write!(f, "Push"),
             OperationResult::Pop(..) => write!(f, "Pop"),
+            OperationResult::Close => write!(f, "Close"),
             OperationResult::Failed(ref e) => write!(f, "Failed({:?})", e),
         }
     }

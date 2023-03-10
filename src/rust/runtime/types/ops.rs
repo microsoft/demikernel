@@ -29,6 +29,7 @@ pub enum demi_opcode_t {
     DEMI_OPC_POP,
     DEMI_OPC_ACCEPT,
     DEMI_OPC_CONNECT,
+    DEMI_OPC_CLOSE,
     DEMI_OPC_FAILED,
 }
 
