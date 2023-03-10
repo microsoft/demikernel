@@ -52,7 +52,7 @@ use crate::{
         timer::TimerRc,
         QDesc,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::futures::channel::mpsc;
 use ::rand::{
@@ -113,7 +113,7 @@ pub struct Inner {
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
     rt: Rc<dyn NetworkRuntime>,
-    scheduler: Scheduler,
+    scheduler: DemiScheduler,
     clock: TimerRc,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -134,7 +134,7 @@ pub struct TcpPeer {
 impl TcpPeer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
@@ -516,7 +516,7 @@ impl TcpPeer {
 impl Inner {
     fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,

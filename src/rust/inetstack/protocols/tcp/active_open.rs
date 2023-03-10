@@ -40,7 +40,7 @@ use crate::{
         timer::TimerRc,
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -74,7 +74,7 @@ pub struct ActiveOpenSocket {
     remote: SocketAddrV4,
 
     rt: Rc<dyn NetworkRuntime>,
-    scheduler: Scheduler,
+    scheduler: DemiScheduler,
     clock: TimerRc,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
@@ -87,7 +87,7 @@ pub struct ActiveOpenSocket {
 
 impl ActiveOpenSocket {
     pub fn new(
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
@@ -114,7 +114,8 @@ impl ActiveOpenSocket {
             arp.clone(),
             result.clone(),
         );
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let future: FutureOperation = FutureOperation::Background(future.boxed_local());
+        let handle: SchedulerHandle = match scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

@@ -31,7 +31,7 @@ use crate::{
         timer::TimerRc,
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -92,7 +92,7 @@ pub struct ArpPeer {
 impl ArpPeer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -105,8 +105,8 @@ impl ArpPeer {
             arp_config.get_disable_arp(),
         )));
 
-        let future = Self::background(clock.clone(), cache.clone());
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let future = FutureOperation::Background(Self::background(clock.clone(), cache.clone()).boxed_local());
+        let handle: SchedulerHandle = match scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(

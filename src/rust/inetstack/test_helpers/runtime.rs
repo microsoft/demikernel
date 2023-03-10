@@ -21,7 +21,7 @@ use crate::{
             TimerRc,
         },
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
@@ -52,7 +52,7 @@ pub struct TestRuntime {
     pub udp_config: UdpConfig,
     pub tcp_config: TcpConfig,
     inner: Rc<RefCell<Inner>>,
-    pub scheduler: Scheduler,
+    pub scheduler: DemiScheduler,
     pub clock: TimerRc,
 }
 
@@ -80,7 +80,7 @@ impl TestRuntime {
             link_addr,
             ipv4_addr,
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
+            scheduler: DemiScheduler::default(),
             clock: TimerRc(Rc::new(Timer::new(now))),
             arp_options,
             udp_config,

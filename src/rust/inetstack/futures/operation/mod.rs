@@ -6,7 +6,7 @@ use crate::{
         tcp::operations::TcpOperation,
         udp::UdpOperation,
     },
-    scheduler::SchedulerFuture,
+    scheduler::Coroutine,
 };
 use ::futures::Future;
 use ::std::{
@@ -40,12 +40,12 @@ pub enum FutureOperation {
     Background(Pin<Box<dyn Future<Output = ()>>>),
 }
 
-impl SchedulerFuture for FutureOperation {
+impl Coroutine for FutureOperation {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 
-    fn get_future(&self) -> &dyn Future<Output = ()> {
+    fn get_coroutine(&self) -> &dyn Future<Output = ()> {
         todo!()
     }
 }

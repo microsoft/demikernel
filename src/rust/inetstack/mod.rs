@@ -48,8 +48,8 @@ use crate::{
         QType,
     },
     scheduler::{
+        DemiScheduler,
         FutureResult,
-        Scheduler,
         SchedulerHandle,
     },
 };
@@ -93,7 +93,7 @@ pub struct InetStack {
     qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
     rt: Rc<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
-    scheduler: Scheduler,
+    scheduler: DemiScheduler,
     clock: TimerRc,
     ts_iters: usize,
 }
@@ -101,7 +101,7 @@ pub struct InetStack {
 impl InetStack {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -267,7 +267,7 @@ impl InetStack {
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
                 let future: FutureOperation = FutureOperation::from(self.ipv4.tcp.do_accept(qd));
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
                     Some(handle) => handle,
                     None => {
                         return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
@@ -307,7 +307,7 @@ impl InetStack {
             None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         };
 
-        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+        let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
@@ -364,7 +364,7 @@ impl InetStack {
 
         // Issue operation.
         let future: FutureOperation = self.do_push(qd, buf)?;
-        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+        let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
@@ -401,7 +401,7 @@ impl InetStack {
 
         // Issue operation.
         let future: FutureOperation = self.do_pushto(qd, buf, remote)?;
-        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+        let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
@@ -428,7 +428,7 @@ impl InetStack {
             None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }?;
 
-        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+        let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };

@@ -25,7 +25,7 @@ use crate::{
         queue::IoQueueTable,
         timer::TimerRc,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::libc::ENOTCONN;
 use ::std::{
@@ -49,7 +49,7 @@ pub struct Peer {
 impl Peer {
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,

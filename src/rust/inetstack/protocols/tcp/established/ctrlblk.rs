@@ -43,7 +43,7 @@ use crate::{
             WatchedValue,
         },
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::std::{
     cell::{
@@ -149,7 +149,7 @@ pub struct ControlBlock {
     remote: SocketAddrV4,
 
     rt: Rc<dyn NetworkRuntime>,
-    pub scheduler: Scheduler,
+    pub scheduler: DemiScheduler,
     pub clock: TimerRc,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
@@ -216,7 +216,7 @@ impl ControlBlock {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,

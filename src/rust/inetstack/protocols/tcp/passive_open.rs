@@ -41,7 +41,7 @@ use crate::{
         timer::TimerRc,
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -131,7 +131,7 @@ pub struct PassiveSocket {
 
     local: SocketAddrV4,
     rt: Rc<dyn NetworkRuntime>,
-    scheduler: Scheduler,
+    scheduler: DemiScheduler,
     clock: TimerRc,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
@@ -143,7 +143,7 @@ impl PassiveSocket {
         local: SocketAddrV4,
         max_backlog: usize,
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         clock: TimerRc,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
@@ -275,7 +275,8 @@ impl PassiveSocket {
             self.arp.clone(),
             self.ready.clone(),
         );
-        let handle: SchedulerHandle = match self.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let future: FutureOperation = FutureOperation::Background(future.boxed_local());
+        let handle: SchedulerHandle = match self.scheduler.insert(Box::new(future)) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

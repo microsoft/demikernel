@@ -51,8 +51,8 @@ pub struct EstablishedSocket {
 impl EstablishedSocket {
     pub fn new(cb: ControlBlock, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
-        let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let future = FutureOperation::Background(background(cb.clone(), fd, dead_socket_tx).boxed_local());
+        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(Box::new(future)) {
             Some(handle) => Rc::<SchedulerHandle>::new(handle),
             None => panic!("failed to insert task in the scheduler"),
         };

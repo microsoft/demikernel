@@ -20,7 +20,7 @@ use ::demikernel::{
             TimerRc,
         },
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::std::{
     cell::RefCell,
@@ -46,7 +46,7 @@ struct SharedDummyRuntime {
 pub struct DummyRuntime {
     /// Shared Member Fields
     inner: Rc<RefCell<SharedDummyRuntime>>,
-    pub scheduler: Scheduler,
+    pub scheduler: DemiScheduler,
     pub clock: TimerRc,
 }
 
@@ -65,7 +65,7 @@ impl DummyRuntime {
         let inner = SharedDummyRuntime { incoming, outgoing };
         Self {
             inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
+            scheduler: DemiScheduler::default(),
             clock: TimerRc(Rc::new(Timer::new(now))),
         }
     }

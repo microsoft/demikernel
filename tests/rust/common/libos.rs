@@ -26,7 +26,7 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
-use demikernel::scheduler::scheduler::Scheduler;
+use demikernel::scheduler::demi_scheduler::DemiScheduler;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -67,7 +67,7 @@ impl DummyLibOS {
         );
         let udp_config: UdpConfig = UdpConfig::default();
         let tcp_config: TcpConfig = TcpConfig::default();
-        let scheduler: Scheduler = rt.scheduler.clone();
+        let scheduler: DemiScheduler = rt.scheduler.clone();
         let clock: TimerRc = rt.clock.clone();
         let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();

@@ -35,7 +35,7 @@ use crate::{
         },
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -142,7 +142,7 @@ impl Icmpv4Peer {
     /// Creates a new peer for handling ICMP.
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -153,14 +153,15 @@ impl Icmpv4Peer {
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
         let future = Self::background(rt.clone(), local_link_addr, local_ipv4_addr, arp.clone(), rx);
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
-            Some(handle) => handle,
-            None => {
-                let message: String = format!("failed to schedule background co-routine for ICMPv4 module");
-                error!("{}", message);
-                return Err(Fail::new(libc::EAGAIN, &message));
-            },
-        };
+        let handle: SchedulerHandle =
+            match scheduler.insert(Box::new(FutureOperation::Background(future.boxed_local()))) {
+                Some(handle) => handle,
+                None => {
+                    let message: String = format!("failed to schedule background co-routine for ICMPv4 module");
+                    error!("{}", message);
+                    return Err(Fail::new(libc::EAGAIN, &message));
+                },
+            };
         Ok(Icmpv4Peer {
             rt,
             clock,

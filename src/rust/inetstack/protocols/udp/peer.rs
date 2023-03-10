@@ -45,7 +45,7 @@ use crate::{
         QDesc,
     },
     scheduler::{
-        Scheduler,
+        DemiScheduler,
         SchedulerHandle,
     },
 };
@@ -122,7 +122,7 @@ impl UdpPeer {
     /// Creates a Udp peer.
     pub fn new(
         rt: Rc<dyn NetworkRuntime>,
-        scheduler: Scheduler,
+        scheduler: DemiScheduler,
         qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
         rng_seed: [u8; 32],
         local_link_addr: MacAddress,
@@ -140,15 +140,16 @@ impl UdpPeer {
             arp.clone(),
             send_queue.clone(),
         );
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
-            Some(handle) => handle,
-            None => {
-                return Err(Fail::new(
-                    libc::EAGAIN,
-                    "failed to schedule background co-routine for UDP module",
-                ))
-            },
-        };
+        let handle: SchedulerHandle =
+            match scheduler.insert(Box::new(FutureOperation::Background(future.boxed_local()))) {
+                Some(handle) => handle,
+                None => {
+                    return Err(Fail::new(
+                        libc::EAGAIN,
+                        "failed to schedule background co-routine for UDP module",
+                    ))
+                },
+            };
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
         Ok(Self {

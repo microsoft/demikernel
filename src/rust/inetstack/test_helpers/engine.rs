@@ -26,7 +26,7 @@ use crate::{
         timer::TimerRc,
         QDesc,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::libc::EBADMSG;
 use ::std::{
@@ -52,7 +52,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(rt: TestRuntime, scheduler: Scheduler, clock: TimerRc) -> Result<Self, Fail> {
+    pub fn new(rt: TestRuntime, scheduler: DemiScheduler, clock: TimerRc) -> Result<Self, Fail> {
         let rt = Rc::new(rt);
         let link_addr = rt.link_addr;
         let ipv4_addr = rt.ipv4_addr;

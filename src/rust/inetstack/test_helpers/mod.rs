@@ -19,7 +19,7 @@ use crate::{
         },
         timer::TimerRc,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::demi_scheduler::DemiScheduler,
 };
 use ::std::{
     collections::HashMap,
@@ -57,7 +57,7 @@ pub fn new_alice(now: Instant) -> Engine {
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
     let rt = TestRuntime::new(now, arp_options, udp_config, tcp_config, ALICE_MAC, ALICE_IPV4);
-    let scheduler: Scheduler = rt.scheduler.clone();
+    let scheduler: DemiScheduler = rt.scheduler.clone();
     let clock: TimerRc = rt.clock.clone();
     Engine::new(rt, scheduler, clock).unwrap()
 }
@@ -73,7 +73,7 @@ pub fn new_bob(now: Instant) -> Engine {
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
     let rt = TestRuntime::new(now, arp_options, udp_config, tcp_config, BOB_MAC, BOB_IPV4);
-    let scheduler: Scheduler = rt.scheduler.clone();
+    let scheduler: DemiScheduler = rt.scheduler.clone();
     let clock: TimerRc = rt.clock.clone();
     Engine::new(rt, scheduler, clock).unwrap()
 }
@@ -92,7 +92,7 @@ pub fn new_alice2(now: Instant) -> Engine {
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
     let rt = TestRuntime::new(now, arp_options, udp_config, tcp_config, ALICE_MAC, ALICE_IPV4);
-    let scheduler: Scheduler = rt.scheduler.clone();
+    let scheduler: DemiScheduler = rt.scheduler.clone();
     let clock: TimerRc = rt.clock.clone();
     Engine::new(rt, scheduler, clock).unwrap()
 }
@@ -111,7 +111,7 @@ pub fn new_bob2(now: Instant) -> Engine {
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
     let rt = TestRuntime::new(now, arp_options, udp_config, tcp_config, BOB_MAC, BOB_IPV4);
-    let scheduler: Scheduler = rt.scheduler.clone();
+    let scheduler: DemiScheduler = rt.scheduler.clone();
     let clock: TimerRc = rt.clock.clone();
     Engine::new(rt, scheduler, clock).unwrap()
 }
@@ -128,7 +128,7 @@ pub fn new_carrie(now: Instant) -> Engine {
     let tcp_config = TcpConfig::default();
 
     let rt = TestRuntime::new(now, arp_options, udp_config, tcp_config, CARRIE_MAC, CARRIE_IPV4);
-    let scheduler: Scheduler = rt.scheduler.clone();
+    let scheduler: DemiScheduler = rt.scheduler.clone();
     let clock: TimerRc = rt.clock.clone();
     Engine::new(rt, scheduler, clock).unwrap()
 }
