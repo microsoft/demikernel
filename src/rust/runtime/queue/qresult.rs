@@ -23,6 +23,7 @@ use ::std::{
 // Structures
 //==============================================================================
 
+#[derive(Clone)]
 pub enum OperationResult {
     Connect,
     Accept((QDesc, SocketAddrV4)),

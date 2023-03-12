@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod future;
 mod handle;
 mod page;
 mod pin_slab;
-mod result;
 pub mod scheduler;
+pub mod task;
 mod waker64;
 
 //==============================================================================
@@ -14,8 +13,10 @@ mod waker64;
 //==============================================================================
 
 pub use self::{
-    future::SchedulerFuture,
     handle::SchedulerHandle,
-    result::FutureResult,
     scheduler::Scheduler,
+    task::{
+        Task,
+        TaskWithResult,
+    },
 };
