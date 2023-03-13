@@ -176,7 +176,7 @@ impl NetworkLibOS {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => unimplemented!("Async close not supported yet"),
             #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
-            NetworkLibOS::Catnap(libos) => unimplemented!("Async close not supported yet"),
+            NetworkLibOS::Catnap(libos) => libos.async_close(sockqd),
             #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
             NetworkLibOS::CatnapW(libos) => unimplemented!("Async close not supported yet"),
             #[cfg(feature = "catcollar-libos")]
