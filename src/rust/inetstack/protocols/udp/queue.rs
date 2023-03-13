@@ -42,6 +42,7 @@ pub struct SharedQueueSlot<T> {
 /// Shared Queue
 ///
 /// TODO: Reuse this structure in TCP stack, for send/receive queues.
+/// TODO: This should be byte-oriented, not buffer-oriented.
 pub struct SharedQueue<T> {
     /// Send-side endpoint.
     tx: Rc<RefCell<Sender<T>>>,
@@ -49,7 +50,7 @@ pub struct SharedQueue<T> {
     rx: Rc<RefCell<Receiver<T>>>,
     /// Length of shared queue.
     length: Rc<RefCell<usize>>,
-    /// Capacity of shahred queue.
+    /// Capacity of shared queue.
     capacity: usize,
 }
 

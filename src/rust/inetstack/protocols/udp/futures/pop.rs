@@ -37,6 +37,8 @@ pub struct UdpPopFuture {
     qd: QDesc,
     /// Shared receiving queue.
     recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>,
+    /// Number of bytes to pop.
+    size: usize,
 }
 
 //==============================================================================
@@ -46,8 +48,10 @@ pub struct UdpPopFuture {
 /// Associate Functions for Pop Operation Descriptor
 impl UdpPopFuture {
     /// Creates a pop operation descritor.
-    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>) -> Self {
-        Self { qd, recv_queue }
+    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>, size: Option<usize>) -> Self {
+        const MAX_POP_SIZE: usize = 9000;
+        let size: usize = size.unwrap_or(MAX_POP_SIZE);
+        Self { qd, recv_queue, size }
     }
 
     /// Returns the queue descriptor that is associated to the target pop operation descriptor.
@@ -66,8 +70,17 @@ impl Future for UdpPopFuture {
 
     /// Polls the target pop operation descriptor.
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        match self.get_mut().recv_queue.try_pop() {
-            Ok(Some(msg)) => Poll::Ready(Ok((msg.remote, msg.data))),
+        let self_: &mut UdpPopFuture = self.get_mut();
+        match self_.recv_queue.try_pop() {
+            Ok(Some(msg)) => {
+                let remote: SocketAddrV4 = msg.remote;
+                let mut buf: DemiBuffer = msg.data;
+                // We got more bytes than expected, so we trim the buffer.
+                if self_.size < buf.len() {
+                    buf.trim(self_.size - buf.len())?;
+                }
+                Poll::Ready(Ok((remote, buf)))
+            },
             Ok(None) => {
                 let waker: &Waker = ctx.waker();
                 waker.wake_by_ref();

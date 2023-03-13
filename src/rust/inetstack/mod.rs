@@ -455,17 +455,17 @@ impl InetStack {
 
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // TODO: Drop the following check once fixed-size pop is supported.
-        if size.is_some() {
-            let cause: String = format!("fixed-size pop is not supported (size={:?})", size);
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
             error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
 
         let future = match self.lookup_qtype(&qd) {
-            Some(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd))),
+            Some(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd, size))),
             Some(QType::UdpSocket) => {
-                let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd), None));
+                let udp_op = UdpOperation::Pop(FutureResult::new(self.ipv4.udp.do_pop(qd, size), None));
                 Ok(FutureOperation::Udp(udp_op))
             },
             Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),

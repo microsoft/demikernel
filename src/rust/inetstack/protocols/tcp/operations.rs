@@ -221,6 +221,7 @@ impl Future for PushFuture {
 
 pub struct PopFuture {
     pub qd: QDesc,
+    pub size: Option<usize>,
     pub inner: Rc<RefCell<Inner>>,
 }
 
@@ -235,10 +236,11 @@ impl Future for PopFuture {
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let self_ = self.get_mut();
+        let size: Option<usize> = self_.size;
         let peer = TcpPeer {
             inner: self_.inner.clone(),
         };
-        peer.poll_recv(self_.qd, ctx)
+        peer.poll_recv(self_.qd, ctx, size)
     }
 }
 

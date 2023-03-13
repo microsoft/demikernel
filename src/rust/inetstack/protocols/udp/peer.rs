@@ -309,14 +309,14 @@ impl UdpPeer {
     }
 
     /// Pops data from a socket.
-    pub fn do_pop(&self, qd: QDesc) -> UdpPopFuture {
+    pub fn do_pop(&self, qd: QDesc, size: Option<usize>) -> UdpPopFuture {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
         let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
         // Lookup associated receiver-side shared queue.
         match qtable.get(&qd) {
             // Issue pop operation.
-            Some(InetQueue::Udp(queue)) => UdpPopFuture::new(qd, queue.get_recv_queue()),
+            Some(InetQueue::Udp(queue)) => UdpPopFuture::new(qd, queue.get_recv_queue(), size),
             _ => panic!("invalid queue descriptor"),
         }
     }
