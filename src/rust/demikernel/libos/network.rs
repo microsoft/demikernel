@@ -174,7 +174,7 @@ impl NetworkLibOS {
     pub fn async_close(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => unimplemented!("Async close not supported yet"),
+            NetworkLibOS::Catpowder(libos) => libos.async_close(sockqd),
             #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
             NetworkLibOS::Catnap(libos) => libos.async_close(sockqd),
             #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
