@@ -5,10 +5,8 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    QDesc,
-};
+use crate::runtime::fail::Fail;
+
 use ::std::{
     future::Future,
     os::unix::prelude::RawFd,
@@ -25,8 +23,6 @@ use ::std::{
 
 /// Close Operation Descriptor
 pub struct CloseFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     // Underlying file descriptor.
     fd: RawFd,
 }
@@ -38,13 +34,8 @@ pub struct CloseFuture {
 /// Associate Functions for Close Operation Descriptors
 impl CloseFuture {
     /// Creates a descriptor for a close operation.
-    pub fn new(qd: QDesc, fd: RawFd) -> Self {
-        Self { qd, fd }
-    }
-
-    /// Returns the queue descriptor associated to the target [ConnectFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+    pub fn new(fd: RawFd) -> Self {
+        Self { fd }
     }
 }
 

@@ -13,9 +13,9 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        QDesc,
     },
 };
+
 use ::std::{
     future::Future,
     os::fd::RawFd,
@@ -34,8 +34,6 @@ use ::std::{
 pub struct PushFuture {
     /// Underlying runtime.
     rt: IoUringRuntime,
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Associated file descriptor.
     fd: RawFd,
     /// Associated receive buffer.
@@ -49,13 +47,8 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a push operation.
-    pub fn new(rt: IoUringRuntime, qd: QDesc, fd: RawFd, buf: DemiBuffer) -> Self {
-        Self { rt, qd, fd, buf }
-    }
-
-    /// Returns the queue descriptor associated to the target push operation descriptor.
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+    pub fn new(rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer) -> Self {
+        Self { rt, fd, buf }
     }
 }
 

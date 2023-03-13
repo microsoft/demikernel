@@ -10,7 +10,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        QDesc,
     },
 };
 use ::std::{
@@ -37,9 +36,8 @@ const POP_SIZE: usize = 9216;
 //==============================================================================
 
 /// Pop Operation Descriptor
+#[derive(Debug)]
 pub struct PopFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Underlying file descriptor.
     fd: RawFd,
     /// Source socket address.
@@ -57,21 +55,15 @@ pub struct PopFuture {
 /// Associate Functions for Pop Operation Descriptors
 impl PopFuture {
     /// Creates a descriptor for a pop operation.
-    pub fn new(qd: QDesc, fd: RawFd, size: Option<usize>) -> Self {
+    pub fn new(fd: RawFd, size: Option<usize>) -> Self {
         let size: usize = size.unwrap_or(POP_SIZE);
         let buf: DemiBuffer = DemiBuffer::new(size as u16);
         Self {
-            qd,
             fd,
             sockaddr: unsafe { mem::zeroed() },
             buf,
             size,
         }
-    }
-
-    /// Returns the queue descriptor associated to the target [PopFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
     }
 }
 
