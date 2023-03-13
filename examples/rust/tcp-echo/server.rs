@@ -130,7 +130,7 @@ impl TcpEchoServer {
 
                     // Pop first packet from this connection.
                     {
-                        let qt: QToken = self.libos.pop(client_qd)?;
+                        let qt: QToken = self.libos.pop(client_qd, None)?;
                         qts_reverse.insert(qt, client_qd);
                         qts.push(qt);
                     }
@@ -170,7 +170,7 @@ impl TcpEchoServer {
 
                     // Pop another packet.
                     {
-                        let qt: QToken = self.libos.pop(qd)?;
+                        let qt: QToken = self.libos.pop(qd, None)?;
                         qts.push(qt);
                         qts_reverse.insert(qt, qd);
                     }

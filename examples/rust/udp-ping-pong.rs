@@ -98,7 +98,7 @@ fn server(local: SocketAddrV4, remote: SocketAddrV4) -> ! {
     let mut i: usize = 0;
     loop {
         // Pop data.
-        let qt: QToken = match libos.pop(qd) {
+        let qt: QToken = match libos.pop(qd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };
@@ -172,7 +172,7 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
         Ok(_) => {},
         Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
     }
-    match libos.pop(sockqd) {
+    match libos.pop(sockqd, None) {
         Ok(qt) => qts.push(qt),
         Err(e) => panic!("pop failed: {:?}", e.cause),
     };
@@ -204,7 +204,7 @@ fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
                     Ok(_) => {},
                     Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
                 }
-                match libos.pop(sockqd) {
+                match libos.pop(sockqd, None) {
                     Ok(qt) => qts.push(qt),
                     Err(e) => panic!("pop failed: {:?}", e.cause),
                 };

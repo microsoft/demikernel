@@ -225,20 +225,20 @@ impl NetworkLibOS {
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, sockqd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.pop(sockqd),
+            NetworkLibOS::Catpowder(libos) => libos.pop(sockqd, size),
             #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
-            NetworkLibOS::Catnap(libos) => libos.pop(sockqd),
+            NetworkLibOS::Catnap(libos) => libos.pop(sockqd, size),
             #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
             NetworkLibOS::CatnapW(libos) => libos.pop(sockqd),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar(libos) => libos.pop(sockqd),
+            NetworkLibOS::Catcollar(libos) => libos.pop(sockqd, size),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.pop(sockqd),
+            NetworkLibOS::Catnip(libos) => libos.pop(sockqd, size),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOS::Catloop(libos) => libos.pop(sockqd),
+            NetworkLibOS::Catloop(libos) => libos.pop(sockqd, size),
         }
     }
 

@@ -79,10 +79,10 @@ impl MemoryLibOS {
 
     /// Pops data from a memory queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn pop(&mut self, memqd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, memqd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.pop(memqd),
+            MemoryLibOS::Catmem(libos) => libos.pop(memqd, size),
             _ => unreachable!("unknown memory libos"),
         }
     }

@@ -192,7 +192,7 @@ impl Application {
                     // Pop first packet from this connection.
                     let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
                     clients.push(qd);
-                    match self.libos.pop(qd) {
+                    match self.libos.pop(qd, None) {
                         Ok(qt) => qtokens.push(qt),
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };
@@ -214,7 +214,7 @@ impl Application {
                     }
 
                     // Pop another packet.
-                    let qt: QToken = match self.libos.pop(qd) {
+                    let qt: QToken = match self.libos.pop(qd, None) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };

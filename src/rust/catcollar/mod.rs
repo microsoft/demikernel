@@ -373,8 +373,15 @@ impl CatcollarLibOS {
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}", qd);
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // TODO: Drop the following check once fixed-size pop is supported.
+        if size.is_some() {
+            let cause: String = format!("fixed-size pop is not supported (size={:?})", size);
+            error!("pop(): {:?}", &cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
 
         let buf: DemiBuffer = DemiBuffer::new(CATCOLLAR_RECVBUF_SIZE);
 

@@ -153,7 +153,7 @@ impl Application {
             }
 
             // Drain packets.
-            let qt: QToken = match self.libos.pop(self.sockqd) {
+            let qt: QToken = match self.libos.pop(self.sockqd, None) {
                 Ok(qt) => qt,
                 Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
             };

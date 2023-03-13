@@ -724,7 +724,7 @@ fn tcp_bad_pop() {
         };
 
         // Pop from bad socket.
-        match libos.pop(QDesc::from(2)) {
+        match libos.pop(QDesc::from(2), None) {
             Ok(_) => panic!("pop() form bad socket should fail."),
             Err(_) => (),
         };
@@ -822,7 +822,7 @@ fn safe_accept(libos: &mut InetStack, sockqd: QDesc) -> QToken {
 
 /// Safe call to `pop()`.
 fn safe_pop(libos: &mut InetStack, qd: QDesc) -> QToken {
-    match libos.pop(qd) {
+    match libos.pop(qd, None) {
         Ok(qt) => qt,
         Err(e) => panic!("pop() failed: {:?}", e),
     }

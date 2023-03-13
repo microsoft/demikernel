@@ -142,7 +142,7 @@ fn udp_push_remote() {
         }
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd).unwrap();
+        let qt: QToken = libos.pop(sockfd, None).unwrap();
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Pop(_, _) => (),
@@ -161,7 +161,7 @@ fn udp_push_remote() {
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd).unwrap();
+        let qt: QToken = libos.pop(sockfd, None).unwrap();
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
@@ -214,7 +214,7 @@ fn udp_loopback() {
         }
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd).unwrap();
+        let qt: QToken = libos.pop(sockfd, None).unwrap();
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         match qr {
             OperationResult::Pop(_, _) => (),
@@ -233,7 +233,7 @@ fn udp_loopback() {
         libos.bind(sockfd, bob_addr).unwrap();
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd).unwrap();
+        let qt: QToken = libos.pop(sockfd, None).unwrap();
         let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,

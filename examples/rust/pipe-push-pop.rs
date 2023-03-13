@@ -104,7 +104,7 @@ fn server(name: &str) -> Result<()> {
     let mut nbytes: usize = 0;
     while nbytes < (NROUNDS as usize * BUFFER_SIZE) {
         // Pop data.
-        let qt: QToken = match libos.pop(pipeqd) {
+        let qt: QToken = match libos.pop(pipeqd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };

@@ -449,11 +449,18 @@ impl InetStack {
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
     /// allocated by the application.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::pop");
 
-        trace!("pop(): qd={:?}", qd);
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // TODO: Drop the following check once fixed-size pop is supported.
+        if size.is_some() {
+            let cause: String = format!("fixed-size pop is not supported (size={:?})", size);
+            error!("pop(): {:?}", &cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
 
         let future = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => Ok(FutureOperation::from(self.ipv4.tcp.pop(qd))),

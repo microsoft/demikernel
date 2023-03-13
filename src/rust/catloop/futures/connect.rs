@@ -36,6 +36,7 @@ use ::std::{
         Poll,
     },
 };
+use std::mem;
 
 //======================================================================================================================
 // Enumerations
@@ -166,7 +167,8 @@ fn connect_request_sent(
     // Check if connection request was sent.
     if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
         // Issue receive operation to wait for connect request ack.
-        let qt_rx: QToken = self_.control_duplex_pipe.pop()?;
+        let size: usize = mem::size_of::<u16>();
+        let qt_rx: QToken = self_.control_duplex_pipe.pop(Some(size))?;
 
         // Transition to the next state in the connection establishment protocol.
         self_.state = ClientState::ConnectAckReceived { qt_rx };

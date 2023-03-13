@@ -97,7 +97,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
     // Get at least nreceives.
     for i in 0..nreceives {
         // Receive data.
-        let qt: QToken = match libos.pop(sockqd) {
+        let qt: QToken = match libos.pop(sockqd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };

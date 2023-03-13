@@ -92,7 +92,10 @@ impl AcceptFuture {
         new_port: u16,
         new_qd: QDesc,
     ) -> Result<Self, Fail> {
-        let qt_rx: QToken = control_duplex_pipe.pop()?;
+        // Issue first pop. Note that we intentionally issue an unbound
+        // pop() because the connection establishment protocol requires that
+        // only one connection request is accepted at a time.
+        let qt_rx: QToken = control_duplex_pipe.pop(None)?;
         Ok(AcceptFuture {
             catmem,
             ipv4: ipv4.clone(),
@@ -215,8 +218,10 @@ fn listen_and_accept(
                 duplex_pipe: duplex_pipe.clone(),
             };
         } else {
-            // Re-issue accept pop.
-            let qt_rx: QToken = self_.control_duplex_pipe.pop()?;
+            // Re-issue accept pop. Note that we intentionally issue an unbound
+            // pop() because the connection establishment protocol requires that
+            // only one connection request is accepted at a time.
+            let qt_rx: QToken = self_.control_duplex_pipe.pop(None)?;
             self_.state = ServerState::ListenAndAccept { qt_rx };
         }
     }
@@ -235,7 +240,8 @@ fn connect(
 ) -> Poll<Result<(QDesc, SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, self_.new_port);
-        let qt_close: QToken = duplex_pipe.pop()?;
+        let size: usize = mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT);
+        let qt_close: QToken = duplex_pipe.pop(Some(size))?;
         self_.state = ServerState::Connected {
             qt_close,
             new_qd: self_.new_qd,
