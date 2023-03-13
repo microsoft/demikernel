@@ -366,11 +366,11 @@ impl CatloopLibOS {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // TODO: Drop the following check once fixed-size pop is supported.
-        if size.is_some() {
-            let cause: String = format!("fixed-size pop is not supported (size={:?})", size);
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
             error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
 
         let catmem_qd: QDesc = match self.qtable.get(&qd) {
