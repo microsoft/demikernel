@@ -339,6 +339,43 @@ impl InetStack {
         }
     }
 
+    ///
+    /// **Brief**
+    ///
+    /// Asynchronously closes a connection referred to by `qd`.
+    ///
+    /// **Return Value**
+    ///
+    /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
+    /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
+    ///
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("inetstack::async_close");
+        trace!("async_close(): qd={:?}", qd);
+
+        let future: FutureOperation = match self.lookup_qtype(&qd) {
+            Some(QType::TcpSocket) => {
+                let fut = self.ipv4.tcp.do_async_close(qd)?;
+                FutureOperation::from(fut)
+            },
+            Some(QType::UdpSocket) => {
+                let udp_op = UdpOperation::Close(qd, self.ipv4.udp.do_close(qd));
+                FutureOperation::Udp(udp_op)
+            },
+            Some(_) => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
+        };
+
+        let handle: SchedulerHandle = match self.scheduler.insert(future) {
+            Some(handle) => handle,
+            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+        };
+        let qt: QToken = handle.into_raw().into();
+        trace!("async_close() qt={:?}", qt);
+        Ok(qt)
+    }
+
     /// Pushes a buffer to a TCP socket.
     /// TODO: Rename this function to push() once we have a common representation across all libOSes.
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<FutureOperation, Fail> {

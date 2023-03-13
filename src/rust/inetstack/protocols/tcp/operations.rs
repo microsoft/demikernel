@@ -32,6 +32,7 @@ pub enum TcpOperation {
     Connect(FutureResult<ConnectFuture>),
     Pop(FutureResult<PopFuture>),
     Push(FutureResult<PushFuture>),
+    Close(FutureResult<CloseFuture>),
 }
 
 impl From<AcceptFuture> for TcpOperation {
@@ -58,6 +59,12 @@ impl From<PopFuture> for TcpOperation {
     }
 }
 
+impl From<CloseFuture> for TcpOperation {
+    fn from(f: CloseFuture) -> Self {
+        TcpOperation::Close(FutureResult::new(f, None))
+    }
+}
+
 impl Future for TcpOperation {
     type Output = ();
 
@@ -67,6 +74,7 @@ impl Future for TcpOperation {
             TcpOperation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
             TcpOperation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
             TcpOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
+            TcpOperation::Close(ref mut f) => Future::poll(Pin::new(f), ctx),
         }
     }
 }
@@ -110,6 +118,16 @@ impl TcpOperation {
                 done: Some(Ok(bytes)),
             }) => (future.qd, OperationResult::Pop(None, bytes)),
             TcpOperation::Pop(FutureResult {
+                future,
+                done: Some(Err(e)),
+            }) => (future.qd, OperationResult::Failed(e)),
+
+            // Close Operation.
+            TcpOperation::Close(FutureResult {
+                future,
+                done: Some(Ok(())),
+            }) => (future.qd, OperationResult::Close),
+            TcpOperation::Close(FutureResult {
                 future,
                 done: Some(Err(e)),
             }) => (future.qd, OperationResult::Failed(e)),
@@ -221,5 +239,25 @@ impl Future for PopFuture {
             inner: self_.inner.clone(),
         };
         peer.poll_recv(self_.qd, ctx)
+    }
+}
+
+pub struct CloseFuture {
+    pub qd: QDesc,
+    pub inner: Rc<RefCell<Inner>>,
+}
+
+impl fmt::Debug for CloseFuture {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CloseFuture({:?})", self.qd)
+    }
+}
+
+impl Future for CloseFuture {
+    type Output = Result<(), Fail>;
+
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
+        let self_ = self.get_mut();
+        self_.inner.borrow_mut().poll_close_finished(self_.qd, ctx)
     }
 }
