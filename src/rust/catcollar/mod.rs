@@ -64,7 +64,7 @@ use ::std::{
 //======================================================================================================================
 
 // Size of receive buffers.
-const CATCOLLAR_RECVBUF_SIZE: u16 = 9000;
+const CATCOLLAR_RECVBUF_SIZE: usize = 9000;
 
 //======================================================================================================================
 // Structures
@@ -376,14 +376,17 @@ impl CatcollarLibOS {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // TODO: Drop the following check once fixed-size pop is supported.
-        if size.is_some() {
-            let cause: String = format!("fixed-size pop is not supported (size={:?})", size);
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
             error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let buf: DemiBuffer = DemiBuffer::new(CATCOLLAR_RECVBUF_SIZE);
+        let buf: DemiBuffer = {
+            let size: usize = size.unwrap_or(CATCOLLAR_RECVBUF_SIZE as usize);
+            DemiBuffer::new(size as u16)
+        };
 
         // Issue pop operation.
         match self.qtable.get(&qd) {
