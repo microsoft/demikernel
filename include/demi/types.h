@@ -82,6 +82,7 @@ extern "C"
         enum demi_opcode qr_opcode; /**< Opcode of completed operation.                              */
         int qr_qd;                  /**< I/O queue descriptor associated to the completed operation. */
         demi_qtoken_t qr_qt;        /**< I/O queue token of the completed operation.                 */
+        int qr_ret;                 /**< Return code.                                                */
 
         /**
          * @brief Result value.

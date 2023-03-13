@@ -53,5 +53,6 @@ pub struct demi_qresult_t {
     pub qr_opcode: demi_opcode_t,
     pub qr_qd: c_int,
     pub qr_qt: demi_qtoken_t,
+    pub qr_ret: c_int,
     pub qr_value: demi_qr_value_t,
 }

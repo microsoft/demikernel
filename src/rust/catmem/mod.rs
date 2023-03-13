@@ -244,6 +244,7 @@ impl CatmemLibOS {
                 qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
                 qr_qd: qd.into(),
                 qr_qt: qt.into(),
+                qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
             OperationResult::Pop(bytes, eof) => {
@@ -261,6 +262,7 @@ impl CatmemLibOS {
                             qr_opcode: demi_opcode_t::DEMI_OPC_POP,
                             qr_qd: qd.into(),
                             qr_qt: qt.into(),
+                            qr_ret: 0,
                             qr_value,
                         }
                     },
@@ -270,6 +272,7 @@ impl CatmemLibOS {
                             qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                             qr_qd: qd.into(),
                             qr_qt: qt.into(),
+                            qr_ret: e.errno,
                             qr_value: unsafe { mem::zeroed() },
                         }
                     },
@@ -281,6 +284,7 @@ impl CatmemLibOS {
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt.into(),
+                    qr_ret: e.errno,
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
