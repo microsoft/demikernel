@@ -1014,7 +1014,7 @@ mod tests {
     #[test]
     fn split_back() {
         // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
-        let mut str: String = String::from("word one two three four five six seven eight nine");
+        let str: String = String::from("word one two three four five six seven eight nine");
         let slice: &[u8] = str.as_bytes();
         let result: Result<DemiBuffer, Fail> = DemiBuffer::from_slice(slice);
         // `DemiBuffer::from_slice` shouldn't fail, as we passed it a valid slice of a `DemiBuffer`-allowable length.
@@ -1035,14 +1035,9 @@ mod tests {
         assert_eq!(buf.len(), 24);
         assert_eq!(split_buf.len(), 25);
 
-        // Split the original `String` into two as well (for comparison).
-        let mut split_str: String = str.split_off(24);
-        assert_eq!(str.len(), 24);
-        assert_eq!(split_str.len(), 25);
-
         // Compare contents.
-        assert_eq!(&*buf, str.as_bytes());
-        assert_eq!(&*split_buf, split_str.as_bytes());
+        assert_eq!(&buf[..], &str.as_bytes()[..24]);
+        assert_eq!(&split_buf[..], &str.as_bytes()[24..]);
 
         // Split another `DemiBuffer` off of the already-split-off one.
         let result: Result<DemiBuffer, Fail> = split_buf.split_back(9);
@@ -1053,15 +1048,9 @@ mod tests {
         assert_eq!(split_buf.len(), 9);
         assert_eq!(another_buf.len(), 16);
 
-        // Do the same for the `String`s.
-        let another_str: String = split_str.split_off(9);
-        assert_eq!(str.len(), 24);
-        assert_eq!(split_str.len(), 9);
-        assert_eq!(another_str.len(), 16);
-
         // Compare contents (including the unaffected original to ensure that it is actually unaffected).
-        assert_eq!(&*buf, str.as_bytes());
-        assert_eq!(&*split_buf, split_str.as_bytes());
-        assert_eq!(&*another_buf, another_str.as_bytes());
+        assert_eq!(&buf[..], &str.as_bytes()[..24]);
+        assert_eq!(&split_buf[..], &str.as_bytes()[24..33]);
+        assert_eq!(&another_buf[..], &str.as_bytes()[33..]);
     }
 }
