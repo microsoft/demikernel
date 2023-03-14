@@ -127,16 +127,16 @@ def job_compile(
 
 
 def job_test_system_rust(
-        test_name: str, repo: str, libos: str, is_debug: bool, server: str, client: str,
+        test_alias: str, test_name: str, repo: str, libos: str, is_debug: bool, server: str, client: str,
         server_args: str, client_args: str, is_sudo: bool, all_pass: bool, delay: float, config_path: str,
         log_directory: str) -> bool:
     server_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, server_args)
     client_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, client_args)
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_alias + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
     time.sleep(delay)
-    jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
-    return wait_and_report(test_name, log_directory, jobs, all_pass)
+    jobs[test_alias + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    return wait_and_report(test_alias, log_directory, jobs, all_pass)
 
 
 def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, client: str,
@@ -166,107 +166,116 @@ def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable
 def test_udp_ping_pong(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_alias: str = "udp-ping-pong"
     test_name: str = "udp-ping-pong"
     server_args: str = "--server {}:12345 {}:23456".format(server_addr, client_addr)
     client_args: str = "--client {}:23456 {}:12345".format(client_addr, server_addr)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, False, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, False,
+        delay, config_path, log_directory)
 
 
 def test_udp_push_pop(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_alias: str = "udp-push-pop"
     test_name: str = "udp-push-pop"
     server_args: str = "--server {}:12345 {}:23456".format(server_addr, client_addr)
     client_args: str = "--client {}:23456 {}:12345".format(client_addr, server_addr)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
 
 
 def test_tcp_ping_pong(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_alias: str = "tcp-ping-pong"
     test_name: str = "tcp-ping-pong"
     server_args: str = "--server {}:12345".format(server_addr)
     client_args: str = "--client {}:12345".format(server_addr)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
 
 
 def test_tcp_push_pop(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_alias: str = "tcp-push-pop"
     test_name: str = "tcp-push-pop"
     server_args: str = "--server {}:12345".format(server_addr)
     client_args: str = "--client {}:12345".format(server_addr)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
 
 
 def test_tcp_accept(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, delay: float, config_path: str, log_directory: str, nclients: int, run_mode: str) -> bool:
+    test_alias: str = "tcp-accept"
     test_name: str = "tcp-accept"
     server_args: str = "--peer server --address {}:12345 --nclients {} --run-mode {}".format(
         server_addr, nclients, run_mode)
     client_args: str = "--peer client --address {}:12345 --nclients {} --run-mode {}".format(
         server_addr, nclients, run_mode)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
 
 
 def test_tcp_bind(
         server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
         server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
+    test_alias: str = "tcp-bind"
     test_name: str = "tcp-bind"
     server_args: str = "--ipv4 {}".format(
         server_addr)
     client_args: str = "--ipv4 {}".format(
         client_addr)
     return job_test_system_rust(
-        test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
 
 
 def test_pipe_open(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
+    test_alias: str = "pipe-open"
     test_name: str = "pipe-open"
     pipe_name: str = "demikernel-test-pipe-open"
     niterations: int = 128
     server_args: str = "--peer server --pipe-name {} --niterations {}".format(pipe_name, niterations)
     client_args: str = "--peer client --pipe-name {} --niterations {}".format(pipe_name, niterations)
     return job_test_system_rust(
-        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
+        delay, config_path, log_directory)
 
 
 def test_pipe_ping_pong(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
+    test_alias: str = "pipe-ping-pong"
     test_name: str = "pipe-ping-pong"
     pipe_name: str = "demikernel-test-pipe-ping-pong"
     server_args: str = "--server demikernel-test-pipe-ping-pong".format(pipe_name)
     client_args: str = "--client demikernel-test-pipe-ping-pong".format(pipe_name)
     return job_test_system_rust(
-        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
+        delay, config_path, log_directory)
 
 
 def test_pipe_push_pop(server: str, client: str, is_debug: bool, repository: str, delay: float,
                        config_path: str, log_directory: str) -> bool:
+    test_alias: str = "pipe-push-pop"
     test_name: str = "pipe-push-pop"
     pipe_name: str = "demikernel-test-pipe-push-pop"
     server_args: str = "--server demikernel-test-pipe-push-pop".format(pipe_name)
     client_args: str = "--client demikernel-test-pipe-push-pop".format(pipe_name)
     return job_test_system_rust(
-        test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True, delay,
-        config_path, log_directory)
+        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
+        delay, config_path, log_directory)
 
 # =====================================================================================================================
 
