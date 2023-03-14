@@ -428,6 +428,24 @@ impl DemiBuffer {
         Ok(())
     }
 
+    ///
+    /// **Description**
+    ///
+    /// Splits the target [DemiBuffer] at the given `offset` and returns a new [DemiBuffer] containing the data after
+    /// the split point (back half).
+    ///
+    /// The data contained in the new [DemiBuffer] is removed from the original [DemiBuffer] (front half).
+    ///
+    /// **Return Value**
+    ///
+    /// On successful completion, a new [DemiBuffer] containing the data after the split point is returned.  On failure,
+    /// a [Fail] structure encoding the failure condition is returned instead.
+    ///
+    /// **Notes**
+    ///
+    /// - The target [DemiBuffer] must be a single buffer segment (not a chain).
+    /// - The target [DemiBuffer] should be large enough to hold `offset`.
+    ///
     pub fn split_back(&mut self, offset: usize) -> Result<Self, Fail> {
         // Check that a split is allowed.
         match self.get_tag() {
