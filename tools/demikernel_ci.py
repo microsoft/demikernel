@@ -239,6 +239,20 @@ def test_tcp_bind(
         delay, config_path, log_directory)
 
 
+def test_tcp_close(
+        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str, server_addr: str,
+        client_addr: str, delay: float, config_path: str, log_directory: str, nclients: int, run_mode: str) -> bool:
+    test_alias: str = "tcp-close-{}".format(run_mode)
+    test_name: str = "tcp-close"
+    server_args: str = "--peer server --address {}:12345 --nclients {} --run-mode {}".format(
+        server_addr, nclients, run_mode)
+    client_args: str = "--peer client --address {}:12345 --nclients {} --run-mode {}".format(
+        client_addr, nclients, run_mode)
+    return job_test_system_rust(
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
+
+
 def test_pipe_open(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -343,6 +357,19 @@ def run_pipeline(
                     status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
                                                                repository, server_addr, delay, config_path,
                                                                log_directory)
+                # TCP Close (optional)
+                if test_system == "all" or test_system == "tcp_close":
+                    if libos != "catnip" and libos != "catpowder":
+                        if libos != "catloop":
+                            status["tcp_close"] = test_tcp_close(
+                                server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
+                                config_path, log_directory, nclients=32, run_mode="standalone")
+                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
+                                                             repository, server_addr, server_addr, delay, config_path,
+                                                             log_directory, nclients=32, run_mode="sequential")
+                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
+                                                             repository, server_addr,  server_addr, delay, config_path,
+                                                             log_directory, nclients=32, run_mode="concurrent")
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
