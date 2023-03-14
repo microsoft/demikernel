@@ -276,7 +276,7 @@ def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
         test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool) -> int:
-    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
+    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
     step: int = 0
     status: dict[str, bool] = {}
 
@@ -322,6 +322,10 @@ def run_pipeline(
                     status["tcp_bind"] = test_tcp_bind(server, client, libos, is_debug, is_sudo,
                                                        repository, server_addr, client_addr, delay, config_path,
                                                        log_directory)
+                if test_system == "all" or test_system == "tcp_accept":
+                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
+                                                           repository, server_addr, delay, config_path,
+                                                           log_directory, nclients=128, run_mode="serial")
                 if test_system == "all" or test_system == "tcp_ping_pong":
                     status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                                                  repository, server_addr, delay, config_path,
@@ -330,11 +334,6 @@ def run_pipeline(
                     status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
                                                                repository, server_addr, delay, config_path,
                                                                log_directory)
-                # Optional tests.
-                if test_system == "tcp_accept":
-                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, delay, config_path,
-                                                           log_directory, nclients=128, run_mode="serial")
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
