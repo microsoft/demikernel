@@ -478,6 +478,56 @@ impl DemiBuffer {
         Ok(back_half)
     }
 
+    ///
+    /// **Description**
+    ///
+    /// Splits the target [DemiBuffer] at the given `offset` and returns a new [DemiBuffer] containing the data before
+    /// the split point (front half).
+    ///
+    /// The data contained in the new [DemiBuffer] is removed from the original [DemiBuffer] (back half).
+    ///
+    /// **Return Value**
+    ///
+    /// On successful completion, a new [DemiBuffer] containing the data before the split point is returned. On failure,
+    /// a [Fail] structure encoding the failure condition is returned instead.
+    ///
+    /// **Notes**
+    ///
+    /// - The target [DemiBuffer] must be a single buffer segment (not a chain).
+    /// - The target [DemiBuffer] should be large enough to hold `offset`.
+    ///
+    pub fn split_front(&mut self, offset: usize) -> Result<Self, Fail> {
+        // Check if this is a multi-segment buffer.
+        if self.is_multi_segment() {
+            let cause: String = format!("cannot split a multi-segment buffer");
+            error!("split_front(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // Check if split offset is valid.
+        if self.len() < offset {
+            let cause: String = format!("cannot split buffer at given offset (offset={:?})", offset);
+            error!("split_front(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // Clone the target buffer before any changes are applied.
+        let mut front_half: DemiBuffer = self.clone();
+
+        // Remove data starting at `offset` from the front half buffer (cloned buffer).
+        // Those bytes now belong to the back half buffer.
+        // This unwrap won't panic as we already performed its error checking above.
+        front_half.trim(self.len() - offset).unwrap();
+
+        // Remove `offset` bytes from the beginning of the back half buffer (original buffer).
+        // Those bytes now belong to the front back buffer.
+        // This unwrap won't panic as we already performed its error checking above.
+        self.adjust(offset).unwrap();
+
+        // Return the front half back buffer.
+        Ok(front_half)
+    }
+
     /// Provides a raw pointer to the buffer data.
     ///
     /// The reference count is not affected in any way and the DemiBuffer is not consumed.  The pointer is valid for as
@@ -1052,5 +1102,49 @@ mod tests {
         assert_eq!(&buf[..], &str.as_bytes()[..24]);
         assert_eq!(&split_buf[..], &str.as_bytes()[24..33]);
         assert_eq!(&another_buf[..], &str.as_bytes()[33..]);
+    }
+
+    // Test split_off (and also allocation from a slice).
+    #[test]
+    fn split_front() {
+        // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
+        let str: String = String::from("word one two three four five six seven eight nine");
+        let slice: &[u8] = str.as_bytes();
+        let result: Result<DemiBuffer, Fail> = DemiBuffer::from_slice(slice);
+        // `DemiBuffer::from_slice` shouldn't fail, as we passed it a valid slice of a `DemiBuffer`-allowable length.
+        assert!(result.is_ok());
+        let mut buf: DemiBuffer = result.expect("DemiBuffer::from_slice should return a DemiBuffer for this slice");
+
+        // The `DemiBuffer` data length should equal the original string length.
+        assert_eq!(buf.len(), str.len());
+
+        // The `DemiBuffer` data (content) should match that of the original string.
+        assert_eq!(&*buf, slice);
+
+        // Split this `DemiBuffer` into two.
+        let result: Result<DemiBuffer, Fail> = buf.split_front(24);
+        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        assert!(result.is_ok());
+        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        assert_eq!(buf.len(), 25);
+        assert_eq!(split_buf.len(), 24);
+
+        // Compare contents.
+        assert_eq!(&buf[..], &str.as_bytes()[24..]);
+        assert_eq!(&split_buf[..], &str.as_bytes()[..24]);
+
+        // Split another `DemiBuffer` off of the already-split-off one.
+        let result: Result<DemiBuffer, Fail> = split_buf.split_front(9);
+        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        assert!(result.is_ok());
+        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        assert_eq!(buf.len(), 25);
+        assert_eq!(split_buf.len(), 15);
+        assert_eq!(another_buf.len(), 9);
+
+        // Compare contents (including the unaffected original to ensure that it is actually unaffected).
+        assert_eq!(&buf[..], &str.as_bytes()[24..]);
+        assert_eq!(&split_buf[..], &str.as_bytes()[9..24]);
+        assert_eq!(&another_buf[..], &str.as_bytes()[..9]);
     }
 }
