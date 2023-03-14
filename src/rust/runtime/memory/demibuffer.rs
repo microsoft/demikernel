@@ -447,45 +447,34 @@ impl DemiBuffer {
     /// - The target [DemiBuffer] should be large enough to hold `offset`.
     ///
     pub fn split_back(&mut self, offset: usize) -> Result<Self, Fail> {
-        // Check that a split is allowed.
-        match self.get_tag() {
-            Tag::Heap => {
-                let md_front: &mut MetaData = self.as_metadata();
-                if md_front.nb_segs != 1 {
-                    return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
-                }
-                if (md_front.data_len as usize) < offset {
-                    return Err(Fail::new(libc::EINVAL, "split offset is more bytes than are present"));
-                }
-            },
-            #[cfg(feature = "libdpdk")]
-            Tag::Dpdk => {
-                let mbuf: *mut rte_mbuf = self.as_mbuf();
-                // Safety: The `mbuf` dereferences in this block are safe, as it is aligned and dereferenceable.
-                unsafe {
-                    if (*mbuf).nb_segs != 1 {
-                        return Err(Fail::new(libc::EINVAL, "attempted to split multi-segment DemiBuffer"));
-                    }
-                    if ((*mbuf).data_len as usize) < offset {
-                        return Err(Fail::new(libc::EINVAL, "split offset is more bytes than are present"));
-                    }
-                }
-            },
+        // Check if this is a multi-segment buffer.
+        if self.is_multi_segment() {
+            let cause: String = format!("cannot split a multi-segment buffer");
+            error!("split_back(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        // Clone ourselves.
+        // Check if split offset is valid.
+        if self.len() < offset {
+            let cause: String = format!("cannot split buffer at given the offset (offset={:?})", offset);
+            error!("split_back(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // Clone the target buffer before any changes are applied.
         let mut back_half: DemiBuffer = self.clone();
 
-        // Remove data starting at `offset` from the front (original) DemiBuffer as those bytes now belong to the back.
-        let trim: usize = self.len() - offset;
+        // Remove data starting at `offset` from the front half buffer (original buffer).
+        // Those bytes now belong to the back half buffer.
         // This unwrap won't panic as we already performed its error checking above.
-        self.trim(trim).unwrap();
+        self.trim(self.len() - offset).unwrap();
 
-        // Remove `offset` bytes from the beginning of the back (clone) DemiBuffer as they now belong to the front.
+        // Remove `offset` bytes from the beginning of the back half buffer (cloned buffer).
+        // Those bytes now belong to the front back buffer.
         // This unwrap won't panic as we already performed its error checking above.
         back_half.adjust(offset).unwrap();
 
-        // Return the back DemiBuffer.
+        // Return the back half buffer.
         Ok(back_half)
     }
 
@@ -580,6 +569,30 @@ impl DemiBuffer {
             let buf_ptr: *mut u8 = (*mbuf).buf_addr as *mut u8;
             // Safety: The call to offset is safe, as its argument is known to remain within the allocated region.
             buf_ptr.offset((*mbuf).data_off as isize)
+        }
+    }
+
+    ///
+    /// **Description**
+    ///
+    /// Checks if the target [DemiBuffer] has multiple segments or not.
+    ///
+    /// **Return Value**
+    ///
+    /// If the target [DemiBuffer] has multiple segments, `true` is returned. Otherwise, `false` is returned instead.
+    ///
+    fn is_multi_segment(&self) -> bool {
+        match self.get_tag() {
+            Tag::Heap => {
+                let md_front: &MetaData = self.as_metadata();
+                md_front.nb_segs != 1
+            },
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                let mbuf: *const rte_mbuf = self.as_mbuf();
+                // Safety: The `mbuf` dereferences in this block are safe, as it is aligned and dereferenceable.
+                unsafe { (*mbuf).nb_segs != 1 }
+            },
         }
     }
 }
