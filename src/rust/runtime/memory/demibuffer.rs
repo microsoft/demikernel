@@ -4,7 +4,7 @@
 // This DemiBuffer type is designed to be a common abstraction defining the behavior of data buffers in Demikernel.
 // It currently supports two underlying types of buffers: heap-allocated and DPDK-allocated.  The basic operations on
 // DemiBuffers are designed to have equivalent behavior (effects on the data), regardless of the underlying buffer type.
-// In particular, len(), adjust(), trim(), clone(), and split_off() are designed to behave the same regardless.
+// In particular, len(), adjust(), trim(), clone(), and split_back() are designed to behave the same regardless.
 //
 // The constructors/destructors, however, are necessarily different.  For DPDK-allocated buffers, a MBuf is expected
 // to be allocated externally and provided to the DemiBuffer's "from_mbuf" constructor.  A MBuf can also be extracted
@@ -428,10 +428,7 @@ impl DemiBuffer {
         Ok(())
     }
 
-    /// Splits off a new `DemiBuffer` containing a subset of the data in this one, starting at the given offset.
-    // The data contained in the new DemiBuffer is removed from the original DemiBuffer.
-    // Note: the DemiBuffer being split must be a single buffer segment (not a chain) large enough to hold `offset`.
-    pub fn split_off(&mut self, offset: usize) -> Result<Self, Fail> {
+    pub fn split_back(&mut self, offset: usize) -> Result<Self, Fail> {
         // Check that a split is allowed.
         match self.get_tag() {
             Tag::Heap => {
@@ -982,9 +979,9 @@ mod tests {
         assert_eq!(another.len(), 0);
     }
 
-    // Test split_off (and also allocation from a slice).
+    // Tests split_back (and also allocation from a slice).
     #[test]
-    fn split() {
+    fn split_back() {
         // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
         let mut str: String = String::from("word one two three four five six seven eight nine");
         let slice: &[u8] = str.as_bytes();
@@ -1000,10 +997,10 @@ mod tests {
         assert_eq!(&*buf, slice);
 
         // Split this `DemiBuffer` into two.
-        let result: Result<DemiBuffer, Fail> = buf.split_off(24);
-        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        let result: Result<DemiBuffer, Fail> = buf.split_back(24);
+        // `DemiBuffer::split_back` shouldn't fail, as we passed it a valid offset.
         assert!(result.is_ok());
-        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_back shouldn't fail for this offset");
         assert_eq!(buf.len(), 24);
         assert_eq!(split_buf.len(), 25);
 
@@ -1017,10 +1014,10 @@ mod tests {
         assert_eq!(&*split_buf, split_str.as_bytes());
 
         // Split another `DemiBuffer` off of the already-split-off one.
-        let result: Result<DemiBuffer, Fail> = split_buf.split_off(9);
-        // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
+        let result: Result<DemiBuffer, Fail> = split_buf.split_back(9);
+        // `DemiBuffer::split_back` shouldn't fail, as we passed it a valid offset.
         assert!(result.is_ok());
-        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
+        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_back shouldn't fail for this offset");
         assert_eq!(buf.len(), 24);
         assert_eq!(split_buf.len(), 9);
         assert_eq!(another_buf.len(), 16);
