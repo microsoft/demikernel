@@ -8,6 +8,7 @@
 // Modules
 //======================================================================================================================
 
+mod accept;
 mod args;
 mod bind;
 mod listen;
@@ -39,5 +40,6 @@ fn main() -> Result<()> {
     socket::run(&mut libos)?;
     bind::run(&mut libos, &args.local().ip())?;
     listen::run(&mut libos, &args.local())?;
+    accept::run(&mut libos, &args.local())?;
     Ok(())
 }
