@@ -13,7 +13,6 @@
 mod args;
 mod client;
 mod server;
-mod standalone;
 
 use crate::{
     args::ProgramArguments,
@@ -37,29 +36,25 @@ fn main() -> Result<()> {
         "Stress test for close() on tcp sockets.",
     )?;
 
-    let mut libos: LibOS = {
+    let libos: LibOS = {
         let libos_name: LibOSName = LibOSName::from_env()?.into();
         LibOS::new(libos_name)?
     };
 
-    match args.run_mode().as_str() {
-        "sequential" | "concurrent" => match args.peer_type().expect("missing peer_type").as_str() {
-            "client" => {
-                let mut client: TcpClient = TcpClient::new(libos, args.addr())?;
-                let nclients: usize = args.nclients().expect("missing number of clients");
-                if args.run_mode().as_str() == "sequential" {
-                    client.run_sequential(nclients)
-                } else {
-                    client.run_concurrent(nclients)
-                }
-            },
-            "server" => {
-                let mut server: TcpServer = TcpServer::new(libos, args.addr())?;
-                server.run(args.nclients())
-            },
-            _ => anyhow::bail!("invalid peer type"),
+    match args.peer_type().expect("missing peer_type").as_str() {
+        "client" => {
+            let mut client: TcpClient = TcpClient::new(libos, args.addr())?;
+            let nclients: usize = args.nclients().expect("missing number of clients");
+            match args.run_mode().as_str() {
+                "sequential" => client.run_sequential(nclients),
+                "concurrent" => client.run_concurrent(nclients),
+                _ => anyhow::bail!("invalid run mode"),
+            }
         },
-        "standalone" => standalone::run(&mut libos, &args.addr()),
-        _ => anyhow::bail!("invalid run mode"),
+        "server" => {
+            let mut server: TcpServer = TcpServer::new(libos, args.addr())?;
+            server.run(args.nclients())
+        },
+        _ => anyhow::bail!("invalid peer type"),
     }
 }

@@ -68,7 +68,7 @@ impl ProgramArguments {
                     .long("run-mode")
                     .value_parser(clap::value_parser!(String))
                     .required(true)
-                    .value_name("standalone|sequential|concurrent")
+                    .value_name("sequential|concurrent")
                     .help("Sets run mode"),
             )
             .get_matches();
