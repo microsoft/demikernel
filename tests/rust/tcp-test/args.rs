@@ -25,6 +25,8 @@ use std::{
 pub struct ProgramArguments {
     /// Address of local.
     local: SocketAddrV4,
+    /// Address of remote socket.
+    remote: SocketAddrV4,
 }
 
 impl ProgramArguments {
@@ -41,6 +43,14 @@ impl ProgramArguments {
                     .value_name("ADDRESS:PORT")
                     .help("Sets the address of local socket"),
             )
+            .arg(
+                Arg::new("remote")
+                    .long("remote-address")
+                    .value_parser(clap::value_parser!(String))
+                    .required(true)
+                    .value_name("ADDRESS:PORT")
+                    .help("Sets the address of remote socket"),
+            )
             .get_matches();
 
         // Address of local socket.
@@ -49,11 +59,22 @@ impl ProgramArguments {
             SocketAddrV4::from_str(local)?
         };
 
-        Ok(Self { local})
+        // Address of remote socket.
+        let remote: SocketAddrV4 = {
+            let remote: &String = matches.get_one::<String>("remote").expect("missing address");
+            SocketAddrV4::from_str(remote)?
+        };
+
+        Ok(Self { local, remote })
     }
 
     /// Returns the `local` command line argument.
     pub fn local(&self) -> SocketAddrV4 {
         self.local
+    }
+
+    /// Returns the `remote` command line argument.
+    pub fn remote(&self) -> SocketAddrV4 {
+        self.remote
     }
 }
