@@ -9,6 +9,7 @@
 //======================================================================================================================
 
 mod args;
+mod bind;
 mod socket;
 
 //======================================================================================================================
@@ -23,7 +24,7 @@ use demikernel::{
 };
 
 fn main() -> Result<()> {
-    ProgramArguments::new(
+    let args: ProgramArguments = ProgramArguments::new(
         "tcp",
         "Pedro Henrique Penna <ppenna@microsoft.com>",
         "Integration test for TCP queues.",
@@ -35,5 +36,6 @@ fn main() -> Result<()> {
     };
 
     socket::run(&mut libos)?;
+    bind::run(&mut libos, &args.local().ip())?;
     Ok(())
 }
