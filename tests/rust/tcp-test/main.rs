@@ -11,6 +11,7 @@
 mod accept;
 mod args;
 mod bind;
+mod close;
 mod connect;
 mod listen;
 mod socket;
@@ -43,5 +44,7 @@ fn main() -> Result<()> {
     listen::run(&mut libos, &args.local())?;
     accept::run(&mut libos, &args.local())?;
     connect::run(&mut libos, &args.local(), &args.remote())?;
+    close::run(&mut libos, &args.local())?;
+
     Ok(())
 }
