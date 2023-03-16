@@ -9,12 +9,18 @@
 //======================================================================================================================
 
 mod args;
+mod socket;
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
 use anyhow::Result;
 use args::ProgramArguments;
+use demikernel::{
+    LibOS,
+    LibOSName,
+};
 
 fn main() -> Result<()> {
     ProgramArguments::new(
@@ -23,5 +29,11 @@ fn main() -> Result<()> {
         "Integration test for TCP queues.",
     )?;
 
+    let mut libos: LibOS = {
+        let libos_name: LibOSName = LibOSName::from_env()?.into();
+        LibOS::new(libos_name)?
+    };
+
+    socket::run(&mut libos)?;
     Ok(())
 }
