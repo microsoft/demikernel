@@ -10,6 +10,7 @@
 
 mod args;
 mod bind;
+mod listen;
 mod socket;
 
 //======================================================================================================================
@@ -37,5 +38,6 @@ fn main() -> Result<()> {
 
     socket::run(&mut libos)?;
     bind::run(&mut libos, &args.local().ip())?;
+    listen::run(&mut libos, &args.local())?;
     Ok(())
 }
