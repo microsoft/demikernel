@@ -447,35 +447,7 @@ impl DemiBuffer {
     /// - The target [DemiBuffer] should be large enough to hold `offset`.
     ///
     pub fn split_back(&mut self, offset: usize) -> Result<Self, Fail> {
-        // Check if this is a multi-segment buffer.
-        if self.is_multi_segment() {
-            let cause: String = format!("cannot split a multi-segment buffer");
-            error!("split_back(): {}", &cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        // Check if split offset is valid.
-        if self.len() < offset {
-            let cause: String = format!("cannot split buffer at given the offset (offset={:?})", offset);
-            error!("split_back(): {}", &cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        // Clone the target buffer before any changes are applied.
-        let mut back_half: DemiBuffer = self.clone();
-
-        // Remove data starting at `offset` from the front half buffer (original buffer).
-        // Those bytes now belong to the back half buffer.
-        // This unwrap won't panic as we already performed its error checking above.
-        self.trim(self.len() - offset).unwrap();
-
-        // Remove `offset` bytes from the beginning of the back half buffer (cloned buffer).
-        // Those bytes now belong to the front back buffer.
-        // This unwrap won't panic as we already performed its error checking above.
-        back_half.adjust(offset).unwrap();
-
-        // Return the back half buffer.
-        Ok(back_half)
+        self.split(false, offset)
     }
 
     ///
@@ -497,6 +469,21 @@ impl DemiBuffer {
     /// - The target [DemiBuffer] should be large enough to hold `offset`.
     ///
     pub fn split_front(&mut self, offset: usize) -> Result<Self, Fail> {
+        self.split(true, offset)
+    }
+
+    ///
+    /// **Description**
+    ///
+    /// Splits the target [DemiBuffer] at the given `offset` and returns a new [DemiBuffer] containing the data removed
+    /// from the original buffer.
+    ///
+    /// **Return Value**
+    ///
+    /// On successful completion, a new [DemiBuffer] containing the data removed from the original buffer is returned.
+    /// On failure, a [Fail] structure encoding the failure condition is returned instead.
+    ///
+    fn split(&mut self, split_front: bool, offset: usize) -> Result<Self, Fail> {
         // Check if this is a multi-segment buffer.
         if self.is_multi_segment() {
             let cause: String = format!("cannot split a multi-segment buffer");
@@ -512,20 +499,32 @@ impl DemiBuffer {
         }
 
         // Clone the target buffer before any changes are applied.
-        let mut front_half: DemiBuffer = self.clone();
+        let mut cloned_buf: DemiBuffer = self.clone();
 
-        // Remove data starting at `offset` from the front half buffer (cloned buffer).
-        // Those bytes now belong to the back half buffer.
-        // This unwrap won't panic as we already performed its error checking above.
-        front_half.trim(self.len() - offset).unwrap();
+        if split_front {
+            // Remove data starting at `offset` from the front half buffer (cloned buffer).
+            // Those bytes now belong to the back half buffer.
+            // This unwrap won't panic as we already performed its error checking above.
+            cloned_buf.trim(self.len() - offset).unwrap();
 
-        // Remove `offset` bytes from the beginning of the back half buffer (original buffer).
-        // Those bytes now belong to the front back buffer.
-        // This unwrap won't panic as we already performed its error checking above.
-        self.adjust(offset).unwrap();
+            // Remove `offset` bytes from the beginning of the back half buffer (original buffer).
+            // Those bytes now belong to the front back buffer.
+            // This unwrap won't panic as we already performed its error checking above.
+            self.adjust(offset).unwrap();
+        } else {
+            // Remove data starting at `offset` from the front half buffer (original buffer).
+            // Those bytes now belong to the back half buffer.
+            // This unwrap won't panic as we already performed its error checking above.
+            self.trim(self.len() - offset).unwrap();
 
-        // Return the front half back buffer.
-        Ok(front_half)
+            // Remove `offset` bytes from the beginning of the back half buffer (cloned buffer).
+            // Those bytes now belong to the front back buffer.
+            // This unwrap won't panic as we already performed its error checking above.
+            cloned_buf.adjust(offset).unwrap();
+        }
+
+        // Return the cloned buffer.
+        Ok(cloned_buf)
     }
 
     /// Provides a raw pointer to the buffer data.
