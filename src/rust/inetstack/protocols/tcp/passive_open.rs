@@ -7,28 +7,25 @@ use super::{
     isn_generator::IsnGenerator,
 };
 use crate::{
-    inetstack::{
-        futures::FutureOperation,
-        protocols::{
-            arp::ArpPeer,
-            ethernet2::{
-                EtherType2,
-                Ethernet2Header,
+    inetstack::protocols::{
+        arp::ArpPeer,
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        ip::IpProtocol,
+        ipv4::Ipv4Header,
+        tcp::{
+            established::{
+                congestion_control,
+                congestion_control::CongestionControl,
             },
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
-            tcp::{
-                established::{
-                    congestion_control,
-                    congestion_control::CongestionControl,
-                },
-                segment::{
-                    TcpHeader,
-                    TcpOptions2,
-                    TcpSegment,
-                },
-                SeqNumber,
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
             },
+            SeqNumber,
         },
     },
     runtime::{
@@ -38,6 +35,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::BackgroundTask,
         timer::TimerRc,
     },
     scheduler::{
@@ -45,7 +43,6 @@ use crate::{
         SchedulerHandle,
     },
 };
-use ::futures::FutureExt;
 use ::libc::{
     EBADMSG,
     ECONNREFUSED,
@@ -275,7 +272,11 @@ impl PassiveSocket {
             self.arp.clone(),
             self.ready.clone(),
         );
-        let handle: SchedulerHandle = match self.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let task: BackgroundTask = BackgroundTask::new(
+            String::from("Inetstack::TCP::passiveopen::background"),
+            Box::pin(future),
+        );
+        let handle: SchedulerHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

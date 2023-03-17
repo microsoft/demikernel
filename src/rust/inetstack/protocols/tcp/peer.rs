@@ -284,12 +284,12 @@ impl TcpPeer {
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, qd: QDesc) -> AcceptFuture {
+    pub fn do_accept(&self, qd: QDesc) -> (QDesc, AcceptFuture) {
         let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
         let inner: &mut Inner = &mut *inner_;
 
         let new_qd: QDesc = inner.qtable.borrow_mut().alloc(InetQueue::Tcp(TcpQueue::new()));
-        AcceptFuture::new(qd, new_qd, self.inner.clone())
+        (new_qd, AcceptFuture::new(qd, new_qd, self.inner.clone()))
     }
 
     /// Handles an incoming connection.

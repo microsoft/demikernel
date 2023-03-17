@@ -144,7 +144,8 @@ impl Engine {
     }
 
     pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture {
-        self.ipv4.tcp.do_accept(fd)
+        let (_, future) = self.ipv4.tcp.do_accept(fd);
+        future
     }
 
     pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> PushFuture {
