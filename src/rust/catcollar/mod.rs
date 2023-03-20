@@ -36,7 +36,15 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        queue::IoQueueTable,
+        queue::{
+            IoQueueTable,
+            Operation,
+            OperationResult,
+            OperationTask,
+            QDesc,
+            QToken,
+            QType,
+        },
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -44,19 +52,8 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        OperationResult,
-        QDesc,
-        QToken,
-        QType,
     },
-    scheduler::{
-        SchedulerHandle,
-        TaskWithResult,
-    },
-    scheduler::{
-        SchedulerHandle,
-        TaskWithResult,
-    },
+    scheduler::SchedulerHandle,
 };
 use ::std::{
     cell::{
@@ -66,6 +63,7 @@ use ::std::{
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
+    pin::Pin,
     rc::Rc,
 };
 
@@ -75,9 +73,6 @@ use ::std::{
 
 // Size of receive buffers.
 const CATCOLLAR_RECVBUF_SIZE: usize = 9000;
-
-/// Coroutine Task type used to process I/O operations.
-type OpTask = TaskWithResult<(QDesc, OperationResult)>;
 
 //======================================================================================================================
 // Structures
@@ -161,7 +156,7 @@ impl CatcollarLibOS {
     /// Binds a socket to a local endpoint.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
-        let mut qtable = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<CatcollarQueue>> = self.qtable.borrow_mut();
         // Check if we are binding to the wildcard port.
         if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
@@ -268,11 +263,14 @@ impl CatcollarLibOS {
                     queue.set_fd(new_fd);
                     (qd, OperationResult::Accept((new_qd, addr)))
                 },
-                Err(e) => (qd, OperationResult::Failed(e)),
+                Err(e) => {
+                    qtable_.free(&new_qd);
+                    (qd, OperationResult::Failed(e))
+                },
             }
-        };
-        let task_id = format!("Catcollar::accept for qd={:?}", qd);
-        let task: OpTask = OpTask::new(task_id, Box::pin(coroutine));
+        });
+        let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
+        let task: OperationTask = OperationTask::new(task_id, coroutine);
         let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
             Some(handle) => handle,
             None => {
@@ -291,15 +289,18 @@ impl CatcollarLibOS {
         match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future = ConnectFuture::new(fd, remote);
-                    let coroutine = async move {
-                        match future.await {
+                    let future: ConnectFuture = ConnectFuture::new(fd, remote);
+                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                        // Wait for connect to finish.
+                        let result: Result<(), Fail> = future.await;
+                        // Handle the result.
+                        match result {
                             Ok(()) => (qd, OperationResult::Connect),
                             Err(e) => (qd, OperationResult::Failed(e)),
                         }
-                    };
-                    let task_id = format!("Catcollar::connect for qd={:?}", qd);
-                    let task: OpTask = OpTask::new(task_id, Box::pin(coroutine));
+                    });
+                    let task_id: String = format!("Catcollar::connect for qd={:?}", qd);
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -341,10 +342,14 @@ impl CatcollarLibOS {
         match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future = CloseFuture::new(fd);
-                    let qtable_ptr = self.qtable.clone();
-                    let coroutine = async move {
-                        match future.await {
+                    let future: CloseFuture = CloseFuture::new(fd);
+                    let qtable_ptr: Rc<RefCell<IoQueueTable<CatcollarQueue>>> = self.qtable.clone();
+                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                        // Wait for close to complete.
+                        let result: Result<(), Fail> = future.await;
+                        // Handle the result: Borrow the qtable and free the queue metadata and queue descriptor if the
+                        // close was successful.
+                        match result {
                             Ok(()) => {
                                 let mut qtable_ = qtable_ptr.borrow_mut();
                                 qtable_.free(&qd);
@@ -352,9 +357,9 @@ impl CatcollarLibOS {
                             },
                             Err(e) => (qd, OperationResult::Failed(e)),
                         }
-                    };
-                    let task_id = format!("Catcollar::close for qd={:?}", qd);
-                    let task = OpTask::new(task_id, Box::pin(coroutine));
+                    });
+                    let task_id: String = format!("Catcollar::close for qd={:?}", qd);
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -382,15 +387,18 @@ impl CatcollarLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     // Issue operation.
-                    let future = PushFuture::new(self.runtime.clone(), fd, buf);
-                    let coroutine = async move {
-                        match future.await {
+                    let future: PushFuture = PushFuture::new(self.runtime.clone(), fd, buf);
+                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                        // Wait for the push to complete
+                        let result: Result<(), Fail> = future.await;
+                        // Handle the result.
+                        match result {
                             Ok(()) => (qd, OperationResult::Push),
                             Err(e) => (qd, OperationResult::Failed(e)),
                         }
                     });
                     let task_id: String = format!("Catcollar::push for qd={:?}", qd);
-                    let task: TaskWithResult<(QDesc, OperationResult)> = OperationTask::new(task_id, coroutine);
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -418,15 +426,18 @@ impl CatcollarLibOS {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
                             // Issue operation.
-                            let future = PushtoFuture::new(self.runtime.clone(), fd, remote, buf);
-                            let coroutine = async move {
-                                match future.await {
+                            let future: PushtoFuture = PushtoFuture::new(self.runtime.clone(), fd, remote, buf);
+                            let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                                // Wait for pushto to complete.
+                                let result: Result<(), Fail> = future.await;
+                                // Handle result.
+                                match result {
                                     Ok(()) => (qd, OperationResult::Push),
                                     Err(e) => (qd, OperationResult::Failed(e)),
                                 }
-                            };
-                            let task_id = format!("Catcollar::pushto for qd={:?}", qd);
-                            let task = OpTask::new(task_id, Box::pin(coroutine));
+                            });
+                            let task_id: String = format!("Catcollar::pushto for qd={:?}", qd);
+                            let task: OperationTask = OperationTask::new(task_id, coroutine);
                             let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -462,15 +473,18 @@ impl CatcollarLibOS {
         match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future = PopFuture::new(self.runtime.clone(), fd, buf);
-                    let coroutine = async move {
-                        match future.await {
+                    let future: PopFuture = PopFuture::new(self.runtime.clone(), fd, buf);
+                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                        // Wait for pop to complete.
+                        let result: Result<(Option<SocketAddrV4>, DemiBuffer), Fail> = future.await;
+                        // Handle the result: if successful, return the addr and buffer.
+                        match result {
                             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
                             Err(e) => (qd, OperationResult::Failed(e)),
                         }
-                    };
-                    let task_id = format!("Catcollar::pop for qd={:?}", qd);
-                    let task = OpTask::new(task_id, Box::pin(coroutine));
+                    });
+                    let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
@@ -514,7 +528,7 @@ impl CatcollarLibOS {
 
     /// Takes out the operation result descriptor associated with the target scheduler handle.
     fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OpTask = OpTask::from(self.runtime.scheduler.take(handle).as_any());
+        let task: OperationTask = OperationTask::from(self.runtime.scheduler.take(handle).as_any());
         task.get_result().expect("The coroutine has not finished")
     }
 }

@@ -15,7 +15,6 @@ use crate::{
         memory::DemiBuffer,
     },
 };
-
 use ::std::{
     future::Future,
     net::SocketAddrV4,

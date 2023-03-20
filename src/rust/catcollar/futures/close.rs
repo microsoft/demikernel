@@ -6,7 +6,6 @@
 //==============================================================================
 
 use crate::runtime::fail::Fail;
-
 use ::std::{
     future::Future,
     os::unix::prelude::RawFd,
