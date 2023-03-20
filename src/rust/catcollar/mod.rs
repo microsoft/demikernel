@@ -53,9 +53,16 @@ use crate::{
         SchedulerHandle,
         TaskWithResult,
     },
+    scheduler::{
+        SchedulerHandle,
+        TaskWithResult,
+    },
 };
 use ::std::{
-    cell::RefCell,
+    cell::{
+        RefCell,
+        RefMut,
+    },
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
@@ -233,7 +240,7 @@ impl CatcollarLibOS {
     /// Accepts connections on a socket.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
-        let mut qtable = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<CatcollarQueue>> = self.qtable.borrow_mut();
 
         let fd: RawFd = match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
@@ -245,13 +252,16 @@ impl CatcollarLibOS {
 
         // Issue accept operation.
         let new_qd: QDesc = qtable.alloc(CatcollarQueue::new(QType::TcpSocket));
-        let future = AcceptFuture::new(fd);
-        let qtable_ptr = self.qtable.clone();
-        let coroutine = async move {
-            match future.await {
+        let future: AcceptFuture = AcceptFuture::new(fd);
+        let qtable_ptr: Rc<RefCell<IoQueueTable<CatcollarQueue>>> = self.qtable.clone();
+        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+            // Wait for the accept routine to complete.
+            let result: Result<(RawFd, SocketAddrV4), Fail> = future.await;
+            // Borrow the queue table to either update the queue metadata or free the queue on error.
+            let mut qtable_: RefMut<IoQueueTable<CatcollarQueue>> = qtable_ptr.borrow_mut();
+            match result {
                 Ok((new_fd, addr)) => {
-                    let mut qtable_ = qtable_ptr.borrow_mut();
-                    let queue = qtable_
+                    let queue: &mut CatcollarQueue = qtable_
                         .get_mut(&new_qd)
                         .expect("New qd should have been already allocated");
                     queue.set_addr(addr);
@@ -305,7 +315,7 @@ impl CatcollarLibOS {
     /// Closes a socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
-        let mut qtable = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<CatcollarQueue>> = self.qtable.borrow_mut();
         match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => match unsafe { libc::close(fd) } {
@@ -378,9 +388,9 @@ impl CatcollarLibOS {
                             Ok(()) => (qd, OperationResult::Push),
                             Err(e) => (qd, OperationResult::Failed(e)),
                         }
-                    };
-                    let task_id = format!("Catcollar::push for qd={:?}", qd);
-                    let task = OpTask::new(task_id, Box::pin(coroutine));
+                    });
+                    let task_id: String = format!("Catcollar::push for qd={:?}", qd);
+                    let task: TaskWithResult<(QDesc, OperationResult)> = OperationTask::new(task_id, coroutine);
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),

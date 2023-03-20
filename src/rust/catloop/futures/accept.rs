@@ -20,7 +20,6 @@ use crate::{
         },
     },
     scheduler::SchedulerHandle,
-    QDesc,
     QToken,
 };
 use ::std::{
@@ -54,7 +53,6 @@ enum ServerState {
     },
     Connected {
         qt_close: QToken,
-        new_qd: QDesc,
         remote: SocketAddrV4,
         duplex_pipe: Rc<DuplexPipe>,
     },
@@ -73,8 +71,6 @@ pub struct AcceptFuture {
     control_duplex_pipe: Rc<DuplexPipe>,
     /// Port number new connection.
     new_port: u16,
-    /// Queue descriptor of new connection.
-    new_qd: QDesc,
     // State in the connection establishment protocol.
     state: ServerState,
 }
@@ -90,7 +86,6 @@ impl AcceptFuture {
         catmem: Rc<RefCell<CatmemLibOS>>,
         control_duplex_pipe: Rc<DuplexPipe>,
         new_port: u16,
-        new_qd: QDesc,
     ) -> Result<Self, Fail> {
         // Issue first pop. Note that we intentionally issue an unbound
         // pop() because the connection establishment protocol requires that
@@ -101,7 +96,6 @@ impl AcceptFuture {
             ipv4: ipv4.clone(),
             control_duplex_pipe,
             new_port,
-            new_qd,
             state: ServerState::ListenAndAccept { qt_rx },
         })
     }
@@ -112,7 +106,7 @@ impl AcceptFuture {
 //======================================================================================================================
 
 impl Future for AcceptFuture {
-    type Output = Result<(QDesc, SocketAddrV4, Rc<DuplexPipe>), Fail>;
+    type Output = Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>;
 
     /// Polls the target [AcceptFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -127,14 +121,13 @@ impl Future for AcceptFuture {
             ServerState::Connect { qt_tx, duplex_pipe } => connect(self_, ctx, *qt_tx, duplex_pipe.clone()),
             ServerState::Connected {
                 qt_close,
-                new_qd,
                 remote,
                 duplex_pipe,
             } => {
                 if let Some(handle) = DuplexPipe::poll(&self_.catmem, *qt_close)? {
                     check_connect_request(&self_.catmem, handle, *qt_close).expect("magic connect");
                     debug!("connection accepted!");
-                    return Poll::Ready(Ok((*new_qd, *remote, duplex_pipe.clone())));
+                    return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
                 }
                 ctx.waker().wake_by_ref();
                 return Poll::Pending;
@@ -194,7 +187,7 @@ fn listen_and_accept(
     self_: &mut AcceptFuture,
     ctx: &mut Context<'_>,
     qt_rx: QToken,
-) -> Poll<Result<(QDesc, SocketAddrV4, Rc<DuplexPipe>), Fail>> {
+) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if a connection request arrived.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_rx)? {
         // Check if this is a valid connection request.
@@ -237,14 +230,13 @@ fn connect(
     ctx: &mut Context<'_>,
     qt_tx: QToken,
     duplex_pipe: Rc<DuplexPipe>,
-) -> Poll<Result<(QDesc, SocketAddrV4, Rc<DuplexPipe>), Fail>> {
+) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, self_.new_port);
         let size: usize = mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT);
         let qt_close: QToken = duplex_pipe.pop(Some(size))?;
         self_.state = ServerState::Connected {
             qt_close,
-            new_qd: self_.new_qd,
             remote,
             duplex_pipe: duplex_pipe.clone(),
         }
