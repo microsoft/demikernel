@@ -8,63 +8,24 @@
 use crate::{
     pal::linux,
     runtime::fail::Fail,
+    scheduler::yield_once,
 };
 use ::std::{
-    future::Future,
     mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
-    pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
 };
 
-//==============================================================================
-// Structures
-//==============================================================================
+/// This function polls accept on a listening socket until it receives a new accepted connection back.
+pub async fn accept_coroutine(fd: RawFd) -> Result<(RawFd, SocketAddrV4), Fail> {
+    let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
+    let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
 
-/// Accept Operation Descriptor
-#[derive(Debug)]
-pub struct AcceptFuture {
-    /// Underlying file descriptor.
-    fd: RawFd,
-    /// Socket address of accept connection.
-    sockaddr: libc::sockaddr_in,
-}
-
-//==============================================================================
-// Associate Functions
-//==============================================================================
-
-/// Associate Functions for Accept Operation Descriptors
-impl AcceptFuture {
-    /// Creates a descriptor for an accept operation.
-    pub fn new(fd: RawFd) -> Self {
-        Self {
-            fd,
-            sockaddr: unsafe { mem::zeroed() },
-        }
-    }
-}
-
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
-/// Future Trait Implementation for Accept Operation Descriptors
-impl Future for AcceptFuture {
-    type Output = Result<(RawFd, SocketAddrV4), Fail>;
-
-    /// Polls the target [AcceptFuture].
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &mut AcceptFuture = self.get_mut();
+    loop {
         match unsafe {
-            let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
             libc::accept(
-                self_.fd,
-                (&mut self_.sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
+                fd,
+                (&mut sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
                 &mut address_len,
             )
         } {
@@ -88,23 +49,21 @@ impl Future for AcceptFuture {
                     }
                 }
 
-                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&self_.sockaddr);
-                Poll::Ready(Ok((new_fd, addr)))
+                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&sockaddr);
+                return Ok((new_fd, addr));
             },
-
             _ => {
                 // Operation not completed, thus parse errno to find out what happened.
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
                 if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
                     // Operation in progress.
-                    ctx.waker().wake_by_ref();
-                    return Poll::Pending;
+                    yield_once().await
                 } else {
                     // Operation failed.
                     let message: String = format!("accept(): operation failed (errno={:?})", errno);
                     error!("{}", message);
-                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                    return Err(Fail::new(errno, &message));
                 }
             },
         }
