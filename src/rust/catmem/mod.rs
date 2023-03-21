@@ -185,8 +185,15 @@ impl CatmemLibOS {
 
     /// Pops data from a socket.
     /// TODO: Enforce semantics on the pipe.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}", qd);
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
+            error!("pop(): {:?}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
 
         // Issue pop operation.
         match self.qtable.get(&qd) {
@@ -199,7 +206,7 @@ impl CatmemLibOS {
                     return Err(Fail::new(libc::ECONNRESET, &cause));
                 }
 
-                let future: Operation = Operation::from(PopFuture::new(qd, pipe.buffer()));
+                let future: Operation = Operation::from(PopFuture::new(qd, pipe.buffer(), size));
                 let handle: SchedulerHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),

@@ -159,7 +159,7 @@ impl TcpEchoClient {
 
         // Pop data.
         while index < recvbuf.len() {
-            let qt: QToken = match self.libos.pop(self.sockqd) {
+            let qt: QToken = match self.libos.pop(self.sockqd, None) {
                 Ok(qt) => qt,
                 Err(e) => panic!("pop failed: {:?}", e.cause),
             };

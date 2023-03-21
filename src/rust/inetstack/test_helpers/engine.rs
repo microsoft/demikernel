@@ -116,7 +116,7 @@ impl Engine {
     }
 
     pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture {
-        self.ipv4.udp.do_pop(fd)
+        self.ipv4.udp.do_pop(fd, None)
     }
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
@@ -152,7 +152,7 @@ impl Engine {
     }
 
     pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture {
-        self.ipv4.tcp.pop(socket_fd)
+        self.ipv4.tcp.pop(socket_fd, None)
     }
 
     pub fn tcp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {

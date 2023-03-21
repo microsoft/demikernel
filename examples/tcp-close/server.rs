@@ -219,7 +219,7 @@ impl TcpServer {
 
     /// Issues a pop() operation.
     fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
-        let qt: QToken = self.libos.pop(qd)?;
+        let qt: QToken = self.libos.pop(qd, None)?;
         self.qts_reverse.insert(qt, qd);
         self.qts.push(qt);
         Ok(())

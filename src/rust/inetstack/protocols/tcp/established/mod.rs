@@ -70,8 +70,8 @@ impl EstablishedSocket {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
-        self.cb.poll_recv(ctx)
+    pub fn poll_recv(&self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
+        self.cb.poll_recv(ctx, size)
     }
 
     pub fn close(&self) -> Result<(), Fail> {

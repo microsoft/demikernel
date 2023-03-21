@@ -49,6 +49,7 @@ use ::std::{
     cell::{
         Cell,
         RefCell,
+        RefMut,
     },
     collections::VecDeque,
     convert::TryInto,
@@ -126,12 +127,30 @@ impl Receiver {
         }
     }
 
-    pub fn pop(&self) -> Option<DemiBuffer> {
-        let buf: DemiBuffer = self.recv_queue.borrow_mut().pop_front()?;
+    pub fn pop(&self, size: Option<usize>) -> Result<Option<DemiBuffer>, Fail> {
+        let mut recv_queue: RefMut<VecDeque<DemiBuffer>> = self.recv_queue.borrow_mut();
+
+        // Check if the receive queue is empty.
+        if recv_queue.is_empty() {
+            return Ok(None);
+        }
+
+        let buf: DemiBuffer = if let Some(size) = size {
+            let buf: &mut DemiBuffer = recv_queue.front_mut().expect("receive queue cannot be empty");
+            // Split the buffer if it's too big.
+            if buf.len() > size {
+                buf.split_front(size)?
+            } else {
+                recv_queue.pop_front().expect("receive queue cannot be empty")
+            }
+        } else {
+            recv_queue.pop_front().expect("receive queue cannot be empty")
+        };
+
         self.reader_next
             .set(self.reader_next.get() + SeqNumber::from(buf.len() as u32));
 
-        Some(buf)
+        Ok(Some(buf))
     }
 
     pub fn push(&self, buf: DemiBuffer) {
@@ -914,7 +933,7 @@ impl ControlBlock {
         hdr_window_size
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
+    pub fn poll_recv(&self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
         // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
@@ -927,12 +946,14 @@ impl ControlBlock {
             return Poll::Pending;
         }
 
-        let segment: DemiBuffer = self
-            .receiver
-            .pop()
-            .expect("poll_recv failed to pop data from receive queue");
-
-        Poll::Ready(Ok(segment))
+        match self.receiver.pop(size) {
+            Ok(Some(segment)) => Poll::Ready(Ok(segment)),
+            Ok(None) => {
+                warn!("poll_recv(): polling empty receive queue (ignoring spurious wake up)");
+                Poll::Pending
+            },
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 
     // This routine remembers that we have received an out-of-order FIN.

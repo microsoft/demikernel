@@ -55,7 +55,7 @@ impl PipeServer {
         let mut n: usize = 0;
 
         // Pop data.
-        let qt: QToken = self.libos.pop(pipeqd)?;
+        let qt: QToken = self.libos.pop(pipeqd, None)?;
         let qr: demi_qresult_t = self.libos.wait(qt, None)?;
         let sga: demi_sgarray_t = match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },

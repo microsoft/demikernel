@@ -385,13 +385,13 @@ impl TcpPeer {
         })
     }
 
-    pub fn poll_recv(&self, qd: QDesc, ctx: &mut Context) -> Poll<Result<DemiBuffer, Fail>> {
+    pub fn poll_recv(&self, qd: QDesc, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
         let inner: Ref<Inner> = self.inner.borrow();
         let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
         match qtable.get_mut(&qd) {
             Some(InetQueue::Tcp(ref mut queue)) => match queue.get_mut_socket() {
-                Socket::Established(ref mut socket) => socket.poll_recv(ctx),
-                Socket::Closing(ref mut socket) => socket.poll_recv(ctx),
+                Socket::Established(ref mut socket) => socket.poll_recv(ctx, size),
+                Socket::Closing(ref mut socket) => socket.poll_recv(ctx, size),
                 Socket::Connecting(_) => Poll::Ready(Err(Fail::new(libc::EINPROGRESS, "socket connecting"))),
                 Socket::Inactive(_) => Poll::Ready(Err(Fail::new(libc::EBADF, "socket inactive"))),
                 Socket::Listening(_) => Poll::Ready(Err(Fail::new(libc::ENOTCONN, "socket listening"))),
@@ -410,9 +410,10 @@ impl TcpPeer {
     }
 
     /// TODO: Should probably check for valid queue descriptor before we schedule the future
-    pub fn pop(&self, qd: QDesc) -> PopFuture {
+    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> PopFuture {
         PopFuture {
             qd,
+            size,
             inner: self.inner.clone(),
         }
     }

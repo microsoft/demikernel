@@ -111,7 +111,7 @@ fn pop_and_wait(libos: &mut LibOS, pipeqd: QDesc, expected_length: usize, expect
     let mut nreceived: usize = 0;
     while nreceived < expected_length {
         // Pop data.
-        let qt: QToken = match libos.pop(pipeqd) {
+        let qt: QToken = match libos.pop(pipeqd, None) {
             Ok(qt) => qt,
             Err(e) => bail!("pop failed: {:?}", e.cause),
         };

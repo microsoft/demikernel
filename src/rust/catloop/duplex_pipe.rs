@@ -84,8 +84,8 @@ impl DuplexPipe {
     }
 
     /// Pops a scatter-gather array from a duplex pipe.
-    pub fn pop(&self) -> Result<QToken, Fail> {
-        self.catmem.borrow_mut().pop(self.rx)
+    pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
+        self.catmem.borrow_mut().pop(self.rx, size)
     }
 
     /// Polls a duplex pipe.

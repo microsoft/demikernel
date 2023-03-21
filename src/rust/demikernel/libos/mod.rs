@@ -209,10 +209,10 @@ impl LibOS {
     }
 
     /// Pops data from a an I/O queue.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.pop(qd),
-            LibOS::MemoryLibOS(libos) => libos.pop(qd),
+            LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
+            LibOS::MemoryLibOS(libos) => libos.pop(qd, size),
         }
     }
 

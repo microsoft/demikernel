@@ -357,14 +357,21 @@ impl CatnapLibOS {
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}", qd);
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
+            error!("pop(): {:?}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
 
         // Issue pop operation.
         match self.qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future: Operation = Operation::from(PopFuture::new(qd, fd));
+                    let future: Operation = Operation::from(PopFuture::new(qd, fd, size));
                     let handle: SchedulerHandle = match self.runtime.scheduler.insert(future) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),

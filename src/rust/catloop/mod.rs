@@ -363,8 +363,15 @@ impl CatloopLibOS {
     }
 
     /// Pops data from a socket.
-    pub fn pop(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}", qd);
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // Check if the pop size is valid.
+        if size.is_some() && size.unwrap() == 0 {
+            let cause: String = format!("invalid pop size (size={:?})", size);
+            error!("pop(): {:?}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
 
         let catmem_qd: QDesc = match self.qtable.get(&qd) {
             Some(queue) => match queue.get_pipe() {
@@ -374,7 +381,7 @@ impl CatloopLibOS {
             None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
 
-        let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd)?;
+        let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
         self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_POP, qd));
 
         Ok(qt)

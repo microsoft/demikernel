@@ -179,7 +179,7 @@ impl Application {
         let mut last_log: Instant = Instant::now();
 
         // Pop first packet.
-        let qt: QToken = match self.libos.pop(self.sockqd) {
+        let qt: QToken = match self.libos.pop(self.sockqd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
         };
@@ -219,7 +219,7 @@ impl Application {
                 // Push completed.
                 demi_opcode_t::DEMI_OPC_PUSH => {
                     // Pop another packet.
-                    let qt: QToken = match self.libos.pop(self.sockqd) {
+                    let qt: QToken = match self.libos.pop(self.sockqd, None) {
                         Ok(qt) => qt,
                         Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
                     };

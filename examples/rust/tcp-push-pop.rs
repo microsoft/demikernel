@@ -114,7 +114,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
     let mut i: usize = 0;
     while i < nbytes {
         // Pop data.
-        let qt: QToken = match libos.pop(qd) {
+        let qt: QToken = match libos.pop(qd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };

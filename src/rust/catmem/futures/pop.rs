@@ -33,6 +33,8 @@ pub struct PopFuture {
     qd: QDesc,
     /// Underlying shared ring buffer.
     ring: Rc<SharedRingBuffer<u16>>,
+    /// Number of bytes to pop.
+    size: Option<usize>,
 }
 
 //======================================================================================================================
@@ -45,8 +47,8 @@ impl PopFuture {
     const POP_SIZE_MAX: usize = 9216;
 
     /// Creates a descriptor for a pop operation.
-    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>) -> Self {
-        PopFuture { qd, ring }
+    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>, size: Option<usize>) -> Self {
+        PopFuture { qd, ring, size }
     }
 
     /// Returns the queue descriptor associated to the target [PopFuture].
@@ -66,7 +68,8 @@ impl Future for PopFuture {
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
-        let mut buf: DemiBuffer = DemiBuffer::new(Self::POP_SIZE_MAX as u16);
+        let size: usize = self_.size.unwrap_or(Self::POP_SIZE_MAX);
+        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let mut eof: bool = false;
         let mut index: usize = 0;
         loop {
@@ -74,13 +77,20 @@ impl Future for PopFuture {
                 Some(x) => {
                     let (high, low): (u8, u8) = (((x >> 8) & 0xff) as u8, (x & 0xff) as u8);
                     if high != 0 {
-                        buf.trim(Self::POP_SIZE_MAX - index)
+                        buf.trim(size - index)
                             .expect("cannot trim more bytes than the buffer has");
                         eof = true;
                         break;
                     } else {
                         buf[index] = low;
                         index += 1;
+
+                        // Check if we read enough bytes.
+                        if index >= size {
+                            buf.trim(size - index)
+                                .expect("cannot trim more bytes than the buffer has");
+                            break;
+                        }
                     }
                 },
                 None => {
@@ -99,7 +109,7 @@ impl Future for PopFuture {
             "data read (qd={:?}, {:?}/{:?} bytes, eof={:?})",
             self_.qd,
             buf.len(),
-            Self::POP_SIZE_MAX,
+            size,
             eof
         );
         Poll::Ready(Ok((buf, eof)))

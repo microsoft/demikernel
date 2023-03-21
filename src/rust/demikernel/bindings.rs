@@ -450,7 +450,7 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
     trace!("demi_pop()");
 
     // Issue pop operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pop(qd.into()) {
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pop(qd.into(), None) {
         Ok(qt) => {
             unsafe { *qtok_out = qt.into() };
             0

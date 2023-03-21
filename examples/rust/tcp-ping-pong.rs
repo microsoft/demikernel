@@ -130,7 +130,7 @@ fn pop_and_wait(libos: &mut LibOS, qd: QDesc, recvbuf: &mut [u8]) {
 
     // Pop data.
     while index < recvbuf.len() {
-        let qt: QToken = match libos.pop(qd) {
+        let qt: QToken = match libos.pop(qd, None) {
             Ok(qt) => qt,
             Err(e) => panic!("pop failed: {:?}", e.cause),
         };

@@ -46,6 +46,8 @@ pub struct PopFuture {
     sockaddr: libc::sockaddr_in,
     /// Receiving buffer.
     buf: DemiBuffer,
+    /// Number of bytes to pop.
+    size: usize,
 }
 
 //==============================================================================
@@ -55,12 +57,15 @@ pub struct PopFuture {
 /// Associate Functions for Pop Operation Descriptors
 impl PopFuture {
     /// Creates a descriptor for a pop operation.
-    pub fn new(qd: QDesc, fd: RawFd) -> Self {
+    pub fn new(qd: QDesc, fd: RawFd, size: Option<usize>) -> Self {
+        let size: usize = size.unwrap_or(POP_SIZE);
+        let buf: DemiBuffer = DemiBuffer::new(size as u16);
         Self {
             qd,
             fd,
             sockaddr: unsafe { mem::zeroed() },
-            buf: DemiBuffer::new(POP_SIZE as u16),
+            buf,
+            size,
         }
     }
 
@@ -81,6 +86,7 @@ impl Future for PopFuture {
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
+        let size: usize = self_.size;
         match unsafe {
             let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
             libc::recvfrom(
@@ -94,8 +100,8 @@ impl Future for PopFuture {
         } {
             // Operation completed.
             nbytes if nbytes >= 0 => {
-                trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
-                self_.buf.trim(POP_SIZE - nbytes as usize)?;
+                trace!("data received ({:?}/{:?} bytes)", nbytes, size);
+                self_.buf.trim(size - nbytes as usize)?;
                 let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&self_.sockaddr);
                 return Poll::Ready(Ok((Some(addr), self_.buf.clone())));
             },
