@@ -18,21 +18,18 @@ use super::{
     },
 };
 use crate::{
-    inetstack::{
-        futures::FutureOperation,
-        protocols::{
-            arp::ArpPeer,
-            ethernet2::{
-                EtherType2,
-                Ethernet2Header,
-            },
-            ip::{
-                EphemeralPorts,
-                IpProtocol,
-            },
-            ipv4::Ipv4Header,
-            queue::InetQueue,
+    inetstack::protocols::{
+        arp::ArpPeer,
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
         },
+        ip::{
+            EphemeralPorts,
+            IpProtocol,
+        },
+        ipv4::Ipv4Header,
+        queue::InetQueue,
     },
     runtime::{
         fail::Fail,
@@ -41,7 +38,10 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        queue::IoQueueTable,
+        queue::{
+            BackgroundTask,
+            IoQueueTable,
+        },
         QDesc,
     },
     scheduler::{
@@ -49,7 +49,6 @@ use crate::{
         SchedulerHandle,
     },
 };
-use ::futures::FutureExt;
 use ::rand::{
     prelude::SmallRng,
     SeedableRng,
@@ -140,7 +139,8 @@ impl UdpPeer {
             arp.clone(),
             send_queue.clone(),
         );
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let task: BackgroundTask = BackgroundTask::new(String::from("Inetstack::UDP::background"), Box::pin(future));
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(
@@ -316,7 +316,7 @@ impl UdpPeer {
         // Lookup associated receiver-side shared queue.
         match qtable.get(&qd) {
             // Issue pop operation.
-            Some(InetQueue::Udp(queue)) => UdpPopFuture::new(qd, queue.get_recv_queue(), size),
+            Some(InetQueue::Udp(queue)) => UdpPopFuture::new(queue.get_recv_queue(), size),
             _ => panic!("invalid queue descriptor"),
         }
     }

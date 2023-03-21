@@ -14,21 +14,16 @@ pub use self::ctrlblk::{
 
 use self::background::background;
 use crate::{
-    inetstack::{
-        futures::FutureOperation,
-        protocols::tcp::segment::TcpHeader,
-    },
+    inetstack::protocols::tcp::segment::TcpHeader,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        queue::BackgroundTask,
         QDesc,
     },
     scheduler::SchedulerHandle,
 };
-use ::futures::{
-    channel::mpsc,
-    FutureExt,
-};
+use ::futures::channel::mpsc;
 use ::std::{
     net::SocketAddrV4,
     rc::Rc,
@@ -49,10 +44,14 @@ pub struct EstablishedSocket {
 }
 
 impl EstablishedSocket {
-    pub fn new(cb: ControlBlock, fd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
+    pub fn new(cb: ControlBlock, qd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
         let cb = Rc::new(cb);
-        let future = background(cb.clone(), fd, dead_socket_tx);
-        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        // TODO: Maybe add the queue descriptor here.
+        let task: BackgroundTask = BackgroundTask::new(
+            String::from("Inetstack::TCP::established::background"),
+            Box::pin(background(cb.clone(), qd, dead_socket_tx)),
+        );
+        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(task) {
             Some(handle) => Rc::<SchedulerHandle>::new(handle),
             None => panic!("failed to insert task in the scheduler"),
         };

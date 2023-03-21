@@ -13,7 +13,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        QDesc,
     },
 };
 use ::std::{
@@ -33,8 +32,6 @@ use ::std::{
 
 /// Pop Operation Descriptor
 pub struct UdpPopFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Shared receiving queue.
     recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>,
     /// Number of bytes to pop.
@@ -48,15 +45,10 @@ pub struct UdpPopFuture {
 /// Associate Functions for Pop Operation Descriptor
 impl UdpPopFuture {
     /// Creates a pop operation descritor.
-    pub fn new(qd: QDesc, recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>, size: Option<usize>) -> Self {
+    pub fn new(recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>>, size: Option<usize>) -> Self {
         const MAX_POP_SIZE: usize = 9000;
         let size: usize = size.unwrap_or(MAX_POP_SIZE);
-        Self { qd, recv_queue, size }
-    }
-
-    /// Returns the queue descriptor that is associated to the target pop operation descriptor.
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+        Self { recv_queue, size }
     }
 }
 

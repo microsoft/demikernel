@@ -2,32 +2,29 @@
 // Licensed under the MIT license.
 
 use crate::{
-    inetstack::{
-        futures::FutureOperation,
-        protocols::{
-            arp::ArpPeer,
-            ethernet2::{
-                EtherType2,
-                Ethernet2Header,
-            },
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
-            tcp::{
-                constants::FALLBACK_MSS,
-                established::{
-                    congestion_control::{
-                        self,
-                        CongestionControl,
-                    },
-                    ControlBlock,
+    inetstack::protocols::{
+        arp::ArpPeer,
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
+        ip::IpProtocol,
+        ipv4::Ipv4Header,
+        tcp::{
+            constants::FALLBACK_MSS,
+            established::{
+                congestion_control::{
+                    self,
+                    CongestionControl,
                 },
-                segment::{
-                    TcpHeader,
-                    TcpOptions2,
-                    TcpSegment,
-                },
-                SeqNumber,
+                ControlBlock,
             },
+            segment::{
+                TcpHeader,
+                TcpOptions2,
+                TcpSegment,
+            },
+            SeqNumber,
         },
     },
     runtime::{
@@ -37,6 +34,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::BackgroundTask,
         timer::TimerRc,
     },
     scheduler::{
@@ -44,7 +42,6 @@ use crate::{
         SchedulerHandle,
     },
 };
-use ::futures::FutureExt;
 use ::libc::{
     ECONNREFUSED,
     ETIMEDOUT,
@@ -114,7 +111,10 @@ impl ActiveOpenSocket {
             arp.clone(),
             result.clone(),
         );
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let task: BackgroundTask =
+            BackgroundTask::new(String::from("Inetstack::TCP::activeopen::background"), Box::pin(future));
+
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

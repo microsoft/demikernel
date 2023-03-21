@@ -11,10 +11,7 @@ use super::{
 };
 use crate::{
     inetstack::{
-        futures::{
-            FutureOperation,
-            UtilityMethods,
-        },
+        futures::UtilityMethods,
         protocols::ethernet2::{
             EtherType2,
             Ethernet2Header,
@@ -28,6 +25,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::BackgroundTask,
         timer::TimerRc,
     },
     scheduler::{
@@ -65,6 +63,8 @@ use ::std::{
 //==============================================================================
 // Structures
 //==============================================================================
+
+type BackgroundCoroutine = impl Future<Output = ()>;
 
 ///
 /// Arp Peer
@@ -105,8 +105,11 @@ impl ArpPeer {
             arp_config.get_disable_arp(),
         )));
 
-        let future = Self::background(clock.clone(), cache.clone());
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        // This is a future returned by the async function.
+        let background: BackgroundCoroutine = Self::background(clock.clone(), cache.clone());
+        let task: BackgroundTask =
+            BackgroundTask::new(String::from("Inetstack::arp::background"), Box::pin(background));
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(

@@ -21,9 +21,13 @@ use ::std::{
     rc::Rc,
 };
 
-pub type BackgroundFuture = impl Future<Output = ()>;
+pub type BackgroundCoroutine = impl Future<Output = ()>;
 
-pub fn background(cb: Rc<ControlBlock>, fd: QDesc, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> BackgroundFuture {
+pub fn background(
+    cb: Rc<ControlBlock>,
+    fd: QDesc,
+    _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+) -> BackgroundCoroutine {
     async move {
         let acknowledger = acknowledger(cb.clone()).fuse();
         futures::pin_mut!(acknowledger);

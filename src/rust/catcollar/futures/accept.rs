@@ -7,10 +7,7 @@
 
 use crate::{
     pal::linux,
-    runtime::{
-        fail::Fail,
-        QDesc,
-    },
+    runtime::fail::Fail,
 };
 use ::std::{
     future::Future,
@@ -30,12 +27,8 @@ use ::std::{
 
 /// Accept Operation Descriptor
 pub struct AcceptFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Underlying file descriptor.
     fd: RawFd,
-    /// Queue descriptor of incoming connection.
-    new_qd: QDesc,
     /// Socket address of accept connection.
     sockaddr: libc::sockaddr_in,
 }
@@ -47,25 +40,11 @@ pub struct AcceptFuture {
 /// Associate Functions for Accept Operation Descriptors
 impl AcceptFuture {
     /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, fd: RawFd, new_qd: QDesc) -> Self {
+    pub fn new(fd: RawFd) -> Self {
         Self {
-            qd,
             fd,
-            new_qd,
             sockaddr: unsafe { mem::zeroed() },
         }
-    }
-
-    /// Returns the queue descriptor associated to the target accept operation
-    /// descriptor.
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
-    }
-
-    /// Returns the new queue descriptor of the incoming connection associated
-    /// to the target accept operation descriptor.
-    pub fn get_new_qd(&self) -> QDesc {
-        self.new_qd
     }
 }
 

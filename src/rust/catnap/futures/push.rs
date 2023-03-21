@@ -10,7 +10,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        QDesc,
     },
 };
 use ::std::{
@@ -31,9 +30,8 @@ use ::std::{
 //==============================================================================
 
 /// Push Operation Descriptor
+#[derive(Debug)]
 pub struct PushFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     // Underlying file descriptor.
     fd: RawFd,
     /// Buffer to send.
@@ -49,19 +47,14 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a pushto operation.
-    pub fn new(qd: QDesc, fd: RawFd, buf: DemiBuffer, addr: Option<SocketAddrV4>) -> Self {
+    pub fn new(fd: RawFd, buf: DemiBuffer, addr: Option<SocketAddrV4>) -> Self {
         let sockaddr: Option<libc::sockaddr_in> = if let Some(addr) = addr {
             Some(linux::socketaddrv4_to_sockaddr_in(&addr))
         } else {
             None
         };
 
-        Self { qd, fd, buf, sockaddr }
-    }
-
-    /// Returns the queue descriptor associated to the target [PushFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+        Self { fd, buf, sockaddr }
     }
 }
 

@@ -21,8 +21,8 @@ use crate::scheduler::{
         WAKER_BIT_LENGTH,
         WAKER_BIT_LENGTH_SHIFT,
     },
-    SchedulerFuture,
     SchedulerHandle,
+    Task,
 };
 use ::bit_iter::BitIter;
 use ::std::{
@@ -47,9 +47,9 @@ use ::std::{
 //==============================================================================
 
 /// Actual data used by [Scheduler].
-struct Inner<F: Future<Output = ()> + Unpin> {
+struct Inner {
     /// Stores all the tasks that are held by the scheduler.
-    slab: PinSlab<F>,
+    slab: PinSlab<Box<dyn Task>>,
     /// Holds the status tasks.
     pages: Vec<WakerPageRef>,
 }
@@ -57,7 +57,7 @@ struct Inner<F: Future<Output = ()> + Unpin> {
 /// Future Scheduler
 #[derive(Clone)]
 pub struct Scheduler {
-    inner: Rc<RefCell<Inner<Box<dyn SchedulerFuture>>>>,
+    inner: Rc<RefCell<Inner>>,
 }
 
 //==============================================================================
@@ -65,7 +65,7 @@ pub struct Scheduler {
 //==============================================================================
 
 /// Associate Functions for Inner
-impl<F: Future<Output = ()> + Unpin> Inner<F> {
+impl Inner {
     /// Computes the [WakerPageRef] and offset of a given task based on its `key`.
     fn get_page(&self, key: u64) -> (&WakerPageRef, usize) {
         let key: usize = key as usize;
@@ -74,8 +74,8 @@ impl<F: Future<Output = ()> + Unpin> Inner<F> {
     }
 
     /// Insert a task into our scheduler returning a key that may be used to drive its status.
-    fn insert(&mut self, future: F) -> Option<u64> {
-        let key: usize = self.slab.insert(future)?;
+    fn insert(&mut self, task: Box<dyn Task>) -> Option<u64> {
+        let key: usize = self.slab.insert(task)?;
 
         // Add a new page to hold this future's status if the current page is filled.
         while key >= self.pages.len() << WAKER_BIT_LENGTH_SHIFT {
@@ -90,8 +90,8 @@ impl<F: Future<Output = ()> + Unpin> Inner<F> {
 /// Associate Functions for Scheduler
 impl Scheduler {
     /// Given a handle representing a future, remove the future from the scheduler returning it.
-    pub fn take(&self, mut handle: SchedulerHandle) -> Box<dyn SchedulerFuture> {
-        let mut inner: RefMut<Inner<Box<dyn SchedulerFuture>>> = self.inner.borrow_mut();
+    pub fn take(&self, mut handle: SchedulerHandle) -> Box<dyn Task> {
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
         let key: u64 = handle.take_key().unwrap();
         let (page, subpage_ix): (&WakerPageRef, usize) = inner.get_page(key);
         assert!(!page.was_dropped(subpage_ix));
@@ -101,7 +101,7 @@ impl Scheduler {
 
     /// Given the raw `key` representing this future return a proper handle.
     pub fn from_raw_handle(&self, key: u64) -> Option<SchedulerHandle> {
-        let inner: Ref<Inner<Box<dyn SchedulerFuture>>> = self.inner.borrow();
+        let inner: Ref<Inner> = self.inner.borrow();
         inner.slab.get(key as usize)?;
         let (page, _): (&WakerPageRef, usize) = inner.get_page(key);
         let handle: SchedulerHandle = SchedulerHandle::new(key, page.clone());
@@ -109,8 +109,8 @@ impl Scheduler {
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert<F: SchedulerFuture>(&self, future: F) -> Option<SchedulerHandle> {
-        let mut inner: RefMut<Inner<Box<dyn SchedulerFuture>>> = self.inner.borrow_mut();
+    pub fn insert<F: Task>(&self, future: F) -> Option<SchedulerHandle> {
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
         let key: u64 = inner.insert(Box::new(future))?;
         let (page, _): (&WakerPageRef, usize) = inner.get_page(key);
         Some(SchedulerHandle::new(key, page.clone()))
@@ -120,7 +120,7 @@ impl Scheduler {
     /// relevant data or events happen. The relevant event have callback function (the waker) which
     /// they can invoke to notify the scheduler that future should be polled again.
     pub fn poll(&self) {
-        let mut inner: RefMut<Inner<Box<dyn SchedulerFuture>>> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
 
         // Iterate through pages.
         for page_ix in 0..inner.pages.len() {
@@ -140,7 +140,7 @@ impl Scheduler {
                     };
                     let mut sub_ctx: Context = Context::from_waker(&waker);
 
-                    let pinned_ref: Pin<&mut Box<dyn SchedulerFuture>> = inner.slab.get_pin_mut(ix).unwrap();
+                    let pinned_ref: Pin<&mut Box<dyn Task>> = inner.slab.get_pin_mut(ix).unwrap();
                     let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
 
                     // Poll future.
@@ -178,7 +178,7 @@ impl Scheduler {
 impl Default for Scheduler {
     /// Creates a scheduler with default values.
     fn default() -> Self {
-        let inner: Inner<Box<dyn SchedulerFuture>> = Inner {
+        let inner: Inner = Inner {
             slab: PinSlab::new(),
             pages: vec![],
         };
@@ -194,13 +194,14 @@ impl Default for Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use crate::scheduler::scheduler::{
-        Scheduler,
-        SchedulerFuture,
-        SchedulerHandle,
+    use crate::scheduler::{
+        scheduler::{
+            Scheduler,
+            SchedulerHandle,
+        },
+        task::TaskWithResult,
     };
     use ::std::{
-        any::Any,
         future::Future,
         pin::Pin,
         task::{
@@ -215,18 +216,17 @@ mod tests {
     };
 
     #[derive(Default)]
-    struct DummyFuture {
+    struct DummyCoroutine {
         pub val: usize,
     }
 
-    impl DummyFuture {
+    impl DummyCoroutine {
         pub fn new(val: usize) -> Self {
             let f: Self = Self { val };
             f
         }
     }
-
-    impl Future for DummyFuture {
+    impl Future for DummyCoroutine {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
@@ -242,23 +242,16 @@ mod tests {
         }
     }
 
-    impl SchedulerFuture for DummyFuture {
-        fn as_any(self: Box<Self>) -> Box<dyn Any> {
-            self
-        }
-
-        fn get_future(&self) -> &dyn Future<Output = ()> {
-            todo!()
-        }
-    }
+    type DummyTask = TaskWithResult<()>;
 
     #[bench]
     fn bench_scheduler_insert(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
 
         b.iter(|| {
-            let future: DummyFuture = black_box(DummyFuture::default());
-            let handle: SchedulerHandle = scheduler.insert(future).expect("couldn't insert future in scheduler");
+            let task: DummyTask =
+                DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
+            let handle: SchedulerHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
             black_box(handle);
         });
     }
@@ -269,8 +262,8 @@ mod tests {
 
         // Insert a single future in the scheduler. This future shall complete
         // with a single pool operation.
-        let future: DummyFuture = DummyFuture::new(0);
-        let handle: SchedulerHandle = match scheduler.insert(future) {
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("insert() failed"),
         };
@@ -288,8 +281,8 @@ mod tests {
 
         // Insert a single future in the scheduler. This future shall complete
         // with two poll operations.
-        let future: DummyFuture = DummyFuture::new(1);
-        let handle: SchedulerHandle = match scheduler.insert(future) {
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(1)));
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("insert() failed"),
         };
@@ -314,8 +307,8 @@ mod tests {
         // Insert 1024 futures in the scheduler.
         // Half of them will be ready.
         for val in 0..1024 {
-            let future: DummyFuture = DummyFuture::new(val);
-            let handle: SchedulerHandle = match scheduler.insert(future) {
+            let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
+            let handle: SchedulerHandle = match scheduler.insert(task) {
                 Some(handle) => handle,
                 None => panic!("insert() failed"),
             };

@@ -11,7 +11,6 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
-    QDesc,
 };
 use ::std::{
     future::Future,
@@ -29,8 +28,6 @@ use ::std::{
 
 /// Push Operation Descriptor
 pub struct PushFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Write index on the underlying shared ring buffer.
     index: usize,
     // Underlying shared ring buffer.
@@ -46,18 +43,8 @@ pub struct PushFuture {
 /// Associate Functions for Push Operation Descriptors
 impl PushFuture {
     /// Creates a descriptor for a push operation.
-    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer) -> Self {
-        PushFuture {
-            qd,
-            ring,
-            index: 0,
-            buf,
-        }
-    }
-
-    /// Returns the queue descriptor associated to the target [PushFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+    pub fn new(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer) -> Self {
+        PushFuture { ring, index: 0, buf }
     }
 }
 

@@ -11,7 +11,6 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
-    QDesc,
 };
 use ::std::{
     future::Future,
@@ -29,8 +28,6 @@ use ::std::{
 
 /// Pop Operation Descriptor
 pub struct PopFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     /// Underlying shared ring buffer.
     ring: Rc<SharedRingBuffer<u16>>,
     /// Number of bytes to pop.
@@ -47,13 +44,8 @@ impl PopFuture {
     const POP_SIZE_MAX: usize = 9216;
 
     /// Creates a descriptor for a pop operation.
-    pub fn new(qd: QDesc, ring: Rc<SharedRingBuffer<u16>>, size: Option<usize>) -> Self {
-        PopFuture { qd, ring, size }
-    }
-
-    /// Returns the queue descriptor associated to the target [PopFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
+    pub fn new(ring: Rc<SharedRingBuffer<u16>>, size: Option<usize>) -> Self {
+        PopFuture { ring, size }
     }
 }
 
@@ -105,13 +97,7 @@ impl Future for PopFuture {
                 },
             }
         }
-        trace!(
-            "data read (qd={:?}, {:?}/{:?} bytes, eof={:?})",
-            self_.qd,
-            buf.len(),
-            size,
-            eof
-        );
+        trace!("data read ({:?}/{:?} bytes, eof={:?})", buf.len(), size, eof);
         Poll::Ready(Ok((buf, eof)))
     }
 }

@@ -3,10 +3,7 @@
 
 use crate::{
     inetstack::{
-        futures::{
-            FutureOperation,
-            UtilityMethods,
-        },
+        futures::UtilityMethods,
         protocols::{
             arp::ArpPeer,
             ethernet2::{
@@ -29,6 +26,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        queue::BackgroundTask,
         timer::{
             TimerRc,
             WaitFuture,
@@ -152,8 +150,17 @@ impl Icmpv4Peer {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
-        let future = Self::background(rt.clone(), local_link_addr, local_ipv4_addr, arp.clone(), rx);
-        let handle: SchedulerHandle = match scheduler.insert(FutureOperation::Background(future.boxed_local())) {
+        let task: BackgroundTask = BackgroundTask::new(
+            String::from("Inetstack::ICMP::background"),
+            Box::pin(Self::background(
+                rt.clone(),
+                local_link_addr,
+                local_ipv4_addr,
+                arp.clone(),
+                rx,
+            )),
+        );
+        let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 let message: String = format!("failed to schedule background co-routine for ICMPv4 module");

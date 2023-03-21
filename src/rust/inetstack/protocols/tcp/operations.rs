@@ -5,14 +5,10 @@ use super::peer::{
     Inner,
     TcpPeer,
 };
-use crate::{
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        OperationResult,
-        QDesc,
-    },
-    scheduler::FutureResult,
+use crate::runtime::{
+    fail::Fail,
+    memory::DemiBuffer,
+    QDesc,
 };
 use ::std::{
     cell::RefCell,
@@ -26,116 +22,6 @@ use ::std::{
         Poll,
     },
 };
-
-pub enum TcpOperation {
-    Accept(FutureResult<AcceptFuture>),
-    Connect(FutureResult<ConnectFuture>),
-    Pop(FutureResult<PopFuture>),
-    Push(FutureResult<PushFuture>),
-    Close(FutureResult<CloseFuture>),
-}
-
-impl From<AcceptFuture> for TcpOperation {
-    fn from(f: AcceptFuture) -> Self {
-        TcpOperation::Accept(FutureResult::new(f, None))
-    }
-}
-
-impl From<ConnectFuture> for TcpOperation {
-    fn from(f: ConnectFuture) -> Self {
-        TcpOperation::Connect(FutureResult::new(f, None))
-    }
-}
-
-impl From<PushFuture> for TcpOperation {
-    fn from(f: PushFuture) -> Self {
-        TcpOperation::Push(FutureResult::new(f, None))
-    }
-}
-
-impl From<PopFuture> for TcpOperation {
-    fn from(f: PopFuture) -> Self {
-        TcpOperation::Pop(FutureResult::new(f, None))
-    }
-}
-
-impl From<CloseFuture> for TcpOperation {
-    fn from(f: CloseFuture) -> Self {
-        TcpOperation::Close(FutureResult::new(f, None))
-    }
-}
-
-impl Future for TcpOperation {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<()> {
-        match self.get_mut() {
-            TcpOperation::Accept(ref mut f) => Future::poll(Pin::new(f), ctx),
-            TcpOperation::Connect(ref mut f) => Future::poll(Pin::new(f), ctx),
-            TcpOperation::Push(ref mut f) => Future::poll(Pin::new(f), ctx),
-            TcpOperation::Pop(ref mut f) => Future::poll(Pin::new(f), ctx),
-            TcpOperation::Close(ref mut f) => Future::poll(Pin::new(f), ctx),
-        }
-    }
-}
-
-impl TcpOperation {
-    pub fn expect_result(self) -> (QDesc, OperationResult) {
-        match self {
-            // Connect operation.
-            TcpOperation::Connect(FutureResult {
-                future,
-                done: Some(Ok(())),
-            }) => (future.qd, OperationResult::Connect),
-            TcpOperation::Connect(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.qd, OperationResult::Failed(e)),
-
-            // Accept operation.
-            TcpOperation::Accept(FutureResult {
-                future,
-                done: Some(Ok((new_qd, addr))),
-            }) => (future.qd, OperationResult::Accept((new_qd, addr))),
-            TcpOperation::Accept(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.qd, OperationResult::Failed(e)),
-
-            // Push operation
-            TcpOperation::Push(FutureResult {
-                future,
-                done: Some(Ok(())),
-            }) => (future.qd, OperationResult::Push),
-            TcpOperation::Push(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.qd, OperationResult::Failed(e)),
-
-            // Pop Operation.
-            TcpOperation::Pop(FutureResult {
-                future,
-                done: Some(Ok(bytes)),
-            }) => (future.qd, OperationResult::Pop(None, bytes)),
-            TcpOperation::Pop(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.qd, OperationResult::Failed(e)),
-
-            // Close Operation.
-            TcpOperation::Close(FutureResult {
-                future,
-                done: Some(Ok(())),
-            }) => (future.qd, OperationResult::Close),
-            TcpOperation::Close(FutureResult {
-                future,
-                done: Some(Err(e)),
-            }) => (future.qd, OperationResult::Failed(e)),
-
-            _ => panic!("Future not ready"),
-        }
-    }
-}
 
 pub struct ConnectFuture {
     pub qd: QDesc,

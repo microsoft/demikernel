@@ -7,10 +7,7 @@
 
 use crate::{
     pal::linux,
-    runtime::{
-        fail::Fail,
-        QDesc,
-    },
+    runtime::fail::Fail,
 };
 use ::std::{
     future::Future,
@@ -29,9 +26,8 @@ use ::std::{
 //==============================================================================
 
 /// Connect Operation Descriptor
+#[derive(Debug)]
 pub struct ConnectFuture {
-    /// Associated queue descriptor.
-    qd: QDesc,
     // Underlying file descriptor.
     fd: RawFd,
     /// Connect address.
@@ -45,17 +41,11 @@ pub struct ConnectFuture {
 /// Associate Functions for Connect Operation Descriptors
 impl ConnectFuture {
     /// Creates a descriptor for a connect operation.
-    pub fn new(qd: QDesc, fd: RawFd, addr: SocketAddrV4) -> Self {
+    pub fn new(fd: RawFd, addr: SocketAddrV4) -> Self {
         Self {
-            qd,
             fd,
             sockaddr: linux::socketaddrv4_to_sockaddr_in(&addr),
         }
-    }
-
-    /// Returns the queue descriptor associated to the target [ConnectFuture].
-    pub fn get_qd(&self) -> QDesc {
-        self.qd
     }
 }
 
