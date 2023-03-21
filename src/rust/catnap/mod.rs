@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod futures;
+mod coroutines;
 mod queue;
 mod runtime;
 
@@ -18,12 +18,12 @@ pub use self::{
 // Imports
 //==============================================================================
 
-use self::futures::{
-    accept::AcceptFuture,
-    close::CloseFuture,
-    connect::ConnectFuture,
-    pop::PopFuture,
-    push::PushFuture,
+use self::coroutines::{
+    accept::accept_coroutine,
+    close::close_coroutine,
+    connect::connect_coroutine,
+    pop::pop_coroutine,
+    push::push_coroutine,
 };
 use crate::{
     demikernel::config::Config,
@@ -234,11 +234,10 @@ impl CatnapLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     let new_qd: QDesc = qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
-                    let future: AcceptFuture = AcceptFuture::new(fd);
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for the accept operation to compelete.
-                        let result: Result<(RawFd, SocketAddrV4), Fail> = future.await;
+                        let result: Result<(RawFd, SocketAddrV4), Fail> = accept_coroutine(fd).await;
                         // Handle result: Borrow the queue table to either set the socket fd and addr or free the queue
                         // metadata on error.
                         match result {
@@ -281,9 +280,8 @@ impl CatnapLibOS {
         match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future: ConnectFuture = ConnectFuture::new(fd, remote);
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        let result: Result<(), Fail> = future.await;
+                        let result: Result<(), Fail> = connect_coroutine(fd, remote).await;
                         match result {
                             Ok(()) => (qd, OperationResult::Connect),
                             Err(e) => (qd, OperationResult::Failed(e)),
@@ -330,11 +328,10 @@ impl CatnapLibOS {
         match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future: CloseFuture = CloseFuture::new(fd);
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for close operation to complete.
-                        let result: Result<(), Fail> = future.await;
+                        let result: Result<(), Fail> = close_coroutine(fd).await;
                         // Handle result: if successful, borrow the queue table to free the qd and metadata.
                         match result {
                             Ok(()) => {
@@ -372,10 +369,9 @@ impl CatnapLibOS {
                 match self.qtable.borrow().get(&qd) {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
-                            let future: PushFuture = PushFuture::new(fd, buf, None);
                             let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                                 // Wait for push to complete.
-                                let result: Result<(), Fail> = future.await;
+                                let result: Result<(), Fail> = push_coroutine(fd, buf, None).await;
                                 // Handle result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
@@ -413,10 +409,9 @@ impl CatnapLibOS {
                 match self.qtable.borrow().get(&qd) {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
-                            let future: PushFuture = PushFuture::new(fd, buf, Some(remote));
                             let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                                 // Wait for pushto to complete.
-                                let result: Result<(), Fail> = future.await;
+                                let result: Result<(), Fail> = push_coroutine(fd, buf, Some(remote)).await;
                                 // Process result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
@@ -458,10 +453,9 @@ impl CatnapLibOS {
         match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    let future: PopFuture = PopFuture::new(fd, size);
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for pop to complete.
-                        let result: Result<(Option<SocketAddrV4>, DemiBuffer), Fail> = future.await;
+                        let result: Result<(Option<SocketAddrV4>, DemiBuffer), Fail> = pop_coroutine(fd, size).await;
                         // Process result.
                         match result {
                             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
