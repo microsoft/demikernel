@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod pop;
+pub mod pop;
 
 //==============================================================================
 // Exports
 //==============================================================================
 
-pub use self::pop::UdpPopFuture;
+pub use self::pop::udp_pop_coroutine;

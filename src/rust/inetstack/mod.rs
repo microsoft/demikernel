@@ -24,7 +24,7 @@ use crate::{
         },
         udp::{
             queue::UdpQueue,
-            UdpPopFuture,
+            UdpPeer,
         },
         Peer,
     },
@@ -579,14 +579,7 @@ impl<const N: usize> InetStack<N> {
             },
             Some(QType::UdpSocket) => {
                 let task_id: String = format!("Inetstack::UDP::pop for qd={:?}", qd);
-                let future: UdpPopFuture = self.ipv4.udp.do_pop(qd, size);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    let result: Result<(SocketAddrV4, DemiBuffer), Fail> = future.await;
-                    match result {
-                        Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr), buf)),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = Box::pin(UdpPeer::<N>::do_pop(self.qtable.clone(), qd, size));
                 (task_id, coroutine)
             },
             Some(_) => return Err(Fail::new(libc::EINVAL, "invalid queue type")),

@@ -14,14 +14,17 @@ use crate::{
             PopFuture,
             PushFuture,
         },
-        udp::UdpPopFuture,
+        udp::UdpPeer,
         Peer,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
         network::types::MacAddress,
-        queue::IoQueueTable,
+        queue::{
+            IoQueueTable,
+            Operation,
+        },
         timer::TimerRc,
         QDesc,
     },
@@ -36,6 +39,7 @@ use ::std::{
         Ipv4Addr,
         SocketAddrV4,
     },
+    pin::Pin,
     rc::Rc,
     time::Duration,
 };
@@ -110,12 +114,12 @@ impl<const N: usize> Engine<N> {
         self.ipv4.ping(dest_ipv4_addr, timeout)
     }
 
-    pub fn udp_pushto(&self, fd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<(), Fail> {
-        self.ipv4.udp.do_pushto(fd, buf, to)
+    pub fn udp_pushto(&self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<(), Fail> {
+        self.ipv4.udp.do_pushto(qd, buf, to)
     }
 
-    pub fn udp_pop(&mut self, fd: QDesc) -> UdpPopFuture {
-        self.ipv4.udp.do_pop(fd, None)
+    pub fn udp_pop(&mut self, qd: QDesc) -> Pin<Box<Operation>> {
+        Box::pin(UdpPeer::<N>::do_pop(self.qtable.clone(), qd, None))
     }
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
