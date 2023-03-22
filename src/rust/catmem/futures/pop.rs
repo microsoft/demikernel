@@ -87,7 +87,7 @@ impl Future for PopFuture {
                 },
                 None => {
                     if index > 0 {
-                        buf.trim(Self::POP_SIZE_MAX - index)
+                        buf.trim(size - index)
                             .expect("cannot trim more bytes than the buffer has");
                         break;
                     } else {
