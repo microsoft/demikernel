@@ -43,7 +43,10 @@ use crate::{
     },
 };
 use ::std::{
-    cell::RefCell,
+    cell::{
+        RefCell,
+        RefMut,
+    },
     future::Future,
     mem,
     pin::Pin,
@@ -235,9 +238,15 @@ impl CatmemLibOS {
                     match result {
                         Ok((buf, eof)) => {
                             if eof {
-                                let mut qtable_ = qtable_ptr.borrow_mut();
-                                let queue: &mut CatmemQueue =
-                                    qtable_.get_mut(&qd).expect("unregistered queue descriptor");
+                                let mut qtable_: RefMut<IoQueueTable<CatmemQueue>> = qtable_ptr.borrow_mut();
+                                let queue: &mut CatmemQueue = match qtable_.get_mut(&qd) {
+                                    Some(queue) => queue,
+                                    None => {
+                                        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                                        error!("pop(): {}", cause);
+                                        return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                    },
+                                };
                                 let pipe: &mut Pipe = queue.get_mut_pipe();
                                 pipe.set_eof();
                             }
