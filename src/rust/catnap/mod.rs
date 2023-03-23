@@ -181,12 +181,20 @@ impl CatnapLibOS {
         }
 
         // Get a mutable reference to the queue table.
-        // It is safe to unwrap because we checked before that the queue descriptor is valid.
-        let queue: &mut CatnapQueue = qtable.get_mut(&qd).expect("queue descriptor should be in queue table");
+        // The following call to expect() is safe because we checked before that the queue descriptor is valid.
+        let queue: &mut CatnapQueue = qtable
+            .get_mut(&qd)
+            .expect("queue descriptor should be in the queue table");
 
         // Get reference to the underlying file descriptor.
-        // It is safe to unwrap because when creating a queue we assigned it a valid file descritor.
+        // The following call to expect() is safe because when creating a queue we assigned it a valid file descritor.
         let fd: RawFd = queue.get_fd().expect("queue should have a file descriptor");
+
+        // Create a socket that is bound to the target local address.
+        let bound_socket: Socket = {
+            let unbound_socket: &Socket = queue.get_socket();
+            unbound_socket.bind(local)?
+        };
 
         // Bind underlying socket.
         let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
@@ -198,7 +206,8 @@ impl CatnapLibOS {
             )
         } {
             stats if stats == 0 => {
-                queue.set_addr(local);
+                // Update socket.
+                queue.set_socket(&bound_socket);
                 Ok(())
             },
             _ => {
