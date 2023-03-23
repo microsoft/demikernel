@@ -4,6 +4,7 @@
 mod coroutines;
 mod queue;
 mod runtime;
+mod socket;
 
 //==============================================================================
 // Exports
@@ -18,12 +19,15 @@ pub use self::{
 // Imports
 //==============================================================================
 
-use self::coroutines::{
-    accept::accept_coroutine,
-    close::close_coroutine,
-    connect::connect_coroutine,
-    pop::pop_coroutine,
-    push::push_coroutine,
+use self::{
+    coroutines::{
+        accept::accept_coroutine,
+        close::close_coroutine,
+        connect::connect_coroutine,
+        pop::pop_coroutine,
+        push::push_coroutine,
+    },
+    socket::Socket,
 };
 use crate::{
     demikernel::config::Config,
@@ -167,7 +171,7 @@ impl CatnapLibOS {
 
         // Check wether the address is in use.
         for (_, queue) in qtable.get_values() {
-            if let Some(addr) = queue.get_addr() {
+            if let Some(addr) = queue.get_socket().local() {
                 if addr == local {
                     let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
                     error!("bind(): {}", &cause);
