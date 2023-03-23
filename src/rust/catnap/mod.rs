@@ -223,14 +223,23 @@ impl CatnapLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // Issue listen operation.
-        match self.qtable.borrow_mut().get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a listening socket.
+                    let listening_socket: Socket = {
+                        let bound_socket: &Socket = queue.get_socket();
+                        bound_socket.listen()?
+                    };
+
                     if unsafe { libc::listen(fd, backlog as i32) } != 0 {
                         let errno: libc::c_int = unsafe { *libc::__errno_location() };
                         error!("failed to listen ({:?})", errno);
                         return Err(Fail::new(errno, "operation failed"));
                     }
+
+                    // Update socket.
+                    queue.set_socket(&listening_socket);
                     Ok(())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
