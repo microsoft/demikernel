@@ -380,19 +380,32 @@ impl CatnapLibOS {
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
+        match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
-                Some(fd) => match unsafe { libc::close(fd) } {
-                    stats if stats == 0 => (),
-                    _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                Some(fd) => {
+                    // Create a closed socket.
+                    let closed_socket: Socket = {
+                        let socket: &Socket = queue.get_socket();
+                        socket.close()?
+                    };
+
+                    // Close underlying socket.
+                    if unsafe { libc::close(fd) } != 0 {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        let cause: String = format!("failed to close underlying socket (errno={:?})", errno);
+                        error!("close(): {:?}", &cause);
+                        return Err(Fail::new(errno, &cause));
+                    }
+
+                    // Update socket.
+                    queue.set_socket(&closed_socket);
+                    qtable.free(&qd);
+                    Ok(())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
-
-        qtable.free(&qd);
-        Ok(())
     }
 
     /// Asynchronous close
