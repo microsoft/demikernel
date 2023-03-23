@@ -5,14 +5,14 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    queue::IoQueue,
-    QType,
+use crate::{
+    catnap::socket::Socket,
+    runtime::{
+        queue::IoQueue,
+        QType,
+    },
 };
-use ::std::{
-    net::SocketAddrV4,
-    os::unix::prelude::RawFd,
-};
+use ::std::os::unix::prelude::RawFd;
 
 //======================================================================================================================
 // Structures
@@ -22,7 +22,7 @@ use ::std::{
 pub struct CatnapQueue {
     qtype: QType,
     fd: Option<RawFd>,
-    addr: Option<SocketAddrV4>,
+    socket: Socket,
 }
 
 //======================================================================================================================
@@ -31,7 +31,11 @@ pub struct CatnapQueue {
 
 impl CatnapQueue {
     pub fn new(qtype: QType, fd: Option<RawFd>) -> Self {
-        Self { qtype, fd, addr: None }
+        Self {
+            qtype,
+            fd,
+            socket: Socket::new(),
+        }
     }
 
     /// Get underlying POSIX file descriptor.
@@ -44,14 +48,14 @@ impl CatnapQueue {
         self.fd = Some(fd);
     }
 
-    /// Gets underlying socket address.
-    pub fn get_addr(&self) -> Option<SocketAddrV4> {
-        self.addr
+    /// Sets the underlying socket.
+    pub fn set_socket(&mut self, socket: &Socket) {
+        self.socket = socket.clone();
     }
 
-    /// Sets underlying socket address.
-    pub fn set_addr(&mut self, addr: SocketAddrV4) {
-        self.addr = Some(addr);
+    /// Gets an immutable references to the underlying socket.
+    pub fn get_socket(&self) -> &Socket {
+        &self.socket
     }
 }
 

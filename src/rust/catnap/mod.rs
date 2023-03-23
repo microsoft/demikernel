@@ -4,6 +4,7 @@
 mod coroutines;
 mod queue;
 mod runtime;
+mod socket;
 
 //==============================================================================
 // Exports
@@ -18,12 +19,15 @@ pub use self::{
 // Imports
 //==============================================================================
 
-use self::coroutines::{
-    accept::accept_coroutine,
-    close::close_coroutine,
-    connect::connect_coroutine,
-    pop::pop_coroutine,
-    push::push_coroutine,
+use self::{
+    coroutines::{
+        accept::accept_coroutine,
+        close::close_coroutine,
+        connect::connect_coroutine,
+        pop::pop_coroutine,
+        push::push_coroutine,
+    },
+    socket::Socket,
 };
 use crate::{
     demikernel::config::Config,
@@ -167,7 +171,7 @@ impl CatnapLibOS {
 
         // Check wether the address is in use.
         for (_, queue) in qtable.get_values() {
-            if let Some(addr) = queue.get_addr() {
+            if let Some(addr) = queue.get_socket().local() {
                 if addr == local {
                     let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
                     error!("bind(): {}", &cause);
@@ -177,12 +181,20 @@ impl CatnapLibOS {
         }
 
         // Get a mutable reference to the queue table.
-        // It is safe to unwrap because we checked before that the queue descriptor is valid.
-        let queue: &mut CatnapQueue = qtable.get_mut(&qd).expect("queue descriptor should be in queue table");
+        // The following call to expect() is safe because we checked before that the queue descriptor is valid.
+        let queue: &mut CatnapQueue = qtable
+            .get_mut(&qd)
+            .expect("queue descriptor should be in the queue table");
 
         // Get reference to the underlying file descriptor.
-        // It is safe to unwrap because when creating a queue we assigned it a valid file descritor.
+        // The following call to expect() is safe because when creating a queue we assigned it a valid file descritor.
         let fd: RawFd = queue.get_fd().expect("queue should have a file descriptor");
+
+        // Create a socket that is bound to the target local address.
+        let bound_socket: Socket = {
+            let unbound_socket: &Socket = queue.get_socket();
+            unbound_socket.bind(local)?
+        };
 
         // Bind underlying socket.
         let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&local);
@@ -194,7 +206,8 @@ impl CatnapLibOS {
             )
         } {
             stats if stats == 0 => {
-                queue.set_addr(local);
+                // Update socket.
+                queue.set_socket(&bound_socket);
                 Ok(())
             },
             _ => {
@@ -210,14 +223,23 @@ impl CatnapLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // Issue listen operation.
-        match self.qtable.borrow_mut().get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a listening socket.
+                    let listening_socket: Socket = {
+                        let bound_socket: &Socket = queue.get_socket();
+                        bound_socket.listen()?
+                    };
+
                     if unsafe { libc::listen(fd, backlog as i32) } != 0 {
                         let errno: libc::c_int = unsafe { *libc::__errno_location() };
                         error!("failed to listen ({:?})", errno);
                         return Err(Fail::new(errno, "operation failed"));
                     }
+
+                    // Update socket.
+                    queue.set_socket(&listening_socket);
                     Ok(())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
@@ -230,24 +252,70 @@ impl CatnapLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
+        match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create an accepting socket.
+                    {
+                        let listening_socket: &Socket = queue.get_socket();
+                        let accepting_socket: Socket = listening_socket.accept()?;
+                        queue.set_socket(&accepting_socket);
+                    };
+
                     let new_qd: QDesc = qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        // Wait for the accept operation to compelete.
+                        // Wait for the accept operation to complete.
                         let result: Result<(RawFd, SocketAddrV4), Fail> = accept_coroutine(fd).await;
                         // Handle result: Borrow the queue table to either set the socket fd and addr or free the queue
                         // metadata on error.
                         match result {
                             Ok((new_fd, addr)) => {
-                                let mut qtable_ = qtable_ptr.borrow_mut();
-                                let queue = qtable_
-                                    .get_mut(&new_qd)
-                                    .expect("New qd should have been already allocated");
-                                queue.set_addr(addr);
-                                queue.set_fd(new_fd);
+                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+
+                                // Update new (connected) socket.
+                                // Note that we do it first, because it is unlikely that the new socket has been closed.
+                                {
+                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&new_qd) {
+                                        Some(queue) => queue,
+                                        None => {
+                                            let cause: String = format!("invalid queue descriptor {:?}", new_qd);
+                                            error!("accept(): {}", &cause);
+                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                        },
+                                    };
+
+                                    let connected_socket: Socket = {
+                                        let unbound_socket: &Socket = queue.get_socket();
+                                        match unbound_socket.connected(addr) {
+                                            Ok(socket) => socket,
+                                            Err(e) => return (qd, OperationResult::Failed(e)),
+                                        }
+                                    };
+                                    queue.set_socket(&connected_socket);
+                                    queue.set_fd(new_fd);
+                                }
+
+                                // Update listening socket.
+                                {
+                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&qd) {
+                                        Some(queue) => queue,
+                                        None => {
+                                            let cause: String = format!("invalid queue descriptor {:?}", qd);
+                                            error!("accept(): {}", &cause);
+                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                        },
+                                    };
+
+                                    let listening_socket: Socket = {
+                                        let accepting_socket: &Socket = queue.get_socket();
+                                        match accepting_socket.accepted() {
+                                            Ok(socket) => socket,
+                                            Err(e) => return (qd, OperationResult::Failed(e)),
+                                        }
+                                    };
+                                    queue.set_socket(&listening_socket);
+                                }
                                 (qd, OperationResult::Accept((new_qd, addr)))
                             },
                             Err(e) => {
@@ -275,11 +343,15 @@ impl CatnapLibOS {
     /// Establishes a connection to a remote endpoint.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        let qtable: Ref<IoQueueTable<CatnapQueue>> = self.qtable.borrow();
         // Issue connect operation.
-        match qtable.get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a connecting socket.
+                    let connecting_socket: Socket = {
+                        let active_socket: &Socket = queue.get_socket();
+                        active_socket.connect(remote)?
+                    };
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         let result: Result<(), Fail> = connect_coroutine(fd, remote).await;
                         match result {
@@ -293,6 +365,9 @@ impl CatnapLibOS {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
+
+                    // Update socket.
+                    queue.set_socket(&connecting_socket);
                     Ok(handle.into_raw().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
@@ -305,19 +380,32 @@ impl CatnapLibOS {
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
+        match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
-                Some(fd) => match unsafe { libc::close(fd) } {
-                    stats if stats == 0 => (),
-                    _ => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                Some(fd) => {
+                    // Create a closed socket.
+                    let closed_socket: Socket = {
+                        let socket: &Socket = queue.get_socket();
+                        socket.close()?
+                    };
+
+                    // Close underlying socket.
+                    if unsafe { libc::close(fd) } != 0 {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        let cause: String = format!("failed to close underlying socket (errno={:?})", errno);
+                        error!("close(): {:?}", &cause);
+                        return Err(Fail::new(errno, &cause));
+                    }
+
+                    // Update socket.
+                    queue.set_socket(&closed_socket);
+                    qtable.free(&qd);
+                    Ok(())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
-
-        qtable.free(&qd);
-        Ok(())
     }
 
     /// Asynchronous close
@@ -328,6 +416,12 @@ impl CatnapLibOS {
         match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a closed socket.
+                    let closed_socket: Socket = {
+                        let socket: &Socket = queue.get_socket();
+                        socket.close()?
+                    };
+
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for close operation to complete.
@@ -335,7 +429,16 @@ impl CatnapLibOS {
                         // Handle result: if successful, borrow the queue table to free the qd and metadata.
                         match result {
                             Ok(()) => {
-                                let mut qtable_ = qtable_ptr.borrow_mut();
+                                // Update socket.
+                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+                                match qtable_.get_mut(&qd) {
+                                    Some(queue) => queue.set_socket(&closed_socket),
+                                    None => {
+                                        let cause: &String = &format!("invalid queue descriptor: {:?}", qd);
+                                        error!("{}", &cause);
+                                        return (qd, OperationResult::Failed(Fail::new(libc::EBADF, cause)));
+                                    },
+                                }
                                 qtable_.free(&qd);
                                 (qd, OperationResult::Close)
                             },
