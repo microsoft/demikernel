@@ -62,6 +62,11 @@ crate-type = ["cdylib", "rlib"]
 path = "src/rust/lib.rs"
 
 [[test]]
+name = "tcp-test"
+path = "tests/rust/tcp-test/main.rs"
+harness = false
+
+[[test]]
 name = "tcp"
 path = "tests/rust/tcp.rs"
 
