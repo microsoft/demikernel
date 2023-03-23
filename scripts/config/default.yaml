@@ -23,6 +23,6 @@ catnip:
     "ff:ff:ff:ff:ff:ff": "XX.XX.XX.XX"
     "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
 dpdk:
-  eal_init: ["-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto"]
+  eal_init: ["", "-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto"]
 
 # vim: set tabstop=2 shiftwidth=2
