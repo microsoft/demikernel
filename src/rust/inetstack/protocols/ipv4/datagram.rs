@@ -28,14 +28,14 @@ use ::std::{
 // Constants
 //==============================================================================
 
-/// Default size of IPv4 Headers (in bytes).
-pub const IPV4_HEADER_DEFAULT_SIZE: usize = IPV4_DATAGRAM_MIN_SIZE as usize;
+/// Minimum size of IPv4 header (in bytes).
+pub const IPV4_HEADER_MIN_SIZE: u16 = IPV4_DATAGRAM_MIN_SIZE;
+
+/// Maximum size of IPv4 header (in bytes).
+pub const IPV4_HEADER_MAX_SIZE: u16 = 60;
 
 /// Minimum size for an IPv4 datagram (in bytes).
 const IPV4_DATAGRAM_MIN_SIZE: u16 = 20;
-
-/// Minimum size for an IPv4 datagram (in bytes).
-const IPV4_HEADER_MIN_SIZE: u16 = IPV4_DATAGRAM_MIN_SIZE;
 
 /// IPv4 header length when no options are present (in 32-bit words).
 const IPV4_IHL_NO_OPTIONS: u8 = (IPV4_HEADER_MIN_SIZE as u8) / 4;
@@ -105,7 +105,7 @@ impl Ipv4Header {
             ihl: IPV4_IHL_NO_OPTIONS,
             dscp: 0,
             ecn: 0,
-            total_length: IPV4_HEADER_MIN_SIZE,
+            total_length: IPV4_HEADER_MIN_SIZE as u16,
             identification: 0,
             flags: IPV4_CTRL_FLAG_DF,
             fragment_offset: 0,
@@ -119,7 +119,7 @@ impl Ipv4Header {
 
     /// Computes the size of the target IPv4 header.
     pub fn compute_size(&self) -> usize {
-        IPV4_HEADER_MIN_SIZE as usize
+        (self.ihl as usize) << 2
     }
 
     /// Parses a buffer into an IPv4 header and payload.
@@ -138,7 +138,7 @@ impl Ipv4Header {
         // Internet header length.
         let ihl: u8 = buf[0] & 0xF;
         let hdr_size: u16 = (ihl as u16) << 2;
-        if hdr_size < IPV4_HEADER_MIN_SIZE {
+        if hdr_size < IPV4_HEADER_MIN_SIZE as u16 {
             return Err(Fail::new(EBADMSG, "ipv4 IHL is too small"));
         }
         if buf.len() < hdr_size as usize {

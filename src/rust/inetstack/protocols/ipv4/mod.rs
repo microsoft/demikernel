@@ -12,5 +12,6 @@ mod tests;
 
 pub use self::datagram::{
     Ipv4Header,
-    IPV4_HEADER_DEFAULT_SIZE,
+    IPV4_HEADER_MIN_SIZE,
+    IPV4_HEADER_MAX_SIZE,
 };
