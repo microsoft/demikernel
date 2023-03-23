@@ -252,24 +252,70 @@ impl CatnapLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
+        match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create an accepting socket.
+                    {
+                        let listening_socket: &Socket = queue.get_socket();
+                        let accepting_socket: Socket = listening_socket.accept()?;
+                        queue.set_socket(&accepting_socket);
+                    };
+
                     let new_qd: QDesc = qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        // Wait for the accept operation to compelete.
+                        // Wait for the accept operation to complete.
                         let result: Result<(RawFd, SocketAddrV4), Fail> = accept_coroutine(fd).await;
                         // Handle result: Borrow the queue table to either set the socket fd and addr or free the queue
                         // metadata on error.
                         match result {
                             Ok((new_fd, addr)) => {
-                                let mut qtable_ = qtable_ptr.borrow_mut();
-                                let queue = qtable_
-                                    .get_mut(&new_qd)
-                                    .expect("New qd should have been already allocated");
-                                queue.set_addr(addr);
-                                queue.set_fd(new_fd);
+                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+
+                                // Update new (connected) socket.
+                                // Note that we do it first, because it is unlikely that the new socket has been closed.
+                                {
+                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&new_qd) {
+                                        Some(queue) => queue,
+                                        None => {
+                                            let cause: String = format!("invalid queue descriptor {:?}", new_qd);
+                                            error!("accept(): {}", &cause);
+                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                        },
+                                    };
+
+                                    let connected_socket: Socket = {
+                                        let unbound_socket: &Socket = queue.get_socket();
+                                        match unbound_socket.connected(addr) {
+                                            Ok(socket) => socket,
+                                            Err(e) => return (qd, OperationResult::Failed(e)),
+                                        }
+                                    };
+                                    queue.set_socket(&connected_socket);
+                                    queue.set_fd(new_fd);
+                                }
+
+                                // Update listening socket.
+                                {
+                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&qd) {
+                                        Some(queue) => queue,
+                                        None => {
+                                            let cause: String = format!("invalid queue descriptor {:?}", qd);
+                                            error!("accept(): {}", &cause);
+                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                        },
+                                    };
+
+                                    let listening_socket: Socket = {
+                                        let accepting_socket: &Socket = queue.get_socket();
+                                        match accepting_socket.accepted() {
+                                            Ok(socket) => socket,
+                                            Err(e) => return (qd, OperationResult::Failed(e)),
+                                        }
+                                    };
+                                    queue.set_socket(&listening_socket);
+                                }
                                 (qd, OperationResult::Accept((new_qd, addr)))
                             },
                             Err(e) => {
