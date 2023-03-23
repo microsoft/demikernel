@@ -9,7 +9,7 @@ use super::mempool::MemoryPool;
 use crate::{
     inetstack::protocols::{
         ethernet2::ETHERNET2_HEADER_SIZE,
-        ipv4::IPV4_HEADER_DEFAULT_SIZE,
+        ipv4::IPV4_HEADER_MAX_SIZE,
         tcp::MAX_TCP_HEADER_SIZE,
     },
     runtime::{
@@ -242,8 +242,7 @@ impl MemoryManager {
 /// Associated Functions for Memory Managers
 impl Inner {
     fn new(config: MemoryConfig) -> Result<Self, Error> {
-        // TODO: The following computation for header size is bad. It should be fixed to maximum possible size.
-        let header_size: usize = ETHERNET2_HEADER_SIZE + IPV4_HEADER_DEFAULT_SIZE + MAX_TCP_HEADER_SIZE;
+        let header_size: usize = ETHERNET2_HEADER_SIZE + (IPV4_HEADER_MAX_SIZE as usize) + MAX_TCP_HEADER_SIZE;
         let header_mbuf_size: usize = header_size + config.get_inline_body_size();
 
         // Create memory pool for holding packet headers.
