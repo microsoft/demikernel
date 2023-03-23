@@ -416,6 +416,12 @@ impl CatnapLibOS {
         match qtable.get(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a closed socket.
+                    let closed_socket: Socket = {
+                        let socket: &Socket = queue.get_socket();
+                        socket.close()?
+                    };
+
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for close operation to complete.
@@ -423,7 +429,16 @@ impl CatnapLibOS {
                         // Handle result: if successful, borrow the queue table to free the qd and metadata.
                         match result {
                             Ok(()) => {
-                                let mut qtable_ = qtable_ptr.borrow_mut();
+                                // Update socket.
+                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+                                match qtable_.get_mut(&qd) {
+                                    Some(queue) => queue.set_socket(&closed_socket),
+                                    None => {
+                                        let cause: &String = &format!("invalid queue descriptor: {:?}", qd);
+                                        error!("{}", &cause);
+                                        return (qd, OperationResult::Failed(Fail::new(libc::EBADF, cause)));
+                                    },
+                                }
                                 qtable_.free(&qd);
                                 (qd, OperationResult::Close)
                             },
