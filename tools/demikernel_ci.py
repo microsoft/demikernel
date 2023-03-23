@@ -150,6 +150,20 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
+def job_test_integration_rust(
+        repo: str, libos: str, is_debug: bool, server: str, client: str, server_addr: str, client_addr: str,
+        is_sudo: bool, config_path: str, log_directory: str) -> bool:
+    server_args: str = "--local-address {}:12345 --remote-address {}:23456".format(server_addr, client_addr)
+    client_args: str = "--local-address {}:23456 --remote-address {}:12345".format(client_addr, server_addr)
+    server_cmd: str = "test-integration-rust LIBOS={} ARGS=\\\"{}\\\"".format(libos, server_args)
+    client_cmd: str = "test-integration-rust LIBOS={} ARGS=\\\"{}\\\"".format(libos, client_args)
+    test_name = "integration-test"
+    jobs: dict[str, subprocess.Popen[str]] = {}
+    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    return wait_and_report(test_name, log_directory, jobs, True)
+
+
 def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool, log_directory: str) -> bool:
     test_name = "cleanup"
     jobs: dict[str, subprocess.Popen[str]] = {}
@@ -206,34 +220,6 @@ def test_tcp_push_pop(
     test_name: str = "tcp-push-pop"
     server_args: str = "--server {}:12345".format(server_addr)
     client_args: str = "--client {}:12345".format(server_addr)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_accept(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, delay: float, config_path: str, log_directory: str, nclients: int, run_mode: str) -> bool:
-    test_alias: str = "tcp-accept"
-    test_name: str = "tcp-accept"
-    server_args: str = "--peer server --address {}:12345 --nclients {} --run-mode {}".format(
-        server_addr, nclients, run_mode)
-    client_args: str = "--peer client --address {}:12345 --nclients {} --run-mode {}".format(
-        server_addr, nclients, run_mode)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_bind(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
-    test_alias: str = "tcp-bind"
-    test_name: str = "tcp-bind"
-    server_args: str = "--ipv4 {}".format(
-        server_addr)
-    client_args: str = "--ipv4 {}".format(
-        client_addr)
     return job_test_system_rust(
         test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
         delay, config_path, log_directory)
@@ -327,6 +313,9 @@ def run_pipeline(
         if status["checkout"] and status["compile"]:
             status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
                                                       is_sudo, config_path, log_directory)
+            if libos == "catnap":
+                status["integration_tests"] = job_test_integration_rust(
+                    repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
 
     # STEP 4: Run system tests.
     if test_system:
@@ -341,14 +330,6 @@ def run_pipeline(
                         status["udp_push_pop"] = test_udp_push_pop(
                             server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
                             config_path, log_directory)
-                if test_system == "all" or test_system == "tcp_bind":
-                    status["tcp_bind"] = test_tcp_bind(server, client, libos, is_debug, is_sudo,
-                                                       repository, server_addr, client_addr, delay, config_path,
-                                                       log_directory)
-                if test_system == "all" or test_system == "tcp_accept":
-                    status["tcp_accept"] = test_tcp_accept(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, delay, config_path,
-                                                           log_directory, nclients=128, run_mode="serial")
                 if test_system == "all" or test_system == "tcp_ping_pong":
                     status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
                                                                  repository, server_addr, delay, config_path,
@@ -360,10 +341,6 @@ def run_pipeline(
                 # TCP Close (optional)
                 if test_system == "all" or test_system == "tcp_close":
                     if libos != "catnip" and libos != "catpowder":
-                        if libos != "catloop":
-                            status["tcp_close"] = test_tcp_close(
-                                server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
-                                config_path, log_directory, nclients=32, run_mode="standalone")
                         status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
                                                              repository, server_addr, server_addr, delay, config_path,
                                                              log_directory, nclients=32, run_mode="sequential")
