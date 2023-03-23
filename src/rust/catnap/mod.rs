@@ -297,11 +297,15 @@ impl CatnapLibOS {
     /// Establishes a connection to a remote endpoint.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        let qtable: Ref<IoQueueTable<CatnapQueue>> = self.qtable.borrow();
         // Issue connect operation.
-        match qtable.get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    // Create a connecting socket.
+                    let connecting_socket: Socket = {
+                        let active_socket: &Socket = queue.get_socket();
+                        active_socket.connect(remote)?
+                    };
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         let result: Result<(), Fail> = connect_coroutine(fd, remote).await;
                         match result {
@@ -315,6 +319,9 @@ impl CatnapLibOS {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
+
+                    // Update socket.
+                    queue.set_socket(&connecting_socket);
                     Ok(handle.into_raw().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
