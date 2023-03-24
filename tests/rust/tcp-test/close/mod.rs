@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+mod async_close;
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -46,6 +48,9 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
     close_listening_socket(libos, addr)?;
     close_accepting_socket(libos, addr)?;
     close_connecting_socket(libos, addr)?;
+
+    // Run asynchronous close tests.
+    async_close::run(libos, addr)?;
 
     Ok(())
 }
