@@ -50,8 +50,6 @@ pub struct TcpEchoServer {
     libos: LibOS,
     /// Local socket descriptor.
     sockqd: QDesc,
-    /// Number of packets pushed back to clients.
-    npushed: usize,
     /// Set of connected clients.
     clients: HashSet<QDesc>,
     /// List of pending operations.
@@ -89,7 +87,6 @@ impl TcpEchoServer {
         return Ok(Self {
             libos,
             sockqd,
-            npushed: 0,
             clients: HashSet::default(),
             qts: Vec::default(),
             qts_reverse: HashMap::default(),
@@ -97,19 +94,24 @@ impl TcpEchoServer {
     }
 
     /// Runs the target TCP echo server.
-    pub fn run(&mut self, log_interval: Option<u64>, nrequests: Option<usize>) -> Result<()> {
+    pub fn run(&mut self, log_interval: Option<u64>) -> Result<()> {
         let mut last_log: Instant = Instant::now();
 
         // Accept first connection.
-        self.issue_accept()?;
+        {
+            let qt: QToken = self.libos.accept(self.sockqd)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, None)?;
+            if qr.qr_opcode != demi_opcode_t::DEMI_OPC_ACCEPT {
+                anyhow::bail!("failed to accept connection")
+            }
+            self.handle_accept(&qr)?;
+        }
 
         loop {
-            // Stop: enough requests were pushed back.
-            if let Some(nrequests) = nrequests {
-                if self.npushed >= nrequests {
-                    println!("INFO: stopping...");
-                    break;
-                }
+            // Stop: all clients disconnected.
+            if self.clients.len() == 0 {
+                println!("INFO: stopping...");
+                break;
             }
 
             // Dump statistics.
@@ -185,7 +187,6 @@ impl TcpEchoServer {
 
     /// Handles the completion of a push operation.
     fn handle_push(&mut self) -> Result<()> {
-        self.npushed += 1;
         Ok(())
     }
 

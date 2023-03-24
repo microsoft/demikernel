@@ -201,7 +201,7 @@ fn main() -> Result<()> {
     match args.peer_type.as_str() {
         "server" => {
             let mut server: TcpEchoServer = TcpEchoServer::new(libos, args.saddr.unwrap())?;
-            server.run(args.log_interval, args.nrequests)?;
+            server.run(args.log_interval)?;
         },
         "client" => {
             let mut client: TcpEchoClient = TcpEchoClient::new(
