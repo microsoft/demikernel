@@ -72,19 +72,19 @@ impl TcpEchoServer {
 
         // Bind the socket to a local address.
         if let Err(e) = libos.bind(sockqd, local) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
         // Enable the socket to accept incoming connections.
         if let Err(e) = libos.listen(sockqd, 16) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
-        eprintln!("INFO: listening on {:?}", local);
+        println!("INFO: listening on {:?}", local);
 
         return Ok(Self {
             libos,
@@ -107,6 +107,7 @@ impl TcpEchoServer {
             // Stop: enough requests were pushed back.
             if let Some(nrequests) = nrequests {
                 if self.npushed >= nrequests {
+                    println!("INFO: stopping...");
                     break;
                 }
             }
@@ -114,7 +115,7 @@ impl TcpEchoServer {
             // Dump statistics.
             if let Some(log_interval) = log_interval {
                 if last_log.elapsed() > Duration::from_secs(log_interval) {
-                    eprintln!("INFO: {:?} clients connected", self.clients.len(),);
+                    println!("INFO: {:?} clients connected", self.clients.len(),);
                     last_log = Instant::now();
                 }
             }
@@ -170,10 +171,10 @@ impl TcpEchoServer {
 
         // Check if client has reset the connection.
         if errno == libc::ECONNRESET {
-            eprintln!("INFO: client reset connection (qd={:?})", qd);
+            println!("INFO: client reset connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
-            eprintln!(
+            println!(
                 "WARN: operation failed, ignoring (qd={:?}, qt={:?}, errno={:?})",
                 qd, qt, errno
             );
@@ -192,7 +193,7 @@ impl TcpEchoServer {
     fn handle_unexpected(&mut self, op_name: &str, qr: &demi_qresult_t) -> Result<()> {
         let qd: QDesc = qr.qr_qd.into();
         let qt: QToken = qr.qr_qt.into();
-        eprintln!(
+        println!(
             "WARN: unexpected {} operation completed, ignoring (qd={:?}, qt={:?})",
             op_name, qd, qt
         );
@@ -222,7 +223,7 @@ impl TcpEchoServer {
 
         // Check if we received any data.
         if sga.sga_segs[0].sgaseg_len == 0 {
-            eprintln!("INFO: client closed connection");
+            println!("INFO: client closed connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
             // Push packet back.
@@ -271,7 +272,7 @@ impl Drop for TcpEchoServer {
     fn drop(&mut self) {
         // Close local socket and cancel all pending operations.
         if let Err(e) = self.handle_close(self.sockqd) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
         }
     }
 }
