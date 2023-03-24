@@ -96,7 +96,7 @@ impl TcpEchoClient {
             let qt: QToken = self.libos.connect(sockqd, self.remote)?;
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
             if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
-                anyhow::bail!("unexpected result")
+                anyhow::bail!("failed to connect to server")
             }
 
             println!("INFO: {} clients connected", self.clients.len());
@@ -180,7 +180,7 @@ impl TcpEchoClient {
         let qd: QDesc = qr.qr_qd.into();
         let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
         if sga.sga_segs[0].sgaseg_len == 0 {
-            eprint!("INFO: server closed connection");
+            println!("INFO: server closed connection");
             self.handle_close(qd)?;
         } else {
             // Retrieve client buffer.
@@ -235,7 +235,7 @@ impl TcpEchoClient {
         let qd: QDesc = qr.qr_qd.into();
         let qt: QToken = qr.qr_qt.into();
 
-        eprintln!(
+        println!(
             "WARN: unexpected {} operation completed, ignoring (qd={:?}, qt={:?})",
             op_name, qd, qt
         );
@@ -251,10 +251,10 @@ impl TcpEchoClient {
 
         // Check if client has reset the connection.
         if errno == libc::ECONNRESET {
-            eprintln!("INFO: server reset connection (qd={:?})", qd);
+            println!("INFO: server reset connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
-            eprintln!(
+            println!(
                 "WARN: operation failed, ignoring (qd={:?}, qt={:?}, errno={:?})",
                 qd, qt, errno
             );

@@ -239,6 +239,19 @@ def test_tcp_close(
         delay, config_path, log_directory)
 
 
+def test_tcp_echo(server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
+                  server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str,
+                  nclients: int, nrequests: int, bufsize: int, run_mode: str) -> bool:
+    test_alias: str = "tcp-echo-{}".format(run_mode)
+    test_name: str = "tcp-echo"
+    server_args: str = "--peer server --address {}:12345".format(server_addr)
+    client_args: str = "--peer client --address {}:12345 --nclients {} --nrequests {} --bufsize {}".format(
+        client_addr, nclients, nrequests, bufsize)
+    return job_test_system_rust(
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
+
+
 def test_pipe_open(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -347,6 +360,18 @@ def run_pipeline(
                         status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
                                                              repository, server_addr,  server_addr, delay, config_path,
                                                              log_directory, nclients=32, run_mode="concurrent")
+
+                # TCP Echo (optional)
+                if test_system == "all" or test_system == "tcp_echo":
+                    if libos != "catnip" and libos != "catpowder" and libos != "catloop" and libos != "catcollar":
+                        status["tcp_echo"] = test_tcp_echo(
+                            server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
+                            config_path, log_directory, nclients=32, nrequests="100", bufsize="64",
+                            run_mode="small-bufsize")
+                        status["tcp_echo"] = test_tcp_echo(
+                            server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
+                            config_path, log_directory, nclients=32, nrequests="100", bufsize="1024",
+                            run_mode="large-bufsize")
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,

@@ -50,8 +50,6 @@ pub struct TcpEchoServer {
     libos: LibOS,
     /// Local socket descriptor.
     sockqd: QDesc,
-    /// Number of packets pushed back to clients.
-    npushed: usize,
     /// Set of connected clients.
     clients: HashSet<QDesc>,
     /// List of pending operations.
@@ -72,24 +70,23 @@ impl TcpEchoServer {
 
         // Bind the socket to a local address.
         if let Err(e) = libos.bind(sockqd, local) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
         // Enable the socket to accept incoming connections.
         if let Err(e) = libos.listen(sockqd, 16) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
-        eprintln!("INFO: listening on {:?}", local);
+        println!("INFO: listening on {:?}", local);
 
         return Ok(Self {
             libos,
             sockqd,
-            npushed: 0,
             clients: HashSet::default(),
             qts: Vec::default(),
             qts_reverse: HashMap::default(),
@@ -97,24 +94,30 @@ impl TcpEchoServer {
     }
 
     /// Runs the target TCP echo server.
-    pub fn run(&mut self, log_interval: Option<u64>, nrequests: Option<usize>) -> Result<()> {
+    pub fn run(&mut self, log_interval: Option<u64>) -> Result<()> {
         let mut last_log: Instant = Instant::now();
 
         // Accept first connection.
-        self.issue_accept()?;
+        {
+            let qt: QToken = self.libos.accept(self.sockqd)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, None)?;
+            if qr.qr_opcode != demi_opcode_t::DEMI_OPC_ACCEPT {
+                anyhow::bail!("failed to accept connection")
+            }
+            self.handle_accept(&qr)?;
+        }
 
         loop {
-            // Stop: enough requests were pushed back.
-            if let Some(nrequests) = nrequests {
-                if self.npushed >= nrequests {
-                    break;
-                }
+            // Stop: all clients disconnected.
+            if self.clients.len() == 0 {
+                println!("INFO: stopping...");
+                break;
             }
 
             // Dump statistics.
             if let Some(log_interval) = log_interval {
                 if last_log.elapsed() > Duration::from_secs(log_interval) {
-                    eprintln!("INFO: {:?} clients connected", self.clients.len(),);
+                    println!("INFO: {:?} clients connected", self.clients.len(),);
                     last_log = Instant::now();
                 }
             }
@@ -170,10 +173,10 @@ impl TcpEchoServer {
 
         // Check if client has reset the connection.
         if errno == libc::ECONNRESET {
-            eprintln!("INFO: client reset connection (qd={:?})", qd);
+            println!("INFO: client reset connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
-            eprintln!(
+            println!(
                 "WARN: operation failed, ignoring (qd={:?}, qt={:?}, errno={:?})",
                 qd, qt, errno
             );
@@ -184,7 +187,6 @@ impl TcpEchoServer {
 
     /// Handles the completion of a push operation.
     fn handle_push(&mut self) -> Result<()> {
-        self.npushed += 1;
         Ok(())
     }
 
@@ -192,7 +194,7 @@ impl TcpEchoServer {
     fn handle_unexpected(&mut self, op_name: &str, qr: &demi_qresult_t) -> Result<()> {
         let qd: QDesc = qr.qr_qd.into();
         let qt: QToken = qr.qr_qt.into();
-        eprintln!(
+        println!(
             "WARN: unexpected {} operation completed, ignoring (qd={:?}, qt={:?})",
             op_name, qd, qt
         );
@@ -222,7 +224,7 @@ impl TcpEchoServer {
 
         // Check if we received any data.
         if sga.sga_segs[0].sgaseg_len == 0 {
-            eprintln!("INFO: client closed connection");
+            println!("INFO: client closed connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
             // Push packet back.
@@ -271,7 +273,7 @@ impl Drop for TcpEchoServer {
     fn drop(&mut self) {
         // Close local socket and cancel all pending operations.
         if let Err(e) = self.handle_close(self.sockqd) {
-            eprintln!("ERROR: {:?}", e);
+            println!("ERROR: {:?}", e);
         }
     }
 }
