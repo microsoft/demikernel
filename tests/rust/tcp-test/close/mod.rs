@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod async_close;
-
+mod wait;
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -51,6 +51,7 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
 
     // Run asynchronous close tests.
     async_close::run(libos, addr)?;
+    wait::run(libos, addr)?;
 
     Ok(())
 }
