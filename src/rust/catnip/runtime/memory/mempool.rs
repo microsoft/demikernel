@@ -78,7 +78,7 @@ impl MemoryPool {
 
             if let Some(size) = size {
                 // Check if allocated buffer is big enough.
-                if (size as u16) > num_bytes {
+                if size > (num_bytes as usize) {
                     // Allocated buffer is not big enough, rollback allocation.
                     rte_pktmbuf_free(mbuf_ptr);
                     return Err(Fail::new(libc::EFAULT, "cannot allocate a mbuf this big"));
