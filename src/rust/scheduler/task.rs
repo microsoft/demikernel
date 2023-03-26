@@ -62,11 +62,6 @@ impl<R: Unpin + Clone + Any> TaskWithResult<R> {
     pub fn get_result(&self) -> Option<<Self as TaskWith>::ResultType> {
         self.result.clone()
     }
-
-    /// Stops running the coroutine (i.e., returns Ready on the next poll) and returns [cause] instead.
-    pub fn cancel_with_result(&mut self, cause: <Self as TaskWith>::ResultType) {
-        self.result = Some(cause);
-    }
 }
 
 //==============================================================================
