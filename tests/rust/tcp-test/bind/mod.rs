@@ -37,23 +37,23 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for bind() on TCP sockets.
-pub fn run(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
-    bind_addr_to_invalid_queue_descriptor(libos, ipv4)?;
-    bind_multiple_addresses_to_same_socket(libos, ipv4)?;
-    bind_same_address_to_two_sockets(libos, ipv4)?;
-    bind_to_private_ports(libos, ipv4)?;
+pub fn run(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+    bind_addr_to_invalid_queue_descriptor(libos, local)?;
+    bind_multiple_addresses_to_same_socket(libos, local)?;
+    bind_same_address_to_two_sockets(libos, local)?;
+    bind_to_private_ports(libos, local)?;
 
     Ok(())
 }
 
 /// Attempts to bind an address to an invalid queue_descriptor.
-fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
     println!("{}", stringify!(bind_addr_to_invalid_queue_descriptor));
 
     // Bind address.
     let addr: SocketAddrV4 = {
         let http_port: u16 = 6379;
-        SocketAddrV4::new(*ipv4, http_port)
+        SocketAddrV4::new(*local, http_port)
     };
 
     // Fail to bind socket.
@@ -68,7 +68,7 @@ fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, ipv4: &Ipv4Addr) -> 
 }
 
 /// Attempts to bind multiple addresses to the same socket.
-fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
     println!("{}", stringify!(bind_multiple_addresses_to_same_socket));
 
     // Create a TCP socket.
@@ -77,7 +77,7 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) ->
     // Bind address.
     let addr: SocketAddrV4 = {
         let any_port: u16 = 6739;
-        SocketAddrV4::new(*ipv4, any_port)
+        SocketAddrV4::new(*local, any_port)
     };
 
     // Bind socket.
@@ -86,7 +86,7 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) ->
     // Bind address.
     let addr: SocketAddrV4 = {
         let any_port: u16 = 6780;
-        SocketAddrV4::new(*ipv4, any_port)
+        SocketAddrV4::new(*local, any_port)
     };
 
     // Fail to bind socket.
@@ -104,7 +104,7 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) ->
 }
 
 /// Attempts to bind the same address to two sockets.
-fn bind_same_address_to_two_sockets(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
     println!("{}", stringify!(bind_same_address_to_two_sockets));
 
     // Create two TCP sockets.
@@ -114,7 +114,7 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Resul
     // Bind address.
     let addr: SocketAddrV4 = {
         let http_port: u16 = 8080;
-        SocketAddrV4::new(*ipv4, http_port)
+        SocketAddrV4::new(*local, http_port)
     };
 
     // Bind first socket.
@@ -136,7 +136,7 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Resul
 }
 
 /// Attempts to bind to all private ports.
-fn bind_to_private_ports(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
     println!("{}", stringify!(bind_to_private_ports));
 
     // Traverse all ports in the private range.
@@ -145,7 +145,7 @@ fn bind_to_private_ports(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind socket.
-        let addr: SocketAddrV4 = SocketAddrV4::new(*ipv4, port);
+        let addr: SocketAddrV4 = SocketAddrV4::new(*local, port);
         match libos.bind(sockqd, addr) {
             Ok(()) => {},
             Err(e) => {
