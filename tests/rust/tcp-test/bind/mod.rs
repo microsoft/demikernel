@@ -42,6 +42,7 @@ pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Result<()>
     bind_multiple_addresses_to_same_socket(libos, local)?;
     bind_same_address_to_two_sockets(libos, local)?;
     bind_to_private_ports(libos, local)?;
+    bind_to_wildcard_port(libos, local)?;
     bind_to_non_local_address(libos, remote)?;
     bind_to_closed_socket(libos, local)?;
 
@@ -159,6 +160,23 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
         // Close socket.
         libos.close(sockqd)?;
     }
+
+    Ok(())
+}
+
+/// Attempts to bind to the wildcard port.
+fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+    println!("{}", stringify!(bind_to_wildcard_port));
+
+    // Create a TCP socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+
+    // Bind socket.
+    let addr: SocketAddrV4 = SocketAddrV4::new(*ipv4, 0);
+    libos.bind(sockqd, addr)?;
+
+    // Close socket.
+    libos.close(sockqd)?;
 
     Ok(())
 }
