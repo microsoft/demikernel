@@ -49,6 +49,8 @@ mod server;
 /// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
+    /// Run mode.
+    run_mode: Option<String>,
     /// Socket IPv4 address.
     addr: SocketAddrV4,
     /// Buffer size (in bytes).
@@ -119,6 +121,14 @@ impl ProgramArguments {
                     .value_name("INTERVAL")
                     .help("Enables logging"),
             )
+            .arg(
+                Arg::new("run-mode")
+                    .long("run-mode")
+                    .value_parser(clap::value_parser!(String))
+                    .required(false)
+                    .value_name("sequential|concurrent")
+                    .help("Sets run mode"),
+            )
             .get_matches();
 
         // Socket address.
@@ -129,6 +139,7 @@ impl ProgramArguments {
 
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
+            run_mode: None,
             addr,
             bufsize: None,
             nrequests: None,
@@ -137,6 +148,10 @@ impl ProgramArguments {
             peer_type: "server".to_string(),
         };
 
+        // Run mode.
+        if let Some(run_mode) = matches.get_one::<String>("run-mode") {
+            args.run_mode = Some(run_mode.to_string());
+        }
 
         // Buffer size.
         if let Some(bufsize) = matches.get_one::<usize>("bufsize") {
@@ -210,11 +225,12 @@ fn main() -> Result<()> {
                 args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
                 args.addr,
             )?;
-            client.run_sequential(
-                args.log_interval,
-                args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
-                args.nrequests,
-            )?;
+            let nclients: usize = args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?;
+            match args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?.as_str() {
+                "sequential" => client.run_sequential(args.log_interval, nclients, args.nrequests)?,
+                "concurrent" => client.run_concurrent(args.log_interval, nclients, args.nrequests)?,
+                _ => anyhow::bail!("invalid run mode"),
+            }
         },
         _ => todo!(),
     }

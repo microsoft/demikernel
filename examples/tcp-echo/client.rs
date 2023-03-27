@@ -160,6 +160,100 @@ impl TcpEchoClient {
         Ok(())
     }
 
+    /// Runs the target TCP echo client.
+    pub fn run_concurrent(
+        &mut self,
+        log_interval: Option<u64>,
+        nclients: usize,
+        nrequests: Option<usize>,
+    ) -> Result<()> {
+        let start: Instant = Instant::now();
+        let mut last_log: Instant = Instant::now();
+
+        // Open several connections.
+        for i in 0..nclients {
+            let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+            let qt: QToken = self.libos.connect(qd, self.remote)?;
+            self.register_operation(qd, qt);
+
+            // First client connects synchronously.
+            if i == 0 {
+                let qr: demi_qresult_t = {
+                    let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                    self.unregister_operation(index)?;
+                    qr
+                };
+                if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
+                    anyhow::bail!("failed to connect to server")
+                }
+
+                // Register client.
+                println!("INFO: {} clients connected", self.clients.len());
+                self.clients.insert(qd, (vec![0; self.bufsize], 0));
+
+                // Push first request.
+                self.issue_push(qd)?;
+            }
+        }
+
+        loop {
+            // Stop: enough packets were echoed.
+            if let Some(nrequests) = nrequests {
+                if self.nechoed >= nrequests {
+                    break;
+                }
+            }
+
+            // Stop: all clients ere disconnected.
+            if self.clients.len() == 0 {
+                break;
+            }
+
+            // Dump statistics.
+            if let Some(log_interval) = log_interval {
+                if last_log.elapsed() > Duration::from_secs(log_interval) {
+                    let time_elapsed: u64 = (Instant::now() - start).as_secs() as u64;
+                    let nrequests: u64 = (self.nbytes / self.bufsize) as u64;
+                    let rps: u64 = nrequests / time_elapsed;
+                    println!("INFO: {:?} rps", rps);
+                    last_log = Instant::now();
+                }
+            }
+
+            let qr: demi_qresult_t = {
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                self.unregister_operation(index)?;
+                qr
+            };
+
+            // Parse result.
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_CONNECT => {
+                    // Register client.
+                    let qd: QDesc = qr.qr_qd.into();
+                    self.clients.insert(qd, (vec![0; self.bufsize], 0));
+                    println!("INFO: {} clients connected", self.clients.len());
+
+                    // Push first request.
+                    self.issue_push(qd)?;
+                },
+                demi_opcode_t::DEMI_OPC_PUSH => self.handle_push(&qr)?,
+                demi_opcode_t::DEMI_OPC_POP => self.handle_pop(&qr)?,
+                demi_opcode_t::DEMI_OPC_FAILED => self.handle_fail(&qr)?,
+                demi_opcode_t::DEMI_OPC_INVALID => self.handle_unexpected("invalid", &qr)?,
+                demi_opcode_t::DEMI_OPC_CLOSE => self.handle_unexpected("close", &qr)?,
+                demi_opcode_t::DEMI_OPC_ACCEPT => self.handle_unexpected("accept", &qr)?,
+            }
+        }
+
+        // Close all connections.
+        for (qd, _) in self.clients.drain().collect::<Vec<_>>() {
+            self.handle_close(qd)?;
+        }
+
+        Ok(())
+    }
+
     // Makes a scatter-gather array.
     fn mksga(&mut self, size: usize, value: u8) -> demi_sgarray_t {
         // Allocate scatter-gather array.
