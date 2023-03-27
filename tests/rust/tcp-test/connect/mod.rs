@@ -41,6 +41,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 pub fn run(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<()> {
     connect_invalid_queue_descriptor(libos, remote)?;
     connect_unbound_socket(libos, remote)?;
+    connect_bound_socket(libos, local, remote)?;
     connect_listening_socket(libos, local, remote)?;
     connect_connecting_socket(libos, remote)?;
     connect_accepting_socket(libos, local, remote)?;
@@ -70,6 +71,30 @@ fn connect_unbound_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()
 
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+
+    // Succeed to connect socket.
+    let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
+
+    // Poll once to ensure that the connect() co-routine runs.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Err(e) if e.errno == libc::ETIMEDOUT => {},
+        Ok(_) => anyhow::bail!("wait() should not succeed"),
+        Err(_) => anyhow::bail!("wait() should timeout"),
+    }
+
+    // Succeed to close socket.
+    libos.close(sockqd)?;
+
+    Ok(())
+}
+
+/// Attempts to connect a TCP socket that is bound.
+fn connect_bound_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<()> {
+    println!("{}", stringify!(connect_bound_socket));
+
+    // Create a bound socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    libos.bind(sockqd, local.to_owned())?;
 
     // Succeed to connect socket.
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
