@@ -44,6 +44,7 @@ pub fn run(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Re
     connect_listening_socket(libos, local, remote)?;
     connect_connecting_socket(libos, remote)?;
     connect_accepting_socket(libos, local, remote)?;
+    connect_closed_socket(libos, remote)?;
 
     Ok(())
 }
@@ -165,6 +166,25 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &So
 
     // Succeed to close socket.
     libos.close(sockqd)?;
+
+    Ok(())
+}
+
+/// Attempts to connect a TCP socket that is closed.
+fn connect_closed_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+    println!("{}", stringify!(connect_closed_socket));
+
+    // Create a closed socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    libos.close(sockqd)?;
+
+    // Fail to connect().
+    let e: Fail = libos
+        .connect(sockqd, remote.to_owned())
+        .expect_err("connect() a closed socket should fail");
+
+    // Sanity check error code.
+    assert_eq!(e.errno, libc::EBADF, "connect() failed with {}", e.cause);
 
     Ok(())
 }
