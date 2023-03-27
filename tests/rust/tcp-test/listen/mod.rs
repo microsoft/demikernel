@@ -42,6 +42,7 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
     listen_invalid_queue_descriptor(libos)?;
     listen_unbound_socket(libos)?;
     listen_bound_socket(libos, addr)?;
+    listen_large_backlog_length(libos, addr)?;
     listen_listening_socket(libos, addr)?;
     listen_connecting_socket(libos, addr)?;
     listen_accepting_socket(libos, addr)?;
@@ -95,6 +96,26 @@ fn listen_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
 
     // Succeed to listen().
     libos.listen(sockqd, 16)?;
+
+    // Succeed to close socket.
+    libos.close(sockqd)?;
+
+    Ok(())
+}
+
+/// Attempts to listen for connections on a TCP socket with a large backlog length.
+fn listen_large_backlog_length(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+    println!("{}", stringify!(listen_invalid_backlog_length));
+
+    // Create a bound socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    libos.bind(sockqd, local.to_owned())?;
+
+    // Backlog length.
+    let backlog: usize = (libc::SOMAXCONN + 1) as usize;
+
+    // Succeed to listen().
+    libos.listen(sockqd, backlog)?;
 
     // Succeed to close socket.
     libos.close(sockqd)?;
