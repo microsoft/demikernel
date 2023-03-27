@@ -168,6 +168,7 @@ impl CatnapLibOS {
         }
 
         // Check if we are binding to the wildcard port.
+        // FIXME: https://github.com/demikernel/demikernel/issues/582
         if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
