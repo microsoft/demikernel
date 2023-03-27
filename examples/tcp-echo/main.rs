@@ -50,7 +50,7 @@ mod server;
 #[derive(Debug)]
 pub struct ProgramArguments {
     /// Socket IPv4 address.
-    saddr: Option<SocketAddrV4>,
+    addr: SocketAddrV4,
     /// Buffer size (in bytes).
     bufsize: Option<usize>,
     /// Number of requests.
@@ -121,9 +121,15 @@ impl ProgramArguments {
             )
             .get_matches();
 
+        // Socket address.
+        let addr: SocketAddrV4 = {
+            let addr: &String = matches.get_one::<String>("addr").expect("missing address");
+            SocketAddrV4::from_str(addr)?
+        };
+
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            saddr: None,
+            addr,
             bufsize: None,
             nrequests: None,
             nclients: None,
@@ -131,11 +137,6 @@ impl ProgramArguments {
             peer_type: "server".to_string(),
         };
 
-        // Socket address.
-        if let Some(addr) = matches.get_one::<String>("addr") {
-            let ref mut this = args;
-            this.saddr = Some(SocketAddrV4::from_str(addr)?);
-        }
 
         // Buffer size.
         if let Some(bufsize) = matches.get_one::<usize>("bufsize") {
@@ -200,14 +201,14 @@ fn main() -> Result<()> {
 
     match args.peer_type.as_str() {
         "server" => {
-            let mut server: TcpEchoServer = TcpEchoServer::new(libos, args.saddr.unwrap())?;
+            let mut server: TcpEchoServer = TcpEchoServer::new(libos, args.addr)?;
             server.run(args.log_interval)?;
         },
         "client" => {
             let mut client: TcpEchoClient = TcpEchoClient::new(
                 libos,
                 args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
-                args.saddr.unwrap(),
+                args.addr,
             )?;
             client.run(
                 args.log_interval,
