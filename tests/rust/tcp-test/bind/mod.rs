@@ -37,11 +37,12 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for bind() on TCP sockets.
-pub fn run(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Result<()> {
     bind_addr_to_invalid_queue_descriptor(libos, local)?;
     bind_multiple_addresses_to_same_socket(libos, local)?;
     bind_same_address_to_two_sockets(libos, local)?;
     bind_to_private_ports(libos, local)?;
+    bind_to_non_local_address(libos, remote)?;
 
     Ok(())
 }
@@ -160,3 +161,31 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
 
     Ok(())
 }
+
+/// Attempts to bind to a non-local address.
+fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()> {
+    println!("{}", stringify!(bind_to_non_local_address));
+
+    // Create a TCP socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+
+    // Bind address.
+    let addr: SocketAddrV4 = {
+        let port: u16 = 8080;
+        SocketAddrV4::new(*remote, port)
+    };
+
+    // Fail to bind socket.
+    let e: Fail = libos
+        .bind(sockqd, addr)
+        .expect_err("bind() a non-local address should fail");
+
+    // Sanity check error code.
+    assert_eq!(e.errno, libc::EADDRNOTAVAIL, "bind() failed with {}", e.cause);
+
+    // Close socket.
+    libos.close(sockqd)?;
+
+    Ok(())
+}
+

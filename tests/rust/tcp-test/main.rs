@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     };
 
     socket::run(&mut libos)?;
-    bind::run(&mut libos, &args.local().ip())?;
+    bind::run(&mut libos, &args.local().ip(), &args.remote().ip())?;
     listen::run(&mut libos, &args.local())?;
     accept::run(&mut libos, &args.local())?;
     connect::run(&mut libos, &args.local(), &args.remote())?;
