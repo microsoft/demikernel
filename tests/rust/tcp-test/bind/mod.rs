@@ -196,8 +196,14 @@ fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
         SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)
     };
 
-    // Bind socket.
-    libos.bind(sockqd, addr)?;
+    // Fail to bind socket.
+    // FIXME: https://github.com/demikernel/demikernel/issues/189
+    let e: Fail = libos
+        .bind(sockqd, addr)
+        .expect_err("bind() to the wildcard address should fail");
+
+    // Sanity check error code.
+    assert_eq!(e.errno, libc::ENOTSUP, "bind() failed with {}", e.cause);
 
     // Close socket.
     libos.close(sockqd)?;
