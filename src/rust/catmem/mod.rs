@@ -158,7 +158,11 @@ impl CatmemLibOS {
         let mut qtable = self.qtable.borrow_mut();
         match qtable.get(&qd) {
             Some(queue) => Self::push_eof(queue.get_pipe().buffer())?,
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
         qtable.free(&qd);
         Ok(())
@@ -172,7 +176,9 @@ impl CatmemLibOS {
         match self.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
-                    return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
+                    let cause: String = format!("zero-length buffer (qd={:?})", qd);
+                    error!("push(): {}", cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
                 }
 
                 // Issue push operation.
@@ -202,13 +208,21 @@ impl CatmemLibOS {
                         let task: OperationTask = OperationTask::new(task_id, coroutine);
                         let handle: SchedulerHandle = match self.scheduler.insert(task) {
                             Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            None => {
+                                let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                                error!("push(): {}", cause);
+                                return Err(Fail::new(libc::EAGAIN, &cause));
+                            },
                         };
                         let qt: QToken = handle.into_raw().into();
                         trace!("push() qt={:?}", qt);
                         Ok(qt)
                     },
-                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => {
+                        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                        error!("push(): {}", cause);
+                        Err(Fail::new(libc::EBADF, &cause))
+                    },
                 }
             },
             Err(e) => Err(e),
@@ -265,13 +279,21 @@ impl CatmemLibOS {
                 let task: OperationTask = OperationTask::new(task_id, coroutine);
                 let handle: SchedulerHandle = match self.scheduler.insert(task) {
                     Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    None => {
+                        let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                        error!("pop(): {}", cause);
+                        return Err(Fail::new(libc::EAGAIN, &cause));
+                    },
                 };
                 let qt: QToken = handle.into_raw().into();
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
             },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("pop(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
@@ -294,7 +316,11 @@ impl CatmemLibOS {
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+            None => {
+                let cause: String = format!("invalid queue token (qt={:?})", qt);
+                error!("schedule(): {}", cause);
+                Err(Fail::new(libc::EINVAL, &cause))
+            },
         }
     }
 
