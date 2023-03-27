@@ -43,6 +43,7 @@ pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Result<()>
     bind_same_address_to_two_sockets(libos, local)?;
     bind_to_private_ports(libos, local)?;
     bind_to_non_local_address(libos, remote)?;
+    bind_to_closed_socket(libos, local)?;
 
     Ok(())
 }
@@ -189,3 +190,29 @@ fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()>
     Ok(())
 }
 
+/// Attempts to bind to a closed socket.
+fn bind_to_closed_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+    println!("{}", stringify!(bind_to_closed_socket));
+
+    // Create a TCP socket.
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+
+    // Bind address.
+    let addr: SocketAddrV4 = {
+        let port: u16 = 8080;
+        SocketAddrV4::new(*ipv4, port)
+    };
+
+    // Close socket.
+    libos.close(sockqd)?;
+
+    // Fail to bind socket.
+    let e: Fail = libos
+        .bind(sockqd, addr)
+        .expect_err("bind() a closed socket should fail");
+
+    // Sanity check error code.
+    assert_eq!(e.errno, libc::EBADF, "bind() failed with {}", e.cause);
+
+    Ok(())
+}
