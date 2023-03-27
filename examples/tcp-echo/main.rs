@@ -210,7 +210,7 @@ fn main() -> Result<()> {
                 args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
                 args.addr,
             )?;
-            client.run(
+            client.run_sequential(
                 args.log_interval,
                 args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
                 args.nrequests,

@@ -85,7 +85,12 @@ impl TcpEchoClient {
     }
 
     /// Runs the target TCP echo client.
-    pub fn run(&mut self, log_interval: Option<u64>, nclients: usize, nrequests: Option<usize>) -> Result<()> {
+    pub fn run_sequential(
+        &mut self,
+        log_interval: Option<u64>,
+        nclients: usize,
+        nrequests: Option<usize>,
+    ) -> Result<()> {
         let start: Instant = Instant::now();
         let mut last_log: Instant = Instant::now();
 
