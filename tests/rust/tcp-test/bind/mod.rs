@@ -229,8 +229,15 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
     // Bind address.
     let addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 
-    // Bind socket.
-    libos.bind(sockqd, addr)?;
+    // Fail to bind socket.
+    // FIXME: https://github.com/demikernel/demikernel/issues/582
+    // FIXME: https://github.com/demikernel/demikernel/issues/189
+    let e: Fail = libos
+        .bind(sockqd, addr)
+        .expect_err("bind() to the wildcard address port should fail");
+
+    // Sanity check error code.
+    assert_eq!(e.errno, libc::ENOTSUP, "bind() failed with {}", e.cause);
 
     // Close socket.
     libos.close(sockqd)?;
