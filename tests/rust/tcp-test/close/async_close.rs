@@ -186,6 +186,13 @@ fn async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Resu
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
     }
 
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on accept() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
+
     Ok(())
 }
 
@@ -212,6 +219,13 @@ fn async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Re
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
+    }
+
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
     }
 
     Ok(())
