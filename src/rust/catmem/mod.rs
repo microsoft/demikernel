@@ -179,22 +179,25 @@ impl CatmemLibOS {
                 match self.qtable.borrow().get(&qd) {
                     Some(queue) => {
                         let pipe: &Pipe = queue.get_pipe();
-                        // Handle end of file.
-                        if pipe.eof() {
-                            let cause: String = format!("end of file (qd={:?})", qd);
-                            error!("push(): {:?}", cause);
-                            return Err(Fail::new(libc::ECONNRESET, &cause));
-                        }
-                        let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
-                        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                            // Wait for push to complete.
-                            let result: Result<(), Fail> = future.await;
-                            // Handle result.
-                            match result {
-                                Ok(()) => (qd, OperationResult::Push),
-                                Err(e) => (qd, OperationResult::Failed(e)),
-                            }
-                        });
+                        let coroutine: Pin<Box<Operation>> = if pipe.eof() {
+                            // Handle end of file.
+                            Box::pin(async move {
+                                let cause: String = format!("connection reset (qd={:?})", qd);
+                                error!("pop(): {:?}", &cause);
+                                (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
+                            })
+                        } else {
+                            let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
+                            Box::pin(async move {
+                                // Wait for push to complete.
+                                let result: Result<(), Fail> = future.await;
+                                // Handle result.
+                                match result {
+                                    Ok(()) => (qd, OperationResult::Push),
+                                    Err(e) => (qd, OperationResult::Failed(e)),
+                                }
+                            })
+                        };
                         let task_id: String = format!("Catmem::push for qd={:?}", qd);
                         let task: OperationTask = OperationTask::new(task_id, coroutine);
                         let handle: SchedulerHandle = match self.scheduler.insert(task) {
