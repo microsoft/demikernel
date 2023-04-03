@@ -3,7 +3,6 @@
 
 #![cfg_attr(feature = "strict", deny(clippy:all))]
 #![recursion_limit = "512"]
-#![feature(new_uninit)]
 #![feature(atomic_from_mut)]
 #![feature(never_type)]
 #![feature(test)]

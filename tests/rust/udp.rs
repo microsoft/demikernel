@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![feature(new_uninit)]
-
 mod common;
 
 //==============================================================================
