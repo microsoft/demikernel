@@ -232,8 +232,23 @@ impl CatnapLibOS {
     }
 
     /// Sets a socket as a passive one.
-    pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, qd: QDesc, mut backlog: usize) -> Result<(), Fail> {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
+
+        // Truncate backlog length.
+        if backlog > libc::SOMAXCONN as usize {
+            let cause: String = format!(
+                "backlog length is too large, truncating (qd={:?}, backlog={:?})",
+                qd, backlog
+            );
+            debug!("listen(): {}", &cause);
+            backlog = libc::SOMAXCONN as usize;
+        }
+
+        // Round up backlog length.
+        if backlog == 0 {
+            backlog = 1;
+        }
 
         // Issue listen operation.
         match self.qtable.borrow_mut().get_mut(&qd) {
