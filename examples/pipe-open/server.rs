@@ -59,6 +59,7 @@ impl PipeServer {
         let qr: demi_qresult_t = self.libos.wait(qt, None)?;
         let sga: demi_sgarray_t = match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
+            demi_opcode_t::DEMI_OPC_FAILED => return Ok(self.handle_fail(&qr)?),
             _ => anyhow::bail!("unexpected operation result"),
         };
         n += sga.sga_segs[0].sgaseg_len as usize;
@@ -66,5 +67,24 @@ impl PipeServer {
         self.libos.sgafree(sga)?;
 
         Ok(n)
+    }
+
+    /// Handles an operation that failed.
+    fn handle_fail(&mut self, qr: &demi_qresult_t) -> Result<usize> {
+        let qd: QDesc = qr.qr_qd.into();
+        let qt: QToken = qr.qr_qt.into();
+        let errno: i32 = qr.qr_ret;
+
+        // Check if client has reset the connection.
+        if errno == libc::ECONNRESET {
+            println!("INFO: client reset connection (qd={:?})", qd);
+        } else {
+            println!(
+                "WARN: operation failed, ignoring (qd={:?}, qt={:?}, errno={:?})",
+                qd, qt, errno
+            );
+        }
+
+        Ok(0)
     }
 }
