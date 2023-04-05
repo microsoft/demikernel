@@ -7,7 +7,7 @@
 // differ from the standard congestion control algorithm only on the sender side.  In particular, it uses a cubic
 // function instead of a linear window increase function.
 // TODO: Review if we really care to support this.
-// ToDo: Review if fast retransmit should be mixed in with congestion control or not.
+// TODO: Review if fast retransmit should be mixed in with congestion control or not.
 
 use super::{
     CongestionControl,

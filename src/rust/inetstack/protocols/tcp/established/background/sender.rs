@@ -25,7 +25,7 @@ use ::std::{
 pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
-        // ToDo: Change this to just look at the unsent queue to see if it is empty or not.
+        // TODO: Change this to just look at the unsent queue to see if it is empty or not.
         let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
@@ -119,7 +119,7 @@ pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
         // TODO: Nagle's algorithm - We need to coalese small buffers together to send MSS sized packets.
         // TODO: Silly window syndrome - See RFC 1122's discussion of the SWS avoidance algorithm.
 
-        // ToDo: Link-level concerns don't belong here, we should call an IP-level send routine below.
+        // TODO: Link-level concerns don't belong here, we should call an IP-level send routine below.
         let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
 
         // Form an outgoing packet.
@@ -158,7 +158,7 @@ pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
         cb.push_unacked_segment(unacked_segment);
 
         // Set the retransmit timer.
-        // ToDo: Fix how the retransmit timer works.
+        // TODO: Fix how the retransmit timer works.
         let retransmit_deadline = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
             let rto: Duration = cb.rto();

@@ -6,7 +6,7 @@ use std::time::Duration;
 // TCP Retransmission Timeout (RTO) Calculator.
 // See RFC 6298 for details.
 
-// ToDo: Issue #371 Consider reimplementing this using integer arithmetic instead of floating-point.
+// TODO: Issue #371 Consider reimplementing this using integer arithmetic instead of floating-point.
 
 #[derive(Debug)]
 pub struct RtoCalculator {
