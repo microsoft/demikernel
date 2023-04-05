@@ -59,13 +59,13 @@ impl NetworkRuntime for LinuxRuntime {
     }
 
     /// Receives a batch of [DemiBuffer].
-    // ToDo: This routine currently only tries to receive a single packet buffer, not a batch of them.
+    // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
     fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         // 4096B buffer size chosen arbitrarily, seems fine for now.
         // REVIEW: Won't this fail for Ethernet jumbo frames?  Conversely, it seems wastefully big for standard frames.
         const BUFFER_SIZE: usize = 4096;
 
-        // ToDo: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
+        // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
 
         // This use-case is an example for MaybeUninit in the docs.
         let mut out: [MaybeUninit<u8>; BUFFER_SIZE] = [unsafe { MaybeUninit::uninit().assume_init() }; BUFFER_SIZE];
