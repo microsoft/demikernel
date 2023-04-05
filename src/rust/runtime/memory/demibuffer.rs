@@ -16,12 +16,12 @@
 // DPDK has a concept of MBuf chaining where multiple MBufs may be linked together to form a "packet".  While the
 // DemiBuffer routines for heap-allocated buffers also now support this functionality, it isn't yet exposed via the
 // DemiBuffer interface.
-// ToDo: Expose buffer chain support once we have a solid use case.
+// TODO: Expose buffer chain support once we have a solid use case.
 
 // Note on intrusive queueing:
 // Since all DemiBuffer types keep the metadata for each "view" in a separate allocated region, they can be queued
 // using intrusive links (i.e. have a link field in the metadata).
-// ToDo: Expose calls to get/set a linking field.
+// TODO: Expose calls to get/set a linking field.
 
 // Note on the allocation functions:
 // This code currently uses std::alloc() and std::dealloc() to allocate/free things from the heap.  Note that the Rust
@@ -239,7 +239,7 @@ pub struct DemiBuffer {
 // functionality (MetaData's inc_refcnt() and dec_refcnt(), see above) will need to be swapped out for ones that use
 // atomic operations.  And then it will be safe to mark DemiBuffer as Send.
 //
-// ToDo: For now, this is here because some of our test infrastructure wants to send DemiBuffers to other threads.
+// TODO: For now, this is here because some of our test infrastructure wants to send DemiBuffers to other threads.
 unsafe impl Send for DemiBuffer {}
 
 impl DemiBuffer {
@@ -358,7 +358,7 @@ impl DemiBuffer {
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_adj() routine.
     pub fn adjust(&mut self, nbytes: usize) -> Result<(), Fail> {
-        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 let metadata: &mut MetaData = self.as_metadata();
@@ -395,7 +395,7 @@ impl DemiBuffer {
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_trim() routine.
     pub fn trim(&mut self, nbytes: usize) -> Result<(), Fail> {
-        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 let md_first: &mut MetaData = self.as_metadata();
@@ -533,7 +533,7 @@ impl DemiBuffer {
     /// long as there is a DemiBuffer in existance that is holding a reference on this data.
     // This function is not marked unsafe, as the unsafe act is dereferencing the returned pointer, not providing it.
     pub fn as_ptr(&self) -> *const u8 {
-        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => self.data_ptr(),
             #[cfg(feature = "libdpdk")]
@@ -804,7 +804,7 @@ impl Clone for DemiBuffer {
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => unsafe {
                 let mbuf_ptr: *mut rte_mbuf = self.as_mbuf();
-                // ToDo: This allocates the clone MBuf from the same MBuf pool as the original MBuf.  Since the clone
+                // TODO: This allocates the clone MBuf from the same MBuf pool as the original MBuf.  Since the clone
                 // never has any direct data, we could potentially save memory by allocating these from a special pool.
                 // Safety: it is safe to dereference "mbuf_ptr" as it is known to point to a valid MBuf.
                 let mempool_ptr: *mut rte_mempool = (*mbuf_ptr).pool;
@@ -827,7 +827,7 @@ impl Deref for DemiBuffer {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
@@ -849,7 +849,7 @@ impl Deref for DemiBuffer {
 /// Mutable De-Reference Trait Implementation for `DemiBuffer`.
 impl DerefMut for DemiBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
-        // ToDo: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
                 // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region

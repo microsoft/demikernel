@@ -33,7 +33,7 @@ pub struct demi_sgaseg_t {
 }
 
 /// Scatter-Gather Array
-// ToDo: Review the inclusion of the sga_addr field (only used for recvfrom?) in this structure.
+// TODO: Review the inclusion of the sga_addr field (only used for recvfrom?) in this structure.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct demi_sgarray_t {
