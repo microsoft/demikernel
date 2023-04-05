@@ -115,7 +115,7 @@ impl MemoryManager {
 
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        // ToDo: Allocate an array of buffers if requested size is too large for a single buffer.
+        // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
         // We can't allocate more than a single buffer.
         if size > u16::MAX as usize {
