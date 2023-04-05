@@ -82,7 +82,7 @@ pub enum Socket {
 
 /// A LibOS that exposes exposes sockets semantics on a memory queue.
 pub struct CatloopLibOS {
-    /// Next ephemeral port available. ToDo: we want to change this to the ephemeral port allocator.
+    /// Next ephemeral port available. TODO: we want to change this to the ephemeral port allocator.
     next_port: u16,
     /// Table of queue descriptors. This table has one entry for each existing queue descriptor in Catloop LibOS.
     qtable: Rc<RefCell<IoQueueTable<CatloopQueue>>>,
@@ -476,7 +476,7 @@ impl CatloopLibOS {
                 return Ok(qr);
             },
             Some((demi_opcode_t::DEMI_OPC_FAILED, qd)) => {
-                // ToDo: handle failure correctly. If an accept() operation failed, rollback port allocation.
+                // TODO: handle failure correctly. If an accept() operation failed, rollback port allocation.
                 let message: String = format!("operation failed (qd={:?}", qd);
                 let e: Fail = Fail::new(libc::EAGAIN, &message);
                 return Err(e);
