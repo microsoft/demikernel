@@ -58,7 +58,7 @@ pub fn check_packet_data(
 //=============================================================================
 
 /// Checks for a pure ACK packet.
-/// ToDo: Perhaps rename this, as the term "pure ACK" isn't normally used to describe anything in TCP.  The original
+/// TODO: Perhaps rename this, as the term "pure ACK" isn't normally used to describe anything in TCP.  The original
 /// version of this function compared the header sequence number field to zero (as if it wasn't set to anything),
 /// which is incorrect (i.e. it was checking for incorrect behavior).  For an established connection, the current
 /// sequence number should always reflect the current SND.NXT (send next).  The original version of this function also

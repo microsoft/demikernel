@@ -36,11 +36,11 @@ use crate::timer;
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for DPDKRuntime {
     fn transmit(&self, buf: Box<dyn PacketBuf>) {
-        // ToDo: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
+        // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
         // prepend the headers into that mbuf and save the extra header mbuf allocation that we currently always do.
 
-        // ToDo: cleanup unwrap() and expect() from this code when this function returns a Result.
+        // TODO: cleanup unwrap() and expect() from this code when this function returns a Result.
 
         // Alloc header mbuf, check header size.
         // Serialize header.

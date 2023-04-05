@@ -35,7 +35,7 @@ use ::std::{
 };
 
 // Structure of entries on our unacknowledged queue.
-// ToDo: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
+// TODO: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
 // buffer structure that held everything we need directly, thus avoiding this extra wrapper.
 //
 pub struct UnackedSegment {
@@ -45,12 +45,12 @@ pub struct UnackedSegment {
 }
 
 /// Hard limit for unsent queue.
-/// ToDo: Remove this.  We should limit the unsent queue by either having a (configurable) send buffer size (in bytes,
+/// TODO: Remove this.  We should limit the unsent queue by either having a (configurable) send buffer size (in bytes,
 /// not segments) and rejecting send requests that exceed that, or by limiting the user's send buffer allocations.
 const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
-// ToDo: Consider moving retransmit timer and congestion control fields out of this structure.
-// ToDo: Make all public fields in this structure private.
+// TODO: Consider moving retransmit timer and congestion control fields out of this structure.
+// TODO: Make all public fields in this structure private.
 pub struct Sender {
     //
     // Send Sequence Space:
@@ -77,7 +77,7 @@ pub struct Sender {
     // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<DemiBuffer>>,
 
-    // ToDo: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
+    // TODO: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
     unsent_seq_no: WatchedValue<SeqNumber>,
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
@@ -89,7 +89,7 @@ pub struct Sender {
     window_scale: u8,
 
     // Maximum Segment Size currently in use for this connection.
-    // ToDo: Revisit this once we support path MTU discovery.
+    // TODO: Revisit this once we support path MTU discovery.
     mss: usize,
 }
 
@@ -164,7 +164,7 @@ impl Sender {
         // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
         // allow for larger send buffers, it is simpler and more practical to limit a single send to 1 GiB, which is
         // also the maximum value a TCP can advertise as its receive window (with maximum window scaling).
-        // ToDo: the below check just limits a single send to 4 GiB, not 1 GiB.  Check this doesn't break anything.
+        // TODO: the below check just limits a single send to 4 GiB, not 1 GiB.  Check this doesn't break anything.
         //
         // Review: Move this check up the stack (i.e. closer to the user)?
         //
@@ -173,7 +173,7 @@ impl Sender {
             .try_into()
             .map_err(|_| Fail::new(EINVAL, "buffer too large"))?;
 
-        // ToDo: What we should do here:
+        // TODO: What we should do here:
         //
         // Conceptually, we should take the provided buffer and add it to the unsent queue.  Then calculate the amount
         // of data we're currently allowed to send (based off of the receiver's advertised window, our congestion
@@ -198,7 +198,7 @@ impl Sender {
             let send_next: SeqNumber = self.send_next.get();
             let sent_data: u32 = (send_next - send_unacknowledged).into();
 
-            // ToDo: What limits buffer len to MSS?
+            // TODO: What limits buffer len to MSS?
             let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
@@ -232,7 +232,7 @@ impl Sender {
                     // Update SND.NXT.
                     self.send_next.modify(|s| s + SeqNumber::from(buf_len));
 
-                    // ToDo: We don't need to track this.
+                    // TODO: We don't need to track this.
                     self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
                     // Put the segment we just sent on the retransmission queue.
@@ -256,7 +256,7 @@ impl Sender {
         }
 
         // Too fast.
-        // ToDo: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
+        // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
         if self.unsent_queue.borrow().len() > UNSENT_QUEUE_CUTOFF {
             return Err(Fail::new(EBUSY, "too many packets to send"));
         }
@@ -280,7 +280,7 @@ impl Sender {
             // Clone the segment data for retransmission.
             let data: DemiBuffer = segment.bytes.clone();
 
-            // ToDo: Issue #198 Repacketization - we should send a full MSS (and set the FIN flag if applicable).
+            // TODO: Issue #198 Repacketization - we should send a full MSS (and set the FIN flag if applicable).
 
             // Prepare and send the segment.
             if let Some(first_hop_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
@@ -309,7 +309,7 @@ impl Sender {
             if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
                 // Add sample for RTO if we have an initial transmit time.
                 // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
-                // ToDo: TCP timestamp support.
+                // TODO: TCP timestamp support.
                 if let Some(initial_tx) = segment.initial_tx {
                     cb.rto_add_sample(now - initial_tx);
                 }
@@ -339,7 +339,7 @@ impl Sender {
             }
 
             // Remove this segment from the unacknowledged queue.
-            // ToDo: Mark the send operation associated with this buffer as complete, so the user can reuse the buffer.
+            // TODO: Mark the send operation associated with this buffer as complete, so the user can reuse the buffer.
             self.unacked_queue.borrow_mut().pop_front();
         }
     }

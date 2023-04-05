@@ -47,8 +47,8 @@ pub async fn retransmitter(cb: Rc<ControlBlock>) -> Result<!, Fail> {
             _ = rtx_future => {
                 trace!("Retransmission Timer Expired");
                 // Notify congestion control about RTO.
-                // ToDo: Is this the best place for this?
-                // ToDo: Why call into ControlBlock to get SND.UNA when congestion_control_on_rto() has access to it?
+                // TODO: Is this the best place for this?
+                // TODO: Why call into ControlBlock to get SND.UNA when congestion_control_on_rto() has access to it?
                 let (send_unacknowledged, _) = cb.get_send_unacked();
                 cb.congestion_control_on_rto(send_unacknowledged);
 

@@ -66,13 +66,13 @@ use ::std::{
     },
 };
 
-// ToDo: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
+// TODO: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
 // just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
 // with the window scale option allows for window sizes of up to 1 GB.  This value appears to exist more because of the
 // mechanism used to manage the receive queue (a VecDeque) than anything else.
 const RECV_QUEUE_SZ: usize = 2048;
 
-// ToDo: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
+// TODO: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
 const MAX_OUT_OF_ORDER: usize = 16;
@@ -92,7 +92,7 @@ pub enum State {
     Closed,
 }
 
-// ToDo: Consider incorporating this directly into ControlBlock.
+// TODO: Consider incorporating this directly into ControlBlock.
 struct Receiver {
     //
     // Receive Sequence Space:
@@ -162,7 +162,7 @@ impl Receiver {
 }
 
 /// Transmission control block for representing our TCP connection.
-// ToDo: Make all public fields in this structure private.
+// TODO: Make all public fields in this structure private.
 pub struct ControlBlock {
     local: SocketAddrV4,
     remote: SocketAddrV4,
@@ -173,11 +173,11 @@ pub struct ControlBlock {
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
 
-    // ToDo: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
+    // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
     arp: Rc<ArpPeer>,
 
-    // Send-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
+    // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
     sender: Sender,
 
     // TCP Connection State.
@@ -191,11 +191,11 @@ pub struct ControlBlock {
     // Note: The maximum possible advertised window is 1 GiB with window scaling and 64 KiB without.
     receive_buffer_size: u32,
 
-    // ToDo: Review how this is used.  We could have separate window scale factors, so there should be one for the
+    // TODO: Review how this is used.  We could have separate window scale factors, so there should be one for the
     // receiver and one for the sender.
     // This is the receive-side window scale factor.
     // This is the number of bits to shift to convert to/from the scaled value, and has a maximum value of 14.
-    // ToDo: Keep this as a u8?
+    // TODO: Keep this as a u8?
     window_scale: u32,
 
     waker: RefCell<Option<Waker>>,
@@ -210,18 +210,18 @@ pub struct ControlBlock {
     // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
     pub out_of_order_fin: Cell<Option<SeqNumber>>,
 
-    // Receive-side state information.  ToDo: Consider incorporating this directly into ControlBlock.
+    // Receive-side state information.  TODO: Consider incorporating this directly into ControlBlock.
     receiver: Receiver,
 
     // Whether the user has called close.
     pub user_is_done_sending: Cell<bool>,
 
     // Congestion control trait implementation we're currently using.
-    // ToDo: Consider switching this to a static implementation to avoid V-table call overhead.
+    // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
     cc: Box<dyn congestion_control::CongestionControl>,
 
     // Current retransmission timer expiration time.
-    // ToDo: Consider storing this directly in the RtoCalculator.
+    // TODO: Consider storing this directly in the RtoCalculator.
     retransmit_deadline: WatchedValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
@@ -286,7 +286,7 @@ impl ControlBlock {
         self.remote
     }
 
-    // ToDo: Remove this.  ARP doesn't belong at this layer.
+    // TODO: Remove this.  ARP doesn't belong at this layer.
     pub fn arp(&self) -> Rc<ArpPeer> {
         self.arp.clone()
     }
@@ -411,7 +411,7 @@ impl ControlBlock {
 
         let mut should_schedule_ack: bool = false;
 
-        // ToDo: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
+        // TODO: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
         let now: Instant = self.clock.now();
 
@@ -510,7 +510,7 @@ impl ControlBlock {
         if seg_len > 0 && seg_end >= after_receive_window {
             let mut excess: u32 = u32::from(seg_end - after_receive_window);
             excess += 1;
-            // ToDo: If we end up (after receive handling rewrite is complete) not needing seg_end and seg_len after
+            // TODO: If we end up (after receive handling rewrite is complete) not needing seg_end and seg_len after
             // this, remove these two lines adjusting them as they're being computed needlessly.
             seg_end = seg_end - SeqNumber::from(excess);
             seg_len -= excess;
@@ -531,7 +531,7 @@ impl ControlBlock {
 
         // Check the RST bit.
         if header.rst {
-            // ToDo: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
+            // TODO: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
             // segment doesn't start precisely on RCV.NXT.
 
             // Our peer has given up.  Shut the connection down hard.
@@ -539,13 +539,13 @@ impl ControlBlock {
             match self.state.get() {
                 // Data transfer states.
                 State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
-                    // ToDo: Return all outstanding user Receive and Send requests with "reset" responses.
-                    // ToDo: Flush all segment queues.
+                    // TODO: Return all outstanding user Receive and Send requests with "reset" responses.
+                    // TODO: Flush all segment queues.
 
                     // Enter Closed state.
                     self.state.set(State::Closed);
 
-                    // ToDo: Delete the ControlBlock.
+                    // TODO: Delete the ControlBlock.
                     return;
                 },
 
@@ -554,7 +554,7 @@ impl ControlBlock {
                     // Enter Closed state.
                     self.state.set(State::Closed);
 
-                    // ToDo: Delete the ControlBlock.
+                    // TODO: Delete the ControlBlock.
                     return;
                 },
 
@@ -569,18 +569,18 @@ impl ControlBlock {
 
         // Check the SYN bit.
         if header.syn {
-            // ToDo: RFC 5961 "Blind Reset Attack Using the SYN Bit" prevention would have us always ACK and drop here.
+            // TODO: RFC 5961 "Blind Reset Attack Using the SYN Bit" prevention would have us always ACK and drop here.
 
             // Receiving a SYN here is an error.
             warn!("Received in-window SYN on established connection.");
-            // ToDo: Send Reset.
-            // ToDo: Return all outstanding Receive and Send requests with "reset" responses.
-            // ToDo: Flush all segment queues.
+            // TODO: Send Reset.
+            // TODO: Return all outstanding Receive and Send requests with "reset" responses.
+            // TODO: Flush all segment queues.
 
             // Enter Closed state.
             self.state.set(State::Closed);
 
-            // ToDo: Delete the ControlBlock.
+            // TODO: Delete the ControlBlock.
             return;
         }
 
@@ -591,7 +591,7 @@ impl ControlBlock {
             return;
         }
 
-        // ToDo: RFC 5961 "Blind Data Injection Attack" prevention would have us perform additional ACK validation
+        // TODO: RFC 5961 "Blind Data Injection Attack" prevention would have us perform additional ACK validation
         // checks here.
 
         // Process the ACK.
@@ -599,12 +599,12 @@ impl ControlBlock {
         // in some states (e.g. TIME-WAIT) as it is more wasteful to always check that we're not in TIME-WAIT.
         //
         // Start by checking that the ACK acknowledges something new.
-        // ToDo: Look into removing Watched types.
+        // TODO: Look into removing Watched types.
         //
         let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
         let (send_next, _): (SeqNumber, _) = self.sender.get_send_next();
 
-        // ToDo: Restructure this call into congestion control to either integrate it directly or make it more fine-
+        // TODO: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
         self.cc.on_ack_received(
@@ -657,24 +657,24 @@ impl ControlBlock {
                     }
                 } else {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
-                    // ToDo: This looks wrong.  We should reset the retransmit timer to match the deadline for the
+                    // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
                     // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
                     let deadline: Instant = now + self.rto_calculator.borrow().rto();
                     self.retransmit_deadline.set(Some(deadline));
                 }
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
-                // ToDo: See RFC 5961, this could be a Blind Data Injection Attack.
+                // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
                 warn!("Received segment acknowledging data we have yet to send!");
                 self.send_ack();
                 return;
             }
         } else {
             // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
-            // ToDo: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
+            // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
         }
 
-        // ToDo: Check the URG bit.  If we decide to support this, how should we do it?
+        // TODO: Check the URG bit.  If we decide to support this, how should we do it?
         if header.urg {
             warn!("Got packet with URG bit set!");
         }
@@ -742,11 +742,11 @@ impl ControlBlock {
                 State::FinWait2 => {
                     // Enter TIME-WAIT.
                     self.state.set(State::TimeWait);
-                    // ToDo: Start the time-wait timer and turn off the other timers.
+                    // TODO: Start the time-wait timer and turn off the other timers.
                 },
                 State::CloseWait | State::Closing | State::LastAck => (), // Remain in current state.
                 State::TimeWait => {
-                    // ToDo: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
+                    // TODO: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
                 },
                 state => panic!("Bad TCP state {:?}", state), // Should never happen.
             }
@@ -759,7 +759,7 @@ impl ControlBlock {
             }
 
             // Since we consumed the FIN we ACK immediately rather than opportunistically.
-            // ToDo: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
+            // TODO: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
             self.send_ack();
 
             return;
@@ -768,7 +768,7 @@ impl ControlBlock {
         // Check if we need to ACK soon.
         if should_schedule_ack {
             // We should ACK this segment, preferably via piggybacking on a response.
-            // ToDo: Consider replacing the delayed ACK timer with a simple flag.
+            // TODO: Consider replacing the delayed ACK timer with a simple flag.
             if self.ack_deadline.get().is_none() {
                 // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
                 self.ack_deadline.set(Some(now + self.ack_delay_timeout));
@@ -824,7 +824,7 @@ impl ControlBlock {
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
-    /// ToDo: Fix the "filling out various values based on our current state" part to actually do that correctly.
+    /// TODO: Fix the "filling out various values based on our current state" part to actually do that correctly.
     pub fn tcp_header(&self) -> TcpHeader {
         let mut header: TcpHeader = TcpHeader::new(self.local.port(), self.remote.port());
         header.window_size = self.hdr_window_size();
@@ -841,11 +841,11 @@ impl ControlBlock {
     pub fn send_ack(&self) {
         let mut header: TcpHeader = self.tcp_header();
 
-        // ToDo: Think about moving this to tcp_header() as well.
+        // TODO: Think about moving this to tcp_header() as well.
         let (seq_num, _): (SeqNumber, _) = self.get_send_next();
         header.seq_num = seq_num;
 
-        // ToDo: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
+        // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
         if let Some(remote_link_addr) = self.arp().try_query(self.remote.ip().clone()) {
             self.emit(header, None, remote_link_addr);
@@ -869,7 +869,7 @@ impl ControlBlock {
         let sent_fin: bool = header.fin;
 
         // Prepare description of TCP segment to send.
-        // ToDo: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
+        // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
             ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
             ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
@@ -934,7 +934,7 @@ impl ControlBlock {
     }
 
     pub fn poll_recv(&self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
-        // ToDo: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
+        // TODO: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
         // This code was checking for an empty receive queue by comparing sequence numbers, as in:
@@ -1055,7 +1055,7 @@ impl ControlBlock {
         out_of_order.insert(action_index, (new_start, buf));
 
         // If the out-of-order store now contains too many entries, delete the later entries.
-        // ToDo: The out-of-order store is already limited (in size) by our receive window, while the below check
+        // TODO: The out-of-order store is already limited (in size) by our receive window, while the below check
         // imposes a limit on the number of entries.  Do we need this?  Presumably for attack mitigation?
         while out_of_order.len() > MAX_OUT_OF_ORDER {
             out_of_order.pop_back();
@@ -1102,7 +1102,7 @@ impl ControlBlock {
             }
         }
 
-        // ToDo: Review recent change to update control block copy of recv_next upon each push to the receiver.
+        // TODO: Review recent change to update control block copy of recv_next upon each push to the receiver.
         // When receiving a retransmitted segment that fills a "hole" in the receive space, thus allowing a number
         // (potentially large number) of out-of-order segments to be added, we'll be modifying the TCB copy of
         // recv_next many times.
@@ -1112,13 +1112,13 @@ impl ControlBlock {
 
         // This appears to be checking if something is waiting on the receive queue, and if so, wakes that thing up.
         // Note: unlike updating receive_next (see above comment) we only do this once (i.e. outside the while loop).
-        // ToDo: Verify that this is the right place and time to do this.
+        // TODO: Verify that this is the right place and time to do this.
         if let Some(w) = self.waker.borrow_mut().take() {
             w.wake()
         }
 
         // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
-        // ToDo: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
+        // TODO: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
         if added_out_of_order {
             match self.out_of_order_fin.get() {
                 Some(fin) => {
