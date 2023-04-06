@@ -125,8 +125,9 @@ impl CatloopLibOS {
 
         // Parse communication domain.
         if domain != libc::AF_INET {
-            error!("communication domain not supported (domain={:?})", domain);
-            return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
+            let cause: String = format!("communication domain not supported (domain={:?})", domain);
+            error!("socket(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Parse socket type and protocol.
@@ -134,8 +135,9 @@ impl CatloopLibOS {
             libc::SOCK_STREAM => QType::TcpSocket,
             libc::SOCK_DGRAM => QType::UdpSocket,
             _ => {
-                error!("socket type not supported (typ={:?})", typ);
-                return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
+                let cause: String = format!("socket type not supported (typ={:?})", typ);
+                error!("socket(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
             },
         };
 
@@ -159,8 +161,9 @@ impl CatloopLibOS {
 
         // Check if queue descriptor is valid.
         if qtable.get(&qd).is_none() {
-            error!("invalid queue descriptor (qd={:?})", qd);
-            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
         };
 
         // Check whether the address is in use.
@@ -214,24 +217,20 @@ impl CatloopLibOS {
                     Ok(())
                 },
                 Socket::Active(None) => {
-                    let message: String = format!(
-                        "Cannot call listen on an unbound socket. Please call bind first. (qd={:?})",
-                        qd
-                    );
-                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
-                    error!("listen(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("Cannot call listen on an unbound socket (qd={:?})", qd);
+                    error!("listen(): {}", &cause);
+                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
                 },
                 Socket::Passive(_) => {
-                    let message: String = format!("Cannot call listen on an already listening socket. (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("listen(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call listen on an already listening socket (qd={:?})", qd);
+                    error!("listen(): {}", &cause);
+                    Err(Fail::new(libc::EBADF, &cause))
                 },
             },
             None => {
-                error!("invalid queue descriptor (qd={:?})", qd);
-                Err(Fail::new(libc::EBADF, "invalid queue descriptor"))
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("listen(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
             },
         }
     }
@@ -247,7 +246,11 @@ impl CatloopLibOS {
                 Socket::Passive(local) => {
                     let control_duplex_pipe: Rc<DuplexPipe> = match queue.get_pipe() {
                         Some(pipe) => pipe,
-                        None => return Err(Fail::new(libc::EINVAL, "invalid queue descriptor")),
+                        None => {
+                            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                            error!("accept(): {}", cause);
+                            return Err(Fail::new(libc::EINVAL, &cause));
+                        },
                     };
                     let new_qd: QDesc = qtable.alloc(CatloopQueue::new(QType::TcpSocket));
                     let future: AcceptFuture = AcceptFuture::new(
@@ -284,10 +287,9 @@ impl CatloopLibOS {
                         Some(handle) => handle,
                         None => {
                             qtable.free(&new_qd);
-                            let message: String = format!("cannot schedule co-routine");
-                            let e: Fail = Fail::new(libc::EAGAIN, &message);
-                            error!("accept(): {:?}", e);
-                            return Err(e);
+                            let cause: String = format!("cannot schedule co-routine");
+                            error!("accept(): {}", &cause);
+                            return Err(Fail::new(libc::EAGAIN, &cause));
                         },
                     };
                     let qt: QToken = handle.into_raw().into();
@@ -296,20 +298,15 @@ impl CatloopLibOS {
                     Ok(qt)
                 },
                 Socket::Active(_) => {
-                    let message: String = format!(
-                        "Cannot call accept on an active socket. Please call listen first. (qd={:?})",
-                        qd
-                    );
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("accept(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call accept on an active socket (qd={:?})", qd);
+                    error!("accept(): {}", &cause);
+                    Err(Fail::new(libc::EBADF, &cause))
                 },
             },
             None => {
-                let message: String = format!("invalid queue descriptor (qd={:?})", qd);
-                let e: Fail = Fail::new(libc::EBADF, &message);
-                error!("accept(): {:?}", e);
-                Err(e)
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("accept(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
             },
         }
     }
@@ -355,17 +352,15 @@ impl CatloopLibOS {
                     Ok(qt)
                 },
                 Socket::Passive(_) => {
-                    let message: String = format!("Cannot call connect on a listening socket. (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
-                    error!("connect(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call connect on a listening socket (qd={:?})", qd);
+                    error!("connect(): {}", &cause);
+                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
                 },
             },
             None => {
-                let error_msg: String = format!("invalid queue descriptor {:?}", qd);
-                let e: Fail = Fail::new(libc::EAGAIN, &error_msg);
-                error!("connect(): {:?}", e);
-                Err(e)
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("connect(): {}", &cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
             },
         }
     }
@@ -384,10 +379,9 @@ impl CatloopLibOS {
                 }
             },
             None => {
-                let error_msg: String = format!("invalid queue descriptor {:?}", qd);
-                let e: Fail = Fail::new(libc::EBADF, &error_msg);
-                error!("close(): {:?}", e);
-                return Err(e);
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
             },
         };
         qtable.free(&qd);
@@ -403,7 +397,11 @@ impl CatloopLibOS {
                 Some(duplex_pipe) => duplex_pipe.tx(),
                 None => unreachable!("push() an unconnected queue"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("push(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
 
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
@@ -428,7 +426,11 @@ impl CatloopLibOS {
                 Some(duplex_pipe) => duplex_pipe.rx(),
                 None => unreachable!("pop() an unconnected queue"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("pop(): {:?}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
 
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
