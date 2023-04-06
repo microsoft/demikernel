@@ -11,7 +11,7 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
-    scheduler::yield_once,
+    scheduler::Yielder,
 };
 use ::std::{
     mem,
@@ -27,7 +27,11 @@ use ::std::{
 const POP_SIZE: usize = 9216;
 
 /// This function polls read until it receives some data or an error and then returns the data to pop.
-pub async fn pop_coroutine(fd: RawFd, size: Option<usize>) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
+pub async fn pop_coroutine(
+    fd: RawFd,
+    size: Option<usize>,
+    yielder: Yielder,
+) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
     let size: usize = size.unwrap_or(POP_SIZE);
     let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
     let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
@@ -62,7 +66,11 @@ pub async fn pop_coroutine(fd: RawFd, size: Option<usize>) -> Result<(Option<Soc
 
                 // Operation in progress.
                 if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
-                    yield_once().await;
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 }
                 // Operation failed.
                 else {

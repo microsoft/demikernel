@@ -8,7 +8,7 @@
 use crate::{
     pal::linux,
     runtime::fail::Fail,
-    scheduler::yield_once,
+    scheduler::Yielder,
 };
 use ::std::{
     mem,
@@ -17,7 +17,7 @@ use ::std::{
 };
 
 /// This function polls accept on a listening socket until it receives a new accepted connection back.
-pub async fn accept_coroutine(fd: RawFd) -> Result<(RawFd, SocketAddrV4), Fail> {
+pub async fn accept_coroutine(fd: RawFd, yielder: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
     let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
     let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
 
@@ -57,8 +57,11 @@ pub async fn accept_coroutine(fd: RawFd) -> Result<(RawFd, SocketAddrV4), Fail> 
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
                 if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
-                    // Operation in progress.
-                    yield_once().await
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 } else {
                     // Operation failed.
                     let message: String = format!("accept(): operation failed (errno={:?})", errno);

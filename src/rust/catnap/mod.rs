@@ -55,11 +55,14 @@ use crate::{
         QToken,
         QType,
     },
-    scheduler::SchedulerHandle,
+    scheduler::{
+        SchedulerHandle,
+        Yielder,
+        YielderHandle,
+    },
 };
 use ::std::{
     cell::{
-        Ref,
         RefCell,
         RefMut,
     },
@@ -280,7 +283,7 @@ impl CatnapLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        match qtable.get_mut(&qd) {
+        let fd: RawFd = match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     // Create an accepting socket.
@@ -289,82 +292,95 @@ impl CatnapLibOS {
                         let accepting_socket: Socket = listening_socket.accept()?;
                         queue.set_socket(&accepting_socket);
                     };
-
-                    let new_qd: QDesc = qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
-                    let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
-                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        // Wait for the accept operation to complete.
-                        let result: Result<(RawFd, SocketAddrV4), Fail> = accept_coroutine(fd).await;
-                        // Handle result: Borrow the queue table to either set the socket fd and addr or free the queue
-                        // metadata on error.
-                        match result {
-                            Ok((new_fd, addr)) => {
-                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
-
-                                // Update new (connected) socket.
-                                // Note that we do it first, because it is unlikely that the new socket has been closed.
-                                {
-                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&new_qd) {
-                                        Some(queue) => queue,
-                                        None => {
-                                            let cause: String = format!("invalid queue descriptor {:?}", new_qd);
-                                            error!("accept(): {}", &cause);
-                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
-                                        },
-                                    };
-
-                                    let connected_socket: Socket = {
-                                        let unbound_socket: &Socket = queue.get_socket();
-                                        match unbound_socket.connected(addr) {
-                                            Ok(socket) => socket,
-                                            Err(e) => return (qd, OperationResult::Failed(e)),
-                                        }
-                                    };
-                                    queue.set_socket(&connected_socket);
-                                    queue.set_fd(new_fd);
-                                }
-
-                                // Update listening socket.
-                                {
-                                    let queue: &mut CatnapQueue = match qtable_.get_mut(&qd) {
-                                        Some(queue) => queue,
-                                        None => {
-                                            let cause: String = format!("invalid queue descriptor {:?}", qd);
-                                            error!("accept(): {}", &cause);
-                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
-                                        },
-                                    };
-
-                                    let listening_socket: Socket = {
-                                        let accepting_socket: &Socket = queue.get_socket();
-                                        match accepting_socket.accepted() {
-                                            Ok(socket) => socket,
-                                            Err(e) => return (qd, OperationResult::Failed(e)),
-                                        }
-                                    };
-                                    queue.set_socket(&listening_socket);
-                                }
-                                (qd, OperationResult::Accept((new_qd, addr)))
-                            },
-                            Err(e) => {
-                                qtable_ptr.borrow_mut().free(&new_qd);
-                                (qd, OperationResult::Failed(e))
-                            },
-                        }
-                    });
-                    let task_id: String = format!("Catnap::pop for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    match self.runtime.scheduler.insert(task) {
-                        Some(handle) => Ok(handle.into_raw().into()),
-                        None => {
-                            qtable.free(&new_qd);
-                            Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"))
-                        },
-                    }
+                    fd
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        };
+
+        let new_qd: QDesc = qtable.alloc(CatnapQueue::new(QType::TcpSocket, None));
+        let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+            // Wait for the accept operation to complete.
+            let result: Result<(RawFd, SocketAddrV4), Fail> = accept_coroutine(fd, yielder).await;
+            // Handle result: Borrow the queue table to either set the socket fd and addr or free the queue
+            // metadata on error.
+            match result {
+                Ok((new_fd, addr)) => {
+                    let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+
+                    // Update new (connected) socket.
+                    // Note that we do it first, because it is unlikely that the new socket has been closed.
+                    {
+                        let queue: &mut CatnapQueue = match qtable_.get_mut(&new_qd) {
+                            Some(queue) => queue,
+                            None => {
+                                let cause: String = format!("invalid queue descriptor {:?}", new_qd);
+                                error!("accept(): {}", &cause);
+                                return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                            },
+                        };
+
+                        let connected_socket: Socket = {
+                            let unbound_socket: &Socket = queue.get_socket();
+                            match unbound_socket.connected(addr) {
+                                Ok(socket) => socket,
+                                Err(e) => return (qd, OperationResult::Failed(e)),
+                            }
+                        };
+                        queue.set_socket(&connected_socket);
+                        queue.set_fd(new_fd);
+                    }
+
+                    // Update listening socket.
+                    {
+                        let queue: &mut CatnapQueue = match qtable_.get_mut(&qd) {
+                            Some(queue) => queue,
+                            None => {
+                                let cause: String = format!("invalid queue descriptor {:?}", qd);
+                                error!("accept(): {}", &cause);
+                                return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                            },
+                        };
+
+                        let listening_socket: Socket = {
+                            let accepting_socket: &Socket = queue.get_socket();
+                            match accepting_socket.accepted() {
+                                Ok(socket) => socket,
+                                Err(e) => return (qd, OperationResult::Failed(e)),
+                            }
+                        };
+                        queue.set_socket(&listening_socket);
+                    }
+                    (qd, OperationResult::Accept((new_qd, addr)))
+                },
+                Err(e) => {
+                    warn!("accept() listening_qd={:?} new_qd={:?}: {:?}", qd, new_qd, &e);
+                    // assert definitely no pending ops on new_qd
+                    qtable_ptr.borrow_mut().free(&new_qd);
+                    (qd, OperationResult::Failed(e))
+                },
+            }
+        });
+        let task_id: String = format!("Catnap::pop for qd={:?}", qd);
+        let task: OperationTask = OperationTask::new(task_id, coroutine);
+        match self.runtime.scheduler.insert(task) {
+            Some(scheduler_handle) => {
+                // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
+                // Safe to unwrap here because we have a linear flow from the last time that we looked up the queue.
+                qtable
+                    .get_mut(&qd)
+                    .unwrap()
+                    .add_pending_op(&scheduler_handle, &yielder_handle);
+                Ok(scheduler_handle.into_raw().into())
+            },
+            None => {
+                qtable.free(&new_qd);
+                Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"))
+            },
         }
     }
 
@@ -380,23 +396,30 @@ impl CatnapLibOS {
                         let active_socket: &Socket = queue.get_socket();
                         active_socket.connect(remote)?
                     };
+                    let yielder: Yielder = Yielder::new();
+                    let yielder_handle: YielderHandle = yielder.get_handle();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        let result: Result<(), Fail> = connect_coroutine(fd, remote).await;
+                        let result: Result<(), Fail> = connect_coroutine(fd, remote, yielder).await;
                         match result {
                             Ok(()) => (qd, OperationResult::Connect),
-                            Err(e) => (qd, OperationResult::Failed(e)),
+                            Err(e) => {
+                                warn!("connect() qd={:?}: {:?}", qd, &e);
+                                (qd, OperationResult::Failed(e))
+                            },
                         }
                     });
                     let task_id = format!("Catnap::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
 
+                    // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
+                    queue.add_pending_op(&scheduler_handle, &yielder_handle);
                     // Update socket.
                     queue.set_socket(&connecting_socket);
-                    Ok(handle.into_raw().into())
+                    Ok(scheduler_handle.into_raw().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
@@ -425,6 +448,8 @@ impl CatnapLibOS {
                         return Err(Fail::new(errno, &cause));
                     }
 
+                    // Cancel all pending operations.
+                    queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
                     // Update socket.
                     queue.set_socket(&closed_socket);
                     qtable.free(&qd);
@@ -439,28 +464,36 @@ impl CatnapLibOS {
     /// Asynchronous close
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("close() qd={:?}", qd);
-        let qtable: Ref<IoQueueTable<CatnapQueue>> = self.qtable.borrow();
+        let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
 
-        match qtable.get(&qd) {
+        match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    // Create a closed socket.
+                    // Create a closed socket. Should set this to a closing state.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/625
                     let closed_socket: Socket = {
                         let socket: &Socket = queue.get_socket();
                         socket.close()?
                     };
 
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
+                    // Don't register this Yielder because we shouldn't have to cancel the close operation.
+                    let yielder: Yielder = Yielder::new();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for close operation to complete.
-                        let result: Result<(), Fail> = close_coroutine(fd).await;
+                        let result: Result<(), Fail> = close_coroutine(fd, yielder).await;
                         // Handle result: if successful, borrow the queue table to free the qd and metadata.
                         match result {
                             Ok(()) => {
                                 // Update socket.
                                 let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
                                 match qtable_.get_mut(&qd) {
-                                    Some(queue) => queue.set_socket(&closed_socket),
+                                    Some(queue) => {
+                                        // Cancel all pending operations.
+                                        queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+                                        // Update socket state.
+                                        queue.set_socket(&closed_socket);
+                                    },
                                     None => {
                                         let cause: &String = &format!("invalid queue descriptor: {:?}", qd);
                                         error!("{}", &cause);
@@ -470,16 +503,19 @@ impl CatnapLibOS {
                                 qtable_.free(&qd);
                                 (qd, OperationResult::Close)
                             },
-                            Err(e) => (qd, OperationResult::Failed(e)),
+                            Err(e) => {
+                                warn!("async_close() qd={:?}: {:?}", qd, &e);
+                                (qd, OperationResult::Failed(e))
+                            },
                         }
                     });
                     let task_id: String = format!("Catnap::close for qd={:?}", qd);
-                    let handle: SchedulerHandle =
-                        match self.runtime.scheduler.insert(OperationTask::new(task_id, coroutine)) {
-                            Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                        };
-                    Ok(handle.into_raw().into())
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
+                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                        Some(handle) => handle,
+                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    };
+                    Ok(scheduler_handle.into_raw().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
@@ -497,25 +533,33 @@ impl CatnapLibOS {
                 }
 
                 // Issue push operation.
-                match self.qtable.borrow().get(&qd) {
+                match self.qtable.borrow_mut().get_mut(&qd) {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
+                            let yielder: Yielder = Yielder::new();
+                            let yielder_handle: YielderHandle = yielder.get_handle();
                             let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                                 // Wait for push to complete.
-                                let result: Result<(), Fail> = push_coroutine(fd, buf, None).await;
+                                let result: Result<(), Fail> = push_coroutine(fd, buf, None, yielder).await;
                                 // Handle result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
-                                    Err(e) => (qd, OperationResult::Failed(e)),
+                                    Err(e) => {
+                                        warn!("push() qd={:?}: {:?}", qd, &e);
+                                        (qd, OperationResult::Failed(e))
+                                    },
                                 }
                             });
                             let task_id: String = format!("Catnap::push for qd={:?}", qd);
-                            let handle: SchedulerHandle =
-                                match self.runtime.scheduler.insert(OperationTask::new(task_id, coroutine)) {
-                                    Some(handle) => handle,
-                                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                                };
-                            Ok(handle.into_raw().into())
+                            let task: OperationTask = OperationTask::new(task_id, coroutine);
+                            let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                                Some(handle) => handle,
+                                None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            };
+                            // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
+                            queue.add_pending_op(&scheduler_handle, &yielder_handle);
+
+                            Ok(scheduler_handle.into_raw().into())
                         },
                         None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
@@ -537,28 +581,32 @@ impl CatnapLibOS {
                 }
 
                 // Issue pushto operation.
-                match self.qtable.borrow().get(&qd) {
+                match self.qtable.borrow_mut().get_mut(&qd) {
                     Some(queue) => match queue.get_fd() {
                         Some(fd) => {
+                            let yielder: Yielder = Yielder::new();
+                            let yielder_handle: YielderHandle = yielder.get_handle();
                             let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                                 // Wait for pushto to complete.
-                                let result: Result<(), Fail> = push_coroutine(fd, buf, Some(remote)).await;
+                                let result: Result<(), Fail> = push_coroutine(fd, buf, Some(remote), yielder).await;
                                 // Process result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
-                                    Err(e) => (qd, OperationResult::Failed(e)),
+                                    Err(e) => {
+                                        warn!("pushto() qd={:?}: {:?}", qd, &e);
+                                        (qd, OperationResult::Failed(e))
+                                    },
                                 }
                             });
                             let task_id: String = format!("Catnap::pushto for qd={:?}", qd);
-                            let handle: SchedulerHandle = match self
-                                .runtime
-                                .scheduler
-                                .insert(OperationTask::new(task_id, Box::pin(coroutine)))
-                            {
+                            let task: OperationTask = OperationTask::new(task_id, Box::pin(coroutine));
+                            let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
-                            Ok(handle.into_raw().into())
+                            // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
+                            queue.add_pending_op(&scheduler_handle, &yielder_handle);
+                            Ok(scheduler_handle.into_raw().into())
                         },
                         None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
@@ -581,28 +629,33 @@ impl CatnapLibOS {
         }
 
         // Issue pop operation.
-        match self.qtable.borrow().get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
+                    let yielder: Yielder = Yielder::new();
+                    let yielder_handle: YielderHandle = yielder.get_handle();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         // Wait for pop to complete.
-                        let result: Result<(Option<SocketAddrV4>, DemiBuffer), Fail> = pop_coroutine(fd, size).await;
+                        let result: Result<(Option<SocketAddrV4>, DemiBuffer), Fail> =
+                            pop_coroutine(fd, size, yielder).await;
                         // Process result.
                         match result {
                             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
-                            Err(e) => (qd, OperationResult::Failed(e)),
+                            Err(e) => {
+                                warn!("pop() qd={:?}: {:?}", qd, &e);
+                                (qd, OperationResult::Failed(e))
+                            },
                         }
                     });
                     let task_id: String = format!("Catnap::pop for qd={:?}", qd);
-                    let handle: SchedulerHandle = match self
-                        .runtime
-                        .scheduler
-                        .insert(OperationTask::new(task_id, Box::pin(coroutine)))
-                    {
+                    let task: OperationTask = OperationTask::new(task_id, Box::pin(coroutine));
+                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    let qt: QToken = handle.into_raw().into();
+                    // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
+                    queue.add_pending_op(&scheduler_handle, &yielder_handle);
+                    let qt: QToken = scheduler_handle.into_raw().into();
                     Ok(qt)
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
@@ -641,8 +694,18 @@ impl CatnapLibOS {
 
     /// Takes out the result from the [OperationTask] associated with the target [SchedulerHandle].
     fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.runtime.scheduler.take(handle).as_any());
-        task.get_result().expect("The coroutine has not finished")
+        let task: OperationTask = OperationTask::from(self.runtime.scheduler.take(handle.clone()).as_any());
+        let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
+        match result {
+            OperationResult::Close => {},
+            _ => {
+                match self.qtable.borrow_mut().get_mut(&qd) {
+                    Some(queue) => queue.remove_pending_op(&handle),
+                    None => debug!("Catnap::take_result() qd={:?}, This queue was closed", qd),
+                };
+            },
+        }
+        (qd, result)
     }
 }
 

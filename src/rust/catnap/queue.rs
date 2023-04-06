@@ -8,11 +8,21 @@
 use crate::{
     catnap::socket::Socket,
     runtime::{
-        queue::IoQueue,
-        QType,
+        fail::Fail,
+        queue::{
+            IoQueue,
+            QType,
+        },
+    },
+    scheduler::{
+        SchedulerHandle,
+        YielderHandle,
     },
 };
-use ::std::os::unix::prelude::RawFd;
+use ::std::{
+    collections::HashMap,
+    os::unix::prelude::RawFd,
+};
 
 //======================================================================================================================
 // Structures
@@ -23,6 +33,7 @@ pub struct CatnapQueue {
     qtype: QType,
     fd: Option<RawFd>,
     socket: Socket,
+    pending_ops: HashMap<SchedulerHandle, YielderHandle>,
 }
 
 //======================================================================================================================
@@ -35,6 +46,7 @@ impl CatnapQueue {
             qtype,
             fd,
             socket: Socket::new(),
+            pending_ops: HashMap::<SchedulerHandle, YielderHandle>::new(),
         }
     }
 
@@ -56,6 +68,32 @@ impl CatnapQueue {
     /// Gets an immutable references to the underlying socket.
     pub fn get_socket(&self) -> &Socket {
         &self.socket
+    }
+
+    /// Adds a new operation to the list of pending operations on this queue.
+    pub fn add_pending_op(&mut self, scheduler_handle: &SchedulerHandle, yielder_handle: &YielderHandle) {
+        self.pending_ops
+            .insert(scheduler_handle.clone(), yielder_handle.clone());
+    }
+
+    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
+    /// add_pending_op() was previously called.
+    pub fn remove_pending_op(&mut self, scheduler_handle: &SchedulerHandle) {
+        self.pending_ops.remove(scheduler_handle);
+    }
+
+    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
+    /// yielded, wake the coroutine with an error.
+    pub fn cancel_pending_ops(&mut self, cause: Fail) {
+        for (mut scheduler_handle, mut yielder_handle) in self.pending_ops.drain() {
+            if !scheduler_handle.has_completed() {
+                yielder_handle.wake_with(Err(cause.clone()));
+            }
+            // Remove the key so this doesn't cause the scheduler to drop the whole task.
+            // We need a better explicit mechanism to remove tasks from the scheduler.
+            // FIXME: https://github.com/demikernel/demikernel/issues/593
+            scheduler_handle.take_key();
+        }
     }
 }
 

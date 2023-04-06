@@ -7,7 +7,10 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        types::demi_opcode_t,
+    },
     LibOS,
     QDesc,
     QToken,
@@ -130,6 +133,12 @@ fn accept_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
     // Succeed to close socket.
     libos.close(sockqd)?;
 
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on accept() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
     Ok(())
 }
 
@@ -145,7 +154,7 @@ fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
+        Err(_) => anyhow::bail!("wait() should be cancelled"),
     }
 
     // Fail to accept() connections.
@@ -159,10 +168,18 @@ fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
     // Succeed to close socket.
     libos.close(sockqd)?;
 
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
+
     Ok(())
 }
 
 /// Attempts to accept connections on a TCP socket that is already accepting connections.
+/// TODO: Check if this is actually not allowed.
 fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     println!("{}", stringify!(accept_accepting_socket));
 
@@ -189,6 +206,13 @@ fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 
     // Succeed to close socket.
     libos.close(sockqd)?;
+
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on accept() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
 
     Ok(())
 }

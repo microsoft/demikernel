@@ -11,7 +11,7 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
-    scheduler::yield_once,
+    scheduler::Yielder,
 };
 use ::std::{
     mem,
@@ -21,7 +21,12 @@ use ::std::{
 };
 
 /// This function polls write until all the data in the push is sent.
-pub async fn push_coroutine(fd: RawFd, buf: DemiBuffer, addr: Option<SocketAddrV4>) -> Result<(), Fail> {
+pub async fn push_coroutine(
+    fd: RawFd,
+    buf: DemiBuffer,
+    addr: Option<SocketAddrV4>,
+    yielder: Yielder,
+) -> Result<(), Fail> {
     let dest_addr: Option<libc::sockaddr_in> = if let Some(addr_) = addr.as_ref() {
         Some(linux::socketaddrv4_to_sockaddr_in(addr_))
     } else {
@@ -59,7 +64,11 @@ pub async fn push_coroutine(fd: RawFd, buf: DemiBuffer, addr: Option<SocketAddrV
 
                 // Operation in progress.
                 if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
-                    yield_once().await;
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 }
                 // Operation failed.
                 else {

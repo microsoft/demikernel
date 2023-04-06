@@ -8,7 +8,7 @@
 use crate::{
     pal::linux,
     runtime::fail::Fail,
-    scheduler::yield_once,
+    scheduler::Yielder,
 };
 use ::std::{
     mem,
@@ -17,7 +17,7 @@ use ::std::{
 };
 
 /// This function polls connect on a socket file descriptor until the connection is established (or returns an error).
-pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4) -> Result<(), Fail> {
+pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
     loop {
         let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
         match unsafe {
@@ -39,7 +39,11 @@ pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4) -> Result<(), Fail
 
                 // Operation in progress.
                 if errno == libc::EINPROGRESS || errno == libc::EALREADY {
-                    yield_once().await;
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 }
                 // Operation failed.
                 else {

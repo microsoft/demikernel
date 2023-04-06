@@ -7,12 +7,12 @@
 
 use crate::{
     runtime::fail::Fail,
-    scheduler::yield_once,
+    scheduler::Yielder,
 };
 use ::std::os::unix::prelude::RawFd;
 
 /// This function calls close on a file descriptor until it is closed successfully.
-pub async fn close_coroutine(fd: RawFd) -> Result<(), Fail> {
+pub async fn close_coroutine(fd: RawFd, yielder: Yielder) -> Result<(), Fail> {
     loop {
         match unsafe { libc::close(fd) } {
             // Operation completed.
@@ -27,7 +27,11 @@ pub async fn close_coroutine(fd: RawFd) -> Result<(), Fail> {
                 // Operation was interrupted, retry?
                 if errno == libc::EINTR {
                     debug!("close interruptted fd={:?}", fd);
-                    yield_once().await;
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 }
                 // Operation failed.
                 else {

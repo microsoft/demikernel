@@ -7,7 +7,10 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        types::demi_opcode_t,
+    },
     LibOS,
     QDesc,
     QToken,
@@ -196,6 +199,13 @@ fn listen_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
     // Succeed to close socket.
     libos.close(sockqd)?;
 
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
+
     Ok(())
 }
 
@@ -224,6 +234,13 @@ fn listen_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 
     // Succeed to close socket.
     libos.close(sockqd)?;
+
+    // Poll again to check that the qtoken returns an err.
+    match libos.wait(qt, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(_) => anyhow::bail!("wait() should succeed with an error on accept() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
+    }
 
     Ok(())
 }
