@@ -158,7 +158,11 @@ impl CatmemLibOS {
         let mut qtable = self.qtable.borrow_mut();
         match qtable.get(&qd) {
             Some(queue) => Self::push_eof(queue.get_pipe().buffer())?,
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
         qtable.free(&qd);
         Ok(())
@@ -172,40 +176,53 @@ impl CatmemLibOS {
         match self.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
-                    return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
+                    let cause: String = format!("zero-length buffer (qd={:?})", qd);
+                    error!("push(): {}", cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
                 }
 
                 // Issue push operation.
                 match self.qtable.borrow().get(&qd) {
                     Some(queue) => {
                         let pipe: &Pipe = queue.get_pipe();
-                        // Handle end of file.
-                        if pipe.eof() {
-                            let cause: String = format!("end of file (qd={:?})", qd);
-                            error!("push(): {:?}", cause);
-                            return Err(Fail::new(libc::ECONNRESET, &cause));
-                        }
-                        let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
-                        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                            // Wait for push to complete.
-                            let result: Result<(), Fail> = future.await;
-                            // Handle result.
-                            match result {
-                                Ok(()) => (qd, OperationResult::Push),
-                                Err(e) => (qd, OperationResult::Failed(e)),
-                            }
-                        });
+                        let coroutine: Pin<Box<Operation>> = if pipe.eof() {
+                            // Handle end of file.
+                            Box::pin(async move {
+                                let cause: String = format!("connection reset (qd={:?})", qd);
+                                error!("pop(): {:?}", &cause);
+                                (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
+                            })
+                        } else {
+                            let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
+                            Box::pin(async move {
+                                // Wait for push to complete.
+                                let result: Result<(), Fail> = future.await;
+                                // Handle result.
+                                match result {
+                                    Ok(()) => (qd, OperationResult::Push),
+                                    Err(e) => (qd, OperationResult::Failed(e)),
+                                }
+                            })
+                        };
                         let task_id: String = format!("Catmem::push for qd={:?}", qd);
                         let task: OperationTask = OperationTask::new(task_id, coroutine);
                         let handle: SchedulerHandle = match self.scheduler.insert(task) {
                             Some(handle) => handle,
-                            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                            None => {
+                                let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                                error!("push(): {}", cause);
+                                return Err(Fail::new(libc::EAGAIN, &cause));
+                            },
                         };
                         let qt: QToken = handle.into_raw().into();
                         trace!("push() qt={:?}", qt);
                         Ok(qt)
                     },
-                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+                    None => {
+                        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                        error!("push(): {}", cause);
+                        Err(Fail::new(libc::EBADF, &cause))
+                    },
                 }
             },
             Err(e) => Err(e),
@@ -222,50 +239,61 @@ impl CatmemLibOS {
         match qtable.get(&qd) {
             Some(queue) => {
                 let pipe: &Pipe = queue.get_pipe();
-                // Handle end of file.
-                if pipe.eof() {
-                    let cause: String = format!("end of file (qd={:?})", qd);
-                    error!("pop(): {:?}", cause);
-                    return Err(Fail::new(libc::ECONNRESET, &cause));
-                }
+                let coroutine: Pin<Box<Operation>> = if pipe.eof() {
+                    // Handle end of file.
+                    Box::pin(async move {
+                        let cause: String = format!("connection reset (qd={:?})", qd);
+                        error!("pop(): {:?}", &cause);
+                        (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
+                    })
+                } else {
+                    let future: PopFuture = PopFuture::new(pipe.buffer(), size);
+                    let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
+                    Box::pin(async move {
+                        // Wait for pop to complete.
+                        let result: Result<(DemiBuffer, bool), Fail> = future.await;
+                        // Process the result.
+                        match result {
+                            Ok((buf, eof)) => {
+                                if eof {
+                                    let mut qtable_: RefMut<IoQueueTable<CatmemQueue>> = qtable_ptr.borrow_mut();
+                                    let queue: &mut CatmemQueue = match qtable_.get_mut(&qd) {
+                                        Some(queue) => queue,
+                                        None => {
+                                            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                                            error!("pop(): {}", cause);
+                                            return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
+                                        },
+                                    };
+                                    let pipe: &mut Pipe = queue.get_mut_pipe();
+                                    pipe.set_eof();
+                                }
+                                (qd, OperationResult::Pop(buf))
+                            },
+                            Err(e) => (qd, OperationResult::Failed(e)),
+                        }
+                    })
+                };
 
-                let future: PopFuture = PopFuture::new(pipe.buffer(), size);
-                let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for pop to complete.
-                    let result: Result<(DemiBuffer, bool), Fail> = future.await;
-                    // Process the result.
-                    match result {
-                        Ok((buf, eof)) => {
-                            if eof {
-                                let mut qtable_: RefMut<IoQueueTable<CatmemQueue>> = qtable_ptr.borrow_mut();
-                                let queue: &mut CatmemQueue = match qtable_.get_mut(&qd) {
-                                    Some(queue) => queue,
-                                    None => {
-                                        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                                        error!("pop(): {}", cause);
-                                        return (qd, OperationResult::Failed(Fail::new(libc::EBADF, &cause)));
-                                    },
-                                };
-                                let pipe: &mut Pipe = queue.get_mut_pipe();
-                                pipe.set_eof();
-                            }
-                            (qd, OperationResult::Pop(buf))
-                        },
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
                 let task_id: String = format!("Catmem::pop for qd={:?}", qd);
                 let task: OperationTask = OperationTask::new(task_id, coroutine);
                 let handle: SchedulerHandle = match self.scheduler.insert(task) {
                     Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+                    None => {
+                        let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                        error!("pop(): {}", cause);
+                        return Err(Fail::new(libc::EAGAIN, &cause));
+                    },
                 };
                 let qt: QToken = handle.into_raw().into();
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
             },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("pop(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
@@ -288,7 +316,11 @@ impl CatmemLibOS {
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
         match self.scheduler.from_raw_handle(qt.into()) {
             Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+            None => {
+                let cause: String = format!("invalid queue token (qt={:?})", qt);
+                error!("schedule(): {}", cause);
+                Err(Fail::new(libc::EINVAL, &cause))
+            },
         }
     }
 
