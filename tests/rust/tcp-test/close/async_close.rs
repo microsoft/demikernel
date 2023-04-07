@@ -47,8 +47,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
     async_close_unbound_socket(libos)?;
     async_close_bound_socket(libos, addr)?;
     async_close_listening_socket(libos, addr)?;
-    async_close_accepting_socket(libos, addr)?;
-    async_close_connecting_socket(libos, addr)?;
 
     Ok(())
 }
@@ -154,78 +152,6 @@ fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Resu
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
-    }
-
-    Ok(())
-}
-
-/// Attempts to close a TCP socket that is accepting.
-fn async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(async_close_accepting_socket));
-
-    // Create an accepting socket.
-    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
-    libos.listen(sockqd, 16)?;
-    let qt: QToken = libos.accept(sockqd)?;
-
-    // Poll once to ensure that the accept() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        Ok(_) => anyhow::bail!("wait() should not succeed with accept()"),
-        Err(_) => anyhow::bail!("wait() should timeout with accept()"),
-    }
-
-    // Succeed to close socket.
-    let qt_close: QToken = libos.async_close(sockqd)?;
-
-    // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt_close, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
-        Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
-        Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
-    }
-
-    // Poll again to check that the qtoken returns an err.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
-        Ok(_) => anyhow::bail!("wait() should succeed with an error on accept() after close()"),
-        Err(_) => anyhow::bail!("wait() should not time out"),
-    }
-
-    Ok(())
-}
-
-/// Attempts to close a TCP socket that is connecting.
-fn async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(async_close_connecting_socket));
-
-    // Create a connecting socket.
-    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    let qt: QToken = libos.connect(sockqd, *remote)?;
-
-    // Poll once to ensure that the connect() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        Ok(_) => anyhow::bail!("wait() should not succeed with connect()"),
-        Err(_) => anyhow::bail!("wait() should timeout with connect()"),
-    }
-
-    // Succeed to close socket.
-    let qt_close: QToken = libos.async_close(sockqd)?;
-
-    // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt_close, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
-        Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
-        Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
-    }
-
-    // Poll again to check that the qtoken returns an err.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {},
-        Ok(_) => anyhow::bail!("wait() should succeed with an error on connect() after close()"),
-        Err(_) => anyhow::bail!("wait() should not time out"),
     }
 
     Ok(())

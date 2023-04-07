@@ -12,12 +12,8 @@ use demikernel::{
     runtime::fail::Fail,
     LibOS,
     QDesc,
-    QToken,
 };
-use std::{
-    net::SocketAddrV4,
-    time::Duration,
-};
+use std::net::SocketAddrV4;
 
 //======================================================================================================================
 // Constants
@@ -46,8 +42,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
     close_unbound_socket(libos)?;
     close_bound_socket(libos, addr)?;
     close_listening_socket(libos, addr)?;
-    close_accepting_socket(libos, addr)?;
-    close_connecting_socket(libos, addr)?;
 
     // Run asynchronous close tests.
     async_close::run(libos, addr)?;
@@ -127,50 +121,6 @@ fn close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()>
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, *local)?;
     libos.listen(sockqd, 16)?;
-
-    // Succeed to close socket.
-    libos.close(sockqd)?;
-
-    Ok(())
-}
-
-/// Attempts to close a TCP socket that is accepting.
-fn close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(close_accepting_socket));
-
-    // Create an accepting socket.
-    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
-    libos.listen(sockqd, 16)?;
-    let qt: QToken = libos.accept(sockqd)?;
-
-    // Poll once to ensure that the accept() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
-    }
-
-    // Succeed to close socket.
-    libos.close(sockqd)?;
-
-    Ok(())
-}
-
-/// Attempts to close a TCP socket that is connecting.
-fn close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(close_connecting_socket));
-
-    // Create a connecting socket.
-    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    let qt: QToken = libos.connect(sockqd, *remote)?;
-
-    // Poll once to ensure that the connect() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
-    }
 
     // Succeed to close socket.
     libos.close(sockqd)?;

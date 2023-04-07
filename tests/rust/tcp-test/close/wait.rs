@@ -121,11 +121,11 @@ fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) 
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
             },
-
             Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
             Err(_) => anyhow::bail!("wait() should not time out"),
         }
     }
+
     Ok(())
 }
 
