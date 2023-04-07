@@ -57,13 +57,17 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
     };
 
     // Ensure that scatter-gather array has the requested size.
-    assert!(sga.sga_segs[0].sgaseg_len as usize == size);
+    assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
 
     // Fill in scatter-gather array.
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
     let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-    slice.fill(value);
+    let mut fill: u8 = value;
+    for x in slice {
+        *x = fill;
+        fill = (fill % (u8::MAX - 1) + 1) as u8;
+    }
 
     sga
 }
@@ -192,20 +196,21 @@ fn server(local: SocketAddrV4) -> Result<()> {
 
     // Perform multiple ping-pong rounds.
     for i in 0..nrounds {
-        let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+        let mut fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
 
         // Pop data, and sanity check it.
         {
             let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             pop_and_wait(&mut libos, qd, &mut recvbuf);
             for x in &recvbuf {
-                assert!(*x == fill_char);
+                assert_eq!(*x, fill_char);
+                fill_char = (fill_char % (u8::MAX - 1) + 1) as u8;
             }
         }
 
         // Push data.
         {
-            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, fill_char);
+            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, (i % (u8::MAX as usize - 1) + 1) as u8);
             push_and_wait(&mut libos, qd, &sga);
             match libos.sgafree(sga) {
                 Ok(_) => {},
@@ -261,12 +266,15 @@ fn client(remote: SocketAddrV4) -> Result<()> {
             }
         }
 
+        let mut fill_check: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+
         // Pop data, and sanity check it.
         {
             let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
             pop_and_wait(&mut libos, sockqd, &mut recvbuf);
             for x in &recvbuf {
-                assert!(*x == fill_char);
+                assert_eq!(*x, fill_check);
+                fill_check = (fill_check % (u8::MAX - 1) + 1) as u8;
             }
         }
 
