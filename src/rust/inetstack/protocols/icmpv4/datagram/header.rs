@@ -59,14 +59,14 @@ impl Icmpv4Header {
         ))
     }
 
-    pub fn serialize(&self, buf: &mut [u8]) {
+    pub fn serialize(&self, buf: &mut [u8], data: &[u8]) {
         let buf: &mut [u8; ICMPV4_HEADER_SIZE] = (&mut buf[..ICMPV4_HEADER_SIZE]).try_into().unwrap();
         let (type_byte, rest_of_header) = self.protocol.serialize();
         buf[0] = type_byte;
         buf[1] = self.code;
         // Skip the checksum for now.
         buf[4..8].copy_from_slice(&rest_of_header[..]);
-        let checksum: u16 = Self::checksum(buf, &[]);
+        let checksum: u16 = Self::checksum(buf, data);
         buf[2..4].copy_from_slice(&checksum.to_be_bytes());
     }
 

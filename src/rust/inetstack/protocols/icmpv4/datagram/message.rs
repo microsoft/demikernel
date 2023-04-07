@@ -18,16 +18,23 @@ pub struct Icmpv4Message {
     ethernet2_hdr: Ethernet2Header,
     ipv4_hdr: Ipv4Header,
     icmpv4_hdr: Icmpv4Header,
+    data: DemiBuffer,
 }
 
 /// Associated Functions for Icmpv4Message
 impl Icmpv4Message {
     /// Creates an ICMP message.
-    pub fn new(ethernet2_hdr: Ethernet2Header, ipv4_hdr: Ipv4Header, icmpv4_hdr: Icmpv4Header) -> Self {
+    pub fn new(
+        ethernet2_hdr: Ethernet2Header,
+        ipv4_hdr: Ipv4Header,
+        icmpv4_hdr: Icmpv4Header,
+        data: DemiBuffer,
+    ) -> Self {
         Self {
             ethernet2_hdr,
             ipv4_hdr,
             icmpv4_hdr,
+            data,
         }
     }
 }
@@ -39,29 +46,29 @@ impl PacketBuf for Icmpv4Message {
     }
 
     fn body_size(&self) -> usize {
-        0
+        self.data.len()
     }
 
     fn write_header(&self, buf: &mut [u8]) {
-        let eth_hdr_size = self.ethernet2_hdr.compute_size();
-        let ipv4_hdr_size = self.ipv4_hdr.compute_size();
-        let icmpv4_hdr_size = self.icmpv4_hdr.size();
-        let mut cur_pos = 0;
+        let eth_hdr_size: usize = self.ethernet2_hdr.compute_size();
+        let ipv4_hdr_size: usize = self.ipv4_hdr.compute_size();
+        let icmpv4_hdr_size: usize = self.icmpv4_hdr.size();
+        let mut cur_pos: usize = 0;
 
         self.ethernet2_hdr
             .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
         cur_pos += eth_hdr_size;
 
-        let ipv4_payload_len = icmpv4_hdr_size;
+        let ipv4_payload_len: usize = icmpv4_hdr_size + self.body_size();
         self.ipv4_hdr
             .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
         cur_pos += ipv4_hdr_size;
 
         self.icmpv4_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)]);
+            .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)], &self.data);
     }
 
     fn take_body(&self) -> Option<DemiBuffer> {
-        None
+        Some(self.data.clone())
     }
 }

@@ -11,6 +11,7 @@ use crate::{
                 Ethernet2Header,
             },
             icmpv4::datagram::{
+                self,
                 Icmpv4Header,
                 Icmpv4Message,
                 Icmpv4Type2,
@@ -120,7 +121,7 @@ pub struct Icmpv4Peer {
     arp: ArpPeer,
 
     /// Transmitter
-    tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16)>,
+    tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16, DemiBuffer)>,
 
     /// Queue of Requests
     requests: Rc<RefCell<ReqQueue>>,
@@ -188,10 +189,10 @@ impl Icmpv4Peer {
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: ArpPeer,
-        mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16)>,
+        mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16, DemiBuffer)>,
     ) {
         // Reply requests.
-        while let Some((dst_ipv4_addr, id, seq_num)) = rx.next().await {
+        while let Some((dst_ipv4_addr, id, seq_num, data)) = rx.next().await {
             debug!("initiating ARP query");
             let dst_link_addr: MacAddress = match arp.query(dst_ipv4_addr).await {
                 Ok(dst_link_addr) => dst_link_addr,
@@ -207,18 +208,19 @@ impl Icmpv4Peer {
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
+                data,
             )));
         }
     }
 
     /// Parses and handles a ICMP message.
     pub fn receive(&mut self, ipv4_header: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        let (icmpv4_hdr, _) = Icmpv4Header::parse(buf)?;
+        let (icmpv4_hdr, data) = Icmpv4Header::parse(buf)?;
         debug!("ICMPv4 received {:?}", icmpv4_hdr);
         match icmpv4_hdr.get_protocol() {
             Icmpv4Type2::EchoRequest { id, seq_num } => {
                 self.tx
-                    .unbounded_send((ipv4_header.get_src_addr(), id, seq_num))
+                    .unbounded_send((ipv4_header.get_src_addr(), id, seq_num, data))
                     .unwrap();
             },
             Icmpv4Type2::EchoReply { id, seq_num } => {
@@ -283,10 +285,13 @@ impl Icmpv4Peer {
             let dst_link_addr: MacAddress = arp.query(dst_ipv4_addr).await?;
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
+            let data: DemiBuffer = DemiBuffer::new(datagram::ICMPV4_ECHO_REQUEST_MESSAGE_SIZE);
+
             let msg: Icmpv4Message = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(echo_request, 0),
+                data,
             );
             rt.transmit(Box::new(msg));
             let rx: Receiver<()> = {
