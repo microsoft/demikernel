@@ -33,9 +33,9 @@ def wait_jobs(log_directory: str, jobs: dict):
         for job_name, j in jobs.items():
             stdout, stderr = j.communicate()
             status.append((j.pid, j.returncode))
-            with open(log_directory + "/" + job_name + ".stdout", "w") as file:
+            with open(log_directory + "/" + job_name + ".stdout.txt", "w") as file:
                 file.write("{}".format(stdout))
-            with open(log_directory + "/" + job_name + ".stderr", "w") as file:
+            with open(log_directory + "/" + job_name + ".stderr.txt", "w") as file:
                 file.write("{}".format(stderr))
 
         # Cleanup list of jobs.
