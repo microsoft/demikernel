@@ -60,8 +60,8 @@ jobs:
       with:
         name: debug-pipeline-logs
         path: |
-          **/*.stdout
-          **/*.stderr
+          **/*.stdout.txt
+          **/*.stderr.txt
 
   release-pipeline:
     name: Release Pipeline
@@ -100,5 +100,5 @@ jobs:
       with:
         name: release-pipeline-logs
         path: |
-          **/*.stdout
-          **/*.stderr
+          **/*.stdout.txt
+          **/*.stderr.txt
