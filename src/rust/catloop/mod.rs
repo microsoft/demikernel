@@ -89,7 +89,9 @@ pub struct CatloopLibOS {
     /// Underlying scheduler.
     scheduler: Scheduler,
     /// Table for ongoing operations.
-    qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
+    catloop_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
+    /// Table for ongoing operations.
+    catmem_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
     /// Underlying reference to Catmem LibOS.
     catmem: Rc<RefCell<CatmemLibOS>>,
 }
@@ -107,6 +109,9 @@ impl CatloopLibOS {
     /// concurrent processes would not be enabled to establish a connection, if
     /// they sent connection bytes in an interleaved, but legit order.
     const MAGIC_CONNECT: u8 = 0x1b;
+    /// Shift value that is applied to all queue tokens that are managed by the Catmem LibOS.
+    /// This is required to avoid collisions between queue tokens that are managed by Catmem LibOS and Catloop LibOS.
+    const QTOKEN_SHIFT: u64 = 65536;
 
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
@@ -114,7 +119,8 @@ impl CatloopLibOS {
             next_port: 0,
             qtable: Rc::new(RefCell::new(IoQueueTable::<CatloopQueue>::new())),
             scheduler: Scheduler::default(),
-            qts: HashMap::default(),
+            catmem_qts: HashMap::default(),
+            catloop_qts: HashMap::default(),
             catmem: Rc::new(RefCell::new(CatmemLibOS::new())),
         }
     }
@@ -125,8 +131,9 @@ impl CatloopLibOS {
 
         // Parse communication domain.
         if domain != libc::AF_INET {
-            error!("communication domain not supported (domain={:?})", domain);
-            return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
+            let cause: String = format!("communication domain not supported (domain={:?})", domain);
+            error!("socket(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Parse socket type and protocol.
@@ -134,8 +141,9 @@ impl CatloopLibOS {
             libc::SOCK_STREAM => QType::TcpSocket,
             libc::SOCK_DGRAM => QType::UdpSocket,
             _ => {
-                error!("socket type not supported (typ={:?})", typ);
-                return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
+                let cause: String = format!("socket type not supported (typ={:?})", typ);
+                error!("socket(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
             },
         };
 
@@ -159,8 +167,9 @@ impl CatloopLibOS {
 
         // Check if queue descriptor is valid.
         if qtable.get(&qd).is_none() {
-            error!("invalid queue descriptor (qd={:?})", qd);
-            return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
         };
 
         // Check whether the address is in use.
@@ -214,24 +223,20 @@ impl CatloopLibOS {
                     Ok(())
                 },
                 Socket::Active(None) => {
-                    let message: String = format!(
-                        "Cannot call listen on an unbound socket. Please call bind first. (qd={:?})",
-                        qd
-                    );
-                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
-                    error!("listen(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("Cannot call listen on an unbound socket (qd={:?})", qd);
+                    error!("listen(): {}", &cause);
+                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
                 },
                 Socket::Passive(_) => {
-                    let message: String = format!("Cannot call listen on an already listening socket. (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("listen(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call listen on an already listening socket (qd={:?})", qd);
+                    error!("listen(): {}", &cause);
+                    Err(Fail::new(libc::EBADF, &cause))
                 },
             },
             None => {
-                error!("invalid queue descriptor (qd={:?})", qd);
-                Err(Fail::new(libc::EBADF, "invalid queue descriptor"))
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("listen(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
             },
         }
     }
@@ -247,7 +252,11 @@ impl CatloopLibOS {
                 Socket::Passive(local) => {
                     let control_duplex_pipe: Rc<DuplexPipe> = match queue.get_pipe() {
                         Some(pipe) => pipe,
-                        None => return Err(Fail::new(libc::EINVAL, "invalid queue descriptor")),
+                        None => {
+                            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                            error!("accept(): {}", cause);
+                            return Err(Fail::new(libc::EINVAL, &cause));
+                        },
                     };
                     let new_qd: QDesc = qtable.alloc(CatloopQueue::new(QType::TcpSocket));
                     let future: AcceptFuture = AcceptFuture::new(
@@ -284,32 +293,33 @@ impl CatloopLibOS {
                         Some(handle) => handle,
                         None => {
                             qtable.free(&new_qd);
-                            let message: String = format!("cannot schedule co-routine");
-                            let e: Fail = Fail::new(libc::EAGAIN, &message);
-                            error!("accept(): {:?}", e);
-                            return Err(e);
+                            let cause: String = format!("cannot schedule co-routine");
+                            error!("accept(): {}", &cause);
+                            return Err(Fail::new(libc::EAGAIN, &cause));
                         },
                     };
                     let qt: QToken = handle.into_raw().into();
-                    self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
+                    self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
+
+                    // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
+                    if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
+                        // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
+                        let message: String = format!("too many pending operations in Catloop");
+                        warn!("accept(): {}", &message);
+                    }
 
                     Ok(qt)
                 },
                 Socket::Active(_) => {
-                    let message: String = format!(
-                        "Cannot call accept on an active socket. Please call listen first. (qd={:?})",
-                        qd
-                    );
-                    let e: Fail = Fail::new(libc::EBADF, &message);
-                    error!("accept(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call accept on an active socket (qd={:?})", qd);
+                    error!("accept(): {}", &cause);
+                    Err(Fail::new(libc::EBADF, &cause))
                 },
             },
             None => {
-                let message: String = format!("invalid queue descriptor (qd={:?})", qd);
-                let e: Fail = Fail::new(libc::EBADF, &message);
-                error!("accept(): {:?}", e);
-                Err(e)
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("accept(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
             },
         }
     }
@@ -331,7 +341,7 @@ impl CatloopLibOS {
                                 let mut qtable_: RefMut<IoQueueTable<CatloopQueue>> = qtable_ptr.borrow_mut();
                                 let queue: &mut CatloopQueue =
                                     qtable_.get_mut(&qd).expect("New qd should have been already allocated");
-                                //TODO: check whether we need to close the original control duplex pipe allocated on bind().
+                                // TODO: check whether we need to close the original control duplex pipe allocated on bind().
                                 queue.set_socket(Socket::Active(Some(remote)));
                                 queue.set_pipe(duplex_pipe.clone());
                                 (qd, OperationResult::Connect)
@@ -344,28 +354,33 @@ impl CatloopLibOS {
                     let handle: SchedulerHandle = match self.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => {
-                            let e: Fail = Fail::new(libc::EAGAIN, "cannot schedule co-routine");
-                            error!("connect(): {:?}", e);
-                            return Err(e);
+                            let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                            error!("connect(): {}", &cause);
+                            return Err(Fail::new(libc::EAGAIN, &cause));
                         },
                     };
                     let qt: QToken = handle.into_raw().into();
-                    self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
+                    self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
+
+                    // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
+                    if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
+                        // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
+                        let message: String = format!("too many pending operations in Catloop");
+                        warn!("accept(): {}", &message);
+                    }
 
                     Ok(qt)
                 },
                 Socket::Passive(_) => {
-                    let message: String = format!("Cannot call connect on a listening socket. (qd={:?})", qd);
-                    let e: Fail = Fail::new(libc::EOPNOTSUPP, &message);
-                    error!("connect(): {:?}", e);
-                    Err(e)
+                    let cause: String = format!("cannot call connect on a listening socket (qd={:?})", qd);
+                    error!("connect(): {}", &cause);
+                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
                 },
             },
             None => {
-                let error_msg: String = format!("invalid queue descriptor {:?}", qd);
-                let e: Fail = Fail::new(libc::EAGAIN, &error_msg);
-                error!("connect(): {:?}", e);
-                Err(e)
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("connect(): {}", &cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
             },
         }
     }
@@ -384,10 +399,9 @@ impl CatloopLibOS {
                 }
             },
             None => {
-                let error_msg: String = format!("invalid queue descriptor {:?}", qd);
-                let e: Fail = Fail::new(libc::EBADF, &error_msg);
-                error!("close(): {:?}", e);
-                return Err(e);
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
             },
         };
         qtable.free(&qd);
@@ -403,13 +417,17 @@ impl CatloopLibOS {
                 Some(duplex_pipe) => duplex_pipe.tx(),
                 None => unreachable!("push() an unconnected queue"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("push(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
 
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
-        self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_PUSH, qd));
+        self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_PUSH, qd));
 
-        Ok(qt)
+        Ok(Self::shift_qtoken(qt))
     }
 
     /// Pops data from a socket.
@@ -428,13 +446,17 @@ impl CatloopLibOS {
                 Some(duplex_pipe) => duplex_pipe.rx(),
                 None => unreachable!("pop() an unconnected queue"),
             },
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("pop(): {:?}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
 
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
-        self.qts.insert(qt, (demi_opcode_t::DEMI_OPC_POP, qd));
+        self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_POP, qd));
 
-        Ok(qt)
+        Ok(Self::shift_qtoken(qt))
     }
 
     /// Allocates a scatter-gather array.
@@ -447,42 +469,97 @@ impl CatloopLibOS {
         self.catmem.borrow_mut().free_sgarray(sga)
     }
 
+    /// Inserts a queue token into the scheduler.
     pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
-        match self.qts.get(&qt) {
-            Some((demi_opcode_t::DEMI_OPC_ACCEPT, _)) | Some((demi_opcode_t::DEMI_OPC_CONNECT, _)) => {
-                match self.scheduler.from_raw_handle(qt.into()) {
-                    Some(handle) => Ok(handle),
-                    None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-                }
-            },
-            Some((demi_opcode_t::DEMI_OPC_PUSH, _)) | Some((demi_opcode_t::DEMI_OPC_POP, _)) => {
-                self.catmem.borrow_mut().schedule(qt)
-            },
-            _ => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+        // Check if the queue token came from the Catloop LibOS.
+        if let Some((ref opcode, _)) = self.catloop_qts.get(&qt) {
+            // Check if the queue token concerns an expected operation.
+            if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
+                let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                error!("schedule(): {:?}", &cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
+
+            // Resolve the queue token into the scheduler.
+            match self.scheduler.from_raw_handle(qt.into()) {
+                // Succeed to insert queue token in the scheduler.
+                Some(handle) => return Ok(handle),
+                // Failed to insert queue token in the scheduler.
+                None => {
+                    let cause: String = format!("invalid queue token (qt={:?})", qt);
+                    error!("schedule(): {:?}", &cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
+                },
+            }
         }
+
+        // The queue token is not registered in Catloop LibOS, thus un-shift it and try Catmem LibOs.
+        let qt: QToken = Self::try_unshift_qtoken(qt);
+
+        // Check if the queue token came from the Catmem LibOS.
+        if let Some((ref opcode, _)) = self.catmem_qts.get(&qt) {
+            // Check if the queue token concerns an expected operation.
+            if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
+                let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                error!("schedule(): {:?}", &cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
+
+            // The queue token came from the Catmem LibOS, thus forward operation.
+            return self.catmem.borrow_mut().schedule(qt);
+        }
+
+        // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
+        let cause: String = format!("unregistered queue token (qt={:?})", qt);
+        error!("schedule(): {:?}", &cause);
+        Err(Fail::new(libc::EINVAL, &cause))
     }
 
+    /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self.qts.remove(&qt) {
-            Some((demi_opcode_t::DEMI_OPC_ACCEPT, _)) | Some((demi_opcode_t::DEMI_OPC_CONNECT, _)) => {
-                let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
+        // Check if the queue token came from the Catloop LibOS.
+        if let Some((ref opcode, _)) = self.catloop_qts.remove(&qt) {
+            // Check if the queue token concerns an expected operation.
+            if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
+                let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                error!("pack_result(): {:?}", &cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
 
-                return Ok(pack_result(r, qd, qt.into()));
-            },
-            Some((demi_opcode_t::DEMI_OPC_PUSH, qd)) | Some((demi_opcode_t::DEMI_OPC_POP, qd)) => {
-                let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
-                qr.qr_qd = qd.into();
+            // Construct operation result.
+            let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
 
-                return Ok(qr);
-            },
-            Some((demi_opcode_t::DEMI_OPC_FAILED, qd)) => {
-                // TODO: handle failure correctly. If an accept() operation failed, rollback port allocation.
-                let message: String = format!("operation failed (qd={:?}", qd);
-                let e: Fail = Fail::new(libc::EAGAIN, &message);
-                return Err(e);
-            },
-            _ => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
+            // FIXME: https://github.com/demikernel/demikernel/issues/621
+
+            return Ok(pack_result(r, qd, qt.into()));
         }
+
+        // This is not a queue token from the Catloop LibOS, un-shift it and try Catmem LibOs.
+        let qt: QToken = Self::try_unshift_qtoken(qt);
+
+        // Check if the queue token came from the Catmem LibOS.
+        if let Some((ref opcode, ref catloop_qd)) = self.catmem_qts.remove(&qt) {
+            // Check if the queue token concerns an expected operation.
+            if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
+                let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                error!("pack_result(): {:?}", &cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
+
+            // The queue token came from the Catmem LibOS, thus forward operation.
+            let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
+
+            // We temper queue descriptor that was was stored in the operation result returned by Catmem LibOS,
+            // because we only distribute to the user queue descriptors that are managed by Catloop LibLOS.
+            qr.qr_qd = catloop_qd.to_owned().into();
+
+            return Ok(qr);
+        }
+
+        // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
+        let cause: String = format!("unregistered queue token (qt={:?})", qt);
+        error!("schedule(): {:?}", &cause);
+        Err(Fail::new(libc::EINVAL, &cause))
     }
 
     /// Polls scheduling queues.
@@ -497,7 +574,7 @@ impl CatloopLibOS {
         task.get_result().expect("The coroutine has not finished")
     }
 
-    // Cooks a magic connect message.
+    /// Cooks a magic connect message.
     pub fn cook_magic_connect(catmem: &Rc<RefCell<CatmemLibOS>>) -> Result<demi_sgarray_t, Fail> {
         let sga: demi_sgarray_t = catmem
             .borrow_mut()
@@ -511,7 +588,7 @@ impl CatloopLibOS {
         Ok(sga)
     }
 
-    // Checks for a magic connect message.
+    /// Checks for a magic connect message.
     pub fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
         let len: usize = sga.sga_segs[0].sgaseg_len as usize;
         if len == mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT) {
@@ -524,6 +601,23 @@ impl CatloopLibOS {
         }
 
         false
+    }
+
+    /// Shifts a queue token by a certain amount.
+    fn shift_qtoken(qt: QToken) -> QToken {
+        let mut qt: u64 = qt.into();
+        qt += Self::QTOKEN_SHIFT;
+        qt.into()
+    }
+
+    /// Un-shifts a queue token by a certain amount. This is the inverse of [shift_qtoken].
+    fn try_unshift_qtoken(qt: QToken) -> QToken {
+        let mut qt: u64 = qt.into();
+        // Avoid underflow.
+        if qt >= Self::QTOKEN_SHIFT {
+            qt -= Self::QTOKEN_SHIFT;
+        }
+        qt.into()
     }
 }
 
