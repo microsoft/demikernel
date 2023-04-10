@@ -77,9 +77,13 @@ impl TcpClient {
             let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
             // Connect TCP socket.
+            // If error, close sockets.
+            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qt: QToken = self.libos.connect(sockqd, self.remote)?;
 
             // Wait for connection to be established.
+            // If error, close sockets.
+            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
 
             // Parse result.
@@ -87,8 +91,16 @@ impl TcpClient {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
                     println!("{} clients connected", i + 1);
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed (qr_ret={:?})", qr.qr_ret),
-                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // Close socket on error.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
+                },
+                qr_opcode => {
+                    // Close socket on error.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
+                },
             }
 
             // Close TCP socket.
@@ -111,6 +123,8 @@ impl TcpClient {
             qds.push(qd);
 
             // Connect TCP socket.
+            // If error, close sockets.
+            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             qts_reverse.insert(qt, qd);
             qts.push(qt);
@@ -124,6 +138,8 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
+                // If error, close sockets.
+                // FIXME: https://github.com/demikernel/demikernel/issues/640
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
                 let qt: QToken = qts.remove(index);
                 qts_reverse
@@ -144,8 +160,16 @@ impl TcpClient {
                     self.clients_closed += 1;
                     self.libos.close(qd)?;
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed (qr_ret={:?})", qr.qr_ret),
-                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // Close socket on error.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
+                },
+                qr_opcode => {
+                    // Close socket on error.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
+                },
             }
         }
 
@@ -166,13 +190,19 @@ impl TcpClient {
                     println!("{} clients connected", i + 1);
 
                     // Pop immediately after connect and wait.
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     let pop_qt: QToken = self.libos.pop(sockqd, None)?;
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, None)?;
 
                     match pop_qr.qr_opcode {
                         demi_opcode_t::DEMI_OPC_POP => {
                             let sga: demi_sgarray_t = unsafe { pop_qr.qr_value.sga };
                             let received_len: u32 = sga.sga_segs[0].sgaseg_len;
+                            // If error, close sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/640
                             self.libos.sgafree(sga)?;
                             // 0 len pop represents socket closed from other side.
                             assert_eq!(
@@ -190,11 +220,23 @@ impl TcpClient {
                             );
                             println!("server disconnected (ECONNRESET)");
                         },
-                        qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                        qr_opcode => {
+                            // If error, close sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/640
+                            anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
+                        },
                     }
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed (qr_ret={:?})", qr.qr_ret),
-                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
+                },
+                qr_opcode => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
+                },
             }
 
             // FIXME: https://github.com/demikernel/demikernel/issues/646
@@ -214,6 +256,8 @@ impl TcpClient {
         for _i in 0..num_clients {
             let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
             qds.push(qd);
+            // If error, close sockets.
+            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             qts.push(qt);
         }
@@ -226,6 +270,8 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
+                // If error, close sockets.
+                // FIXME: https://github.com/demikernel/demikernel/issues/640
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
                 let _qt: QToken = qts.remove(index);
                 qr
@@ -237,15 +283,21 @@ impl TcpClient {
                     self.clients_connected += 1;
                     println!("{} clients connected", self.clients_connected);
                     // pop immediately after connect.
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     let pop_qt: QToken = self.libos.pop(sockqd, None)?;
                     qts.push(pop_qt);
                 },
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let received_len: u32 = sga.sga_segs[0].sgaseg_len;
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     self.libos.sgafree(sga)?;
 
                     // 0 len pop represents socket closed from other side.
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     assert_eq!(
                         received_len, 0,
                         "server should have had closed the connection, but it has not"
@@ -266,7 +318,11 @@ impl TcpClient {
                     self.clients_closed += 1;
                     self.libos.close(qr.qr_qd.into())?;
                 },
-                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                qr_opcode => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
+                },
             }
         }
 

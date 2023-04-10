@@ -73,6 +73,8 @@ impl TcpServer {
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind to local address.
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         libos.bind(sockqd, local)?;
 
         println!("Listening to: {:?}", local);
@@ -111,6 +113,8 @@ impl TcpServer {
             }
 
             let qr: demi_qresult_t = {
+                // If error, close sockets.
+                // FIXME: https://github.com/demikernel/demikernel/issues/640
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
                 self.mark_completed_operation(index)?;
                 qr
@@ -165,7 +169,11 @@ impl TcpServer {
                     // Handle connection termination.
                     let _: Vec<QToken> = self.handle_connection_termination(qd)?;
                 },
-                _ => panic!("unexpected result"),
+                _ => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result")
+                },
             }
         }
 
@@ -178,7 +186,11 @@ impl TcpServer {
     /// Runs the target TCP server which closes the sockets on connection.
     pub fn run_close_sockets_on_accept(&mut self, nclients: Option<usize>) -> Result<()> {
         // Accept new connection.
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         self.libos.listen(self.sockqd, nclients.unwrap_or(512))?;
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         self.issue_accept()?;
 
         loop {
@@ -203,11 +215,19 @@ impl TcpServer {
                     let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
                     self.clients_accepted += 1;
                     println!("{} clients accepted, closing socket", self.clients_accepted);
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     self.libos.close(qd)?;
                     self.clients_closed += 1;
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     self.issue_accept()?;
                 },
-                _ => panic!("unexpected result"),
+                _ => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    anyhow::bail!("unexpected result")
+                },
             }
         }
 
@@ -253,6 +273,8 @@ impl TcpServer {
 
     /// Issues an accept() operation.
     fn issue_accept(&mut self) -> Result<()> {
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         let qt: QToken = self.libos.accept(self.sockqd)?;
         self.qts_reverse.insert(qt, self.sockqd);
         self.qts.push(qt);
@@ -261,6 +283,8 @@ impl TcpServer {
 
     /// Issues a pop() operation.
     fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         let qt: QToken = self.libos.pop(qd, None)?;
         self.qts_reverse.insert(qt, qd);
         self.qts.push(qt);
@@ -278,6 +302,8 @@ impl TcpServer {
         self.register_client(qd);
 
         // Pop first packet from this connection.
+        // If error, close sockets.
+        // FIXME: https://github.com/demikernel/demikernel/issues/640
         self.issue_pop(qd)?;
 
         self.clients_accepted += 1;
