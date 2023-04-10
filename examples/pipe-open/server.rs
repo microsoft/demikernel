@@ -43,7 +43,10 @@ impl PipeServer {
     pub fn run(&mut self) -> Result<()> {
         let pipeqd: QDesc = self.libos.create_pipe(&format!("{}:rx", self.pipe_name))?;
 
-        while self.pop_and_wait(pipeqd)? > 0 {}
+        while self.pop_and_wait(pipeqd)? > 0 {
+            // Close pipe on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/638
+        }
 
         self.libos.close(pipeqd)?;
 
