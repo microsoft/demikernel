@@ -207,11 +207,11 @@ fn main() -> Result<()> {
 
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
 
     match args.peer_type.as_str() {
