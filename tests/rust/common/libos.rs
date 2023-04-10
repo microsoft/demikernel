@@ -9,6 +9,7 @@ use super::runtime::DummyRuntime;
 use ::demikernel::{
     inetstack::InetStack,
     runtime::{
+        fail::Fail,
         logging,
         memory::DemiBuffer,
         network::{
@@ -55,7 +56,7 @@ impl DummyLibOS {
         tx: Sender<DemiBuffer>,
         rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> InetStack {
+    ) -> Result<InetStack, Fail> {
         let now: Instant = Instant::now();
         let rt: Rc<DummyRuntime> = Rc::new(DummyRuntime::new(now, rx, tx));
         let arp_options: ArpConfig = ArpConfig::new(
@@ -82,7 +83,6 @@ impl DummyLibOS {
             rng_seed,
             arp_options,
         )
-        .unwrap()
     }
 
     /// Cooks a buffer.
