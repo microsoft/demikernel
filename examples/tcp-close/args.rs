@@ -31,6 +31,8 @@ pub struct ProgramArguments {
     nclients: Option<usize>,
     /// Peer type.
     peer_type: Option<String>,
+    /// Who closes sockets?
+    who_closes: Option<String>,
 }
 
 impl ProgramArguments {
@@ -54,6 +56,14 @@ impl ProgramArguments {
                     .required(false)
                     .value_name("server|client")
                     .help("Sets peer type"),
+            )
+            .arg(
+                Arg::new("whocloses")
+                    .long("whocloses")
+                    .value_parser(clap::value_parser!(String))
+                    .required(false)
+                    .value_name("server|client")
+                    .help("Sets who_closes the sockets"),
             )
             .arg(
                 Arg::new("nclients")
@@ -90,6 +100,7 @@ impl ProgramArguments {
             addr,
             nclients: None,
             peer_type: None,
+            who_closes: None,
         };
 
         // Number of clients.
@@ -108,6 +119,14 @@ impl ProgramArguments {
             args.peer_type = Some(peer_type.to_string());
         }
 
+        // Who closes the sockets.
+        if let Some(who_closes) = matches.get_one::<String>("whocloses") {
+            if who_closes != "server" && who_closes != "client" {
+                anyhow::bail!("invalid whocloses type");
+            }
+            args.who_closes = Some(who_closes.to_string());
+        }
+
         Ok(args)
     }
 
@@ -124,6 +143,11 @@ impl ProgramArguments {
     /// Returns the `peer_type` command line argument.
     pub fn peer_type(&self) -> Option<String> {
         self.peer_type.clone()
+    }
+
+    /// Returns the `peer_type` command line argument.
+    pub fn who_closes(&self) -> Option<String> {
+        self.who_closes.clone()
     }
 
     /// Returns the `run_mode` command line argument.

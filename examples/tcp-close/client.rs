@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use demikernel::{
+    demi_sgarray_t,
     runtime::types::{
         demi_opcode_t,
         demi_qresult_t,
@@ -144,6 +145,127 @@ impl TcpClient {
                     self.libos.close(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed (qr_ret={:?})", qr.qr_ret),
+                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Attempts to close several connections sequentially with the expectation
+    /// that the server will close sockets.
+    pub fn run_sequential_expecting_server_to_close_sockets(&mut self, nclients: usize) -> Result<()> {
+        for i in 0..nclients {
+            // Connect to the server and wait.
+            let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+            let qt: QToken = self.libos.connect(sockqd, self.remote)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, None)?;
+
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_CONNECT => {
+                    println!("{} clients connected", i + 1);
+
+                    // Pop immediately after connect and wait.
+                    let pop_qt: QToken = self.libos.pop(sockqd, None)?;
+                    let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, None)?;
+
+                    match pop_qr.qr_opcode {
+                        demi_opcode_t::DEMI_OPC_POP => {
+                            let sga: demi_sgarray_t = unsafe { pop_qr.qr_value.sga };
+                            let received_len: u32 = sga.sga_segs[0].sgaseg_len;
+                            self.libos.sgafree(sga)?;
+                            // 0 len pop represents socket closed from other side.
+                            assert_eq!(
+                                received_len, 0,
+                                "server should have had closed the connection, but it has not"
+                            );
+                            println!("server disconnected (pop returned 0 len buffer)");
+                        },
+                        demi_opcode_t::DEMI_OPC_FAILED => {
+                            let errno: i32 = qr.qr_ret;
+                            assert_eq!(
+                                errno,
+                                libc::ECONNRESET,
+                                "server should have had closed the connection, but it has not"
+                            );
+                            println!("server disconnected (ECONNRESET)");
+                        },
+                        qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+                    }
+                },
+                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed (qr_ret={:?})", qr.qr_ret),
+                qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
+            }
+
+            // FIXME: https://github.com/demikernel/demikernel/issues/646
+            // Close TCP socket.
+            self.libos.close(sockqd)?;
+        }
+
+        Ok(())
+    }
+
+    /// Attempts to make several connections concurrently.
+    pub fn run_concurrent_expecting_server_to_close_sockets(&mut self, num_clients: usize) -> Result<()> {
+        let mut qds: Vec<QDesc> = Vec::default();
+        let mut qts: Vec<QToken> = Vec::default();
+
+        // Create several TCP sockets and connect.
+        for _i in 0..num_clients {
+            let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+            qds.push(qd);
+            let qt: QToken = self.libos.connect(qd, self.remote)?;
+            qts.push(qt);
+        }
+
+        // Wait for all connections to be established and then closed by the server.
+        loop {
+            if self.clients_closed == num_clients {
+                // Stop when enough connections were closed.
+                break;
+            }
+
+            let qr: demi_qresult_t = {
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
+                let _qt: QToken = qts.remove(index);
+                qr
+            };
+
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_CONNECT => {
+                    let sockqd: QDesc = qr.qr_qd.into();
+                    self.clients_connected += 1;
+                    println!("{} clients connected", self.clients_connected);
+                    // pop immediately after connect.
+                    let pop_qt: QToken = self.libos.pop(sockqd, None)?;
+                    qts.push(pop_qt);
+                },
+                demi_opcode_t::DEMI_OPC_POP => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let received_len: u32 = sga.sga_segs[0].sgaseg_len;
+                    self.libos.sgafree(sga)?;
+
+                    // 0 len pop represents socket closed from other side.
+                    assert_eq!(
+                        received_len, 0,
+                        "server should have had closed the connection, but it has not"
+                    );
+
+                    println!("server disconnected (pop returned 0 len buffer)");
+                    self.clients_closed += 1;
+                    self.libos.close(qr.qr_qd.into())?;
+                },
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    let errno: i32 = qr.qr_ret;
+                    assert_eq!(
+                        errno,
+                        libc::ECONNRESET,
+                        "server should have had closed the connection, but it has not"
+                    );
+                    println!("server disconnected (ECONNRESET)");
+                    self.clients_closed += 1;
+                    self.libos.close(qr.qr_qd.into())?;
+                },
                 qr_opcode => panic!("unexpected result (qr_opcode={:?})", qr_opcode),
             }
         }

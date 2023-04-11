@@ -175,6 +175,48 @@ impl TcpServer {
         Ok(())
     }
 
+    /// Runs the target TCP server which closes the sockets on connection.
+    pub fn run_close_sockets_on_accept(&mut self, nclients: Option<usize>) -> Result<()> {
+        // Accept new connection.
+        self.libos.listen(self.sockqd, nclients.unwrap_or(512))?;
+        self.issue_accept()?;
+
+        loop {
+            // Stop when enough connections have been terminated.
+            if let Some(nclients) = nclients {
+                if self.clients_closed >= nclients {
+                    // Sanity check that all connections have been closed.
+                    const ERR_MSG: &str = "there should be no clients connected, but there are";
+                    assert_eq!(self.clients.len(), 0, "{}", ERR_MSG);
+                    break;
+                }
+            }
+
+            let qr: demi_qresult_t = {
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                self.mark_completed_operation(index)?;
+                qr
+            };
+
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_ACCEPT => {
+                    let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
+                    self.clients_accepted += 1;
+                    println!("{} clients accepted, closing socket", self.clients_accepted);
+                    self.libos.close(qd)?;
+                    self.clients_closed += 1;
+                    self.issue_accept()?;
+                },
+                _ => panic!("unexpected result"),
+            }
+        }
+
+        // Close local socket.
+        self.libos.close(self.sockqd)?;
+
+        Ok(())
+    }
+
     /// Registers a client.
     fn register_client(&mut self, qd: QDesc) {
         assert_eq!(
