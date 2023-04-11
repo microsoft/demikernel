@@ -192,7 +192,11 @@ impl TcpServer {
                 }
             }
 
-            let (_index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+            let qr: demi_qresult_t = {
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                self.mark_completed_operation(index)?;
+                qr
+            };
 
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT => {
