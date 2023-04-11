@@ -182,6 +182,7 @@ export MTU ?= 1500
 export MSS ?= 1500
 export PEER ?= server
 export TEST ?= udp-push-pop
+export TEST_INTEGRATION ?= tcp-test
 export TIMEOUT ?= 30
 
 # Runs system tests.
@@ -212,4 +213,4 @@ test-unit-rust:
 
 # Runs Rust integration tests.
 test-integration-rust:
-	$(CARGO) test --test tcp-test $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
+	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
