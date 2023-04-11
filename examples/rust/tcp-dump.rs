@@ -120,35 +120,43 @@ impl Application {
     const LOG_INTERVAL: u64 = 5;
 
     /// Instantiates the application.
-    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Self {
+    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
         let local: SocketAddrV4 = args.get_local();
 
         // Create TCP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
             Ok(qd) => qd,
-            Err(e) => panic!("failed to create socket: {:?}", e.cause),
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
         };
 
         // Bind to local address.
         match libos.bind(sockqd, local) {
             Ok(()) => (),
-            Err(e) => panic!("failed to bind socket: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                anyhow::bail!("failed to bind socket: {:?}", e.cause)
+            },
         };
 
         // Mark socket as a passive one.
         match libos.listen(sockqd, 16) {
             Ok(()) => (),
-            Err(e) => panic!("failed to listen socket: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // https://github.com/demikernel/demikernel/issues/649
+                anyhow::bail!("failed to listen socket: {:?}", e.cause);
+            },
         }
 
         println!("Local Address: {:?}", local);
 
-        Self { libos, sockqd }
+        Ok(Self { libos, sockqd })
     }
 
     /// Runs the target echo server.
-    pub fn run(&mut self) -> ! {
+    pub fn run(&mut self) -> Result<()> {
         let start: Instant = Instant::now();
         let mut nclients: usize = 0;
         let mut nbytes: usize = 0;
@@ -159,7 +167,11 @@ impl Application {
         // Accept first connection.
         match self.libos.accept(self.sockqd) {
             Ok(qt) => qtokens.push(qt),
-            Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
+            Err(e) => {
+                // If error, close accepting socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                anyhow::bail!("failed to accept connection on socket: {:?}", e.cause)
+            },
         };
 
         loop {
@@ -180,7 +192,11 @@ impl Application {
                     qtokens.swap_remove(i);
                     qr
                 },
-                Err(e) => panic!("operation failed: {:?}", e),
+                Err(e) => {
+                    // If error, close open sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/649
+                    anyhow::bail!("operation failed: {:?}", e)
+                },
             };
 
             // Drain packets.
@@ -194,13 +210,21 @@ impl Application {
                     clients.push(qd);
                     match self.libos.pop(qd, None) {
                         Ok(qt) => qtokens.push(qt),
-                        Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
+                        Err(e) => {
+                            // If error, clean up sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/649
+                            anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
+                        },
                     };
 
                     // Accept more connections.
                     match self.libos.accept(self.sockqd) {
                         Ok(qt) => qtokens.push(qt),
-                        Err(e) => panic!("failed to accept connection on socket: {:?}", e.cause),
+                        Err(e) => {
+                            // If error, close existing sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/649
+                            anyhow::bail!("failed to accept connection on socket: {:?}", e.cause)
+                        },
                     };
                 },
                 // Pop completed.
@@ -210,18 +234,34 @@ impl Application {
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;
                     match self.libos.sgafree(sga) {
                         Ok(_) => {},
-                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                        Err(e) => {
+                            // If error, close sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/649
+                            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+                        },
                     }
 
                     // Pop another packet.
                     let qt: QToken = match self.libos.pop(qd, None) {
                         Ok(qt) => qt,
-                        Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
+                        Err(e) => {
+                            // If error, close sockets.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/649
+                            anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
+                        },
                     };
                     qtokens.push(qt);
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
-                _ => panic!("unexpected result"),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/649
+                    anyhow::bail!("operation failed")
+                },
+                _ => {
+                    // If error, close sockets.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/649
+                    anyhow::bail!("unexpected result")
+                },
             }
         }
     }
@@ -238,12 +278,12 @@ fn main() -> Result<()> {
 
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
 
-    Application::new(libos, &args).run();
+    Application::new(libos, &args)?.run()
 }
