@@ -7,6 +7,7 @@ mod common;
 // Imports
 //==============================================================================
 
+use ::anyhow::Result;
 use ::demikernel::{
     inetstack::InetStack,
     runtime::{
@@ -56,53 +57,118 @@ use std::{
 //==============================================================================
 
 /// Opens and closes a socket using a non-ephemeral port.
-fn do_udp_setup(libos: &mut InetStack) {
+fn do_udp_setup(libos: &mut InetStack) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
-    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    libos.close(sockfd).unwrap();
+    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        Ok(qd) => qd,
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+    };
+    match libos.bind(sockfd, local) {
+        Ok(_) => (),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("bind() failed: {:?}", e)
+        },
+    };
+
+    match libos.close(sockfd) {
+        Ok(_) => Ok(()),
+        Err(e) => anyhow::bail!("close() failed: {:?}", e),
+    }
 }
 
 /// Opens and closes a socket using an ephemeral port.
-fn do_udp_setup_ephemeral(libos: &mut InetStack) {
+fn do_udp_setup_ephemeral(libos: &mut InetStack) -> Result<()> {
     const PORT_EPHEMERAL_BASE: u16 = 49152;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
-    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    libos.close(sockfd).unwrap();
+    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        Ok(qd) => qd,
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+    };
+    match libos.bind(sockfd, local) {
+        Ok(_) => (),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("bind() failed: {:?}", e)
+        },
+    };
+
+    match libos.close(sockfd) {
+        Ok(_) => Ok(()),
+        Err(e) => anyhow::bail!("close() failed: {:?}", e),
+    }
 }
 
 /// Opens and closes a socket using wildcard ephemeral port.
-fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) {
+fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
-    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    libos.close(sockfd).unwrap();
+    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        Ok(qd) => qd,
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+    };
+    match libos.bind(sockfd, local) {
+        Ok(_) => (),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("bind() failed: {:?}", e)
+        },
+    };
+
+    match libos.close(sockfd) {
+        Ok(_) => Ok(()),
+        Err(e) => anyhow::bail!("close() failed: {:?}", e),
+    }
 }
 
 /// Tests if a socket can be successfully setup.
 #[test]
-fn udp_setup() {
+fn udp_setup() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
-    do_udp_setup(&mut libos);
-    do_udp_setup_ephemeral(&mut libos);
-    do_udp_setup_wildcard_ephemeral(&mut libos);
+    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
+
+    do_udp_setup(&mut libos)?;
+    do_udp_setup_ephemeral(&mut libos)?;
+    do_udp_setup_wildcard_ephemeral(&mut libos)?;
+
+    Ok(())
 }
 
 /// Tests if a connection can be successfully established in loopback mode.
 #[test]
-fn udp_connect_loopback() {
+fn udp_connect_loopback() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
     // Open and close a connection.
-    let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-    libos.bind(sockfd, local).unwrap();
-    libos.close(sockfd).unwrap();
+    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        Ok(qd) => qd,
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+    };
+    match libos.bind(sockfd, local) {
+        Ok(_) => (),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("bind() failed: {:?}", e)
+        },
+    };
+
+    match libos.close(sockfd) {
+        Ok(_) => Ok(()),
+        Err(e) => anyhow::bail!("close() failed: {:?}", e),
+    }
 }
 
 //==============================================================================
@@ -112,7 +178,7 @@ fn udp_connect_loopback() {
 /// Tests if data can be successfully pushed/popped form a local endpoint to
 /// itself.
 #[test]
-fn udp_push_remote() {
+fn udp_push_remote() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
@@ -121,70 +187,150 @@ fn udp_push_remote() {
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-        libos.bind(sockfd, alice_addr).unwrap();
+        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+        match libos.bind(sockfd, alice_addr) {
+            Ok(_) => (),
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("bind() failed: {:?}", e)
+            },
+        }
 
         // Cook some data.
         let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pushto2(sockfd, &bytes, bob_addr) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on push() failed")
+            },
         }
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd, None).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pop(sockfd, None) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop()) failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
-            _ => panic!("pop() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on pop() failed")
+            },
         }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => Ok(()),
+            Err(e) => anyhow::bail!("close() failed: {:?}", e),
+        }
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-        libos.bind(sockfd, bob_addr).unwrap();
+        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+        match libos.bind(sockfd, bob_addr) {
+            Ok(_) => (),
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("bind() failed: {:?}", e)
+            },
+        };
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd, None).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pop(sockfd, None) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
-            _ => panic!("pop() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on pop() failed")
+            },
         };
 
         // Push data.
-        let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pushto2(sockfd, &bytes, alice_addr) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on push() failed")
+            },
         }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => Ok(()),
+            Err(e) => anyhow::bail!("close() failed: {:?}", e),
+        }
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 /// Tests if data can be successfully pushed/popped in loopback mode.
 #[test]
-fn udp_loopback() {
+fn udp_loopback() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
@@ -193,65 +339,136 @@ fn udp_loopback() {
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-        libos.bind(sockfd, alice_addr).unwrap();
-
+        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+        match libos.bind(sockfd, alice_addr) {
+            Ok(_) => (),
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("bind() failed: {:?}", e)
+            },
+        };
         // Cook some data.
         let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = libos.pushto2(sockfd, &bytes, bob_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pushto2(sockfd, &bytes, bob_addr) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on push() failed")
+            },
         }
 
         // Pop data.
-        let qt: QToken = libos.pop(sockfd, None).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pop(sockfd, None) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
-            _ => panic!("pop() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("wait on pop() failed")
+            },
         }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => Ok(()),
+            Err(e) => anyhow::bail!("close() failed: {:?}", e),
+        }
     });
 
     let bob = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp());
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         // Open connection.
-        let sockfd: QDesc = libos.socket(AF_INET, SOCK_DGRAM, 0).unwrap();
-        libos.bind(sockfd, bob_addr).unwrap();
-
+        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+        match libos.bind(sockfd, bob_addr) {
+            Ok(_) => (),
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("bind() failed: {:?}", e)
+            },
+        };
         // Pop data.
-        let qt: QToken = libos.pop(sockfd, None).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = match libos.pop(sockfd, None) {
+            Ok(qt) => qt,
+            Err(e) => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() failed: {:?}", e)
+            },
+        };
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
-            _ => panic!("pop() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() failed")
+            },
         };
 
         // Push data.
         let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() failed")
+            },
         }
 
         // Close connection.
-        libos.close(sockfd).unwrap();
+        match libos.close(sockfd) {
+            Ok(_) => Ok(()),
+            Err(e) => anyhow::bail!("close() failed: {:?}", e),
+        }
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -259,9 +476,13 @@ fn udp_loopback() {
 //======================================================================================================================
 
 /// Safe call to `wait2()`.
-fn safe_wait2(libos: &mut InetStack, qt: QToken) -> (QDesc, OperationResult) {
+fn safe_wait2(libos: &mut InetStack, qt: QToken) -> Result<(QDesc, OperationResult)> {
     match libos.wait2(qt) {
-        Ok((qd, qr)) => (qd, qr),
-        Err(e) => panic!("operation failed: {:?}", e.cause),
+        Ok((qd, qr)) => Ok((qd, qr)),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("operation failed: {:?}", e.cause)
+        },
     }
 }

@@ -7,6 +7,7 @@ mod common;
 // Imports
 //======================================================================================================================
 
+use ::anyhow::Result;
 use ::demikernel::{
     inetstack::InetStack,
     runtime::{
@@ -61,42 +62,50 @@ use windows::Win32::Networking::WinSock;
 //======================================================================================================================
 
 /// Opens and closes a passive socket using a non-ephemeral port.
-fn do_passive_connection_setup(mut libos: &mut InetStack) {
+fn do_passive_connection_setup(mut libos: &mut InetStack) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    safe_listen(&mut libos, sockqd);
-    safe_close_passive(&mut libos, sockqd);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
+    safe_listen(&mut libos, sockqd)?;
+    safe_close_passive(&mut libos, sockqd)?;
+
+    Ok(())
 }
 
 /// Opens and closes a passive socket using an ephemeral port.
-fn do_passive_connection_setup_ephemeral(mut libos: &mut InetStack) {
+fn do_passive_connection_setup_ephemeral(mut libos: &mut InetStack) -> Result<()> {
     pub const PORT_EPHEMERAL_BASE: u16 = 49152;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    safe_listen(&mut libos, sockqd);
-    safe_close_passive(&mut libos, sockqd);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
+    safe_listen(&mut libos, sockqd)?;
+    safe_close_passive(&mut libos, sockqd)?;
+
+    Ok(())
 }
 
 /// Opens and closes a passive socket using wildcard ephemeral port.
-fn do_passive_connection_setup_wildcard_ephemeral(mut libos: &mut InetStack) {
+fn do_passive_connection_setup_wildcard_ephemeral(mut libos: &mut InetStack) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    safe_listen(&mut libos, sockqd);
-    safe_close_passive(&mut libos, sockqd);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
+    safe_listen(&mut libos, sockqd)?;
+    safe_close_passive(&mut libos, sockqd)?;
+
+    Ok(())
 }
 
 /// Tests if a passive socket may be successfully opened and closed.
 #[test]
-fn tcp_connection_setup() {
+fn tcp_connection_setup() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp())?;
 
-    do_passive_connection_setup(&mut libos);
-    do_passive_connection_setup_ephemeral(&mut libos);
-    do_passive_connection_setup_wildcard_ephemeral(&mut libos);
+    do_passive_connection_setup(&mut libos)?;
+    do_passive_connection_setup_ephemeral(&mut libos)?;
+    do_passive_connection_setup_wildcard_ephemeral(&mut libos)?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -105,104 +114,148 @@ fn tcp_connection_setup() {
 
 /// Tests if connection may be successfully established by an unbound active socket.
 #[test]
-fn tcp_establish_connection_unbound() {
+fn tcp_establish_connection_unbound() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
 
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 /// Tests if connection may be successfully established by a bound active socket.
 #[test]
-fn tcp_establish_connection_bound() {
+fn tcp_establish_connection_bound() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
 
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let local: SocketAddrV4 = SocketAddrV4::new(BOB_IPV4, PORT_BASE);
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -211,72 +264,101 @@ fn tcp_establish_connection_bound() {
 
 /// Tests if data can be pushed.
 #[test]
-fn tcp_push_remote() {
+fn tcp_push_remote() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Pop data.
-        let qt: QToken = safe_pop(&mut libos, qd);
-        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_pop(&mut libos, qd)?;
+        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
-            _ => panic!("pop() has has failed {:?}", qr),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() has has failed {:?}", qr)
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Cook some data.
         let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
-    });
+        safe_close_active(&mut libos, sockqd)?;
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+        Ok(())
+    });
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -285,9 +367,12 @@ fn tcp_push_remote() {
 
 /// Tests for bad socket creation.
 #[test]
-fn tcp_bad_socket() {
+fn tcp_bad_socket() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
 
     #[cfg(target_os = "linux")]
     let domains: Vec<libc::c_int> = vec![
@@ -374,7 +459,7 @@ fn tcp_bad_socket() {
     for d in domains {
         match libos.socket(d, SOCK_STREAM, 0) {
             Err(e) if e.errno == libc::ENOTSUP => (),
-            _ => panic!("invalid call to socket() should fail with ENOTSUP"),
+            _ => anyhow::bail!("invalid call to socket() should fail with ENOTSUP"),
         };
     }
 
@@ -382,9 +467,11 @@ fn tcp_bad_socket() {
     for t in socket_types {
         match libos.socket(AF_INET, t, 0) {
             Err(e) if e.errno == libc::ENOTSUP => (),
-            _ => panic!("invalid call to socket() should fail with ENOTSUP"),
+            _ => anyhow::bail!("invalid call to socket() should fail with ENOTSUP"),
         };
     }
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -393,9 +480,12 @@ fn tcp_bad_socket() {
 
 /// Tests bad calls for `listen()`.
 #[test]
-fn tcp_bad_listen() {
+fn tcp_bad_listen() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
 
     let port: u16 = PORT_BASE;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -403,38 +493,60 @@ fn tcp_bad_listen() {
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to listen() should fail with EBADF"),
+        _ => {
+            // Close socket if not error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("invalid call to listen() should fail with EBADF")
+        },
     };
 
     // Invalid backlog length
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
     match libos.listen(sockqd, 0) {
         Err(e) if e.errno == libc::EINVAL => (),
-        _ => panic!("invalid call to listen() should fail with EINVAL"),
+        _ => {
+            // Close socket if not error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("invalid call to listen() should fail with EINVAL")
+        },
     };
-    safe_close_active(&mut libos, sockqd);
+    safe_close_active(&mut libos, sockqd)?;
 
     // Listen on an already listening socket.
-    let sockqd: QDesc = safe_socket(&mut libos);
-    safe_bind(&mut libos, sockqd, local);
-    safe_listen(&mut libos, sockqd);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
+    safe_listen(&mut libos, sockqd)?;
     match libos.listen(sockqd, 16) {
         Err(e) if e.errno == libc::EINVAL => (),
-        _ => panic!("listen() called on an already listening socket should fail with EINVAL"),
+        _ => {
+            // Close socket if not error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("listen() called on an already listening socket should fail with EINVAL")
+        },
     };
-    safe_close_passive(&mut libos, sockqd);
+    safe_close_passive(&mut libos, sockqd)?;
 
     // TODO: Add unit test for "Listen on an in-use address/port pair." (see issue #178).
 
     // Listen on unbound socket.
-    let sockqd: QDesc = safe_socket(&mut libos);
+    let sockqd: QDesc = safe_socket(&mut libos)?;
     match libos.listen(sockqd, 16) {
         Err(e) if e.errno == libc::EDESTADDRREQ => (),
-        Err(e) => panic!("listen() to unbound address should fail with EDESTADDRREQ {:?}", e),
-        _ => panic!("should fail"),
+        Err(e) => {
+            // Close socket if not the correct error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("listen() to unbound address should fail with EDESTADDRREQ {:?}", e)
+        },
+        _ => {
+            // Close socket if not error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("should fail")
+        },
     };
-    safe_close_active(&mut libos, sockqd);
+    safe_close_active(&mut libos, sockqd)?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -443,15 +555,24 @@ fn tcp_bad_listen() {
 
 /// Tests bad calls for `accept()`.
 #[test]
-fn tcp_bad_accept() {
+fn tcp_bad_accept() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp());
+    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
 
     // Invalid queue descriptor.
     match libos.accept(QDesc::from(0)) {
         Err(e) if e.errno == libc::EBADF => (),
-        _ => panic!("invalid call to accept() should fail with EBADF"),
+        _ => {
+            // Close socket if we somehow got a socket back?
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("invalid call to accept() should fail with EBADF")
+        },
     };
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -460,33 +581,45 @@ fn tcp_bad_accept() {
 
 /// Tests if data can be successfully established.
 #[test]
-fn tcp_bad_connect() {
+fn tcp_bad_connect() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket on error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
@@ -494,35 +627,53 @@ fn tcp_bad_connect() {
         // Bad queue descriptor.
         match libos.connect(QDesc::from(0), remote) {
             Err(e) if e.errno == libc::EBADF => (),
-            _ => panic!("invalid call to connect() should fail with EBADF"),
+            _ => {
+                // Close socket if not error because this test cannot continue.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("invalid call to connect() should fail with EBADF")
+            },
         };
 
         // Bad endpoint.
         let bad_remote: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
-            OperationResult::Connect => panic!("connect() should have failed"),
+            OperationResult::Connect => {
+                // Close socket if not error because this test cannot continue.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() should have failed")
+            },
             _ => (),
         }
 
         // Close connection.
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket if not error because this test cannot continue.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -531,77 +682,101 @@ fn tcp_bad_connect() {
 
 /// Tests if bad calls t `close()`.
 #[test]
-fn tcp_bad_close() {
+fn tcp_bad_close() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Close bad queue descriptor.
         match libos.close(QDesc::from(2)) {
-            Ok(_) => panic!("close() invalid file descriptir should fail"),
+            Ok(_) => anyhow::bail!("close() invalid file descriptir should fail"),
             Err(_) => (),
         };
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
 
         // Double close queue descriptor.
         match libos.close(qd) {
-            Ok(_) => panic!("double close() should fail"),
+            Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
         };
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Close bad queue descriptor.
         match libos.close(QDesc::from(2)) {
-            Ok(_) => panic!("close() invalid queue descriptor should fail"),
+            // Should not be able to close bad queue descriptor.
+            Ok(_) => anyhow::bail!("close() invalid queue descriptor should fail"),
             Err(_) => (),
         };
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
 
         // Double close queue descriptor.
         match libos.close(sockqd) {
-            Ok(_) => panic!("double close() should fail"),
+            // Should not be able to double close.
+            Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
         };
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -610,53 +785,73 @@ fn tcp_bad_close() {
 
 /// Tests bad calls to `push()`.
 #[test]
-fn tcp_bad_push() {
+fn tcp_bad_push() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Pop data.
-        let qt: QToken = safe_pop(&mut libos, qd);
-        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_pop(&mut libos, qd)?;
+        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
-            _ => panic!("pop() has has failed {:?}", qr),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() has has failed {:?}", qr)
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Cook some data.
@@ -664,34 +859,54 @@ fn tcp_bad_push() {
 
         // Push to bad socket.
         match libos.push2(QDesc::from(2), &bytes) {
-            Ok(_) => panic!("push2() to bad socket should fail."),
+            Ok(_) => {
+                // Close socket if not error because this test cannot continue.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push2() to bad socket should fail.")
+            },
             Err(_) => (),
         };
 
         // Push bad data to socket.
         let zero_bytes: [u8; 0] = [];
-        match libos.push2(
-            sockqd,
-            &DemiBuffer::from_slice(&zero_bytes).expect("(zero-byte) slice should fit in a DemiBuffer."),
-        ) {
-            Ok(_) => panic!("push2() zero-length slice should fail."),
+        let buf: DemiBuffer = match DemiBuffer::from_slice(&zero_bytes) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!("(zero-byte) slice should fit in a DemiBuffer: {:?}", e),
+        };
+        match libos.push2(sockqd, &buf) {
+            Ok(_) =>
+            // Close socket if not error because this test cannot continue.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            {
+                anyhow::bail!("push2() zero-length slice should fail.")
+            },
             Err(_) => (),
         };
 
         // Push data.
-        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -700,78 +915,112 @@ fn tcp_bad_push() {
 
 /// Tests bad calls to `pop()`.
 #[test]
-fn tcp_bad_pop() {
+fn tcp_bad_pop() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-    let alice: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp());
+    let alice: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        safe_bind(&mut libos, sockqd, local);
-        safe_listen(&mut libos, sockqd);
-        let qt: QToken = safe_accept(&mut libos, sockqd);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        safe_bind(&mut libos, sockqd, local)?;
+        safe_listen(&mut libos, sockqd)?;
+        let qt: QToken = safe_accept(&mut libos, sockqd)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         let qd: QDesc = match qr {
             OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
-            _ => panic!("accept() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("accept() has failed")
+            },
         };
 
         // Pop from bad socket.
         match libos.pop(QDesc::from(2), None) {
-            Ok(_) => panic!("pop() form bad socket should fail."),
+            Ok(_) => {
+                // Close socket if not error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() form bad socket should fail.")
+            },
             Err(_) => (),
         };
 
         // Pop data.
-        let qt: QToken = safe_pop(&mut libos, qd);
-        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_pop(&mut libos, qd)?;
+        let (qd, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
-            _ => panic!("pop() has has failed {:?}", qr),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("pop() has has failed {:?}", qr)
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, qd);
-        safe_close_passive(&mut libos, sockqd);
+        safe_close_active(&mut libos, qd)?;
+        safe_close_passive(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    let bob: JoinHandle<()> = thread::spawn(move || {
-        let mut libos: InetStack = DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp());
+    let bob: JoinHandle<Result<()>> = thread::spawn(move || {
+        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+        };
 
         let port: u16 = PORT_BASE;
         let remote: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, port);
 
         // Open connection.
-        let sockqd: QDesc = safe_socket(&mut libos);
-        let qt: QToken = safe_connect(&mut libos, sockqd, remote);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let sockqd: QDesc = safe_socket(&mut libos)?;
+        let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Connect => (),
-            _ => panic!("connect() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("connect() has failed")
+            },
         }
 
         // Cook some data.
         let bytes: DemiBuffer = DummyLibOS::cook_data(32);
 
         // Push data.
-        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes);
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt);
+        let qt: QToken = safe_push2(&mut libos, sockqd, &bytes)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
-            _ => panic!("push() has failed"),
+            _ => {
+                // Close socket if error.
+                // FIXME: https://github.com/demikernel/demikernel/issues/633
+                anyhow::bail!("push() has failed")
+            },
         }
 
         // Close connection.
-        safe_close_active(&mut libos, sockqd);
+        safe_close_active(&mut libos, sockqd)?;
+
+        Ok(())
     });
 
-    alice.join().unwrap();
-    bob.join().unwrap();
+    // It is safe to use unwrap here because there should not be any reason that we can't join the thread and if there
+    // is, there is nothing to clean up here on the main thread.
+    alice.join().unwrap()?;
+    bob.join().unwrap()?;
+
+    Ok(())
 }
 
 //======================================================================================================================
@@ -779,81 +1028,109 @@ fn tcp_bad_pop() {
 //======================================================================================================================
 
 /// Safe call to `socket()`.
-fn safe_socket(libos: &mut InetStack) -> QDesc {
+fn safe_socket(libos: &mut InetStack) -> Result<QDesc> {
     match libos.socket(AF_INET, SOCK_STREAM, 0) {
-        Ok(sockqd) => sockqd,
-        Err(e) => panic!("failed to create socket: {:?}", e),
+        Ok(sockqd) => Ok(sockqd),
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
     }
 }
 
 /// Safe call to `connect()`.
-fn safe_connect(libos: &mut InetStack, sockqd: QDesc, remote: SocketAddrV4) -> QToken {
+fn safe_connect(libos: &mut InetStack, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken> {
     match libos.connect(sockqd, remote) {
-        Ok(qt) => qt,
-        Err(e) => panic!("failed to establish connection: {:?}", e),
+        Ok(qt) => Ok(qt),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("failed to establish connection: {:?}", e)
+        },
     }
 }
 
 /// Safe call to `bind()`.
-fn safe_bind(libos: &mut InetStack, sockqd: QDesc, local: SocketAddrV4) {
+fn safe_bind(libos: &mut InetStack, sockqd: QDesc, local: SocketAddrV4) -> Result<()> {
     match libos.bind(sockqd, local) {
-        Ok(_) => (),
-        Err(e) => panic!("bind() failed: {:?}", e),
-    };
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("bind() failed: {:?}", e)
+        },
+    }
 }
 
 /// Safe call to `listen()`.
-fn safe_listen(libos: &mut InetStack, sockqd: QDesc) {
+fn safe_listen(libos: &mut InetStack, sockqd: QDesc) -> Result<()> {
     match libos.listen(sockqd, 8) {
-        Ok(_) => (),
-        Err(e) => panic!("listen() failed: {:?}", e),
-    };
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("listen() failed: {:?}", e)
+        },
+    }
 }
 
 /// Safe call to `accept()`.
-fn safe_accept(libos: &mut InetStack, sockqd: QDesc) -> QToken {
+fn safe_accept(libos: &mut InetStack, sockqd: QDesc) -> Result<QToken> {
     match libos.accept(sockqd) {
-        Ok(qt) => qt,
-        Err(e) => panic!("accept() failed: {:?}", e),
+        Ok(qt) => Ok(qt),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("accept() failed: {:?}", e)
+        },
     }
 }
 
 /// Safe call to `pop()`.
-fn safe_pop(libos: &mut InetStack, qd: QDesc) -> QToken {
+fn safe_pop(libos: &mut InetStack, qd: QDesc) -> Result<QToken> {
     match libos.pop(qd, None) {
-        Ok(qt) => qt,
-        Err(e) => panic!("pop() failed: {:?}", e),
+        Ok(qt) => Ok(qt),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("pop() failed: {:?}", e)
+        },
     }
 }
 
 /// Safe call to `push2()`
-fn safe_push2(libos: &mut InetStack, sockqd: QDesc, bytes: &[u8]) -> QToken {
+fn safe_push2(libos: &mut InetStack, sockqd: QDesc, bytes: &[u8]) -> Result<QToken> {
     match libos.push2(sockqd, bytes) {
-        Ok(qt) => qt,
-        Err(e) => panic!("failed to push: {:?}", e),
+        Ok(qt) => Ok(qt),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("failed to push: {:?}", e)
+        },
     }
 }
 
 /// Safe call to `wait2()`.
-fn safe_wait2(libos: &mut InetStack, qt: QToken) -> (QDesc, OperationResult) {
+fn safe_wait2(libos: &mut InetStack, qt: QToken) -> Result<(QDesc, OperationResult)> {
     match libos.wait2(qt) {
-        Ok((qd, qr)) => (qd, qr),
-        Err(e) => panic!("operation failed: {:?}", e.cause),
+        Ok((qd, qr)) => Ok((qd, qr)),
+        Err(e) => {
+            // Close socket on error.
+            // FIXME: https://github.com/demikernel/demikernel/issues/633
+            anyhow::bail!("operation failed: {:?}", e.cause)
+        },
     }
 }
 
 /// Safe call to `close()` on passive socket.
-fn safe_close_passive(libos: &mut InetStack, sockqd: QDesc) {
+fn safe_close_passive(libos: &mut InetStack, sockqd: QDesc) -> Result<()> {
     match libos.close(sockqd) {
-        Ok(_) => panic!("close() on listening socket should have failed (this is a known bug)"),
-        Err(_) => (),
-    };
+        Ok(_) => anyhow::bail!("close() on listening socket should have failed (this is a known bug)"),
+        Err(_) => Ok(()),
+    }
 }
 
 /// Safe call to `close()` on active socket.
-fn safe_close_active(libos: &mut InetStack, qd: QDesc) {
+fn safe_close_active(libos: &mut InetStack, qd: QDesc) -> Result<()> {
     match libos.close(qd) {
-        Ok(_) => (),
-        Err(_) => panic!("close() on active socket has failed"),
-    };
+        Ok(_) => Ok(()),
+        Err(_) => anyhow::bail!("close() on active socket has failed"),
+    }
 }
