@@ -57,7 +57,10 @@ use ::std::{
 // Constants
 //======================================================================================================================
 
-const RING_BUFFER_CAPACITY: usize = 4096;
+/// Capacity of the ring buffer, in bytes.
+/// This does not correspond to the effective number of bytes that may be stored in the ring buffer due to layout and
+/// padding. Still, this is intentionally set so as the effective capacity is large enough to hold 16 KB of data.
+const RING_BUFFER_CAPACITY: usize = 65536;
 
 //======================================================================================================================
 // Types
