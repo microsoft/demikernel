@@ -117,29 +117,33 @@ impl Application {
     const LOG_INTERVAL: u64 = 5;
 
     /// Instantiates the application.
-    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Self {
+    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
         let local: SocketAddrV4 = args.get_local();
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(qd) => qd,
-            Err(e) => panic!("failed to create socket: {:?}", e.cause),
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
         };
 
         // Bind to local address.
         match libos.bind(sockqd, local) {
             Ok(()) => (),
-            Err(e) => panic!("failed to bind socket: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("failed to bind socket: {:?}", e.cause)
+            },
         };
 
         println!("Local Address: {:?}", local);
 
-        Self { libos, sockqd }
+        Ok(Self { libos, sockqd })
     }
 
     /// Runs the target application.
-    pub fn run(&mut self) -> ! {
+    pub fn run(&mut self) -> Result<()> {
         let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
         let mut last_log: Instant = Instant::now();
@@ -155,7 +159,11 @@ impl Application {
             // Drain packets.
             let qt: QToken = match self.libos.pop(self.sockqd, None) {
                 Ok(qt) => qt,
-                Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
+                Err(e) => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
+                },
             };
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
@@ -163,11 +171,23 @@ impl Application {
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;
                     match self.libos.sgafree(sga) {
                         Ok(_) => {},
-                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                        Err(e) => {
+                            // If error, close socket.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/651
+                            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+                        },
                     }
                 },
-                Err(e) => panic!("operation failed: {:?}", e.cause),
-                _ => panic!("unexpected result"),
+                Err(e) => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("operation failed: {:?}", e.cause)
+                },
+                _ => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("unexpected result")
+                },
             }
         }
     }
@@ -192,5 +212,5 @@ fn main() -> Result<()> {
         Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
     };
 
-    Application::new(libos, &args).run();
+    Application::new(libos, &args)?.run()
 }

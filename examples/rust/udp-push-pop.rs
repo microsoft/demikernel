@@ -17,7 +17,6 @@ use ::demikernel::{
 use ::std::{
     env,
     net::SocketAddrV4,
-    panic,
     slice,
     str::FromStr,
 };
@@ -49,7 +48,7 @@ const FILL_CHAR: u8 = 0x65;
 //======================================================================================================================
 
 // Makes a scatter-gather array.
-fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
+fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     // Allocate scatter-gather array.
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {
         Ok(sga) => sga,
@@ -57,7 +56,7 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
     };
 
     // Ensure that scatter-gather array has the requested size.
-    assert!(sga.sga_segs[0].sgaseg_len as usize == size);
+    assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
 
     // Fill in scatter-gather array.
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
@@ -65,7 +64,7 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
     let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
     slice.fill(value);
 
-    sga
+    Ok(sga)
 }
 
 //======================================================================================================================
@@ -75,11 +74,11 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
 fn server(local: SocketAddrV4) -> Result<()> {
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let mut libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
     let nsends: usize = 1024;
     let nreceives: usize = (8 * nsends) / 128;
@@ -87,11 +86,15 @@ fn server(local: SocketAddrV4) -> Result<()> {
     // Setup peer.
     let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
-        Err(e) => panic!("failed to create socket: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
     };
     match libos.bind(sockqd, local) {
         Ok(()) => (),
-        Err(e) => panic!("bind failed: {:?}", e.cause),
+        Err(e) => {
+            // If error, close socket.
+            // FIXME: https://github.com/demikernel/demikernel/issues/651
+            anyhow::bail!("bind failed: {:?}", e.cause)
+        },
     };
 
     // Get at least nreceives.
@@ -99,12 +102,24 @@ fn server(local: SocketAddrV4) -> Result<()> {
         // Receive data.
         let qt: QToken = match libos.pop(sockqd, None) {
             Ok(qt) => qt,
-            Err(e) => panic!("pop failed: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("pop failed: {:?}", e.cause)
+            },
         };
         let sga: demi_sgarray_t = match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("operation failed: {:?}", e.cause)
+            },
+            _ => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("unexpected result")
+            },
         };
 
         // Sanity check received data.
@@ -112,12 +127,16 @@ fn server(local: SocketAddrV4) -> Result<()> {
         let len: usize = sga.sga_segs[0].sgaseg_len as usize;
         let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
         for x in slice {
-            assert!(*x == FILL_CHAR);
+            assert_eq!(*x, FILL_CHAR);
         }
 
         match libos.sgafree(sga) {
             Ok(_) => {},
-            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+            },
         }
         println!("pop ({:?})", i);
     }
@@ -136,41 +155,65 @@ fn server(local: SocketAddrV4) -> Result<()> {
 fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let mut libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
     let nsends: usize = 1024;
 
     // Setup peer.
     let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
-        Err(e) => panic!("failed to create socket: {:?}", e.cause),
+        Err(e) => {
+            // If error, close socket.
+            // FIXME: https://github.com/demikernel/demikernel/issues/651
+            anyhow::bail!("failed to create socket: {:?}", e.cause)
+        },
     };
     match libos.bind(sockqd, local) {
         Ok(()) => (),
-        Err(e) => panic!("bind failed: {:?}", e.cause),
+        Err(e) => {
+            // If error, close socket.
+            // FIXME: https://github.com/demikernel/demikernel/issues/651
+            anyhow::bail!("bind failed: {:?}", e.cause)
+        },
     };
 
     // Issue n sends.
     for i in 0..nsends {
-        let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR);
+        let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR)?;
 
         // Send data.
         let qt: QToken = match libos.pushto(sockqd, &sga, remote) {
             Ok(qt) => qt,
-            Err(e) => panic!("push failed: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("push failed: {:?}", e.cause)
+            },
         };
         match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-            Err(e) => panic!("operation failed: {:?}", e.cause),
-            _ => panic!("unexpected result"),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("operation failed: {:?}", e.cause)
+            },
+            _ => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("unexpected result")
+            },
         };
         match libos.sgafree(sga) {
             Ok(_) => {},
-            Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+            },
         }
 
         println!("push ({:?})", i);

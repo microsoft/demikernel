@@ -148,7 +148,7 @@ impl Application {
     const LOG_INTERVAL: u64 = 5;
 
     /// Instantiates the application.
-    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Self {
+    pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
         let local: SocketAddrV4 = args.get_local();
         let remote: SocketAddrV4 = args.get_remote();
@@ -156,23 +156,23 @@ impl Application {
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(qd) => qd,
-            Err(e) => panic!("failed to create socket: {:?}", e.cause),
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
         };
 
         // Bind to local address.
         match libos.bind(sockqd, local) {
             Ok(()) => (),
-            Err(e) => panic!("failed to bind socket: {:?}", e.cause),
+            Err(e) => anyhow::bail!("failed to bind socket: {:?}", e.cause),
         };
 
         println!("Local Address:  {:?}", local);
         println!("Remote Address: {:?}", remote);
 
-        Self { libos, sockqd, remote }
+        Ok(Self { libos, sockqd, remote })
     }
 
     /// Runs the target relay server.
-    pub fn run(&mut self) -> ! {
+    pub fn run(&mut self) -> Result<()> {
         let start: Instant = Instant::now();
         let mut nbytes: usize = 0;
         let mut qtokens: Vec<QToken> = Vec::new();
@@ -181,7 +181,11 @@ impl Application {
         // Pop first packet.
         let qt: QToken = match self.libos.pop(self.sockqd, None) {
             Ok(qt) => qt,
-            Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
+            Err(e) => {
+                // If error, close socket.
+                // FIXME: https://github.com/demikernel/demikernel/issues/651
+                anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
+            },
         };
         qtokens.push(qt);
 
@@ -195,7 +199,11 @@ impl Application {
 
             let (i, qr) = match self.libos.wait_any(&qtokens, None) {
                 Ok((i, qr)) => (i, qr),
-                Err(e) => panic!("operation failed: {:?}", e),
+                Err(e) => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("operation failed: {:?}", e)
+                },
             };
             qtokens.swap_remove(i);
 
@@ -208,12 +216,20 @@ impl Application {
                     // Push packet back.
                     let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote) {
                         Ok(qt) => qt,
-                        Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
+                        Err(e) => {
+                            // If error, close socket.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/651
+                            anyhow::bail!("failed to push data to socket: {:?}", e.cause)
+                        },
                     };
                     qtokens.push(qt);
                     match self.libos.sgafree(sga) {
                         Ok(_) => {},
-                        Err(e) => panic!("failed to release scatter-gather array: {:?}", e),
+                        Err(e) => {
+                            // If error, close socket.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/651
+                            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+                        },
                     }
                 },
                 // Push completed.
@@ -221,12 +237,24 @@ impl Application {
                     // Pop another packet.
                     let qt: QToken = match self.libos.pop(self.sockqd, None) {
                         Ok(qt) => qt,
-                        Err(e) => panic!("failed to pop data from socket: {:?}", e.cause),
+                        Err(e) => {
+                            // If error, close socket.
+                            // FIXME: https://github.com/demikernel/demikernel/issues/651
+                            anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
+                        },
                     };
                     qtokens.push(qt);
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => panic!("operation failed"),
-                _ => panic!("unexpected result"),
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("operation failed")
+                },
+                _ => {
+                    // If error, close socket.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    anyhow::bail!("unexpected result")
+                },
             };
         }
     }
@@ -250,5 +278,5 @@ fn main() -> Result<()> {
         Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
     };
 
-    Application::new(libos, &args).run();
+    Application::new(libos, &args)?.run()
 }
