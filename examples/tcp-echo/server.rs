@@ -99,9 +99,15 @@ impl TcpEchoServer {
 
         // Accept first connection.
         {
+            // If error, close socket and exit.
+            // FIXME: https://github.com/demikernel/demikernel/issues/642
             let qt: QToken = self.libos.accept(self.sockqd)?;
+            // If error, close socket and exit.
+            // FIXME: https://github.com/demikernel/demikernel/issues/642
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
             if qr.qr_opcode != demi_opcode_t::DEMI_OPC_ACCEPT {
+                // If error, close socket and exit.
+                // FIXME: https://github.com/demikernel/demikernel/issues/642
                 anyhow::bail!("failed to accept connection")
             }
             self.handle_accept(&qr)?;
@@ -146,6 +152,8 @@ impl TcpEchoServer {
 
     /// Issues an accept operation.
     fn issue_accept(&mut self) -> Result<()> {
+        // If error, consider closing this socket.
+        // FIXME: https://github.com/demikernel/demikernel/issues/642
         let qt: QToken = self.libos.accept(self.sockqd)?;
         self.register_operation(self.sockqd, qt);
         Ok(())
@@ -153,6 +161,8 @@ impl TcpEchoServer {
 
     /// Issues a push operation.
     fn issue_push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<()> {
+        // If error, consider closing this socket.
+        // FIXME: https://github.com/demikernel/demikernel/issues/642
         let qt: QToken = self.libos.push(qd, &sga)?;
         self.register_operation(qd, qt);
         Ok(())
@@ -160,6 +170,8 @@ impl TcpEchoServer {
 
     /// Issues a pop operation.
     fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
+        // If error, consider closing this socket.
+        // FIXME: https://github.com/demikernel/demikernel/issues/642
         let qt: QToken = self.libos.pop(qd, None)?;
         self.register_operation(qd, qt);
         Ok(())
@@ -209,9 +221,13 @@ impl TcpEchoServer {
         self.clients.insert(new_qd);
 
         // Pop first packet.
+        // If error, consider closing this socket.
+        // FIXME: https://github.com/demikernel/demikernel/issues/642
         self.issue_pop(new_qd)?;
 
         // Accept more connections.
+        // If error, consider closing this socket.
+        // FIXME: https://github.com/demikernel/demikernel/issues/642
         self.issue_accept()?;
 
         Ok(())
@@ -228,9 +244,13 @@ impl TcpEchoServer {
             self.handle_close(qd)?;
         } else {
             // Push packet back.
+            // If error, consider closing this socket.
+            // FIXME: https://github.com/demikernel/demikernel/issues/642
             self.issue_push(qd, &sga)?;
 
             // Pop more data.
+            // If error, consider closing this socket.
+            // FIXME: https://github.com/demikernel/demikernel/issues/642
             self.issue_pop(qd)?;
         }
 
