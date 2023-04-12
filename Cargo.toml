@@ -67,6 +67,11 @@ path = "tests/rust/tcp-test/main.rs"
 harness = false
 
 [[test]]
+name = "pipe-test"
+path = "tests/rust/pipe-test/main.rs"
+harness = false
+
+[[test]]
 name = "tcp"
 path = "tests/rust/tcp.rs"
 
