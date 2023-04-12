@@ -4,10 +4,7 @@
 // Imports
 //======================================================================================================================
 
-use ::anyhow::{
-    bail,
-    Result,
-};
+use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
     runtime::types::demi_opcode_t,
@@ -16,10 +13,7 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
-use ::std::{
-    env,
-    panic,
-};
+use ::std::env;
 use core::slice;
 
 //======================================================================================================================
@@ -38,14 +32,16 @@ const NROUNDS: u8 = 128;
 //======================================================================================================================
 
 /// Makes a scatter-gather array.
-fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
+fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     // Allocate scatter-gather array.
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {
         Ok(sga) => sga,
-        Err(e) => panic!("failed to allocate scatter-gather array: {:?}", e),
+        Err(e) => anyhow::bail!("failed to allocate scatter-gather array: {:?}", e),
     };
 
     // Ensure that scatter-gather array has the requested size.
+    // If error, free scatter-gather array.
+    // FIXME: https://github.com/demikernel/demikernel/issues/647
     assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
 
     // Fill in scatter-gather array.
@@ -54,7 +50,7 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
     let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
     slice.fill(value);
 
-    sga
+    Ok(sga)
 }
 
 //======================================================================================================================
@@ -63,17 +59,27 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> demi_sgarray_t {
 
 /// Pushes a scatter-gather array and waits for the operation to complete.
 fn push_and_wait(libos: &mut LibOS, pipeqd: QDesc, length: usize, value: u8) -> Result<()> {
-    let sga: demi_sgarray_t = mksga(libos, length, value);
+    // If error, close pipe.
+    // FIXME: https://github.com/demikernel/demikernel/issues/647
+    let sga: demi_sgarray_t = mksga(libos, length, value)?;
 
     let qt: QToken = match libos.push(pipeqd, &sga) {
         Ok(qt) => qt,
-        Err(e) => bail!("failed to push: {:?}", e.cause),
+        Err(e) => {
+            // If error, close pipe.
+            // FIXME: https://github.com/demikernel/demikernel/issues/647
+            anyhow::bail!("failed to push: {:?}", e.cause)
+        },
     };
 
+    // If error, close pipe.
+    // FIXME: https://github.com/demikernel/demikernel/issues/647
     libos.wait(qt, None)?;
 
     if libos.sgafree(sga).is_err() {
-        bail!("failed to release scatter-gather array");
+        // If error, close pipe.
+        // FIXME: https://github.com/demikernel/demikernel/issues/647
+        anyhow::bail!("failed to release scatter-gather array");
     };
 
     Ok(())
@@ -86,17 +92,17 @@ fn push_and_wait(libos: &mut LibOS, pipeqd: QDesc, length: usize, value: u8) -> 
 fn server(name: &str) -> Result<()> {
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let mut libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
 
     // Setup peer.
     let pipeqd: QDesc = match libos.create_pipe(&name) {
         Ok(qd) => qd,
-        Err(e) => panic!("failed to open memory queue: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
     };
 
     // Receive bytes.
@@ -106,14 +112,26 @@ fn server(name: &str) -> Result<()> {
         // Pop data.
         let qt: QToken = match libos.pop(pipeqd, None) {
             Ok(qt) => qt,
-            Err(e) => panic!("pop failed: {:?}", e.cause),
+            Err(e) => {
+                // If error, close pipe.
+                // FIXME: https://github.com/demikernel/demikernel/issues/647
+                anyhow::bail!("pop failed: {:?}", e.cause)
+            },
         };
         let sga: demi_sgarray_t = match libos.wait(qt, None) {
             Ok(qr) => match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-                _ => panic!("unexpected operation result"),
+                _ => {
+                    // If error, close pipe.
+                    // FIXME: https://github.com/demikernel/demikernel/issues/647
+                    anyhow::bail!("unexpected operation result")
+                },
             },
-            _ => panic!("server failed to wait()"),
+            _ => {
+                // If error, close pipe.
+                // FIXME: https://github.com/demikernel/demikernel/issues/647
+                anyhow::bail!("server failed to wait()")
+            },
         };
 
         let recvbuf: &[u8] = unsafe {
@@ -133,7 +151,9 @@ fn server(name: &str) -> Result<()> {
         }
 
         if libos.sgafree(sga).is_err() {
-            bail!("failed to release scatter-gather array");
+            // If error, close pipes.
+            // FIXME: https://github.com/demikernel/demikernel/issues/647
+            anyhow::bail!("failed to release scatter-gather array");
         };
 
         println!("pop {:?}", round - 1);
@@ -151,21 +171,23 @@ fn server(name: &str) -> Result<()> {
 fn client(name: &str) -> Result<()> {
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => anyhow::bail!("{:?}", e),
     };
     let mut libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };
 
     // Setup peer.
     let pipeqd: QDesc = match libos.open_pipe(&name) {
         Ok(qd) => qd,
-        Err(e) => panic!("failed to open memory queue: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
     };
 
     // Send and receive bytes in a locked step.
     for i in 0..NROUNDS {
+        // If error, close pipe.
+        // FIXME: https://github.com/demikernel/demikernel/issues/647
         push_and_wait(&mut libos, pipeqd, BUFFER_SIZE, i)?;
         println!("push {:?}", i);
     }
