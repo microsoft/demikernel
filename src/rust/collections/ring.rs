@@ -312,115 +312,121 @@ impl<T> Drop for RingBuffer<T> {
 #[cfg(test)]
 mod test {
     use super::RingBuffer;
-    use core::mem;
-    use std::thread;
+    use ::anyhow::Result;
+    use ::core::mem;
+    use ::std::thread;
 
     /// Capacity for ring buffer.
     const RING_BUFFER_CAPACITY: usize = 4096;
 
     /// Creates a ring buffer with a valid capacity.
-    fn do_new() -> RingBuffer<u32> {
+    fn do_new() -> Result<RingBuffer<u32>> {
         let ring: RingBuffer<u32> = match RingBuffer::<u32>::new(RING_BUFFER_CAPACITY) {
             Ok(ring) => ring,
-            Err(_) => panic!("creating a ring buffer with valid capcity should be possible"),
+            Err(_) => anyhow::bail!("creating a ring buffer with valid capcity should be possible"),
         };
 
         // Check if buffer has expected effective capacity.
-        assert!(ring.capacity() == RING_BUFFER_CAPACITY - 1);
+        crate::ensure_eq!(ring.capacity(), RING_BUFFER_CAPACITY - 1);
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == true);
-        assert!(ring.is_full() == false);
+        crate::ensure_eq!(ring.is_empty(), true);
+        crate::ensure_eq!(ring.is_full(), false);
 
-        ring
+        Ok(ring)
     }
 
     /// Constructs a ring buffer from raw parts.
-    fn do_from_raw(ptr: *mut u8, size: usize) -> RingBuffer<u32> {
+    fn do_from_raw(ptr: *mut u8, size: usize) -> Result<RingBuffer<u32>> {
         let ring: RingBuffer<u32> = match RingBuffer::<u32>::from_raw_parts(true, ptr, size) {
             Ok(ring) => ring,
-            Err(e) => panic!("creating a ring buffer with valid capcity should be possible {:?}", e),
+            Err(e) => anyhow::bail!("creating a ring buffer with valid capcity should be possible {:?}", e),
         };
 
         // Check if buffer has expected effective capacity.
-        assert!(ring.capacity() == RING_BUFFER_CAPACITY - 1);
+        crate::ensure_eq!(ring.capacity(), RING_BUFFER_CAPACITY - 1);
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == true);
-        assert!(ring.is_full() == false);
+        crate::ensure_eq!(ring.is_empty(), true);
+        crate::ensure_eq!(ring.is_full(), false);
 
-        ring
+        Ok(ring)
     }
 
     /// Sequentially enqueues and dequeues elements to/from a ring buffer.
-    fn do_enqueue_dequeue(ring: &mut RingBuffer<u32>) {
+    fn do_enqueue_dequeue(ring: &mut RingBuffer<u32>) -> Result<()> {
         // Insert items in the ring buffer.
         for i in 0..ring.capacity() {
             ring.enqueue((i & 255) as u32);
         }
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == false);
-        assert!(ring.is_full() == true);
+        crate::ensure_eq!(ring.is_empty(), false);
+        crate::ensure_eq!(ring.is_full(), true);
 
         // Remove items from the ring buffer.
         for i in 0..ring.capacity() {
             let item: u32 = ring.dequeue();
-            assert!(item == (i & 255) as u32);
+            crate::ensure_eq!(item, (i & 255) as u32);
         }
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == true);
-        assert!(ring.is_full() == false);
+        crate::ensure_eq!(ring.is_empty(), true);
+        crate::ensure_eq!(ring.is_full(), false);
+
+        Ok(())
     }
 
     /// Tests if we succeed to create a ring buffer with a valid capacity.
     #[test]
-    fn new() {
-        do_new();
+    fn new() -> Result<()> {
+        do_new()?;
+        Ok(())
     }
 
     /// Tests if we succeed to construct a ring buffer from raw parts.
     #[test]
-    fn from_raw_parts() {
+    fn from_raw_parts() -> Result<()> {
         const LENGTH: usize = RING_BUFFER_CAPACITY + 2 * mem::size_of::<usize>();
         const SIZE: usize = LENGTH * mem::size_of::<u32>();
         let mut array: [u32; LENGTH] = [0; LENGTH];
-        do_from_raw(array.as_mut_ptr() as *mut u8, SIZE);
+        do_from_raw(array.as_mut_ptr() as *mut u8, SIZE)?;
+        Ok(())
     }
 
     /// Tets if we succeed to sequentially enqueue and dequeue elements to/from a ring buffer.
     #[test]
-    fn enqueue_dequeue_sequential() {
-        let mut ring: RingBuffer<u32> = do_new();
+    fn enqueue_dequeue_sequential() -> Result<()> {
+        let mut ring: RingBuffer<u32> = do_new()?;
 
         do_enqueue_dequeue(&mut ring)
     }
 
     /// Tets if we succeed to sequentially enqueue and dequeue elements to/from a constructed ring buffer.
     #[test]
-    fn enqueue_dequeue_sequential_raw() {
+    fn enqueue_dequeue_sequential_raw() -> Result<()> {
         const LENGTH: usize = RING_BUFFER_CAPACITY + 2 * mem::size_of::<usize>();
         const SIZE: usize = LENGTH * mem::size_of::<u32>();
         let mut array: [u32; LENGTH] = [0; LENGTH];
-        let mut ring: RingBuffer<u32> = do_from_raw(array.as_mut_ptr() as *mut u8, SIZE);
+        let mut ring: RingBuffer<u32> = do_from_raw(array.as_mut_ptr() as *mut u8, SIZE)?;
 
         do_enqueue_dequeue(&mut ring)
     }
 
     /// Tests if we fail to create ring buffer with an invalid capacity.
     #[test]
-    fn bad_new() {
+    fn bad_new() -> Result<()> {
         match RingBuffer::<u8>::new(RING_BUFFER_CAPACITY - 1) {
-            Ok(_) => panic!("creating a ring buffer with invalid capacity should fail"),
-            Err(_) => {},
-        };
+            Ok(_) => anyhow::bail!("creating a ring buffer with invalid capacity should fail"),
+            Err(_) => Ok(()),
+        }
     }
 
     /// Tests if we succeed to access a ring buffer concurrently.
     #[test]
-    fn enqueue_dequeue_concurrent() {
-        let ring: RingBuffer<u32> = do_new();
+    fn enqueue_dequeue_concurrent() -> Result<()> {
+        let ring: RingBuffer<u32> = do_new()?;
+        let mut result: Result<()> = Ok(());
 
         thread::scope(|s| {
             let writer: thread::ScopedJoinHandle<()> = s.spawn(|| {
@@ -428,15 +434,18 @@ mod test {
                     ring.enqueue((i & 255) as u32);
                 }
             });
-            let reader: thread::ScopedJoinHandle<()> = s.spawn(|| {
+            let reader: thread::ScopedJoinHandle<Result<()>> = s.spawn(|| {
                 for i in 0..ring.capacity() {
                     let item: u32 = ring.dequeue();
-                    assert!(item == (i & 255) as u32);
+                    crate::ensure_eq!(item, (i & 255) as u32);
                 }
+                Ok(())
             });
 
             writer.join().unwrap();
-            reader.join().unwrap();
+            result = reader.join().unwrap();
         });
+
+        result
     }
 }
