@@ -65,6 +65,9 @@ macro_rules! collect {
 //======================================================================================================================
 
 fn main() -> Result<()> {
+    let mut nfailed: usize = 0;
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
+
     let args: ProgramArguments = ProgramArguments::new(
         "pipe-test",
         "Pedro Henrique Penna <ppenna@microsoft.com>",
@@ -76,7 +79,21 @@ fn main() -> Result<()> {
         LibOS::new(libos_name)?
     };
 
-    create_pipe::run(&mut libos, &args.pipe_name())?;
+    crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
 
-    Ok(())
+    // Dump results.
+    for (test_name, test_status, test_result) in result {
+        println!("[{}] {}", test_status, test_name);
+        if let Err(e) = test_result {
+            nfailed += 1;
+            println!("    {}", e);
+        }
+    }
+
+    if nfailed > 0 {
+        anyhow::bail!("{} tests failed", nfailed);
+    } else {
+        println!("all tests passed");
+        Ok(())
+    }
 }
