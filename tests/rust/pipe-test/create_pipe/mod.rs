@@ -31,7 +31,7 @@ fn create_pipe_with_invalid_name(libos: &mut LibOS) -> Result<()> {
     match libos.create_pipe(&format!("")) {
         Err(e) if e.errno == libc::EINVAL => Ok(()),
         Ok(_) => anyhow::bail!("create_pipe() with invalid name should fail"),
-        Err(e) => anyhow::bail!("create_pipe() failed with {}", e.cause),
+        Err(e) => anyhow::bail!("create_pipe() failed ({})", e),
     }
 }
 
@@ -40,21 +40,21 @@ fn create_pipe_with_same_name(libos: &mut LibOS, pipe_name: &str) -> Result<()> 
     // Succeed to create first pipe.
     let pipeqd: QDesc = match libos.create_pipe(pipe_name) {
         Ok(pipeqd) => pipeqd,
-        Err(e) => anyhow::bail!("create_pipe() failed with {}", e.cause),
+        Err(e) => anyhow::bail!("create_pipe() failed ({})", e),
     };
 
     // Fail to create pipe with the same name.
     let mut ret: Result<(), anyhow::Error> = match libos.create_pipe(pipe_name) {
         Err(e) if e.errno == libc::EEXIST => Ok(()),
         Ok(_) => Err(anyhow::anyhow!("create_pipe() with same name should fail")),
-        Err(e) => Err(anyhow::anyhow!("create_pipe() failed with {}", e.cause)),
+        Err(e) => Err(anyhow::anyhow!("create_pipe() failed ({})", e)),
     };
 
     // Close first pipe.
     match libos.close(pipeqd) {
         Ok(_) => (),
         Err(e) => {
-            let errmsg: String = format!("close() failed with {}", e.cause);
+            let errmsg: String = format!("close() failed ({})", e);
             crate::update_error!(ret, errmsg);
             println!("[ERROR] leaking pipeqd={:?}", pipeqd);
         },
