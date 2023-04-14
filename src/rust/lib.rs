@@ -74,3 +74,68 @@ pub use crate::runtime::{
 };
 
 pub mod demikernel;
+
+//======================================================================================================================
+// Macros
+//======================================================================================================================
+
+/// Ensures that two expressions are equivalent or return an Error.
+#[macro_export]
+macro_rules! ensure_eq {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`,right: `{:?}`"#, left_val, right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        crate::ensure_eq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {}"#, left_val, right_val, format_args!($($arg)+))
+                }
+            }
+        }
+    });
+}
+
+/// Ensure that two expressions are not equal or returns an Error.
+#[macro_export]
+macro_rules! ensure_neq {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if (*left_val == *right_val) {
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`,right: `{:?}`"#, left_val, right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        crate::ensure_neq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if (*left_val == *right_val) {
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {}"#, left_val, right_val, format_args!($($arg)+))
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn test_ensure() -> Result<(), anyhow::Error> {
+    ensure_eq!(1, 1);
+    ensure_eq!(1, 1, "test");
+    ensure_neq!(1, 2);
+    ensure_neq!(1, 2, "test");
+    Ok(())
+}
