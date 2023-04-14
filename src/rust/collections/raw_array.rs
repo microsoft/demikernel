@@ -142,53 +142,55 @@ impl<T> Drop for RawArray<T> {
 #[cfg(test)]
 mod test {
     use super::RawArray;
+    use ::anyhow::Result;
 
     const ARRAY_LENGTH: usize = 4;
 
     /// Constructs a managed raw array.
-    fn do_new() -> RawArray<u8> {
+    fn do_new() -> Result<RawArray<u8>> {
         match RawArray::<u8>::new(ARRAY_LENGTH) {
             Ok(a) => {
                 // Sanity check capacity of raw array.
-                assert!(a.capacity() == ARRAY_LENGTH);
-                a
+                crate::ensure_eq!(a.capacity(), ARRAY_LENGTH);
+                Ok(a)
             },
-            Err(_) => panic!("creating managed raw arrays should be possible"),
+            Err(_) => anyhow::bail!("creating managed raw arrays should be possible"),
         }
     }
 
     /// Constructs an unmanaged raw array.
-    fn do_from_raw_parts(array: &mut [u8]) -> RawArray<u8> {
+    fn do_from_raw_parts(array: &mut [u8]) -> Result<RawArray<u8>> {
         match RawArray::<u8>::from_raw_parts(array.as_mut_ptr(), array.len()) {
             Ok(a) => {
                 // Sanity check capacity of raw array.
-                assert!(a.capacity() == array.len());
-                a
+                crate::ensure_eq!(a.capacity(), array.len());
+                Ok(a)
             },
-            Err(_) => panic!("constructing unmanaged raw arrays should be possible"),
+            Err(_) => anyhow::bail!("constructing unmanaged raw arrays should be possible"),
         }
     }
 
     /// Tests if we succeed to create a managed raw array.
     #[test]
-    fn new() {
-        let _: RawArray<u8> = do_new();
+    fn new() -> Result<()> {
+        let _: RawArray<u8> = do_new()?;
+        Ok(())
     }
 
     /// Tests if we fail to create a managed raw array with zero capacity.
     #[test]
-    fn bad_new() {
+    fn bad_new() -> Result<()> {
         match RawArray::<u8>::new(0) {
-            Ok(_) => panic!("creating managed raw arrays with zero capacity should fail"),
-            Err(_) => {},
+            Ok(_) => anyhow::bail!("creating managed raw arrays with zero capacity should fail"),
+            Err(_) => Ok(()),
         }
     }
 
     /// Tests if succeed to access and modify raw arrays using dereference traits.
     #[test]
-    fn deref_mut() {
+    fn deref_mut() -> Result<()> {
         // Create a managed raw array.
-        let mut raw_array: RawArray<u8> = do_new();
+        let mut raw_array: RawArray<u8> = do_new()?;
 
         // Fill-in raw array.
         for i in 0..raw_array.capacity() {
@@ -197,31 +199,35 @@ mod test {
 
         // Sanity check contents of raw array.
         for i in 0..raw_array.capacity() {
-            assert!(raw_array[i] == ((i + 1) as u8));
+            crate::ensure_eq!(raw_array[i], ((i + 1) as u8));
         }
+
+        Ok(())
     }
 
     /// Tests if we succeed to construct an unmanaged array from raw parts.
     #[test]
-    fn frow_raw_parts() {
+    fn frow_raw_parts() -> Result<()> {
         let mut array: [u8; ARRAY_LENGTH] = [1, 2, 3, 4];
 
         // Construct an unmanaged raw array.
-        let raw_array: RawArray<u8> = do_from_raw_parts(&mut array);
+        let raw_array: RawArray<u8> = do_from_raw_parts(&mut array)?;
 
         // Sanity check contents of raw array.
         for i in 0..ARRAY_LENGTH {
-            assert!(raw_array[i] == (i + 1) as u8);
+            crate::ensure_eq!(raw_array[i], (i + 1) as u8);
         }
+
+        Ok(())
     }
 
     /// Tests if we succeed to access and modify a raw array using unsafe dereference functions.
     #[test]
-    fn deref_mut_unsafe() {
+    fn deref_mut_unsafe() -> Result<()> {
         let mut array: [u8; ARRAY_LENGTH] = [0; ARRAY_LENGTH];
 
         // Construct an unmanaged raw array.
-        let raw_array: RawArray<u8> = do_from_raw_parts(&mut array);
+        let raw_array: RawArray<u8> = do_from_raw_parts(&mut array)?;
 
         // Write to raw array using unsafe interface.
         for i in 0..raw_array.capacity() {
@@ -235,8 +241,10 @@ mod test {
         for i in 0..ARRAY_LENGTH {
             unsafe {
                 let data: &mut [u8] = raw_array.get_mut();
-                assert!(data[i] == (raw_array.capacity() - i) as u8);
+                crate::ensure_eq!(data[i], (raw_array.capacity() - i) as u8);
             }
         }
+
+        Ok(())
     }
 }

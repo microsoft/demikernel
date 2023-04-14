@@ -68,6 +68,7 @@ impl<T: Copy> Deref for SharedRingBuffer<T> {
 #[cfg(test)]
 mod test {
     use super::SharedRingBuffer;
+    use ::anyhow::Result;
     use std::{
         thread::{
             self,
@@ -81,11 +82,11 @@ mod test {
     /// Tests if we succeed to perform sequential accesses to a shared ring buffer.
     #[ignore]
     #[test]
-    fn ring_buffer_on_shm_sequential() {
+    fn ring_buffer_on_shm_sequential() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-serial".to_string();
         let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::create(&shm_name, RING_BUFFER_CAPACITY) {
             Ok(ring) => ring,
-            Err(_) => panic!("creating a shared ring buffer should be possible"),
+            Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
         };
 
         for i in 0..ring.capacity() {
@@ -93,31 +94,34 @@ mod test {
         }
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == false);
-        assert!(ring.is_full() == true);
+        crate::ensure_eq!(ring.is_empty(), false);
+        crate::ensure_eq!(ring.is_full(), true);
 
         // Remove items from the ring buffer.
         for i in 0..ring.capacity() {
             let item: u8 = ring.dequeue();
-            assert!(item == (i & 255) as u8);
+            crate::ensure_eq!(item, (i & 255) as u8);
         }
 
         // Check if buffer state is consistent.
-        assert!(ring.is_empty() == true);
-        assert!(ring.is_full() == false);
+        crate::ensure_eq!(ring.is_empty(), true);
+        crate::ensure_eq!(ring.is_full(), false);
+
+        Ok(())
     }
 
     /// Tests if we succeed to perform concurrent accesses to a shared ring buffer..
     #[ignore]
     #[test]
-    fn ring_buffer_on_shm_concurrent() {
+    fn ring_buffer_on_shm_concurrent() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-concurrent".to_string();
+        let mut result: Result<()> = Ok(());
 
         thread::scope(|s| {
-            let writer: ScopedJoinHandle<()> = s.spawn(|| {
+            let writer: ScopedJoinHandle<Result<()>> = s.spawn(|| {
                 let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::create(&shm_name, RING_BUFFER_CAPACITY) {
                     Ok(ring) => ring,
-                    Err(_) => panic!("creating a shared ring buffer should be possible"),
+                    Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
                 };
 
                 for i in 0..ring.capacity() {
@@ -125,23 +129,26 @@ mod test {
                 }
 
                 while !ring.is_empty() {}
+                Ok(())
             });
 
-            let reader: ScopedJoinHandle<()> = s.spawn(|| {
+            let reader: ScopedJoinHandle<Result<()>> = s.spawn(|| {
                 thread::sleep(Duration::from_millis(100));
 
                 let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::open(&shm_name, RING_BUFFER_CAPACITY) {
                     Ok(ring) => ring,
-                    Err(_) => panic!("openining a shared ring buffer should be possible"),
+                    Err(_) => anyhow::bail!("openining a shared ring buffer should be possible"),
                 };
                 for i in 0..ring.capacity() {
                     let item: u8 = ring.dequeue();
-                    assert!(item == (i & 255) as u8);
+                    crate::ensure_eq!(item, (i & 255) as u8);
                 }
+                Ok(())
             });
 
-            writer.join().unwrap();
-            reader.join().unwrap();
+            result = writer.join().unwrap().and(reader.join().unwrap());
         });
+
+        result
     }
 }
