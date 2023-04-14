@@ -60,6 +60,8 @@ pub struct TcpServer {
     clients_accepted: usize,
     /// Number of closed connections.
     clients_closed: usize,
+    /// Governs if the sockets are closed using async_close() or close().
+    should_async_close: bool,
 }
 
 //======================================================================================================================
@@ -68,7 +70,7 @@ pub struct TcpServer {
 
 impl TcpServer {
     /// Creates a new TCP server.
-    pub fn new(mut libos: LibOS, local: SocketAddrV4) -> Result<Self> {
+    pub fn new(mut libos: LibOS, local: SocketAddrV4, should_async_close: bool) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -87,6 +89,7 @@ impl TcpServer {
             qts_reverse: HashMap::default(),
             clients_accepted: 0,
             clients_closed: 0,
+            should_async_close,
         });
     }
 
@@ -177,8 +180,7 @@ impl TcpServer {
             }
         }
 
-        // Close local socket.
-        self.libos.close(self.sockqd)?;
+        self.issue_close(self.sockqd)?;
 
         Ok(())
     }
@@ -217,7 +219,7 @@ impl TcpServer {
                     println!("{} clients accepted, closing socket", self.clients_accepted);
                     // If error, close sockets.
                     // FIXME: https://github.com/demikernel/demikernel/issues/640
-                    self.libos.close(qd)?;
+                    self.issue_close(qd)?;
                     self.clients_closed += 1;
                     // If error, close sockets.
                     // FIXME: https://github.com/demikernel/demikernel/issues/640
@@ -232,7 +234,7 @@ impl TcpServer {
         }
 
         // Close local socket.
-        self.libos.close(self.sockqd)?;
+        self.issue_close(self.sockqd)?;
 
         Ok(())
     }
@@ -293,7 +295,22 @@ impl TcpServer {
 
     /// Issues a close() operation.
     fn issue_close(&mut self, qd: QDesc) -> Result<()> {
-        Ok(self.libos.close(qd)?)
+        if self.should_async_close {
+            let qt: QToken = self.libos.async_close(qd)?;
+
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET => Ok(()),
+                Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
+                Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
+            }
+        } else {
+            match self.libos.close(qd) {
+                Ok(_) => Ok(()),
+                Err(e) if e.errno == libc::ECONNRESET => Ok(()),
+                Err(_) => anyhow::bail!("wait() should succeed with close()"),
+            }
+        }
     }
 
     /// Handles the completion of an accept() operation.

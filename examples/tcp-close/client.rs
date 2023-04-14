@@ -51,6 +51,8 @@ pub struct TcpClient {
     clients_connected: usize,
     /// Number of clients that closed their connection.
     clients_closed: usize,
+    /// Governs if the sockets are closed using async_close() or close().
+    should_async_close: bool,
 }
 
 //======================================================================================================================
@@ -59,13 +61,14 @@ pub struct TcpClient {
 
 impl TcpClient {
     /// Creates a new TCP client.
-    pub fn new(libos: LibOS, remote: SocketAddrV4) -> Result<Self> {
+    pub fn new(libos: LibOS, remote: SocketAddrV4, should_async_close: bool) -> Result<Self> {
         println!("Connecting to: {:?}", remote);
         Ok(Self {
             libos,
             remote,
             clients_connected: 0,
             clients_closed: 0,
+            should_async_close,
         })
     }
 
@@ -103,8 +106,7 @@ impl TcpClient {
                 },
             }
 
-            // Close TCP socket.
-            self.libos.close(sockqd)?;
+            self.issue_close(sockqd)?;
         }
 
         Ok(())
@@ -156,9 +158,8 @@ impl TcpClient {
                     self.clients_connected += 1;
                     println!("{} clients connected", self.clients_connected);
 
-                    // Close TCP socket.
                     self.clients_closed += 1;
-                    self.libos.close(qd)?;
+                    self.issue_close(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     // Close socket on error.
@@ -240,8 +241,7 @@ impl TcpClient {
             }
 
             // FIXME: https://github.com/demikernel/demikernel/issues/646
-            // Close TCP socket.
-            self.libos.close(sockqd)?;
+            self.issue_close(sockqd)?;
         }
 
         Ok(())
@@ -305,7 +305,7 @@ impl TcpClient {
 
                     println!("server disconnected (pop returned 0 len buffer)");
                     self.clients_closed += 1;
-                    self.libos.close(qr.qr_qd.into())?;
+                    self.issue_close(qr.qr_qd.into())?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     let errno: i32 = qr.qr_ret;
@@ -316,7 +316,7 @@ impl TcpClient {
                     );
                     println!("server disconnected (ECONNRESET)");
                     self.clients_closed += 1;
-                    self.libos.close(qr.qr_qd.into())?;
+                    self.issue_close(qr.qr_qd.into())?;
                 },
                 qr_opcode => {
                     // If error, close sockets.
@@ -327,5 +327,25 @@ impl TcpClient {
         }
 
         Ok(())
+    }
+
+    /// Issues a close() operation.
+    fn issue_close(&mut self, qd: QDesc) -> Result<()> {
+        if self.should_async_close {
+            let qt: QToken = self.libos.async_close(qd)?;
+
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET => Ok(()),
+                Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
+                Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
+            }
+        } else {
+            match self.libos.close(qd) {
+                Ok(_) => Ok(()),
+                Err(e) if e.errno == libc::ECONNRESET => Ok(()),
+                Err(_) => anyhow::bail!("wait() should succeed with close()"),
+            }
+        }
     }
 }
