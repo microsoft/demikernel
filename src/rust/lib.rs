@@ -130,3 +130,12 @@ macro_rules! ensure_neq {
         }
     });
 }
+
+#[test]
+fn test_ensure() -> Result<(), anyhow::Error> {
+    ensure_eq!(1, 1);
+    ensure_eq!(1, 1, "test");
+    ensure_neq!(1, 2);
+    ensure_neq!(1, 2, "test");
+    Ok(())
+}
