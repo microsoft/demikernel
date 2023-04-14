@@ -9,6 +9,7 @@
 //======================================================================================================================
 
 mod args;
+mod async_close;
 mod close;
 mod create_pipe;
 mod open_pipe;
@@ -84,6 +85,7 @@ fn main() -> Result<()> {
     crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
     crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
     crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
+    crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
 
     // Dump results.
     for (test_name, test_status, test_result) in result {
