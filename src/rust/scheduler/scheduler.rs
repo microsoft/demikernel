@@ -201,6 +201,7 @@ mod tests {
         },
         task::TaskWithResult,
     };
+    use ::anyhow::Result;
     use ::std::{
         future::Future,
         pin::Pin,
@@ -257,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_poll_once() {
+    fn scheduler_poll_once() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete
@@ -265,18 +266,20 @@ mod tests {
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
         let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
-            None => panic!("insert() failed"),
+            None => anyhow::bail!("insert() failed"),
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
         scheduler.poll();
 
-        assert_eq!(handle.has_completed(), true);
+        crate::ensure_eq!(handle.has_completed(), true);
+
+        Ok(())
     }
 
     #[test]
-    fn scheduler_poll_twice() {
+    fn scheduler_poll_twice() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete
@@ -284,19 +287,21 @@ mod tests {
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(1)));
         let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
-            None => panic!("insert() failed"),
+            None => anyhow::bail!("insert() failed"),
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, this future should make a transition.
         scheduler.poll();
 
-        assert_eq!(handle.has_completed(), false);
+        crate::ensure_eq!(handle.has_completed(), false);
 
         // This shall make the future ready.
         scheduler.poll();
 
-        assert_eq!(handle.has_completed(), true);
+        crate::ensure_eq!(handle.has_completed(), true);
+
+        Ok(())
     }
 
     #[bench]
