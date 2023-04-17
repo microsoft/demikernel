@@ -111,10 +111,11 @@ impl std::cmp::PartialOrd for SeqNumber {
 #[cfg(test)]
 mod tests {
     use super::SeqNumber;
+    use ::anyhow::Result;
 
     // Test basic comparisons between sequence numbers of various values.
     #[test]
-    fn comparison() {
+    fn comparison() -> Result<()> {
         let s0: SeqNumber = SeqNumber::from(0);
         let s1: SeqNumber = SeqNumber::from(1);
         let s2: SeqNumber = SeqNumber::from(0x20000000);
@@ -124,44 +125,48 @@ mod tests {
         let s6: SeqNumber = SeqNumber::from(0x80000001);
         let s7: SeqNumber = SeqNumber::from(0xffffffff);
 
-        assert!(s0 == s0);
-        assert!(!(s0 == s1));
-        assert!(s0 != s1);
-        assert!(!(s0 == s7));
+        crate::ensure_eq!(s0, s0);
+        crate::ensure_neq!(s0, s1);
+        crate::ensure_neq!(s0, s1);
+        crate::ensure_neq!(s0, s7);
 
-        assert!(!(s0 < s0));
-        assert!(!(s0 > s0));
+        crate::ensure_eq!(!(s0 < s0), true);
+        crate::ensure_eq!(!(s0 > s0), true);
 
-        assert!(s0 < s1);
-        assert!(s0 < s2);
-        assert!(s0 < s3);
-        assert!(s0 < s4);
-        assert!(s0 < s5);
-        assert!(s0 > s6);
-        assert!(s0 > s7);
+        crate::ensure_eq!(s0 < s1, true);
+        crate::ensure_eq!(s0 < s2, true);
+        crate::ensure_eq!(s0 < s3, true);
+        crate::ensure_eq!(s0 < s4, true);
+        crate::ensure_eq!(s0 < s5, true);
+        crate::ensure_eq!(s0 > s6, true);
+        crate::ensure_eq!(s0 > s7, true);
+
+        Ok(())
     }
 
     // Test that basic comparisons (and addition) handle wrap around properly.
     #[test]
-    fn wrap_around() {
+    fn wrap_around() -> Result<()> {
         let zero = SeqNumber::from(0);
         let one = SeqNumber::from(1);
         let big = SeqNumber::from(0xffffffff);
 
         let something = big + one;
 
-        assert_ne!(zero, big);
-        assert_eq!(something, zero);
+        crate::ensure_neq!(zero, big);
+        crate::ensure_eq!(something, zero);
 
         let half = SeqNumber::from(0x80000000);
 
         for number in 0..((2 ^ 32) - 1) {
             let current = SeqNumber::from(number);
             let next = current + one;
-            assert!(current < next);
+            crate::ensure_eq!(current < next, true);
 
-            assert!(current < current + half);
-            assert!(current > next + half);
+            crate::ensure_eq!(current < current + half, true);
+            crate::ensure_eq!(current > next + half, true);
         }
+
+        Ok(())
     }
 }

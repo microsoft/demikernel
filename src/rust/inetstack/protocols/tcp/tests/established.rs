@@ -25,6 +25,7 @@ use crate::{
         QDesc,
     },
 };
+use ::anyhow::Result;
 use ::futures::task::noop_waker_ref;
 use ::rand;
 use ::std::{
@@ -63,7 +64,7 @@ fn send_data(
     seq_no: SeqNumber,
     ack_num: Option<SeqNumber>,
     bytes: DemiBuffer,
-) -> (DemiBuffer, usize) {
+) -> Result<(DemiBuffer, usize)> {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -89,19 +90,24 @@ fn send_data(
 
     // Push completes.
     match Future::poll(Pin::new(&mut push_future), ctx) {
-        Poll::Ready(Ok(())) => Ok(()),
-        _ => Err(()),
+        Poll::Ready(Ok(())) => {
+            trace!("send_data ====> push completed");
+
+            Ok((bytes, bufsize))
+        },
+        _ => anyhow::bail!("push should have completed successfully"),
     }
-    .unwrap();
-
-    trace!("send_data ====> push completed");
-
-    (bytes, bufsize)
 }
 
 //=============================================================================
 
-fn recv_data(ctx: &mut Context, receiver: &mut Engine, sender: &mut Engine, receiver_fd: QDesc, bytes: DemiBuffer) {
+fn recv_data(
+    ctx: &mut Context,
+    receiver: &mut Engine,
+    sender: &mut Engine,
+    receiver_fd: QDesc,
+    bytes: DemiBuffer,
+) -> Result<()> {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -110,21 +116,23 @@ fn recv_data(ctx: &mut Context, receiver: &mut Engine, sender: &mut Engine, rece
 
     // Pop data.
     let mut pop_future = receiver.tcp_pop(receiver_fd);
-    receiver.receive(bytes).unwrap();
+    if let Err(e) = receiver.receive(bytes) {
+        anyhow::bail!("receive returned error: {:?}", e);
+    }
 
     // Pop completes
     match Future::poll(Pin::new(&mut pop_future), ctx) {
-        Poll::Ready(Ok(_)) => Ok(()),
-        _ => Err(()),
+        Poll::Ready(Ok(_)) => {
+            trace!("recv_data ====> pop completed");
+            Ok(())
+        },
+        _ => anyhow::bail!("pop should have completed"),
     }
-    .unwrap();
-
-    trace!("recv_data ====> pop completed");
 }
 
 //=============================================================================
 
-fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, ack_num: SeqNumber) {
+fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, ack_num: SeqNumber) -> Result<()> {
     trace!(
         "recv_pure_ack ====> ack: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -135,18 +143,26 @@ fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, 
     sender.rt.poll_scheduler();
 
     // Pop pure ACK
-    if let Some(bytes) = sender.rt.pop_frame_unchecked() {
-        check_packet_pure_ack(
-            bytes.clone(),
-            sender.rt.link_addr,
-            receiver.rt.link_addr,
-            sender.rt.ipv4_addr,
-            receiver.rt.ipv4_addr,
-            ack_num,
-        );
-        receiver.receive(bytes).unwrap();
+    match sender.rt.pop_frame_unchecked() {
+        Some(bytes) => {
+            check_packet_pure_ack(
+                bytes.clone(),
+                sender.rt.link_addr,
+                receiver.rt.link_addr,
+                sender.rt.ipv4_addr,
+                receiver.rt.ipv4_addr,
+                ack_num,
+            );
+            match receiver.receive(bytes) {
+                Ok(()) => {
+                    trace!("recv_pure_ack ====> ack completed");
+                    Ok(())
+                },
+                Err(e) => anyhow::bail!("did not receive an ack: {:?}", e),
+            }
+        },
+        None => anyhow::bail!("did not receive a packet"),
     }
-    trace!("recv_pure_ack ====> ack completed");
 }
 
 //=============================================================================
@@ -161,7 +177,7 @@ fn send_recv(
     window_size: u16,
     seq_no: SeqNumber,
     bytes: DemiBuffer,
-) {
+) -> Result<()> {
     let bufsize: usize = bytes.len();
 
     // Push data.
@@ -175,13 +191,15 @@ fn send_recv(
         seq_no,
         None,
         bytes.clone(),
-    );
+    )?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes);
+    recv_data(ctx, server, client, server_fd, bytes)?;
 
     // Pop pure ACK.
-    recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32));
+    recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32))?;
+
+    Ok(())
 }
 
 //=============================================================================
@@ -196,10 +214,10 @@ fn send_recv_round(
     window_size: u16,
     seq_no: SeqNumber,
     bytes: DemiBuffer,
-) {
+) -> Result<()> {
     // Push Data: Client -> Server
     let (bytes, bufsize): (DemiBuffer, usize) =
-        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes);
+        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes)?;
 
     // Pop data.
     recv_data(ctx, server, client, server_fd, bytes.clone());
@@ -216,10 +234,12 @@ fn send_recv_round(
         seq_no,
         Some(seq_no + SeqNumber::from(bufsize as u32)),
         bytes,
-    );
+    )?;
 
     // Pop data.
-    recv_data(ctx, client, server, client_fd, bytes.clone());
+    recv_data(ctx, client, server, client_fd, bytes.clone())?;
+
+    Ok(())
 }
 
 //=============================================================================
@@ -231,42 +251,56 @@ fn connection_hangup(
     client: &mut Engine,
     server_fd: QDesc,
     client_fd: QDesc,
-) {
+) -> Result<()> {
     // Send FIN: Client -> Server
-    client.tcp_close(client_fd).expect("client tcp_close returned error");
+    if let Err(e) = client.tcp_close(client_fd) {
+        anyhow::bail!("client tcp_close returned error: {:?}", e);
+    }
     client.rt.poll_scheduler();
     let bytes: DemiBuffer = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
-    server.receive(bytes).expect("server receive returned error");
+    if let Err(e) = server.receive(bytes) {
+        anyhow::bail!("server receive returned error: {:?}", e);
+    }
     server.rt.poll_scheduler();
     let bytes: DemiBuffer = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
-    client.receive(bytes).expect("client receive (of ACK) returned error");
+    if let Err(e) = client.receive(bytes) {
+        anyhow::bail!("client receive (of ACK) returned error: {:?}", e);
+    }
     advance_clock(Some(server), Some(client), now);
 
     // Send FIN: Server -> Client
-    server.tcp_close(server_fd).expect("server tcp_close returned error");
+    if let Err(e) = server.tcp_close(server_fd) {
+        anyhow::bail!("server tcp_close returned error: {:?}", e);
+    }
     server.rt.poll_scheduler();
     let bytes: DemiBuffer = server.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
-    client.receive(bytes).expect("client receive (of FIN) returned error");
+    if let Err(e) = client.receive(bytes) {
+        anyhow::bail!("client receive (of FIN) returned error {:?}", e);
+    }
     client.rt.poll_scheduler();
     let bytes: DemiBuffer = client.rt.pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
-    server.receive(bytes).unwrap();
+    if let Err(e) = server.receive(bytes) {
+        anyhow::bail!("server receive returned error: {:?}", e);
+    }
 
     advance_clock(Some(server), Some(client), now);
 
     client.rt.poll_scheduler();
     server.rt.poll_scheduler();
+
+    Ok(())
 }
 
 //=============================================================================
@@ -274,7 +308,7 @@ fn connection_hangup(
 /// Tests one way communication. This should force the receiving peer to send
 /// pure ACKs to the sender.
 #[test]
-pub fn test_send_recv_loop() {
+pub fn test_send_recv_loop() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
@@ -286,13 +320,15 @@ pub fn test_send_recv_loop() {
     let mut server: Engine = test_helpers::new_bob2(now);
     let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 = (client.rt.tcp_config.get_receive_window_size() as u32)
-        .checked_shl(window_scale as u32)
-        .unwrap();
+    let max_window_size: u32 =
+        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
+            Some(shift) => shift,
+            None => anyhow::bail!("incorrect receive window"),
+        };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
-    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+    crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -310,12 +346,14 @@ pub fn test_send_recv_loop() {
             buf.clone(),
         );
     }
+
+    Ok(())
 }
 
 //=============================================================================
 
 #[test]
-pub fn test_send_recv_round_loop() {
+pub fn test_send_recv_round_loop() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
@@ -327,13 +365,14 @@ pub fn test_send_recv_round_loop() {
     let mut server: Engine = test_helpers::new_bob2(now);
     let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 = (client.rt.tcp_config.get_receive_window_size() as u32)
-        .checked_shl(window_scale as u32)
-        .unwrap();
-
+    let max_window_size: u32 =
+        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
+            Some(shift) => shift,
+            None => anyhow::bail!("incorrect receive window"),
+        };
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
-    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+    crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -351,6 +390,8 @@ pub fn test_send_recv_round_loop() {
             buf.clone(),
         );
     }
+
+    Ok(())
 }
 
 //=============================================================================
@@ -359,7 +400,7 @@ pub fn test_send_recv_round_loop() {
 /// should force the receiving peer to send pure ACKs to the sender, as well as
 /// the sender side to trigger the RTO calculation logic.
 #[test]
-pub fn test_send_recv_with_delay() {
+pub fn test_send_recv_with_delay() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
@@ -371,13 +412,15 @@ pub fn test_send_recv_with_delay() {
     let mut server: Engine = test_helpers::new_bob2(now);
     let mut client: Engine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 = (client.rt.tcp_config.get_receive_window_size() as u32)
-        .checked_shl(window_scale as u32)
-        .unwrap();
+    let max_window_size: u32 =
+        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
+            Some(shift) => shift,
+            None => anyhow::bail!("incorrect receive window"),
+        };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
-    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+    crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
     let buf: DemiBuffer = cook_buffer(bufsize as usize, None);
@@ -397,7 +440,7 @@ pub fn test_send_recv_with_delay() {
             seq_no,
             None,
             buf.clone(),
-        );
+        )?;
 
         seq_no = seq_no + SeqNumber::from(bufsize);
 
@@ -424,12 +467,14 @@ pub fn test_send_recv_with_delay() {
         // Send pure ack.
         recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
     }
+
+    Ok(())
 }
 
 //=============================================================================
 
 #[test]
-fn test_connect_disconnect() {
+fn test_connect_disconnect() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
@@ -442,8 +487,10 @@ fn test_connect_disconnect() {
     let mut client: Engine = test_helpers::new_alice2(now);
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr);
-    assert_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
+        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+    crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
-    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd);
+    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd)?;
+
+    Ok(())
 }

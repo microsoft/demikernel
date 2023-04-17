@@ -203,6 +203,7 @@ impl UdpHeader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ::anyhow::Result;
     use ::std::net::Ipv4Addr;
 
     /// Builds a fake Ipv4 Header.
@@ -215,7 +216,7 @@ mod test {
 
     /// Tets UDP serialization.
     #[test]
-    fn test_udp_header_serialization() {
+    fn test_udp_header_serialization() -> Result<()> {
         // Build fake IPv4 header.
         let ipv4_hdr: Ipv4Header = ipv4_header();
 
@@ -233,12 +234,14 @@ mod test {
 
         // Do it.
         udp_hdr.serialize(&mut buf, &ipv4_hdr, &data, checksum_offload);
-        assert_eq!(buf, [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
+        crate::ensure_eq!(buf, [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
+
+        Ok(())
     }
 
     /// Tests UDP parsing.
     #[test]
-    fn test_udp_header_parsing() {
+    fn test_udp_header_parsing() -> Result<()> {
         // Build fake IPv4 header.
         let ipv4_hdr: Ipv4Header = ipv4_header();
 
@@ -257,13 +260,13 @@ mod test {
         // Do it.
         match UdpHeader::parse_from_slice(&ipv4_hdr, &buf, checksum_offload) {
             Ok((udp_hdr, buf)) => {
-                assert_eq!(udp_hdr.src_port(), src_port);
-                assert_eq!(udp_hdr.dest_port(), dest_port);
-                assert_eq!(buf.len(), 8);
+                crate::ensure_eq!(udp_hdr.src_port(), src_port);
+                crate::ensure_eq!(udp_hdr.dest_port(), dest_port);
+                crate::ensure_eq!(buf.len(), 8);
             },
-            Err(e) => {
-                assert!(false, "{:?}", e);
-            },
-        }
+            Err(e) => anyhow::bail!("could not parse: {:?}", e),
+        };
+
+        Ok(())
     }
 }

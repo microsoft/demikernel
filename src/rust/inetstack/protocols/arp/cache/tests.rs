@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::runtime::timer::Timer;
-use ::std::rc::Rc;
-
 use super::*;
-use crate::inetstack::test_helpers;
+use crate::{
+    inetstack::test_helpers,
+    runtime::timer::Timer,
+};
+use ::anyhow::Result;
+use ::std::rc::Rc;
 
 /// Tests that an entry of the ARP Cache gets evicted at the right time.
 #[test]
-fn evit_with_default_ttl() {
+fn evit_with_default_ttl() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -18,19 +20,21 @@ fn evit_with_default_ttl() {
     // Insert an IPv4 address in the ARP Cache.
     let mut cache = ArpCache::new(clock, Some(ttl), None, false);
     cache.insert(test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC);
-    assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
+    crate::ensure_eq!(cache.get(test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     // Advance the internal clock of the cache and clear it.
     cache.advance_clock(later);
     cache.clear();
 
     // The IPv4 address must be gone.
-    assert!(cache.get(test_helpers::ALICE_IPV4).is_none());
+    crate::ensure_eq!(cache.get(test_helpers::ALICE_IPV4), None);
+
+    Ok(())
 }
 
 /// Tests import on the ARP Cache.
 #[test]
-fn import() {
+fn import() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let clock = TimerRc(Rc::new(Timer::new(now)));
@@ -43,12 +47,14 @@ fn import() {
     let cache = ArpCache::new(clock, Some(ttl), Some(&map), false);
 
     // Check if address resolutions are in the ARP Cache.
-    assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
+    crate::ensure_eq!(cache.get(test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
+
+    Ok(())
 }
 
 /// Tests export on the ARP Cache.
 #[test]
-fn export() {
+fn export() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let clock = TimerRc(Rc::new(Timer::new(now)));
@@ -56,13 +62,16 @@ fn export() {
     // Insert an IPv4 address in the ARP Cache.
     let mut cache = ArpCache::new(clock, Some(ttl), None, false);
     cache.insert(test_helpers::ALICE_IPV4, test_helpers::ALICE_MAC);
-    assert!(cache.get(test_helpers::ALICE_IPV4) == Some(&test_helpers::ALICE_MAC));
+    crate::ensure_eq!(cache.get(test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
 
     // Export address resolution map.
     let map: HashMap<Ipv4Addr, MacAddress> = cache.export();
 
     // Check if address resolutions are in the map that was exported.
-    assert!(
-        map.get_key_value(&test_helpers::ALICE_IPV4) == Some((&test_helpers::ALICE_IPV4, &test_helpers::ALICE_MAC))
+    crate::ensure_eq!(
+        map.get_key_value(&test_helpers::ALICE_IPV4),
+        Some((&test_helpers::ALICE_IPV4, &test_helpers::ALICE_MAC))
     );
+
+    Ok(())
 }

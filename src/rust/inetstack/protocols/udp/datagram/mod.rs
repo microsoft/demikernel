@@ -138,10 +138,11 @@ mod test {
             network::types::MacAddress,
         },
     };
+    use ::anyhow::Result;
     use ::std::net::Ipv4Addr;
 
     #[test]
-    fn test_udp_datagram_header_serialization() {
+    fn test_udp_datagram_header_serialization() -> Result<()> {
         // Total header size.
         const HEADER_SIZE: usize = ETHERNET2_HEADER_SIZE + (IPV4_HEADER_MIN_SIZE as usize) + UDP_HEADER_SIZE;
 
@@ -188,6 +189,8 @@ mod test {
 
         // Do it.
         datagram.write_header(&mut buf);
-        assert_eq!(buf, hdr);
+        crate::ensure_eq!(buf, hdr);
+
+        Ok(())
     }
 }
