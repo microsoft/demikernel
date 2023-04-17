@@ -302,55 +302,60 @@ impl Drop for SharedMemory {
 #[cfg(test)]
 mod tests {
     use super::SharedMemory;
+    use ::anyhow::Result;
 
     const SHM_SIZE: usize = 4096;
 
     /// Successfully opens a shared memory region.
-    fn do_create(name: &str) -> SharedMemory {
+    fn do_create(name: &str) -> Result<SharedMemory> {
         let shm: SharedMemory = match SharedMemory::create(name, SHM_SIZE) {
             Ok(shm) => shm,
-            Err(_) => panic!("creating a shared memory region with valis size should be possible"),
+            Err(_) => anyhow::bail!("creating a shared memory region with valis size should be possible"),
         };
 
         // Sanity check dimension of shared memory region.
-        assert!(shm.size() == SHM_SIZE);
+        crate::ensure_eq!(shm.size(), SHM_SIZE);
 
-        shm
+        Ok(shm)
     }
 
     /// Successfully opens an existing shared memory region.
-    fn do_open(name: &str) -> SharedMemory {
+    fn do_open(name: &str) -> Result<SharedMemory> {
         let shm: SharedMemory = match SharedMemory::open(name, SHM_SIZE) {
             Ok(shm) => shm,
-            Err(_) => panic!("opening a shared memory region with valis size should be possible"),
+            Err(_) => anyhow::bail!("opening a shared memory region with valis size should be possible"),
         };
 
         // Sanity check dimension of shared memory region.
-        assert!(shm.size() == SHM_SIZE);
+        crate::ensure_eq!(shm.size(), SHM_SIZE);
 
-        shm
+        Ok(shm)
     }
 
     /// Tests if we succeed to create a shared memory region.
     #[test]
-    fn create() {
+    fn create() -> Result<()> {
         let shm_name: String = "shm-test-create".to_string();
-        let _shm_created: SharedMemory = do_create(&shm_name);
-        let _shm_open: SharedMemory = do_open(&shm_name);
+        let _shm_created: SharedMemory = do_create(&shm_name)?;
+        let _shm_open: SharedMemory = do_open(&shm_name)?;
+
+        Ok(())
     }
 
     /// Tests if we succeed to open a shared memory region.
     #[test]
-    fn open() {
+    fn open() -> Result<()> {
         let shm_name: String = "shm-test-open".to_string();
-        let _shm_created: SharedMemory = do_create(&shm_name);
+        let _shm_created: SharedMemory = do_create(&shm_name)?;
+
+        Ok(())
     }
 
     /// Tets if we succeed to read/write to/from a shared memory region using read/write functions.
     #[test]
-    fn read_write() {
+    fn read_write() -> Result<()> {
         let shm_name: String = "shm-test-read-write".to_string();
-        let mut shm: SharedMemory = do_create(&shm_name);
+        let mut shm: SharedMemory = do_create(&shm_name)?;
 
         // Write bytes.
         for i in 0..shm.size() {
@@ -361,15 +366,17 @@ mod tests {
         for i in 0..shm.size() {
             let mut val: u8 = 0;
             shm.read::<u8>(i, &mut val);
-            assert!(val == (i & 255) as u8);
+            crate::ensure_eq!(val, (i & 255) as u8);
         }
+
+        Ok(())
     }
 
     /// Tets if we succeed to read/write to/from a shared memory region using dereference trait.
     #[test]
-    fn read_write_deref() {
+    fn read_write_deref() -> Result<()> {
         let shm_name: String = "shm-test-read-write-deref".to_string();
-        let mut shm: SharedMemory = do_create(&shm_name);
+        let mut shm: SharedMemory = do_create(&shm_name)?;
 
         // Write bytes.
         for i in 0..shm.size() {
@@ -378,16 +385,18 @@ mod tests {
 
         // Read bytes.
         for i in 0..shm.size() {
-            assert!(shm[i] == (i & 255) as u8);
+            crate::ensure_eq!(shm[i], (i & 255) as u8);
         }
+
+        Ok(())
     }
 
     /// Tests if we succeed to read/write to a shared memory region that is mapped at multiple address ranges.
     #[test]
-    fn read_write_multiple_ranges() {
+    fn read_write_multiple_ranges() -> Result<()> {
         let shm_name: String = "shm-test-read-write-multiple-ranges".to_string();
-        let mut shm_wronly: SharedMemory = do_create(&shm_name);
-        let shm_rdonly: SharedMemory = do_open(&shm_name);
+        let mut shm_wronly: SharedMemory = do_create(&shm_name)?;
+        let shm_rdonly: SharedMemory = do_open(&shm_name)?;
 
         // Write bytes.
         for i in 0..shm_wronly.size() {
@@ -396,7 +405,9 @@ mod tests {
 
         // Read bytes.
         for i in 0..shm_wronly.size() {
-            assert!(shm_rdonly[i] == (i & 255) as u8);
+            crate::ensure_eq!(shm_rdonly[i], (i & 255) as u8);
         }
+
+        Ok(())
     }
 }
