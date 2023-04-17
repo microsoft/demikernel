@@ -90,7 +90,7 @@ fn test_connection_timeout() -> Result<()> {
         test_helpers::ALICE_IPV4,
         test_helpers::BOB_IPV4,
         listen_port,
-    )?;
+    );
 
     for _ in 0..nretries {
         for _ in 0..timeout.as_secs() {
@@ -272,7 +272,7 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
         test_helpers::ALICE_IPV4,
         test_helpers::BOB_IPV4,
         listen_port,
-    )?;
+    );
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
