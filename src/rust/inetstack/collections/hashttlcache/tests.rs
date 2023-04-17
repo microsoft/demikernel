@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use super::HashTtlCache;
+use ::anyhow::Result;
 use std::time::{
     Duration,
     Instant,
@@ -9,7 +10,7 @@ use std::time::{
 
 /// Tests that objects with an explicit TTL get evicted at the right time.
 #[test]
-fn evict_by_explicit_ttl_case1() {
+fn evict_by_explicit_ttl_case1() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -17,17 +18,19 @@ fn evict_by_explicit_ttl_case1() {
 
     // Insert an object in the cache with a TTL.
     cache.insert_with_ttl("a", 'a', Some(ttl));
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Advance clock and make sure that the object is not in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a").is_none());
+    crate::ensure_eq!(cache.get(&"a"), None);
+
+    Ok(())
 }
 
 /// Tests that objects with an explicit TTL get evicted at the right time.
 #[test]
-fn evict_by_explicit_ttl_case2() {
+fn evict_by_explicit_ttl_case2() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -35,17 +38,19 @@ fn evict_by_explicit_ttl_case2() {
 
     // Insert an object in the cache with a TTL.
     cache.insert_with_ttl("a", 'a', Some(ttl));
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Advance clock and make sure that the object is not in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a").is_none());
+    crate::ensure_eq!(cache.get(&"a"), None);
+
+    Ok(())
 }
 
 /// Tests that objects without an explicit TTL get evicted using the default TTL.
 #[test]
-fn evict_by_default_ttl() {
+fn evict_by_default_ttl() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -53,17 +58,19 @@ fn evict_by_default_ttl() {
 
     // Insert an object in the cache with the default TTL.
     cache.insert("a", 'a');
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Advance clock and make sure that the object is not in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a").is_none());
+    crate::ensure_eq!(cache.get(&"a"), None);
+
+    Ok(())
 }
 
 /// Tests that objects without a TTL do not get evicted.
 #[test]
-fn no_evict_excplicit() {
+fn no_evict_excplicit() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -71,17 +78,19 @@ fn no_evict_excplicit() {
 
     // Insert an object in the cache without a TTL.
     cache.insert_with_ttl("a", 'a', None);
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Advance clock and make sure that the object is in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
+
+    Ok(())
 }
 
 /// Tests that objects with none as default TTL do not get evicted.
 #[test]
-fn no_evict_default() {
+fn no_evict_default() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
@@ -89,17 +98,19 @@ fn no_evict_default() {
 
     // Insert an object in the cache with the default TTL.
     cache.insert("a", 'a');
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Advance clock and make sure that the object is in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
+
+    Ok(())
 }
 
 // Tests if objects that are replaced do not get prematurely evicted.
 #[test]
-fn replace_object() {
+fn replace_object() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(2);
     let default_ttl = Duration::from_secs(1);
@@ -109,26 +120,28 @@ fn replace_object() {
 
     // Insert an object in the cache with the default TTL.
     cache.insert("a", 'a');
-    assert!(cache.get(&"a") == Some(&'a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
 
     // Replace object using an explicit TTL.
     let replaced = cache.insert_with_ttl("a", 'b', Some(ttl));
-    assert!(replaced == Some('a'));
-    assert!(cache.get(&"a") == Some(&'b'));
+    crate::ensure_eq!(replaced, Some('a'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'b'));
 
     // Make sure that the object was replaced and is in the cache.
     cache.advance_clock(later);
     cache.cleanup();
-    assert!(cache.get(&"a") == Some(&'b'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'b'));
 
     // Advance clock and make sure that the object is not in the cache.
     cache.advance_clock(even_later);
     cache.cleanup();
-    assert!(cache.get(&"a").is_none());
+    crate::ensure_eq!(cache.get(&"a"), None);
+
+    Ok(())
 }
 
 #[test]
-fn add_and_remove_object() {
+fn add_and_remove_object() -> Result<()> {
     let now: Instant = Instant::now();
     let ttl: Duration = Duration::from_secs(2);
     let default_ttl: Duration = Duration::from_secs(1);
@@ -139,14 +152,16 @@ fn add_and_remove_object() {
     cache.insert_with_ttl("b", 'b', Some(ttl));
 
     // make sure object is in the cache
-    assert!(cache.get(&"a") == Some(&'a'));
-    assert!(cache.get(&"b") == Some(&'b'));
+    crate::ensure_eq!(cache.get(&"a"), Some(&'a'));
+    crate::ensure_eq!(cache.get(&"b"), Some(&'b'));
 
     // remove object
     cache.remove(&"a");
     cache.remove(&"b");
 
     // make sure object is not in cache
-    assert!(cache.get(&"a").is_none());
-    assert!(cache.get(&"b").is_none());
+    crate::ensure_eq!(cache.get(&"a"), None);
+    crate::ensure_eq!(cache.get(&"b"), None);
+
+    Ok(())
 }
