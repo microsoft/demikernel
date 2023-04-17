@@ -5,9 +5,10 @@ use crate::{
     perftools::profiler,
     timer,
 };
+use ::anyhow::Result;
 
 #[test]
-fn test_multiple_roots() {
+fn test_multiple_roots() -> Result<()> {
     profiler::reset();
 
     for i in 0..=5 {
@@ -22,23 +23,25 @@ fn test_multiple_roots() {
     profiler::PROFILER.with(|p| {
         let p = p.borrow();
 
-        assert_eq!(p.roots.len(), 2);
+        crate::ensure_eq!(p.roots.len(), 2);
 
         for root in p.roots.iter() {
-            assert!(root.borrow().pred.is_none());
-            assert!(root.borrow().succs.is_empty());
+            crate::ensure_eq!(root.borrow().pred.is_none(), true);
+            crate::ensure_eq!(root.borrow().succs.is_empty(), true);
         }
 
-        assert_eq!(p.roots[0].borrow().name, "b");
-        assert_eq!(p.roots[1].borrow().name, "a");
+        crate::ensure_eq!(p.roots[0].borrow().name, "b");
+        crate::ensure_eq!(p.roots[1].borrow().name, "a");
 
-        assert_eq!(p.roots[0].borrow().num_calls, 6);
-        assert_eq!(p.roots[1].borrow().num_calls, 1);
+        crate::ensure_eq!(p.roots[0].borrow().num_calls, 6);
+        crate::ensure_eq!(p.roots[1].borrow().num_calls, 1);
     });
+
+    Ok(())
 }
 
 #[test]
-fn test_succ_reuse() {
+fn test_succ_reuse() -> Result<()> {
     use std::ptr;
 
     profiler::reset();
@@ -50,29 +53,29 @@ fn test_succ_reuse() {
         }
     }
 
-    assert_eq!(profiler::PROFILER.with(|p| p.borrow().roots.len()), 1);
+    crate::ensure_eq!(profiler::PROFILER.with(|p| p.borrow().roots.len()), 1);
 
     profiler::PROFILER.with(|p| {
         let p = p.borrow();
 
-        assert_eq!(p.roots.len(), 1);
+        crate::ensure_eq!(p.roots.len(), 1);
 
         let root = p.roots[0].borrow();
-        assert_eq!(root.name, "a");
-        assert!(root.pred.is_none());
-        assert_eq!(root.succs.len(), 1);
-        assert_eq!(root.num_calls, 6);
+        crate::ensure_eq!(root.name, "a");
+        crate::ensure_eq!(root.pred.is_none(), true);
+        crate::ensure_eq!(root.succs.len(), 1);
+        crate::ensure_eq!(root.num_calls, 6);
 
         let succ = root.succs[0].borrow();
-        assert_eq!(succ.name, "b");
-        assert!(ptr::eq(succ.pred.as_ref().unwrap().as_ref(), p.roots[0].as_ref()));
-        assert!(succ.succs.is_empty());
-        assert_eq!(succ.num_calls, 3);
+        crate::ensure_eq!(succ.name, "b");
+        crate::ensure_eq!(ptr::eq(succ.pred.as_ref().unwrap().as_ref(), p.roots[0].as_ref()));
+        crate::ensure_eq!(succ.succs.is_empty(), true);
+        crate::ensure_eq!(succ.num_calls, 3);
     });
 }
 
 #[test]
-fn test_reset_during_frame() {
+fn test_reset_during_frame() -> Result<()> {
     profiler::reset();
 
     for i in 0..=5 {
@@ -84,7 +87,7 @@ fn test_reset_during_frame() {
                 profiler::reset();
             }
 
-            assert!(profiler::PROFILER.with(|p| p.borrow().current.is_some()));
+            crate::ensure_eq!(profiler::PROFILER.with(|p| p.borrow().current.is_some()), true);
 
             timer!("d");
         }
@@ -93,7 +96,9 @@ fn test_reset_during_frame() {
     profiler::PROFILER.with(|p| {
         let p = p.borrow();
 
-        assert!(p.roots.is_empty());
-        assert!(p.current.is_none());
+        crate::ensure_eq!(p.roots.is_empty(), true);
+        crate::ensure_eq!(p.current.is_none(), true);
     });
+
+    Ok(())
 }
