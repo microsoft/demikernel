@@ -246,6 +246,7 @@ mod tests {
         Timer,
         TimerRc,
     };
+    use ::anyhow::Result;
     use futures::task::noop_waker_ref;
     use std::{
         future::Future,
@@ -259,7 +260,7 @@ mod tests {
     };
 
     #[test]
-    fn test_timer() {
+    fn test_timer() -> Result<()> {
         let mut ctx = Context::from_waker(noop_waker_ref());
         let mut now = Instant::now();
 
@@ -268,33 +269,35 @@ mod tests {
         let wait_future1 = timer.wait(timer.clone(), Duration::from_secs(2));
         futures::pin_mut!(wait_future1);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
 
         now += Duration::from_millis(500);
         timer.advance_clock(now);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
         let wait_future2 = timer.wait(timer.clone(), Duration::from_secs(1));
         futures::pin_mut!(wait_future2);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending(), true);
 
         now += Duration::from_millis(500);
         timer.advance_clock(now);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_pending(), true);
 
         now += Duration::from_millis(500);
         timer.advance_clock(now);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending());
-        assert!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_ready());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future2), &mut ctx).is_ready(), true);
 
         now += Duration::from_millis(750);
         timer.advance_clock(now);
 
-        assert!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_ready());
+        crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_ready(), true);
+
+        Ok(())
     }
 }

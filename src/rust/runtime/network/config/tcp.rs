@@ -198,18 +198,21 @@ mod tests {
         config::TcpConfig,
         consts::DEFAULT_MSS,
     };
+    use ::anyhow::Result;
     use ::std::time::Duration;
 
     /// Tests default instantiation for [UdpConfig].
     #[test]
-    fn test_tcp_config_default() {
+    fn test_tcp_config_default() -> Result<()> {
         let config: TcpConfig = TcpConfig::default();
-        assert_eq!(config.get_advertised_mss(), DEFAULT_MSS);
-        assert_eq!(config.get_handshake_retries(), 5);
-        assert_eq!(config.get_handshake_timeout(), Duration::from_secs(3));
-        assert_eq!(config.get_receive_window_size(), 0xffff);
-        assert_eq!(config.get_window_scale(), 0);
-        assert_eq!(config.get_rx_checksum_offload(), false);
-        assert_eq!(config.get_tx_checksum_offload(), false);
+        crate::ensure_eq!(config.get_advertised_mss(), DEFAULT_MSS);
+        crate::ensure_eq!(config.get_handshake_retries(), 5);
+        crate::ensure_eq!(config.get_handshake_timeout(), Duration::from_secs(3));
+        crate::ensure_eq!(config.get_receive_window_size(), 0xffff);
+        crate::ensure_eq!(config.get_window_scale(), 0);
+        crate::ensure_eq!(config.get_rx_checksum_offload(), false);
+        crate::ensure_eq!(config.get_tx_checksum_offload(), false);
+
+        Ok(())
     }
 }

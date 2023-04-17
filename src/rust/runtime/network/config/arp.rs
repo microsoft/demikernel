@@ -142,6 +142,7 @@ impl Default for ArpConfig {
 #[cfg(test)]
 mod tests {
     use crate::runtime::network::config::ArpConfig;
+    use ::anyhow::Result;
     use ::std::{
         collections::HashMap,
         time::Duration,
@@ -149,12 +150,14 @@ mod tests {
 
     /// Tests default instantiation for [UdpConfig].
     #[test]
-    fn test_arp_config_default() {
+    fn test_arp_config_default() -> Result<()> {
         let config: ArpConfig = ArpConfig::default();
-        assert_eq!(config.get_cache_ttl(), Duration::from_secs(15));
-        assert_eq!(config.get_request_timeout(), Duration::from_secs(20));
-        assert_eq!(config.get_retry_count(), 5);
-        assert_eq!(config.get_initial_values(), &HashMap::new());
-        assert_eq!(config.get_disable_arp(), false);
+        crate::ensure_eq!(config.get_cache_ttl(), Duration::from_secs(15));
+        crate::ensure_eq!(config.get_request_timeout(), Duration::from_secs(20));
+        crate::ensure_eq!(config.get_retry_count(), 5);
+        crate::ensure_eq!(config.get_initial_values(), &HashMap::new());
+        crate::ensure_eq!(config.get_disable_arp(), false);
+
+        Ok(())
     }
 }
