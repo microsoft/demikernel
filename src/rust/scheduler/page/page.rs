@@ -177,6 +177,7 @@ mod tests {
         WAKER_BIT_LENGTH,
         WAKER_PAGE_SIZE,
     };
+    use ::anyhow::Result;
     use ::rand::Rng;
     use ::std::mem;
     use ::test::{
@@ -185,9 +186,10 @@ mod tests {
     };
 
     #[test]
-    fn test_sizes() {
-        assert_eq!(WAKER_PAGE_SIZE, WAKER_BIT_LENGTH);
-        assert_eq!(mem::size_of::<WakerPage>(), WAKER_PAGE_SIZE);
+    fn test_sizes() -> Result<()> {
+        crate::ensure_eq!(WAKER_PAGE_SIZE, WAKER_BIT_LENGTH);
+        crate::ensure_eq!(mem::size_of::<WakerPage>(), WAKER_PAGE_SIZE);
+        Ok(())
     }
 
     #[bench]

@@ -344,14 +344,15 @@ fn slot_sizes() -> impl Iterator<Item = usize> {
 
 #[cfg(test)]
 mod tests {
+    use ::anyhow::Result;
     use ::std::{
         mem,
         pin::Pin,
     };
 
     #[test]
-    fn slot_sizes() {
-        assert_eq!(
+    fn slot_sizes() -> Result<()> {
+        crate::ensure_eq!(
             vec![
                 super::FIRST_SLOT_SIZE,
                 super::FIRST_SLOT_SIZE,
@@ -361,58 +362,64 @@ mod tests {
             ],
             super::slot_sizes().take(5).collect::<Vec<_>>()
         );
+
+        Ok(())
     }
 
     #[test]
-    fn calculate_key_invalid() {
+    fn calculate_key_invalid() -> Result<()> {
         let invalid_key: usize = 1usize << (mem::size_of::<usize>() * 8 - 1);
         super::calculate_key(invalid_key);
+
+        Ok(())
     }
 
     #[test]
-    fn calculate_key_valid() {
+    fn calculate_key_valid() -> Result<()> {
         // NB: range of the first slot.
         let expected_key: (usize, usize, usize) = (0, 0, 16);
         let returned_key: (usize, usize, usize) = match super::calculate_key(0) {
             Some(key) => key,
-            None => panic!("calculate_key() failed"),
+            None => anyhow::bail!("calculate_key() failed"),
         };
-        assert_eq!(returned_key, expected_key);
+        crate::ensure_eq!(returned_key, expected_key);
 
         let expected_key: (usize, usize, usize) = (0, 15, 16);
         let returned_key: (usize, usize, usize) = match super::calculate_key(15) {
             Some(key) => key,
-            None => panic!("calculate_key() failed"),
+            None => anyhow::bail!("calculate_key() failed"),
         };
-        assert_eq!(returned_key, expected_key);
+        crate::ensure_eq!(returned_key, expected_key);
 
         for i in 4..=62 {
             let end_range: usize = 1usize << i;
             let expected_key: (usize, usize, usize) = (i - 3, 0, end_range);
             let returned_key: (usize, usize, usize) = match super::calculate_key(end_range) {
                 Some(key) => key,
-                None => panic!("calculate_key() failed"),
+                None => anyhow::bail!("calculate_key() failed"),
             };
-            assert_eq!(returned_key, expected_key);
+            crate::ensure_eq!(returned_key, expected_key);
 
             let expected_key: (usize, usize, usize) = (i - 3, end_range - 1, end_range);
             let returned_key: (usize, usize, usize) = match super::calculate_key((1usize << (i + 1)) - 1) {
                 Some(key) => key,
-                None => panic!("calculate_key() failed"),
+                None => anyhow::bail!("calculate_key() failed"),
             };
-            assert_eq!(returned_key, expected_key);
+            crate::ensure_eq!(returned_key, expected_key);
         }
+
+        Ok(())
     }
 
     #[test]
-    fn insert_get_remove_many() {
+    fn insert_get_remove_many() -> Result<()> {
         let mut slab: super::PinSlab<Box<u128>> = super::PinSlab::new();
         let mut keys: Vec<(u128, usize)> = Vec::new();
 
         for i in 0..1024 {
             let key: usize = match slab.insert(Box::new(i as u128)) {
                 Some(key) => key,
-                None => panic!("insert() failed"),
+                None => anyhow::bail!("insert() failed"),
             };
             keys.push((i as u128, key));
         }
@@ -420,28 +427,31 @@ mod tests {
         for (expected, key) in keys.iter().copied() {
             let value: Pin<&mut Box<u128>> = match slab.get_pin_mut(key) {
                 Some(value) => value,
-                None => panic!("get_pin_mut() failed"),
+                None => anyhow::bail!("get_pin_mut() failed"),
             };
-            assert_eq!(expected, **value.as_ref());
-            let contains: bool = match slab.remove(key) {
-                Some(contains) => contains,
-                None => panic!("remove() failed"),
+            crate::ensure_eq!(expected, **value.as_ref());
+            match slab.remove(key) {
+                Some(contains) => crate::ensure_eq!(contains, true),
+                None => anyhow::bail!("remove() failed"),
             };
-            assert!(contains);
         }
 
         for (_, key) in keys.iter().copied() {
-            assert!(slab.get_pin_mut(key).is_none());
+            crate::ensure_eq!(slab.get_pin_mut(key), None);
         }
+
+        Ok(())
     }
 
     #[test]
-    fn remove_unpin() {
+    fn remove_unpin() -> Result<()> {
         let mut slab: super::PinSlab<i32> = super::PinSlab::new();
         let key: usize = match slab.insert(1) {
             Some(key) => key,
-            None => panic!("insert() failed"),
+            None => anyhow::bail!("insert() failed"),
         };
-        assert_eq!(slab.remove_unpin(key), Some(1));
+        crate::ensure_eq!(slab.remove_unpin(key), Some(1));
+
+        Ok(())
     }
 }

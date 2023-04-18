@@ -160,6 +160,7 @@ mod tests {
         },
         waker64::WAKER_BIT_LENGTH,
     };
+    use ::anyhow::Result;
     use ::rand::Rng;
     use ::std::ptr::NonNull;
     use ::test::{
@@ -168,98 +169,104 @@ mod tests {
     };
 
     #[test]
-    fn test_refcount() {
+    fn test_refcount() -> Result<()> {
         let p: WakerPageRef = WakerPageRef::default();
-        assert_eq!(p.refcount_get(), 1);
+        crate::ensure_eq!(p.refcount_get(), 1);
 
         let p_clone: NonNull<u8> = p.into_raw_waker_ref(0);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 2);
+        crate::ensure_eq!(refcount, 2);
         let q: WakerRef = WakerRef::new(p_clone);
         let refcount: u64 = q.refcount_get();
-        assert_eq!(refcount, 2);
+        crate::ensure_eq!(refcount, 2);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 2);
+        crate::ensure_eq!(refcount, 2);
 
         let r: WakerRef = WakerRef::new(p.into_raw_waker_ref(31));
         let refcount: u64 = r.refcount_get();
-        assert_eq!(refcount, 3);
+        crate::ensure_eq!(refcount, 3);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 3);
+        crate::ensure_eq!(refcount, 3);
 
         let s: WakerRef = r.clone();
         let refcount: u64 = s.refcount_get();
-        assert_eq!(refcount, 4);
+        crate::ensure_eq!(refcount, 4);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 4);
+        crate::ensure_eq!(refcount, 4);
 
         drop(s);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 3);
+        crate::ensure_eq!(refcount, 3);
 
         drop(r);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 2);
+        crate::ensure_eq!(refcount, 2);
 
         drop(q);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 1);
+        crate::ensure_eq!(refcount, 1);
+
+        Ok(())
     }
 
     #[test]
-    fn test_wake() {
+    fn test_wake() -> Result<()> {
         let p: WakerPageRef = WakerPageRef::default();
-        assert_eq!(p.refcount_get(), 1);
+        crate::ensure_eq!(p.refcount_get(), 1);
 
         let q: WakerRef = WakerRef::new(p.into_raw_waker_ref(0));
-        assert_eq!(p.refcount_get(), 2);
+        crate::ensure_eq!(p.refcount_get(), 2);
         let r: WakerRef = WakerRef::new(p.into_raw_waker_ref(31));
-        assert_eq!(p.refcount_get(), 3);
+        crate::ensure_eq!(p.refcount_get(), 3);
         let s: WakerRef = WakerRef::new(p.into_raw_waker_ref(15));
-        assert_eq!(p.refcount_get(), 4);
+        crate::ensure_eq!(p.refcount_get(), 4);
 
         q.wake();
-        assert_eq!(p.take_notified(), 1 << 0);
-        assert_eq!(p.refcount_get(), 3);
+        crate::ensure_eq!(p.take_notified(), 1 << 0);
+        crate::ensure_eq!(p.refcount_get(), 3);
 
         r.wake();
         s.wake();
-        assert_eq!(p.take_notified(), 1 << 15 | 1 << 31);
-        assert_eq!(p.refcount_get(), 1);
+        crate::ensure_eq!(p.take_notified(), 1 << 15 | 1 << 31);
+        crate::ensure_eq!(p.refcount_get(), 1);
+
+        Ok(())
     }
 
     #[test]
-    fn test_wake_by_ref() {
+    fn test_wake_by_ref() -> Result<()> {
         let p: WakerPageRef = WakerPageRef::default();
-        assert_eq!(p.refcount_get(), 1);
+        crate::ensure_eq!(p.refcount_get(), 1);
 
         let q: WakerRef = WakerRef::new(p.into_raw_waker_ref(0));
-        assert_eq!(p.refcount_get(), 2);
+        crate::ensure_eq!(p.refcount_get(), 2);
         let r: WakerRef = WakerRef::new(p.into_raw_waker_ref(31));
-        assert_eq!(p.refcount_get(), 3);
+        crate::ensure_eq!(p.refcount_get(), 3);
         let s: WakerRef = WakerRef::new(p.into_raw_waker_ref(15));
-        assert_eq!(p.refcount_get(), 4);
+        crate::ensure_eq!(p.refcount_get(), 4);
 
         q.wake_by_ref();
-        assert_eq!(p.take_notified(), 1 << 0);
-        assert_eq!(p.refcount_get(), 4);
+        crate::ensure_eq!(p.take_notified(), 1 << 0);
+        crate::ensure_eq!(p.refcount_get(), 4);
 
         r.wake_by_ref();
         s.wake_by_ref();
-        assert_eq!(p.take_notified(), 1 << 15 | 1 << 31);
-        assert_eq!(p.refcount_get(), 4);
+        crate::ensure_eq!(p.take_notified(), 1 << 15 | 1 << 31);
+        crate::ensure_eq!(p.refcount_get(), 4);
 
         drop(s);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 3);
+        crate::ensure_eq!(refcount, 3);
 
         drop(r);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 2);
+        crate::ensure_eq!(refcount, 2);
 
         drop(q);
         let refcount: u64 = p.refcount_get();
-        assert_eq!(refcount, 1);
+        crate::ensure_eq!(refcount, 1);
+
+        Ok(())
     }
 
     #[bench]
