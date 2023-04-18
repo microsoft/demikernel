@@ -999,32 +999,35 @@ impl TryFrom<&[u8]> for DemiBuffer {
 mod tests {
     use super::DemiBuffer;
     use crate::runtime::fail::Fail;
+    use ::anyhow::Result;
     use std::ptr::NonNull;
 
     // Test basic allocation, len, adjust, and trim.
     #[test]
-    fn basic() {
+    fn basic() -> Result<()> {
         // Create a new (heap-allocated) `DemiBuffer` with a 42 byte data area.
         let mut buf: DemiBuffer = DemiBuffer::new(42);
-        assert!(buf.is_heap_allocated());
-        assert_eq!(buf.len(), 42);
+        crate::ensure_eq!(buf.is_heap_allocated(), true);
+        crate::ensure_eq!(buf.len(), 42);
 
         // Remove 7 bytes from the beginning of the data area.  Length should now be 35.
-        assert!(buf.adjust(7).is_ok());
-        assert_eq!(buf.len(), 35);
+        crate::ensure_eq!(buf.adjust(7).is_ok(), true);
+        crate::ensure_eq!(buf.len(), 35);
 
         // Remove 7 bytes from the end of the data area.  Length should now be 28.
-        assert!(buf.trim(7).is_ok());
-        assert_eq!(buf.len(), 28);
+        crate::ensure_eq!(buf.trim(7).is_ok(), true);
+        crate::ensure_eq!(buf.len(), 28);
 
         // Verify bad requests actually fail.
-        assert!(buf.adjust(30).is_err());
-        assert!(buf.trim(30).is_err());
+        crate::ensure_eq!(buf.adjust(30).is_err(), true);
+        crate::ensure_eq!(buf.trim(30).is_err(), true);
+
+        Ok(())
     }
 
     // Test cloning, raw conversion, and zero-size buffers.
     #[test]
-    fn advanced() {
+    fn advanced() -> Result<()> {
         fn clone_me(buf: DemiBuffer) -> DemiBuffer {
             // Clone and return the buffer.
             buf.clone()
@@ -1039,111 +1042,130 @@ mod tests {
 
         // Create a buffer and clone it.
         let fortytwo: DemiBuffer = DemiBuffer::new(42);
-        assert_eq!(fortytwo.len(), 42);
+        crate::ensure_eq!(fortytwo.len(), 42);
         let clone: DemiBuffer = clone_me(fortytwo);
-        assert_eq!(clone.len(), 42);
+        crate::ensure_eq!(clone.len(), 42);
 
         // Convert a buffer into a raw token and bring it back.
         let token: NonNull<u8> = convert_to_token(clone);
         let reconstituted: DemiBuffer = unsafe { DemiBuffer::from_raw(token) };
-        assert_eq!(reconstituted.len(), 42);
+        crate::ensure_eq!(reconstituted.len(), 42);
 
         // Create a zero-sized buffer.
         let zero: DemiBuffer = DemiBuffer::new(0);
-        assert_eq!(zero.len(), 0);
+        crate::ensure_eq!(zero.len(), 0);
         // Clone it, and keep the original around.
         let clone: DemiBuffer = zero.clone();
-        assert_eq!(clone.len(), 0);
+        crate::ensure_eq!(clone.len(), 0);
         // Clone the clone, and drop the first clone.
         let another: DemiBuffer = clone_me(clone);
-        assert_eq!(another.len(), 0);
+        crate::ensure_eq!(another.len(), 0);
+
+        Ok(())
     }
 
     // Tests split_back (and also allocation from a slice).
     #[test]
-    fn split_back() {
+    fn split_back() -> Result<()> {
         // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
         let str: String = String::from("word one two three four five six seven eight nine");
         let slice: &[u8] = str.as_bytes();
-        let result: Result<DemiBuffer, Fail> = DemiBuffer::from_slice(slice);
         // `DemiBuffer::from_slice` shouldn't fail, as we passed it a valid slice of a `DemiBuffer`-allowable length.
-        assert!(result.is_ok());
-        let mut buf: DemiBuffer = result.expect("DemiBuffer::from_slice should return a DemiBuffer for this slice");
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(slice) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!(
+                "DemiBuffer::from_slice should return a DemiBuffer for this slice: {}",
+                e
+            ),
+        };
 
         // The `DemiBuffer` data length should equal the original string length.
-        assert_eq!(buf.len(), str.len());
+        crate::ensure_eq!(buf.len(), str.len());
 
         // The `DemiBuffer` data (content) should match that of the original string.
-        assert_eq!(&*buf, slice);
+        crate::ensure_eq!(&*buf, slice);
 
         // Split this `DemiBuffer` into two.
-        let result: Result<DemiBuffer, Fail> = buf.split_back(24);
         // `DemiBuffer::split_back` shouldn't fail, as we passed it a valid offset.
-        assert!(result.is_ok());
-        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_back shouldn't fail for this offset");
-        assert_eq!(buf.len(), 24);
-        assert_eq!(split_buf.len(), 25);
+        let mut split_buf: DemiBuffer = match buf.split_back(24) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!("DemiBuffer::split_back shouldn't fail for this offset: {}", e),
+        };
+        crate::ensure_eq!(buf.len(), 24);
+        crate::ensure_eq!(split_buf.len(), 25);
 
         // Compare contents.
-        assert_eq!(&buf[..], &str.as_bytes()[..24]);
-        assert_eq!(&split_buf[..], &str.as_bytes()[24..]);
+        crate::ensure_eq!(&buf[..], &str.as_bytes()[..24]);
+        crate::ensure_eq!(&split_buf[..], &str.as_bytes()[24..]);
 
         // Split another `DemiBuffer` off of the already-split-off one.
-        let result: Result<DemiBuffer, Fail> = split_buf.split_back(9);
         // `DemiBuffer::split_back` shouldn't fail, as we passed it a valid offset.
-        assert!(result.is_ok());
-        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_back shouldn't fail for this offset");
-        assert_eq!(buf.len(), 24);
-        assert_eq!(split_buf.len(), 9);
-        assert_eq!(another_buf.len(), 16);
+        let another_buf: DemiBuffer = match split_buf.split_back(9) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!("DemiBuffer::split_back shouldn't fail for this offset"),
+        };
+
+        crate::ensure_eq!(buf.len(), 24);
+        crate::ensure_eq!(split_buf.len(), 9);
+        crate::ensure_eq!(another_buf.len(), 16);
 
         // Compare contents (including the unaffected original to ensure that it is actually unaffected).
-        assert_eq!(&buf[..], &str.as_bytes()[..24]);
-        assert_eq!(&split_buf[..], &str.as_bytes()[24..33]);
-        assert_eq!(&another_buf[..], &str.as_bytes()[33..]);
+        crate::ensure_eq!(&buf[..], &str.as_bytes()[..24]);
+        crate::ensure_eq!(&split_buf[..], &str.as_bytes()[24..33]);
+        crate::ensure_eq!(&another_buf[..], &str.as_bytes()[33..]);
+
+        Ok(())
     }
 
     // Test split_off (and also allocation from a slice).
     #[test]
-    fn split_front() {
+    fn split_front() -> Result<()> {
         // Create a new (heap-allocated) `DemiBuffer` by copying a slice of a `String`.
         let str: String = String::from("word one two three four five six seven eight nine");
         let slice: &[u8] = str.as_bytes();
-        let result: Result<DemiBuffer, Fail> = DemiBuffer::from_slice(slice);
         // `DemiBuffer::from_slice` shouldn't fail, as we passed it a valid slice of a `DemiBuffer`-allowable length.
-        assert!(result.is_ok());
-        let mut buf: DemiBuffer = result.expect("DemiBuffer::from_slice should return a DemiBuffer for this slice");
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(slice) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!(
+                "DemiBuffer::from_slice should return a DemiBuffer for this slice: {}",
+                e
+            ),
+        };
 
         // The `DemiBuffer` data length should equal the original string length.
-        assert_eq!(buf.len(), str.len());
+        crate::ensure_eq!(buf.len(), str.len());
 
         // The `DemiBuffer` data (content) should match that of the original string.
-        assert_eq!(&*buf, slice);
+        crate::ensure_eq!(&*buf, slice);
 
         // Split this `DemiBuffer` into two.
-        let result: Result<DemiBuffer, Fail> = buf.split_front(24);
         // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
-        assert!(result.is_ok());
-        let mut split_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
-        assert_eq!(buf.len(), 25);
-        assert_eq!(split_buf.len(), 24);
+        let mut split_buf: DemiBuffer = match buf.split_front(24) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!("DemiBuffer::split_off shouldn't fail for this offset: {}", e),
+        };
+        crate::ensure_eq!(buf.len(), 25);
+        crate::ensure_eq!(split_buf.len(), 24);
 
         // Compare contents.
-        assert_eq!(&buf[..], &str.as_bytes()[24..]);
-        assert_eq!(&split_buf[..], &str.as_bytes()[..24]);
+        crate::ensure_eq!(&buf[..], &str.as_bytes()[24..]);
+        crate::ensure_eq!(&split_buf[..], &str.as_bytes()[..24]);
 
         // Split another `DemiBuffer` off of the already-split-off one.
-        let result: Result<DemiBuffer, Fail> = split_buf.split_front(9);
         // `DemiBuffer::split_off` shouldn't fail, as we passed it a valid offset.
-        assert!(result.is_ok());
-        let another_buf: DemiBuffer = result.expect("DemiBuffer::split_off shouldn't fail for this offset");
-        assert_eq!(buf.len(), 25);
-        assert_eq!(split_buf.len(), 15);
-        assert_eq!(another_buf.len(), 9);
+        let another_buf: DemiBuffer = match split_buf.split_front(9) {
+            Ok(buf) => buf,
+            Err(e) => anyhow::bail!("DemiBuffer::split_off shouldn't fail for this offset: {}", e),
+        };
+        crate::ensure_eq!(buf.len(), 25);
+        crate::ensure_eq!(split_buf.len(), 15);
+        crate::ensure_eq!(another_buf.len(), 9);
 
         // Compare contents (including the unaffected original to ensure that it is actually unaffected).
-        assert_eq!(&buf[..], &str.as_bytes()[24..]);
-        assert_eq!(&split_buf[..], &str.as_bytes()[9..24]);
-        assert_eq!(&another_buf[..], &str.as_bytes()[..9]);
+        crate::ensure_eq!(&buf[..], &str.as_bytes()[24..]);
+        crate::ensure_eq!(&split_buf[..], &str.as_bytes()[9..24]);
+        crate::ensure_eq!(&another_buf[..], &str.as_bytes()[..9]);
+
+        Ok(())
     }
 }

@@ -75,20 +75,25 @@ impl Default for UdpConfig {
 #[cfg(test)]
 mod tests {
     use super::UdpConfig;
+    use ::anyhow::Result;
 
     /// Tests default instantiation for [UdpConfig].
     #[test]
-    fn test_udp_config_default() {
+    fn test_udp_config_default() -> Result<()> {
         let config: UdpConfig = UdpConfig::default();
-        assert!(!config.get_rx_checksum_offload());
-        assert!(!config.get_tx_checksum_offload());
+        crate::ensure_eq!(config.get_rx_checksum_offload(), false);
+        crate::ensure_eq!(config.get_tx_checksum_offload(), false);
+
+        Ok(())
     }
 
     /// Tests custom instantiation for [UdpConfig].
     #[test]
-    fn test_udp_config_custom() {
+    fn test_udp_config_custom() -> Result<()> {
         let config: UdpConfig = UdpConfig::new(Some(true), Some(true));
-        assert!(config.get_rx_checksum_offload());
-        assert!(config.get_tx_checksum_offload());
+        crate::ensure_eq!(config.get_rx_checksum_offload(), true);
+        crate::ensure_eq!(config.get_tx_checksum_offload(), true);
+
+        Ok(())
     }
 }
