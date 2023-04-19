@@ -84,7 +84,7 @@ fn send_data(
         window_size,
         seq_no,
         ack_num,
-    );
+    )?;
 
     advance_clock(Some(receiver), Some(sender), now);
 
@@ -143,26 +143,22 @@ fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, 
     sender.rt.poll_scheduler();
 
     // Pop pure ACK
-    match sender.rt.pop_frame_unchecked() {
-        Some(bytes) => {
-            check_packet_pure_ack(
-                bytes.clone(),
-                sender.rt.link_addr,
-                receiver.rt.link_addr,
-                sender.rt.ipv4_addr,
-                receiver.rt.ipv4_addr,
-                ack_num,
-            );
-            match receiver.receive(bytes) {
-                Ok(()) => {
-                    trace!("recv_pure_ack ====> ack completed");
-                    Ok(())
-                },
-                Err(e) => anyhow::bail!("did not receive an ack: {:?}", e),
-            }
-        },
-        None => anyhow::bail!("did not receive a packet"),
-    }
+    if let Some(bytes) = sender.rt.pop_frame_unchecked() {
+        check_packet_pure_ack(
+            bytes.clone(),
+            sender.rt.link_addr,
+            receiver.rt.link_addr,
+            sender.rt.ipv4_addr,
+            receiver.rt.ipv4_addr,
+            ack_num,
+        )?;
+        match receiver.receive(bytes) {
+            Ok(()) => trace!("recv_pure_ack ====> ack completed"),
+            Err(e) => anyhow::bail!("did not receive an ack: {:?}", e),
+        }
+    };
+
+    Ok(())
 }
 
 //=============================================================================
@@ -220,7 +216,7 @@ fn send_recv_round(
         send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes)?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone());
+    recv_data(ctx, server, client, server_fd, bytes.clone())?;
 
     // Push Data: Server -> Client
     let bytes: DemiBuffer = cook_buffer(bufsize, None);
@@ -344,7 +340,7 @@ pub fn test_send_recv_loop() -> Result<()> {
             max_window_size as u16,
             SeqNumber::from(1 + i * bufsize),
             buf.clone(),
-        );
+        )?;
     }
 
     Ok(())
@@ -388,7 +384,7 @@ pub fn test_send_recv_round_loop() -> Result<()> {
             max_window_size as u16,
             SeqNumber::from(1 + i * bufsize),
             buf.clone(),
-        );
+        )?;
     }
 
     Ok(())
@@ -449,23 +445,24 @@ pub fn test_send_recv_with_delay() -> Result<()> {
         // Pop data oftentimes.
         if rand::random() {
             if let Some(bytes) = inflight.pop_front() {
-                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
                 recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
             }
         }
 
         // Pop pure ACK
-        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
+        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no)?;
     }
 
     // Pop inflight packets.
     while let Some(bytes) = inflight.pop_front() {
         // Pop data.
-        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone());
+        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
-        // Send pure ack.
-        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no);
+        // Recv pure ack (should also account for piggybacked ack).
+        // FIXME: https://github.com/demikernel/demikernel/issues/680
+        recv_pure_ack(&mut now, &mut server, &mut client, recv_seq_no)?;
     }
 
     Ok(())
