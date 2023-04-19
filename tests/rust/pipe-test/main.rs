@@ -82,24 +82,29 @@ fn main() -> Result<()> {
         LibOS::new(libos_name)?
     };
 
-    crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
+    match args.run_mode().as_str() {
+        "standalone" => {
+            crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
 
-    // Dump results.
-    for (test_name, test_status, test_result) in result {
-        println!("[{}] {}", test_status, test_name);
-        if let Err(e) = test_result {
-            nfailed += 1;
-            println!("    {}", e);
-        }
-    }
+            // Dump results.
+            for (test_name, test_status, test_result) in result {
+                println!("[{}] {}", test_status, test_name);
+                if let Err(e) = test_result {
+                    nfailed += 1;
+                    println!("    {}", e);
+                }
+            }
 
-    if nfailed > 0 {
-        anyhow::bail!("{} tests failed", nfailed);
-    } else {
-        println!("all tests passed");
-        Ok(())
+            if nfailed > 0 {
+                anyhow::bail!("{} tests failed", nfailed);
+            } else {
+                println!("all tests passed");
+                Ok(())
+            }
+        },
+        _ => anyhow::bail!("invalid run mode"),
     }
 }
