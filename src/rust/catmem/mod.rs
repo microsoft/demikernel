@@ -188,14 +188,15 @@ impl CatmemLibOS {
                 match self.qtable.borrow().get(&qd) {
                     Some(queue) => {
                         let pipe: &Pipe = queue.get_pipe();
-                        let coroutine: Pin<Box<Operation>> = if pipe.eof() {
-                            // Handle end of file.
-                            Box::pin(async move {
-                                let cause: String = format!("connection reset (qd={:?})", qd);
-                                error!("pop(): {:?}", &cause);
-                                (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
-                            })
-                        } else {
+
+                        // TODO: review the following code once that condition is enforced by the pipe abstraction.
+                        // We do not check for EoF because pipes are unidirectional,
+                        // and if EoF is set pipe for a push-only pipe, that pipe is closed.
+                        if pipe.eof() {
+                            unreachable!("push() called on a closed pipe");
+                        }
+
+                        let coroutine: Pin<Box<Operation>> = {
                             let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
                             Box::pin(async move {
                                 // Wait for push to complete.
