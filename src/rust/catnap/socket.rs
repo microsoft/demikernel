@@ -293,6 +293,7 @@ impl Socket {
         self.local
     }
 
+    #[allow(dead_code)]
     /// Returns the `remote` address tot which [self] is connected.
     pub fn remote(&self) -> Option<SocketAddrV4> {
         self.remote
