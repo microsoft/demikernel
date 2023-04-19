@@ -13,6 +13,7 @@ mod async_close;
 mod close;
 mod create_pipe;
 mod open_pipe;
+mod push_wait;
 
 //======================================================================================================================
 // Imports
@@ -104,6 +105,17 @@ fn main() -> Result<()> {
                 println!("all tests passed");
                 Ok(())
             }
+        },
+        "push-wait" => match args.peer_type().ok_or(anyhow::anyhow!("missing peer type"))?.as_str() {
+            "client" => {
+                let mut client: push_wait::PipeClient = push_wait::PipeClient::new(libos, args.pipe_name())?;
+                client.run()
+            },
+            "server" => {
+                let mut server: push_wait::PipeServer = push_wait::PipeServer::new(libos, args.pipe_name())?;
+                server.run()
+            },
+            _ => anyhow::bail!("invalid peer type"),
         },
         _ => anyhow::bail!("invalid run mode"),
     }
