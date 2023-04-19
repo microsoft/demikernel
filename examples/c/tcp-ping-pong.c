@@ -33,9 +33,9 @@
 #define DATA_SIZE 64
 
 /**
- * @brief Maximum number of bytes to transfer.
+ * @brief Maximum number of messages to transfer.
  */
-#define MAX_BYTES (DATA_SIZE * 1024)
+#define MAX_MSGS 1024
 
 /*====================================================================================================================*
  * accept_wait()                                                                                                      *
@@ -151,12 +151,15 @@ static void pop_wait(int qd, demi_qresult_t *qr)
  * @param argc  Argument count.
  * @param argv  Argument list.
  * @param local Local socket address.
+ * @param data_size Number of bytes in each message.
+ * @param max_msgs Maximum number of messages to transfer.
  */
-static void server(int argc, char *const argv[], struct sockaddr_in *local)
+static void server(int argc, char *const argv[], struct sockaddr_in *local, size_t data_size, unsigned max_msgs)
 {
     int qd = -1;
-    int nbytes = 0;
+    size_t nbytes = 0;
     int sockqd = -1;
+    size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
@@ -170,7 +173,7 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
     qd = accept_wait(sockqd);
 
     /* Run. */
-    while (nbytes < MAX_BYTES)
+    while (nbytes < max_bytes)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
@@ -189,7 +192,7 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&sga) == 0);
 
-        fprintf(stdout, "ping (%d)\n", nbytes);
+        fprintf(stdout, "ping (%zu)\n", nbytes);
     }
 }
 
@@ -203,11 +206,14 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
  * @param argc   Argument count.
  * @param argv   Argument list.
  * @param remote Remote socket address.
+ * @param data_size Number of bytes in each message.
+ * @param max_msgs Maximum number of messages to transfer.
  */
-static void client(int argc, char *const argv[], const struct sockaddr_in *remote)
+static void client(int argc, char *const argv[], const struct sockaddr_in *remote, size_t data_size, unsigned max_msgs)
 {
-    int nbytes = 0;
+    size_t nbytes = 0;
     int sockqd = -1;
+    size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
@@ -219,17 +225,17 @@ static void client(int argc, char *const argv[], const struct sockaddr_in *remot
     connect_wait(sockqd, remote);
 
     /* Run. */
-    while (nbytes < MAX_BYTES)
+    while (nbytes < max_bytes)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
 
         /* Allocate scatter-gather array. */
-        sga = demi_sgaalloc(DATA_SIZE);
+        sga = demi_sgaalloc(data_size);
         assert(sga.sga_segs != 0);
 
         /* Cook data. */
-        memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
+        memset(sga.sga_segs[0].sgaseg_buf, 1, data_size);
 
         /* Push scatter-gather array. */
         push_wait(sockqd, &sga, &qr);
@@ -249,7 +255,7 @@ static void client(int argc, char *const argv[], const struct sockaddr_in *remot
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&qr.qr_value.sga) == 0);
 
-        fprintf(stdout, "pong (%d)\n", nbytes);
+        fprintf(stdout, "pong (%zu)\n", nbytes);
     }
 }
 
@@ -313,15 +319,22 @@ int main(int argc, char *const argv[])
         reg_sighandlers();
 
         struct sockaddr_in saddr = {0};
+        size_t data_size = DATA_SIZE;
+        unsigned max_msgs = MAX_MSGS;
+
+        if (argc >= 5)
+            sscanf(argv[4], "%zu", &data_size);
+        if (argc >= 6)
+            sscanf(argv[5], "%u", &max_msgs);
 
         /* Build addresses.*/
         build_sockaddr(argv[2], argv[3], &saddr);
 
         /* Run. */
         if (!strcmp(argv[1], "--server"))
-            server(argc, argv, &saddr);
+            server(argc, argv, &saddr, data_size, max_msgs);
         else if (!strcmp(argv[1], "--client"))
-            client(argc, argv, &saddr);
+            client(argc, argv, &saddr, data_size, max_msgs);
 
         return (EXIT_SUCCESS);
     }
