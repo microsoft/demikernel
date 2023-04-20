@@ -13,6 +13,7 @@ mod async_close;
 mod close;
 mod create_pipe;
 mod open_pipe;
+mod push_wait;
 
 //======================================================================================================================
 // Imports
@@ -82,24 +83,40 @@ fn main() -> Result<()> {
         LibOS::new(libos_name)?
     };
 
-    crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
-    crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
+    match args.run_mode().as_str() {
+        "standalone" => {
+            crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
 
-    // Dump results.
-    for (test_name, test_status, test_result) in result {
-        println!("[{}] {}", test_status, test_name);
-        if let Err(e) = test_result {
-            nfailed += 1;
-            println!("    {}", e);
-        }
-    }
+            // Dump results.
+            for (test_name, test_status, test_result) in result {
+                println!("[{}] {}", test_status, test_name);
+                if let Err(e) = test_result {
+                    nfailed += 1;
+                    println!("    {}", e);
+                }
+            }
 
-    if nfailed > 0 {
-        anyhow::bail!("{} tests failed", nfailed);
-    } else {
-        println!("all tests passed");
-        Ok(())
+            if nfailed > 0 {
+                anyhow::bail!("{} tests failed", nfailed);
+            } else {
+                println!("all tests passed");
+                Ok(())
+            }
+        },
+        "push-wait" => match args.peer_type().ok_or(anyhow::anyhow!("missing peer type"))?.as_str() {
+            "client" => {
+                let mut client: push_wait::PipeClient = push_wait::PipeClient::new(libos, args.pipe_name())?;
+                client.run()
+            },
+            "server" => {
+                let mut server: push_wait::PipeServer = push_wait::PipeServer::new(libos, args.pipe_name())?;
+                server.run()
+            },
+            _ => anyhow::bail!("invalid peer type"),
+        },
+        _ => anyhow::bail!("invalid run mode"),
     }
 }
