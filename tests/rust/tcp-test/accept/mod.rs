@@ -7,10 +7,7 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::{
-        fail::Fail,
-        types::demi_opcode_t,
-    },
+    runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
@@ -58,12 +55,11 @@ fn accept_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(accept_invalid_socket));
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(QDesc::from(0))
-        .expect_err("accept() connections on an invalid socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "accept() failed with {}", e.cause);
+    match libos.accept(QDesc::from(0)) {
+        Err(e) if e.errno == libc::EBADF => (),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on an invalid socket should fail"),
+    };
 
     Ok(())
 }
@@ -76,12 +72,11 @@ fn accept_unbound_socket(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(sockqd)
-        .expect_err("accept() connections on a socket that is not bound should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EINVAL, "accept() failed with {}", e.cause);
+    match libos.accept(sockqd) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on a socket that is not bound should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -98,12 +93,11 @@ fn accept_active_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     libos.bind(sockqd, local.to_owned())?;
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(sockqd)
-        .expect_err("accept() connections on a socket that is not listening should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EINVAL, "accept() failed with {}", e.cause);
+    match libos.accept(sockqd) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on a socket that is not listening should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -171,12 +165,11 @@ fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
     }
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(sockqd)
-        .expect_err("accept() connections on a socket that is connecting should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EINVAL, "accept() failed with {}", e.cause);
+    match libos.accept(sockqd) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on a socket that is closed should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -221,12 +214,11 @@ fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
     }
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(sockqd)
-        .expect_err("accept() connections on a socket that is accepting connections should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EINPROGRESS, "accept() failed with {}", e.cause);
+    match libos.accept(sockqd) {
+        Err(e) if e.errno == libc::EINPROGRESS => (),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on a socket that is accepting connections should fail"),
+    }
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -256,12 +248,9 @@ fn accept_closed_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     libos.close(sockqd)?;
 
     // Fail to accept() connections.
-    let e: Fail = libos
-        .accept(sockqd)
-        .expect_err("accept() connections on a socket that is closed should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "accept() failed with {}", e.cause);
-
-    Ok(())
+    match libos.accept(sockqd) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("accept() failed with {}", e),
+        Ok(_) => anyhow::bail!("accept() connections on a socket that is closed should fail"),
+    }
 }

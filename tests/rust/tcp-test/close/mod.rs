@@ -9,7 +9,6 @@ mod wait;
 
 use anyhow::Result;
 use demikernel::{
-    runtime::fail::Fail,
     LibOS,
     QDesc,
 };
@@ -55,14 +54,11 @@ fn close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(close_invalid_queue_descriptor));
 
     // Fail to close socket.
-    let e: Fail = libos
-        .close(QDesc::from(0))
-        .expect_err("close() an invalid socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "close() failed with {}", e.cause);
-
-    Ok(())
+    match libos.close(QDesc::from(0)) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("close() failed with {}", e),
+        Ok(()) => anyhow::bail!("close() an invalid socket should fail"),
+    }
 }
 
 /// Attempts to close a TCP socket multiple times.
@@ -76,14 +72,11 @@ fn close_socket_twice(libos: &mut LibOS) -> Result<()> {
     libos.close(sockqd)?;
 
     // Fail to close socket.
-    let e: Fail = libos
-        .close(QDesc::from(0))
-        .expect_err("close() a socket twice should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "close() failed with {}", e.cause);
-
-    Ok(())
+    match libos.close(sockqd) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("close() failed with {}", e),
+        Ok(()) => anyhow::bail!("close() a socket twice should fail"),
+    }
 }
 
 /// Attempts to close a TCP socket that is not bound.
