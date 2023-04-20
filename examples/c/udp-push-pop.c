@@ -47,11 +47,18 @@
  * @param argc   Argument count.
  * @param argv   Argument list.
  * @param local  Local socket address.
+ * @param remote Remote socket address.
+ * @param data_size Number of bytes in each message.
+ * @param max_iterations Maximum number of iterations.
  */
-static void server(int argc, char *const argv[], struct sockaddr_in *local)
+static void server(int argc,
+                   char *const argv[],
+                   struct sockaddr_in *local,
+                   size_t data_size,
+                   unsigned max_iterations)
 {
     int sockqd = -1;
-    char expected_buf[DATA_SIZE];
+    char expected_buf[data_size];
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
@@ -60,10 +67,10 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
     assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
     assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
 
-    memset(expected_buf, 1, DATA_SIZE);
+    memset(expected_buf, 1, data_size);
 
     /* Run. */
-    for (int it = 0; it < MAX_ITERATIONS; it++)
+    for (unsigned it = 0; it < max_iterations; it++)
     {
         demi_qtoken_t qt = -1;
         demi_qresult_t qr = {0};
@@ -77,12 +84,12 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
         /* Parse operation result. */
         assert(qr.qr_opcode == DEMI_OPC_POP);
         assert(qr.qr_value.sga.sga_segs != 0);
-        assert(!memcmp(qr.qr_value.sga.sga_segs[0].sgaseg_buf, expected_buf, DATA_SIZE));
+        assert(!memcmp(qr.qr_value.sga.sga_segs[0].sgaseg_buf, expected_buf, data_size));
 
         /* Release scatter-gather array. */
         assert(demi_sgafree(&qr.qr_value.sga) == 0);
 
-        fprintf(stdout, "pop (%d)\n", it);
+        fprintf(stdout, "pop (%u)\n", it);
     }
 }
 
@@ -97,8 +104,15 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local)
  * @param argv   Argument list.
  * @param local  Local socket address.
  * @param remote Remote socket address.
+ * @param data_size Number of bytes in each message.
+ * @param max_iterations Maximum number of iterations.
  */
-static void client(int argc, char *const argv[], struct sockaddr_in *local, struct sockaddr_in *remote)
+static void client(int argc,
+                   char *const argv[],
+                   struct sockaddr_in *local,
+                   struct sockaddr_in *remote,
+                   size_t data_size,
+                   unsigned max_iterations)
 {
     int sockqd = -1;
 
@@ -110,18 +124,18 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
     assert(demi_bind(sockqd, (const struct sockaddr *)local, sizeof(struct sockaddr_in)) == 0);
 
     /* Run. */
-    for (int it = 0; it < MAX_ITERATIONS; it++)
+    for (unsigned it = 0; it < max_iterations; it++)
     {
         demi_qtoken_t qt = -1;
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
 
         /* Allocate scatter-gather array. */
-        sga = demi_sgaalloc(DATA_SIZE);
+        sga = demi_sgaalloc(data_size);
         assert(sga.sga_segs != 0);
 
         /* Cook data. */
-        memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
+        memset(sga.sga_segs[0].sgaseg_buf, 1, data_size);
 
         /* Push data. */
         assert(demi_pushto(&qt, sockqd, &sga, (const struct sockaddr *)remote, sizeof(struct sockaddr_in)) == 0);
@@ -135,7 +149,7 @@ static void client(int argc, char *const argv[], struct sockaddr_in *local, stru
         /* Release scatter-gather array. */
         assert(demi_sgafree(&sga) == 0);
 
-        fprintf(stdout, "push (%d)\n", it);
+        fprintf(stdout, "push (%u)\n", it);
     }
 }
 
@@ -181,6 +195,8 @@ int main(int argc, char *const argv[])
 
         int local_port = 0;
         struct sockaddr_in local = {0};
+        size_t data_size = DATA_SIZE;
+        unsigned max_iterations = MAX_ITERATIONS;
 
         /* Build local address.*/
         local.sin_family = AF_INET;
@@ -190,15 +206,26 @@ int main(int argc, char *const argv[])
 
         if (!strcmp(argv[1], "--server"))
         {
-            server(argc, argv, &local);
+
+            if (argc >= 5)
+                sscanf(argv[4], "%zu", &data_size);
+            if (argc >= 6)
+                sscanf(argv[5], "%u", &max_iterations);
+
+            server(argc, argv, &local, data_size, max_iterations);
 
             return (EXIT_SUCCESS);
         }
-        else if ((argc == 6) && (!strcmp(argv[1], "--client")))
+        else if ((argc >= 6) && (!strcmp(argv[1], "--client")))
         {
             int remote_port = 0;
             const char *remote_addr = argv[4];
             struct sockaddr_in remote = {0};
+
+            if (argc >= 7)
+                sscanf(argv[6], "%zu", &data_size);
+            if (argc >= 8)
+                sscanf(argv[7], "%u", &max_iterations);
 
             /* Build remote address. */
             remote.sin_family = AF_INET;
@@ -206,7 +233,7 @@ int main(int argc, char *const argv[])
             remote.sin_port = htons(remote_port);
             assert(inet_pton(AF_INET, remote_addr, &remote.sin_addr) == 1);
 
-            client(argc, argv, &local, &remote);
+            client(argc, argv, &local, &remote, data_size, max_iterations);
 
             return (EXIT_SUCCESS);
         }

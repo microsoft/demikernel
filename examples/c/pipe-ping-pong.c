@@ -31,9 +31,9 @@
 #define DATA_SIZE 64
 
 /**
- * @brief Maximum number of bytes to transfer.
+ * @brief Maximum number of messages to transfer.
  */
-#define MAX_BYTES (DATA_SIZE * 1024)
+#define MAX_MSGS 1024
 
 /*====================================================================================================================*
  * sighandler()                                                                                                       *
@@ -113,13 +113,16 @@ static void pop_wait(int qd, demi_qresult_t *qr)
  *
  * @param argc Argument count.
  * @param argv Argument list.
+ * @param data_size Number of bytes in each message.
+ * @param max_msgs Maximum number of messages to transfer.
  */
-static void server(int argc, char *const argv[])
+static void server(int argc, char *const argv[], size_t data_size, unsigned max_msgs)
 {
-    int nbytes = 0;
+    size_t nbytes = 0;
     char name[1024];
     int pipeqd_rx = -1;
     int pipeqd_tx = -1;
+    size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
@@ -131,7 +134,7 @@ static void server(int argc, char *const argv[])
     assert(demi_create_pipe(&pipeqd_tx, name) == 0);
 
     /* Run. */
-    while (nbytes < MAX_BYTES)
+    while (nbytes < max_bytes)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
@@ -150,7 +153,7 @@ static void server(int argc, char *const argv[])
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&sga) == 0);
 
-        fprintf(stdout, "ping (%d)\n", nbytes);
+        fprintf(stdout, "ping (%zu)\n", nbytes);
     }
 }
 
@@ -163,13 +166,16 @@ static void server(int argc, char *const argv[])
  *
  * @param argc Argument count.
  * @param argv Argument list.
+ * @param data_size Number of bytes in each message.
+ * @param max_msgs Maximum number of messages to transfer.
  */
-static void client(int argc, char *const argv[])
+static void client(int argc, char *const argv[], size_t data_size, unsigned max_msgs)
 {
-    int nbytes = 0;
+    size_t nbytes = 0;
     char name[1024];
     int pipeqd_tx = -1;
     int pipeqd_rx = -1;
+    size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
@@ -181,17 +187,17 @@ static void client(int argc, char *const argv[])
     assert(demi_open_pipe(&pipeqd_tx, name) == 0);
 
     /* Run. */
-    while (nbytes < MAX_BYTES)
+    while (nbytes < max_bytes)
     {
         demi_qresult_t qr = {0};
         demi_sgarray_t sga = {0};
 
         /* Allocate scatter-gather array. */
-        sga = demi_sgaalloc(DATA_SIZE);
+        sga = demi_sgaalloc(data_size);
         assert(sga.sga_segs != 0);
 
         /* Cook data. */
-        memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
+        memset(sga.sga_segs[0].sgaseg_buf, 1, data_size);
 
         /* Push scatter-gather array. */
         push_wait(pipeqd_tx, &sga, &qr);
@@ -211,7 +217,7 @@ static void client(int argc, char *const argv[])
         /* Release received scatter-gather array. */
         assert(demi_sgafree(&qr.qr_value.sga) == 0);
 
-        fprintf(stdout, "pong (%d)\n", nbytes);
+        fprintf(stdout, "pong (%zu)\n", nbytes);
     }
 }
 
@@ -256,11 +262,19 @@ int main(int argc, char *const argv[])
 
     if (argc >= 3)
     {
+        size_t data_size = DATA_SIZE;
+        unsigned max_msgs = MAX_MSGS;
+
+        if (argc >= 4)
+            sscanf(argv[3], "%zu", &data_size);
+        if (argc >= 5)
+            sscanf(argv[4], "%u", &max_msgs);
+
         /* Run. */
         if (!strcmp(argv[1], "--server"))
-            server(argc, argv);
+            server(argc, argv, data_size, max_msgs);
         else if (!strcmp(argv[1], "--client"))
-            client(argc, argv);
+            client(argc, argv, data_size, max_msgs);
 
         return (EXIT_SUCCESS);
     }

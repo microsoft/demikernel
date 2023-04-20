@@ -18,8 +18,15 @@
 
 #include "common.h"
 
+/**
+ * @brief Data size.
+ */
 #define DATA_SIZE 64
-#define MAX_BYTES DATA_SIZE * 1024
+
+/**
+ * @brief Maximum number of messages to transfer.
+ */
+#define MAX_MSGS 1024
 
 static int accept_get_newsockqd(struct sockaddr_in *addr)
 {
@@ -51,18 +58,17 @@ static int pop_get_received_nbytes(int sockqd)
     return recv_bytes;
 }
 
-static void run_server(struct sockaddr_in *addr)
+static void run_server(struct sockaddr_in *addr, size_t data_size, unsigned max_msgs)
 {
-    unsigned int recv_bytes = 0;
+    size_t recv_bytes = 0;
     int sockqd = accept_get_newsockqd(addr);
+    size_t max_bytes = data_size * max_msgs;
 
-    while (recv_bytes < MAX_BYTES)
+    while (recv_bytes < max_bytes)
     {
         recv_bytes += pop_get_received_nbytes(sockqd);
-        fprintf(stdout, "pop: total bytes received: (%d)\n", recv_bytes);
+        fprintf(stdout, "pop: total bytes received: (%zu)\n", recv_bytes);
     }
-
-    assert(recv_bytes == MAX_BYTES);
 }
 
 static int connect_get_sockqd(const struct sockaddr_in *const addr)
@@ -78,15 +84,15 @@ static int connect_get_sockqd(const struct sockaddr_in *const addr)
     return sockqd;
 }
 
-static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int sockqd)
+static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int sockqd, size_t data_size)
 {
     demi_qtoken_t tok = -1;
     demi_qresult_t res = {0};
-    demi_sgarray_t sga = demi_sgaalloc(DATA_SIZE);
+    demi_sgarray_t sga = demi_sgaalloc(data_size);
     int sent_bytes = 0;
 
     assert(sga.sga_segs != 0);
-    memset(sga.sga_segs[0].sgaseg_buf, 1, DATA_SIZE);
+    memset(sga.sga_segs[0].sgaseg_buf, 1, data_size);
     assert(demi_pushto(&tok, sockqd, &sga, (const struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0);
     assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_PUSH);
@@ -95,18 +101,17 @@ static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int 
     return sent_bytes;
 }
 
-static void run_client(const struct sockaddr_in *const addr)
+static void run_client(const struct sockaddr_in *const addr, size_t data_size, unsigned max_msgs)
 {
-    unsigned int sent_bytes = 0;
+    size_t sent_bytes = 0;
     int sockqd = connect_get_sockqd(addr);
+    size_t max_bytes = data_size * max_msgs;
 
-    while (sent_bytes < MAX_BYTES)
+    while (sent_bytes < max_bytes)
     {
-        sent_bytes += push_get_sent_nbytes(addr, sockqd);
-        fprintf(stdout, "push: total bytes sent: (%d)\n", sent_bytes);
+        sent_bytes += push_get_sent_nbytes(addr, sockqd, data_size);
+        fprintf(stdout, "push: total bytes sent: (%zu)\n", sent_bytes);
     }
-
-    assert(sent_bytes == MAX_BYTES);
 }
 
 static void usage(const char *const progname)
@@ -132,31 +137,33 @@ void build_addr(const char *const ip_str, const char *const port_str, struct soc
 // received TCP packets from the client.
 int main(int argc, const char *argv[])
 {
-    struct sockaddr_in addr = {0};
-
-    if (argc != 4)
+    if (argc >= 4)
     {
-        usage(argv[0]);
-        return (EXIT_FAILURE);
+        reg_sighandlers();
+
+        struct sockaddr_in addr = {0};
+        size_t data_size = DATA_SIZE;
+        unsigned max_msgs = MAX_MSGS;
+
+        if (argc >= 5)
+            sscanf(argv[4], "%zu", &data_size);
+        if (argc >= 6)
+            sscanf(argv[5], "%u", &max_msgs);
+
+        build_addr(argv[2], argv[3], &addr);
+
+        assert(demi_init(argc, (char **)argv) == 0);
+
+        if (!strcmp(argv[1], "--server")) {
+            run_server(&addr, data_size, max_msgs);
+        } else if (!strcmp(argv[1], "--client")) {
+            run_client(&addr, data_size, max_msgs);
+        }
+
+        return (EXIT_SUCCESS);
     }
 
-    reg_sighandlers();
-    assert(demi_init(argc, (char **)argv) == 0);
-    build_addr(argv[2], argv[3], &addr);
+    usage(argv[0]);
 
-    if (!strcmp(argv[1], "--server"))
-    {
-        run_server(&addr);
-    }
-    else if (!strcmp(argv[1], "--client"))
-    {
-        run_client(&addr);
-    }
-    else
-    {
-        usage(argv[0]);
-        return (EXIT_FAILURE);
-    }
-
-    return (EXIT_SUCCESS);
+    return (EXIT_FAILURE);
 }
