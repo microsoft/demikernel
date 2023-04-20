@@ -76,7 +76,7 @@ def remote_checkout(host: str, repository: str, branch: str):
 # Executes a compile command in a remote host.
 def remote_compile(host: str, repository: str, target: str, is_debug: bool):
     debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
-    cmd = "cd {} && make {} {}".format(repository, debug_flag, target)
+    cmd = "cd {} && make PROFILER=yes {} {}".format(repository, debug_flag, target)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
