@@ -203,7 +203,7 @@ impl Application {
                         Err(e) => {
                             // If error, close socket.
                             // FIXME: https://github.com/demikernel/demikernel/issues/651
-                            anyhow::bail!("could not parse sockaddr")
+                            anyhow::bail!("could not parse sockaddr: {}", e)
                         },
                     };
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;

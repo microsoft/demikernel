@@ -998,7 +998,6 @@ impl TryFrom<&[u8]> for DemiBuffer {
 #[cfg(test)]
 mod tests {
     use super::DemiBuffer;
-    use crate::runtime::fail::Fail;
     use ::anyhow::Result;
     use std::ptr::NonNull;
 
@@ -1102,7 +1101,7 @@ mod tests {
         // `DemiBuffer::split_back` shouldn't fail, as we passed it a valid offset.
         let another_buf: DemiBuffer = match split_buf.split_back(9) {
             Ok(buf) => buf,
-            Err(e) => anyhow::bail!("DemiBuffer::split_back shouldn't fail for this offset"),
+            Err(e) => anyhow::bail!("DemiBuffer::split_back shouldn't fail for this offset: {}", e),
         };
 
         crate::ensure_eq!(buf.len(), 24);
