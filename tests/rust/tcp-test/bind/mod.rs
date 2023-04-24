@@ -7,7 +7,6 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::fail::Fail,
     LibOS,
     QDesc,
 };
@@ -62,12 +61,11 @@ fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) ->
     };
 
     // Fail to bind socket.
-    let e: Fail = libos
-        .bind(QDesc::from(0), addr)
-        .expect_err("bind() an address to an invalid queue descriptor should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "bind() failed with {}", e.cause);
+    match libos.bind(QDesc::from(0), addr) {
+        Err(e) if e.errno == libc::EBADF => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() an address to an invalid queue descriptor should fail"),
+    };
 
     Ok(())
 }
@@ -95,12 +93,11 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -
     };
 
     // Fail to bind socket.
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() a socket multiple times should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EINVAL, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() a sockeet multiple times should fail"),
+    };
 
     // Close socket.
     libos.close(sockqd)?;
@@ -125,13 +122,11 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Resu
     // Bind first socket.
     libos.bind(sockqd1, addr)?;
 
-    // Fail to bind second socket.
-    let e: Fail = libos
-        .bind(sockqd2, addr)
-        .expect_err("bind() the same address to two sockets should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EADDRINUSE, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd2, addr) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() the same address to two sockets should fail"),
+    };
 
     // Close sockets.
     libos.close(sockqd1)?;
@@ -152,11 +147,9 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
         // Bind socket.
         let addr: SocketAddrV4 = SocketAddrV4::new(*local, port);
         match libos.bind(sockqd, addr) {
-            Ok(()) => {},
-            Err(e) => {
-                // Sanity check error code.
-                assert_eq!(e.errno, libc::EADDRINUSE, "bind() failed with {}", e.cause);
-            },
+            Ok(()) => (),
+            Err(e) if e.errno == libc::EADDRINUSE => (),
+            Err(e) => anyhow::bail!("bind() failed with {}", e),
         };
 
         // Close socket.
@@ -178,12 +171,11 @@ fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() to the wildcard address port should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::ENOTSUP, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::ENOTSUP => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() to the wildcard address port should fail"),
+    };
 
     // Close socket.
     libos.close(sockqd)?;
@@ -206,12 +198,11 @@ fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/189
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() to the wildcard address should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::ENOTSUP, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::ENOTSUP => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() to the wildcard address should fail"),
+    };
 
     // Close socket.
     libos.close(sockqd)?;
@@ -232,12 +223,11 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
     // FIXME: https://github.com/demikernel/demikernel/issues/189
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() to the wildcard address port should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::ENOTSUP, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::ENOTSUP => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() to the wildcard address port should fail"),
+    };
 
     // Close socket.
     libos.close(sockqd)?;
@@ -259,12 +249,11 @@ fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()>
     };
 
     // Fail to bind socket.
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() a non-local address should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EADDRNOTAVAIL, "bind() failed with {}", e.cause);
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::EADDRNOTAVAIL => (),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() a non-local address should fail"),
+    };
 
     // Close socket.
     libos.close(sockqd)?;
@@ -289,12 +278,9 @@ fn bind_to_closed_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
     libos.close(sockqd)?;
 
     // Fail to bind socket.
-    let e: Fail = libos
-        .bind(sockqd, addr)
-        .expect_err("bind() a closed socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "bind() failed with {}", e.cause);
-
-    Ok(())
+    match libos.bind(sockqd, addr) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("bind() failed with {}", e),
+        Ok(()) => anyhow::bail!("bind() a closed socket should fail"),
+    }
 }

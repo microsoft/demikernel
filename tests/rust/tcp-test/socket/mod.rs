@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use demikernel::{
-    runtime::fail::Fail,
-    LibOS,
-};
+use demikernel::LibOS;
 
 //======================================================================================================================
 // Constants
@@ -109,12 +106,11 @@ fn create_socket_using_unsupported_domain(libos: &mut LibOS) -> Result<()> {
     // Attempt to create a TCP socket with all unsupported domains.
     for domain in domains {
         // Fail to create socket.
-        let e: Fail = libos
-            .socket(domain, SOCK_STREAM, 0)
-            .expect_err("create a TCP socket with a unsupported domain should fail");
-
-        // Sanity check error code.
-        assert_eq!(e.errno, libc::ENOTSUP, "socket() failed with {}", e.cause);
+        match libos.socket(domain, SOCK_STREAM, 0) {
+            Err(e) if e.errno == libc::ENOTSUP => (),
+            Err(e) => anyhow::bail!("sockeet() failed with {}", e),
+            Ok(_) => anyhow::bail!("create a TCP socket with an unsupported domain should fail"),
+        }
     }
 
     Ok(())
@@ -149,12 +145,11 @@ fn create_socket_using_unsupported_type(libos: &mut LibOS) -> Result<()> {
     // Attempt to create a TCP socket with all invalid socket types.
     for socket_type in socket_types {
         // Fail to create socket.
-        let e: Fail = libos
-            .socket(AF_INET, socket_type, 0)
-            .expect_err("create a TCP socket with an invalid socket type should fail");
-
-        // Sanity check error code.
-        assert_eq!(e.errno, libc::ENOTSUP, "socket() failed with {}", e.cause);
+        match libos.socket(AF_INET, socket_type, 0) {
+            Err(e) if e.errno == libc::ENOTSUP => (),
+            Err(e) => anyhow::bail!("sockeet() failed with {}", e),
+            Ok(_) => anyhow::bail!("create a TCP socket with invalid socket type should fail"),
+        }
     }
 
     Ok(())

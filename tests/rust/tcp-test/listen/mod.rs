@@ -7,10 +7,7 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::{
-        fail::Fail,
-        types::demi_opcode_t,
-    },
+    runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
@@ -60,14 +57,11 @@ fn listen_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(listen_invalid_queue_descriptor));
 
     // Fail to listen().
-    let e: Fail = libos
-        .listen(QDesc::from(0), 8)
-        .expect_err("listen() on an invalid queue descriptor should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "listen() failed with {}", e.cause);
-
-    Ok(())
+    match libos.listen(QDesc::from(0), 8) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("listen() failed with {}", e),
+        Ok(()) => anyhow::bail!("listen() on an invalid queue descriptor should fail"),
+    }
 }
 
 /// Attempts to listen for connections on a TCP socket that is not bound.
@@ -78,12 +72,11 @@ fn listen_unbound_socket(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Fail to listen().
-    let e: Fail = libos
-        .listen(sockqd, 16)
-        .expect_err("listen() on a socket that is not bound should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EDESTADDRREQ, "listen() failed with {}", e.cause);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EDESTADDRREQ => (),
+        Err(e) => anyhow::bail!("listen() failed with {}", e),
+        Ok(()) => anyhow::bail!("listen() on a socket that is not bound should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -160,12 +153,11 @@ fn listen_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
     libos.listen(sockqd, 16)?;
 
     // Fail to listen().
-    let e: Fail = libos
-        .listen(sockqd, 16)
-        .expect_err("listen() on a socket that is already listening should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EADDRINUSE, "listen() failed with {}", e.cause);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        Err(e) => anyhow::bail!("listen() failed with {}", e),
+        Ok(()) => anyhow::bail!("listen() on a socket that is already listening should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -202,11 +194,11 @@ fn listen_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
         // Succeed to listen().
         libos.listen(sockqd, 16)?;
     } else {
-        let e: Fail = libos
-            .listen(sockqd, 16)
-            .expect_err("listen() on a socket that is connecting should fail");
-        // Sanity check error code.
-        assert_eq!(e.errno, libc::EADDRINUSE, "listen() failed with {}", e.cause);
+        match libos.listen(sockqd, 16) {
+            Err(e) if e.errno == libc::EADDRINUSE => (),
+            Err(e) => anyhow::bail!("listen() failed with {}", e),
+            Ok(()) => anyhow::bail!("listen() on a socket that is connecting should fail"),
+        };
     }
 
     // Succeed to close socket.
@@ -249,12 +241,11 @@ fn listen_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
     }
 
     // Fail to listen().
-    let e: Fail = libos
-        .listen(sockqd, 16)
-        .expect_err("listen() on a socket that is accepting connections should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EADDRINUSE, "listen() failed with {}", e.cause);
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        Err(e) => anyhow::bail!("listen() failed with {}", e),
+        Ok(()) => anyhow::bail!("listen() on a socket that is accepting connections should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -288,12 +279,9 @@ fn listen_closed_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     libos.close(sockqd)?;
 
     // Fail to listen().
-    let e: Fail = libos
-        .listen(sockqd, 16)
-        .expect_err("listen() on a socket that is closed should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "listen() failed with {}", e.cause);
-
-    Ok(())
+    match libos.listen(sockqd, 16) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("listen() failed with {}", e),
+        Ok(()) => anyhow::bail!("listen() on a socket that is closed should fail"),
+    }
 }

@@ -7,10 +7,7 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::{
-        fail::Fail,
-        types::demi_opcode_t,
-    },
+    runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
@@ -62,14 +59,11 @@ fn connect_invalid_queue_descriptor(libos: &mut LibOS, remote: &SocketAddrV4) ->
     println!("{}", stringify!(connect_invalid_queue_descriptor));
 
     // Fail to connect().
-    let e: Fail = libos
-        .connect(QDesc::from(0), remote.to_owned())
-        .expect_err("connect() an invalid socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "connect() failed with {}", e.cause);
-
-    Ok(())
+    match libos.connect(QDesc::from(0), remote.to_owned()) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("connect() failed with {}", e),
+        Ok(_) => anyhow::bail!("connect() an invalid socket should fail"),
+    }
 }
 
 /// Attempts to connect a TCP socket that is not bound.
@@ -213,12 +207,11 @@ fn connect_listening_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &So
     libos.listen(sockqd, 16)?;
 
     // Fail to connect().
-    let e: Fail = libos
-        .connect(sockqd, remote.to_owned())
-        .expect_err("connect() a socket that is listening should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EOPNOTSUPP, "connect() failed with {}", e.cause);
+    match libos.connect(sockqd, remote.to_owned()) {
+        Err(e) if e.errno == libc::EOPNOTSUPP => (),
+        Err(e) => anyhow::bail!("connect() failed with {}", e),
+        Ok(_) => anyhow::bail!("connect() a socket that is listening should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -254,12 +247,11 @@ fn connect_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result
     // If the previous connect hasn't finished, calling connect again should fail.
     if !connect_finished {
         // Fail to connect().
-        let e: Fail = libos
-            .connect(sockqd, remote.to_owned())
-            .expect_err("connect() a socket that is connecting should fail");
-
-        // Sanity check error code.
-        assert_eq!(e.errno, libc::EINPROGRESS, "connect() failed with {}", e.cause);
+        match libos.connect(sockqd, remote.to_owned()) {
+            Err(e) if e.errno == libc::EINPROGRESS => (),
+            Err(e) => anyhow::bail!("connect() failed with {}", e),
+            Ok(_) => anyhow::bail!("connect() a socket that is connecting should fail"),
+        };
     }
 
     // Succeed to close socket.
@@ -304,12 +296,12 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &So
     }
 
     // Fail to connect().
-    let e: Fail = libos
-        .connect(sockqd, remote.to_owned())
-        .expect_err("connect() a socket that is accepting should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EOPNOTSUPP, "connect() failed with {}", e.cause);
+    match libos.connect(sockqd, remote.to_owned()) {
+        // Note that EOPNOTSUPP and ENOTSUP are the same error code.
+        Err(e) if e.errno == libc::EOPNOTSUPP => (),
+        Err(e) => anyhow::bail!("connect() failed with {}", e),
+        Ok(_) => anyhow::bail!("connect() a socket that is accepting should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -337,12 +329,9 @@ fn connect_closed_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()>
     libos.close(sockqd)?;
 
     // Fail to connect().
-    let e: Fail = libos
-        .connect(sockqd, remote.to_owned())
-        .expect_err("connect() a closed socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "connect() failed with {}", e.cause);
-
-    Ok(())
+    match libos.connect(sockqd, remote.to_owned()) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("connect() failed with {}", e),
+        Ok(_) => anyhow::bail!("connect() a closed socket should fail"),
+    }
 }

@@ -7,10 +7,7 @@
 
 use anyhow::Result;
 use demikernel::{
-    runtime::{
-        fail::Fail,
-        types::demi_opcode_t,
-    },
+    runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
@@ -56,14 +53,11 @@ fn async_close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(async_close_invalid_queue_descriptor));
 
     // Fail to close socket.
-    let e: Fail = libos
-        .async_close(QDesc::from(0))
-        .expect_err("close() an invalid socket should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "async_close() failed with {}", e.cause);
-
-    Ok(())
+    match libos.async_close(QDesc::from(0)) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("async_close() failed with {}", e),
+        Ok(_) => anyhow::bail!("async_close() an invalid socket should fail"),
+    }
 }
 
 /// Attempts to close a TCP socket multiple times.
@@ -84,14 +78,11 @@ fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
     }
 
     // Fail to close socket.
-    let e: Fail = libos
-        .async_close(sockqd)
-        .expect_err("async_close() a socket twice should fail");
-
-    // Sanity check error code.
-    assert_eq!(e.errno, libc::EBADF, "async_close() failed with {}", e.cause);
-
-    Ok(())
+    match libos.async_close(sockqd) {
+        Err(e) if e.errno == libc::EBADF => Ok(()),
+        Err(e) => anyhow::bail!("async_close() failed with {}", e),
+        Ok(_) => anyhow::bail!("async_close() a socket twice should fail"),
+    }
 }
 
 /// Attempts to close a TCP socket that is not bound.
@@ -106,12 +97,10 @@ fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
     }
-
-    Ok(())
 }
 
 /// Attempts to close a TCP socket that is bound.
@@ -127,12 +116,10 @@ fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<(
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
     }
-
-    Ok(())
 }
 
 /// Attempts to close a TCP socket that is listening.
@@ -149,10 +136,8 @@ fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Resu
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
     }
-
-    Ok(())
 }
