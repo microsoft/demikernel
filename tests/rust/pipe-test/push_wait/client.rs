@@ -46,6 +46,8 @@ impl PipeClient {
 
     // Runs the target pipe client.
     pub fn run(&mut self) -> Result<()> {
+        let mut push_completed: bool = false;
+
         // Push some data.
         // The number of pushes is set to an arbitrary value,
         // but a small one to avoid contention on the underling ring buffer.
@@ -55,6 +57,14 @@ impl PipeClient {
 
         // Push again, but don't wait the operation to complete.
         let qt: QToken = self.push_and_dont_wait()?;
+
+        // Poll once to ensure that the co-routine runs.
+        match self.libos.wait(qt, Some(Duration::from_micros(0))) {
+            Err(e) if e.errno == libc::ETIMEDOUT => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => push_completed = true,
+            Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_PUSH"),
+            Err(e) => anyhow::bail!("wait() should not fail wth error other than ETIMEDOUT (error={:?})", e),
+        }
 
         // Succeed to close pipe.
         // The following call to except() is safe because pipeqd is ensured to be open and assigned Some() value.
@@ -66,14 +76,20 @@ impl PipeClient {
         }
 
         // Wait for operation to complete.
-        match self.libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
-            Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_PUSH"),
-            Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+        if !push_completed {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => Ok(()),
+                Ok(_) => anyhow::bail!("wait() complete successfully or fail with ECANCELED"),
+                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+            }
+        } else {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(_) => anyhow::bail!("wait() should not complete successfully"),
+                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+            }
         }
-
-        Ok(())
     }
 
     // Runs the target pipe client.
