@@ -8,6 +8,7 @@
 use ::anyhow::Result;
 use ::demikernel::{
     LibOS,
+    LibOSName,
     QDesc,
 };
 
@@ -23,6 +24,10 @@ pub fn run(libos: &mut LibOS, pipe_name: &str) -> Vec<(String, String, Result<()
     demikernel::collect_test!(
         result,
         demikernel::run_test!(create_pipe_with_same_name(libos, pipe_name))
+    );
+    demikernel::collect_test!(
+        result,
+        demikernel::run_test!(create_pipe_with_same_name_in_two_liboses(pipe_name))
     );
 
     result
@@ -41,10 +46,7 @@ fn create_pipe_with_invalid_name(libos: &mut LibOS) -> Result<()> {
 /// Attempts to create two pipes with the same name.
 fn create_pipe_with_same_name(libos: &mut LibOS, pipe_name: &str) -> Result<()> {
     // Succeed to create first pipe.
-    let pipeqd: QDesc = match libos.create_pipe(pipe_name) {
-        Ok(pipeqd) => pipeqd,
-        Err(e) => anyhow::bail!("create_pipe() failed ({})", e),
-    };
+    let pipeqd: QDesc = create_pipe(libos, pipe_name)?;
 
     // Fail to create pipe with the same name.
     let mut ret: Result<(), anyhow::Error> = match libos.create_pipe(pipe_name) {
@@ -61,7 +63,47 @@ fn create_pipe_with_same_name(libos: &mut LibOS, pipe_name: &str) -> Result<()> 
             demikernel::update_test_error!(ret, errmsg);
             println!("[ERROR] leaking pipeqd={:?}", pipeqd);
         },
-    }
+    };
 
     ret
+}
+
+/// Creates a pipe in one LibOS, destroys the LibOS without closing the pipe and then creates a pipe with the same name
+/// again.
+fn create_pipe_with_same_name_in_two_liboses(pipe_name: &str) -> Result<()> {
+    {
+        let libos: &mut LibOS = &mut {
+            // Ok to use expect here because we should have parsed the LibOSName previously.
+            let libos_name: LibOSName = LibOSName::from_env().expect("Should have a valid LibOS name").into();
+            LibOS::new(libos_name).expect("Should be able to create another libOS")
+        };
+
+        create_pipe(libos, pipe_name)?;
+    }
+    {
+        let libos: &mut LibOS = &mut {
+            // Ok to use expect here because we should have parsed the LibOSName previously.
+            let libos_name: LibOSName = LibOSName::from_env().expect("Should have a valid LibOS name").into();
+            LibOS::new(libos_name).expect("Should be able to create another libOS")
+        };
+
+        create_pipe_and_close(libos, pipe_name)?;
+    }
+
+    Ok(())
+}
+
+/// Creates a pipe with a valid name and does not close it.
+fn create_pipe(libos: &mut LibOS, pipe_name: &str) -> Result<QDesc> {
+    match libos.create_pipe(pipe_name) {
+        Ok(pipeqd) => Ok(pipeqd),
+        Err(e) => anyhow::bail!("create_pipe() failed ({})", e),
+    }
+}
+
+/// Creates a pipe with a valid name and closes it.
+fn create_pipe_and_close(libos: &mut LibOS, pipe_name: &str) -> Result<()> {
+    let pipeqd: QDesc = create_pipe(libos, pipe_name)?;
+    libos.close(pipeqd)?;
+    Ok(())
 }
