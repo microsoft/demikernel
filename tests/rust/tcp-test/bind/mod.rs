@@ -36,18 +36,26 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for bind() on TCP sockets.
-pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Result<()> {
-    bind_addr_to_invalid_queue_descriptor(libos, local)?;
-    bind_multiple_addresses_to_same_socket(libos, local)?;
-    bind_same_address_to_two_sockets(libos, local)?;
-    bind_to_private_ports(libos, local)?;
-    bind_to_wildcard_port(libos, local)?;
-    bind_to_wildcard_address(libos)?;
-    bind_to_wildcard_address_and_port(libos)?;
-    bind_to_non_local_address(libos, remote)?;
-    bind_to_closed_socket(libos, local)?;
+pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    Ok(())
+    crate::collect!(
+        result,
+        crate::test!(bind_addr_to_invalid_queue_descriptor(libos, local))
+    );
+    crate::collect!(
+        result,
+        crate::test!(bind_multiple_addresses_to_same_socket(libos, local))
+    );
+    crate::collect!(result, crate::test!(bind_same_address_to_two_sockets(libos, local)));
+    crate::collect!(result, crate::test!(bind_to_private_ports(libos, local)));
+    crate::collect!(result, crate::test!(bind_to_wildcard_port(libos, local)));
+    crate::collect!(result, crate::test!(bind_to_wildcard_address(libos)));
+    crate::collect!(result, crate::test!(bind_to_wildcard_address_and_port(libos)));
+    crate::collect!(result, crate::test!(bind_to_non_local_address(libos, remote)));
+    crate::collect!(result, crate::test!(bind_to_closed_socket(libos, local)));
+
+    result
 }
 
 /// Attempts to bind an address to an invalid queue_descriptor.

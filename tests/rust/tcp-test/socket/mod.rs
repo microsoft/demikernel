@@ -29,11 +29,13 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for socket() on TCP sockets.
-pub fn run(libos: &mut LibOS) -> Result<()> {
-    create_socket_using_unsupported_domain(libos)?;
-    create_socket_using_unsupported_type(libos)?;
+pub fn run(libos: &mut LibOS) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    Ok(())
+    crate::collect!(result, crate::test!(create_socket_using_unsupported_domain(libos)));
+    crate::collect!(result, crate::test!(create_socket_using_unsupported_type(libos)));
+
+    result
 }
 
 /// Attempts to create a TCP socket using an unsupported domain.

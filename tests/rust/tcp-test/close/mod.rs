@@ -35,18 +35,20 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for close() on TCP sockets.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
-    close_invalid_queue_descriptor(libos)?;
-    close_socket_twice(libos)?;
-    close_unbound_socket(libos)?;
-    close_bound_socket(libos, addr)?;
-    close_listening_socket(libos, addr)?;
+pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
+
+    crate::collect!(result, crate::test!(close_invalid_queue_descriptor(libos)));
+    crate::collect!(result, crate::test!(close_socket_twice(libos)));
+    crate::collect!(result, crate::test!(close_unbound_socket(libos)));
+    crate::collect!(result, crate::test!(close_bound_socket(libos, addr)));
+    crate::collect!(result, crate::test!(close_listening_socket(libos, addr)));
 
     // Run asynchronous close tests.
-    async_close::run(libos, addr)?;
-    wait::run(libos, addr)?;
+    crate::collect!(result, async_close::run(libos, addr));
+    crate::collect!(result, wait::run(libos, addr));
 
-    Ok(())
+    result
 }
 
 /// Attempts to close an invalid queue descriptor.

@@ -38,16 +38,18 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Runs standalone tests.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
-    accept_invalid_queue_descriptor(libos)?;
-    accept_unbound_socket(libos)?;
-    accept_active_socket(libos, addr)?;
-    accept_listening_socket(libos, addr)?;
-    accept_connecting_socket(libos, addr)?;
-    accept_accepting_socket(libos, addr)?;
-    accept_closed_socket(libos, addr)?;
+pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    Ok(())
+    crate::collect!(result, crate::test!(accept_invalid_queue_descriptor(libos)));
+    crate::collect!(result, crate::test!(accept_unbound_socket(libos)));
+    crate::collect!(result, crate::test!(accept_active_socket(libos, addr)));
+    crate::collect!(result, crate::test!(accept_listening_socket(libos, addr)));
+    crate::collect!(result, crate::test!(accept_connecting_socket(libos, addr)));
+    crate::collect!(result, crate::test!(accept_accepting_socket(libos, addr)));
+    crate::collect!(result, crate::test!(accept_closed_socket(libos, addr)));
+
+    result
 }
 
 /// Attempts to accept connections on an invalid queue descriptor.
