@@ -92,6 +92,9 @@ impl MemoryRuntime for CatmemLibOS {}
 
 /// Associated functions for Catmem LibOS.
 impl CatmemLibOS {
+    /// End-of-file (EoF) signal.
+    const EOF: u16 = ((1 & 0xff) << 8);
+
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
         CatmemLibOS {
@@ -139,15 +142,21 @@ impl CatmemLibOS {
         Ok(())
     }
 
-    // Pushes EoF.
+    /// Pushes the EoF signal to a shared ring buffer.
     fn push_eof(ring: Rc<SharedRingBuffer<u16>>) -> Result<(), Fail> {
-        let x: u16 = ((1 & 0xff) << 8) as u16;
+        // Maximum number of retries. This is set to an arbitrary small value.
+        let mut retries: u32 = 16;
 
         loop {
-            match ring.try_enqueue(x) {
+            match ring.try_enqueue(Self::EOF) {
                 Ok(()) => break,
                 Err(_) => {
-                    warn!("failed to push EoF")
+                    retries -= 1;
+                    if retries == 0 {
+                        let cause: String = format!("failed to push EoF");
+                        error!("push_eof(): {}", cause);
+                        return Err(Fail::new(libc::EIO, &cause));
+                    }
                 },
             }
         }
