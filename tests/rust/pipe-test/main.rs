@@ -13,6 +13,7 @@ mod async_close;
 mod close;
 mod create_pipe;
 mod open_pipe;
+mod pop_wait;
 mod push_wait;
 
 //======================================================================================================================
@@ -113,6 +114,17 @@ fn main() -> Result<()> {
             },
             "server" => {
                 let mut server: push_wait::PipeServer = push_wait::PipeServer::new(libos, args.pipe_name())?;
+                server.run()
+            },
+            _ => anyhow::bail!("invalid peer type"),
+        },
+        "pop-wait" => match args.peer_type().ok_or(anyhow::anyhow!("missing peer type"))?.as_str() {
+            "client" => {
+                let mut client: pop_wait::PipeClient = pop_wait::PipeClient::new(libos, args.pipe_name())?;
+                client.run()
+            },
+            "server" => {
+                let mut server: pop_wait::PipeServer = pop_wait::PipeServer::new(libos, args.pipe_name())?;
                 server.run()
             },
             _ => anyhow::bail!("invalid peer type"),
