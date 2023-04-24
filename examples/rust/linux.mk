@@ -21,6 +21,7 @@ all: all-examples
 	cp -f $(BUILD_DIR)/examples/tcp-ping-pong $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/tcp-close $(BINDIR)/examples/rust/tcp-close.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/pipe-open $(BINDIR)/examples/rust/pipe-open.$(EXEC_SUFFIX)
+	cp -f $(BUILD_DIR)/examples/tcp-wait $(BINDIR)/examples/rust/tcp-wait.$(EXEC_SUFFIX)
 
 all-examples:
 	@echo "$(CARGO) build --examples $(CARGO_FEATURES) $(CARGO_FLAGS)"
@@ -42,3 +43,4 @@ clean:
 	@rm -rf $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/tcp-close.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/examples/rust/pipe-open.$(EXEC_SUFFIX)
+	@rm -rf $(BINDIR)/examples/rust/tcp-wait.$(EXEC_SUFFIX)
