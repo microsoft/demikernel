@@ -13,7 +13,10 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
-use ::std::slice;
+use ::std::{
+    slice,
+    time::Duration,
+};
 
 //======================================================================================================================
 // Structures
@@ -68,6 +71,61 @@ impl PipeClient {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
             Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_PUSH"),
             Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+        }
+
+        Ok(())
+    }
+
+    // Runs the target pipe client.
+    pub fn run_aynsc(&mut self) -> Result<()> {
+        let mut push_completed: bool = false;
+
+        // Push some data.
+        // The number of pushes is set to an arbitrary value,
+        // but a small one to avoid contention on the underling ring buffer.
+        for _ in 0..16 {
+            self.push_and_wait()?;
+        }
+
+        // Push again, but don't wait the operation to complete.
+        let qt: QToken = self.push_and_dont_wait()?;
+
+        // Poll once to ensure that the co-routine runs.
+        match self.libos.wait(qt, Some(Duration::from_micros(0))) {
+            Err(e) if e.errno == libc::ETIMEDOUT => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => push_completed = true,
+            Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_PUSH"),
+            Err(e) => anyhow::bail!("wait() should not fail wth error other than ETIMEDOUT (error={:?})", e),
+        }
+
+        // Succeed to close pipe.
+        // The following call to except() is safe because pipeqd is ensured to be open and assigned Some() value.
+        let qt_close: QToken = match self.libos.async_close(self.pipeqd.expect("pipe should not be closed")) {
+            Ok(qt) => qt,
+            Err(e) => anyhow::bail!("async_close() failed (error={:?})", e),
+        };
+
+        // Ensure that async_close() completes.
+        match self.libos.wait(qt_close, None) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => self.pipeqd = None,
+            Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_CLOSE"),
+            Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+        }
+
+        // Wait for push() operation to complete.
+        if !push_completed {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
+                Ok(_) => anyhow::bail!("wait() should complete successfully or fail with ECANCELED"),
+                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+            }
+        } else {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+                Ok(_) => anyhow::bail!("wait() should fail with ECANCELED"),
+                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+            }
         }
 
         Ok(())
