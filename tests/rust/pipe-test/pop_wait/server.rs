@@ -94,6 +94,63 @@ impl PipeServer {
         }
     }
 
+    /// Runs the target pipe server.
+    pub fn run_async(&mut self) -> Result<()> {
+        let mut pop_completed: bool = false;
+
+        // Succeed to pop some data.
+        // The number of pops is set to an arbitrary value.
+        for _ in 0..16 {
+            self.pop_and_wait()?;
+        }
+
+        // Succeed to pop.
+        let qt: QToken = self.pop_and_dont_wait()?;
+
+        // Poll once to ensure that the co-routine runs.
+        match self.libos.wait(qt, Some(Duration::from_micros(0))) {
+            Err(e) if e.errno == libc::ETIMEDOUT => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
+                pop_completed = true;
+                self.handle_pop(&qr)?;
+            },
+            Ok(_) => anyhow::bail!("wait() should complete successfully"),
+            Err(e) => anyhow::bail!("wait() should fail with ETIMEDOUT (error={:?})", e),
+        }
+
+        // Succeed to close pipe.
+        // The following call to except() is safe because pipeqd is ensured to be open and assigned Some() value.
+        let qt_close: QToken = match self.libos.async_close(self.pipeqd.expect("pipe should not be closed")) {
+            Ok(qt) => qt,
+            Err(e) => anyhow::bail!("async_close() failed (error={:?})", e),
+        };
+
+        // Ensure that async_close() completes.
+        match self.libos.wait(qt_close, None) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => self.pipeqd = None,
+            Ok(_) => anyhow::bail!("wait() should not complete successfully with an opcode other than DEMI_OPC_CLOSE"),
+            Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
+        }
+
+        // Wait for operation to complete.
+        if !pop_completed {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => self.handle_pop(&qr),
+                Ok(_) => {
+                    anyhow::bail!("wait() should either complete successfully or fail with ECANCELED")
+                },
+                Err(e) => anyhow::bail!("wait() should failed (error={:?})", e),
+            }
+        } else {
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(_) => anyhow::bail!("wait() should fail with ECANCELLED"),
+                Err(e) => anyhow::bail!("wait() failed (error={:?})", e),
+            }
+        }
+    }
+
     /// Pops a scatter-gather array, but does not wait for the operation to complete.
     fn pop_and_dont_wait(&mut self) -> Result<QToken> {
         // The following call to except() is safe because pipeqd is ensured to be open and assigned Some() value.

@@ -5,8 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use ::anyhow::Result;
-use ::clap::{
+use anyhow::Result;
+use clap::{
     Arg,
     ArgMatches,
     Command,
@@ -55,7 +55,7 @@ impl ProgramArguments {
                     .long("run-mode")
                     .value_parser(clap::value_parser!(String))
                     .required(true)
-                    .value_name("standalone|push-wait|pop-wait|push-wait-async")
+                    .value_name("standalone|push-wait|pop-wait|push-wait-async|pop-wait-async")
                     .help("Sets run mode"),
             )
             .get_matches();

@@ -22,8 +22,8 @@ mod wait;
 //======================================================================================================================
 
 use self::args::ProgramArguments;
-use ::anyhow::Result;
-use ::demikernel::{
+use anyhow::Result;
+use demikernel::{
     LibOS,
     LibOSName,
 };
@@ -139,6 +139,17 @@ fn main() -> Result<()> {
             "server" => {
                 let mut server: push_wait::PipeServer = push_wait::PipeServer::new(libos, args.pipe_name())?;
                 server.run()
+            },
+            _ => anyhow::bail!("invalid peer type"),
+        },
+        "pop-wait-async" => match args.peer_type().ok_or(anyhow::anyhow!("missing peer type"))?.as_str() {
+            "client" => {
+                let mut client: pop_wait::PipeClient = pop_wait::PipeClient::new(libos, args.pipe_name())?;
+                client.run()
+            },
+            "server" => {
+                let mut server: pop_wait::PipeServer = pop_wait::PipeServer::new(libos, args.pipe_name())?;
+                server.run_async()
             },
             _ => anyhow::bail!("invalid peer type"),
         },
