@@ -48,11 +48,11 @@ fn main() -> Result<()> {
 
     match args.run_mode().as_str() {
         "standalone" => {
-            demikernel::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
-            demikernel::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
-            demikernel::collect!(result, close::run(&mut libos, &args.pipe_name()));
-            demikernel::collect!(result, wait::run(&mut libos));
-            demikernel::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
+            demikernel::collect_test!(result, create_pipe::run(&mut libos, &args.pipe_name()));
+            demikernel::collect_test!(result, open_pipe::run(&mut libos, &args.pipe_name()));
+            demikernel::collect_test!(result, close::run(&mut libos, &args.pipe_name()));
+            demikernel::collect_test!(result, wait::run(&mut libos));
+            demikernel::collect_test!(result, async_close::run(&mut libos, &args.pipe_name()));
 
             // Dump results.
             demikernel::dump_test!(result)
