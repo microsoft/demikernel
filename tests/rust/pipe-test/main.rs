@@ -15,6 +15,7 @@ mod create_pipe;
 mod open_pipe;
 mod pop_wait;
 mod push_wait;
+mod wait;
 
 //======================================================================================================================
 // Imports
@@ -89,6 +90,7 @@ fn main() -> Result<()> {
             crate::collect!(result, create_pipe::run(&mut libos, &args.pipe_name()));
             crate::collect!(result, open_pipe::run(&mut libos, &args.pipe_name()));
             crate::collect!(result, close::run(&mut libos, &args.pipe_name()));
+            crate::collect!(result, wait::run(&mut libos));
             crate::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
 
             // Dump results.
