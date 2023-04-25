@@ -19,9 +19,12 @@ use ::demikernel::{
 pub fn run(libos: &mut LibOS, pipe_name: &str) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    crate::collect!(result, crate::test!(open_pipe_with_invalid_name(libos)));
-    crate::collect!(result, crate::test!(open_pipe_that_does_not_exist(libos, pipe_name)));
-    crate::collect!(result, crate::test!(open_pipe_multiple_times(libos, pipe_name)));
+    demikernel::collect!(result, demikernel::test!(open_pipe_with_invalid_name(libos)));
+    demikernel::collect!(
+        result,
+        demikernel::test!(open_pipe_that_does_not_exist(libos, pipe_name))
+    );
+    demikernel::collect!(result, demikernel::test!(open_pipe_multiple_times(libos, pipe_name)));
 
     result
 }
@@ -62,7 +65,7 @@ fn open_pipe_multiple_times(libos: &mut LibOS, pipe_name: &str) -> Result<()> {
             Ok(pipeqd) => pipeqd,
             Err(e) => {
                 let errmsg: String = format!("open_pipe() failed ({})", e);
-                crate::update_error!(ret, errmsg);
+                demikernel::update_error!(ret, errmsg);
                 println!("[ERROR] leaking pipeqd={:?}", pipeqd);
                 break;
             },
@@ -72,7 +75,7 @@ fn open_pipe_multiple_times(libos: &mut LibOS, pipe_name: &str) -> Result<()> {
             Ok(_) => (),
             Err(e) => {
                 let errmsg: String = format!("close() failed ({})", e);
-                crate::update_error!(ret, errmsg);
+                demikernel::update_error!(ret, errmsg);
                 println!("[ERROR] leaking pipeqd={:?}", pipeqd);
                 break;
             },
@@ -84,7 +87,7 @@ fn open_pipe_multiple_times(libos: &mut LibOS, pipe_name: &str) -> Result<()> {
         Ok(_) => (),
         Err(e) => {
             let errmsg: String = format!("close() failed ({})", e);
-            crate::update_error!(ret, errmsg);
+            demikernel::update_error!(ret, errmsg);
             println!("[ERROR] leaking pipeqd={:?}", pipeqd);
         },
     }

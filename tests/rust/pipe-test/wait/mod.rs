@@ -20,7 +20,7 @@ use ::std::time::Duration;
 pub fn run(libos: &mut LibOS) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    crate::collect!(result, crate::test!(wait_on_invalid_queue_token(libos)));
+    demikernel::collect!(result, demikernel::test!(wait_on_invalid_queue_token(libos)));
 
     result
 }

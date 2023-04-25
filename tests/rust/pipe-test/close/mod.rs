@@ -19,8 +19,8 @@ use ::demikernel::{
 pub fn run(libos: &mut LibOS, pipe_name: &str) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    crate::collect!(result, crate::test!(close_invalid_pipe(libos)));
-    crate::collect!(result, crate::test!(close_pipe_multiple_times(libos, pipe_name)));
+    demikernel::collect!(result, demikernel::test!(close_invalid_pipe(libos)));
+    demikernel::collect!(result, demikernel::test!(close_pipe_multiple_times(libos, pipe_name)));
 
     result
 }

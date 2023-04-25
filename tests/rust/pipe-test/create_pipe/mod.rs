@@ -19,8 +19,8 @@ use ::demikernel::{
 pub fn run(libos: &mut LibOS, pipe_name: &str) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    crate::collect!(result, crate::test!(create_pipe_with_invalid_name(libos)));
-    crate::collect!(result, crate::test!(create_pipe_with_same_name(libos, pipe_name)));
+    demikernel::collect!(result, demikernel::test!(create_pipe_with_invalid_name(libos)));
+    demikernel::collect!(result, demikernel::test!(create_pipe_with_same_name(libos, pipe_name)));
 
     result
 }
@@ -55,7 +55,7 @@ fn create_pipe_with_same_name(libos: &mut LibOS, pipe_name: &str) -> Result<()> 
         Ok(_) => (),
         Err(e) => {
             let errmsg: String = format!("close() failed ({})", e);
-            crate::update_error!(ret, errmsg);
+            demikernel::update_error!(ret, errmsg);
             println!("[ERROR] leaking pipeqd={:?}", pipeqd);
         },
     }
