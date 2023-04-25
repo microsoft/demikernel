@@ -41,17 +41,23 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for connect() on TCP sockets.
-pub fn run(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<()> {
-    connect_invalid_queue_descriptor(libos, remote)?;
-    connect_to_bad_remote(libos)?;
-    connect_unbound_socket(libos, remote)?;
-    connect_bound_socket(libos, local, remote)?;
-    connect_listening_socket(libos, local, remote)?;
-    connect_connecting_socket(libos, remote)?;
-    connect_accepting_socket(libos, local, remote)?;
-    connect_closed_socket(libos, remote)?;
+pub fn run(
+    libos: &mut LibOS,
+    local: &SocketAddrV4,
+    remote: &SocketAddrV4,
+) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    Ok(())
+    crate::collect!(result, crate::test!(connect_invalid_queue_descriptor(libos, remote)));
+    crate::collect!(result, crate::test!(connect_to_bad_remote(libos)));
+    crate::collect!(result, crate::test!(connect_unbound_socket(libos, remote)));
+    crate::collect!(result, crate::test!(connect_bound_socket(libos, local, remote)));
+    crate::collect!(result, crate::test!(connect_listening_socket(libos, local, remote)));
+    crate::collect!(result, crate::test!(connect_connecting_socket(libos, remote)));
+    crate::collect!(result, crate::test!(connect_accepting_socket(libos, local, remote)));
+    crate::collect!(result, crate::test!(connect_closed_socket(libos, remote)));
+
+    result
 }
 
 /// Attempts to connect an invalid queue descriptor.

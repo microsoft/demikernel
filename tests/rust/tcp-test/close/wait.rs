@@ -38,16 +38,30 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for close() on TCP sockets.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Result<()> {
-    wait_after_close_accepting_socket(libos, addr)?;
-    wait_after_close_connecting_socket(libos, addr)?;
-    wait_after_async_close_accepting_socket(libos, addr)?;
-    wait_after_async_close_connecting_socket(libos, addr)?;
-    wait_on_invalid_queue_token_returns_einval(libos)?;
-    wait_for_accept_after_issuing_async_close(libos, addr)?;
-    wait_for_connect_after_issuing_async_close(libos, addr)?;
+pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+    let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    Ok(())
+    crate::collect!(result, crate::test!(wait_after_close_accepting_socket(libos, addr)));
+    crate::collect!(result, crate::test!(wait_after_close_connecting_socket(libos, addr)));
+    crate::collect!(
+        result,
+        crate::test!(wait_after_async_close_accepting_socket(libos, addr))
+    );
+    crate::collect!(
+        result,
+        crate::test!(wait_after_async_close_connecting_socket(libos, addr))
+    );
+    crate::collect!(result, crate::test!(wait_on_invalid_queue_token_returns_einval(libos)));
+    crate::collect!(
+        result,
+        crate::test!(wait_for_accept_after_issuing_async_close(libos, addr))
+    );
+    crate::collect!(
+        result,
+        crate::test!(wait_for_connect_after_issuing_async_close(libos, addr))
+    );
+
+    result
 }
 
 // Attempts to close a TCP socket that is accepting and then waits on the qtoken.
