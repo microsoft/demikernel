@@ -33,7 +33,6 @@ use demikernel::{
 //======================================================================================================================
 
 fn main() -> Result<()> {
-    let mut nfailed: usize = 0;
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     let args: ProgramArguments = ProgramArguments::new(
@@ -56,20 +55,7 @@ fn main() -> Result<()> {
             demikernel::collect!(result, async_close::run(&mut libos, &args.pipe_name()));
 
             // Dump results.
-            for (test_name, test_status, test_result) in result {
-                println!("[{}] {}", test_status, test_name);
-                if let Err(e) = test_result {
-                    nfailed += 1;
-                    println!("    {}", e);
-                }
-            }
-
-            if nfailed > 0 {
-                anyhow::bail!("{} tests failed", nfailed);
-            } else {
-                println!("all tests passed");
-                Ok(())
-            }
+            demikernel::dump_test!(result)
         },
         "push-wait" => match args.peer_type().ok_or(anyhow::anyhow!("missing peer type"))?.as_str() {
             "client" => {

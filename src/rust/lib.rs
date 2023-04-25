@@ -165,6 +165,29 @@ macro_rules! collect {
     };
 }
 
+/// Dumps results of tests.
+#[macro_export]
+macro_rules! dump_test {
+    ($vec:ident) => {{
+        let mut nfailed: usize = 0;
+        // Dump results.
+        for (test_name, test_status, test_result) in $vec {
+            std::println!("[{}] {}", test_status, test_name);
+            if let Err(e) = test_result {
+                nfailed += 1;
+                std::println!("{}", e);
+            }
+        }
+
+        if nfailed > 0 {
+            anyhow::bail!("{} tests failed", nfailed);
+        } else {
+            std::println!("all tests passed");
+            Ok(())
+        }
+    }};
+}
+
 #[test]
 fn test_ensure() -> Result<(), anyhow::Error> {
     ensure_eq!(1, 1);
