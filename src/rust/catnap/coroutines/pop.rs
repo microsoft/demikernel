@@ -9,6 +9,7 @@ use crate::{
     pal::linux,
     runtime::{
         fail::Fail,
+        limits,
         memory::DemiBuffer,
     },
     scheduler::Yielder,
@@ -23,16 +24,13 @@ use ::std::{
 // Constants
 //==============================================================================
 
-/// Maximum Size for a Pop Operation
-const POP_SIZE: usize = 9216;
-
 /// This function polls read until it receives some data or an error and then returns the data to pop.
 pub async fn pop_coroutine(
     fd: RawFd,
     size: Option<usize>,
     yielder: Yielder,
 ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
-    let size: usize = size.unwrap_or(POP_SIZE);
+    let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
     let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
     let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
     let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
@@ -54,7 +52,7 @@ pub async fn pop_coroutine(
         } {
             // Operation completed.
             nbytes if nbytes >= 0 => {
-                trace!("data received ({:?}/{:?} bytes)", nbytes, POP_SIZE);
+                trace!("data received ({:?}/{:?} bytes)", nbytes, limits::RECVBUF_SIZE_MAX);
                 buf.trim(size - nbytes as usize)?;
                 let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&sockaddr);
                 return Ok((Some(addr), buf.clone()));
