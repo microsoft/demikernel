@@ -247,10 +247,13 @@ impl InetStack {
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::listen");
-        trace!("listen(): qd={:?} backlog={:?}", qd, backlog);
+        trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
+
+        // FIXME: https://github.com/demikernel/demikernel/issues/584
         if backlog == 0 {
             return Err(Fail::new(libc::EINVAL, "invalid backlog length"));
         }
+
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => self.ipv4.tcp.listen(qd, backlog),
             Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
