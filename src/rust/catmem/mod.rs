@@ -167,17 +167,27 @@ impl CatmemLibOS {
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
-        let mut qtable = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
-            Some(queue) => Self::push_eof(queue.get_pipe().buffer())?,
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("close(): {}", cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
+        let mut qtable: RefMut<IoQueueTable<CatmemQueue>> = self.qtable.borrow_mut();
+
+        // Check if queue descriptor is valid.
+        if qtable.get(&qd).is_none() {
+            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+            error!("close(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+
+        // Attempt to push EoF.
+        let result: Result<(), Fail> = {
+            // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
+            let queue: &CatmemQueue = qtable.get(&qd).expect("queue descriptor should be valid");
+            Self::push_eof(queue.get_pipe().buffer())
         };
+
+        // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
+        // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
         qtable.free(&qd);
-        Ok(())
+
+        result
     }
 
     /// Pushes a scatter-gather array to a socket.
