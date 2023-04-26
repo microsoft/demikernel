@@ -28,6 +28,7 @@ use crate::{
     pal::linux,
     runtime::{
         fail::Fail,
+        limits,
         queue::IoQueueTable,
         types::{
             demi_accept_result_t,
@@ -437,12 +438,8 @@ impl CatloopLibOS {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // Check if the pop size is valid.
-        if size.is_some() && size.unwrap() == 0 {
-            let cause: String = format!("invalid pop size (size={:?})", size);
-            error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
+        // We just assert 'size' here, because it was previously checked at PDPIX layer.
+        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         let catmem_qd: QDesc = match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_pipe() {
