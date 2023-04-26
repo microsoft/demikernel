@@ -12,6 +12,7 @@ use super::{
 use crate::{
     inetstack::protocols::ethernet2::Ethernet2Header,
     runtime::{
+        limits,
         memory::DemiBuffer,
         network::{
             consts::RECEIVE_BATCH_SIZE,
@@ -61,20 +62,21 @@ impl NetworkRuntime for LinuxRuntime {
     /// Receives a batch of [DemiBuffer].
     // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
     fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
-        // 4096B buffer size chosen arbitrarily, seems fine for now.
-        // REVIEW: Won't this fail for Ethernet jumbo frames?  Conversely, it seems wastefully big for standard frames.
-        const BUFFER_SIZE: usize = 4096;
-
         // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
 
+        // TODO: change this function to operate directly on DemiBuffer rather than on MaybeUninit<u8>.
+
         // This use-case is an example for MaybeUninit in the docs.
-        let mut out: [MaybeUninit<u8>; BUFFER_SIZE] = [unsafe { MaybeUninit::uninit().assume_init() }; BUFFER_SIZE];
+        let mut out: [MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX] =
+            [unsafe { MaybeUninit::uninit().assume_init() }; limits::RECVBUF_SIZE_MAX];
         if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recvfrom(&mut out[..]) {
             let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
             unsafe {
-                let bytes: [u8; BUFFER_SIZE] = mem::transmute::<[MaybeUninit<u8>; BUFFER_SIZE], [u8; BUFFER_SIZE]>(out);
+                let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
+                    mem::transmute::<[MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX], [u8; limits::RECVBUF_SIZE_MAX]>(out);
                 let mut dbuf: DemiBuffer = DemiBuffer::from_slice(&bytes).expect("'bytes' should fit");
-                dbuf.trim(BUFFER_SIZE - nbytes).expect("'bytes' <= BUFFER_SIZE");
+                dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes)
+                    .expect("'bytes' <= RECVBUF_SIZE_MAX");
                 ret.push(dbuf);
             }
             ret
