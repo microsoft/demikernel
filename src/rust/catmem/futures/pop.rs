@@ -9,6 +9,7 @@ use crate::{
     catmem::SharedRingBuffer,
     runtime::{
         fail::Fail,
+        limits,
         memory::DemiBuffer,
     },
 };
@@ -40,9 +41,6 @@ pub struct PopFuture {
 
 /// Associate Functions for Pop Operation Descriptors
 impl PopFuture {
-    /// Maximum Size for a Pop Operation
-    const POP_SIZE_MAX: usize = 9216;
-
     /// Creates a descriptor for a pop operation.
     pub fn new(ring: Rc<SharedRingBuffer<u16>>, size: Option<usize>) -> Self {
         PopFuture { ring, size }
@@ -60,7 +58,7 @@ impl Future for PopFuture {
     /// Polls the target [PopFuture].
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut PopFuture = self.get_mut();
-        let size: usize = self_.size.unwrap_or(Self::POP_SIZE_MAX);
+        let size: usize = self_.size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let mut eof: bool = false;
         let mut index: usize = 0;
