@@ -6,6 +6,7 @@
 //==============================================================================
 
 pub mod fail;
+pub mod limits;
 pub mod logging;
 pub mod memory;
 pub mod network;
