@@ -209,6 +209,9 @@ impl CatcollarLibOS {
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
+        // We just assert backlog here, because it was previously checked at PDPIX layer.
+        debug_assert!((backlog > 0) && (backlog <= libc::SOMAXCONN as usize));
+
         // Issue listen operation.
         match self.qtable.borrow().get(&qd) {
             Some(queue) => match queue.get_fd() {
