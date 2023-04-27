@@ -22,18 +22,18 @@ use ::std::time::Duration;
 pub fn run(libos: &mut LibOS, pipe_name: &str) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
-    crate::collect!(result, crate::test!(async_close_invalid_pipe(libos)));
-    crate::collect!(
+    demikernel::collect_test!(result, demikernel::run_test!(async_close_invalid_pipe(libos)));
+    demikernel::collect_test!(
         result,
-        crate::test!(async_close_pipe_multiple_times_1(libos, pipe_name))
+        demikernel::run_test!(async_close_pipe_multiple_times_1(libos, pipe_name))
     );
-    crate::collect!(
+    demikernel::collect_test!(
         result,
-        crate::test!(async_close_pipe_multiple_times_2(libos, pipe_name))
+        demikernel::run_test!(async_close_pipe_multiple_times_2(libos, pipe_name))
     );
-    crate::collect!(
+    demikernel::collect_test!(
         result,
-        crate::test!(async_close_pipe_multiple_times_3(libos, pipe_name))
+        demikernel::run_test!(async_close_pipe_multiple_times_3(libos, pipe_name))
     );
 
     result

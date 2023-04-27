@@ -131,6 +131,63 @@ macro_rules! ensure_neq {
     });
 }
 
+/// Runs a test and prints if it passed or failed on the standard output.
+#[macro_export]
+macro_rules! run_test {
+    ($fn_name:ident($($arg:expr),*)) => {{
+        match $fn_name($($arg),*) {
+            Ok(ok) =>
+                vec![(stringify!($fn_name).to_string(), "passed".to_string(), Ok(ok))],
+            Err(err) =>
+                vec![(stringify!($fn_name).to_string(), "failed".to_string(), Err(err))],
+        }
+    }};
+}
+
+/// Updates the error variable `err_var` with `anyhow::anyhow!(msg)` if `err_var` is `Ok`.
+/// Otherwise it prints `msg` on the standard output.
+#[macro_export]
+macro_rules! update_test_error {
+    ($err_var:ident, $msg:expr) => {
+        if $err_var.is_ok() {
+            $err_var = Err(anyhow::anyhow!($msg));
+        } else {
+            println!("{}", $msg);
+        }
+    };
+}
+
+/// Collects the result of a test and appends it to a vector.
+#[macro_export]
+macro_rules! collect_test {
+    ($vec:ident, $expr:expr) => {
+        $vec.append(&mut $expr);
+    };
+}
+
+/// Dumps results of tests.
+#[macro_export]
+macro_rules! dump_test {
+    ($vec:ident) => {{
+        let mut nfailed: usize = 0;
+        // Dump results.
+        for (test_name, test_status, test_result) in $vec {
+            std::println!("[{}] {}", test_status, test_name);
+            if let Err(e) = test_result {
+                nfailed += 1;
+                std::println!("{}", e);
+            }
+        }
+
+        if nfailed > 0 {
+            anyhow::bail!("{} tests failed", nfailed);
+        } else {
+            std::println!("all tests passed");
+            Ok(())
+        }
+    }};
+}
+
 #[test]
 fn test_ensure() -> Result<(), anyhow::Error> {
     ensure_eq!(1, 1);
