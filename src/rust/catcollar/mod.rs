@@ -32,6 +32,7 @@ use crate::{
     pal::linux,
     runtime::{
         fail::Fail,
+        limits,
         memory::{
             DemiBuffer,
             MemoryRuntime,
@@ -66,13 +67,6 @@ use ::std::{
     pin::Pin,
     rc::Rc,
 };
-
-//======================================================================================================================
-// Constants
-//======================================================================================================================
-
-// Size of receive buffers.
-const CATCOLLAR_RECVBUF_SIZE: usize = 9000;
 
 //======================================================================================================================
 // Structures
@@ -465,7 +459,7 @@ impl CatcollarLibOS {
         }
 
         let buf: DemiBuffer = {
-            let size: usize = size.unwrap_or(CATCOLLAR_RECVBUF_SIZE as usize);
+            let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
             DemiBuffer::new(size as u16)
         };
 
