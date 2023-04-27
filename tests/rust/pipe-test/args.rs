@@ -55,7 +55,7 @@ impl ProgramArguments {
                     .long("run-mode")
                     .value_parser(clap::value_parser!(String))
                     .required(true)
-                    .value_name("standalone|push-wait|pop-wait")
+                    .value_name("standalone|push-wait|pop-wait|push-wait-async")
                     .help("Sets run mode"),
             )
             .get_matches();
