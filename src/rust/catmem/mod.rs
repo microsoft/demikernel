@@ -22,6 +22,7 @@ use crate::{
     collections::shared_ring::SharedRingBuffer,
     runtime::{
         fail::Fail,
+        limits,
         memory::{
             DemiBuffer,
             MemoryRuntime,
@@ -255,11 +256,13 @@ impl CatmemLibOS {
     /// Pops data from a socket.
     /// TODO: Enforce semantics on the pipe.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}", qd);
-        let qtable = self.qtable.borrow();
+        trace!("pop() qd={:?}, size={:?}", qd, size);
+
+        // We just assert 'size' here, because it was previously checked at PDPIX layer.
+        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         // Issue pop operation.
-        match qtable.get(&qd) {
+        match self.qtable.borrow().get(&qd) {
             Some(queue) => {
                 let pipe: &Pipe = queue.get_pipe();
                 let coroutine: Pin<Box<Operation>> = if pipe.eof() {
