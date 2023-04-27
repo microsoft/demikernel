@@ -87,6 +87,58 @@ fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
     }
 }
 
+// Enable this test after the related issue is fixed.
+// FIXME: https://github.com/demikernel/demikernel/issues/625
+/// Attempt to asynchronously close and wait on a TCP socket multiple times.
+#[allow(dead_code)]
+fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
+    println!("{}", stringify!(async_close_socket_and_wait_twice));
+
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    let qt1: QToken = libos.async_close(sockqd)?;
+    let qt2: QToken = libos.async_close(sockqd)?;
+
+    // wait() for the first close() qt.
+    match libos.wait(qt1, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        _ => anyhow::bail!("wait() should succeed with async_close()"),
+    }
+
+    // wait() for the second close() qt.
+    match libos.wait(qt2, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF => {},
+        _ => anyhow::bail!("wait() should fail with async_close()"),
+    }
+
+    Ok(())
+}
+
+// Enable this test after the related issue is fixed.
+// FIXME: https://github.com/demikernel/demikernel/issues/625
+/// Attempt to asynchronously close and wait on a TCP socket multiple times in reverse order.
+#[allow(dead_code)]
+fn async_close_socket_and_wait_in_rev_order(libos: &mut LibOS) -> Result<()> {
+    println!("{}", stringify!(async_close_socket_and_wait_in_rev_order));
+
+    let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    let qt1: QToken = libos.async_close(sockqd)?;
+    let qt2: QToken = libos.async_close(sockqd)?;
+
+    // wait() for the second close() qt.
+    match libos.wait(qt2, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF => {},
+        _ => anyhow::bail!("wait() should fail with async_close()"),
+    }
+
+    // wait() for the first close() qt.
+    match libos.wait(qt1, Some(Duration::from_micros(0))) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        _ => anyhow::bail!("wait() should succeed with async_close()"),
+    }
+
+    Ok(())
+}
+
 /// Attempts to close a TCP socket that is not bound.
 fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(async_close_unbound_socket));
