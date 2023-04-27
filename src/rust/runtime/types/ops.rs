@@ -56,3 +56,52 @@ pub struct demi_qresult_t {
     pub qr_ret: c_int,
     pub qr_value: demi_qr_value_t,
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use ::std::mem;
+
+    /// Tests if `demi_accept_result_t` has the expected size.
+    #[test]
+    fn test_size_demi_accept_result_t() {
+        // Size of a u32.
+        const QD_SIZE: usize = 4;
+        // Size of a sockaddr structure.
+        const ADDR_SIZE: usize = 16;
+        // Size of a demi_accept_result_t structure.
+        assert_eq!(mem::size_of::<demi_accept_result_t>(), QD_SIZE + ADDR_SIZE);
+    }
+
+    /// Tests if `demi_qr_value_t` has the expected size.
+    #[test]
+    fn test_size_demi_qr_value_t() {
+        // Size of a demi_sgarray_t structure.
+        const SGA_SIZE: usize = mem::size_of::<demi_sgarray_t>();
+        // Size of a demi_accept_result_t structure.
+        const ARES_SIZE: usize = mem::size_of::<demi_accept_result_t>();
+        // Size of a demi_qr_value_t structure.
+        assert_eq!(mem::size_of::<demi_qr_value_t>(), std::cmp::max(SGA_SIZE, ARES_SIZE));
+    }
+
+    /// Tests if `demi_qresult_t` has the expected size.
+    #[test]
+    fn test_size_demi_qresult_t() {
+        // Size of a demi_opcode_t enum.
+        const QR_OPCODE_SIZE: usize = 4;
+        // Size of a u32.
+        const QR_QD_SIZE: usize = 4;
+        // Size of a demi_qtoken_t type alias.
+        const QR_QT_SIZE: usize = 8;
+        // Size of a u32.
+        const QR_RET_SIZE: usize = 4;
+        // Size of a demi_qr_value_t structure.
+        const QR_VALUE_SIZE: usize = mem::size_of::<demi_qr_value_t>();
+        // Size of a demi_qresult_t structure.
+        assert_eq!(
+            mem::size_of::<demi_qresult_t>(),
+            QR_OPCODE_SIZE + QR_QD_SIZE + QR_QT_SIZE + QR_RET_SIZE + QR_VALUE_SIZE
+        );
+    }
+}

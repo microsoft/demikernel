@@ -46,3 +46,39 @@ pub struct demi_sgarray_t {
     /// Source address of the data contained in this scatter-gather array (if present).
     pub sga_addr: SockAddr,
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use std::mem;
+
+    /// Tests if the `demi_sgaseg_t` structure has the expected size.
+    #[test]
+    fn test_size_demi_sgaseg_t() {
+        // Size of a void pointer.
+        const SGASEG_BUF_SIZE: usize = 8;
+        // Size of a u32.
+        const SGASEG_LEN_SIZE: usize = 4;
+        // Size of a demi_sgaseg_t structure.
+        assert_eq!(mem::size_of::<demi_sgaseg_t>(), SGASEG_BUF_SIZE + SGASEG_LEN_SIZE);
+    }
+
+    /// Tests if the `demi_sga_t` structure has the expected size.
+    #[test]
+    fn test_size_demi_sgarray_t() {
+        // Size of a void pointer.
+        const SGA_BUF_SIZE: usize = 8;
+        // Size of a u32.
+        const SGA_NUMSEGS_SIZE: usize = 4;
+        // Size of an array of demi_sgaseg_t structures.
+        const SGA_SEGS_SIZE: usize = mem::size_of::<demi_sgaseg_t>() * DEMI_SGARRAY_MAXLEN;
+        // Size of a SockAddr structure.
+        const SGA_ADDR_SIZE: usize = mem::size_of::<SockAddr>();
+        // Size of a demi_sgarray_t structure.
+        assert_eq!(
+            mem::size_of::<demi_sgarray_t>(),
+            SGA_BUF_SIZE + SGA_NUMSEGS_SIZE + SGA_SEGS_SIZE + SGA_ADDR_SIZE
+        );
+    }
+}
