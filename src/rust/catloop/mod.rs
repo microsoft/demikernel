@@ -211,12 +211,15 @@ impl CatloopLibOS {
     }
 
     /// Sets a socket as a passive one.
+    // FIXME: https://github.com/demikernel/demikernel/issues/697
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
+
+        // We just assert backlog here, because it was previously checked at PDPIX layer.
+        debug_assert!((backlog > 0) && (backlog <= libc::SOMAXCONN as usize));
 
         // Check if the queue descriptor is registered in the sockets table.
-        match qtable.get_mut(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => match queue.get_socket() {
                 Socket::Active(Some(local)) => {
                     queue.set_socket(Socket::Passive(local));

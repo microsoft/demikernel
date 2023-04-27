@@ -100,7 +100,22 @@ impl NetworkLibOS {
     }
 
     /// Marks a socket as a passive one.
-    pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sockqd: QDesc, mut backlog: usize) -> Result<(), Fail> {
+        // Truncate backlog length.
+        if backlog > libc::SOMAXCONN as usize {
+            let cause: String = format!(
+                "backlog length is too large, truncating (qd={:?}, backlog={:?})",
+                sockqd, backlog
+            );
+            debug!("listen(): {}", &cause);
+            backlog = libc::SOMAXCONN as usize;
+        }
+
+        // Round up backlog length.
+        if backlog == 0 {
+            backlog = 1;
+        }
+
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.listen(sockqd, backlog),
