@@ -25,6 +25,8 @@ pub struct PipeClient {
     libos: LibOS,
     /// Pipe name.
     pipe_name: String,
+    /// Pipe queue descriptors.
+    qds: Vec<QDesc>,
 }
 
 //======================================================================================================================
@@ -34,25 +36,28 @@ pub struct PipeClient {
 impl PipeClient {
     /// Creates a new pipe client.
     pub fn new(libos: LibOS, pipe_name: String) -> Result<Self> {
-        Ok(Self { libos, pipe_name })
+        Ok(Self {
+            libos,
+            pipe_name,
+            qds: Vec::default(),
+        })
     }
 
     // Runs the target pipe client.
     pub fn run(&mut self, niterations: usize) -> Result<()> {
-        let mut qds: Vec<QDesc> = Vec::default();
-
         // Open several pipes.
         for i in 0..niterations {
             let pipeqd: QDesc = self.libos.open_pipe(&format!("{}:rx", self.pipe_name))?;
-            qds.push(pipeqd);
-            // Clean up open pipes on error
-            // FIXME: https://github.com/demikernel/demikernel/issues/638
+            self.qds.push(pipeqd);
             self.push_and_wait(pipeqd, 1, i as u8)?;
         }
 
         // Close all TCP pipes.
-        for qd in qds {
-            self.libos.close(qd)?;
+        while let Some(qd) = self.qds.pop() {
+            if let Err(e) = self.libos.close(qd) {
+                println!("WARN: leaking pipeqd={:?}", qd);
+                println!("ERROR: close() failed (error={:?})", e);
+            }
         }
 
         Ok(())
@@ -82,16 +87,23 @@ impl PipeClient {
     fn push_and_wait(&mut self, pipeqd: QDesc, length: usize, value: u8) -> Result<()> {
         let sga: demi_sgarray_t = self.mksga(length, value)?;
 
-        // Clean up scatter-gather array on error.
-        // FIXME: https://github.com/demikernel/demikernel/issues/638
         let qt: QToken = self.libos.push(pipeqd, &sga)?;
-
-        // Clean up scatter-gather array on error.
-        // FIXME: https://github.com/demikernel/demikernel/issues/638
         self.libos.wait(qt, None)?;
-
         self.libos.sgafree(sga)?;
 
         Ok(())
+    }
+}
+
+impl Drop for PipeClient {
+    // Releases all resources allocated to a pipe client.
+    fn drop(&mut self) {
+        while let Some(qd) = self.qds.pop() {
+            // Ignore error.
+            if let Err(e) = self.libos.close(qd) {
+                println!("WARN: leaking pipeqd={:?}", qd);
+                println!("ERROR: close() failed (error={:?})", e);
+            }
+        }
     }
 }
