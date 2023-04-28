@@ -34,6 +34,7 @@ use crate::{
     pal::linux,
     runtime::{
         fail::Fail,
+        limits,
         memory::{
             DemiBuffer,
             MemoryRuntime,
@@ -609,12 +610,8 @@ impl CatnapLibOS {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // Check if the pop size is valid.
-        if size.is_some() && size.unwrap() == 0 {
-            let cause: String = format!("invalid pop size (size={:?})", size);
-            error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
+        // We just assert 'size' here, because it was previously checked at PDPIX layer.
+        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         // Issue pop operation.
         match self.qtable.borrow_mut().get_mut(&qd) {

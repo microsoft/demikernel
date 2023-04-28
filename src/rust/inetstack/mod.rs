@@ -30,6 +30,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        limits,
         memory::DemiBuffer,
         network::{
             config::{
@@ -527,12 +528,8 @@ impl InetStack {
 
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
-        // Check if the pop size is valid.
-        if size.is_some() && size.unwrap() == 0 {
-            let cause: String = format!("invalid pop size (size={:?})", size);
-            error!("pop(): {:?}", &cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
+        // We just assert 'size' here, because it was previously checked at PDPIX layer.
+        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {

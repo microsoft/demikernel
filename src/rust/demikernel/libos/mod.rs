@@ -18,6 +18,7 @@ use crate::{
     demikernel::config::Config,
     runtime::{
         fail::Fail,
+        limits,
         logging,
         types::{
             demi_qresult_t,
@@ -210,6 +211,16 @@ impl LibOS {
 
     /// Pops data from a an I/O queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        // Check if this is a fixed-size pop.
+        if let Some(size) = size {
+            // Check if size is valid.
+            if !((size > 0) && (size <= limits::POP_SIZE_MAX)) {
+                let cause: String = format!("invalid pop size (size={:?})", size);
+                error!("pop(): {:?}", &cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
+        }
+
         match self {
             LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
             LibOS::MemoryLibOS(libos) => libos.pop(qd, size),
