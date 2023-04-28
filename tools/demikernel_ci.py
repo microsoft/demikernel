@@ -255,6 +255,21 @@ def test_tcp_echo(server: str, client: str, libos: str, is_debug: bool, is_sudo:
         delay, config_path, log_directory)
 
 
+def test_tcp_wait(
+        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str, server_addr: str,
+        client_addr: str, delay: float, config_path: str, log_directory: str, nclients: int,
+        scenario: str) -> bool:
+    test_alias: str = "tcp-wait-scenario-{}".format(scenario)
+    test_name: str = "tcp-wait"
+    server_args: str = "--peer server --address {}:12345 --nclients {} --scenario {}".format(
+        server_addr, nclients, scenario)
+    client_args: str = "--peer client --address {}:12345 --nclients {} --scenario {}".format(
+        client_addr, nclients, scenario)
+    return job_test_system_rust(
+        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
+        delay, config_path, log_directory)
+
+
 def test_pipe_open(
         server: str, client: str, is_debug: bool, repository: str, delay: float,
         config_path: str, log_directory: str) -> bool:
@@ -386,6 +401,16 @@ def run_pipeline(
                                 server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
                                 config_path, log_directory, nclients=32, nrequests="100", bufsize="1024",
                                 run_mode=run_mode)
+
+                # TCP Wait (optional)
+                if test_system == "all" or test_system == "tcp_wait":
+                    if libos == "catnap":
+                        status["tcp_wait"] = test_tcp_wait(server, client, libos, is_debug, is_sudo,
+                                                           repository, server_addr, server_addr, delay, config_path,
+                                                           log_directory, nclients=32, scenario="push_async_close_wait")
+                        status["tcp_wait"] = test_tcp_wait(server, client, libos, is_debug, is_sudo,
+                                                           repository, server_addr, server_addr, delay, config_path,
+                                                           log_directory, nclients=32, scenario="pop_async_close_wait")
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
