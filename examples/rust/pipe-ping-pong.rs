@@ -40,9 +40,14 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     };
 
     // Ensure that scatter-gather array has the requested size.
-    // If error, should free scatter-gather array (and possibly close pipes).
-    // FIXME: https://github.com/demikernel/demikernel/issues/647
-    assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
+    if sga.sga_segs[0].sgaseg_len as usize != size {
+        freesga(libos, sga);
+        anyhow::bail!(
+            "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
+            size,
+            sga.sga_segs[0].sgaseg_len
+        );
+    }
 
     // Fill in scatter-gather array.
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
@@ -69,11 +74,23 @@ fn chksga(sga: &demi_sgarray_t, expected_value: u8) -> Result<usize> {
     // Sanity received data.
     for x in &recvbuf[..] {
         if *x != expected_value {
-            anyhow::bail!("got={:?}, expected={:?}", *x, expected_value);
+            demikernel::ensure_eq!(*x, expected_value);
         }
     }
 
     Ok(recvbuf.len())
+}
+
+//======================================================================================================================
+// freesga()
+//======================================================================================================================
+
+/// Free scatter-gather array and warn on error.
+fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
+    if let Err(e) = libos.sgafree(sga) {
+        println!("ERROR: sgafree() failed (error={:?})", e);
+        println!("WARN: leaking sga");
+    }
 }
 
 //======================================================================================================================
@@ -87,21 +104,20 @@ fn push_and_wait(libos: &mut LibOS, pipeqd: QDesc, length: usize, value: u8) -> 
     let qt: QToken = match libos.push(pipeqd, &sga) {
         Ok(qt) => qt,
         Err(e) => {
-            // On error, close pipes and free scatter-gather array.
-            // FIXME: https://github.com/demikernel/demikernel/issues/647
-            anyhow::bail!("failed to push: {:?}", e.cause)
+            // If error, free scatter-gather array.
+            freesga(libos, sga);
+            anyhow::bail!("failed to push: {:?}", e)
         },
     };
 
-    // On error, close pipes and free scatter-gather array.
-    // FIXME: https://github.com/demikernel/demikernel/issues/647
-    libos.wait(qt, None)?;
+    if let Err(e) = libos.wait(qt, None) {
+        // If error, free scatter-gather array.
+        freesga(libos, sga);
+        anyhow::bail!("failed to wait on push: {:?}", e)
+    }
 
-    if libos.sgafree(sga).is_err() {
-        // On error, close pipes.
-        // FIXME: https://github.com/demikernel/demikernel/issues/647
-        anyhow::bail!("failed to release scatter-gather array");
-    };
+    // Do not silently fail if unable to free scatter-gather array.
+    libos.sgafree(sga)?;
 
     Ok(())
 }
@@ -115,41 +131,40 @@ fn pop_and_wait(libos: &mut LibOS, pipeqd: QDesc, expected_length: usize, expect
     let mut nreceived: usize = 0;
     while nreceived < expected_length {
         // Pop data.
-        let qt: QToken = match libos.pop(pipeqd, None) {
-            Ok(qt) => qt,
-            Err(e) => {
-                // If error, close pipes and free scatter-gather array.
-                // FIXME: https://github.com/demikernel/demikernel/issues/647
-                anyhow::bail!("pop failed: {:?}", e.cause)
-            },
-        };
+        let qt: QToken = libos.pop(pipeqd, None)?;
         let sga: demi_sgarray_t = match libos.wait(qt, None) {
-            Ok(qr) => match qr.qr_opcode {
-                demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-                _ => {
-                    // If error, close pipes and free scatter-gather array.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/647
-                    anyhow::bail!("unexpected operation result")
-                },
-            },
-            _ => {
-                // If error, close pipes.
-                // FIXME: https://github.com/demikernel/demikernel/issues/647
-                anyhow::bail!("server failed to wait()")
-            },
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
+            Ok(_) => anyhow::bail!("unexpected operation result"),
+            _ => anyhow::bail!("server failed to wait()"),
         };
 
         // Sanity received data.
-        // If error, close pipes.
-        // FIXME: https://github.com/demikernel/demikernel/issues/647
-        nreceived += chksga(&sga, expected_value)?;
+        nreceived += match chksga(&sga, expected_value) {
+            Ok(len) => len,
+            Err(e) => {
+                // If error, free scatter-gather array.
+                freesga(libos, sga);
+                anyhow::bail!("sga contents did not match: {:?}", e)
+            },
+        };
 
-        // If error, close pipes.
-        // FIXME: https://github.com/demikernel/demikernel/issues/647
+        // Do not silently fail here if unable to free scatter-gather array.
         libos.sgafree(sga)?;
     }
 
     Ok(())
+}
+
+//======================================================================================================================
+// close()
+//======================================================================================================================
+
+/// Closes a pipe and warns if not successful.
+fn close(libos: &mut LibOS, pipeqd: QDesc) {
+    if let Err(e) = libos.close(pipeqd) {
+        println!("ERROR: close() failed (error={:?})", e);
+        println!("WARN: leaking pipeqd={:?}", pipeqd);
+    }
 }
 
 //======================================================================================================================
@@ -163,13 +178,13 @@ fn server(name: &str) -> Result<()> {
     };
     let mut libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
     };
 
     // Setup peer.
     let pipeqd_rx: QDesc = match libos.create_pipe(&format!("{}:rx", name)) {
         Ok(qd) => qd,
-        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
+        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
     };
 
     // Setup peer.
@@ -177,22 +192,30 @@ fn server(name: &str) -> Result<()> {
         Ok(qd) => qd,
         Err(e) => {
             // Clean up open pipes on error.
-            // FIXME: https://github.com/demikernel/demikernel/issues/647
-            anyhow::bail!("failed to open memory queue: {:?}", e.cause)
+            close(&mut libos, pipeqd_rx);
+            anyhow::bail!("failed to open memory queue: {:?}", e)
         },
     };
 
     // Send and receive bytes in a locked step.
     for i in 0..NROUNDS {
         // Clean up open pipes on error.
-        // FIXME: https://github.com/demikernel/demikernel/issues/647
-        pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i)?;
-        push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i)?;
+        if let Err(e) = pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i) {
+            close(&mut libos, pipeqd_rx);
+            close(&mut libos, pipeqd_tx);
+            anyhow::bail!("failed to pop memory queue: {:?}", e);
+        }
+
+        if let Err(e) = push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i) {
+            close(&mut libos, pipeqd_rx);
+            close(&mut libos, pipeqd_tx);
+            anyhow::bail!("failed to push memory queue: {:?}", e);
+        }
         println!("pong {:?}", i);
     }
 
-    libos.close(pipeqd_rx)?;
-    libos.close(pipeqd_tx)?;
+    close(&mut libos, pipeqd_rx);
+    close(&mut libos, pipeqd_tx);
 
     Ok(())
 }
@@ -220,7 +243,7 @@ fn client(name: &str) -> Result<()> {
         Ok(qd) => qd,
         Err(e) => {
             // If error, close open pipes.
-            // FIXME: https://www.microsoft.com/en-us/research/people/eschouks/
+            close(&mut libos, pipeqd_tx);
             anyhow::bail!("failed to open memory queue: {:?}", e.cause)
         },
     };
@@ -228,15 +251,23 @@ fn client(name: &str) -> Result<()> {
     // Send and receive bytes in a locked step.
     for i in 0..NROUNDS {
         // If error, close open pipes.
-        // FIXME: https://www.microsoft.com/en-us/research/people/eschouks/
-        push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i)?;
-        pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i)?;
+        // Clean up open pipes on error.
+        if let Err(e) = push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i) {
+            close(&mut libos, pipeqd_rx);
+            close(&mut libos, pipeqd_tx);
+            anyhow::bail!("failed to pop memory queue: {:?}", e);
+        }
+
+        if let Err(e) = pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i) {
+            close(&mut libos, pipeqd_rx);
+            close(&mut libos, pipeqd_tx);
+            anyhow::bail!("failed to push memory queue: {:?}", e);
+        }
         println!("pong {:?}", i);
     }
 
-    // Should probably close both pipes?
-    // FIXME: https://github.com/demikernel/demikernel/issues/647
-    libos.close(pipeqd_tx)?;
+    close(&mut libos, pipeqd_rx);
+    close(&mut libos, pipeqd_tx);
 
     Ok(())
 }
