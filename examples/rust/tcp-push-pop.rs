@@ -57,8 +57,14 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
 
     // Ensure that scatter-gather array has the requested size.
     // If error, free scatter-gather array.
-    // FIXME: https://github.com/demikernel/demikernel/issues/649
-    assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
+    if sga.sga_segs[0].sgaseg_len as usize != size {
+        freesga(libos, sga);
+        anyhow::bail!(
+            "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
+            size,
+            sga.sga_segs[0].sgaseg_len
+        );
+    }
 
     // Fill in scatter-gather array.
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
@@ -67,6 +73,30 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     slice.fill(value);
 
     Ok(sga)
+}
+
+//======================================================================================================================
+// freesga()
+//======================================================================================================================
+
+/// Free scatter-gather array and warn on error.
+fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
+    if let Err(e) = libos.sgafree(sga) {
+        println!("ERROR: sgafree() failed (error={:?})", e);
+        println!("WARN: leaking sga");
+    }
+}
+
+//======================================================================================================================
+// close()
+//======================================================================================================================
+
+/// Closes a socket and warns if not successful.
+fn close(libos: &mut LibOS, sockqd: QDesc) {
+    if let Err(e) = libos.close(sockqd) {
+        println!("ERROR: close() failed (error={:?})", e);
+        println!("WARN: leaking sockqd={:?}", sockqd);
+    }
 }
 
 //======================================================================================================================
@@ -86,14 +116,14 @@ fn server(local: SocketAddrV4) -> Result<()> {
 
     // Setup peer.
     let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
-        Ok(qd) => qd,
+        Ok(sockqd) => sockqd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
     };
     match libos.bind(sockqd, local) {
         Ok(()) => (),
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("bind failed: {:?}", e.cause)
         },
     };
@@ -103,7 +133,7 @@ fn server(local: SocketAddrV4) -> Result<()> {
         Ok(()) => (),
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("listen failed: {:?}", e.cause)
         },
     };
@@ -113,20 +143,20 @@ fn server(local: SocketAddrV4) -> Result<()> {
         Ok(qt) => qt,
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("accept failed: {:?}", e.cause)
         },
     };
-    let qd: QDesc = match libos.wait(qt, None) {
+    let sockqd: QDesc = match libos.wait(qt, None) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { qr.qr_value.ares.qd.into() },
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("operation failed: {:?}", e.cause)
         },
-        _ => {
+        Ok(_) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("unexpected result")
         },
     };
@@ -135,11 +165,11 @@ fn server(local: SocketAddrV4) -> Result<()> {
     let mut i: usize = 0;
     while i < nbytes {
         // Pop data.
-        let qt: QToken = match libos.pop(qd, None) {
+        let qt: QToken = match libos.pop(sockqd, None) {
             Ok(qt) => qt,
             Err(e) => {
                 // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                close(&mut libos, sockqd);
                 anyhow::bail!("pop failed: {:?}", e.cause)
             },
         };
@@ -147,12 +177,12 @@ fn server(local: SocketAddrV4) -> Result<()> {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
             Err(e) => {
                 // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                close(&mut libos, sockqd);
                 anyhow::bail!("operation failed: {:?}", e.cause)
             },
-            _ => {
+            Ok(_) => {
                 // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                close(&mut libos, sockqd);
                 anyhow::bail!("unexpected result")
             },
         };
@@ -163,18 +193,17 @@ fn server(local: SocketAddrV4) -> Result<()> {
         let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
         for x in slice {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
-            assert_eq!(*x, FILL_CHAR);
+            if *x != FILL_CHAR {
+                close(&mut libos, sockqd);
+                anyhow::bail!("fill check failed: expected={:?} received={:?}", FILL_CHAR, *x);
+            }
         }
 
         i += sga.sga_segs[0].sgaseg_len as usize;
-        match libos.sgafree(sga) {
-            Ok(_) => {},
-            Err(e) => {
-                // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
-                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-            },
+        if let Err(e) = libos.sgafree(sga) {
+            // If error, free socket.
+            close(&mut libos, sockqd);
+            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
         }
         println!("pop {:?}", i);
     }
@@ -203,7 +232,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
 
     // Setup peer.
     let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
-        Ok(qd) => qd,
+        Ok(sockqd) => sockqd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
     };
 
@@ -211,7 +240,7 @@ fn client(remote: SocketAddrV4) -> Result<()> {
         Ok(qt) => qt,
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("connect failed: {:?}", e.cause)
         },
     };
@@ -219,12 +248,12 @@ fn client(remote: SocketAddrV4) -> Result<()> {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
         Err(e) => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("operation failed: {:?}", e)
         },
         _ => {
             // If error, free socket.
-            // FIXME: https://github.com/demikernel/demikernel/issues/649
+            close(&mut libos, sockqd);
             anyhow::bail!("unexpected result")
         },
     }
@@ -233,39 +262,45 @@ fn client(remote: SocketAddrV4) -> Result<()> {
     let mut i: usize = 0;
     while i < nbytes {
         // If error, free socket.
-        // FIXME: https://github.com/demikernel/demikernel/issues/649
-        let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, FILL_CHAR)?;
+        let sga: demi_sgarray_t = match mksga(&mut libos, BUFFER_SIZE, FILL_CHAR) {
+            Ok(sga) => sga,
+            Err(e) => {
+                close(&mut libos, sockqd);
+                anyhow::bail!("failed to allocate scatter-gather array: {:?}", e)
+            },
+        };
 
         // Push data.
         let qt: QToken = match libos.push(sockqd, &sga) {
             Ok(qt) => qt,
             Err(e) => {
-                // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
+                // If error, free socket and scatter-gather array.
+                freesga(&mut libos, sga);
+                close(&mut libos, sockqd);
                 anyhow::bail!("push failed: {:?}", e.cause)
             },
         };
         match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-            Err(e) => {
-                // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
-                anyhow::bail!("operation failed: {:?}", e.cause)
-            },
-            _ => {
-                // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
+            Ok(_) => {
+                // If error, free socket and scatter-gather array.
+                freesga(&mut libos, sga);
+                close(&mut libos, sockqd);
                 anyhow::bail!("unexpected result")
+            },
+            Err(e) => {
+                // If error, free socket and scatter-gather array.
+                freesga(&mut libos, sga);
+                close(&mut libos, sockqd);
+                anyhow::bail!("operation failed: {:?}", e.cause)
             },
         };
         i += sga.sga_segs[0].sgaseg_len as usize;
-        match libos.sgafree(sga) {
-            Ok(_) => {},
-            Err(e) => {
-                // If error, free socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/649
-                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-            },
+        // Do not silently fail if unable to free scatter-gather array.
+        if let Err(e) = libos.sgafree(sga) {
+            // If error, free socket.
+            close(&mut libos, sockqd);
+            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
         }
 
         println!("push {:?}", i);
